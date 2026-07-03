@@ -32,34 +32,61 @@ describe("scoring", () => {
     expect(total).toBe(30); // 20 (clamped) + 10
   });
 
+  const baseOpp = {
+    set_aside_type: null as string | null,
+    value_estimated: 200_000 as number | null,
+    naics_code: "561730",
+    deadline: null as string | null,
+    title: "Grounds maintenance services",
+    description: "Recurring landscaping and grounds maintenance for a federal facility.",
+  };
+
   it("hard exclusion: ineligible set-aside we don't hold", () => {
     const ex = checkHardExclusions(
-      { set_aside_type: "8(a) Set-Aside", value_estimated: 100000, naics_code: "236220", deadline: null },
+      { ...baseOpp, set_aside_type: "8(a) Set-Aside" },
       DEFAULT_PROFILE
     );
     expect(ex).toContain("ineligible_set_aside");
   });
 
-  it("hard exclusion: over bonding capacity (>150%)", () => {
-    const ex = checkHardExclusions(
-      { set_aside_type: null, value_estimated: 5_000_000, naics_code: "236220", deadline: null },
-      DEFAULT_PROFILE
-    );
-    expect(ex).toContain("over_bonding");
+  it("hard exclusion: value below the $50K minimum", () => {
+    const ex = checkHardExclusions({ ...baseOpp, value_estimated: 30_000 }, DEFAULT_PROFILE);
+    expect(ex).toContain("value_below_min");
   });
 
-  it("hard exclusion: deadline under 48h", () => {
-    const soon = new Date(Date.now() + 12 * 3600_000).toISOString();
+  it("hard exclusion: unrestricted contract under $150K", () => {
     const ex = checkHardExclusions(
-      { set_aside_type: null, value_estimated: 100000, naics_code: "236220", deadline: soon },
+      { ...baseOpp, set_aside_type: "Unrestricted", value_estimated: 90_000 },
       DEFAULT_PROFILE
     );
+    expect(ex).toContain("unrestricted_under_threshold");
+  });
+
+  it("hard exclusion: security clearance keywords", () => {
+    const ex = checkHardExclusions(
+      { ...baseOpp, description: "Personnel must hold an active Top Secret / TS/SCI clearance." },
+      DEFAULT_PROFILE
+    );
+    expect(ex).toContain("security_clearance");
+  });
+
+  it("hard exclusion: licensed professional stamp required", () => {
+    const ex = checkHardExclusions(
+      { ...baseOpp, description: "Deliverables require a professional engineer stamp." },
+      DEFAULT_PROFILE
+    );
+    expect(ex).toContain("licensed_professional");
+  });
+
+  it("hard exclusion: deadline under 7 days", () => {
+    const soon = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    const ex = checkHardExclusions({ ...baseOpp, deadline: soon }, DEFAULT_PROFILE);
     expect(ex).toContain("deadline_too_soon");
   });
 
-  it("no exclusion for an eligible small-business set-aside", () => {
+  it("no exclusion for an eligible small-business set-aside in range", () => {
     const ex = checkHardExclusions(
-      { set_aside_type: "Total Small Business Set-Aside", value_estimated: 250000, naics_code: "236220", deadline: null },
+      { ...baseOpp, set_aside_type: "Total Small Business Set-Aside", value_estimated: 250_000 },
       DEFAULT_PROFILE
     );
     expect(ex).toHaveLength(0);
@@ -67,14 +94,14 @@ describe("scoring", () => {
 
   it("buildScoreBreakdown forces dismiss + zero when excluded", () => {
     const b = buildScoreBreakdown(
-      [{ key: "naics_fit", label: "NAICS", points: 20, max_points: 20, reasoning: "" }],
-      ["over_bonding"],
+      [{ key: "naics_active", label: "NAICS", points: 20, max_points: 20, reasoning: "" }],
+      ["value_below_min"],
       DEFAULT_PROFILE,
       "excluded"
     );
     expect(b.tier).toBe("dismiss");
     expect(b.total).toBe(0);
-    expect(b.hard_exclusions_triggered).toContain("over_bonding");
+    expect(b.hard_exclusions_triggered).toContain("value_below_min");
   });
 
   it("buildScoreBreakdown tiers a clean score", () => {

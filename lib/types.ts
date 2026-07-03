@@ -37,9 +37,18 @@ export interface CompanyProfileJson {
   uei?: string;
   cage_code?: string;
   duns?: string;
+  ein?: string;
   entity_state?: string;
+  business_structure?: string;
+  physical_address?: string;
+  phone?: string;
+  email?: string;
+  outreach_email?: string; // all sub outreach must originate here
+  owner_name?: string;
+  owner_title?: string;
   small_business: boolean;
   certifications: string[]; // e.g. ["SDVOSB", "HUBZone", "8(a)"]
+  excluded_naics?: string[]; // do not add without human approval
   naics_codes: string[];
   psc_codes?: string[];
   primary_trades: string[];
@@ -47,6 +56,7 @@ export interface CompanyProfileJson {
   bonding_capacity?: number;
   annual_revenue?: number;
   years_in_business?: number;
+  business_model?: string; // e.g. brokerage
   target_margin_pct: number;
   min_margin_pct: number;
   max_markup_pct: number;
@@ -55,9 +65,19 @@ export interface CompanyProfileJson {
   sub_standards: SubStandards;
   pricing_rules: PricingRules;
   decision_thresholds: DecisionThresholds;
+  pricing_philosophy?: string;
+  legal_guardrails?: string[];
   templates?: Record<string, string>;
   capability_statement_doc?: string; // documents.id or storage path
   notes?: string;
+}
+
+export interface MarginBand {
+  category: string;
+  target_low_pct: number;
+  target_high_pct: number;
+  floor_pct: number; // hard floor — never compress below
+  cap_pct: number;
 }
 
 export interface ScoringDimension {
@@ -92,6 +112,11 @@ export interface PricingRules {
   markup_default_pct: number;
   out_of_range_tolerance_pct: number; // flag quotes beyond this vs comps
   cpi_series_id?: string; // BLS series for inflation adjustment
+  recompete_undercut_pct?: [number, number]; // price this % below incumbent, e.g. [3, 8]
+  sanity_low_pct?: number; // flag if bid > this % below historical median
+  new_naics_learning_premium_pct?: number; // +% target margin on first bid in a NAICS
+  remote_premium_pct?: number; // +% floor for work >80mi from a metro
+  margin_by_category?: MarginBand[];
 }
 
 export interface DecisionThresholds {
@@ -106,6 +131,11 @@ export interface DecisionThresholds {
   cert_alert_days: number[]; // [90, 30, 7]
   state_llc_alert_days: number[]; // [60, 30, 7]
   insurance_alert_days: number[]; // [60, 30, 7]
+  value_min?: number; // 50000 — below this: auto-dismiss
+  value_max?: number; // 350000 — above this: flag for review
+  deadline_min_days?: number; // 7 — fewer days: auto-dismiss unless in pipeline
+  unrestricted_min_value?: number; // 150000 — unrestricted below this: auto-dismiss
+  pricing_gap_flag_pct?: number; // 20 — flag if min-margin bid > this % above median
 }
 
 export interface Opportunity {

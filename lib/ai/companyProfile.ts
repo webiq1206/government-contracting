@@ -76,27 +76,47 @@ export function renderProfileText(p: CompanyProfileJson): string {
   lines.push("You are an autonomous procurement agent operating on behalf of this company. Use this profile as authoritative context for every decision: who we are, what work we pursue, how to score opportunities, how to price bids, which subcontractors meet our standards, and every decision threshold. When a rule here conflicts with a general instinct, follow the rule.");
   lines.push("");
   lines.push("## Identity");
-  lines.push(`- Legal name: ${p.legal_name}`);
+  lines.push(`- Legal name (use EXACTLY, never abbreviate): ${p.legal_name}`);
+  if (p.business_structure) lines.push(`- Structure: ${p.business_structure}`);
+  if (p.owner_name) lines.push(`- Owner / authorized signer: ${p.owner_name}${p.owner_title ? ` (${p.owner_title})` : ""}`);
   if (p.uei) lines.push(`- UEI: ${p.uei}`);
+  else lines.push("- UEI: not yet assigned (SAM.gov registration pending) — block bid submission until active.");
   if (p.cage_code) lines.push(`- CAGE: ${p.cage_code}`);
-  if (p.entity_state) lines.push(`- Entity state: ${p.entity_state}`);
+  if (p.ein) lines.push(`- EIN: ${p.ein}`);
+  if (p.entity_state) lines.push(`- State of formation: ${p.entity_state}`);
+  if (p.physical_address) lines.push(`- Address: ${p.physical_address}`);
+  if (p.phone) lines.push(`- Phone: ${p.phone}`);
+  if (p.outreach_email) lines.push(`- Outreach email (ALL sub outreach must originate here): ${p.outreach_email}`);
   lines.push(`- Small business: ${p.small_business ? "yes" : "no"}`);
+  if (p.business_model) lines.push(`- Business model: ${p.business_model} — we win contracts and fulfill them through vetted local subcontractors; we do not self-perform.`);
   if (p.certifications?.length) lines.push(`- Certifications: ${p.certifications.join(", ")}`);
-  if (p.years_in_business) lines.push(`- Years in business: ${p.years_in_business}`);
-  if (p.bonding_capacity) lines.push(`- Bonding capacity: $${p.bonding_capacity.toLocaleString()}`);
   lines.push("");
   lines.push("## What we pursue");
-  lines.push(`- NAICS: ${p.naics_codes.join(", ")}`);
+  lines.push(`- Active NAICS (${p.naics_codes.length}): ${p.naics_codes.join(", ")}`);
+  if (p.excluded_naics?.length) lines.push(`- Excluded NAICS (do not add without human approval): ${p.excluded_naics.join(", ")}`);
   if (p.psc_codes?.length) lines.push(`- PSC: ${p.psc_codes.join(", ")}`);
   lines.push(`- Primary trades: ${p.primary_trades.join(", ")}`);
   lines.push(`- Service areas: ${p.service_areas.join(", ")}`);
+  const dt = p.decision_thresholds;
+  if (dt.value_min || dt.value_max) {
+    lines.push(`- Target contract value: $${(dt.value_min ?? 0).toLocaleString()}–$${(dt.value_max ?? 0).toLocaleString()}. Below minimum: auto-dismiss. Above maximum: flag for review (only after 3+ contracts won).`);
+  }
+  lines.push("- Highest priority: multi-year and IDIQ vehicles. Small Business set-asides preferred over unrestricted.");
   lines.push("");
   lines.push("## Pricing");
-  lines.push(`- Target margin: ${p.target_margin_pct}%`);
-  lines.push(`- Minimum margin: ${p.min_margin_pct}%`);
-  lines.push(`- Max markup: ${p.max_markup_pct}%`);
-  lines.push(`- Margin scenarios to model: ${p.pricing_rules.margin_scenarios.map((m) => `${m}%`).join(", ")}`);
+  if (p.pricing_philosophy) lines.push(p.pricing_philosophy);
+  lines.push(`- Target margin: ${p.target_margin_pct}%; minimum floor: ${p.min_margin_pct}%.`);
+  lines.push(`- Margin scenarios to model: ${p.pricing_rules.margin_scenarios.map((m) => `${m}%`).join(", ")}. Gross margin = (bid − sub quote) / bid, computed on total value including all option years.`);
+  lines.push(`- Never estimate sub cost — always use an actual written quote (the cost floor). Collect quotes from at least 2 subs.`);
   lines.push(`- Flag quotes out of range beyond ±${p.pricing_rules.out_of_range_tolerance_pct}% of historical comps.`);
+  if (p.pricing_rules.margin_by_category?.length) {
+    lines.push("- Margin targets by contract type (target / hard floor / cap):");
+    for (const m of p.pricing_rules.margin_by_category) {
+      lines.push(`  - ${m.category}: ${m.target_low_pct}–${m.target_high_pct}% / floor ${m.floor_pct}% / cap ${m.cap_pct}%`);
+    }
+    if (p.pricing_rules.remote_premium_pct) lines.push(`  - Remote location (>80mi from a metro): +${p.pricing_rules.remote_premium_pct}% to the applicable floor.`);
+    if (p.pricing_rules.new_naics_learning_premium_pct) lines.push(`  - First bid in a new NAICS: +${p.pricing_rules.new_naics_learning_premium_pct}% to target margin (learning premium).`);
+  }
   lines.push("");
   lines.push("## Scoring rubric (100 points)");
   for (const d of p.scoring_rubric.dimensions) {
@@ -128,6 +148,11 @@ export function renderProfileText(p: CompanyProfileJson): string {
   lines.push("- If a solicitation's past-performance requirement is classified prime_only, BLOCK and flag for human review (we cannot yet meet it as prime).");
   lines.push("- If team_accepted, generate the experience narrative from subcontractor project history.");
   lines.push("- If not_required, omit the past-performance section.");
+  if (p.legal_guardrails?.length) {
+    lines.push("");
+    lines.push("## Legal guardrails (NON-NEGOTIABLE — never override; any ambiguity stops and escalates to human review)");
+    for (const g of p.legal_guardrails) lines.push(`- ${g}`);
+  }
   if (p.notes) {
     lines.push("");
     lines.push("## Notes");

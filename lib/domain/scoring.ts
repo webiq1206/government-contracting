@@ -37,23 +37,55 @@ export function clamp(n: number, lo: number, hi: number): number {
 }
 
 /**
- * Deterministic hard-exclusion checks. Returns the list of triggered exclusion
- * keys. Any hit means the opportunity is dismissed regardless of dimension
- * scores. Only structured rules are enforced here; free-text rules in the
- * profile are additionally evaluated by Claude.
+ * Deterministic hard-exclusion (auto-dismiss) checks — Company Profile §7.
+ * Returns the list of triggered exclusion keys. Any hit means auto-dismiss
+ * regardless of dimension scores. Free-text rules are additionally evaluated by
+ * Claude. Note: "NAICS not in active list", "construction >$150K w/o past perf",
+ * and "past performance prime-only" are FLAG-for-review (not dismiss) and are
+ * handled by the scoring/analysis flow, not here.
  */
 export function checkHardExclusions(
   opp: Pick<
     Opportunity,
-    "set_aside_type" | "value_estimated" | "naics_code" | "deadline"
+    "set_aside_type" | "value_estimated" | "naics_code" | "deadline" | "title" | "description"
   >,
   profile: CompanyProfileJson,
   now: Date = new Date()
 ): string[] {
   const triggered: string[] = [];
-
-  // Ineligible set-aside: requires a cert we don't hold.
+  const t = profile.decision_thresholds;
+  const text = `${opp.title ?? ""}\n${opp.description ?? ""}`.toLowerCase();
   const setAside = (opp.set_aside_type ?? "").toLowerCase();
+  const isUnrestricted =
+    setAside === "" ||
+    setAside.includes("unrestricted") ||
+    setAside.includes("full and open") ||
+    setAside === "n/a" ||
+    setAside === "none";
+
+  // Value below minimum ($50K): margin per hour of effort too low.
+  const min = t.value_min ?? 50_000;
+  if (opp.value_estimated != null && opp.value_estimated < min) {
+    triggered.push("value_below_min");
+  }
+
+  // Unrestricted below $150K: competition density too high.
+  const unrestrictedMin = t.unrestricted_min_value ?? 150_000;
+  if (isUnrestricted && opp.value_estimated != null && opp.value_estimated < unrestrictedMin) {
+    triggered.push("unrestricted_under_threshold");
+  }
+
+  // Security clearance required (keyword scan).
+  if (/\b(top[-\s]?secret|ts\/sci|secret clearance|security clearance required|active clearance)\b/.test(text)) {
+    triggered.push("security_clearance");
+  }
+
+  // Licensed professional / stamped deliverables required.
+  if (/(professional engineer|\bpe stamp\b|engineering stamp|engineer'?s stamp|architect(ural)? stamp|licensed (professional )?(engineer|architect)|stamped (drawings|plans|deliverables))/.test(text)) {
+    triggered.push("licensed_professional");
+  }
+
+  // Ineligible set-aside: requires a certification we don't hold.
   const held = new Set(profile.certifications.map((c) => normalizeCert(c)));
   const CERT_KEYWORDS: Record<string, string> = {
     "8(a)": "8a",
@@ -73,30 +105,11 @@ export function checkHardExclusions(
     }
   }
 
-  // Over bonding capacity (>150%).
-  if (
-    profile.bonding_capacity &&
-    opp.value_estimated != null &&
-    opp.value_estimated > profile.bonding_capacity * 1.5
-  ) {
-    triggered.push("over_bonding");
-  }
-
-  // Out-of-scope NAICS (no overlap with our codes).
-  if (
-    opp.naics_code &&
-    profile.naics_codes.length &&
-    !profile.naics_codes.some((c) => opp.naics_code!.startsWith(c.slice(0, 3)))
-  ) {
-    // Only a soft signal at the 3-digit level; leave final call to dimension
-    // scoring unless there's truly no relation. We do not auto-exclude here to
-    // avoid false negatives; adjacency is scored in naics_fit instead.
-  }
-
-  // Deadline too soon (<48h) with no analysis started.
+  // Deadline too soon (< min days): insufficient time for sub research + quotes.
+  const minDays = t.deadline_min_days ?? 7;
   if (opp.deadline) {
-    const hrs = (new Date(opp.deadline).getTime() - now.getTime()) / 3_600_000;
-    if (hrs >= 0 && hrs < 48) triggered.push("deadline_too_soon");
+    const days = (new Date(opp.deadline).getTime() - now.getTime()) / 86_400_000;
+    if (days >= 0 && days < minDays) triggered.push("deadline_too_soon");
   }
 
   return [...new Set(triggered)];
