@@ -72,6 +72,16 @@ For 24/7 operation, use **Replit Deployments**. The included `.replit`
 
 ---
 
+## Row-Level Security (Supabase)
+
+Migration `0002_rls.sql` enables Postgres RLS on every application table and
+revokes the `anon` / `authenticated` grants. The app connects via the direct
+`DATABASE_URL` role (table owner), which bypasses RLS, so it is unaffected — but
+Supabase's auto-generated PostgREST API and the public JS client can read/write
+**nothing**. This runs automatically as part of `npm run db:setup` / `db:migrate`.
+If you later want to expose a table to the browser, add explicit `create policy`
+statements in a new migration.
+
 ## Connecting Gmail (outreach)
 
 1. Google Cloud Console → create OAuth 2.0 credentials (Web application), enable

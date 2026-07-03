@@ -16,6 +16,7 @@ const nextConfig = {
       "resend",
       "pdf-lib",
       "docx",
+      "unpdf",
     ],
   },
   eslint: {

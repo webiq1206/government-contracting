@@ -16,6 +16,8 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
+import { storage } from "../integrations/storage";
+import { extractPdfText, looksLikePdf } from "../integrations/pdf";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -40,28 +42,67 @@ const AnalysisSchema = z.object({
     .default([]),
 });
 
+const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25MB cap per file
+
 /**
- * Best-effort attachment text. We do NOT parse PDFs — for PDF/binary links we
- * simply note the attachment; for small text-like responses we capture a snippet
- * to feed Claude as extra context. Any failure degrades to a note.
+ * Download a solicitation attachment, persist it (Supabase Storage or local
+ * fallback) + record it in `documents`, and return extracted text for Claude:
+ *   - PDFs are parsed to text with unpdf.
+ *   - text/html/json responses are captured as a snippet.
+ *   - other binaries are stored and noted (no text).
+ * Any failure degrades to a note; it never throws.
  */
-async function fetchAttachmentContext(att: Attachment): Promise<string> {
-  const label = att.name || "attachment";
-  if (!att.url) return `- ${label} (no url)`;
+async function processAttachment(
+  opportunityId: string,
+  att: Attachment,
+  index: number
+): Promise<{ context: string; parsedChars: number }> {
+  const label = att.name || `attachment-${index + 1}`;
+  if (!att.url) return { context: `- ${label} (no url)`, parsedChars: 0 };
   try {
     const res = await fetch(att.url, { method: "GET" });
+    if (!res.ok) {
+      return { context: `- ${label} (${att.url}) — could not fetch (HTTP ${res.status})`, parsedChars: 0 };
+    }
     const ct = (res.headers.get("content-type") ?? "").toLowerCase();
-    if (!res.ok) return `- ${label} (${att.url}) — could not fetch (HTTP ${res.status})`;
-    if (ct.includes("pdf") || ct.includes("octet-stream") || ct.includes("word") || ct.includes("zip")) {
-      return `- ${label} (${att.url}) — binary/PDF document (not parsed; note its presence in requirements)`;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength > MAX_ATTACH_BYTES) {
+      return { context: `- ${label} — too large to parse (${Math.round(buf.byteLength / 1e6)}MB)`, parsedChars: 0 };
+    }
+
+    // Persist the raw file + a documents row (best-effort).
+    const safeName = label.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
+    const key = `solicitations/${opportunityId}/${index + 1}_${safeName}`;
+    let storagePath: string | null = null;
+    try {
+      const up = await storage.upload(key, buf, ct || "application/octet-stream");
+      storagePath = up.path;
+      await query(
+        `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, meta)
+         values ($1,'solicitation',$2,$3,$4,$5,$6)`,
+        [opportunityId, label, up.path, up.backend, ct || null, JSON.stringify({ source_url: att.url })]
+      );
+    } catch {
+      /* storage/documents are best-effort; continue with extraction */
+    }
+
+    if (looksLikePdf(att.url, ct)) {
+      const { text, pages } = await extractPdfText(buf);
+      if (text) {
+        return {
+          context: `- ${label} (${pages} pp, extracted):\n${text}`,
+          parsedChars: text.length,
+        };
+      }
+      return { context: `- ${label} — PDF stored but no extractable text (likely scanned/image-only).`, parsedChars: 0 };
     }
     if (ct.includes("text") || ct.includes("html") || ct.includes("json")) {
-      const text = await res.text();
-      return `- ${label} (${att.url}):\n${text.slice(0, 4000)}`;
+      const text = buf.toString("utf8").slice(0, 6000);
+      return { context: `- ${label}:\n${text}`, parsedChars: text.length };
     }
-    return `- ${label} (${att.url}) — content-type ${ct || "unknown"} (not parsed)`;
+    return { context: `- ${label} (${att.url}) — ${ct || "binary"} stored (not text-parseable)`, parsedChars: 0 };
   } catch (err) {
-    return `- ${label} (${att.url}) — fetch failed (${(err as Error).message})`;
+    return { context: `- ${label} (${att.url}) — processing failed (${(err as Error).message})`, parsedChars: 0 };
   }
 }
 
@@ -81,8 +122,8 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     "DESCRIPTION:",
     (opp.description ?? "(no description provided)").slice(0, 6000),
     "",
-    "ATTACHMENTS (names/urls; binary docs are not parsed — reason from names + description):",
-    attachmentContext || "(none)",
+    "ATTACHMENTS (extracted text where available — PDFs are parsed; use this as primary source material):",
+    (attachmentContext || "(none)").slice(0, 24000),
     "",
     "PAST-PERFORMANCE CLASSIFICATION — choose exactly one:",
     '- "not_required": the solicitation does not require past performance.',
@@ -114,13 +155,22 @@ export const solicitationAnalyst: AgentDefinition = {
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 
-    // Gather best-effort attachment context.
+    // Download, store, and extract text from solicitation attachments (PDFs parsed).
     const attachments: Attachment[] = Array.isArray(opp.attachments_json)
       ? opp.attachments_json
       : [];
-    const attachmentContext = (
-      await Promise.all(attachments.slice(0, 8).map(fetchAttachmentContext))
-    ).join("\n");
+    const processed = await Promise.all(
+      attachments.slice(0, 8).map((att, i) => processAttachment(opportunityId, att, i))
+    );
+    const attachmentContext = processed.map((p) => p.context).join("\n\n");
+    const parsedChars = processed.reduce((a, p) => a + p.parsedChars, 0);
+    await logAgent({
+      agent: "solicitation-analyst",
+      action: "attachments",
+      opportunityId,
+      level: "info",
+      message: `processed ${attachments.length} attachment(s), extracted ${parsedChars} chars of text`,
+    });
 
     let analysis: SolicitationAnalysis;
     try {
