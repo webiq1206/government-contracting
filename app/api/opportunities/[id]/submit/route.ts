@@ -1,0 +1,66 @@
+import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/api-auth";
+import { query, queryOne } from "@/lib/db";
+import { getProfileJson } from "@/lib/ai/companyProfile";
+import { logAgent } from "@/lib/logger";
+import type { Opportunity } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/** Operator submits the reviewed bid package. Guards the submit-lead-hours rule + prime_only block. */
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+  const { force } = await req.json().catch(() => ({}));
+
+  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [params.id]);
+  if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const bid = await queryOne<{ id: string; human_flags: string[]; qa_checklist: { ok: boolean }[] | null }>(
+    `select id, human_flags, qa_checklist from bids where opportunity_id=$1 order by created_at desc limit 1`,
+    [params.id]
+  );
+  if (!bid) return NextResponse.json({ error: "No bid package to submit." }, { status: 400 });
+
+  // Block prime_only per past-performance policy.
+  if (opp.past_perf_classification === "prime_only") {
+    return NextResponse.json(
+      { error: "Blocked: past performance is prime_only. Requires human resolution before submission." },
+      { status: 409 }
+    );
+  }
+
+  // Enforce submit-lead-hours unless the operator explicitly forces.
+  const profile = await getProfileJson();
+  const leadHours = profile?.decision_thresholds.submit_lead_hours ?? 2;
+  if (opp.deadline) {
+    const hoursLeft = (new Date(opp.deadline).getTime() - Date.now()) / 3_600_000;
+    if (hoursLeft < leadHours && !force) {
+      return NextResponse.json(
+        {
+          error: `Deadline is ${hoursLeft.toFixed(1)}h away; policy requires submitting at least ${leadHours}h before. Pass force to override.`,
+          needsForce: true,
+        },
+        { status: 409 }
+      );
+    }
+  }
+
+  await query(`update bids set submitted_at=now(), outcome='pending' where id=$1`, [bid.id]);
+  await query(
+    `update opportunities set stage='submitted', human_action_required=false where id=$1`,
+    [params.id]
+  );
+  await logAgent({
+    agent: "operator",
+    action: "submit-bid",
+    opportunityId: params.id,
+    bidId: bid.id,
+    level: "success",
+    message: `Operator ${auth.email} submitted the bid package.`,
+    reasoning: "Post-submission tracking now monitors SAM.gov for the award notice.",
+  });
+
+  return NextResponse.json({ ok: true });
+}
