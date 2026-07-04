@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { requireAuth } from "../lib/session-middleware";
 import { query, queryOne } from "../lib/db";
+import { deepMerge } from "../lib/deep-merge";
 
 const router = Router();
 router.use(requireAuth);
@@ -47,25 +48,6 @@ router.get("/:id/quotes", async (req: Request, res: Response) => {
   res.json(rows);
 });
 
-function deepMerge(
-  base: Record<string, unknown>,
-  patch: Record<string, unknown>
-): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...base };
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === null) {
-      delete result[k];
-    } else if (
-      typeof v === "object" && !Array.isArray(v) &&
-      typeof result[k] === "object" && result[k] !== null && !Array.isArray(result[k])
-    ) {
-      result[k] = deepMerge(result[k] as Record<string, unknown>, v as Record<string, unknown>);
-    } else {
-      result[k] = v;
-    }
-  }
-  return result;
-}
 
 router.patch("/:id", async (req: Request, res: Response) => {
   const {
