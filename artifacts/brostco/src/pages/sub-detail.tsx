@@ -151,6 +151,7 @@ export default function SubDetailPage() {
         credentials: "include",
       });
       qc.invalidateQueries({ queryKey: ["sub-quotes", id] });
+      qc.invalidateQueries({ queryKey: ["getOpportunity"] });
       setEditingQuoteCard(null);
     } finally {
       setSavingQuote(false);

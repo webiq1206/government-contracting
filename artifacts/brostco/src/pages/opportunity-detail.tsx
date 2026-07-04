@@ -54,6 +54,7 @@ function SubQuotesSection({ oppId }: { oppId: string }) {
         credentials: "include",
       });
       qc.invalidateQueries({ queryKey: ["opp-quotes", oppId] });
+      qc.invalidateQueries({ queryKey: ["getOpportunity", oppId] });
       setEditingCard(null);
     } finally {
       setSaving(false);

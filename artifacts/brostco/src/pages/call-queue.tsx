@@ -40,7 +40,11 @@ const OUTCOME_LABELS: Record<string, string> = {
 function CallLogForm({ card, invalidateKey }: { card: CallCard; invalidateKey: string[] }) {
   const [outcome, setOutcome] = useState("interested");
   const [notes, setNotes] = useState("");
-  const [quoteAmount, setQuoteAmount] = useState(card.prior_quote_amount != null ? String(card.prior_quote_amount) : "");
+  const [quoteAmount, setQuoteAmount] = useState(
+    card.quote_amount != null ? String(card.quote_amount)
+    : card.prior_quote_amount != null ? String(card.prior_quote_amount)
+    : ""
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const qc = useQueryClient();

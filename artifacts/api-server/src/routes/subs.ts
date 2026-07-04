@@ -47,6 +47,26 @@ router.get("/:id/quotes", async (req: Request, res: Response) => {
   res.json(rows);
 });
 
+function deepMerge(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === null) {
+      delete result[k];
+    } else if (
+      typeof v === "object" && !Array.isArray(v) &&
+      typeof result[k] === "object" && result[k] !== null && !Array.isArray(result[k])
+    ) {
+      result[k] = deepMerge(result[k] as Record<string, unknown>, v as Record<string, unknown>);
+    } else {
+      result[k] = v;
+    }
+  }
+  return result;
+}
+
 router.patch("/:id", async (req: Request, res: Response) => {
   const {
     notes, is_preferred, blacklisted, project_history,
@@ -67,9 +87,15 @@ router.patch("/:id", async (req: Request, res: Response) => {
   if (website !== undefined) { params.push(website); sets.push(`website=$${params.length}`); }
   if (city !== undefined) { params.push(city); sets.push(`city=$${params.length}`); }
   if (state !== undefined) { params.push(state); sets.push(`state=$${params.length}`); }
+
   if (extra_fields !== undefined && typeof extra_fields === "object" && extra_fields !== null) {
-    params.push(JSON.stringify(extra_fields));
-    sets.push(`extra_fields = jsonb_strip_nulls(extra_fields || $${params.length}::jsonb)`);
+    const current = await queryOne<{ extra_fields: Record<string, unknown> }>(
+      `select extra_fields from subcontractors where id=$1`,
+      [req.params.id]
+    );
+    const merged = deepMerge(current?.extra_fields ?? {}, extra_fields as Record<string, unknown>);
+    params.push(JSON.stringify(merged));
+    sets.push(`extra_fields=$${params.length}`);
   }
 
   params.push(req.params.id);
