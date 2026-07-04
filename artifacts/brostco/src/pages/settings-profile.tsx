@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useGetProfile } from "@workspace/api-client-react";
 import { PageHeader } from "@/components/badges";
-import { ActionButton } from "@/components/action-button";
 
 const EXAMPLE_PROFILE = {
   legal_name: "Acme Contracting LLC",
@@ -30,27 +29,66 @@ export default function SettingsProfilePage() {
 
   const [json, setJson] = useState("");
   const [parseError, setParseError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (profile?.profile_json) {
       setJson(JSON.stringify(profile.profile_json, null, 2));
-    } else {
+    } else if (!isLoading) {
       setJson(JSON.stringify(EXAMPLE_PROFILE, null, 2));
     }
-  }, [!!profile]);
+  }, [!!profile, isLoading]);
 
-  function validateJson(raw: string): Record<string, unknown> | null {
+  function handleChange(raw: string) {
+    setJson(raw);
+    setSaveError("");
+    setSaved(false);
     try {
-      const parsed = JSON.parse(raw);
-      if (!parsed.legal_name) {
-        setParseError("legal_name is required.");
-        return null;
-      }
+      JSON.parse(raw);
       setParseError("");
-      return parsed;
     } catch (e) {
       setParseError((e as SyntaxError).message);
-      return null;
+    }
+  }
+
+  async function handleSave() {
+    setParseError("");
+    setSaveError("");
+    setSaved(false);
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(json);
+    } catch (e) {
+      setParseError((e as SyntaxError).message);
+      return;
+    }
+
+    if (!parsed.legal_name) {
+      setParseError("legal_name is required.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_json: parsed }),
+        credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveError((body as Record<string, unknown>).error as string ?? "Save failed");
+      } else {
+        setSaved(true);
+      }
+    } catch (e) {
+      setSaveError((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -64,6 +102,12 @@ export default function SettingsProfilePage() {
             <span className="text-sm text-slate-200">Profile version {String(profile.version)} active.</span>
           </div>
         )}
+        {saved && (
+          <div className="flex items-center gap-2 rounded-md border border-pursue/30 bg-pursue/5 px-3 py-2">
+            <span className="text-pursue">✓</span>
+            <span className="text-sm text-slate-200">Profile saved successfully.</span>
+          </div>
+        )}
         <div className="space-y-2">
           <p className="label">Profile JSON</p>
           <p className="text-xs text-slate-500">
@@ -72,18 +116,17 @@ export default function SettingsProfilePage() {
           <textarea
             className="input h-96 font-mono text-xs"
             value={json}
-            onChange={(e) => { setJson(e.target.value); setParseError(""); }}
+            onChange={(e) => handleChange(e.target.value)}
           />
           {parseError && <p className="text-sm text-risk">{parseError}</p>}
-          <ActionButton
-            endpoint="/api/profile"
-            method="POST"
-            body={{ profile_json: validateJson(json) }}
+          {saveError && <p className="text-sm text-risk">{saveError}</p>}
+          <button
             className="btn-primary"
-            onDone={() => {}}
+            onClick={handleSave}
+            disabled={saving || !!parseError}
           >
-            Save profile
-          </ActionButton>
+            {saving ? "Saving..." : "Save profile"}
+          </button>
         </div>
         <div className="card bg-ink-950/60 text-sm">
           <p className="label mb-2">Required fields</p>
