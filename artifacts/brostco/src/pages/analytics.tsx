@@ -6,7 +6,7 @@ function KpiCard({ label, value, sub }: { label: string; value: React.ReactNode;
   return (
     <div className="card">
       <div className="label">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
+      <div className="mt-1 text-2xl font-semibold text-neutral-900">{value}</div>
       {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
     </div>
   );
@@ -16,7 +16,7 @@ function BreakdownTable({ title, data, keyField }: { title: string; data: Record
   if (data.length === 0) return null;
   return (
     <div className="card">
-      <h3 className="mb-3 text-sm font-semibold text-white">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold text-neutral-900">{title}</h3>
       <table className="w-full">
         <thead>
           <tr>
@@ -58,7 +58,7 @@ function BidCoverageCard({ rows }: { rows: BidCoverageRow[] }) {
   if (rows.length === 0) return null;
   return (
     <div className="card">
-      <h3 className="mb-3 text-sm font-semibold text-white">Bid Coverage</h3>
+      <h3 className="mb-3 text-sm font-semibold text-neutral-900">Bid Coverage</h3>
       <p className="mb-3 text-xs text-slate-500">Quote amounts collected per active opportunity.</p>
       <table className="w-full">
         <thead>

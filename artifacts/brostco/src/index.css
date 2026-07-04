@@ -1,33 +1,97 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   BROSTCO design system — editorial light theme (inspired by bacwater.ai)
+   Monochrome black + forest-green accent, Cormorant Garamond display serif,
+   Inter body, JetBrains mono for data. Flat, border-driven, generous space.
+   ========================================================================== */
+
 @theme {
-  --color-ink-950: #0a0e14;
-  --color-ink-900: #0f1521;
-  --color-ink-800: #151d2e;
-  --color-ink-700: #1e293b;
-  --color-ink-600: #334155;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-pursue: #22c55e;
-  --color-review: #f59e0b;
-  --color-dismiss: #64748b;
-  --color-risk: #ef4444;
+  /* Semantic palette */
+  --color-background: #ffffff;
+  --color-foreground: #111111;
+  --color-surface: #fafaf9;
+  --color-surface-raised: #f5f5f4;
+  --color-muted: #f5f5f4;
+  --color-muted-foreground: #71717a;
+  --color-border: #e4e4e7;
+  --color-border-strong: #d4d4d8;
+
+  /* Forest-green accent (the signature) */
+  --color-accent: #2d6a4f;
+  --color-accent-soft: #f0f7f2;
+  --color-accent-strong: #21503b;
+
+  /* Fonts */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* --- Legacy token remap: the app's dark palette -> light equivalents so
+     existing inline classes (bg-ink-*, text-slate-*, *-brand-*) flip cleanly. --- */
+  --color-ink-950: #ffffff; /* page background */
+  --color-ink-900: #ffffff; /* card / nav surface */
+  --color-ink-800: #e4e4e7; /* borders */
+  --color-ink-700: #e4e4e7; /* borders / faint chips */
+  --color-ink-600: #d4d4d8; /* stronger border */
+
+  --color-brand-400: #2d6a4f; /* accent text */
+  --color-brand-500: #2d6a4f;
+  --color-brand-600: #2d6a4f; /* active states */
+  --color-brand-700: #21503b;
+
+  --color-pursue: #2d6a4f; /* positive / go */
+  --color-review: #b45309; /* caution / amber */
+  --color-dismiss: #a1a1aa; /* neutral / dismissed */
+  --color-risk: #b91c1c; /* negative / risk */
+
+  /* Invert the slate text ramp: bright-on-dark -> dark-on-light. */
+  --color-slate-100: #18181b;
+  --color-slate-200: #27272a;
+  --color-slate-300: #3f3f46;
+  --color-slate-400: #52525b;
+  --color-slate-500: #71717a;
+  --color-slate-600: #a1a1aa;
+  --color-slate-700: #d4d4d8;
+  --color-slate-800: #e4e4e7;
+
+  --radius-sm: 0.25rem;
+  --radius: 0.375rem;
+  --radius-md: 0.5rem;
 }
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
 body {
-  background: #0a0e14;
-  color: #e2e8f0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-/* Base button style — applied directly (no @apply chaining) */
+* {
+  border-color: var(--color-border);
+}
+
+::selection {
+  background-color: rgba(45, 106, 79, 0.12);
+  color: var(--color-foreground);
+}
+
+/* --- Display serif for editorial headings/wordmarks --- */
+.font-serif {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-feature-settings: "kern" 1, "liga" 1, "dlig" 1;
+}
+
+/* --- Buttons --- */
 .btn,
 .btn-primary,
 .btn-ghost,
@@ -37,22 +101,15 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
-  border-radius: 0.375rem;
-  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  padding: 0.5rem 0.85rem;
   font-size: 0.875rem;
   font-weight: 500;
+  line-height: 1.1;
   transition-property: color, background-color, border-color;
   transition-duration: 150ms;
   cursor: pointer;
 }
-
-.btn-primary,
-.btn-ghost,
-.btn-danger,
-.btn-success {
-  /* disabled state */
-}
-
 .btn-primary:disabled,
 .btn-ghost:disabled,
 .btn-danger:disabled,
@@ -62,106 +119,221 @@ body {
 }
 
 .btn-primary {
-  background-color: #2563eb;
+  background-color: var(--color-foreground);
   color: #fff;
 }
 .btn-primary:hover:not(:disabled) {
-  background-color: #1d4ed8;
+  background-color: #000;
 }
 
 .btn-ghost {
-  border: 1px solid #1e293b;
-  color: #e2e8f0;
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-foreground);
   background-color: transparent;
 }
 .btn-ghost:hover:not(:disabled) {
-  background-color: #151d2e;
+  background-color: var(--color-surface);
+  border-color: var(--color-muted-foreground);
 }
 
 .btn-danger {
-  background-color: rgba(239, 68, 68, 0.9);
+  background-color: var(--color-risk);
   color: #fff;
 }
 .btn-danger:hover:not(:disabled) {
-  background-color: #ef4444;
+  background-color: #991b1b;
 }
 
 .btn-success {
-  background-color: rgba(34, 197, 94, 0.9);
+  background-color: var(--color-accent);
   color: #fff;
 }
 .btn-success:hover:not(:disabled) {
-  background-color: #22c55e;
+  background-color: var(--color-accent-strong);
 }
 
+/* --- Surfaces --- */
 .card {
-  border-radius: 0.5rem;
-  border: 1px solid #1e293b;
-  background-color: #0f1521;
-  padding: 1rem;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-background);
+  padding: 1.25rem;
 }
-
 .card-hover {
-  transition-property: border-color;
-  transition-duration: 150ms;
+  transition: border-color 150ms, background-color 150ms;
 }
 .card-hover:hover {
-  border-color: #334155;
+  border-color: var(--color-border-strong);
+  background-color: var(--color-surface);
 }
 
+/* --- Badges / labels --- */
 .badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 9999px;
-  padding: 0.125rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 500;
+  gap: 0.25rem;
+  border-radius: 0.25rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-.label {
-  font-size: 0.75rem;
+.label,
+.eyebrow {
+  font-size: 0.7rem;
   font-weight: 500;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #94a3b8;
+  color: var(--color-muted-foreground);
+}
+.eyebrow {
+  letter-spacing: 0.18em;
 }
 
+/* --- Inputs --- */
 .input {
   width: 100%;
-  border-radius: 0.375rem;
-  border: 1px solid #1e293b;
-  background-color: #0a0e14;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border-strong);
+  background-color: var(--color-background);
   padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
-  color: #f1f5f9;
+  color: var(--color-foreground);
   outline: none;
+  transition: border-color 150ms;
 }
 .input:focus {
-  border-color: #3b82f6;
+  border-color: var(--color-accent);
+}
+.input::placeholder {
+  color: var(--color-muted-foreground);
 }
 
+/* --- Tables --- */
 .th {
-  padding: 0.5rem 0.75rem;
+  padding: 0.55rem 0.75rem;
   text-align: left;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #94a3b8;
+  letter-spacing: 0.1em;
+  color: var(--color-muted-foreground);
+  border-bottom: 1px solid var(--color-border);
 }
-
 .td {
-  padding: 0.5rem 0.75rem;
+  padding: 0.6rem 0.75rem;
   font-size: 0.875rem;
-  color: #e2e8f0;
+  color: var(--color-slate-200);
+  border-bottom: 1px solid var(--color-border);
 }
 
+/* --- Signature bacwater components --- */
+.rule {
+  height: 1px;
+  background: var(--color-border);
+  width: 100%;
+}
+
+.callout-panel {
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  padding: 1.25rem;
+  border-radius: var(--radius);
+}
+
+.accent-left {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 1rem;
+}
+
+.section-prominent {
+  border-top: 2px solid var(--color-foreground);
+  padding-top: 1.25rem;
+}
+
+.result-hero {
+  font-size: 2.25rem;
+  line-height: 1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--color-accent);
+  font-family: var(--font-serif);
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 9999px;
+  border: 2px solid var(--color-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: var(--color-accent);
+}
+.step-number--filled {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.chip {
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.625rem 0.85rem;
+  transition: all 150ms;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--color-muted-foreground);
+  background: var(--color-surface);
+}
+.chip--active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
+.warning-strip {
+  border-left: 3px solid var(--color-review);
+  padding: 0.75rem 1rem;
+  background: #fffbeb;
+  font-size: 0.875rem;
+  color: #92400e;
+  border-radius: var(--radius);
+}
+
+.badge-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+/* --- Scrollbars --- */
 .scroll-thin::-webkit-scrollbar {
   height: 8px;
   width: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: var(--color-border-strong);
   border-radius: 4px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

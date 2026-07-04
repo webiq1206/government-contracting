@@ -34,11 +34,14 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6 bg-ink-950">
+    <main className="flex min-h-screen items-center justify-center bg-surface p-6">
       <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="font-mono text-3xl font-bold tracking-tight text-white">BROSTCO</h1>
-          <p className="mt-1 text-sm text-slate-400">Autonomous Procurement Execution</p>
+        <div className="mb-10 text-center">
+          <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
+          <h1 className="font-serif text-5xl font-semibold tracking-tight text-foreground">
+            BROSTCO
+          </h1>
+          <div className="mx-auto mt-4 h-px w-12 bg-accent" />
         </div>
         <form onSubmit={onSubmit} className="card space-y-4">
           <div>

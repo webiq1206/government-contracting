@@ -378,7 +378,7 @@ export default function OpportunityDetailPage() {
       <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-white">{o.title ?? "Untitled Opportunity"}</h1>
+            <h1 className="text-xl font-semibold text-neutral-900">{o.title ?? "Untitled Opportunity"}</h1>
             <p className="mt-1 text-sm text-slate-400">{o.agency ?? "—"}{o.sub_agency ? ` · ${o.sub_agency}` : ""}</p>
           </div>
           <div className="flex items-center gap-2">
@@ -394,8 +394,8 @@ export default function OpportunityDetailPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div><p className="label">Est. value</p><p className="mt-0.5 text-lg font-semibold text-white">{currency(o.value_estimated)}</p></div>
-          <div><p className="label">Deadline</p><p className={`mt-0.5 text-lg font-semibold ${exp === "overdue" ? "text-risk" : "text-white"}`}>⏱ {exp}</p></div>
+          <div><p className="label">Est. value</p><p className="mt-0.5 text-lg font-semibold text-neutral-900">{currency(o.value_estimated)}</p></div>
+          <div><p className="label">Deadline</p><p className={`mt-0.5 text-lg font-semibold ${exp === "overdue" ? "text-risk" : "text-neutral-900"}`}>⏱ {exp}</p></div>
           <div><p className="label">NAICS</p><p className="mt-0.5 text-sm text-slate-200">{o.naics_code ?? "—"}</p></div>
           <div><p className="label">Set-aside</p><p className="mt-0.5 text-sm text-slate-200">{o.set_aside_type ?? "Full open"}</p></div>
         </div>

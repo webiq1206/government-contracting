@@ -33,7 +33,7 @@ function DashboardLayout() {
   const callCount = Array.isArray(callCards) ? callCards.length : 0;
 
   return (
-    <div className="flex min-h-screen flex-col md:flex-row bg-ink-950">
+    <div className="flex min-h-screen flex-col md:flex-row bg-surface">
       <Nav reviewCount={humanActionCount} callCount={callCount} />
       <main className="flex-1 min-w-0 overflow-hidden">
         <Switch>
@@ -52,7 +52,7 @@ function DashboardLayout() {
           <Route path="/settings/integrations" component={SettingsIntegrationsPage} />
           <Route component={() => (
             <div className="flex h-screen flex-col items-center justify-center">
-              <p className="text-2xl font-bold text-white">404</p>
+              <p className="text-2xl font-bold text-neutral-900">404</p>
               <p className="mt-1 text-sm text-slate-400">Page not found</p>
               <a href="/pipeline" className="btn-ghost mt-4">← Pipeline</a>
             </div>
@@ -68,7 +68,7 @@ function AuthGate() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-ink-950">
+      <div className="flex min-h-screen items-center justify-center bg-surface">
         <p className="text-sm text-slate-400">Loading...</p>
       </div>
     );

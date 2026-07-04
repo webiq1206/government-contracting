@@ -182,7 +182,7 @@ export default function SubDetailPage() {
       <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-white">{s.company_name}</h1>
+            <h1 className="text-xl font-semibold text-neutral-900">{s.company_name}</h1>
             {s.owner_name && <p className="mt-0.5 text-sm text-slate-400">{s.owner_name}</p>}
           </div>
           <div className="flex items-center gap-2">

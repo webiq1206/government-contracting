@@ -63,7 +63,7 @@ export default function ContractsPage() {
                   <p className="mt-0.5 text-xs text-slate-500">{String(c.agency ?? "—")}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-semibold text-white">{currency(c.award_amount != null ? Number(c.award_amount) : null)}</p>
+                  <p className="text-lg font-semibold text-neutral-900">{currency(c.award_amount != null ? Number(c.award_amount) : null)}</p>
                   {c.start_date && <p className="text-xs text-slate-500">{shortDate(String(c.start_date))} – {shortDate(String(c.end_date ?? ""))}</p>}
                 </div>
               </div>
