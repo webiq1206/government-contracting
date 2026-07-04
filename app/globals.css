@@ -126,8 +126,10 @@ body {
     border-top: 2px solid #111111;
   }
   .result-hero {
-    @apply font-serif text-4xl leading-none text-accent;
-    font-variant-numeric: tabular-nums;
+    @apply text-4xl leading-none text-accent;
+    font-family: theme("fontFamily.sans");
+    font-variant-numeric: tabular-nums lining-nums;
+    font-weight: 600;
     letter-spacing: -0.02em;
   }
   .step-number {

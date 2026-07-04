@@ -28,16 +28,25 @@ function KpiCard({
   label,
   value,
   sub,
+  accent,
 }: {
   label: string;
   value: React.ReactNode;
   sub?: React.ReactNode;
+  /** Green accent for performance rates; near-black for currency (default). */
+  accent?: boolean;
 }) {
   return (
     <div className="card">
       <div className="label">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-neutral-900">{value}</div>
-      {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
+      <div
+        className={`num mt-1.5 text-4xl font-semibold tracking-tight ${
+          accent ? "text-accent" : "text-neutral-900"
+        }`}
+      >
+        {value}
+      </div>
+      {sub && <div className="mt-1.5 text-xs text-slate-500">{sub}</div>}
     </div>
   );
 }
@@ -137,10 +146,12 @@ export default async function AnalyticsPage() {
             label="Win rate"
             value={winRate != null ? `${winRate}%` : "—"}
             sub={`${wins ?? 0} wins · ${losses ?? 0} losses`}
+            accent
           />
           <KpiCard
             label="Avg margin on wins"
             value={avgMargin != null ? `${avgMargin}%` : "—"}
+            accent
           />
           <KpiCard label="Pipeline value" value={currency(pipelineValue)} />
           <KpiCard label="Active contract revenue" value={currency(activeRevenue)} />
