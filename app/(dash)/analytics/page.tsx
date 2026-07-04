@@ -74,7 +74,7 @@ function BreakdownTable({
             return (
               <tr key={i} className="border-t border-ink-800/60">
                 <td className="td">{key}</td>
-                <td className="td font-mono">{winRate != null ? pct(winRate) : "—"}</td>
+                <td className="td num">{winRate != null ? pct(winRate) : "—"}</td>
                 <td className="td text-slate-500">
                   {wins != null || losses != null ? `${wins ?? 0} / ${losses ?? 0}` : "—"}
                 </td>
@@ -199,7 +199,7 @@ export default async function AnalyticsPage() {
                     <td className="td">
                       {str(r.company_name ?? r.name ?? r.sub ?? r.label)}
                     </td>
-                    <td className="td font-mono">
+                    <td className="td num">
                       {num(r.score ?? r.reliability_score ?? r.rating) ?? "—"}
                     </td>
                   </tr>

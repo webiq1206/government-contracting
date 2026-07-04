@@ -122,7 +122,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   <div key={d.key} className="text-sm">
                     <div className="flex justify-between">
                       <span className="text-slate-300">{d.label}</span>
-                      <span className="font-mono text-slate-400">
+                      <span className="num text-slate-400">
                         {d.points}/{d.max_points}
                       </span>
                     </div>
@@ -149,7 +149,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   pricing[k] != null ? (
                     <div key={k} className="flex justify-between">
                       <span className="text-slate-500">{k}</span>
-                      <span className="font-mono">
+                      <span className="num">
                         {k === "count" ? String(pricing[k]) : currency(Number(pricing[k]))}
                       </span>
                     </div>
@@ -191,7 +191,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     <span className="text-slate-300">
                       {q.company_name ? String(q.company_name) : q.trade ? String(q.trade) : "Quote"}
                     </span>
-                    <span className={`font-mono ${q.is_out_of_range ? "text-review" : "text-slate-300"}`}>
+                    <span className={`num ${q.is_out_of_range ? "text-review" : "text-slate-300"}`}>
                       {currencyCents(Number(q.quote_amount))}
                       {q.is_out_of_range ? " ⚠" : ""}
                     </span>

@@ -39,6 +39,17 @@ body {
     font-feature-settings: "kern" 1, "liga" 1, "dlig" 1;
   }
 
+  /* Numeric data. Inter with lining, tabular figures so digits stay aligned and
+     legible — used everywhere a number is displayed (scores, currency, metrics,
+     dates, percentages). Monospace stays reserved for code, identifiers, cron,
+     and the JSON editor. */
+  .num {
+    font-family: theme("fontFamily.sans");
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    letter-spacing: -0.005em;
+  }
+
   /* Buttons */
   .btn,
   .btn-primary,

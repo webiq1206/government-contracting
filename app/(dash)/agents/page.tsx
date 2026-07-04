@@ -176,7 +176,7 @@ export default async function AgentsPage({
                   <div className="shrink-0 text-right">
                     <p className="text-xs text-slate-400">{timeAgo(str(log.created_at) || null)}</p>
                     {duration != null && (
-                      <p className="mt-0.5 font-mono text-xs text-slate-600">{duration}ms</p>
+                      <p className="mt-0.5 num text-xs text-slate-600">{duration}ms</p>
                     )}
                   </div>
                 </div>

@@ -9,7 +9,7 @@ export function ScoreBadge({ score }: { score: number | null }) {
   if (score == null) return <span className="text-slate-500">—</span>;
   const color =
     score >= 70 ? "text-accent" : score >= 50 ? "text-review" : "text-slate-400";
-  return <span className={`font-mono text-base font-semibold tabular-nums ${color}`}>{score}</span>;
+  return <span className={`num text-base font-semibold ${color}`}>{score}</span>;
 }
 
 export function PageHeader({

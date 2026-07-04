@@ -28,7 +28,7 @@ function DimensionBar({
     <div>
       <div className="flex items-center justify-between text-xs">
         <span className="text-slate-400">{label}</span>
-        <span className="font-mono text-slate-300">
+        <span className="num text-slate-300">
           {points}/{max}
         </span>
       </div>

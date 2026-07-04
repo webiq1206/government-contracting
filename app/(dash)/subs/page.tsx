@@ -103,7 +103,7 @@ export default async function SubsPage({
                   <td className="td whitespace-nowrap">
                     {s.google_rating != null ? (
                       <span>
-                        <span className="font-mono text-slate-100">
+                        <span className="num text-slate-100">
                           {s.google_rating.toFixed(1)}
                         </span>
                         <span className="ml-1 text-xs text-slate-500">
@@ -116,7 +116,7 @@ export default async function SubsPage({
                   </td>
                   <td className="td">
                     {s.reliability_score != null ? (
-                      <span className="font-mono font-semibold text-slate-100">
+                      <span className="num font-semibold text-slate-100">
                         {s.reliability_score}
                       </span>
                     ) : (

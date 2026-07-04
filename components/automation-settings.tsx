@@ -64,7 +64,7 @@ export function AutomationSettings({
               type="number"
               min={1}
               max={100}
-              className="input w-24 font-mono text-lg"
+              className="input w-24 num text-lg"
               value={score}
               onChange={(e) => setScore(Number(e.target.value))}
             />
@@ -82,7 +82,7 @@ export function AutomationSettings({
               type="number"
               min={1}
               max={score - 1}
-              className="input w-24 font-mono text-lg"
+              className="input w-24 num text-lg"
               value={review}
               onChange={(e) => setReview(Number(e.target.value))}
             />

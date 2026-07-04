@@ -133,7 +133,7 @@ export function BidBrief({
               {analysis.key_dates.map((d, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
                   <span className="text-slate-300">{d.label}</span>
-                  <span className="font-mono tabular-nums text-slate-100">{d.date}</span>
+                  <span className="num text-slate-100">{d.date}</span>
                 </li>
               ))}
             </ul>

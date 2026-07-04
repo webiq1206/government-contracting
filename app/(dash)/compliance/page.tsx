@@ -178,7 +178,7 @@ function ComplianceItem({ row, highlight = false }: { row: Row; highlight?: bool
       <div className="flex shrink-0 flex-col items-end gap-1">
         <span className={`badge ${complianceColorClass(color)}`}>{status}</span>
         <span
-          className={`font-mono text-xs ${
+          className={`num text-xs ${
             color === "red" ? "text-risk" : color === "amber" ? "text-review" : "text-slate-400"
           }`}
         >
@@ -218,7 +218,7 @@ function CapGauge({ row }: { row: Row }) {
         />
       </div>
       <div className="mt-1.5 flex items-center justify-between text-xs text-slate-400">
-        <span className="font-mono">{utilPct.toFixed(0)}% of cap used</span>
+        <span className="num">{utilPct.toFixed(0)}% of cap used</span>
         <span>cap {capPct}%</span>
       </div>
     </div>

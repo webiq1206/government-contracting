@@ -175,7 +175,7 @@ export default async function SubDetailPage({
                           {p.year ? ` · ${p.year}` : ""}
                         </div>
                       </div>
-                      <div className="whitespace-nowrap text-sm font-mono text-slate-300">
+                      <div className="whitespace-nowrap text-sm num text-slate-300">
                         {currency(p.value)}
                       </div>
                     </div>
@@ -253,7 +253,7 @@ export default async function SubDetailPage({
                       return (
                         <tr key={s(q.id) ?? i} className="border-t border-ink-800/60">
                           <td className="td">{s(q.opportunity_title) ?? "—"}</td>
-                          <td className="td font-mono">
+                          <td className="td num">
                             {typeof amt === "number" ? currency(amt) : currency(Number(amt) || null)}
                           </td>
                           <td className="td text-slate-500">{shortDate(s(q.created_at))}</td>
