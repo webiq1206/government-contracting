@@ -57,10 +57,41 @@ router.get("/pipeline-summary", async (_req: Request, res: Response) => {
   const actionRow = await queryOne<{ cnt: string }>(
     `select count(*) as cnt from opportunities where human_action_required=true and status='open'`
   );
+
+  const bidCoverage = await query<{
+    opportunity_id: string;
+    opportunity_title: string;
+    quote_count: string;
+    min_quote: string | null;
+    max_quote: string | null;
+    avg_quote: string | null;
+  }>(`
+    select o.id as opportunity_id, o.title as opportunity_title,
+           count(cc.quote_amount) as quote_count,
+           min(cc.quote_amount) as min_quote,
+           max(cc.quote_amount) as max_quote,
+           avg(cc.quote_amount) as avg_quote
+      from opportunities o
+      left join call_cards cc on cc.opportunity_id = o.id and cc.quote_amount is not null
+     where o.status='open' and o.stage not in ('dismissed','won','lost')
+     group by o.id, o.title
+     having count(cc.quote_amount) > 0
+     order by count(cc.quote_amount) desc
+     limit 20
+  `);
+
   res.json({
     by_stage: byStage.map((r) => ({ stage: r.stage, count: Number(r.cnt) })),
     by_tier: byTier.map((r) => ({ tier: r.tier, count: Number(r.cnt) })),
     human_action_count: Number(actionRow?.cnt ?? 0),
+    bid_coverage: bidCoverage.map((r) => ({
+      opportunity_id: r.opportunity_id,
+      opportunity_title: r.opportunity_title,
+      quote_count: Number(r.quote_count),
+      min_quote: r.min_quote != null ? Number(r.min_quote) : null,
+      max_quote: r.max_quote != null ? Number(r.max_quote) : null,
+      avg_quote: r.avg_quote != null ? Number(r.avg_quote) : null,
+    })),
   });
 });
 

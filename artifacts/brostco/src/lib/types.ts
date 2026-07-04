@@ -43,6 +43,20 @@ export interface ScoreBreakdown {
   hard_exclusions_triggered?: string[];
 }
 
+export interface ExtraFields {
+  years_experience?: number | null;
+  certifications?: string | null;
+  insurance_status?: string | null;
+  insurance_expiry?: string | null;
+  bonding_capacity?: number | null;
+  service_areas?: string | null;
+  crew_size?: number | null;
+  availability?: string | null;
+  preferred_project_size?: string | null;
+  preferred_communication?: string | null;
+  [key: string]: unknown;
+}
+
 export interface Subcontractor {
   id: string;
   company_name: string;
@@ -66,6 +80,7 @@ export interface Subcontractor {
   sb_certified: boolean | null;
   business_age_years: number | null;
   project_history: ProjectHistoryItem[];
+  extra_fields: ExtraFields;
   is_preferred: boolean;
   blacklisted: boolean;
   bbb_summary: string | null;
@@ -82,6 +97,31 @@ export interface ProjectHistoryItem {
   value: number;
   client_type: string;
   year: number;
+}
+
+export interface SubQuote {
+  card_id: string;
+  opportunity_id: string;
+  opportunity_title: string | null;
+  deadline: string | null;
+  stage: string;
+  value_estimated: number | null;
+  quote_amount: number;
+  status: string;
+  called_at: string | null;
+}
+
+export interface OppSubQuote {
+  card_id: string;
+  subcontractor_id: string;
+  company_name: string;
+  phone: string | null;
+  email: string | null;
+  trade_categories: string[];
+  quote_amount: number | null;
+  status: string;
+  called_at: string | null;
+  response_json: Record<string, unknown> | null;
 }
 
 export interface SessionUser {

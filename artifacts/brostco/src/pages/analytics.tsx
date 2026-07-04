@@ -1,4 +1,4 @@
-import { useGetKpis } from "@workspace/api-client-react";
+import { useGetKpis, useGetPipelineSummary } from "@workspace/api-client-react";
 import { PageHeader } from "@/components/badges";
 import { currency, pct } from "@/lib/format";
 
@@ -45,8 +45,54 @@ function BreakdownTable({ title, data, keyField }: { title: string; data: Record
   );
 }
 
+interface BidCoverageRow {
+  opportunity_id: string;
+  opportunity_title: string | null;
+  quote_count: number;
+  min_quote: number | null;
+  max_quote: number | null;
+  avg_quote: number | null;
+}
+
+function BidCoverageCard({ rows }: { rows: BidCoverageRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="card">
+      <h3 className="mb-3 text-sm font-semibold text-white">Bid Coverage</h3>
+      <p className="mb-3 text-xs text-slate-500">Quote amounts collected per active opportunity.</p>
+      <table className="w-full">
+        <thead>
+          <tr>
+            <th className="th">Opportunity</th>
+            <th className="th">Quotes</th>
+            <th className="th">Low</th>
+            <th className="th">High</th>
+            <th className="th">Avg</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.opportunity_id} className="border-t border-ink-800/60">
+              <td className="td">
+                <a href={`/opportunity/${r.opportunity_id}`} className="text-sm text-brand-400 hover:underline line-clamp-1">
+                  {r.opportunity_title ?? "Untitled"}
+                </a>
+              </td>
+              <td className="td font-mono text-sm">{r.quote_count}</td>
+              <td className="td font-mono text-sm text-pursue">{r.min_quote != null ? currency(r.min_quote) : "—"}</td>
+              <td className="td font-mono text-sm">{r.max_quote != null ? currency(r.max_quote) : "—"}</td>
+              <td className="td font-mono text-sm text-slate-400">{r.avg_quote != null ? currency(r.avg_quote) : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function AnalyticsPage() {
   const { data: kpis, isLoading } = useGetKpis();
+  const { data: pipeline } = useGetPipelineSummary();
 
   if (isLoading) return (
     <div className="flex h-screen flex-col">
@@ -61,6 +107,7 @@ export default function AnalyticsPage() {
   const activeRevenue = kpis?.active_contract_revenue != null ? Number(kpis.active_contract_revenue) : null;
   const byNaics = (kpis as Record<string, unknown> | undefined)?.by_naics as Record<string, unknown>[] ?? [];
   const byAgency = (kpis as Record<string, unknown> | undefined)?.by_agency as Record<string, unknown>[] ?? [];
+  const bidCoverage = ((pipeline as Record<string, unknown> | undefined)?.bid_coverage as BidCoverageRow[] | undefined) ?? [];
 
   return (
     <div className="flex h-screen flex-col">
@@ -77,6 +124,7 @@ export default function AnalyticsPage() {
           <KpiCard label="Active Opportunities" value={kpis?.active_opportunities ?? "—"} />
           <KpiCard label="Total Bids Submitted" value={kpis?.total_bids ?? "—"} />
         </div>
+        <BidCoverageCard rows={bidCoverage} />
         {byNaics.length > 0 && <BreakdownTable title="Win Rate by NAICS" data={byNaics} keyField="naics_code" />}
         {byAgency.length > 0 && <BreakdownTable title="Win Rate by Agency" data={byAgency} keyField="agency" />}
         {byNaics.length === 0 && byAgency.length === 0 && (

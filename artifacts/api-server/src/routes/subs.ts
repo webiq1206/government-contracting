@@ -32,10 +32,26 @@ router.get("/:id", async (req: Request, res: Response) => {
   res.json(row);
 });
 
+router.get("/:id/quotes", async (req: Request, res: Response) => {
+  const rows = await query(
+    `select cc.id as card_id, cc.quote_amount, cc.status, cc.called_at,
+            cc.response_json, o.id as opportunity_id, o.title as opportunity_title,
+            o.deadline, o.stage, o.value_estimated
+       from call_cards cc
+       join opportunities o on o.id = cc.opportunity_id
+      where cc.subcontractor_id = $1
+        and cc.quote_amount is not null
+      order by cc.called_at desc nulls last`,
+    [req.params.id]
+  );
+  res.json(rows);
+});
+
 router.patch("/:id", async (req: Request, res: Response) => {
   const {
     notes, is_preferred, blacklisted, project_history,
     company_name, owner_name, phone, email, website, city, state,
+    extra_fields,
   } = req.body ?? {};
   const sets: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
@@ -51,6 +67,10 @@ router.patch("/:id", async (req: Request, res: Response) => {
   if (website !== undefined) { params.push(website); sets.push(`website=$${params.length}`); }
   if (city !== undefined) { params.push(city); sets.push(`city=$${params.length}`); }
   if (state !== undefined) { params.push(state); sets.push(`state=$${params.length}`); }
+  if (extra_fields !== undefined && typeof extra_fields === "object" && extra_fields !== null) {
+    params.push(JSON.stringify(extra_fields));
+    sets.push(`extra_fields = extra_fields || $${params.length}::jsonb`);
+  }
 
   params.push(req.params.id);
   await query(`update subcontractors set ${sets.join(", ")} where id=$${params.length}`, params);

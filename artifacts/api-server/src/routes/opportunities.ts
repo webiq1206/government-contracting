@@ -29,6 +29,20 @@ router.get("/:id", async (req: Request, res: Response) => {
   res.json(row);
 });
 
+router.get("/:id/quotes", async (req: Request, res: Response) => {
+  const rows = await query(
+    `select cc.id as card_id, cc.subcontractor_id, cc.quote_amount, cc.status,
+            cc.called_at, cc.response_json,
+            s.company_name, s.phone, s.email, s.trade_categories
+       from call_cards cc
+       join subcontractors s on s.id = cc.subcontractor_id
+      where cc.opportunity_id = $1
+      order by cc.quote_amount asc nulls last, cc.called_at desc`,
+    [req.params.id]
+  );
+  res.json(rows);
+});
+
 router.post("/:id/action", async (req: Request, res: Response) => {
   const { action, stage } = req.body ?? {};
   const { id } = req.params;
