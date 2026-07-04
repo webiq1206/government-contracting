@@ -68,10 +68,6 @@ export default function LoginPage() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Set OPERATOR_EMAIL and OPERATOR_PASSWORD_HASH in your environment, or seed a user with{" "}
-          <code className="text-slate-400">pnpm run db:seed</code>.
-        </p>
       </div>
     </main>
   );
