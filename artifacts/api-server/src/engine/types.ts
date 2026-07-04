@@ -136,6 +136,7 @@ export interface DecisionThresholds {
   deadline_min_days?: number; // 7 — fewer days: auto-dismiss unless in pipeline
   unrestricted_min_value?: number; // 150000 — unrestricted below this: auto-dismiss
   pricing_gap_flag_pct?: number; // 20 — flag if min-margin bid > this % above median
+  block_prime_only?: boolean; // false (default): auto-pursue proceeds even when past-perf is prime-only
 }
 
 export interface Opportunity {

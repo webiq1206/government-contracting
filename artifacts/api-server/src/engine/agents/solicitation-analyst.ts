@@ -217,8 +217,15 @@ export const solicitationAnalyst: AgentDefinition = {
 
     // Persist analysis + past-perf + merge risk flags.
     const isPrimeOnly = analysis.past_perf_classification === "prime_only";
+    // Operator preference: by default we do NOT stop for prime-only past
+    // performance — auto-pursue proceeds and a human still reviews before submit.
+    // Set decision_thresholds.block_prime_only = true to restore the hard block.
+    const blockPrimeOnly = profile.decision_thresholds.block_prime_only === true;
+    const blocked = isPrimeOnly && blockPrimeOnly;
+
     const mergedRiskFlags = [...new Set([...(opp.risk_flags ?? []), ...analysis.risk_flags])];
-    if (isPrimeOnly && !mergedRiskFlags.includes("prime_only_blocked")) {
+    if (isPrimeOnly && !mergedRiskFlags.includes("prime_only")) mergedRiskFlags.push("prime_only");
+    if (blocked && !mergedRiskFlags.includes("prime_only_blocked")) {
       mergedRiskFlags.push("prime_only_blocked");
     }
 
@@ -226,11 +233,12 @@ export const solicitationAnalyst: AgentDefinition = {
     let stage = opp.stage;
     let humanAction = opp.human_action_required;
 
-    if (isPrimeOnly) {
-      // BLOCK: stay in analysis, flag for human, no downstream enqueue.
+    if (blocked) {
+      // Hard block (only when the operator has opted in): stay in analysis, flag for human.
       stage = "analysis";
       humanAction = true;
     } else {
+      // Auto-pursue proceeds — prime-only is flagged for visibility but not stopped.
       stage = "sub_research";
       enqueued.push({ agent: "sub-finder", payload: { opportunityId } });
     }
@@ -253,11 +261,11 @@ export const solicitationAnalyst: AgentDefinition = {
       ]
     );
 
-    if (isPrimeOnly) {
+    if (blocked) {
       return {
         ok: true,
         summary:
-          "Past performance is prime-only — BLOCKED and flagged for human review. No downstream work triggered.",
+          "Past performance is prime-only — BLOCKED and flagged for human review (block_prime_only is on). No downstream work triggered.",
         reasoning: analysis.scope_plain_language,
         data: {
           past_perf_classification: analysis.past_perf_classification,
@@ -270,7 +278,9 @@ export const solicitationAnalyst: AgentDefinition = {
 
     return {
       ok: true,
-      summary: `Solicitation analyzed (past-perf: ${analysis.past_perf_classification}); advanced to sub research.`,
+      summary: `Solicitation analyzed (past-perf: ${analysis.past_perf_classification}${
+        isPrimeOnly ? ", prime-only — flagged but auto-pursuing" : ""
+      }); advanced to sub research.`,
       reasoning: analysis.scope_plain_language,
       data: {
         past_perf_classification: analysis.past_perf_classification,

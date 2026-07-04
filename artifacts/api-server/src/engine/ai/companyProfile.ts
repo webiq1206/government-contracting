@@ -131,6 +131,7 @@ export function renderProfileText(p: CompanyProfileJson): string {
   lines.push("## Decision thresholds");
   const t = p.decision_thresholds;
   lines.push(`- Pursue at score >= ${t.pursue_min_score}; Review at ${t.review_min_score}-${t.pursue_min_score - 1}; Dismiss below ${t.review_min_score}.`);
+  lines.push(`- AUTO-PURSUE is unconditional at or above ${t.pursue_min_score}: any non-excluded opportunity scoring >= ${t.pursue_min_score} is pursued automatically (analysis, pricing, sub research, outreach) with no human gate. Risk conditions (high value, new NAICS, unusual clauses, prime-only past performance) do NOT stop it; a human still reviews before any bid is submitted.`);
   lines.push(`- Review-tier items auto-dismiss after ${t.review_auto_dismiss_hours} hours without action.`);
   lines.push(`- Require at least ${t.min_subs_per_trade} verified subs per trade or flag for human review.`);
   lines.push(`- Always submit at least ${t.submit_lead_hours} hours before the deadline.`);
@@ -145,7 +146,11 @@ export function renderProfileText(p: CompanyProfileJson): string {
   lines.push(`- Candidates per trade: ${s.candidates_per_trade}; verify top ${s.verify_top_n}.`);
   lines.push("");
   lines.push("## Past-performance policy");
-  lines.push("- If a solicitation's past-performance requirement is classified prime_only, BLOCK and flag for human review (we cannot yet meet it as prime).");
+  if (t.block_prime_only) {
+    lines.push("- If a solicitation's past-performance requirement is classified prime_only, BLOCK and flag for human review (we cannot yet meet it as prime).");
+  } else {
+    lines.push("- If a solicitation's past-performance requirement is classified prime_only, FLAG it but still proceed (operator preference: auto-pursue everything above the score). A human reviews before submission.");
+  }
   lines.push("- If team_accepted, generate the experience narrative from subcontractor project history.");
   lines.push("- If not_required, omit the past-performance section.");
   if (p.legal_guardrails?.length) {

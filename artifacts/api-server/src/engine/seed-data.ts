@@ -128,6 +128,10 @@ export const DEFAULT_PROFILE: CompanyProfileJson = {
     deadline_min_days: 7,
     unrestricted_min_value: 150_000,
     pricing_gap_flag_pct: 20,
+    // Operator preference: auto-pursue anything at/above pursue_min_score
+    // unconditionally — do NOT stop for prime-only past performance. A human
+    // still reviews before any bid is submitted. Set true to restore the block.
+    block_prime_only: false,
   },
   pricing_philosophy:
     "Price to win. On simplified acquisitions the lowest reasonable price that still clears the margin floor wins. Do not price to maximize margin on individual contracts — price to build a win record; margins expand as past performance accumulates. Recompete: price 3–8% below the incumbent's last award. New contract: at or below the inflation-adjusted historical median. Never bid above P75 unless scope clearly exceeds historical contracts. Flag for human review if a bid is more than 30% below the historical median (COs can reject unreasonably low bids).",

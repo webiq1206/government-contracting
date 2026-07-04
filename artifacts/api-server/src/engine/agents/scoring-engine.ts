@@ -113,11 +113,24 @@ export const scoringEngine: AgentDefinition = {
     let status = "open";
 
     if (breakdown.tier === "pursue") {
+      // AUTO-PURSUE — unconditional above the pursue threshold (operator preference).
+      // A score >= pursue_min_score that isn't hard-excluded advances straight into
+      // the pipeline (analysis -> pricing -> subs -> outreach) with NO human gate.
+      // Risk conditions (high value, new NAICS, unusual clauses, prime-only) do not
+      // stop it here; a human still reviews before any bid is submitted.
       stage = "analysis";
+      humanAction = false;
       enqueued.push(
         { agent: "solicitation-analyst", payload: { opportunityId } },
         { agent: "pricing-research", payload: { opportunityId } }
       );
+      await logAgent({
+        agent: "scoring-engine",
+        action: "auto-pursue",
+        opportunityId,
+        level: "success",
+        message: `Auto-pursued: ${breakdown.total} >= pursue threshold ${profile.decision_thresholds.pursue_min_score}. Pipeline started, no human action required.`,
+      });
     } else if (breakdown.tier === "review") {
       stage = "scoring";
       humanAction = true;

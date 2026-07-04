@@ -6,18 +6,38 @@
 import { query, queryOne } from "./db";
 import { renderProfileText } from "./ai/companyProfile";
 import { DEFAULT_PROFILE, DEFAULT_TEMPLATES } from "./seed-data";
+import type { CompanyProfileJson } from "./types";
 
 export async function runSeed(): Promise<{ seeded: string[] }> {
   const seeded: string[] = [];
 
-  const hasProfile = await queryOne(`select id from company_profile where is_active = true`);
-  if (!hasProfile) {
+  const active = await queryOne<{ id: string; profile_json: CompanyProfileJson; updated_by: string | null }>(
+    `select id, profile_json, updated_by from company_profile where is_active = true`
+  );
+  if (!active) {
     await query(
       `insert into company_profile (version, is_active, profile_json, profile_text, updated_by)
        values (1, true, $1, $2, 'seed')`,
       [JSON.stringify(DEFAULT_PROFILE), renderProfileText(DEFAULT_PROFILE)]
     );
     seeded.push("company_profile");
+  } else if (active.updated_by === "seed") {
+    // Keep a seed-authored profile in sync with code defaults (never touches
+    // operator edits — those carry a different updated_by). Backfills newly
+    // added threshold defaults and re-renders the injected profile text.
+    const json = active.profile_json;
+    const t = json.decision_thresholds;
+    let changed = false;
+    if (t && t.block_prime_only === undefined) {
+      t.block_prime_only = false;
+      changed = true;
+    }
+    const text = renderProfileText(json);
+    await query(
+      `update company_profile set profile_json = $2, profile_text = $3 where id = $1`,
+      [active.id, JSON.stringify(json), text]
+    );
+    if (changed) seeded.push("company_profile:refreshed");
   }
 
   const hasWeights = await queryOne(`select id from scoring_weights where is_active = true`);
