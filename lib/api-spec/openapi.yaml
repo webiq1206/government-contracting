@@ -1,22 +1,38 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: BROSTCO API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: opportunities
+    description: Opportunity pipeline management
+  - name: subs
+    description: Subcontractor database
+  - name: analytics
+    description: KPI and analytics
+  - name: agents
+    description: AI agent management
+  - name: profile
+    description: Company profile
+  - name: compliance
+    description: Compliance monitoring
+  - name: contracts
+    description: Active contracts
+  - name: callcards
+    description: Call queue management
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +40,439 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        "401":
+          description: Unauthorized
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionUser"
+        "401":
+          description: Unauthorized
+
+  /opportunities:
+    get:
+      operationId: getOpportunities
+      tags: [opportunities]
+      summary: Get pipeline opportunities
+      parameters:
+        - name: stage
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: tier
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: human_action_required
+          in: query
+          schema:
+            type: ["boolean", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Opportunity"
+
+  /opportunities/{id}:
+    get:
+      operationId: getOpportunity
+      tags: [opportunities]
+      summary: Get single opportunity
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Opportunity"
+        "404":
+          description: Not found
+
+  /opportunities/{id}/action:
+    post:
+      operationId: opportunityAction
+      tags: [opportunities]
+      summary: Perform action on opportunity (pursue/dismiss/advance)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpportunityActionInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /subs:
+    get:
+      operationId: getSubs
+      tags: [subs]
+      summary: Get subcontractor database
+      parameters:
+        - name: trade
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: state
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: q
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: minReliability
+          in: query
+          schema:
+            type: ["number", "null"]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Subcontractor"
+
+  /subs/{id}:
+    get:
+      operationId: getSub
+      tags: [subs]
+      summary: Get single subcontractor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subcontractor"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateSub
+      tags: [subs]
+      summary: Update subcontractor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubUpdate"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /analytics/kpis:
+    get:
+      operationId: getKpis
+      tags: [analytics]
+      summary: Get KPI data
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KpiData"
+
+  /analytics/pipeline-summary:
+    get:
+      operationId: getPipelineSummary
+      tags: [analytics]
+      summary: Get pipeline summary counts by stage
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineSummary"
+
+  /agents:
+    get:
+      operationId: getAgents
+      tags: [agents]
+      summary: Get agent roster and recent job runs
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentsData"
+
+  /agents/logs:
+    get:
+      operationId: getAgentLogs
+      tags: [agents]
+      summary: Get agent activity logs
+      parameters:
+        - name: agent
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: limit
+          in: query
+          schema:
+            type: ["integer", "null"]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentLog"
+
+  /agents/{name}/run:
+    post:
+      operationId: runAgent
+      tags: [agents]
+      summary: Manually trigger an agent
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /profile:
+    get:
+      operationId: getProfile
+      tags: [profile]
+      summary: Get active company profile
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileData"
+    post:
+      operationId: saveProfile
+      tags: [profile]
+      summary: Save company profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /compliance:
+    get:
+      operationId: getCompliance
+      tags: [compliance]
+      summary: Get compliance board items
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ComplianceItem"
+
+  /contracts:
+    get:
+      operationId: getContracts
+      tags: [contracts]
+      summary: Get active contracts
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contract"
+
+  /call-cards:
+    get:
+      operationId: getCallCards
+      tags: [callcards]
+      summary: Get call queue cards
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CallCard"
+
+  /call-cards/{id}/log:
+    post:
+      operationId: logCall
+      tags: [callcards]
+      summary: Log call outcome
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallLogInput"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /scoring-weights:
+    get:
+      operationId: getScoringWeights
+      tags: [profile]
+      summary: Get proposed scoring weights pending approval
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScoringWeight"
+
+  /scoring-weights/{id}/approve:
+    post:
+      operationId: approveScoringWeight
+      tags: [profile]
+      summary: Approve proposed scoring weights
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResult"
+
+  /integrations/status:
+    get:
+      operationId: getIntegrationStatus
+      tags: [profile]
+      summary: Get integration connection status
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationStatus"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +480,537 @@ components:
       properties:
         status:
           type: string
+        db:
+          type: ["boolean", "null"]
       required:
         - status
 
+    OkResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        message:
+          type: ["string", "null"]
+        version:
+          type: ["integer", "null"]
+      required:
+        - ok
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    LoginResult:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        user:
+          $ref: "#/components/schemas/SessionUser"
+      required:
+        - ok
+
+    SessionUser:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: ["string", "null"]
+        role:
+          type: string
+      required:
+        - id
+        - email
+        - role
+
+    Opportunity:
+      type: object
+      properties:
+        id:
+          type: string
+        source:
+          type: string
+        source_id:
+          type: ["string", "null"]
+        solicitation_number:
+          type: ["string", "null"]
+        title:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        naics_code:
+          type: ["string", "null"]
+        psc_code:
+          type: ["string", "null"]
+        set_aside_type:
+          type: ["string", "null"]
+        value_estimated:
+          type: ["number", "null"]
+        deadline:
+          type: ["string", "null"]
+        posted_at:
+          type: ["string", "null"]
+        location_state:
+          type: ["string", "null"]
+        location_text:
+          type: ["string", "null"]
+        agency:
+          type: ["string", "null"]
+        sub_agency:
+          type: ["string", "null"]
+        score:
+          type: ["integer", "null"]
+        score_breakdown:
+          type: ["object", "null"]
+        tier:
+          type: ["string", "null"]
+        is_sources_sought:
+          type: boolean
+        solicitation_analysis:
+          type: ["object", "null"]
+        past_perf_classification:
+          type: ["string", "null"]
+        risk_flags:
+          type: array
+          items:
+            type: string
+        stage:
+          type: string
+        status:
+          type: string
+        human_action_required:
+          type: boolean
+        review_expires_at:
+          type: ["string", "null"]
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - source
+        - stage
+        - status
+        - is_sources_sought
+        - human_action_required
+        - risk_flags
+        - created_at
+        - updated_at
+
+    OpportunityActionInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+        stage:
+          type: ["string", "null"]
+
+    Subcontractor:
+      type: object
+      properties:
+        id:
+          type: string
+        company_name:
+          type: string
+        owner_name:
+          type: ["string", "null"]
+        trade_categories:
+          type: array
+          items:
+            type: string
+        naics_codes:
+          type: array
+          items:
+            type: string
+        state:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        email_verified:
+          type: boolean
+        phone:
+          type: ["string", "null"]
+        website:
+          type: ["string", "null"]
+        license_number:
+          type: ["string", "null"]
+        license_status:
+          type: ["string", "null"]
+        sam_excluded:
+          type: boolean
+        google_rating:
+          type: ["number", "null"]
+        review_count:
+          type: ["integer", "null"]
+        responsiveness_score:
+          type: ["number", "null"]
+        reliability_score:
+          type: ["number", "null"]
+        sb_certified:
+          type: ["boolean", "null"]
+        business_age_years:
+          type: ["integer", "null"]
+        project_history:
+          type: array
+          items:
+            type: object
+        is_preferred:
+          type: boolean
+        blacklisted:
+          type: boolean
+        bbb_summary:
+          type: ["string", "null"]
+        reviews_summary:
+          type: ["string", "null"]
+        last_contacted:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - company_name
+        - trade_categories
+        - naics_codes
+        - email_verified
+        - sam_excluded
+        - is_preferred
+        - blacklisted
+        - project_history
+        - created_at
+        - updated_at
+
+    SubUpdate:
+      type: object
+      properties:
+        notes:
+          type: ["string", "null"]
+        is_preferred:
+          type: ["boolean", "null"]
+        blacklisted:
+          type: ["boolean", "null"]
+        project_history:
+          type: ["array", "null"]
+          items:
+            type: object
+
+    KpiData:
+      type: object
+      properties:
+        win_rate:
+          type: ["number", "null"]
+        avg_margin_on_wins:
+          type: ["number", "null"]
+        pipeline_value:
+          type: ["number", "null"]
+        active_contract_revenue:
+          type: ["number", "null"]
+        total_bids:
+          type: ["integer", "null"]
+        total_won:
+          type: ["integer", "null"]
+        total_subs:
+          type: ["integer", "null"]
+        active_opportunities:
+          type: ["integer", "null"]
+      required: []
+
+    PipelineSummary:
+      type: object
+      properties:
+        by_stage:
+          type: array
+          items:
+            type: object
+        by_tier:
+          type: array
+          items:
+            type: object
+        human_action_count:
+          type: integer
+      required:
+        - by_stage
+        - by_tier
+        - human_action_count
+
+    AgentsData:
+      type: object
+      properties:
+        roster:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentDefinition"
+        job_runs:
+          type: array
+          items:
+            type: object
+      required:
+        - roster
+        - job_runs
+
+    AgentDefinition:
+      type: object
+      properties:
+        name:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        cron:
+          type: ["string", "null"]
+      required:
+        - name
+        - label
+        - description
+
+    AgentLog:
+      type: object
+      properties:
+        id:
+          type: string
+        agent:
+          type: string
+        action:
+          type: string
+        level:
+          type: string
+        status:
+          type: string
+        message:
+          type: ["string", "null"]
+        reasoning:
+          type: ["string", "null"]
+        duration_ms:
+          type: ["integer", "null"]
+        created_at:
+          type: string
+        opportunity_id:
+          type: ["string", "null"]
+        subcontractor_id:
+          type: ["string", "null"]
+      required:
+        - id
+        - agent
+        - action
+        - level
+        - status
+        - created_at
+
+    ProfileData:
+      type: object
+      properties:
+        profile:
+          type: ["object", "null"]
+      required:
+        - profile
+
+    ProfileInput:
+      type: object
+      properties:
+        profile_json:
+          type: object
+      required:
+        - profile_json
+
+    ComplianceItem:
+      type: object
+      properties:
+        id:
+          type: string
+        category:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+        due_at:
+          type: ["string", "null"]
+        days_remaining:
+          type: ["integer", "null"]
+        detail:
+          type: ["object", "null"]
+        last_checked_at:
+          type: ["string", "null"]
+        updated_at:
+          type: string
+      required:
+        - id
+        - category
+        - label
+        - status
+        - updated_at
+
+    Contract:
+      type: object
+      properties:
+        id:
+          type: string
+        opportunity_id:
+          type: ["string", "null"]
+        title:
+          type: ["string", "null"]
+        agency:
+          type: ["string", "null"]
+        award_amount:
+          type: ["number", "null"]
+        start_date:
+          type: ["string", "null"]
+        end_date:
+          type: ["string", "null"]
+        milestones:
+          type: ["array", "null"]
+          items:
+            type: object
+        coordination_log:
+          type: ["array", "null"]
+          items:
+            type: object
+        non_ss_sub_pct:
+          type: number
+        cpars_status:
+          type: ["string", "null"]
+        status:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+      required:
+        - id
+        - non_ss_sub_pct
+        - status
+        - created_at
+        - updated_at
+
+    CallCard:
+      type: object
+      properties:
+        id:
+          type: string
+        opportunity_id:
+          type: string
+        subcontractor_id:
+          type: string
+        card_json:
+          type: object
+        call_script:
+          type: ["string", "null"]
+        question_list:
+          type: ["array", "null"]
+          items:
+            type: string
+        needs_project_history:
+          type: boolean
+        status:
+          type: string
+        company_name:
+          type: string
+        phone:
+          type: ["string", "null"]
+        trade:
+          type: ["string", "null"]
+        opportunity_title:
+          type: ["string", "null"]
+        deadline:
+          type: ["string", "null"]
+      required:
+        - id
+        - opportunity_id
+        - subcontractor_id
+        - card_json
+        - needs_project_history
+        - status
+        - company_name
+
+    CallLogInput:
+      type: object
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+        notes:
+          type: ["string", "null"]
+        quote_amount:
+          type: ["number", "null"]
+        project_history:
+          type: ["array", "null"]
+          items:
+            type: object
+
+    ScoringWeight:
+      type: object
+      properties:
+        id:
+          type: string
+        version:
+          type: integer
+        rationale:
+          type: ["string", "null"]
+        proposed_at:
+          type: string
+        weights:
+          type: object
+      required:
+        - id
+        - version
+        - proposed_at
+        - weights
+
+    IntegrationStatus:
+      type: object
+      properties:
+        database:
+          type: boolean
+        claude:
+          type: boolean
+        sam:
+          type: boolean
+        usaspending:
+          type: boolean
+        bls:
+          type: boolean
+        googleMaps:
+          type: boolean
+        hunter:
+          type: boolean
+        gmail:
+          type: boolean
+        twilio:
+          type: boolean
+        resend:
+          type: boolean
+        supabaseStorage:
+          type: boolean
+        queue:
+          type: string
+      required:
+        - database
+        - claude
+        - sam
+        - usaspending
+        - bls
+        - googleMaps
+        - hunter
+        - gmail
+        - twilio
+        - resend
+        - supabaseStorage
+        - queue
