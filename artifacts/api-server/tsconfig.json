@@ -5,7 +5,10 @@
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    // The engine's optional Playwright scrapers run code in the browser context
+    // and reference DOM types; Playwright's own typings assume lib.dom too.
+    "lib": ["ES2022", "DOM"]
   },
   "include": ["src"],
   "references": [

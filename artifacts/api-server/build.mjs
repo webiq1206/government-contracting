@@ -100,6 +100,16 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
+      // BROSTCO engine deps: large or dynamic-require packages kept external.
+      "@anthropic-ai/sdk",
+      "pg-boss",
+      "bullmq",
+      "ioredis",
+      "unpdf",
+      "pdf-lib",
+      "docx",
+      "twilio",
+      "resend",
     ],
     sourcemap: "linked",
     plugins: [
