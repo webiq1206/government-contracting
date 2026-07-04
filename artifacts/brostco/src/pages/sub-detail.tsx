@@ -23,13 +23,13 @@ async function fetchSubQuotes(subId: string): Promise<SubQuote[]> {
   return res.json();
 }
 
-const EXTRA_FIELD_DEFS: { key: keyof ExtraFields; label: string; type: string; placeholder?: string }[] = [
+const EXTRA_FIELD_DEFS: { key: keyof ExtraFields; label: string; type: string; placeholder?: string; multiline?: boolean }[] = [
   { key: "years_experience", label: "Years in business", type: "number", placeholder: "e.g. 12" },
   { key: "crew_size", label: "Crew size", type: "number", placeholder: "e.g. 8" },
   { key: "bonding_capacity", label: "Bonding capacity ($)", type: "number", placeholder: "e.g. 500000" },
   { key: "insurance_status", label: "Insurance status", type: "text", placeholder: "e.g. Active – GL + WC" },
   { key: "insurance_expiry", label: "Insurance expiry date", type: "date" },
-  { key: "certifications", label: "Certifications", type: "text", placeholder: "e.g. MBE, DBE, LEED AP" },
+  { key: "certifications", label: "Certifications", type: "text", placeholder: "e.g. MBE, DBE, LEED AP", multiline: true },
   { key: "service_areas", label: "Service areas", type: "text", placeholder: "e.g. SoCal, AZ, NV" },
   { key: "availability", label: "Availability", type: "text", placeholder: "e.g. Available Q3 2026" },
   { key: "preferred_project_size", label: "Preferred project size", type: "text", placeholder: "e.g. $100K–$2M" },
@@ -384,36 +384,45 @@ export default function SubDetailPage() {
         )}
 
         {/* ── Additional Info (extra_fields) ── */}
-        <div className="card space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="label">Additional info</p>
+        <details className="card" open={!!extraDraft}>
+          <summary className="flex cursor-pointer items-center justify-between">
+            <p className="label select-none">Additional info</p>
             {extraDraft && <span className="text-xs text-review">Unsaved changes</span>}
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {EXTRA_FIELD_DEFS.map(({ key, label, type, placeholder }) => {
+          </summary>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {EXTRA_FIELD_DEFS.map(({ key, label, type, placeholder, multiline }) => {
               const val = extra[key];
               const strVal = val != null ? String(val) : "";
               return (
                 <div key={String(key)}>
                   <label className="label mb-1">{label}</label>
-                  <input
-                    className="input"
-                    type={type}
-                    placeholder={placeholder}
-                    value={strVal}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      setExtraField(key, type === "number" && raw !== "" ? Number(raw) : raw);
-                    }}
-                  />
+                  {multiline ? (
+                    <textarea
+                      className="input min-h-[60px]"
+                      placeholder={placeholder}
+                      value={strVal}
+                      onChange={(e) => setExtraField(key, e.target.value)}
+                    />
+                  ) : (
+                    <input
+                      className="input"
+                      type={type}
+                      placeholder={placeholder}
+                      value={strVal}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        setExtraField(key, type === "number" && raw !== "" ? Number(raw) : raw);
+                      }}
+                    />
+                  )}
                 </div>
               );
             })}
           </div>
-          <button className="btn-primary" onClick={saveExtraFields} disabled={savingExtra}>
+          <button className="btn-primary mt-4" onClick={saveExtraFields} disabled={savingExtra}>
             {savingExtra ? "Saving..." : "Save additional info"}
           </button>
-        </div>
+        </details>
 
         {/* ── Project history ── */}
         <div>

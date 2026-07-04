@@ -41,9 +41,7 @@ function CallLogForm({ card, invalidateKey }: { card: CallCard; invalidateKey: s
   const [outcome, setOutcome] = useState("interested");
   const [notes, setNotes] = useState("");
   const [quoteAmount, setQuoteAmount] = useState(
-    card.quote_amount != null ? String(card.quote_amount)
-    : card.prior_quote_amount != null ? String(card.prior_quote_amount)
-    : ""
+    card.quote_amount != null ? String(card.quote_amount) : ""
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -80,19 +78,21 @@ function CallLogForm({ card, invalidateKey }: { card: CallCard; invalidateKey: s
         {Object.entries(OUTCOME_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
       </select>
       <div>
-        <label className="label mb-1">Quote / Bid Amount (optional)</label>
+        <label className="label mb-1">Quote / Bid Amount (leave blank if none received)</label>
         <div className="relative">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
           <input
             type="number"
-            placeholder="0.00"
+            placeholder="Enter amount only if a quote was given"
             className="input pl-7"
             value={quoteAmount}
             onChange={(e) => setQuoteAmount(e.target.value)}
           />
         </div>
         {card.prior_quote_amount != null && (
-          <p className="mt-1 text-xs text-slate-500">Prior quote: {currency(card.prior_quote_amount)}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            📋 Reference — prior quote on file: <span className="font-mono text-slate-400">{currency(card.prior_quote_amount)}</span>
+          </p>
         )}
       </div>
       <textarea
