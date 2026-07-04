@@ -7,7 +7,7 @@
  * Business model: brokerage of qualified local subcontractors for federal (and
  * state/local) service contracts under the simplified acquisition ceiling.
  */
-import type { CompanyProfileJson } from "./types";
+import type { CompanyProfileJson } from "../lib/types";
 
 export const DEFAULT_PROFILE: CompanyProfileJson = {
   legal_name: "BROSTCO HOLDINGS LLC", // use EXACTLY as in SAM.gov — never abbreviate

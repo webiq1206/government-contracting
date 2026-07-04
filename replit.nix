@@ -1,21 +1,13 @@
-{pkgs}: {
+{ pkgs }: {
   deps = [
+    pkgs.nodejs_20
+    pkgs.nodePackages.npm
+    # Chromium runtime deps for optional Playwright state-license scrapers.
     pkgs.chromium
-    pkgs.libxkbcommon
-    pkgs.alsa-lib
-    pkgs.mesa
-    pkgs.xorg.libxcb
-    pkgs.xorg.libXrandr
-    pkgs.xorg.libXfixes
-    pkgs.xorg.libXext
-    pkgs.xorg.libXdamage
-    pkgs.xorg.libXcomposite
-    pkgs.xorg.libX11
-    pkgs.libdrm
-    pkgs.dbus
-    pkgs.cups
-    pkgs.at-spi2-atk
-    pkgs.nss
-    pkgs.glib
   ];
+  env = {
+    # Point Playwright at the Nix-provided Chromium so it does not download one.
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = "${pkgs.chromium}/bin/chromium";
+  };
 }
