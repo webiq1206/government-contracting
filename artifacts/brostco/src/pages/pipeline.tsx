@@ -76,6 +76,11 @@ export default function PipelinePage() {
                           <span className={exp === "overdue" ? "text-risk" : ""}>⏱ {exp}</span>
                         </div>
                         {o.agency && <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>}
+                        {o.bid_quote_count != null && o.bid_quote_count > 0 && o.bid_min_quote != null && (
+                          <p className="mt-1 text-xs font-medium text-emerald-400">
+                            Best quote: {currency(o.bid_min_quote)} ({o.bid_quote_count} sub{o.bid_quote_count === 1 ? "" : "s"})
+                          </p>
+                        )}
                         <p className="mt-2 text-xs font-medium text-brand-400">{NEXT_ACTION[o.stage] ?? o.stage}</p>
                       </Link>
                     );

@@ -17,7 +17,17 @@ router.get("/", async (req: Request, res: Response) => {
 
   const lim = Math.min(Number(limit ?? 500), 1000);
   const rows = await query(
-    `select * from opportunities where ${where.join(" and ")} order by (deadline is null), deadline asc limit ${lim}`,
+    `select o.*,
+            count(cc.quote_amount)::int          as bid_quote_count,
+            min(cc.quote_amount)                 as bid_min_quote
+       from opportunities o
+       left join call_cards cc
+              on cc.opportunity_id = o.id
+             and cc.quote_amount is not null
+      where ${where.map((w) => `o.${w}`).join(" and ")}
+      group by o.id
+      order by (o.deadline is null), o.deadline asc
+      limit ${lim}`,
     params
   );
   res.json(rows);
