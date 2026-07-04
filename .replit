@@ -1,32 +1,20 @@
-run = "npm run start"
-entrypoint = "app/page.tsx"
-modules = ["nodejs-20", "web"]
-hidden = [".next", "node_modules"]
-
-[nix]
-channel = "stable-24_05"
-
-[env]
-NODE_ENV = "production"
-NEXT_TELEMETRY_DISABLED = "1"
+modules = ["nodejs-24"]
 
 [deployment]
-run = ["sh", "-c", "npm run start"]
-build = ["sh", "-c", "npm run db:setup && npm run build"]
-deploymentTarget = "cloudrun"
+router = "application"
+deploymentTarget = "autoscale"
 
-[[ports]]
-localPort = 3000
-externalPort = 80
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
 
 [workflows]
-runButton = "Dev"
+runButton = "Project"
 
-[[workflows.workflow]]
-name = "Dev"
-mode = "sequential"
-author = 0
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm install && npm run db:setup && npm run dev"
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
