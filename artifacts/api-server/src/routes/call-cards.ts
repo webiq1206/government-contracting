@@ -78,7 +78,7 @@ router.post("/:id/log", async (req: Request, res: Response) => {
             response_json=$1,
             quote_amount=coalesce($2, quote_amount)
       where id=$3`,
-    [JSON.stringify({ outcome, notes, quote_amount }), quote_amount != null ? Number(quote_amount) : null, id]
+    [JSON.stringify({ outcome, notes }), quote_amount != null ? Number(quote_amount) : null, id]
   );
 
   if (project_history && Array.isArray(project_history)) {

@@ -5,6 +5,10 @@ export type PipelineStage =
 
 export interface Opportunity {
   id: string;
+  bid_quote_count?: number;
+  bid_min_quote?: number | null;
+  bid_max_quote?: number | null;
+  bid_avg_quote?: number | null;
   source: string;
   source_id: string | null;
   solicitation_number: string | null;

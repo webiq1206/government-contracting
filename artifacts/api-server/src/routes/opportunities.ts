@@ -26,7 +26,29 @@ router.get("/", async (req: Request, res: Response) => {
 router.get("/:id", async (req: Request, res: Response) => {
   const row = await queryOne(`select * from opportunities where id = $1`, [req.params.id]);
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
-  res.json(row);
+
+  const bidSummary = await queryOne<{
+    quote_count: string;
+    min_quote: string | null;
+    max_quote: string | null;
+    avg_quote: string | null;
+  }>(
+    `select count(quote_amount)::text as quote_count,
+            min(quote_amount)::text as min_quote,
+            max(quote_amount)::text as max_quote,
+            round(avg(quote_amount))::text as avg_quote
+       from call_cards
+      where opportunity_id = $1 and quote_amount is not null`,
+    [req.params.id]
+  );
+
+  res.json({
+    ...(row as Record<string, unknown>),
+    bid_quote_count: Number(bidSummary?.quote_count ?? 0),
+    bid_min_quote: bidSummary?.min_quote != null ? Number(bidSummary.min_quote) : null,
+    bid_max_quote: bidSummary?.max_quote != null ? Number(bidSummary.max_quote) : null,
+    bid_avg_quote: bidSummary?.avg_quote != null ? Number(bidSummary.avg_quote) : null,
+  });
 });
 
 router.get("/:id/quotes", async (req: Request, res: Response) => {

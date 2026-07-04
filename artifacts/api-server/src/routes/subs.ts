@@ -69,7 +69,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
   if (state !== undefined) { params.push(state); sets.push(`state=$${params.length}`); }
   if (extra_fields !== undefined && typeof extra_fields === "object" && extra_fields !== null) {
     params.push(JSON.stringify(extra_fields));
-    sets.push(`extra_fields = extra_fields || $${params.length}::jsonb`);
+    sets.push(`extra_fields = jsonb_strip_nulls(extra_fields || $${params.length}::jsonb)`);
   }
 
   params.push(req.params.id);

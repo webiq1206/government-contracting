@@ -234,7 +234,17 @@ export default function OpportunityDetailPage() {
           </div>
         )}
 
-        {/* Sub quotes — single source of truth for all bid amounts */}
+        {/* Bid summary — sourced from enriched GET /:id response */}
+        {(o.bid_quote_count ?? 0) > 0 && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div><p className="label">Quotes received</p><p className="mt-0.5 font-mono text-sm text-slate-200">{o.bid_quote_count}</p></div>
+            <div><p className="label">Low bid</p><p className="mt-0.5 font-mono text-sm text-pursue">{o.bid_min_quote != null ? currency(o.bid_min_quote) : "—"}</p></div>
+            <div><p className="label">High bid</p><p className="mt-0.5 font-mono text-sm text-slate-200">{o.bid_max_quote != null ? currency(o.bid_max_quote) : "—"}</p></div>
+            <div><p className="label">Avg bid</p><p className="mt-0.5 font-mono text-sm text-slate-400">{o.bid_avg_quote != null ? currency(o.bid_avg_quote) : "—"}</p></div>
+          </div>
+        )}
+
+        {/* Sub quotes — individual entries with inline editing */}
         <SubQuotesSection oppId={o.id} />
 
         {dims.length > 0 && (

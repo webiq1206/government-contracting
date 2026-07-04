@@ -1,7 +1,7 @@
 import { useRoute, Link } from "wouter";
 import { useState } from "react";
 import { useGetSub } from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/badges";
 import { ActionButton } from "@/components/action-button";
 import { currency, shortDate, timeAgo } from "@/lib/format";
@@ -49,6 +49,10 @@ export default function SubDetailPage() {
   const [contactError, setContactError] = useState("");
   const [extraDraft, setExtraDraft] = useState<ExtraFields | null>(null);
   const [savingExtra, setSavingExtra] = useState(false);
+  const [editingQuoteCard, setEditingQuoteCard] = useState<string | null>(null);
+  const [editQuoteAmount, setEditQuoteAmount] = useState("");
+  const [savingQuote, setSavingQuote] = useState(false);
+  const qc = useQueryClient();
 
   const { data: quotes = [] } = useQuery({
     queryKey: ["sub-quotes", id],
@@ -135,6 +139,22 @@ export default function SubDetailPage() {
 
   function setExtraField(key: keyof ExtraFields, value: unknown) {
     setExtraDraft((prev) => ({ ...(prev ?? s.extra_fields ?? {}), [key]: value === "" ? null : value }));
+  }
+
+  async function saveQuote(cardId: string) {
+    setSavingQuote(true);
+    try {
+      await fetch(`/api/call-cards/${cardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote_amount: editQuoteAmount ? Number(editQuoteAmount) : null }),
+        credentials: "include",
+      });
+      qc.invalidateQueries({ queryKey: ["sub-quotes", id] });
+      setEditingQuoteCard(null);
+    } finally {
+      setSavingQuote(false);
+    }
   }
 
   async function saveExtraFields() {
@@ -305,21 +325,57 @@ export default function SubDetailPage() {
                     <th className="th">Opportunity</th>
                     <th className="th">Quote</th>
                     <th className="th">Date</th>
+                    <th className="th"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(quotes as SubQuote[]).map((q) => (
-                    <tr key={q.card_id} className="border-b border-ink-800/40 last:border-0">
-                      <td className="td">
-                        <a href={`/opportunity/${q.opportunity_id}`} className="text-sm text-brand-400 hover:underline line-clamp-1">
-                          {q.opportunity_title ?? "Untitled"}
-                        </a>
-                        <p className="text-xs text-slate-500">{q.stage?.replace(/_/g, " ")}</p>
-                      </td>
-                      <td className="td font-mono text-sm text-pursue">{currency(q.quote_amount)}</td>
-                      <td className="td text-sm text-slate-400">{q.called_at ? shortDate(q.called_at) : "—"}</td>
-                    </tr>
-                  ))}
+                  {(quotes as SubQuote[]).map((q) => {
+                    const isEditing = editingQuoteCard === q.card_id;
+                    return (
+                      <tr key={q.card_id} className="border-b border-ink-800/40 last:border-0">
+                        <td className="td">
+                          <a href={`/opportunity/${q.opportunity_id}`} className="text-sm text-brand-400 hover:underline line-clamp-1">
+                            {q.opportunity_title ?? "Untitled"}
+                          </a>
+                          <p className="text-xs text-slate-500">{q.stage?.replace(/_/g, " ")}</p>
+                        </td>
+                        <td className="td">
+                          {isEditing ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-slate-400 text-sm">$</span>
+                              <input
+                                type="number"
+                                className="input w-28 py-1 text-sm"
+                                value={editQuoteAmount}
+                                onChange={(e) => setEditQuoteAmount(e.target.value)}
+                                autoFocus
+                              />
+                            </div>
+                          ) : (
+                            <span className="font-mono text-sm text-pursue">{currency(q.quote_amount)}</span>
+                          )}
+                        </td>
+                        <td className="td text-sm text-slate-400">{q.called_at ? shortDate(q.called_at) : "—"}</td>
+                        <td className="td">
+                          {isEditing ? (
+                            <div className="flex gap-1">
+                              <button className="btn-primary py-1 text-xs" onClick={() => saveQuote(q.card_id)} disabled={savingQuote}>
+                                {savingQuote ? "…" : "Save"}
+                              </button>
+                              <button className="btn-ghost py-1 text-xs" onClick={() => setEditingQuoteCard(null)}>Cancel</button>
+                            </div>
+                          ) : (
+                            <button
+                              className="btn-ghost py-1 text-xs"
+                              onClick={() => { setEditingQuoteCard(q.card_id); setEditQuoteAmount(String(q.quote_amount)); }}
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
