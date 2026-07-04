@@ -7,7 +7,14 @@ import "./env";
 
 function str(key: string, fallback = ""): string {
   const v = process.env[key];
-  return v == null || v === "" ? fallback : v;
+  if (v == null || v === "") return fallback;
+  // Treat an un-replaced `.env.example` placeholder (a bare <...> token) as
+  // unset, so a forgotten field degrades gracefully (feature disabled + logged)
+  // instead of firing a bogus credential at the API. Angle brackets never occur
+  // in real secrets, so this can't strip a legitimate value. Note: a value like
+  // "BROSTCO <alerts@brostco.com>" is NOT a bare token and is left intact.
+  if (/^<[^>]*>$/.test(v.trim())) return fallback;
+  return v;
 }
 
 function bool(key: string, fallback = false): boolean {
