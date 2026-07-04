@@ -90,7 +90,7 @@ export default async function SubDetailPage({
           <div className="space-y-6 lg:col-span-2">
             {/* Contact + verification */}
             <div className="card space-y-3">
-              <h2 className="text-sm font-semibold text-white">Contact & Verification</h2>
+              <h2 className="text-sm font-semibold text-neutral-900">Contact & Verification</h2>
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div>
                   <span className="label block">Email</span>
@@ -154,7 +154,7 @@ export default async function SubDetailPage({
 
             {/* Project history */}
             <div className="card">
-              <h2 className="mb-3 text-sm font-semibold text-white">
+              <h2 className="mb-3 text-sm font-semibold text-neutral-900">
                 Project History{" "}
                 <span className="font-normal text-slate-500">({projects.length})</span>
               </h2>
@@ -186,7 +186,7 @@ export default async function SubDetailPage({
 
             {/* Communications timeline */}
             <div className="card">
-              <h2 className="mb-3 text-sm font-semibold text-white">
+              <h2 className="mb-3 text-sm font-semibold text-neutral-900">
                 Communications & Call History{" "}
                 <span className="font-normal text-slate-500">({communications.length})</span>
               </h2>
@@ -233,7 +233,7 @@ export default async function SubDetailPage({
 
             {/* Quotes */}
             <div className="card">
-              <h2 className="mb-3 text-sm font-semibold text-white">
+              <h2 className="mb-3 text-sm font-semibold text-neutral-900">
                 Quotes <span className="font-normal text-slate-500">({quotes.length})</span>
               </h2>
               {quotes.length === 0 ? (
@@ -269,7 +269,7 @@ export default async function SubDetailPage({
           {/* Permanent notes */}
           <div className="lg:col-span-1">
             <div className="card sticky top-4">
-              <h2 className="mb-3 text-sm font-semibold text-white">Permanent Notes</h2>
+              <h2 className="mb-3 text-sm font-semibold text-neutral-900">Permanent Notes</h2>
               <p className="mb-3 text-xs text-slate-500">
                 Editable after every call. Saved permanently to this sub.
               </p>

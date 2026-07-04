@@ -8,16 +8,19 @@ export default async function LoginPage() {
   const user = await currentUser().catch(() => null);
   if (user) redirect("/pipeline");
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <main className="flex min-h-screen items-center justify-center bg-surface p-6">
       <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="font-mono text-3xl font-bold tracking-tight text-white">BROSTCO</h1>
-          <p className="mt-1 text-sm text-slate-400">Autonomous Procurement Execution</p>
+        <div className="mb-10 text-center">
+          <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
+          <h1 className="font-serif text-5xl font-semibold tracking-tight text-foreground">
+            BROSTCO
+          </h1>
+          <div className="mx-auto mt-4 h-px w-12 bg-accent" />
         </div>
         <LoginForm />
-        <p className="mt-6 text-center text-xs text-slate-500">
-          Set OPERATOR_EMAIL and OPERATOR_PASSWORD_HASH in your environment, or seed a user with{" "}
-          <code className="text-slate-400">npm run db:seed</code>.
+        <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
+          Federal opportunities, scored and briefed automatically. Sign in to review
+          today&rsquo;s pipeline.
         </p>
       </div>
     </main>

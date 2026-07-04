@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/badges";
 import { ActionButton } from "@/components/action-button";
 import { shortDate } from "@/lib/format";
 import { ProfileEditor } from "@/components/profile-editor";
+import { AutomationSettings } from "@/components/automation-settings";
 import type { CompanyProfileJson } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +48,14 @@ export default async function ProfilePage() {
             to create the default profile.
           </div>
         ) : (
-          <ProfileEditor json={json} />
+          <>
+            <AutomationSettings
+              pursueScore={json.decision_thresholds.pursue_min_score}
+              reviewFloor={json.decision_thresholds.review_min_score}
+              blockPrimeOnly={json.decision_thresholds.block_prime_only ?? false}
+            />
+            <ProfileEditor json={json} />
+          </>
         )}
 
         {proposed.length > 0 && (

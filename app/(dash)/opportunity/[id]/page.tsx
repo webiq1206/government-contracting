@@ -3,7 +3,8 @@ import { opportunityDetail } from "@/lib/data";
 import { PageHeader, ScoreBadge, TierBadge } from "@/components/badges";
 import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
-import { currency, currencyCents, countdown, shortDate, timeAgo, pct } from "@/lib/format";
+import { BidBrief } from "@/components/bid-brief";
+import { currency, currencyCents, countdown, timeAgo, pct } from "@/lib/format";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -21,13 +22,31 @@ export default async function OpportunityPage({ params }: { params: { id: string
     company_name: String(s.company_name),
     trade: (s.trade as string) ?? null,
   }));
+  const briefDocs = (documents as Record<string, unknown>[]).map((d) => ({
+    id: String(d.id),
+    name: String(d.name),
+    kind: String(d.kind),
+    storage_path: (d.storage_path as string) ?? null,
+    meta: (d.meta as { source_url?: string }) ?? null,
+  }));
 
   return (
     <div>
-      <PageHeader title={opp.title ?? "Opportunity"} subtitle={opp.agency ?? undefined}>
+      <PageHeader
+        title={opp.title ?? "Opportunity"}
+        eyebrow={[opp.agency, opp.solicitation_number].filter(Boolean).join(" · ") || undefined}
+        subtitle={`${opp.naics_code ? "NAICS " + opp.naics_code + " · " : ""}${opp.set_aside_type ?? ""}`}
+      >
         <TierBadge tier={opp.tier} />
         <span className="badge bg-ink-700 text-slate-300">{opp.stage.replace(/_/g, " ")}</span>
       </PageHeader>
+
+      {/* Bid Brief — the plain-English summary + all attachments */}
+      {analysis && (
+        <div className="px-5 pt-5">
+          <BidBrief analysis={analysis} documents={briefDocs} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-3">
         {/* Left column: facts + actions */}
@@ -91,26 +110,6 @@ export default async function OpportunityPage({ params }: { params: { id: string
             </div>
           )}
 
-          {/* Documents */}
-          {(documents as Record<string, unknown>[]).length > 0 && (
-            <div className="card">
-              <p className="label mb-2">Documents</p>
-              <ul className="space-y-1 text-sm">
-                {(documents as Record<string, unknown>[]).map((d) => (
-                  <li key={String(d.id)}>
-                    <a
-                      className="text-brand-400 hover:underline"
-                      href={`/api/files/${d.storage_path}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {String(d.name)} <span className="text-slate-500">({String(d.kind)})</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
 
         {/* Middle column: analysis + pricing + subs */}
@@ -138,23 +137,6 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </div>
               {breakdown.summary && (
                 <p className="mt-3 text-xs text-slate-400">{breakdown.summary}</p>
-              )}
-            </div>
-          )}
-
-          {analysis && (
-            <div className="card space-y-2 text-sm">
-              <p className="label">Solicitation analysis</p>
-              <p className="text-slate-300">{analysis.scope_plain_language}</p>
-              {analysis.required_trades?.length > 0 && (
-                <p className="text-slate-400">
-                  <span className="text-slate-500">Trades:</span> {analysis.required_trades.join(", ")}
-                </p>
-              )}
-              {analysis.risk_flags?.length > 0 && (
-                <p className="text-slate-400">
-                  <span className="text-slate-500">Risks:</span> {analysis.risk_flags.join("; ")}
-                </p>
               )}
             </div>
           )}
@@ -223,7 +205,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
             <div className="card space-y-2">
               <p className="label">Bid package</p>
               <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-semibold text-white">{currency(bid.bid_amount)}</span>
+                <span className="text-2xl font-semibold text-neutral-900">{currency(bid.bid_amount)}</span>
                 <span className="text-sm text-slate-400">margin {pct(bid.margin_pct)}</span>
               </div>
               {bid.qa_checklist && (

@@ -2,62 +2,159 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   BROSTCO editorial design system (inspired by bacwater.ai)
+   ========================================================================== */
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
 body {
-  background: #0a0e14;
-  color: #e2e8f0;
+  background: #ffffff;
+  color: #111111;
+  font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+*,
+::before,
+::after {
+  border-color: #e4e4e7;
+}
+
+::selection {
+  background-color: rgba(45, 106, 79, 0.12);
+  color: #111111;
 }
 
 @layer components {
-  .card {
-    @apply rounded-lg border border-ink-700 bg-ink-900 p-4 shadow-sm;
+  .font-serif {
+    font-family: theme("fontFamily.serif");
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    font-feature-settings: "kern" 1, "liga" 1, "dlig" 1;
   }
-  .card-hover {
-    @apply transition-colors hover:border-ink-600;
-  }
-  .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+
+  /* Buttons */
+  .btn,
+  .btn-primary,
+  .btn-ghost,
+  .btn-danger,
+  .btn-success {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply bg-foreground text-white hover:bg-black;
   }
   .btn-ghost {
-    @apply btn border border-ink-700 text-slate-200 hover:bg-ink-800;
+    @apply border border-border-strong text-foreground hover:bg-surface;
   }
   .btn-danger {
-    @apply btn bg-risk/90 text-white hover:bg-risk;
+    @apply bg-risk text-white hover:bg-red-800;
   }
   .btn-success {
-    @apply btn bg-pursue/90 text-white hover:bg-pursue;
+    @apply bg-accent text-white hover:bg-accent-strong;
   }
+
+  /* Surfaces */
+  .card {
+    @apply rounded-md border border-border bg-background p-5;
+  }
+  .card-hover {
+    @apply transition-colors hover:border-border-strong hover:bg-surface;
+  }
+
+  /* Badges / labels */
   .badge {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold;
   }
-  .label {
-    @apply text-xs font-medium uppercase tracking-wide text-slate-400;
+  .label,
+  .eyebrow {
+    @apply text-[0.7rem] font-medium uppercase text-muted-foreground;
+    letter-spacing: 0.14em;
   }
+  .eyebrow {
+    letter-spacing: 0.18em;
+  }
+
+  /* Inputs */
   .input {
-    @apply w-full rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-brand-500;
+    @apply w-full rounded-md border border-border-strong bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent;
   }
+  .select {
+    @apply input appearance-none;
+  }
+
+  /* Tables */
   .th {
-    @apply px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400;
+    @apply border-b border-border px-3 py-2 text-left text-[0.7rem] font-semibold uppercase text-muted-foreground;
+    letter-spacing: 0.1em;
   }
   .td {
-    @apply px-3 py-2 text-sm text-slate-200;
+    @apply border-b border-border px-3 py-2 text-sm text-slate-200;
+  }
+
+  /* Signature editorial components */
+  .rule {
+    @apply h-px w-full bg-border;
+  }
+  .callout-panel {
+    @apply rounded-md border border-border bg-accent-soft p-5;
+    border-left: 3px solid #2d6a4f;
+  }
+  .accent-left {
+    @apply pl-4;
+    border-left: 3px solid #2d6a4f;
+  }
+  .section-prominent {
+    @apply pt-5;
+    border-top: 2px solid #111111;
+  }
+  .result-hero {
+    @apply font-serif text-4xl leading-none text-accent;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .step-number {
+    @apply inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border-2 border-accent text-xs font-bold text-accent;
+  }
+  .step-number--filled {
+    @apply bg-accent text-white;
+  }
+  .chip {
+    @apply cursor-pointer rounded-md border border-border px-3.5 py-2.5 text-left transition-colors hover:border-muted-foreground hover:bg-surface;
+  }
+  .chip--active {
+    @apply border-accent bg-accent-soft text-accent-strong;
+  }
+  .warning-strip {
+    @apply rounded-md px-4 py-3 text-sm;
+    border-left: 3px solid #b45309;
+    background: #fffbeb;
+    color: #92400e;
+  }
+  .badge-match {
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-[0.6875rem] font-semibold uppercase text-accent;
+    letter-spacing: 0.04em;
+    background: #f0f7f2;
+    border: 1px solid rgba(45, 106, 79, 0.25);
   }
 }
 
-/* thin scrollbars for the kanban columns */
 .scroll-thin::-webkit-scrollbar {
   height: 8px;
   width: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #d4d4d8;
   border-radius: 4px;
+}
+
+:focus-visible {
+  outline: 2px solid #2d6a4f;
+  outline-offset: 2px;
 }

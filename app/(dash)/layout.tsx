@@ -14,7 +14,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
       <Nav email={user.email} reviewCount={counts.review} callCount={counts.callQueue} />
-      <main className="min-w-0 flex-1 bg-ink-950">{children}</main>
+      <main className="min-w-0 flex-1 bg-surface">{children}</main>
     </div>
   );
 }

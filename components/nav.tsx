@@ -1,24 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
-const NAV = [
-  { href: "/pipeline", label: "Pipeline", icon: "▦" },
-  { href: "/call-queue", label: "Call Queue", icon: "☎" },
-  { href: "/review", label: "Review Queue", icon: "⚑" },
-  { href: "/subs", label: "Sub Database", icon: "⚒" },
-  { href: "/analytics", label: "Analytics", icon: "📈" },
-  { href: "/compliance", label: "Compliance", icon: "✔" },
-  { href: "/contracts", label: "Active Contracts", icon: "▣" },
-  { href: "/agents", label: "Agents & Logs", icon: "◈" },
-  { href: "/settings/profile", label: "Company Profile", icon: "⚙" },
-  { href: "/settings/integrations", label: "Integrations", icon: "🔌" },
+const NAV: { section: string; items: { href: string; label: string }[] }[] = [
+  {
+    section: "Pipeline",
+    items: [
+      { href: "/pipeline", label: "Pipeline" },
+      { href: "/call-queue", label: "Call Queue" },
+      { href: "/review", label: "Review Queue" },
+    ],
+  },
+  {
+    section: "Records",
+    items: [
+      { href: "/subs", label: "Sub Database" },
+      { href: "/contracts", label: "Active Contracts" },
+      { href: "/compliance", label: "Compliance" },
+    ],
+  },
+  {
+    section: "Intelligence",
+    items: [
+      { href: "/analytics", label: "Analytics" },
+      { href: "/agents", label: "Agents & Logs" },
+    ],
+  },
+  {
+    section: "Settings",
+    items: [
+      { href: "/settings/profile", label: "Company Profile" },
+      { href: "/settings/integrations", label: "Integrations" },
+    ],
+  },
 ];
 
-export function Nav({ email, reviewCount, callCount }: { email: string; reviewCount: number; callCount: number }) {
+export function Nav({
+  email,
+  reviewCount,
+  callCount,
+}: {
+  email: string;
+  reviewCount: number;
+  callCount: number;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -32,8 +59,8 @@ export function Nav({ email, reviewCount, callCount }: { email: string; reviewCo
   return (
     <>
       {/* mobile top bar */}
-      <div className="flex items-center justify-between border-b border-ink-800 bg-ink-900 px-4 py-3 md:hidden">
-        <span className="font-mono text-lg font-bold text-white">BROSTCO</span>
+      <div className="flex items-center justify-between border-b border-border bg-background px-4 py-3 md:hidden">
+        <span className="font-serif text-xl font-semibold text-foreground">BROSTCO</span>
         <button className="btn-ghost" onClick={() => setOpen((o) => !o)} aria-label="menu">
           ☰
         </button>
@@ -42,40 +69,55 @@ export function Nav({ email, reviewCount, callCount }: { email: string; reviewCo
       <nav
         className={`${
           open ? "block" : "hidden"
-        } w-full shrink-0 border-b border-ink-800 bg-ink-900 md:block md:h-screen md:w-60 md:border-b-0 md:border-r`}
+        } w-full shrink-0 border-b border-border bg-background md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col md:border-b-0 md:border-r`}
       >
-        <div className="hidden px-5 py-5 md:block">
-          <span className="font-mono text-xl font-bold tracking-tight text-white">BROSTCO</span>
-          <p className="mt-0.5 text-[11px] text-slate-500">Procurement Execution</p>
+        <div className="hidden shrink-0 px-6 py-6 md:block">
+          <span className="font-serif text-2xl font-semibold tracking-tight text-foreground">
+            BROSTCO
+          </span>
+          <p className="eyebrow mt-1">Procurement Execution</p>
         </div>
-        <ul className="space-y-0.5 p-2">
-          {NAV.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + "/");
-            const badge =
-              item.href === "/review" ? reviewCount : item.href === "/call-queue" ? callCount : 0;
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={`flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
-                    active ? "bg-brand-600/20 text-white" : "text-slate-300 hover:bg-ink-800"
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5">
-                    <span className="w-4 text-center text-xs opacity-70">{item.icon}</span>
-                    {item.label}
-                  </span>
-                  {badge > 0 && (
-                    <span className="badge bg-review/20 text-review">{badge}</span>
-                  )}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-        <div className="border-t border-ink-800 p-3 md:absolute md:bottom-0 md:w-60">
-          <p className="truncate px-2 text-xs text-slate-500">{email}</p>
+
+        <div className="scroll-thin space-y-5 p-3 md:flex-1 md:overflow-y-auto md:px-4">
+          {NAV.map((group) => (
+            <div key={group.section}>
+              <p className="eyebrow mb-1.5 px-2 text-[0.62rem]">{group.section}</p>
+              <ul className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active =
+                    pathname === item.href || pathname.startsWith(item.href + "/");
+                  const badge =
+                    item.href === "/review"
+                      ? reviewCount
+                      : item.href === "/call-queue"
+                        ? callCount
+                        : 0;
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        onClick={() => setOpen(false)}
+                        className={`flex items-center justify-between border-l-2 py-1.5 pl-3 pr-2 text-sm transition-colors ${
+                          active
+                            ? "border-accent bg-accent-soft font-medium text-accent-strong"
+                            : "border-transparent text-slate-400 hover:border-border-strong hover:text-foreground"
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                        {badge > 0 && (
+                          <span className="badge bg-accent-soft text-accent">{badge}</span>
+                        )}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <div className="shrink-0 border-t border-border p-4">
+          <p className="truncate text-xs text-slate-500">{email}</p>
           <button onClick={logout} className="btn-ghost mt-2 w-full text-xs">
             Sign out
           </button>

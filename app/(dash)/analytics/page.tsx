@@ -36,7 +36,7 @@ function KpiCard({
   return (
     <div className="card">
       <div className="label">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-white">{value}</div>
+      <div className="mt-1 text-2xl font-semibold text-neutral-900">{value}</div>
       {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
     </div>
   );
@@ -55,7 +55,7 @@ function BreakdownTable({
   if (data.length === 0) return null;
   return (
     <div className="card">
-      <h3 className="mb-3 text-sm font-semibold text-white">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold text-neutral-900">{title}</h3>
       <table className="w-full">
         <thead>
           <tr>
@@ -162,7 +162,7 @@ export default async function AnalyticsPage() {
         {/* Cash flow projection 30/60/90 */}
         {cashFlow && (
           <div className="card">
-            <h3 className="mb-3 text-sm font-semibold text-white">Cash Flow Projection</h3>
+            <h3 className="mb-3 text-sm font-semibold text-neutral-900">Cash Flow Projection</h3>
             <div className="grid grid-cols-3 gap-3">
               {["30", "60", "90"].map((d) => {
                 const v =
@@ -185,7 +185,7 @@ export default async function AnalyticsPage() {
         {/* Sub rankings */}
         {subRankings.length > 0 && (
           <div className="card">
-            <h3 className="mb-3 text-sm font-semibold text-white">Top Subcontractors</h3>
+            <h3 className="mb-3 text-sm font-semibold text-neutral-900">Top Subcontractors</h3>
             <table className="w-full">
               <thead>
                 <tr>
@@ -212,7 +212,7 @@ export default async function AnalyticsPage() {
         {/* Pipeline velocity */}
         {velocity && Object.keys(velocity).length > 0 && (
           <div className="card">
-            <h3 className="mb-3 text-sm font-semibold text-white">Pipeline Velocity</h3>
+            <h3 className="mb-3 text-sm font-semibold text-neutral-900">Pipeline Velocity</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {Object.entries(velocity).map(([stage, count]) => (
                 <div
