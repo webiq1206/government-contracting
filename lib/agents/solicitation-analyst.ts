@@ -12,6 +12,7 @@
  * team_accepted) we advance the stage to 'sub_research' and trigger Sub Finder.
  */
 import { z } from "zod";
+import { config } from "../config";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
@@ -257,6 +258,7 @@ export const solicitationAnalyst: AgentDefinition = {
     try {
       const { data, usage } = await completeJson(buildPrompt(opp, attachmentContext), {
         schema: AnalysisSchema,
+        model: config.claude.modelSmart, // bid-critical extraction — never omit a requirement
         maxTokens: 4096,
       });
       analysis = data;

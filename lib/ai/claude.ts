@@ -36,8 +36,20 @@ export interface CompleteOptions {
   system?: string; // extra system text appended after the Company Profile
   maxTokens?: number;
   temperature?: number;
+  /** Override the model for this call (e.g. config.claude.modelSmart). */
+  model?: string;
   /** Set false to skip Company Profile injection (rarely needed). */
   injectProfile?: boolean;
+}
+
+/**
+ * Sonnet 5 / Opus 4.7+ / Fable reject non-default sampling params (temperature,
+ * top_p, top_k) with a 400. Haiku 4.5 and Sonnet 4.6 still accept them. Gate on
+ * the model string so the tiering (or any operator override) can't send a param
+ * the target model rejects.
+ */
+function modelAcceptsSampling(model: string): boolean {
+  return !/(sonnet-5|opus-4-[78]|fable)/.test(model);
 }
 
 async function buildSystem(opts: CompleteOptions): Promise<string> {
@@ -54,13 +66,29 @@ export async function complete(
   opts: CompleteOptions = {}
 ): Promise<{ text: string; usage: ClaudeUsage }> {
   const system = await buildSystem(opts);
-  const res = await client().messages.create({
-    model: config.claude.model,
+  const model = opts.model ?? config.claude.model;
+
+  // Built as a loose object so we can conditionally include params by model
+  // family without fighting the (older) SDK's request types. The model string
+  // itself is sent verbatim, so newer model ids work regardless of SDK version.
+  const body: Record<string, unknown> = {
+    model,
     max_tokens: opts.maxTokens ?? 2048,
-    temperature: opts.temperature ?? 0.2,
     system,
     messages: [{ role: "user", content: prompt }],
-  });
+  };
+  if (modelAcceptsSampling(model)) {
+    body.temperature = opts.temperature ?? 0.2;
+  } else if (!/fable/.test(model)) {
+    // These models default to adaptive thinking, which would eat into max_tokens
+    // and can truncate the (usually JSON) response. Disable it so the full budget
+    // goes to the answer. (Fable rejects an explicit "disabled" — omit there.)
+    body.thinking = { type: "disabled" };
+  }
+
+  const res = await client().messages.create(
+    body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming
+  );
   const text = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
@@ -70,7 +98,7 @@ export async function complete(
     usage: {
       input_tokens: res.usage.input_tokens,
       output_tokens: res.usage.output_tokens,
-      model: config.claude.model,
+      model,
     },
   };
 }

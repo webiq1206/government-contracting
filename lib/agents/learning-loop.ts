@@ -10,6 +10,7 @@
  * Requires Claude for the weight analysis (worksWithoutClaude:false).
  */
 import { z } from "zod";
+import { config } from "../config";
 import { query, queryOne } from "../db";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { getProfileJson } from "../ai/companyProfile";
@@ -85,6 +86,7 @@ export const learningLoop: AgentDefinition = {
       try {
         const { data, usage } = await completeJson(prompt, {
           schema: AnalysisSchema,
+          model: config.claude.modelSmart, // rubric-weight reasoning — worth the stronger model
           maxTokens: 2000,
         });
         analysis = data;

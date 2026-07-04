@@ -50,7 +50,13 @@ export const config = {
 
   claude: {
     apiKey: str("ANTHROPIC_API_KEY"),
-    model: str("CLAUDE_MODEL", "claude-sonnet-4-6"),
+    // Default tier — high-volume, lower-stakes agents (scoring, outreach, call
+    // prep, sub-verify, digests). Fast and cheap.
+    model: str("CLAUDE_MODEL", "claude-haiku-4-5"),
+    // High-stakes tier — the bid-critical path where a missed requirement or a
+    // fabricated fact costs a bid: the Solicitation Analyst (bid brief) and the
+    // Learning Loop (rubric-weight analysis). Stronger model.
+    modelSmart: str("CLAUDE_MODEL_SMART", "claude-sonnet-5"),
     get enabled() {
       return Boolean(this.apiKey);
     },
