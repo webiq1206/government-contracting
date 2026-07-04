@@ -21,3 +21,23 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+OPERATOR_EMAIL = "brostcoholdings@gmail.com"
+OPERATOR_PASSWORD_HASH = "scrypt$bb7ee404715f73d67fec836ccec16386$cf9fa657aa6a0a6664bc8f4cedf421e7b4c28f2f80ad554e0f093ca01720608d29c9e7e5f45910c132cb35c0ac7e81a8055c6682796fc6a43dfe5fc90c43582a"
+AUTH_SECRET = "f7300338793ecc0b2a532703c0546d762c4649fdc0da5c87fb3b16662641b50c"
+ANTHROPIC_API_KEY = "your-anthropic-api-key-here"
+SAM_API_KEY = "your-sam-gov-api-key-here"
+GOOGLE_MAPS_API_KEY = "your-google-maps-api-key-here"
+HUNTER_API_KEY = "your-hunter-io-api-key-here"
+RESEND_API_KEY = "your-resend-api-key-here"
+GMAIL_CLIENT_ID = "your-gmail-oauth-client-id-here"
+GMAIL_CLIENT_SECRET = "your-gmail-oauth-client-secret-here"
+GMAIL_REFRESH_TOKEN = "your-gmail-refresh-token-here"
+TWILIO_ACCOUNT_SID = "your-twilio-account-sid-here"
+TWILIO_AUTH_TOKEN = "your-twilio-auth-token-here"
+SUPABASE_URL = "your-supabase-project-url-here"
+SUPABASE_SERVICE_ROLE_KEY = "your-supabase-service-role-key-here"
+REDIS_URL = "your-redis-url-here-optional"
