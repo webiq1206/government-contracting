@@ -105,8 +105,8 @@ router.post("/:id/quotes", async (req: Request, res: Response) => {
     res.json({ ok: true, card_id: existing.id, created: false });
   } else {
     const row = await queryOne<{ id: string }>(
-      `insert into call_cards (opportunity_id, subcontractor_id, status, quote_amount, response_json)
-       values ($1, $2, 'quoted', $3, $4::jsonb)
+      `insert into call_cards (opportunity_id, subcontractor_id, status, quote_amount, card_json, response_json)
+       values ($1, $2, 'quoted', $3, '{}'::jsonb, $4::jsonb)
        returning id`,
       [oppId, subcontractor_id, Number(quote_amount), JSON.stringify({ outcome: "quoted" })]
     );
