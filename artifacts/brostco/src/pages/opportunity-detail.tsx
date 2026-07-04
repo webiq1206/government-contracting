@@ -41,11 +41,20 @@ async function searchSubs(q: string): Promise<SubOption[]> {
   return res.json();
 }
 
+const OUTCOMES = [
+  { value: "quoted", label: "Quoted" },
+  { value: "not_interested", label: "Not interested" },
+  { value: "callback", label: "Callback" },
+  { value: "voicemail", label: "Voicemail" },
+];
+
 function AddQuoteModal({ oppId, onClose, onSaved }: { oppId: string; onClose: () => void; onSaved: () => void }) {
   const [subSearch, setSubSearch] = useState("");
   const [subOptions, setSubOptions] = useState<SubOption[]>([]);
   const [selectedSub, setSelectedSub] = useState<SubOption | null>(null);
   const [amount, setAmount] = useState("");
+  const [outcome, setOutcome] = useState("quoted");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,7 +78,12 @@ function AddQuoteModal({ oppId, onClose, onSaved }: { oppId: string; onClose: ()
       const res = await fetch(`/api/opportunities/${oppId}/quotes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subcontractor_id: selectedSub.id, quote_amount: Number(amount) }),
+        body: JSON.stringify({
+          subcontractor_id: selectedSub.id,
+          quote_amount: Number(amount),
+          outcome,
+          notes: notes.trim() || undefined,
+        }),
         credentials: "include",
       });
       if (!res.ok) {
@@ -142,6 +156,30 @@ function AddQuoteModal({ oppId, onClose, onSaved }: { oppId: string; onClose: ()
               min="0"
             />
           </div>
+        </div>
+
+        <div className="space-y-1">
+          <label className="label">Outcome</label>
+          <select
+            className="input w-full"
+            value={outcome}
+            onChange={(e) => setOutcome(e.target.value)}
+          >
+            {OUTCOMES.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="label">Notes <span className="text-slate-500 font-normal">(optional)</span></label>
+          <textarea
+            className="input w-full resize-none"
+            rows={3}
+            placeholder="e.g. Can't start until March, conditional on permit"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
         </div>
 
         {error && <p className="text-xs text-risk">{error}</p>}
@@ -241,12 +279,15 @@ function SubQuotesSection({ oppId }: { oppId: string }) {
             <tbody>
               {allSubs.map((q) => {
                 const isEditing = editingCard === q.card_id;
-                const outcome = (q.response_json as Record<string, unknown> | null)?.outcome as string | undefined;
+                const rj = q.response_json as Record<string, unknown> | null;
+                const outcome = rj?.outcome as string | undefined;
+                const noteText = rj?.notes as string | undefined;
                 return (
                   <tr key={q.card_id} className="border-b border-ink-800/40 last:border-0">
                     <td className="td">
                       <p className="text-sm text-slate-100">{q.company_name}</p>
                       {q.phone && <p className="text-xs text-slate-500">{q.phone}</p>}
+                      {noteText && <p className="text-xs text-slate-400 italic mt-0.5">{noteText}</p>}
                     </td>
                     <td className="td">
                       {isEditing ? (

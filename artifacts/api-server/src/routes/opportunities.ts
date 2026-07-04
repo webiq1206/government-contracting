@@ -75,12 +75,15 @@ router.get("/:id/quotes", async (req: Request, res: Response) => {
   res.json(rows);
 });
 
+const VALID_OUTCOMES = ["quoted", "not_interested", "callback", "voicemail"];
+
 router.post("/:id/quotes", async (req: Request, res: Response) => {
-  const { subcontractor_id, quote_amount } = req.body ?? {};
+  const { subcontractor_id, quote_amount, outcome, notes } = req.body ?? {};
   if (!subcontractor_id || quote_amount == null) {
     res.status(400).json({ error: "subcontractor_id and quote_amount are required" });
     return;
   }
+  const resolvedOutcome = outcome && VALID_OUTCOMES.includes(outcome) ? outcome : "quoted";
   const oppId = req.params.id;
   const opp = await queryOne(`select id from opportunities where id=$1`, [oppId]);
   if (!opp) { res.status(404).json({ error: "Opportunity not found" }); return; }
@@ -93,22 +96,26 @@ router.post("/:id/quotes", async (req: Request, res: Response) => {
     [oppId, subcontractor_id]
   );
 
+  const patchJson: Record<string, string> = { outcome: resolvedOutcome };
+  if (notes) patchJson.notes = String(notes).slice(0, 1000);
+  const patchJsonStr = JSON.stringify(patchJson);
+
   if (existing) {
     await query(
       `update call_cards
           set quote_amount=$1,
-              status='quoted',
-              response_json=coalesce(response_json, $2::jsonb)
-        where id=$3`,
-      [Number(quote_amount), JSON.stringify({ outcome: "quoted" }), existing.id]
+              status=$2,
+              response_json=coalesce(response_json, '{}'::jsonb) || $3::jsonb
+        where id=$4`,
+      [Number(quote_amount), resolvedOutcome, patchJsonStr, existing.id]
     );
     res.json({ ok: true, card_id: existing.id, created: false });
   } else {
     const row = await queryOne<{ id: string }>(
       `insert into call_cards (opportunity_id, subcontractor_id, status, quote_amount, card_json, response_json)
-       values ($1, $2, 'quoted', $3, '{}'::jsonb, $4::jsonb)
+       values ($1, $2, $3, $4, '{}'::jsonb, $5::jsonb)
        returning id`,
-      [oppId, subcontractor_id, Number(quote_amount), JSON.stringify({ outcome: "quoted" })]
+      [oppId, subcontractor_id, resolvedOutcome, Number(quote_amount), patchJsonStr]
     );
     res.json({ ok: true, card_id: row?.id, created: true });
   }
