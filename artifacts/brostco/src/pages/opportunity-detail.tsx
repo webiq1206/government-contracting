@@ -1,5 +1,5 @@
 import { useRoute, Link } from "wouter";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useGetOpportunity } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { PageHeader, ScoreBadge, TierBadge } from "@/components/badges";
@@ -27,10 +27,134 @@ function StageProgress({ stage }: { stage: string }) {
   );
 }
 
+interface SubOption { id: string; company_name: string; phone: string | null; }
+
 async function fetchSubQuotes(oppId: string): Promise<OppSubQuote[]> {
   const res = await fetch(`/api/opportunities/${oppId}/quotes`, { credentials: "include" });
   if (!res.ok) return [];
   return res.json();
+}
+
+async function searchSubs(q: string): Promise<SubOption[]> {
+  const res = await fetch(`/api/subs?q=${encodeURIComponent(q)}&limit=20`, { credentials: "include" });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+function AddQuoteModal({ oppId, onClose, onSaved }: { oppId: string; onClose: () => void; onSaved: () => void }) {
+  const [subSearch, setSubSearch] = useState("");
+  const [subOptions, setSubOptions] = useState<SubOption[]>([]);
+  const [selectedSub, setSelectedSub] = useState<SubOption | null>(null);
+  const [amount, setAmount] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (subSearch.length < 2) { setSubOptions([]); return; }
+    if (searchRef.current) clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(async () => {
+      const results = await searchSubs(subSearch);
+      setSubOptions(results);
+    }, 250);
+    return () => { if (searchRef.current) clearTimeout(searchRef.current); };
+  }, [subSearch]);
+
+  async function handleSave() {
+    if (!selectedSub) { setError("Select a subcontractor"); return; }
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) { setError("Enter a valid amount"); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/opportunities/${oppId}/quotes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subcontractor_id: selectedSub.id, quote_amount: Number(amount) }),
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError((body as { error?: string }).error ?? "Save failed");
+        return;
+      }
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="card w-full max-w-md space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-slate-100">Add quote</p>
+          <button className="text-slate-500 hover:text-slate-300 text-lg leading-none" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="space-y-1">
+          <label className="label">Subcontractor</label>
+          {selectedSub ? (
+            <div className="flex items-center justify-between rounded-md border border-ink-700 bg-ink-900 px-3 py-2">
+              <span className="text-sm text-slate-100">{selectedSub.company_name}</span>
+              <button className="text-xs text-slate-500 hover:text-slate-300" onClick={() => { setSelectedSub(null); setSubSearch(""); setSubOptions([]); }}>change</button>
+            </div>
+          ) : (
+            <div className="relative">
+              <input
+                type="text"
+                className="input w-full"
+                placeholder="Search by name…"
+                value={subSearch}
+                onChange={(e) => setSubSearch(e.target.value)}
+                autoFocus
+              />
+              {subOptions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 z-10 mt-1 rounded-md border border-ink-700 bg-ink-900 shadow-lg overflow-hidden">
+                  {subOptions.map((s) => (
+                    <button
+                      key={s.id}
+                      className="w-full px-3 py-2 text-left hover:bg-ink-800 border-b border-ink-800/50 last:border-0"
+                      onClick={() => { setSelectedSub(s); setSubSearch(""); setSubOptions([]); }}
+                    >
+                      <p className="text-sm text-slate-100">{s.company_name}</p>
+                      {s.phone && <p className="text-xs text-slate-500">{s.phone}</p>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {subSearch.length >= 2 && subOptions.length === 0 && (
+                <p className="mt-1 text-xs text-slate-500">No matches found</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <label className="label">Quote amount</label>
+          <div className="flex items-center gap-1">
+            <span className="text-slate-400 text-sm">$</span>
+            <input
+              type="number"
+              className="input flex-1"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              min="0"
+            />
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-risk">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save quote"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SubQuotesSection({ oppId }: { oppId: string }) {
@@ -43,6 +167,7 @@ function SubQuotesSection({ oppId }: { oppId: string }) {
   const [editingCard, setEditingCard] = useState<string | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   async function saveQuote(cardId: string) {
     setSaving(true);
@@ -61,6 +186,12 @@ function SubQuotesSection({ oppId }: { oppId: string }) {
     }
   }
 
+  function handleQuoteSaved() {
+    setShowAddModal(false);
+    qc.invalidateQueries({ queryKey: ["opp-quotes", oppId] });
+    qc.invalidateQueries({ queryKey: ["getOpportunity", oppId] });
+  }
+
   if (isLoading) return null;
 
   const hasQuotes = quotes.some((q) => q.quote_amount != null);
@@ -68,91 +199,106 @@ function SubQuotesSection({ oppId }: { oppId: string }) {
   const noQuote = quotes.filter((q) => q.quote_amount == null);
 
   const allSubs = [...quoted, ...noQuote];
-  if (allSubs.length === 0) return null;
 
   const minQ = quoted.length > 0 ? Math.min(...quoted.map((q) => q.quote_amount ?? Infinity)) : null;
   const maxQ = quoted.length > 0 ? Math.max(...quoted.map((q) => q.quote_amount ?? -Infinity)) : null;
 
   return (
     <div>
+      {showAddModal && (
+        <AddQuoteModal
+          oppId={oppId}
+          onClose={() => setShowAddModal(false)}
+          onSaved={handleQuoteSaved}
+        />
+      )}
       <div className="flex items-center justify-between mb-2">
         <p className="label">Sub quotes ({quoted.length} received)</p>
-        {hasQuotes && minQ != null && maxQ != null && (
-          <span className="text-xs text-slate-400 font-mono">
-            Range: {currency(minQ)} – {currency(maxQ)}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {hasQuotes && minQ != null && maxQ != null && (
+            <span className="text-xs text-slate-400 font-mono">
+              Range: {currency(minQ)} – {currency(maxQ)}
+            </span>
+          )}
+          <button className="btn-ghost py-1 text-xs" onClick={() => setShowAddModal(true)}>
+            + Add quote
+          </button>
+        </div>
       </div>
-      <div className="card overflow-hidden p-0">
-        <table className="w-full border-collapse">
-          <thead className="border-b border-ink-800 bg-ink-900/60">
-            <tr>
-              <th className="th">Subcontractor</th>
-              <th className="th">Quote amount</th>
-              <th className="th">Status</th>
-              <th className="th"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {allSubs.map((q) => {
-              const isEditing = editingCard === q.card_id;
-              const outcome = (q.response_json as Record<string, unknown> | null)?.outcome as string | undefined;
-              return (
-                <tr key={q.card_id} className="border-b border-ink-800/40 last:border-0">
-                  <td className="td">
-                    <p className="text-sm text-slate-100">{q.company_name}</p>
-                    {q.phone && <p className="text-xs text-slate-500">{q.phone}</p>}
-                  </td>
-                  <td className="td">
-                    {isEditing ? (
-                      <div className="flex items-center gap-1">
-                        <span className="text-slate-400 text-sm">$</span>
-                        <input
-                          type="number"
-                          className="input w-28 py-1 text-sm"
-                          value={editAmount}
-                          onChange={(e) => setEditAmount(e.target.value)}
-                          autoFocus
-                        />
-                      </div>
-                    ) : (
-                      <span className={`font-mono text-sm ${q.quote_amount != null ? (q.quote_amount === minQ ? "text-pursue font-semibold" : "text-slate-200") : "text-slate-500"}`}>
-                        {q.quote_amount != null ? currency(q.quote_amount) : "—"}
-                      </span>
-                    )}
-                  </td>
-                  <td className="td">
-                    {outcome ? (
-                      <span className={`badge text-xs ${outcome === "quoted" ? "bg-pursue/15 text-pursue" : outcome === "not_interested" ? "bg-risk/15 text-risk" : "bg-ink-700 text-slate-400"}`}>
-                        {outcome.replace(/_/g, " ")}
-                      </span>
-                    ) : (
-                      <span className="badge bg-review/15 text-review text-xs">pending</span>
-                    )}
-                  </td>
-                  <td className="td">
-                    {isEditing ? (
-                      <div className="flex gap-1">
-                        <button className="btn-primary py-1 text-xs" onClick={() => saveQuote(q.card_id)} disabled={saving}>
-                          {saving ? "…" : "Save"}
+      {allSubs.length === 0 ? (
+        <p className="text-xs text-slate-500">No call cards yet. Use "Add quote" to record a sub's number directly.</p>
+      ) : (
+        <div className="card overflow-hidden p-0">
+          <table className="w-full border-collapse">
+            <thead className="border-b border-ink-800 bg-ink-900/60">
+              <tr>
+                <th className="th">Subcontractor</th>
+                <th className="th">Quote amount</th>
+                <th className="th">Status</th>
+                <th className="th"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {allSubs.map((q) => {
+                const isEditing = editingCard === q.card_id;
+                const outcome = (q.response_json as Record<string, unknown> | null)?.outcome as string | undefined;
+                return (
+                  <tr key={q.card_id} className="border-b border-ink-800/40 last:border-0">
+                    <td className="td">
+                      <p className="text-sm text-slate-100">{q.company_name}</p>
+                      {q.phone && <p className="text-xs text-slate-500">{q.phone}</p>}
+                    </td>
+                    <td className="td">
+                      {isEditing ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-slate-400 text-sm">$</span>
+                          <input
+                            type="number"
+                            className="input w-28 py-1 text-sm"
+                            value={editAmount}
+                            onChange={(e) => setEditAmount(e.target.value)}
+                            autoFocus
+                          />
+                        </div>
+                      ) : (
+                        <span className={`font-mono text-sm ${q.quote_amount != null ? (q.quote_amount === minQ ? "text-pursue font-semibold" : "text-slate-200") : "text-slate-500"}`}>
+                          {q.quote_amount != null ? currency(q.quote_amount) : "—"}
+                        </span>
+                      )}
+                    </td>
+                    <td className="td">
+                      {outcome ? (
+                        <span className={`badge text-xs ${outcome === "quoted" ? "bg-pursue/15 text-pursue" : outcome === "not_interested" ? "bg-risk/15 text-risk" : "bg-ink-700 text-slate-400"}`}>
+                          {outcome.replace(/_/g, " ")}
+                        </span>
+                      ) : (
+                        <span className="badge bg-review/15 text-review text-xs">pending</span>
+                      )}
+                    </td>
+                    <td className="td">
+                      {isEditing ? (
+                        <div className="flex gap-1">
+                          <button className="btn-primary py-1 text-xs" onClick={() => saveQuote(q.card_id)} disabled={saving}>
+                            {saving ? "…" : "Save"}
+                          </button>
+                          <button className="btn-ghost py-1 text-xs" onClick={() => setEditingCard(null)}>Cancel</button>
+                        </div>
+                      ) : (
+                        <button
+                          className="btn-ghost py-1 text-xs"
+                          onClick={() => { setEditingCard(q.card_id); setEditAmount(q.quote_amount != null ? String(q.quote_amount) : ""); }}
+                        >
+                          {q.quote_amount != null ? "Edit" : "Add quote"}
                         </button>
-                        <button className="btn-ghost py-1 text-xs" onClick={() => setEditingCard(null)}>Cancel</button>
-                      </div>
-                    ) : (
-                      <button
-                        className="btn-ghost py-1 text-xs"
-                        onClick={() => { setEditingCard(q.card_id); setEditAmount(q.quote_amount != null ? String(q.quote_amount) : ""); }}
-                      >
-                        {q.quote_amount != null ? "Edit" : "Add quote"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

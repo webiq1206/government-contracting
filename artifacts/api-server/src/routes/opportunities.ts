@@ -75,6 +75,45 @@ router.get("/:id/quotes", async (req: Request, res: Response) => {
   res.json(rows);
 });
 
+router.post("/:id/quotes", async (req: Request, res: Response) => {
+  const { subcontractor_id, quote_amount } = req.body ?? {};
+  if (!subcontractor_id || quote_amount == null) {
+    res.status(400).json({ error: "subcontractor_id and quote_amount are required" });
+    return;
+  }
+  const oppId = req.params.id;
+  const opp = await queryOne(`select id from opportunities where id=$1`, [oppId]);
+  if (!opp) { res.status(404).json({ error: "Opportunity not found" }); return; }
+
+  const sub = await queryOne(`select id from subcontractors where id=$1`, [subcontractor_id]);
+  if (!sub) { res.status(404).json({ error: "Subcontractor not found" }); return; }
+
+  const existing = await queryOne<{ id: string }>(
+    `select id from call_cards where opportunity_id=$1 and subcontractor_id=$2 limit 1`,
+    [oppId, subcontractor_id]
+  );
+
+  if (existing) {
+    await query(
+      `update call_cards
+          set quote_amount=$1,
+              status='quoted',
+              response_json=coalesce(response_json, $2::jsonb)
+        where id=$3`,
+      [Number(quote_amount), JSON.stringify({ outcome: "quoted" }), existing.id]
+    );
+    res.json({ ok: true, card_id: existing.id, created: false });
+  } else {
+    const row = await queryOne<{ id: string }>(
+      `insert into call_cards (opportunity_id, subcontractor_id, status, quote_amount, response_json)
+       values ($1, $2, 'quoted', $3, $4::jsonb)
+       returning id`,
+      [oppId, subcontractor_id, Number(quote_amount), JSON.stringify({ outcome: "quoted" })]
+    );
+    res.json({ ok: true, card_id: row?.id, created: true });
+  }
+});
+
 router.post("/:id/action", async (req: Request, res: Response) => {
   const { action, stage } = req.body ?? {};
   const { id } = req.params;
