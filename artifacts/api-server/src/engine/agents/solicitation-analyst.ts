@@ -26,20 +26,62 @@ import type {
   Attachment,
 } from "../types";
 
+const NA = "Not specified in the provided documents";
+
 const AnalysisSchema = z.object({
-  scope_plain_language: z.string(),
+  project_overview: z.string().default(NA),
+  scope_plain_language: z.string().default(NA),
+  location: z.string().default(NA),
+  estimated_value: z.string().default(NA),
+  due_date: z.string().default(NA),
+  qualifications: z
+    .object({
+      certifications: z.array(z.string()).default([]),
+      licenses: z.array(z.string()).default([]),
+      insurance: z.array(z.string()).default([]),
+      bonding: z.array(z.string()).default([]),
+      experience: z.array(z.string()).default([]),
+      other: z.array(z.string()).default([]),
+    })
+    .default({}),
+  prebid_meeting: z
+    .object({ required: z.boolean().default(false), details: z.string().optional() })
+    .nullable()
+    .default(null),
+  site_visit: z
+    .object({ required: z.boolean().default(false), details: z.string().optional() })
+    .nullable()
+    .default(null),
+  submission_method: z.string().default(NA),
   submission_requirements: z.array(z.string()).default([]),
   evaluation_criteria: z.array(z.string()).default([]),
+  required_forms: z
+    .array(z.object({ name: z.string(), note: z.string().optional() }))
+    .default([]),
+  key_dates: z.array(z.object({ label: z.string(), date: z.string() })).default([]),
+  contacts: z
+    .array(
+      z.object({
+        name: z.string().optional(),
+        role: z.string().optional(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+      })
+    )
+    .default([]),
+  qa_addenda: z
+    .array(z.object({ label: z.string(), summary: z.string(), date: z.string().optional() }))
+    .default([]),
+  special_requirements: z.array(z.string()).default([]),
+  attention_items: z.array(z.string()).default([]),
+  pursue_recommendation: z.string().default(NA),
   required_trades: z.array(z.string()).default([]),
-  geographic_area: z.string(),
+  geographic_area: z.string().default(NA),
   risk_flags: z.array(z.string()).default([]),
   past_perf_classification: z.enum(["not_required", "team_accepted", "prime_only"]),
   questions_for_subs: z.array(z.string()).default([]),
-  draft_sow: z.string(),
+  draft_sow: z.string().default(""),
   set_aside: z.string().nullable().default(null),
-  key_dates: z
-    .array(z.object({ label: z.string(), date: z.string() }))
-    .default([]),
 });
 
 const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25MB cap per file
@@ -73,15 +115,20 @@ async function processAttachment(
     // Persist the raw file + a documents row (best-effort).
     const safeName = label.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
     const key = `solicitations/${opportunityId}/${index + 1}_${safeName}`;
-    let storagePath: string | null = null;
     try {
       const up = await storage.upload(key, buf, ct || "application/octet-stream");
-      storagePath = up.path;
-      await query(
-        `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, meta)
-         values ($1,'solicitation',$2,$3,$4,$5,$6)`,
-        [opportunityId, label, up.path, up.backend, ct || null, JSON.stringify({ source_url: att.url })]
+      // Upsert-by-path so re-running the analyst does not duplicate document rows.
+      const existing = await queryOne<{ id: string }>(
+        `select id from documents where opportunity_id=$1 and storage_path=$2`,
+        [opportunityId, up.path]
       );
+      if (!existing) {
+        await query(
+          `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, meta)
+           values ($1,'solicitation',$2,$3,$4,$5,$6)`,
+          [opportunityId, label, up.path, up.backend, ct || null, JSON.stringify({ source_url: att.url })]
+        );
+      }
     } catch {
       /* storage/documents are best-effort; continue with extraction */
     }
@@ -108,31 +155,65 @@ async function processAttachment(
 
 function buildPrompt(opp: Opportunity, attachmentContext: string): string {
   return [
-    "Analyze this government solicitation and produce a structured brief. Use the Company Profile (your system context) to judge what trades we need, our geographic fit, and — critically — how the past-performance requirement should be classified for us as a small-business prime that teams with subcontractors.",
+    "You are a government-procurement analyst. Read this solicitation and its attachments and produce a COMPLETE, plain-English bid brief so a busy contractor can understand the whole opportunity in a few minutes without reading hundreds of pages.",
     "",
-    "OPPORTUNITY:",
+    "RULES — follow exactly:",
+    "1. Extract every important requirement that appears ANYWHERE in the notice or the attachment text below. Never omit a critical requirement, deadline, form, or qualification.",
+    "2. Do NOT invent or assume anything. If a field is not stated in the provided material, set it to \"Not specified in the provided documents\" (or an empty list). Never guess a date, dollar amount, or requirement.",
+    "3. Preserve exact figures, dates, times, timezones, form numbers, and clause references verbatim — do not round or paraphrase numbers.",
+    "4. Write in clear plain English an operator can skim. Be concise but complete.",
+    "",
+    "OPPORTUNITY METADATA:",
     `Title: ${opp.title ?? "(none)"}`,
-    `Agency: ${opp.agency ?? "(none)"}`,
+    `Agency: ${opp.agency ?? "(none)"}${opp.sub_agency ? " / " + opp.sub_agency : ""}`,
     `Solicitation #: ${opp.solicitation_number ?? "(none)"}`,
     `NAICS: ${opp.naics_code ?? "(none)"}  Set-aside: ${opp.set_aside_type ?? "(none)"}`,
-    `Estimated value: ${opp.value_estimated ?? "(unknown)"}`,
-    `Location: ${opp.location_state ?? "(unknown)"}`,
-    `Deadline: ${opp.deadline ?? "(unknown)"}`,
+    `Posted value (if any): ${opp.value_estimated ?? "(unknown)"}`,
+    `Place of performance: ${opp.location_text ?? ""} ${opp.location_state ?? ""}`.trim(),
+    `Response deadline (from portal): ${opp.deadline ?? "(unknown)"}`,
+    opp.contact_json ? `Point of contact (from portal): ${JSON.stringify(opp.contact_json)}` : "",
     "",
     "DESCRIPTION:",
-    (opp.description ?? "(no description provided)").slice(0, 6000),
+    (opp.description ?? "(no description provided)").slice(0, 8000),
     "",
-    "ATTACHMENTS (extracted text where available — PDFs are parsed; use this as primary source material):",
-    (attachmentContext || "(none)").slice(0, 24000),
+    "ATTACHMENT TEXT (parsed from the actual bid documents — PRIMARY SOURCE, prefer this over the portal summary):",
+    (attachmentContext || "(no attachment text extracted)").slice(0, 60000),
     "",
-    "PAST-PERFORMANCE CLASSIFICATION — choose exactly one:",
+    "PAST-PERFORMANCE CLASSIFICATION — choose exactly one for past_perf_classification:",
     '- "not_required": the solicitation does not require past performance.',
-    '- "team_accepted": past performance may be satisfied by the team, including subcontractor project history.',
-    '- "prime_only": past performance must be the prime\'s own performance and cannot rely on subs. This BLOCKS us.',
+    '- "team_accepted": past performance may be satisfied by the team, including subcontractor experience.',
+    '- "prime_only": past performance must be the prime\'s OWN performance and cannot rely on subs.',
     "",
-    "Return JSON matching this shape exactly:",
-    "{ scope_plain_language: string, submission_requirements: string[], evaluation_criteria: string[], required_trades: string[], geographic_area: string, risk_flags: string[], past_perf_classification: \"not_required\"|\"team_accepted\"|\"prime_only\", questions_for_subs: string[], draft_sow: string, set_aside: string|null, key_dates: [{label, date}] }",
-    "draft_sow is a concise statement of work we can hand to subcontractors. questions_for_subs are the specific clarifying questions to ask each sub.",
+    "Return ONE JSON object with EXACTLY these keys (use the \"Not specified\" string or [] where the documents are silent):",
+    "{",
+    '  "project_overview": string,               // 2-4 sentences: what this project is, for whom, and why',
+    '  "scope_plain_language": string,           // the scope of work in plain English (can be a few paragraphs)',
+    '  "location": string,                       // full place of performance (address/city/state/base)',
+    '  "estimated_value": string,                // e.g. "$120,000" or a range, or "Not specified..."',
+    '  "due_date": string,                       // full bid due date AND time AND timezone, verbatim',
+    '  "qualifications": {                        // everything the bidder must hold/prove',
+    '     "certifications": string[], "licenses": string[], "insurance": string[],',
+    '     "bonding": string[], "experience": string[], "other": string[] },',
+    '  "prebid_meeting": { "required": boolean, "details": string } | null,   // date/time/location/registration if any',
+    '  "site_visit": { "required": boolean, "details": string } | null,',
+    '  "submission_method": string,              // how/where to submit: portal, email, hand-delivery, mailing address',
+    '  "submission_requirements": string[],      // page limits, format, copies, sealed-bid rules, labeling, etc.',
+    '  "evaluation_criteria": string[],          // how bids are evaluated (LPTA, best value, factors + weights)',
+    '  "required_forms": [{ "name": string, "note": string }],   // SF-1449, reps & certs, bid bond form, wage decs, etc.',
+    '  "key_dates": [{ "label": string, "date": string }],       // ALL dates: questions due, addenda, award, POP start/end, milestones',
+    '  "contacts": [{ "name": string, "role": string, "email": string, "phone": string }],',
+    '  "qa_addenda": [{ "label": string, "summary": string, "date": string }],  // amendments/addenda and Q&A if present',
+    '  "special_requirements": string[],         // wage determinations, Buy American, security, environmental, small-biz subcontracting, etc.',
+    '  "attention_items": string[],              // risks / unusual clauses (liquidated damages, tight timeline, high bonding, prime-only past perf) a human should note',
+    '  "pursue_recommendation": string,          // 1-3 sentences: should we pursue, and the single biggest reason for/against',
+    '  "required_trades": string[],              // trades we would need subcontractors for',
+    '  "geographic_area": string,                // area to source subs from',
+    '  "risk_flags": string[],                   // short machine-ish flags, e.g. "liquidated_damages", "high_bonding"',
+    '  "past_perf_classification": "not_required"|"team_accepted"|"prime_only",',
+    '  "questions_for_subs": string[],           // specific questions to ask each subcontractor',
+    '  "draft_sow": string,                      // concise scope we can hand to a subcontractor',
+    '  "set_aside": string | null',
+    "}",
   ].join("\n");
 }
 
@@ -176,7 +257,7 @@ export const solicitationAnalyst: AgentDefinition = {
     try {
       const { data, usage } = await completeJson(buildPrompt(opp, attachmentContext), {
         schema: AnalysisSchema,
-        maxTokens: 2500,
+        maxTokens: 4096,
       });
       analysis = data;
       await logAgent({

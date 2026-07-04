@@ -195,10 +195,65 @@ export interface ScoreBreakdown {
   summary: string;
 }
 
+export interface BidContact {
+  name?: string;
+  role?: string;
+  email?: string;
+  phone?: string;
+}
+export interface RequiredForm {
+  name: string;
+  note?: string;
+}
+export interface QaAddendum {
+  label: string;
+  summary: string;
+  date?: string;
+}
+export interface MeetingInfo {
+  required: boolean;
+  details?: string; // date/time/location/registration
+}
+export interface Qualifications {
+  certifications?: string[];
+  licenses?: string[];
+  insurance?: string[];
+  bonding?: string[];
+  experience?: string[];
+  other?: string[];
+}
+
+/**
+ * A comprehensive, plain-English bid brief. The Solicitation Analyst fills every
+ * field it can from the notice + extracted attachment text. Fields it cannot
+ * find are set to an explicit "Not specified in the provided documents" string
+ * or empty list — never fabricated. Legacy fields (scope_plain_language,
+ * required_trades, past_perf_classification, questions_for_subs, draft_sow) are
+ * retained for the downstream agents.
+ */
 export interface SolicitationAnalysis {
+  // --- Operator-facing brief ---
+  title?: string;
+  project_overview: string;
   scope_plain_language: string;
+  location: string;
+  estimated_value: string; // plain text: "$120,000" or "Not specified"
+  due_date: string; // plain text incl. time + timezone if given
+  qualifications: Qualifications;
+  prebid_meeting: MeetingInfo | null;
+  site_visit: MeetingInfo | null;
+  submission_method: string; // delivery method / portal / email / hand-delivery
   submission_requirements: string[];
   evaluation_criteria: string[];
+  required_forms: RequiredForm[];
+  key_dates: { label: string; date: string }[]; // milestones + deadlines
+  contacts: BidContact[];
+  qa_addenda: QaAddendum[];
+  special_requirements: string[];
+  attention_items: string[]; // risks / unusual clauses / things needing a human look
+  pursue_recommendation: string; // 1-3 sentence "should we pursue and why"
+
+  // --- Downstream-agent fields (retained) ---
   required_trades: string[];
   geographic_area: string;
   risk_flags: string[];
@@ -206,7 +261,6 @@ export interface SolicitationAnalysis {
   questions_for_subs: string[];
   draft_sow: string;
   set_aside: string | null;
-  key_dates: { label: string; date: string }[];
 }
 
 export interface Subcontractor {

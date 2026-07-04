@@ -2,9 +2,19 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { requireAuth } from "../lib/session-middleware";
 import { query, queryOne } from "../lib/db";
+import { storage } from "../engine/integrations/storage";
 
 const router = Router();
 router.use(requireAuth);
+
+const MIME_BY_EXT: Record<string, string> = {
+  pdf: "application/pdf",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  zip: "application/zip",
+};
 
 router.get("/", async (req: Request, res: Response) => {
   const { stage, tier, human_action_required, limit } = req.query;
@@ -52,13 +62,63 @@ router.get("/:id", async (req: Request, res: Response) => {
     [req.params.id]
   );
 
+  // Attachments (solicitation documents + generated files) for the bid-brief view.
+  const documents = await query<{
+    id: string;
+    kind: string;
+    name: string;
+    mime: string | null;
+    created_at: string;
+    meta: Record<string, unknown> | null;
+  }>(
+    `select id, kind, name, mime, created_at, meta
+       from documents where opportunity_id = $1
+      order by (kind <> 'solicitation'), name asc`,
+    [req.params.id]
+  );
+
   res.json({
     ...(row as Record<string, unknown>),
     bid_quote_count: Number(bidSummary?.quote_count ?? 0),
     bid_min_quote: bidSummary?.min_quote != null ? Number(bidSummary.min_quote) : null,
     bid_max_quote: bidSummary?.max_quote != null ? Number(bidSummary.max_quote) : null,
     bid_avg_quote: bidSummary?.avg_quote != null ? Number(bidSummary.avg_quote) : null,
+    documents: documents.map((d) => ({
+      id: d.id,
+      kind: d.kind,
+      name: d.name,
+      mime: d.mime,
+      created_at: d.created_at,
+      source_url: (d.meta as { source_url?: string } | null)?.source_url ?? null,
+      download_url: `/api/opportunities/${req.params.id}/documents/${d.id}`,
+    })),
   });
+});
+
+/** Serve a stored attachment: redirect to a Supabase signed URL, or stream the local copy. */
+router.get("/:id/documents/:docId", async (req: Request, res: Response) => {
+  const doc = await queryOne<{ name: string; storage_path: string | null; storage_backend: string; mime: string | null }>(
+    `select name, storage_path, storage_backend, mime from documents where id = $1 and opportunity_id = $2`,
+    [req.params.docId, req.params.id]
+  );
+  if (!doc || !doc.storage_path) {
+    res.status(404).json({ error: "Document not found" });
+    return;
+  }
+  try {
+    const signed = await storage.signedUrl(doc.storage_path);
+    if (signed && signed.startsWith("http") && !signed.includes("/api/")) {
+      res.redirect(signed);
+      return;
+    }
+    const buf = await storage.download(doc.storage_path, doc.storage_backend as "supabase" | "local");
+    const ext = doc.name.split(".").pop()?.toLowerCase() ?? "";
+    res.setHeader("Content-Type", doc.mime || MIME_BY_EXT[ext] || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${doc.name.replace(/"/g, "")}"`);
+    res.end(buf);
+  } catch {
+    res.status(404).json({ error: "File unavailable" });
+  }
 });
 
 router.get("/:id/quotes", async (req: Request, res: Response) => {
