@@ -33,7 +33,10 @@ router.get("/:id", async (req: Request, res: Response) => {
 });
 
 router.patch("/:id", async (req: Request, res: Response) => {
-  const { notes, is_preferred, blacklisted, project_history } = req.body ?? {};
+  const {
+    notes, is_preferred, blacklisted, project_history,
+    company_name, owner_name, phone, email, website, city, state,
+  } = req.body ?? {};
   const sets: string[] = ["updated_at=now()"];
   const params: unknown[] = [];
 
@@ -41,6 +44,13 @@ router.patch("/:id", async (req: Request, res: Response) => {
   if (is_preferred !== undefined) { params.push(is_preferred); sets.push(`is_preferred=$${params.length}`); }
   if (blacklisted !== undefined) { params.push(blacklisted); sets.push(`blacklisted=$${params.length}`); }
   if (project_history !== undefined) { params.push(JSON.stringify(project_history)); sets.push(`project_history=$${params.length}`); }
+  if (company_name !== undefined) { params.push(company_name); sets.push(`company_name=$${params.length}`); }
+  if (owner_name !== undefined) { params.push(owner_name); sets.push(`owner_name=$${params.length}`); }
+  if (phone !== undefined) { params.push(phone); sets.push(`phone=$${params.length}`); }
+  if (email !== undefined) { params.push(email); sets.push(`email=$${params.length}`); }
+  if (website !== undefined) { params.push(website); sets.push(`website=$${params.length}`); }
+  if (city !== undefined) { params.push(city); sets.push(`city=$${params.length}`); }
+  if (state !== undefined) { params.push(state); sets.push(`state=$${params.length}`); }
 
   params.push(req.params.id);
   await query(`update subcontractors set ${sets.join(", ")} where id=$${params.length}`, params);

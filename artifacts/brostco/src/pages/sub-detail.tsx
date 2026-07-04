@@ -6,13 +6,27 @@ import { ActionButton } from "@/components/action-button";
 import { currency, shortDate, timeAgo } from "@/lib/format";
 import type { Subcontractor, ProjectHistoryItem } from "@/lib/types";
 
+interface ContactDraft {
+  company_name: string;
+  owner_name: string;
+  phone: string;
+  email: string;
+  website: string;
+  city: string;
+  state: string;
+}
+
 export default function SubDetailPage() {
   const [, params] = useRoute("/subs/:id");
   const id = params?.id ?? "";
-  const { data: sub, isLoading } = useGetSub(id);
+  const { data: sub, isLoading, refetch } = useGetSub(id);
   const [editingHistory, setEditingHistory] = useState(false);
   const [historyJson, setHistoryJson] = useState("");
   const [notes, setNotes] = useState<string | null>(null);
+  const [editingContact, setEditingContact] = useState(false);
+  const [contact, setContact] = useState<ContactDraft | null>(null);
+  const [savingContact, setSavingContact] = useState(false);
+  const [contactError, setContactError] = useState("");
 
   if (isLoading) return (
     <div className="flex h-full flex-col">
@@ -33,6 +47,57 @@ export default function SubDetailPage() {
   const s = sub as Subcontractor;
   const history = s.project_history ?? [];
   const currentNotes = notes ?? s.notes ?? "";
+
+  function initContactEdit() {
+    setContact({
+      company_name: s.company_name ?? "",
+      owner_name: s.owner_name ?? "",
+      phone: s.phone ?? "",
+      email: s.email ?? "",
+      website: s.website ?? "",
+      city: s.city ?? "",
+      state: s.state ?? "",
+    });
+    setContactError("");
+    setEditingContact(true);
+  }
+
+  function setField(field: keyof ContactDraft, value: string) {
+    setContact((prev) => prev ? { ...prev, [field]: value } : prev);
+  }
+
+  async function saveContact() {
+    if (!contact) return;
+    setSavingContact(true);
+    setContactError("");
+    try {
+      const res = await fetch(`/api/subs/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: contact.company_name || null,
+          owner_name: contact.owner_name || null,
+          phone: contact.phone || null,
+          email: contact.email || null,
+          website: contact.website || null,
+          city: contact.city || null,
+          state: contact.state || null,
+        }),
+        credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setContactError((body as Record<string, unknown>).error as string ?? "Save failed");
+      } else {
+        setEditingContact(false);
+        refetch();
+      }
+    } catch (e) {
+      setContactError((e as Error).message);
+    } finally {
+      setSavingContact(false);
+    }
+  }
 
   function initHistoryEdit() {
     setHistoryJson(JSON.stringify(history, null, 2));
@@ -57,12 +122,72 @@ export default function SubDetailPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div><p className="label">Phone</p><p className="mt-0.5 text-sm text-slate-200">{s.phone ? <a href={`tel:${s.phone}`} className="text-brand-400 hover:underline">{s.phone}</a> : "—"}</p></div>
-          <div><p className="label">Email</p><p className="mt-0.5 truncate text-sm text-slate-200">{s.email ? <a href={`mailto:${s.email}`} className="text-brand-400 hover:underline">{s.email}</a> : "—"}{s.email_verified && <span className="ml-1 text-xs text-pursue">✓</span>}</p></div>
-          <div><p className="label">Location</p><p className="mt-0.5 text-sm text-slate-200">{[s.city, s.state].filter(Boolean).join(", ") || "—"}</p></div>
-          <div><p className="label">Website</p><p className="mt-0.5 truncate text-sm">{s.website ? <a href={s.website} target="_blank" rel="noreferrer" className="text-brand-400 hover:underline">{s.website}</a> : "—"}</p></div>
-        </div>
+        {/* ── Contact Info ── */}
+        {!editingContact ? (
+          <div className="card space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="label">Contact info</p>
+              <button className="btn-ghost text-xs" onClick={initContactEdit}>Edit</button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div><p className="label">Phone</p><p className="mt-0.5 text-sm text-slate-200">{s.phone ? <a href={`tel:${s.phone}`} className="text-brand-400 hover:underline">{s.phone}</a> : <span className="text-slate-500">—</span>}</p></div>
+              <div><p className="label">Email</p><p className="mt-0.5 truncate text-sm text-slate-200">{s.email ? <a href={`mailto:${s.email}`} className="text-brand-400 hover:underline">{s.email}</a> : <span className="text-slate-500">—</span>}{s.email_verified && <span className="ml-1 text-xs text-pursue">✓</span>}</p></div>
+              <div><p className="label">Location</p><p className="mt-0.5 text-sm text-slate-200">{[s.city, s.state].filter(Boolean).join(", ") || <span className="text-slate-500">—</span>}</p></div>
+              <div><p className="label">Website</p><p className="mt-0.5 truncate text-sm">{s.website ? <a href={s.website} target="_blank" rel="noreferrer" className="text-brand-400 hover:underline">{s.website}</a> : <span className="text-slate-500">—</span>}</p></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div><p className="label">Company name</p><p className="mt-0.5 text-sm text-slate-200">{s.company_name || <span className="text-slate-500">—</span>}</p></div>
+              <div><p className="label">Contact / Owner</p><p className="mt-0.5 text-sm text-slate-200">{s.owner_name || <span className="text-slate-500">—</span>}</p></div>
+              <div><p className="label">Last contact</p><p className="mt-0.5 text-sm text-slate-200">{s.last_contacted ? timeAgo(s.last_contacted) : "—"}</p></div>
+            </div>
+          </div>
+        ) : (
+          <div className="card space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="label">Edit contact info</p>
+              <button className="btn-ghost text-xs" onClick={() => setEditingContact(false)}>Cancel</button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label mb-1">Company name</label>
+                <input className="input" value={contact?.company_name ?? ""} onChange={(e) => setField("company_name", e.target.value)} placeholder="Company name" />
+              </div>
+              <div>
+                <label className="label mb-1">Contact / Owner name</label>
+                <input className="input" value={contact?.owner_name ?? ""} onChange={(e) => setField("owner_name", e.target.value)} placeholder="Owner or primary contact" />
+              </div>
+              <div>
+                <label className="label mb-1">Phone</label>
+                <input className="input" type="tel" value={contact?.phone ?? ""} onChange={(e) => setField("phone", e.target.value)} placeholder="(555) 555-5555" />
+              </div>
+              <div>
+                <label className="label mb-1">Email</label>
+                <input className="input" type="email" value={contact?.email ?? ""} onChange={(e) => setField("email", e.target.value)} placeholder="contact@company.com" />
+              </div>
+              <div>
+                <label className="label mb-1">Website</label>
+                <input className="input" type="url" value={contact?.website ?? ""} onChange={(e) => setField("website", e.target.value)} placeholder="https://..." />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="label mb-1">City</label>
+                  <input className="input" value={contact?.city ?? ""} onChange={(e) => setField("city", e.target.value)} placeholder="City" />
+                </div>
+                <div>
+                  <label className="label mb-1">State</label>
+                  <input className="input" value={contact?.state ?? ""} onChange={(e) => setField("state", e.target.value)} placeholder="CA" maxLength={2} />
+                </div>
+              </div>
+            </div>
+            {contactError && <p className="text-sm text-risk">{contactError}</p>}
+            <div className="flex gap-2">
+              <button className="btn-primary" onClick={saveContact} disabled={savingContact}>
+                {savingContact ? "Saving..." : "Save contact info"}
+              </button>
+              <button className="btn-ghost" onClick={() => setEditingContact(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div><p className="label">Google rating</p><p className="mt-0.5 font-mono text-sm text-slate-200">{s.google_rating != null ? `${s.google_rating}★ (${s.review_count ?? 0})` : "—"}</p></div>
