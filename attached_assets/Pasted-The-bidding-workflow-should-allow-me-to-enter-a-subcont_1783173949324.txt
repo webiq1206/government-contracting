@@ -1,0 +1,37 @@
+The bidding workflow should allow me to enter a subcontractor's quoted bid amount at any point in the process, but this field should remain optional since not every subcontractor will provide pricing immediately. Once a bid is entered, it must automatically update every relevant area of the platform, including project summaries, bid comparisons, subcontractor profiles, reports, dashboards, and any other location where bid information is displayed or calculated.
+
+Each subcontractor call card should function as a complete call guide, giving me everything I need to make the call without opening additional screens. The information should be concise, easy to scan, and include:
+
+* Project name and location
+* Scope of work being requested
+* Bid due date (if applicable)
+* Previous quoted amount (if one exists)
+* Current bid status
+* Any important project notes or requirements
+* Relevant contact information
+
+The call card should also generate a simple call script or checklist that guides the conversation. At a minimum, it should prompt me to ask:
+
+* Can you perform this scope of work?
+* Are you interested in bidding this project?
+* If yes, what is your estimated price or when can you provide a bid?
+* Do you have any questions about the scope?
+* When can you start if awarded the job?
+
+The system should also support additional dynamic subcontractor fields where appropriate, including but not limited to:
+
+* Years of experience
+* Trade specialties
+* Certifications and licenses
+* Insurance status and expiration dates
+* Bonding information
+* Service areas
+* Crew size
+* Availability
+* Preferred project size
+* Notes and performance history
+* Preferred communication method
+
+These fields should be configurable so additional information can be added in the future without requiring structural changes.
+
+Everything related to subcontractors and bids should use a single source of truth. Any update made anywhere in the platform, whether to the subcontractor profile, contact information, qualifications, certifications, bid amount, bid status, notes, or project association, must automatically synchronize and update everywhere that information is displayed. There should never be duplicate or inconsistent data anywhere in the application.
