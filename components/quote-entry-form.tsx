@@ -30,6 +30,7 @@ export function QuoteEntryForm({
   ]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   function update(i: number, patch: Partial<Row>) {
     setRows((r) => r.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
@@ -58,6 +59,23 @@ export function QuoteEntryForm({
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
+      const notes: string[] = [];
+      if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+        notes.push(...data.warnings);
+      }
+      if (Array.isArray(data.rejected) && data.rejected.length > 0) {
+        notes.push(
+          ...data.rejected.map(
+            (r: { trade: string | null; reason: string }) =>
+              `${r.trade ?? "One quote"} was not saved: ${r.reason}`
+          )
+        );
+      }
+      setNotice(
+        notes.length > 0
+          ? notes.join(" ")
+          : `Saved ${data.saved ?? "your"} quote(s). Bid Builder is pricing the bid now.`
+      );
       router.refresh();
     } else {
       setError(data.error ?? "Failed to save quotes.");
@@ -104,6 +122,7 @@ export function QuoteEntryForm({
         </div>
       ))}
       {error && <p className="text-sm text-risk">{error}</p>}
+      {notice && !error && <p className="text-sm text-accent">{notice}</p>}
       <div className="flex gap-2">
         <button
           className="btn-ghost"
