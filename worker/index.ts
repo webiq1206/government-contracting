@@ -11,6 +11,7 @@ import http from "node:http";
 import { config } from "../lib/config";
 import { dbHealthy } from "../lib/db";
 import { getQueue, stopQueue } from "../lib/queue";
+import { applyMigrations } from "../lib/migrate";
 import { ALL_AGENTS } from "../lib/agents/registry";
 import { runAgent } from "../lib/agents/runner";
 import { startScheduler } from "./scheduler";
@@ -49,6 +50,15 @@ async function main() {
     process.on("SIGTERM", () => process.exit(0));
     process.on("SIGINT", () => process.exit(0));
     return;
+  }
+
+  // Apply any pending schema migrations before handlers start. Idempotent,
+  // advisory-locked, and non-fatal: on failure the worker still boots so the
+  // web app keeps serving with the previous schema.
+  try {
+    await applyMigrations();
+  } catch (err) {
+    console.error("[worker] migration failed (continuing with existing schema):", (err as Error).message);
   }
 
   // RUN_WORKER=false → this instance does NOT process jobs or run the scheduler.

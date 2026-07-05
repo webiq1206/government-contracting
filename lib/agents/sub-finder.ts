@@ -95,6 +95,20 @@ export const subFinder: AgentDefinition = {
         continue;
       }
 
+      // Defensive: if the Places client ever returns an unexpected shape,
+      // skip the trade with a log instead of crashing the whole run.
+      if (!Array.isArray(search.results)) {
+        await logAgent({
+          agent: "sub-finder",
+          action: "find-contractors",
+          level: "warn",
+          status: "skipped",
+          opportunityId,
+          message: `Google Places returned an unexpected response for trade "${trade}"; skipping this trade.`,
+        });
+        continue;
+      }
+
       // Score + rank the candidates for this trade.
       const ranked = search.results
         .map((c) => ({ candidate: c, score: scoreCandidate(c) }))
@@ -125,6 +139,10 @@ export const subFinder: AgentDefinition = {
           enqueued.push({
             agent: "sub-verify",
             payload: { opportunityId, subcontractorId: subId, trade },
+            opts: {
+              singletonKey: `verify:${opportunityId}:${subId}:${trade}`,
+              singletonSeconds: 3600,
+            },
           });
         }
       }

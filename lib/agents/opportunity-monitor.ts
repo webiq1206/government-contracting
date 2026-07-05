@@ -94,11 +94,32 @@ export const opportunityMonitor: AgentDefinition = {
     let skippedDisabled = false;
 
     // --- Federal (SAM.gov) ---
-    const search = await sam.searchOpportunities({
+    // Paginate so a busy NAICS window can't silently drop notices past the
+    // first page. Bounded at 5 pages/run (500 notices) to respect the daily
+    // SAM key quota; the 2-hour cron catches anything beyond that next run.
+    const samItems: Awaited<ReturnType<typeof sam.searchOpportunities>>["items"] = [];
+    let samDisabled = false;
+    const search0 = await sam.searchOpportunities({
       naicsCodes: naics.length ? naics : undefined,
       ptype: "o,p,k,r", // Solicitation, Presol, Combined, Sources Sought
       limit: 100,
+      offset: 0,
     });
+    samDisabled = !!search0.disabled;
+    samItems.push(...(search0.items ?? []));
+    if (!samDisabled && (search0.items?.length ?? 0) === 100) {
+      for (let page = 1; page < 5; page++) {
+        const next = await sam.searchOpportunities({
+          naicsCodes: naics.length ? naics : undefined,
+          ptype: "o,p,k,r",
+          limit: 100,
+          offset: page * 100,
+        });
+        samItems.push(...(next.items ?? []));
+        if ((next.items?.length ?? 0) < 100) break;
+      }
+    }
+    const search = { disabled: samDisabled, items: samItems };
     if (search.disabled) {
       skippedDisabled = true;
       await logAgent({
@@ -120,8 +141,14 @@ export const opportunityMonitor: AgentDefinition = {
               payload: { opportunityId: res.id },
             });
           }
-          // Always score newly ingested opportunities.
-          enqueued.push({ agent: "scoring-engine", payload: { opportunityId: res.id } });
+          // Always score newly ingested opportunities. Singleton per opp so a
+          // re-run within the window can't double-score (and double-trigger
+          // the whole downstream pipeline).
+          enqueued.push({
+            agent: "scoring-engine",
+            payload: { opportunityId: res.id },
+            opts: { singletonKey: `score:${res.id}`, singletonSeconds: 3600 },
+          });
         }
       }
     }
@@ -147,7 +174,11 @@ export const opportunityMonitor: AgentDefinition = {
       );
       if (row) {
         ingested++;
-        enqueued.push({ agent: "scoring-engine", payload: { opportunityId: row.id } });
+        enqueued.push({
+          agent: "scoring-engine",
+          payload: { opportunityId: row.id },
+          opts: { singletonKey: `score:${row.id}`, singletonSeconds: 3600 },
+        });
       }
     }
 

@@ -121,17 +121,25 @@ export const subVerify: AgentDefinition = {
 
     // --- SAM exclusions ---
     let samExcluded = sub.sam_excluded ?? false;
+    // True only when the exclusion status is actually CONFIRMED this run. An
+    // API error must not let an unchecked sub through to outreach — that's a
+    // debarment false negative. (Column is NOT NULL default false, so the
+    // stored value alone can't distinguish "checked clear" from "never checked".)
+    let samConfirmed = false;
     const excl = await sam.isExcluded(sub.company_name);
     if (excl.disabled) {
       notes.push("SAM exclusions check disabled.");
+      samConfirmed = true; // operator explicitly runs without SAM checks
     } else if (excl.error) {
-      // API error — do NOT record "clear" (that would be a debarment false
-      // negative). Keep any prior status and flag it as unverified.
-      notes.push("SAM exclusions check errored — status unverified, retry later.");
+      notes.push(
+        "SAM exclusions check errored — status unverified. Outreach held until the next verify run confirms."
+      );
     } else {
       samExcluded = excl.excluded;
+      samConfirmed = true;
     }
     verification.sam_excluded = samExcluded;
+    verification.sam_confirmed = samConfirmed;
 
     // --- Reviews summary via Claude (best effort) ---
     let reviewsSummary: string | null = sub.reviews_summary ?? null;
@@ -193,7 +201,7 @@ export const subVerify: AgentDefinition = {
       minRating == null ||
       sub.google_rating == null ||
       sub.google_rating >= minRating;
-    const passes = !samExcluded && ratingOk;
+    const passes = !samExcluded && samConfirmed && ratingOk;
 
     const enqueued: AgentResult["enqueued"] = [];
     if (passes) {
@@ -205,7 +213,7 @@ export const subVerify: AgentDefinition = {
 
     const summary = `Verified ${sub.company_name}: email ${
       emailVerified ? "verified" : email ? "unverified" : "not found"
-    }, SAM ${samExcluded ? "EXCLUDED" : "clear"}, license ${licenseStatus}${
+    }, SAM ${samExcluded ? "EXCLUDED" : samConfirmed ? "clear" : "UNVERIFIED"}, license ${licenseStatus}${
       passes ? " → outreach queued" : " → held (failed standards)"
     }.`;
 

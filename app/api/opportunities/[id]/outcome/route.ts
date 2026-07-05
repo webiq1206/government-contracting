@@ -30,9 +30,30 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   );
 
   const awardAmount = body.award_amount != null ? Number(body.award_amount) : null;
+  if (awardAmount != null && (!Number.isFinite(awardAmount) || awardAmount <= 0)) {
+    return NextResponse.json(
+      { error: "Award amount must be a positive dollar figure." },
+      { status: 400 }
+    );
+  }
+  if (awardAmount != null && awardAmount > 100_000_000) {
+    return NextResponse.json(
+      { error: "Award amount is over $100M. Double-check the figure (dollars, not cents)." },
+      { status: 400 }
+    );
+  }
   const lossReason = body.loss_reason ?? null;
 
   if (outcome === "won") {
+    if (!bid) {
+      return NextResponse.json(
+        {
+          error:
+            "No bid exists for this opportunity yet. Build and submit a bid first so the win is tied to a bid record (analytics and the Learning Loop depend on it).",
+        },
+        { status: 400 }
+      );
+    }
     const contractNumber = body.contract_number ?? opp.solicitation_number ?? null;
     // CPARS due 7 days after contract close (spec). Default close = +180d if unknown.
     const endDate = body.end_date ?? null;

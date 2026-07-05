@@ -234,6 +234,20 @@ export const solicitationAnalyst: AgentDefinition = {
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
 
+    // Idempotency: a queue-triggered re-run must not re-download attachments and
+    // re-bill a Claude analysis that already exists. Manual runs (or an explicit
+    // force flag) re-analyze, e.g. after an amendment drops.
+    if (
+      opp.solicitation_analysis &&
+      ctx.trigger === "queue" &&
+      ctx.payload.force !== true
+    ) {
+      return {
+        ok: true,
+        summary: `Opportunity ${opportunityId} already analyzed; skipped duplicate run.`,
+      };
+    }
+
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 
@@ -259,7 +273,7 @@ export const solicitationAnalyst: AgentDefinition = {
       const { data, usage } = await completeJson(buildPrompt(opp, attachmentContext), {
         schema: AnalysisSchema,
         model: config.claude.modelSmart, // bid-critical extraction — never omit a requirement
-        maxTokens: 4096,
+        maxTokens: 8192,
       });
       analysis = data;
       await logAgent({

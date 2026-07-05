@@ -77,6 +77,8 @@ export const QUEUE_NAMES = [
   "review-expiry-sweep",
   "reply-poll",
   "stalled-pipeline-sweep",
+  "deadline-monitor",
+  "log-retention-sweep",
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];

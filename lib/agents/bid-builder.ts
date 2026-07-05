@@ -67,14 +67,45 @@ export const bidBuilder: AgentDefinition = {
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 
-    const quotes = await query<QuoteRow>(`select * from quotes where opportunity_id = $1`, [
+    const allQuotes = await query<QuoteRow>(`select * from quotes where opportunity_id = $1`, [
       opportunityId,
     ]);
-    if (quotes.length === 0) {
+    if (allQuotes.length === 0) {
       return {
         ok: true,
         summary: `No quotes entered yet for opportunity ${opportunityId}; nothing to build.`,
       };
+    }
+
+    // Only price against quotes with a real positive amount. A NULL/zero quote
+    // must never silently drop a sub's cost out of the bid total.
+    const quotes = allQuotes.filter((q) => num(q.quote_amount) > 0);
+    const invalidCount = allQuotes.length - quotes.length;
+    if (quotes.length === 0) {
+      await query(`update opportunities set human_action_required = true where id = $1`, [
+        opportunityId,
+      ]);
+      await logAgent({
+        agent: "bid-builder",
+        action: "invalid-quotes",
+        opportunityId,
+        level: "warn",
+        message: `All ${allQuotes.length} quote(s) are missing a dollar amount. Fix the quotes before building the bid.`,
+      });
+      return {
+        ok: true,
+        summary: `All quotes for ${opportunityId} are missing amounts; flagged for review instead of building a $0 bid.`,
+        humanActionRequired: true,
+      };
+    }
+    if (invalidCount > 0) {
+      await logAgent({
+        agent: "bid-builder",
+        action: "partial-quotes",
+        opportunityId,
+        level: "warn",
+        message: `${invalidCount} quote(s) had no amount and were excluded from pricing. Verify before submitting.`,
+      });
     }
 
     const subQuoteTotal = quotes.reduce((sum, q) => sum + num(q.quote_amount), 0);
@@ -143,7 +174,10 @@ export const bidBuilder: AgentDefinition = {
       label: q.trade || "Subcontractor",
       amount: num(q.quote_amount),
     }));
-    lineItems.push({ label: `Markup (${markupPct.toFixed(1)}%)`, amount: markupAmount });
+    lineItems.push({
+      label: `Markup ${markupPct.toFixed(1)}% (prices to ${profile.target_margin_pct}% target margin)`,
+      amount: markupAmount,
+    });
 
     // --- Documents. ---
     const docData: BidDocData = {

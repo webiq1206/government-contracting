@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { transaction } from "@/lib/db";
+import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -49,10 +50,21 @@ export async function POST(
   const response = (body.response ?? {}) as CallResponse;
   const closeCard = body.closeCard === true;
 
-  const quoteAmountNum = (() => {
-    const v = Number(response.quote_amount);
-    return Number.isFinite(v) && v > 0 ? v : null;
-  })();
+  // All money is whole US dollars. Reject obviously wrong magnitudes early.
+  const rawQuote = Number(response.quote_amount);
+  if (Number.isFinite(rawQuote) && rawQuote > 100_000_000) {
+    return NextResponse.json(
+      { error: "Quote is over $100M. Enter dollars, not cents." },
+      { status: 400 }
+    );
+  }
+  const quoteAmountNum = Number.isFinite(rawQuote) && rawQuote > 0 ? rawQuote : null;
+
+  // Clamp structured fields that have a defined range.
+  if (response.confidence != null) {
+    const c = Number(response.confidence);
+    response.confidence = Number.isFinite(c) ? Math.min(5, Math.max(1, Math.round(c))) : undefined;
+  }
 
   const cardStatus = closeCard
     ? response.outcome === "skipped"
@@ -188,16 +200,37 @@ export async function POST(
         );
 
         // Mark the sub as responsive on the pairing (drives sub reliability scoring).
+        // Scoped to the trade this call was about so a multi-trade sub's other
+        // pairings keep their own outreach state.
         await c.query(
           `update opportunity_subs
               set outreach_state='responsive', responded_at=now()
-            where opportunity_id=$1 and subcontractor_id=$2`,
-          [opportunity_id, subcontractor_id]
+            where opportunity_id=$1 and subcontractor_id=$2
+              and ($3::text is null or trade = $3)`,
+          [opportunity_id, subcontractor_id, trade]
         );
+
+        // A completed call that captured a price advances the opportunity to
+        // quote entry, exactly like the Quote Entry form does, so no path
+        // leaves the pipeline stuck in call_queue with quotes in hand.
+        if (quoteAmountNum != null) {
+          await c.query(
+            `update opportunities
+                set stage='quote_entry', human_action_required=false
+              where id=$1 and stage in ('outreach','call_queue')`,
+            [opportunity_id]
+          );
+        }
       }
 
       return { opportunity_id, subcontractor_id, quoteRowId };
     });
+
+    // Kick the Bid Builder whenever a completed call produced a price. It is
+    // idempotent (one bid per opportunity) and re-prices with the latest quotes.
+    if (closeCard && cardStatus === "called" && quoteAmountNum != null) {
+      await enqueue("bid-builder", { opportunityId: result.opportunity_id });
+    }
 
     await logAgent({
       agent: "operator",

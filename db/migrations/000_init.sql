@@ -223,7 +223,7 @@ create table if not exists contracts (
   end_date          date,
   milestones        jsonb default '[]'::jsonb,-- [{name, due, status, amount}]
   primary_sub_id    uuid references subcontractors(id) on delete set null,
-  backup_sub_id     uuid references subcontractors(id) on delete set null, -- always required
+  backup_sub_id     uuid references subcontractors(id) on delete set null, -- recommended; nullable until confirmed
   coordination_log  jsonb default '[]'::jsonb,-- timestamped activity (pass-through defense)
   non_ss_sub_pct    numeric not null default 0, -- non-small-business sub spend %
   co_contact_json   jsonb,                    -- contracting officer contact

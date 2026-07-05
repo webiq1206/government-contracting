@@ -79,9 +79,19 @@ export const learningLoop: AgentDefinition = {
     const currentWeights: Record<string, unknown> = activeWeights?.weights ?? {};
 
     // --- Analyze via Claude. ---
+    // Below 20 decided bids the sample is too small: weekly proposals would
+    // churn and contradict each other. Wait for a meaningful sample.
+    const MIN_OUTCOMES_FOR_PROPOSAL = 20;
     let analysis: z.infer<typeof AnalysisSchema> | null = null;
     let claudeSkipped = false;
-    if (outcomes.length > 0) {
+    if (outcomes.length > 0 && outcomes.length < MIN_OUTCOMES_FOR_PROPOSAL) {
+      await logAgent({
+        agent: "learning-loop",
+        action: "analyze-outcomes",
+        message: `Only ${outcomes.length} decided bid(s) so far (need ${MIN_OUTCOMES_FOR_PROPOSAL}). Weight analysis starts once more wins and losses are recorded. This is normal early on.`,
+      });
+    }
+    if (outcomes.length >= MIN_OUTCOMES_FOR_PROPOSAL) {
       const prompt = buildAnalysisPrompt(outcomes, currentWeights, profile?.scoring_rubric?.dimensions ?? []);
       try {
         const { data, usage } = await completeJson(prompt, {

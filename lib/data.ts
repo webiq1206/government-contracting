@@ -115,6 +115,31 @@ export async function callQueue(): Promise<CallCardRow[]> {
   );
 }
 
+/**
+ * Fetch ONE call card with its full workspace projection, regardless of status
+ * (so a completed card can be reopened for review). Same shape as callQueue().
+ */
+export async function callCardById(id: string): Promise<CallCardRow | null> {
+  return queryOne<CallCardRow>(
+    `select cc.id, cc.opportunity_id, cc.subcontractor_id, cc.card_json, cc.call_script,
+            cc.question_list, cc.needs_project_history, cc.status,
+            cc.response_json, cc.quote_amount,
+            s.company_name, s.owner_name, s.email, s.phone, s.website, s.address,
+            s.city, s.state, s.google_rating, s.reliability_score, s.license_status,
+            s.sam_excluded, s.trade_categories,
+            o.title as opportunity_title, o.agency, o.naics_code, o.set_aside_type,
+            o.value_estimated, o.location_state, o.deadline, o.solicitation_number,
+            o.description, o.solicitation_analysis, o.attachments_json,
+            (select trade from opportunity_subs os
+              where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
+       from call_cards cc
+       join subcontractors s on s.id = cc.subcontractor_id
+       join opportunities o on o.id = cc.opportunity_id
+      where cc.id=$1`,
+    [id]
+  );
+}
+
 /** Fetch prior communications + quotes for the (sub, opp) pair — used by the Call Workspace. */
 export async function callCardHistory(subId: string, oppId: string) {
   const [communications, quotes] = await Promise.all([
@@ -128,7 +153,7 @@ export async function callCardHistory(subId: string, oppId: string) {
     query(
       `select id, trade, quote_amount, payment_terms, is_out_of_range, created_at
          from quotes where subcontractor_id=$1 and opportunity_id=$2
-        order by created_at desc`,
+        order by created_at desc limit 50`,
       [subId, oppId]
     ),
   ]);
@@ -173,16 +198,18 @@ export async function subDatabase(filters: SubFilters = {}): Promise<Subcontract
 export async function subDetail(id: string) {
   const sub = await queryOne<Subcontractor>(`select * from subcontractors where id=$1`, [id]);
   if (!sub) return null;
-  const communications = await query(
-    `select * from communications where subcontractor_id=$1 order by created_at desc limit 50`,
-    [id]
-  );
-  const quotes = await query(
-    `select q.*, o.title as opportunity_title from quotes q
-       join opportunities o on o.id=q.opportunity_id
-      where q.subcontractor_id=$1 order by q.created_at desc`,
-    [id]
-  );
+  const [communications, quotes] = await Promise.all([
+    query(
+      `select * from communications where subcontractor_id=$1 order by created_at desc limit 50`,
+      [id]
+    ),
+    query(
+      `select q.*, o.title as opportunity_title from quotes q
+         join opportunities o on o.id=q.opportunity_id
+        where q.subcontractor_id=$1 order by q.created_at desc limit 100`,
+      [id]
+    ),
+  ]);
   return { sub, communications, quotes };
 }
 
@@ -235,7 +262,9 @@ export async function computeKpisFallback() {
        (select count(*) from bids where outcome='lost') as lost,
        (select avg(margin_pct) from bids where outcome='won') as avg_margin,
        (select sum(value_estimated) from opportunities where stage not in ('dismissed','lost') and status='open') as pipeline_value,
-       (select sum(award_amount) from contracts where status='active') as active_revenue`
+       (select sum(c.award_amount) from contracts c
+          left join opportunities o on o.id = c.opportunity_id
+         where c.status='active' and (o.id is null or o.status <> 'archived')) as active_revenue`
   );
   const won = Number(row?.won ?? 0);
   const lost = Number(row?.lost ?? 0);
@@ -280,24 +309,28 @@ export async function jobRunsSummary() {
 export async function opportunityDetail(id: string) {
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [id]);
   if (!opp) return null;
-  const bid = await queryOne(`select * from bids where opportunity_id=$1 order by created_at desc limit 1`, [id]);
-  const quotes = await query(
-    `select q.*, s.company_name from quotes q left join subcontractors s on s.id=q.subcontractor_id
-      where q.opportunity_id=$1 order by q.created_at desc`,
-    [id]
-  );
-  const subs = await query(
-    `select os.*, s.company_name, s.phone, s.email, s.email_verified, s.google_rating
-       from opportunity_subs os join subcontractors s on s.id=os.subcontractor_id
-      where os.opportunity_id=$1 order by os.trade, os.candidate_rank`,
-    [id]
-  );
-  const documents = await query(`select * from documents where opportunity_id=$1 order by created_at desc`, [id]);
-  const logs = await query(
-    `select agent, action, level, message, reasoning, created_at from agent_logs
-      where opportunity_id=$1 order by created_at desc limit 50`,
-    [id]
-  );
+  // Independent lookups run in parallel; every list is bounded so an aged
+  // opportunity can't balloon the page render.
+  const [bid, quotes, subs, documents, logs] = await Promise.all([
+    queryOne(`select * from bids where opportunity_id=$1 order by created_at desc limit 1`, [id]),
+    query(
+      `select q.*, s.company_name from quotes q left join subcontractors s on s.id=q.subcontractor_id
+        where q.opportunity_id=$1 order by q.created_at desc limit 200`,
+      [id]
+    ),
+    query(
+      `select os.*, s.company_name, s.phone, s.email, s.email_verified, s.google_rating
+         from opportunity_subs os join subcontractors s on s.id=os.subcontractor_id
+        where os.opportunity_id=$1 order by os.trade, os.candidate_rank limit 300`,
+      [id]
+    ),
+    query(`select * from documents where opportunity_id=$1 order by created_at desc limit 100`, [id]),
+    query(
+      `select agent, action, level, message, reasoning, created_at from agent_logs
+        where opportunity_id=$1 order by created_at desc limit 50`,
+      [id]
+    ),
+  ]);
   return { opp, bid, quotes, subs, documents, logs };
 }
 

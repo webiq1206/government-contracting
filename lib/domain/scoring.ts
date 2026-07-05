@@ -167,10 +167,21 @@ export function applyWeightOverrides<
   };
   const originalTotal = rubricDims.reduce((a, d) => a + d.max_points, 0) || 100;
   const rawTotal = rubricDims.reduce((a, d) => a + rawOf(d), 0) || 1;
-  return rubricDims.map((d) => ({
-    ...d,
-    max_points: Math.round((rawOf(d) / rawTotal) * originalTotal),
-  }));
+  // Largest-remainder rounding so the normalized max_points sum EXACTLY to the
+  // original total. Plain Math.round can produce 99 or 101, which silently
+  // shifts the pursue/review thresholds (they assume the original scale).
+  const exact = rubricDims.map((d) => (rawOf(d) / rawTotal) * originalTotal);
+  const floors = exact.map((v) => Math.floor(v));
+  let remainder = originalTotal - floors.reduce((a, b) => a + b, 0);
+  const order = exact
+    .map((v, i) => ({ i, frac: v - floors[i] }))
+    .sort((a, b) => b.frac - a.frac);
+  for (const { i } of order) {
+    if (remainder <= 0) break;
+    floors[i] += 1;
+    remainder -= 1;
+  }
+  return rubricDims.map((d, i) => ({ ...d, max_points: floors[i] }));
 }
 
 /**

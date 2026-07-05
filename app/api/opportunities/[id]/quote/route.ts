@@ -38,10 +38,31 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const tolerance = profile?.pricing_rules.out_of_range_tolerance_pct ?? 20;
 
   let subTotal = 0;
+  let saved = 0;
+  const rejected: Array<{ trade: string | null; reason: string }> = [];
+  const warnings: string[] = [];
   for (const q of items) {
     const amount = Number(q.quote_amount);
-    if (!Number.isFinite(amount) || amount <= 0) continue;
+    // All money in this system is whole US dollars (never cents).
+    if (!Number.isFinite(amount) || amount <= 0) {
+      rejected.push({
+        trade: q.trade ?? null,
+        reason: "Quote amount must be a positive dollar figure.",
+      });
+      continue;
+    }
+    if (amount > 100_000_000) {
+      rejected.push({
+        trade: q.trade ?? null,
+        reason: "Quote is over $100M. Enter dollars, not cents.",
+      });
+      continue;
+    }
+    if (amount > 10_000_000) {
+      warnings.push(`${q.trade ?? "Quote"} is over $10M. Double-check the figure.`);
+    }
     subTotal += amount;
+    saved++;
     let outOfRange = false;
     let comparison: Record<string, unknown> | null = null;
     if (pricingSummary?.median) {
@@ -50,19 +71,53 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       outOfRange = r.outOfRange;
       comparison = { comp_median: pricingSummary.median, projected_bid: bid, delta_pct: r.deltaPct };
     }
-    await query(
-      `insert into quotes (opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes, is_out_of_range, comparison_json)
-       values ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [
-        params.id,
-        q.subcontractorId ?? null,
-        q.trade ?? null,
-        amount,
-        q.payment_terms ?? null,
-        q.notes ?? null,
-        outOfRange,
-        comparison ? JSON.stringify(comparison) : null,
-      ]
+    // One quote per (opportunity, sub, trade): update the existing row instead
+    // of stacking duplicates, so the Call Workspace and this form stay in sync.
+    const existing =
+      q.subcontractorId != null
+        ? await queryOne<{ id: string }>(
+            `select id from quotes
+              where opportunity_id=$1 and subcontractor_id=$2 and coalesce(trade,'')=coalesce($3,'')
+              order by created_at desc limit 1`,
+            [params.id, q.subcontractorId, q.trade ?? null]
+          )
+        : null;
+    if (existing) {
+      await query(
+        `update quotes
+            set quote_amount=$2, payment_terms=$3, notes=$4, is_out_of_range=$5, comparison_json=$6
+          where id=$1`,
+        [
+          existing.id,
+          amount,
+          q.payment_terms ?? null,
+          q.notes ?? null,
+          outOfRange,
+          comparison ? JSON.stringify(comparison) : null,
+        ]
+      );
+    } else {
+      await query(
+        `insert into quotes (opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes, is_out_of_range, comparison_json)
+         values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [
+          params.id,
+          q.subcontractorId ?? null,
+          q.trade ?? null,
+          amount,
+          q.payment_terms ?? null,
+          q.notes ?? null,
+          outOfRange,
+          comparison ? JSON.stringify(comparison) : null,
+        ]
+      );
+    }
+  }
+
+  if (saved === 0) {
+    return NextResponse.json(
+      { error: rejected[0]?.reason ?? "No valid quotes provided.", rejected },
+      { status: 400 }
     );
   }
 
@@ -75,8 +130,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     action: "quote-entry",
     opportunityId: params.id,
     level: "info",
-    message: `Operator ${auth.email} entered ${items.length} quote(s), total ${subTotal}. Triggered Bid Builder.`,
+    message: `Operator ${auth.email} entered ${saved} quote(s), total $${subTotal.toLocaleString()}. Triggered Bid Builder.`,
   });
 
-  return NextResponse.json({ ok: true, subTotal });
+  return NextResponse.json({ ok: true, subTotal, saved, rejected, warnings });
 }

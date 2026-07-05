@@ -334,7 +334,12 @@ export interface AgentResult {
   summary: string;
   reasoning?: string;
   data?: Record<string, unknown>;
-  enqueued?: { agent: string; payload: Record<string, unknown> }[];
+  enqueued?: {
+    agent: string;
+    payload: Record<string, unknown>;
+    /** Optional queue dedup: same key within singletonSeconds is enqueued once. */
+    opts?: { singletonKey?: string; singletonSeconds?: number };
+  }[];
   humanActionRequired?: boolean;
 }
 

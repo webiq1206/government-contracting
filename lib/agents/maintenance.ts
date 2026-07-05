@@ -7,6 +7,7 @@
  */
 import { query, queryOne } from "../db";
 import { gmail } from "../integrations/gmail";
+import { sms } from "../integrations/twilio";
 import { logAgent } from "../logger";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
@@ -118,6 +119,67 @@ export const stalledPipelineSweep: AgentDefinition = {
       });
     }
     return { ok: true, summary: `Flagged ${stalled.length} stalled opportunit${stalled.length === 1 ? "y" : "ies"} for review.` };
+  },
+};
+
+export const deadlineMonitor: AgentDefinition = {
+  name: "deadline-monitor",
+  label: "Deadline Monitor",
+  description:
+    "Warns the operator when a live opportunity's bid deadline is under 48 hours away and no bid has been submitted.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    // Flag once per opportunity: the deadline_soon risk flag excludes it from
+    // the next sweep so the operator isn't re-alerted every 6 hours.
+    const urgent = await query<{ id: string; title: string | null; deadline: string; stage: string }>(
+      `update opportunities
+          set human_action_required = true,
+              risk_flags = coalesce(risk_flags, '{}') || array['deadline_soon']
+        where status = 'open'
+          and stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
+          and deadline is not null
+          and deadline > now()
+          and deadline <= now() + interval '48 hours'
+          and not ('deadline_soon' = any(coalesce(risk_flags, '{}')))
+        returning id, title, deadline, stage`
+    );
+    for (const o of urgent) {
+      const hoursLeft = Math.max(
+        0,
+        (new Date(o.deadline).getTime() - Date.now()) / 3_600_000
+      ).toFixed(0);
+      const msg = `Bid due in ${hoursLeft}h: "${o.title ?? o.id}" is still in ${o.stage.replace(/_/g, " ")}. Submit or dismiss before the deadline.`;
+      await logAgent({
+        agent: "deadline-monitor",
+        action: "deadline-warning",
+        opportunityId: o.id,
+        level: "warn",
+        message: msg,
+      });
+      // Best-effort SMS; silently skipped when Twilio is not configured.
+      await sms.alert(msg).catch(() => undefined);
+    }
+    return {
+      ok: true,
+      summary: `Deadline check: ${urgent.length} opportunit${urgent.length === 1 ? "y" : "ies"} due within 48h flagged.`,
+    };
+  },
+};
+
+export const logRetentionSweep: AgentDefinition = {
+  name: "log-retention-sweep",
+  label: "Log Retention Sweep",
+  description:
+    "Deletes agent log entries older than 90 days (KPI snapshots are kept) so the activity feed stays fast.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    const res = await query<{ id: string }>(
+      `delete from agent_logs
+        where created_at < now() - interval '90 days'
+          and not (agent = 'analytics-engine' and action = 'kpi-snapshot')
+        returning id`
+    );
+    return { ok: true, summary: `Pruned ${res.length} log entr${res.length === 1 ? "y" : "ies"} older than 90 days.` };
   },
 };
 

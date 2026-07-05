@@ -61,7 +61,7 @@ export async function runAgent(
 
     // Enqueue downstream work declared by the agent.
     for (const next of result.enqueued ?? []) {
-      await enqueue(next.agent, next.payload).catch((e) =>
+      await enqueue(next.agent, next.payload, next.opts).catch((e) =>
         console.error(`[runner] enqueue ${next.agent} failed:`, (e as Error).message)
       );
     }

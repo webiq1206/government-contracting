@@ -150,8 +150,16 @@ export const scoringEngine: AgentDefinition = {
       stage = "analysis";
       humanAction = false;
       enqueued.push(
-        { agent: "solicitation-analyst", payload: { opportunityId } },
-        { agent: "pricing-research", payload: { opportunityId } }
+        {
+          agent: "solicitation-analyst",
+          payload: { opportunityId },
+          opts: { singletonKey: `analyze:${opportunityId}`, singletonSeconds: 3600 },
+        },
+        {
+          agent: "pricing-research",
+          payload: { opportunityId },
+          opts: { singletonKey: `price:${opportunityId}`, singletonSeconds: 3600 },
+        }
       );
       await logAgent({
         agent: "scoring-engine",

@@ -97,8 +97,7 @@ function BreakdownTable({
 }
 
 export default async function AnalyticsPage() {
-  const snap = await latestKpiSnapshot();
-  const fb = await computeKpisFallback();
+  const [snap, fb] = await Promise.all([latestKpiSnapshot(), computeKpisFallback()]);
 
   // Prefer richer snapshot fields where present, fall back to live-computed basics.
   const winRate = snap ? num(snap.win_rate) ?? fb.win_rate : fb.win_rate;

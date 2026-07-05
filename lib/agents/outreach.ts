@@ -164,8 +164,9 @@ export const outreach: AgentDefinition = {
 
     await query(
       `update opportunity_subs set outreach_state=$3
-       where opportunity_id=$1 and subcontractor_id=$2`,
-      [opportunityId, subcontractorId, outreachState]
+       where opportunity_id=$1 and subcontractor_id=$2
+         and ($4::text = '' or coalesce(trade,'') = $4)`,
+      [opportunityId, subcontractorId, outreachState, trade]
     );
 
     if (sent) {
