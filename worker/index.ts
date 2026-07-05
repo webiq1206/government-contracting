@@ -12,6 +12,7 @@ import { config } from "../lib/config";
 import { dbHealthy } from "../lib/db";
 import { getQueue, stopQueue } from "../lib/queue";
 import { applyMigrations } from "../lib/migrate";
+import { ensureOperatorFromEnv } from "../lib/operator-bootstrap";
 import { ALL_AGENTS } from "../lib/agents/registry";
 import { runAgent } from "../lib/agents/runner";
 import { startScheduler } from "./scheduler";
@@ -60,6 +61,9 @@ async function main() {
   } catch (err) {
     console.error("[worker] migration failed (continuing with existing schema):", (err as Error).message);
   }
+
+  // Ensure the owner's operator login exists (from OPERATOR_EMAIL/OPERATOR_PASSWORD secrets).
+  await ensureOperatorFromEnv();
 
   // RUN_WORKER=false → this instance does NOT process jobs or run the scheduler.
   // Set it on web-only instances so exactly one dedicated instance runs cron
