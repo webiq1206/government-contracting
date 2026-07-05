@@ -23,11 +23,11 @@ const LEVEL_COLOR: Record<string, string> = {
   warn: "text-review",
   warning: "text-review",
   error: "text-risk",
-  info: "text-slate-400",
+  info: "text-slate-600",
 };
 
 function levelColor(level: string): string {
-  return LEVEL_COLOR[level] ?? "text-slate-400";
+  return LEVEL_COLOR[level] ?? "text-slate-600";
 }
 
 export default async function AgentsPage({
@@ -57,20 +57,20 @@ export default async function AgentsPage({
               <div key={a.name} className="card flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-100">{a.label}</p>
+                    <p className="truncate text-sm font-medium text-slate-900">{a.label}</p>
                     <p className="font-mono text-xs text-slate-500">{a.name}</p>
                   </div>
                   {a.cron ? (
-                    <span className="badge bg-brand-600/15 font-mono text-brand-400">{a.cron}</span>
+                    <span className="badge bg-accent/10 font-mono text-accent">{a.cron}</span>
                   ) : (
-                    <span className="badge bg-ink-700 text-slate-400">event-triggered</span>
+                    <span className="badge bg-slate-200 text-slate-600">event-triggered</span>
                   )}
                 </div>
-                <p className="line-clamp-2 text-xs text-slate-400">{a.description}</p>
+                <p className="line-clamp-2 text-xs text-slate-600">{a.description}</p>
                 <div className="mt-auto flex items-center justify-between gap-2 pt-1">
                   <Link
                     href={`/agents?agent=${a.name}`}
-                    className="text-xs text-slate-400 hover:text-brand-400"
+                    className="text-xs text-slate-600 hover:text-accent"
                   >
                     View logs
                   </Link>
@@ -89,7 +89,7 @@ export default async function AgentsPage({
           <div className="card overflow-x-auto p-0">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-ink-800">
+                <tr className="border-b border-border">
                   <th className="th">Agent</th>
                   <th className="th">OK</th>
                   <th className="th">Errors</th>
@@ -105,11 +105,11 @@ export default async function AgentsPage({
                   </tr>
                 )}
                 {runs.map((r) => (
-                  <tr key={str(r.agent)} className="border-b border-ink-800/60">
+                  <tr key={str(r.agent)} className="border-b border-border">
                     <td className="td font-mono text-xs">{str(r.agent)}</td>
                     <td className="td text-pursue">{num(r.ok) ?? 0}</td>
                     <td className="td text-risk">{num(r.error) ?? 0}</td>
-                    <td className="td text-slate-400">{timeAgo(str(r.last_run) || null)}</td>
+                    <td className="td text-slate-600">{timeAgo(str(r.last_run) || null)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -124,7 +124,7 @@ export default async function AgentsPage({
             <div className="flex flex-wrap gap-1.5">
               <Link
                 href="/agents"
-                className={`badge ${!agentFilter ? "bg-brand-600/20 text-brand-400" : "bg-ink-700 text-slate-400"}`}
+                className={`badge ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
               >
                 All
               </Link>
@@ -134,8 +134,8 @@ export default async function AgentsPage({
                   href={`/agents?agent=${a.name}`}
                   className={`badge ${
                     agentFilter === a.name
-                      ? "bg-brand-600/20 text-brand-400"
-                      : "bg-ink-700 text-slate-400 hover:text-slate-200"
+                      ? "bg-accent/10 text-accent"
+                      : "bg-slate-200 text-slate-600 hover:text-slate-800"
                   }`}
                 >
                   {a.name}
@@ -158,25 +158,25 @@ export default async function AgentsPage({
                 <div key={str(log.id)} className="card flex gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="badge bg-ink-700 font-mono text-slate-300">
+                      <span className="badge bg-slate-200 font-mono text-slate-700">
                         {str(log.agent)}
                       </span>
                       <span className={`text-xs font-semibold uppercase ${levelColor(level)}`}>
                         {level}
                       </span>
-                      <span className="text-sm text-slate-200">{str(log.action)}</span>
+                      <span className="text-sm text-slate-800">{str(log.action)}</span>
                     </div>
                     {str(log.message) && (
-                      <p className="mt-1 text-sm text-slate-300">{str(log.message)}</p>
+                      <p className="mt-1 text-sm text-slate-700">{str(log.message)}</p>
                     )}
                     {reasoning && (
                       <p className="mt-1 text-xs text-slate-500">{reasoning}</p>
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-xs text-slate-400">{timeAgo(str(log.created_at) || null)}</p>
+                    <p className="text-xs text-slate-600">{timeAgo(str(log.created_at) || null)}</p>
                     {duration != null && (
-                      <p className="mt-0.5 num text-xs text-slate-600">{duration}ms</p>
+                      <p className="mt-0.5 num text-xs text-slate-400">{duration}ms</p>
                     )}
                   </div>
                 </div>

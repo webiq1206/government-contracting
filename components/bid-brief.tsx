@@ -46,7 +46,7 @@ export function BidBrief({
         {has(analysis.pursue_recommendation) && (
           <div className="callout-panel">
             <p className="eyebrow text-accent">Recommendation</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-200">
+            <p className="mt-1.5 text-sm leading-relaxed text-slate-800">
               {analysis.pursue_recommendation}
             </p>
           </div>
@@ -62,13 +62,13 @@ export function BidBrief({
 
         {has(analysis.project_overview) && (
           <Section title="Project overview">
-            <p className="text-sm leading-relaxed text-slate-200">{analysis.project_overview}</p>
+            <p className="text-sm leading-relaxed text-slate-800">{analysis.project_overview}</p>
           </Section>
         )}
 
         {has(analysis.scope_plain_language) && (
           <Section title="Scope of work">
-            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-200">
+            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">
               {analysis.scope_plain_language}
             </p>
           </Section>
@@ -118,7 +118,7 @@ export function BidBrief({
             <ul className="space-y-1.5 text-sm">
               {analysis.required_forms.map((f, i) => (
                 <li key={i} className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="font-medium text-slate-100">{f.name}</span>
+                  <span className="font-medium text-slate-900">{f.name}</span>
                   {f.note && <span className="text-slate-500">— {f.note}</span>}
                 </li>
               ))}
@@ -132,8 +132,8 @@ export function BidBrief({
             <ul className="divide-y divide-border">
               {analysis.key_dates.map((d, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
-                  <span className="text-slate-300">{d.label}</span>
-                  <span className="num text-slate-100">{d.date}</span>
+                  <span className="text-slate-700">{d.label}</span>
+                  <span className="num text-slate-900">{d.date}</span>
                 </li>
               ))}
             </ul>
@@ -146,9 +146,9 @@ export function BidBrief({
             <ul className="space-y-2 text-sm">
               {analysis.qa_addenda.map((a, i) => (
                 <li key={i} className="accent-left">
-                  <span className="font-medium text-slate-100">{a.label}</span>
+                  <span className="font-medium text-slate-900">{a.label}</span>
                   {a.date && <span className="ml-2 text-xs text-slate-500">{a.date}</span>}
-                  <p className="mt-0.5 text-slate-300">{a.summary}</p>
+                  <p className="mt-0.5 text-slate-700">{a.summary}</p>
                 </li>
               ))}
             </ul>
@@ -181,14 +181,14 @@ export function BidBrief({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {analysis.contacts.map((c, i) => (
                 <div key={i} className="rounded-md border border-border p-3 text-sm">
-                  <p className="font-medium text-slate-100">{c.name ?? "Contact"}</p>
+                  <p className="font-medium text-slate-900">{c.name ?? "Contact"}</p>
                   {c.role && <p className="text-xs text-slate-500">{c.role}</p>}
                   {c.email && (
                     <a className="mt-1 block text-accent hover:underline" href={`mailto:${c.email}`}>
                       {c.email}
                     </a>
                   )}
-                  {c.phone && <p className="text-slate-300">{c.phone}</p>}
+                  {c.phone && <p className="text-slate-700">{c.phone}</p>}
                 </div>
               ))}
             </div>
@@ -209,11 +209,11 @@ export function BidBrief({
                   key={d.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
                 >
-                  <span className="flex items-center gap-2 text-slate-100">
-                    <span className="text-slate-400">▤</span>
+                  <span className="flex items-center gap-2 text-slate-900">
+                    <span className="text-slate-600">▤</span>
                     {d.name}
                     {d.kind !== "solicitation" && (
-                      <span className="badge bg-surface-raised text-slate-400">{d.kind}</span>
+                      <span className="badge bg-surface-raised text-slate-600">{d.kind}</span>
                     )}
                   </span>
                   <span className="flex items-center gap-3 text-xs">
@@ -256,7 +256,7 @@ function Fact({ label, value, strong }: { label: string; value?: string; strong?
       <p className="label">{label}</p>
       <p
         className={`mt-1 text-sm ${
-          strong ? "font-semibold text-foreground" : "text-slate-200"
+          strong ? "font-semibold text-foreground" : "text-slate-800"
         } ${!has(value) ? "text-slate-500" : ""}`}
       >
         {has(value) ? value : "Not specified"}
@@ -278,7 +278,7 @@ function Bullets({ items }: { items: string[] }) {
   return (
     <ul className="space-y-1.5">
       {items.map((it, i) => (
-        <li key={i} className="flex gap-2 text-sm text-slate-200">
+        <li key={i} className="flex gap-2 text-sm text-slate-800">
           <span className="mt-1.5 h-1 w-1 flex-shrink-0 rounded-full bg-accent" />
           <span className="leading-relaxed">{it}</span>
         </li>
@@ -291,7 +291,7 @@ function List({ label, items }: { label: string; items?: string[] }) {
   if (!items || items.length === 0) return null;
   return (
     <div>
-      <p className="mb-1 text-xs font-semibold text-slate-300">{label}</p>
+      <p className="mb-1 text-xs font-semibold text-slate-700">{label}</p>
       <Bullets items={items} />
     </div>
   );
@@ -308,12 +308,12 @@ function Meeting({
   return (
     <div className="rounded-md border border-border p-3 text-sm">
       <div className="flex items-center justify-between">
-        <p className="font-medium text-slate-100">{label}</p>
-        <span className={`badge ${info.required ? "bg-review/15 text-review" : "bg-surface-raised text-slate-400"}`}>
+        <p className="font-medium text-slate-900">{label}</p>
+        <span className={`badge ${info.required ? "bg-review/15 text-review" : "bg-surface-raised text-slate-600"}`}>
           {info.required ? "Required" : "Optional"}
         </span>
       </div>
-      {info.details && <p className="mt-1.5 leading-relaxed text-slate-300">{info.details}</p>}
+      {info.details && <p className="mt-1.5 leading-relaxed text-slate-700">{info.details}</p>}
     </div>
   );
 }

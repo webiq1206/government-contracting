@@ -45,7 +45,7 @@ export default async function SubsPage({
       <div className="scroll-thin flex-1 overflow-auto p-4">
         <div className="card overflow-hidden p-0">
           <table className="w-full border-collapse">
-            <thead className="border-b border-ink-800 bg-ink-900/60">
+            <thead className="border-b border-border bg-surface">
               <tr>
                 <th className="th w-8"></th>
                 <th className="th">Company</th>
@@ -61,7 +61,7 @@ export default async function SubsPage({
               {subs.map((s: Subcontractor) => (
                 <tr
                   key={s.id}
-                  className="border-b border-ink-800/60 transition-colors hover:bg-ink-800/40"
+                  className="border-b border-border transition-colors hover:bg-surface"
                 >
                   <td className="td text-center">
                     {s.is_preferred ? (
@@ -69,13 +69,13 @@ export default async function SubsPage({
                         ★
                       </span>
                     ) : (
-                      <span className="text-slate-700">☆</span>
+                      <span className="text-slate-300">☆</span>
                     )}
                   </td>
                   <td className="td">
                     <Link
                       href={`/subs/${s.id}`}
-                      className="font-medium text-slate-100 hover:text-brand-400"
+                      className="font-medium text-slate-900 hover:text-accent"
                     >
                       {s.company_name}
                     </Link>
@@ -86,24 +86,24 @@ export default async function SubsPage({
                   <td className="td">
                     <div className="flex flex-wrap gap-1">
                       {(s.trade_categories ?? []).slice(0, 3).map((t) => (
-                        <span key={t} className="badge bg-ink-700 text-slate-300">
+                        <span key={t} className="badge bg-slate-200 text-slate-700">
                           {t}
                         </span>
                       ))}
                       {(s.trade_categories?.length ?? 0) > 3 && (
-                        <span className="badge bg-ink-700 text-slate-500">
+                        <span className="badge bg-slate-200 text-slate-500">
                           +{(s.trade_categories?.length ?? 0) - 3}
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="td whitespace-nowrap text-slate-400">
+                  <td className="td whitespace-nowrap text-slate-600">
                     {[s.city, s.state].filter(Boolean).join(", ") || "—"}
                   </td>
                   <td className="td whitespace-nowrap">
                     {s.google_rating != null ? (
                       <span>
-                        <span className="num text-slate-100">
+                        <span className="num text-slate-900">
                           {Number(s.google_rating).toFixed(1)}
                         </span>
                         <span className="ml-1 text-xs text-slate-500">
@@ -111,16 +111,16 @@ export default async function SubsPage({
                         </span>
                       </span>
                     ) : (
-                      <span className="text-slate-600">—</span>
+                      <span className="text-slate-400">—</span>
                     )}
                   </td>
                   <td className="td">
                     {s.reliability_score != null ? (
-                      <span className="num font-semibold text-slate-100">
+                      <span className="num font-semibold text-slate-900">
                         {s.reliability_score}
                       </span>
                     ) : (
-                      <span className="text-slate-600">—</span>
+                      <span className="text-slate-400">—</span>
                     )}
                   </td>
                   <td className="td whitespace-nowrap">
@@ -129,13 +129,13 @@ export default async function SubsPage({
                         className={`badge ${
                           s.license_status.toLowerCase() === "active"
                             ? "bg-pursue/15 text-pursue"
-                            : "bg-ink-700 text-slate-300"
+                            : "bg-slate-200 text-slate-700"
                         }`}
                       >
                         {s.license_status}
                       </span>
                     ) : (
-                      <span className="text-slate-600">—</span>
+                      <span className="text-slate-400">—</span>
                     )}
                   </td>
                   <td className="td">
@@ -147,7 +147,7 @@ export default async function SubsPage({
                         <span className="badge bg-pursue/15 text-pursue">Verified</span>
                       )}
                       {s.sb_certified && (
-                        <span className="badge bg-brand-600/20 text-brand-400">SB</span>
+                        <span className="badge bg-accent/10 text-accent">SB</span>
                       )}
                     </div>
                   </td>

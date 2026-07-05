@@ -81,7 +81,7 @@ function BreakdownTable({
             const key =
               str(r[keyField] ?? r.key ?? r.name ?? r.label ?? r.code) || "—";
             return (
-              <tr key={i} className="border-t border-ink-800/60">
+              <tr key={i} className="border-t border-border">
                 <td className="td">{key}</td>
                 <td className="td num">{winRate != null ? pct(winRate) : "—"}</td>
                 <td className="td text-slate-500">
@@ -134,7 +134,7 @@ export default async function AnalyticsPage() {
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
         {!snap && (
-          <div className="card border-review/40 bg-review/5 text-sm text-slate-300">
+          <div className="card border-review/40 bg-review/5 text-sm text-slate-700">
             Analytics Engine has not run yet — showing live-computed basics. Trigger it from
             Agents.
           </div>
@@ -181,9 +181,9 @@ export default async function AnalyticsPage() {
                   num(cashFlow[`day_${d}`]) ??
                   num(cashFlow[`d${d}`]);
                 return (
-                  <div key={d} className="rounded-md border border-ink-800 bg-ink-950 p-3">
+                  <div key={d} className="rounded-md border border-border bg-surface p-3">
                     <div className="label">{d}-day</div>
-                    <div className="mt-1 text-lg font-semibold text-slate-100">
+                    <div className="mt-1 text-lg font-semibold text-slate-900">
                       {currency(v)}
                     </div>
                   </div>
@@ -206,7 +206,7 @@ export default async function AnalyticsPage() {
               </thead>
               <tbody>
                 {subRankings.map((r, i) => (
-                  <tr key={i} className="border-t border-ink-800/60">
+                  <tr key={i} className="border-t border-border">
                     <td className="td">
                       {str(r.company_name ?? r.name ?? r.sub ?? r.label)}
                     </td>
@@ -228,10 +228,10 @@ export default async function AnalyticsPage() {
               {Object.entries(velocity).map(([stage, count]) => (
                 <div
                   key={stage}
-                  className="rounded-md border border-ink-800 bg-ink-950 p-3"
+                  className="rounded-md border border-border bg-surface p-3"
                 >
                   <div className="label">{stage.replace(/_/g, " ")}</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-100">
+                  <div className="mt-1 text-lg font-semibold text-slate-900">
                     {num(count) ?? str(count)}
                   </div>
                 </div>

@@ -51,9 +51,9 @@ export default async function CompliancePage() {
       <div className="flex h-full flex-col">
         <PageHeader title="Compliance Board" />
         <div className="p-6">
-          <div className="card text-sm text-slate-400">
+          <div className="card text-sm text-slate-600">
             Compliance Monitor has not run yet — trigger it from{" "}
-            <a href="/agents" className="text-brand-400 hover:underline">
+            <a href="/agents" className="text-accent hover:underline">
               Agents
             </a>
             .
@@ -132,7 +132,7 @@ export default async function CompliancePage() {
 
 function Legend() {
   return (
-    <div className="flex items-center gap-3 text-xs text-slate-400">
+    <div className="flex items-center gap-3 text-xs text-slate-600">
       <span className="inline-flex items-center gap-1.5">
         <span className="h-2.5 w-2.5 rounded-full bg-pursue" /> On track
       </span>
@@ -169,7 +169,7 @@ function ComplianceItem({ row, highlight = false }: { row: Row; highlight?: bool
       }`}
     >
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-slate-100">{label}</p>
+        <p className="truncate text-sm font-medium text-slate-900">{label}</p>
         <p className="mt-0.5 text-xs text-slate-500">
           Due {shortDate(str(row.due_at) || null)}
           {contractNumber ? ` · ${contractNumber}` : ""}
@@ -179,7 +179,7 @@ function ComplianceItem({ row, highlight = false }: { row: Row; highlight?: bool
         <span className={`badge ${complianceColorClass(color)}`}>{status}</span>
         <span
           className={`num text-xs ${
-            color === "red" ? "text-risk" : color === "amber" ? "text-review" : "text-slate-400"
+            color === "red" ? "text-risk" : color === "amber" ? "text-review" : "text-slate-600"
           }`}
         >
           {countdownText}
@@ -208,16 +208,16 @@ function CapGauge({ row }: { row: Row }) {
   return (
     <div className="card">
       <div className="flex items-center justify-between gap-2">
-        <p className="truncate text-sm font-medium text-slate-100">{label}</p>
+        <p className="truncate text-sm font-medium text-slate-900">{label}</p>
         <span className={`badge ${complianceColorClass(color)}`}>{status}</span>
       </div>
-      <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-ink-700">
+      <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
         <div
           className={`h-full rounded-full ${barColor}`}
           style={{ width: `${utilPct}%` }}
         />
       </div>
-      <div className="mt-1.5 flex items-center justify-between text-xs text-slate-400">
+      <div className="mt-1.5 flex items-center justify-between text-xs text-slate-600">
         <span className="num">{utilPct.toFixed(0)}% of cap used</span>
         <span>cap {capPct}%</span>
       </div>

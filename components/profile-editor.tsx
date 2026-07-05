@@ -134,12 +134,12 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
           <Field label="UEI" value={uei} onChange={setUei} />
           <Field label="CAGE code" value={cage} onChange={setCage} />
           <Field label="Entity state" value={entityState} onChange={setEntityState} />
-          <label className="flex items-center gap-2 pt-6 text-sm text-slate-200">
+          <label className="flex items-center gap-2 pt-6 text-sm text-slate-800">
             <input
               type="checkbox"
               checked={smallBusiness}
               onChange={(e) => setSmallBusiness(e.target.checked)}
-              className="h-4 w-4 rounded border-ink-700 bg-ink-950"
+              className="h-4 w-4 rounded border-border bg-surface"
             />
             Small business
           </label>

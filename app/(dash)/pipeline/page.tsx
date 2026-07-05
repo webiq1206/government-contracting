@@ -44,8 +44,8 @@ export default async function PipelinePage() {
             return (
               <div key={stage.key} className="flex w-72 flex-col">
                 <div className="mb-2 flex items-center justify-between px-1">
-                  <span className="text-sm font-semibold text-slate-200">{stage.label}</span>
-                  <span className="badge bg-ink-700 text-slate-400">{cards.length}</span>
+                  <span className="text-sm font-semibold text-slate-800">{stage.label}</span>
+                  <span className="badge bg-slate-200 text-slate-600">{cards.length}</span>
                 </div>
                 <div className="scroll-thin flex-1 space-y-2 overflow-y-auto pr-1">
                   {cards.map((o) => (
@@ -57,12 +57,12 @@ export default async function PipelinePage() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-2 text-sm font-medium text-slate-100">
+                        <p className="line-clamp-2 text-sm font-medium text-slate-900">
                           {o.title ?? "Untitled"}
                         </p>
                         <ScoreBadge score={o.score} />
                       </div>
-                      <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                      <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
                         <span>{currency(o.value_estimated)}</span>
                         <span className={countdown(o.deadline) === "overdue" ? "text-risk" : ""}>
                           ⏱ {countdown(o.deadline)}
@@ -71,13 +71,13 @@ export default async function PipelinePage() {
                       {o.agency && (
                         <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>
                       )}
-                      <p className="mt-2 text-xs font-medium text-brand-400">
+                      <p className="mt-2 text-xs font-medium text-accent">
                         {NEXT_ACTION[o.stage] ?? o.stage}
                       </p>
                     </Link>
                   ))}
                   {cards.length === 0 && (
-                    <p className="px-1 py-4 text-center text-xs text-slate-600">—</p>
+                    <p className="px-1 py-4 text-center text-xs text-slate-400">—</p>
                   )}
                 </div>
               </div>
@@ -108,7 +108,7 @@ function PipelineOnboarding() {
       <h2 className="font-serif text-xl font-semibold text-foreground">
         Your pipeline is empty — that&rsquo;s expected on a fresh setup.
       </h2>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
         Opportunities flow in from the Opportunity Monitor (SAM.gov, every 2 hours) and are
         scored, briefed, and routed through the 11 stages you see here automatically. Add the
         integration keys below in your deployment secrets, then the pipeline will start filling
@@ -117,7 +117,7 @@ function PipelineOnboarding() {
       {missing.length > 0 && (
         <ul className="mt-4 space-y-1 text-sm">
           {missing.map((m) => (
-            <li key={m} className="flex items-start gap-2 text-slate-700">
+            <li key={m} className="flex items-start gap-2 text-slate-300">
               <span className="mt-0.5 text-accent">•</span>
               <span>{m}</span>
             </li>

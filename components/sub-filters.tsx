@@ -34,7 +34,7 @@ export function SubFilters({ trade, state, minReliability, q }: SubFiltersProps)
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3 border-b border-ink-800 bg-ink-900/40 px-5 py-3">
+    <div className="flex flex-wrap items-end gap-3 border-b border-border bg-surface/40 px-5 py-3">
       <div className="min-w-[200px] flex-1">
         <label className="label mb-1 block" htmlFor="sub-q">
           Search

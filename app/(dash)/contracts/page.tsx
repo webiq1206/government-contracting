@@ -29,7 +29,7 @@ function milestoneStatusClass(status?: string): string {
       return "bg-pursue/15 text-pursue";
     case "in_progress":
     case "active":
-      return "bg-brand-500/15 text-brand-400";
+      return "bg-accent/10 text-accent";
     case "overdue":
     case "late":
     case "blocked":
@@ -58,7 +58,7 @@ function NonSsGauge({ pctValue }: { pctValue: number }) {
           {pct(pctValue)} of 50% cap
         </span>
       </div>
-      <div className="relative mt-1 h-2.5 w-full overflow-hidden rounded-full bg-ink-700">
+      <div className="relative mt-1 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
         <div
           className={`h-full rounded-full ${barClass}`}
           style={{ width: `${ratio * 100}%` }}
@@ -83,14 +83,14 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
     <div className="card space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-100">
+          <p className="text-sm font-medium text-slate-900">
             {(c.opportunity_title as string | null) ?? "Untitled contract"}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
             {(c.contract_number as string | null) ?? "—"}
           </p>
         </div>
-        <span className="text-sm font-semibold text-slate-100">
+        <span className="text-sm font-semibold text-slate-900">
           {currency(c.award_amount as number | null)}
         </span>
       </div>
@@ -98,14 +98,14 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
         <div>
           <p className="label">Period</p>
-          <p className="mt-0.5 text-sm text-slate-100">
+          <p className="mt-0.5 text-sm text-slate-900">
             {shortDate(c.start_date as string | null)} –{" "}
             {shortDate(c.end_date as string | null)}
           </p>
         </div>
         <div>
           <p className="label">Primary sub</p>
-          <p className="mt-0.5 text-sm text-slate-100">
+          <p className="mt-0.5 text-sm text-slate-900">
             {(c.primary_sub_name as string | null) ?? "—"}
           </p>
         </div>
@@ -116,7 +116,7 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
           </p>
           <p
             className={`mt-0.5 text-sm ${
-              c.backup_sub_name ? "text-slate-100" : "text-risk"
+              c.backup_sub_name ? "text-slate-900" : "text-risk"
             }`}
           >
             {(c.backup_sub_name as string | null) ?? "⚠ Missing"}
@@ -124,7 +124,7 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
         </div>
         <div>
           <p className="label">CPARS request</p>
-          <p className="mt-0.5 text-sm text-slate-100">
+          <p className="mt-0.5 text-sm text-slate-900">
             {cparsStatus}
             {c.cpars_due_at ? (
               <span className="block text-xs text-slate-500">
@@ -146,10 +146,10 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
             {milestones.map((m, i) => (
               <li
                 key={i}
-                className="flex items-center justify-between gap-2 rounded-md border border-ink-800 px-3 py-2"
+                className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-slate-200">
+                  <p className="truncate text-sm text-slate-800">
                     {m.name ?? "Milestone"}
                   </p>
                   <p className="text-xs text-slate-500">
@@ -182,13 +182,13 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
               return (
                 <li
                   key={i}
-                  className="flex items-start gap-2 rounded-md border border-ink-800 px-3 py-2"
+                  className="flex items-start gap-2 rounded-md border border-border px-3 py-2"
                 >
-                  <span className={done ? "text-pursue" : "text-slate-600"}>
+                  <span className={done ? "text-pursue" : "text-slate-400"}>
                     {done ? "☑" : "☐"}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-slate-200">
+                    <p className="text-sm text-slate-800">
                       {e.task ?? e.label ?? e.note ?? "Activity"}
                     </p>
                     {at && (
@@ -218,7 +218,7 @@ export default async function ContractsPage() {
         {contracts.length === 0 ? (
           <div className="card mx-auto mt-8 max-w-md text-center">
             <p className="text-2xl">📁</p>
-            <p className="mt-2 text-sm font-medium text-slate-200">
+            <p className="mt-2 text-sm font-medium text-slate-800">
               No active contracts.
             </p>
             <p className="mt-1 text-xs text-slate-500">

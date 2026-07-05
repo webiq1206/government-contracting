@@ -29,12 +29,12 @@ function DimensionBar({
   return (
     <div>
       <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-400">{label}</span>
-        <span className="num text-slate-300">
+        <span className="text-slate-600">{label}</span>
+        <span className="num text-slate-700">
           {points}/{max}
         </span>
       </div>
-      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-ink-700">
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
         <div
           className={`h-full rounded-full ${color}`}
           style={{ width: `${ratio * 100}%` }}
@@ -54,7 +54,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-100">
+          <p className="text-sm font-medium text-slate-900">
             {o.title ?? "Untitled"}
           </p>
           <p className="mt-0.5 truncate text-xs text-slate-500">
@@ -73,7 +73,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
         <div>
           <p className="label">Est. value</p>
-          <p className="mt-0.5 text-sm font-medium text-slate-100">
+          <p className="mt-0.5 text-sm font-medium text-slate-900">
             {currency(o.value_estimated)}
           </p>
         </div>
@@ -81,7 +81,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
           <p className="label">Deadline</p>
           <p
             className={`mt-0.5 text-sm font-medium ${
-              expiry === "overdue" ? "text-risk" : "text-slate-100"
+              expiry === "overdue" ? "text-risk" : "text-slate-900"
             }`}
           >
             ⏱ {countdown(o.deadline)}
@@ -89,7 +89,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
         </div>
         <div>
           <p className="label">Past perf</p>
-          <p className="mt-0.5 text-sm text-slate-100">
+          <p className="mt-0.5 text-sm text-slate-900">
             {o.past_perf_classification
               ? (PAST_PERF_LABEL[o.past_perf_classification] ??
                 o.past_perf_classification)
@@ -122,7 +122,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
             ))}
           </div>
           {o.score_breakdown?.summary && (
-            <p className="text-xs text-slate-400">{o.score_breakdown.summary}</p>
+            <p className="text-xs text-slate-600">{o.score_breakdown.summary}</p>
           )}
         </div>
       )}
@@ -179,7 +179,7 @@ export default async function ReviewPage() {
         {opps.length === 0 ? (
           <div className="card mx-auto mt-8 max-w-md text-center">
             <p className="text-2xl">✅</p>
-            <p className="mt-2 text-sm font-medium text-slate-200">
+            <p className="mt-2 text-sm font-medium text-slate-800">
               No items awaiting review.
             </p>
             <p className="mt-1 text-xs text-slate-500">

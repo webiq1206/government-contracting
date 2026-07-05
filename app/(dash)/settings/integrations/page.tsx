@@ -61,16 +61,16 @@ export default async function IntegrationsPage({
               {INTEGRATIONS.map((it) => {
                 const connected = Boolean(status[it.key]);
                 return (
-                  <tr key={it.key as string} className="border-b border-ink-800/60 last:border-b-0">
+                  <tr key={it.key as string} className="border-b border-border last:border-b-0">
                     <td className="td">
-                      <p className="font-medium text-slate-100">{it.label}</p>
+                      <p className="font-medium text-slate-900">{it.label}</p>
                       <p className="mt-0.5 font-mono text-xs text-slate-500">{it.hint}</p>
                     </td>
                     <td className="td w-40 text-right align-middle">
                       {connected ? (
                         <span className="badge bg-pursue/15 text-pursue">Connected</span>
                       ) : (
-                        <span className="badge bg-ink-700 text-slate-400">Not configured</span>
+                        <span className="badge bg-slate-200 text-slate-600">Not configured</span>
                       )}
                     </td>
                   </tr>
@@ -84,8 +84,8 @@ export default async function IntegrationsPage({
         {!status.gmail && config.gmail.configured && (
           <div className="card flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-slate-100">Connect your Gmail account</p>
-              <p className="mt-0.5 text-xs text-slate-400">
+              <p className="text-sm font-medium text-slate-900">Connect your Gmail account</p>
+              <p className="mt-0.5 text-xs text-slate-600">
                 Credentials are configured. Complete the OAuth flow to send and read mail.
               </p>
             </div>
@@ -97,14 +97,14 @@ export default async function IntegrationsPage({
 
         <div className="card flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-slate-100">Job queue backend</p>
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="text-sm font-medium text-slate-900">Job queue backend</p>
+            <p className="mt-0.5 text-xs text-slate-600">
               {status.queue === "bullmq"
                 ? "BullMQ (Redis-backed) — REDIS_URL is set."
                 : "pg-boss (Postgres-backed) — set REDIS_URL to switch to BullMQ."}
             </p>
           </div>
-          <span className="badge bg-brand-600/15 font-mono text-brand-400">{status.queue}</span>
+          <span className="badge bg-accent/10 font-mono text-accent">{status.queue}</span>
         </div>
       </div>
     </div>

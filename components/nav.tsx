@@ -100,7 +100,7 @@ export function Nav({
                         className={`flex items-center justify-between border-l-2 py-1.5 pl-3 pr-2 text-sm transition-colors ${
                           active
                             ? "border-accent bg-accent-soft font-medium text-accent-strong"
-                            : "border-transparent text-slate-400 hover:border-border-strong hover:text-foreground"
+                            : "border-transparent text-slate-600 hover:border-border-strong hover:text-foreground"
                         }`}
                       >
                         <span>{item.label}</span>

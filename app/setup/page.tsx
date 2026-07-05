@@ -31,7 +31,7 @@ export default async function SetupPage() {
         <SetupForm />
         <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
           You&rsquo;ll see this screen only once. After setup, sign in at{" "}
-          <span className="font-mono text-slate-600">/login</span>.
+          <span className="font-mono text-slate-400">/login</span>.
         </p>
       </div>
     </main>

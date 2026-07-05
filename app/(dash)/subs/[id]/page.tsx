@@ -16,7 +16,7 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="card">
       <div className="label">{label}</div>
-      <div className="mt-1 text-lg font-semibold text-slate-100">{value}</div>
+      <div className="mt-1 text-lg font-semibold text-slate-900">{value}</div>
     </div>
   );
 }
@@ -94,14 +94,14 @@ export default async function SubDetailPage({
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div>
                   <span className="label block">Email</span>
-                  <span className="text-slate-200">{sub.email ?? "—"}</span>
+                  <span className="text-slate-800">{sub.email ?? "—"}</span>
                   {sub.email_verified && (
                     <span className="badge ml-2 bg-pursue/15 text-pursue">Verified</span>
                   )}
                 </div>
                 <div>
                   <span className="label block">Phone</span>
-                  <span className="text-slate-200">{sub.phone ?? "—"}</span>
+                  <span className="text-slate-800">{sub.phone ?? "—"}</span>
                 </div>
                 <div>
                   <span className="label block">Website</span>
@@ -110,17 +110,17 @@ export default async function SubDetailPage({
                       href={sub.website}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-brand-400 hover:underline"
+                      className="text-accent hover:underline"
                     >
                       {sub.website}
                     </a>
                   ) : (
-                    <span className="text-slate-200">—</span>
+                    <span className="text-slate-800">—</span>
                   )}
                 </div>
                 <div>
                   <span className="label block">License status</span>
-                  <span className="text-slate-200">{sub.license_status ?? "—"}</span>
+                  <span className="text-slate-800">{sub.license_status ?? "—"}</span>
                 </div>
                 <div>
                   <span className="label block">SAM exclusion</span>
@@ -134,7 +134,7 @@ export default async function SubDetailPage({
                   <span className="label block">Trades</span>
                   <div className="mt-1 flex flex-wrap gap-1">
                     {(sub.trade_categories ?? []).map((t) => (
-                      <span key={t} className="badge bg-ink-700 text-slate-300">
+                      <span key={t} className="badge bg-slate-200 text-slate-700">
                         {t}
                       </span>
                     ))}
@@ -145,9 +145,9 @@ export default async function SubDetailPage({
                 </div>
               </div>
               {sub.reviews_summary && (
-                <div className="border-t border-ink-800 pt-3">
+                <div className="border-t border-border pt-3">
                   <span className="label block">Reviews summary</span>
-                  <p className="mt-1 text-sm text-slate-300">{sub.reviews_summary}</p>
+                  <p className="mt-1 text-sm text-slate-700">{sub.reviews_summary}</p>
                 </div>
               )}
             </div>
@@ -165,17 +165,17 @@ export default async function SubDetailPage({
                   {projects.map((p, i) => (
                     <div
                       key={i}
-                      className="flex items-start justify-between gap-3 border-b border-ink-800/60 pb-2 last:border-0"
+                      className="flex items-start justify-between gap-3 border-b border-border pb-2 last:border-0"
                     >
                       <div>
-                        <div className="text-sm font-medium text-slate-100">{p.name}</div>
+                        <div className="text-sm font-medium text-slate-900">{p.name}</div>
                         <div className="text-xs text-slate-500">
                           {p.scope}
                           {p.client_type ? ` · ${p.client_type}` : ""}
                           {p.year ? ` · ${p.year}` : ""}
                         </div>
                       </div>
-                      <div className="whitespace-nowrap text-sm num text-slate-300">
+                      <div className="whitespace-nowrap text-sm num text-slate-700">
                         {currency(p.value)}
                       </div>
                     </div>
@@ -203,10 +203,10 @@ export default async function SubDetailPage({
                     return (
                       <div
                         key={s(c.id) ?? i}
-                        className="border-l-2 border-ink-700 pl-3"
+                        className="border-l-2 border-border pl-3"
                       >
                         <div className="flex items-center gap-2 text-xs">
-                          <span className="badge bg-ink-700 text-slate-300">{channel}</span>
+                          <span className="badge bg-slate-200 text-slate-700">{channel}</span>
                           {direction && (
                             <span className="text-slate-500">{direction}</span>
                           )}
@@ -215,12 +215,12 @@ export default async function SubDetailPage({
                           </span>
                         </div>
                         {subject && (
-                          <div className="mt-1 text-sm font-medium text-slate-100">
+                          <div className="mt-1 text-sm font-medium text-slate-900">
                             {subject}
                           </div>
                         )}
                         {bodyText && (
-                          <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-400">
+                          <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">
                             {bodyText}
                           </p>
                         )}
@@ -251,7 +251,7 @@ export default async function SubDetailPage({
                     {quotes.map((q, i) => {
                       const amt = q.quote_amount;
                       return (
-                        <tr key={s(q.id) ?? i} className="border-t border-ink-800/60">
+                        <tr key={s(q.id) ?? i} className="border-t border-border">
                           <td className="td">{s(q.opportunity_title) ?? "—"}</td>
                           <td className="td num">
                             {typeof amt === "number" ? currency(amt) : currency(Number(amt) || null)}

@@ -40,9 +40,9 @@ export default async function ProfilePage() {
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {!json ? (
-          <div className="card text-sm text-slate-400">
+          <div className="card text-sm text-slate-600">
             No active company profile found. Run{" "}
-            <code className="rounded bg-ink-800 px-1.5 py-0.5 font-mono text-xs text-slate-200">
+            <code className="rounded bg-slate-200 px-1.5 py-0.5 font-mono text-xs text-slate-800">
               npm run db:seed
             </code>{" "}
             to create the default profile.
@@ -65,14 +65,14 @@ export default async function ProfilePage() {
               {proposed.map((w) => (
                 <div key={w.id} className="card flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-100">
+                    <p className="text-sm font-medium text-slate-900">
                       Version {w.version}
                       <span className="ml-2 text-xs text-slate-500">
                         proposed {shortDate(w.proposed_at)}
                       </span>
                     </p>
                     {w.rationale && (
-                      <p className="mt-1 text-xs text-slate-400">{w.rationale}</p>
+                      <p className="mt-1 text-xs text-slate-600">{w.rationale}</p>
                     )}
                   </div>
                   <div className="flex shrink-0 gap-2">

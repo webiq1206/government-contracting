@@ -5,8 +5,8 @@ import type { Config } from "tailwindcss";
  * monochrome with a forest-green accent, Cormorant Garamond display serif,
  * Inter body, JetBrains Mono for data. Flat, border-driven.
  *
- * The legacy dark tokens (ink-*, brand-*) are remapped to light values and the
- * slate text ramp is inverted so existing inline classes flip correctly.
+ * The slate ramp uses zinc hues in STANDARD Tailwind orientation
+ * (100 = light, 900 = dark). Do not invert it again.
  */
 const config: Config = {
   content: [
@@ -29,38 +29,24 @@ const config: Config = {
         "accent-soft": "#f0f7f2",
         "accent-strong": "#21503b",
 
-        // Legacy dark palette remapped to light so inline classes flip.
-        ink: {
-          950: "#ffffff",
-          900: "#ffffff",
-          800: "#e4e4e7",
-          700: "#e4e4e7",
-          600: "#d4d4d8",
-        },
-        brand: {
-          DEFAULT: "#2d6a4f",
-          400: "#2d6a4f",
-          500: "#2d6a4f",
-          600: "#2d6a4f",
-          700: "#21503b",
-        },
         pursue: "#2d6a4f",
         review: "#b45309",
         dismiss: "#a1a1aa",
         risk: "#b91c1c",
 
-        // Invert the slate text ramp: bright-on-dark -> dark-on-light.
+        // Zinc-hued gray ramp in standard Tailwind orientation (100 light -> 900 dark).
         slate: {
-          100: "#18181b",
-          200: "#27272a",
-          300: "#3f3f46",
-          400: "#52525b",
+          50: "#fafafa",
+          100: "#f4f4f5",
+          200: "#e4e4e7",
+          300: "#d4d4d8",
+          400: "#a1a1aa",
           500: "#71717a",
-          600: "#a1a1aa",
-          700: "#d4d4d8",
-          800: "#e4e4e7",
-          900: "#f4f4f5",
-          950: "#fafafa",
+          600: "#52525b",
+          700: "#3f3f46",
+          800: "#27272a",
+          900: "#18181b",
+          950: "#09090b",
         },
       },
       fontFamily: {
