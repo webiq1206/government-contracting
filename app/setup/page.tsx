@@ -1,15 +1,19 @@
 import { redirect } from "next/navigation";
 import { currentUser, hasAnyOperator } from "@/lib/auth";
-import { LoginForm } from "@/components/login-form";
+import { SetupForm } from "@/components/setup-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage() {
+/**
+ * First-run setup. Creates the initial operator account on a fresh deployment
+ * (empty users table). If an operator already exists, sends the visitor to the
+ * normal login page — this route is only reachable once.
+ */
+export default async function SetupPage() {
   const user = await currentUser().catch(() => null);
   if (user) redirect("/pipeline");
-  // Fresh deployment with no operator yet: send them straight to first-run setup
-  // rather than a login form that can't succeed.
-  if (!(await hasAnyOperator())) redirect("/setup");
+  if (await hasAnyOperator()) redirect("/login");
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-surface p-6">
       <div className="w-full max-w-sm">
@@ -19,11 +23,15 @@ export default async function LoginPage() {
             BROSTCO
           </h1>
           <div className="mx-auto mt-4 h-px w-12 bg-accent" />
+          <p className="mt-6 text-sm text-slate-500">
+            First-run setup. Create the operator account that will sign in to review
+            today&rsquo;s pipeline.
+          </p>
         </div>
-        <LoginForm />
+        <SetupForm />
         <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
-          Federal opportunities, scored and briefed automatically. Sign in to review
-          today&rsquo;s pipeline.
+          You&rsquo;ll see this screen only once. After setup, sign in at{" "}
+          <span className="font-mono text-slate-600">/login</span>.
         </p>
       </div>
     </main>

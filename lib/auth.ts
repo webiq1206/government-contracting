@@ -69,6 +69,21 @@ export interface SessionUser {
 }
 
 /**
+ * True when at least one operator-role user exists in the DB. Used by the
+ * login/setup routing so a fresh deployment (empty users table, env-operator
+ * secrets not configured) can bootstrap its first operator through the UI
+ * instead of leaving the app permanently unreachable.
+ */
+export async function hasAnyOperator(): Promise<boolean> {
+  try {
+    const row = await queryOne<{ n: string }>(`select count(*)::text as n from users`);
+    return Number(row?.n ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verify credentials. Falls back to the env operator (OPERATOR_EMAIL +
  * OPERATOR_PASSWORD_HASH) when the users table has no matching row yet — so the
  * platform is loginnable immediately after setting those two env vars.
