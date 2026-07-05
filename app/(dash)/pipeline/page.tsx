@@ -2,6 +2,7 @@ import Link from "next/link";
 import { pipelineOpportunities, PIPELINE_STAGES } from "@/lib/data";
 import { PageHeader, ScoreBadge } from "@/components/badges";
 import { currency, countdown } from "@/lib/format";
+import { integrationStatus } from "@/lib/config";
 import type { Opportunity } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export default async function PipelinePage() {
         title="Pipeline"
         subtitle={`${opps.length} active opportunities. Human-action items in amber.`}
       />
+      {opps.length === 0 && <PipelineOnboarding />}
       <div className="scroll-thin flex-1 overflow-x-auto p-4">
         <div className="flex h-full gap-3" style={{ minWidth: "max-content" }}>
           {PIPELINE_STAGES.map((stage) => {
@@ -82,6 +84,53 @@ export default async function PipelinePage() {
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Empty-pipeline onboarding banner. A first-time operator lands on 11 blank
+ * columns with no explanation — this replaces the em-dash silence with a
+ * concrete "what to do next" tied to which integrations are missing.
+ */
+function PipelineOnboarding() {
+  const st = integrationStatus();
+  const missing: string[] = [];
+  if (!st.sam) missing.push("SAM.gov (opportunity ingestion)");
+  if (!st.claude) missing.push("Anthropic (scoring + bid briefs)");
+  if (!st.googleMaps) missing.push("Google Maps (subcontractor discovery)");
+  if (!st.gmail) missing.push("Gmail (outreach + reply tracking)");
+
+  return (
+    <div className="mx-6 mt-4 rounded-md border border-accent/40 bg-accent-soft p-5">
+      <p className="eyebrow mb-1 text-accent-strong">Get started</p>
+      <h2 className="font-serif text-xl font-semibold text-foreground">
+        Your pipeline is empty — that&rsquo;s expected on a fresh setup.
+      </h2>
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-600">
+        Opportunities flow in from the Opportunity Monitor (SAM.gov, every 2 hours) and are
+        scored, briefed, and routed through the 11 stages you see here automatically. Add the
+        integration keys below in your deployment secrets, then the pipeline will start filling
+        itself.
+      </p>
+      {missing.length > 0 && (
+        <ul className="mt-4 space-y-1 text-sm">
+          {missing.map((m) => (
+            <li key={m} className="flex items-start gap-2 text-slate-700">
+              <span className="mt-0.5 text-accent">•</span>
+              <span>{m}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Link href="/settings/integrations" className="btn-primary">
+          Review integrations
+        </Link>
+        <Link href="/settings/profile" className="btn-ghost">
+          Adjust automation settings
+        </Link>
       </div>
     </div>
   );
