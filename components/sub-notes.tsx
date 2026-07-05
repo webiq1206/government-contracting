@@ -44,7 +44,7 @@ export function SubNotes({ subId, initialNotes }: SubNotesProps) {
     <div className="space-y-2">
       <textarea
         className="input min-h-[140px] resize-y font-normal"
-        placeholder="Permanent notes — update after every call…"
+        placeholder="Permanent notes. Update after every call…"
         value={notes}
         onChange={(e) => {
           setNotes(e.target.value);

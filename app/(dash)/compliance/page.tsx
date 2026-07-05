@@ -52,7 +52,7 @@ export default async function CompliancePage() {
         <PageHeader title="Compliance Board" />
         <div className="p-6">
           <div className="card text-sm text-slate-600">
-            Compliance Monitor has not run yet — trigger it from{" "}
+            Compliance Monitor has not run yet. Trigger it from{" "}
             <a href="/agents" className="text-accent hover:underline">
               Agents
             </a>

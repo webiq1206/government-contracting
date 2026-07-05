@@ -169,7 +169,7 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
       <div>
         <p className="label">Coordination checklist</p>
         <p className="mt-0.5 text-xs text-slate-500">
-          Checklist items are required activities for pass-through defense —
+          Checklist items are required activities for pass-through defense,
           logged with timestamps.
         </p>
         {coordination.length === 0 ? (

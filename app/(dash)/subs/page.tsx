@@ -43,7 +43,26 @@ export default async function SubsPage({
         q={searchParams.q}
       />
       <div className="scroll-thin flex-1 overflow-auto p-4">
-        <div className="card overflow-hidden p-0">
+        {subs.length === 0 && !(filters.trade || filters.state || filters.q || minReliability != null) && (
+          <div className="card mx-auto mt-8 max-w-md text-center">
+            <p className="text-3xl">🏗️</p>
+            <p className="mt-3 text-base font-semibold text-foreground">
+              Your sub database is empty.
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Sub Finder fills this automatically when an opportunity is pursued:
+              it searches for local contractors in each required trade, verifies
+              them, and saves them here for future bids.
+            </p>
+          </div>
+        )}
+        <div
+          className={`card scroll-thin overflow-x-auto p-0 ${
+            subs.length === 0 && !(filters.trade || filters.state || filters.q || minReliability != null)
+              ? "hidden"
+              : ""
+          }`}
+        >
           <table className="w-full border-collapse">
             <thead className="border-b border-border bg-surface">
               <tr>

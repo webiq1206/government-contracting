@@ -173,7 +173,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
           <h2 className="label">Advanced (raw JSON)</h2>
           <p className="mt-1 text-xs text-slate-500">
             Scoring rubric, hard exclusions, sub standards, pricing rules, decision thresholds, and
-            notes. Edit as JSON — must parse before saving.
+            notes. Edit as JSON; it must parse before saving.
           </p>
         </div>
         <textarea

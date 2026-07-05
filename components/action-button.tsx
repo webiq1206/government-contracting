@@ -56,8 +56,15 @@ export function ActionButton({
 
   return (
     <span className="inline-flex flex-col">
-      <button className={className} onClick={go} disabled={loading}>
-        {loading ? "..." : children}
+      <button className={className} onClick={go} disabled={loading} aria-busy={loading}>
+        {loading ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            Working…
+          </span>
+        ) : (
+          children
+        )}
       </button>
       {error && <span className="mt-1 text-xs text-risk">{error}</span>}
     </span>

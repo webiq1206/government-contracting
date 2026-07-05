@@ -119,7 +119,7 @@ export function BidBrief({
               {analysis.required_forms.map((f, i) => (
                 <li key={i} className="flex flex-wrap items-baseline gap-x-2">
                   <span className="font-medium text-slate-900">{f.name}</span>
-                  {f.note && <span className="text-slate-500">— {f.note}</span>}
+                  {f.note && <span className="text-slate-500">· {f.note}</span>}
                 </li>
               ))}
             </ul>

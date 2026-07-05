@@ -182,7 +182,7 @@ export async function POST(
           [
             subcontractor_id,
             opportunity_id,
-            `Call — ${response.outcome ?? "logged"}`,
+            `Call: ${response.outcome ?? "logged"}`,
             callBody || "Call completed.",
           ]
         );

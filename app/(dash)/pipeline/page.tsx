@@ -106,7 +106,7 @@ function PipelineOnboarding() {
     <div className="mx-6 mt-4 rounded-md border border-accent/40 bg-accent-soft p-5">
       <p className="eyebrow mb-1 text-accent-strong">Get started</p>
       <h2 className="font-serif text-xl font-semibold text-foreground">
-        Your pipeline is empty — that&rsquo;s expected on a fresh setup.
+        Your pipeline is empty. That&rsquo;s expected on a fresh setup.
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
         Opportunities flow in from the Opportunity Monitor (SAM.gov, every 2 hours) and are

@@ -63,7 +63,7 @@ function BreakdownTable({
 }) {
   if (data.length === 0) return null;
   return (
-    <div className="card">
+    <div className="card scroll-thin overflow-x-auto">
       <h3 className="mb-3 text-sm font-semibold text-neutral-900">{title}</h3>
       <table className="w-full">
         <thead>
@@ -135,7 +135,7 @@ export default async function AnalyticsPage() {
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
         {!snap && (
           <div className="card border-review/40 bg-review/5 text-sm text-slate-700">
-            Analytics Engine has not run yet — showing live-computed basics. Trigger it from
+            Analytics Engine has not run yet, so these numbers are computed live. Trigger it from
             Agents.
           </div>
         )}
@@ -195,7 +195,7 @@ export default async function AnalyticsPage() {
 
         {/* Sub rankings */}
         {subRankings.length > 0 && (
-          <div className="card">
+          <div className="card scroll-thin overflow-x-auto">
             <h3 className="mb-3 text-sm font-semibold text-neutral-900">Top Subcontractors</h3>
             <table className="w-full">
               <thead>

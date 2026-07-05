@@ -11,6 +11,22 @@ import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+/** Plain-English labels for internal enums shown on this page. */
+const PAST_PERF_LABEL: Record<string, string> = {
+  not_required: "Not required",
+  team_accepted: "Team experience accepted",
+  prime_only: "Prime-only (blocked)",
+};
+
+const OUTREACH_LABEL: Record<string, string> = {
+  pending: "Not contacted yet",
+  sent: "Email sent",
+  followed_up: "Followed up",
+  responsive: "Responded",
+  unresponsive: "No response",
+  declined: "Declined",
+};
+
 /**
  * The Opportunity Detail page is the single source of truth for one bid.
  * Every card and list here is the authoritative view; changes made in Call
@@ -60,8 +76,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
             <div className="card">
               <p className="eyebrow">Plain-English summary</p>
               <p className="mt-2 text-sm text-slate-500">
-                The solicitation analysis has not run yet. Everything the operator
-                needs is still available below — score, pricing comps, related
+                The plain-English analysis has not run yet. Everything you need
+                is still available below: score, pricing comps, related
                 subcontractors, and every original attachment.
               </p>
             </div>
@@ -81,7 +97,15 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 <Fact label="State" value={opp.location_state ?? "—"} />
                 <Fact label="Deadline" value={countdown(opp.deadline)} />
                 <Fact label="Solicitation" value={opp.solicitation_number ?? "—"} />
-                <Fact label="Past perf" value={opp.past_perf_classification ?? "—"} />
+                <Fact
+                  label="Past performance"
+                  value={
+                    opp.past_perf_classification
+                      ? (PAST_PERF_LABEL[opp.past_perf_classification] ??
+                        opp.past_perf_classification.replace(/_/g, " "))
+                      : "—"
+                  }
+                />
               </div>
               {opp.risk_flags.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1">
@@ -119,10 +143,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
             {opp.past_perf_classification === "prime_only" && (
               <div className="card border-risk/50 bg-risk/5">
-                <p className="text-sm text-risk">
-                  Past performance is <strong>prime_only</strong> — blocked for
-                  human review. We cannot yet meet this as prime. Decide whether
-                  to pursue as an exception or dismiss.
+                <p className="text-sm font-medium text-risk">
+                  Blocked: prime-only past performance required
+                </p>
+                <p className="mt-1 text-sm text-slate-700">
+                  This agency wants proof that your company itself (not your
+                  subcontractors) has done similar work before. BROSTCO does not
+                  have that track record yet, so automation stopped here. You can
+                  pursue it anyway as an exception, or dismiss it.
                 </p>
               </div>
             )}
@@ -212,7 +240,10 @@ export default async function OpportunityPage({ params }: { params: { id: string
                           ) : null}
                         </span>
                         <span className="text-xs text-slate-500">
-                          {s.outreach_state ? String(s.outreach_state) : ""}
+                          {s.outreach_state
+                            ? (OUTREACH_LABEL[String(s.outreach_state)] ??
+                              String(s.outreach_state).replace(/_/g, " "))
+                            : ""}
                         </span>
                       </Link>
                     </li>
@@ -275,7 +306,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                       >
                         {c.ok ? "✓" : "✗"} {c.item}
                         {c.note ? (
-                          <span className="text-slate-500"> — {c.note}</span>
+                          <span className="text-slate-500"> · {c.note}</span>
                         ) : null}
                       </li>
                     ))}

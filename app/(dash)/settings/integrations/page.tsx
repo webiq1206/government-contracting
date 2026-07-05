@@ -13,7 +13,7 @@ const INTEGRATIONS: IntegrationDef[] = [
   { key: "database", label: "Database (Postgres/Supabase)", hint: "DATABASE_URL" },
   { key: "claude", label: "Claude (Anthropic)", hint: "ANTHROPIC_API_KEY" },
   { key: "sam", label: "SAM.gov", hint: "SAM_API_KEY" },
-  { key: "usaspending", label: "USASpending", hint: "Public API — no key required" },
+  { key: "usaspending", label: "USASpending", hint: "Public API, no key required" },
   { key: "bls", label: "Bureau of Labor Statistics", hint: "Works unauthenticated at low volume" },
   { key: "googleMaps", label: "Google Maps", hint: "GOOGLE_MAPS_API_KEY" },
   { key: "hunter", label: "Hunter.io", hint: "HUNTER_API_KEY" },
@@ -35,7 +35,7 @@ export default async function IntegrationsPage({
     <div className="flex h-full flex-col">
       <PageHeader
         title="Integrations"
-        subtitle="Informational only — no secrets are ever displayed."
+        subtitle="Informational only. No secrets are ever displayed."
       />
 
       <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
@@ -55,7 +55,7 @@ export default async function IntegrationsPage({
           </div>
         )}
 
-        <div className="card p-0">
+        <div className="card scroll-thin overflow-x-auto p-0">
           <table className="w-full">
             <tbody>
               {INTEGRATIONS.map((it) => {
@@ -100,8 +100,8 @@ export default async function IntegrationsPage({
             <p className="text-sm font-medium text-slate-900">Job queue backend</p>
             <p className="mt-0.5 text-xs text-slate-600">
               {status.queue === "bullmq"
-                ? "BullMQ (Redis-backed) — REDIS_URL is set."
-                : "pg-boss (Postgres-backed) — set REDIS_URL to switch to BullMQ."}
+                ? "BullMQ (Redis-backed). REDIS_URL is set."
+                : "pg-boss (Postgres-backed). Set REDIS_URL to switch to BullMQ."}
             </p>
           </div>
           <span className="badge bg-accent/10 font-mono text-accent">{status.queue}</span>

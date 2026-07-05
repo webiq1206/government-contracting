@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BROSTCO — Autonomous Procurement Execution",
+  title: "BROSTCO | Autonomous Procurement Execution",
   description:
-    "Autonomous federal-services contracting: monitor, score, brief, source, and bid — in a few minutes a day.",
+    "Autonomous federal-services contracting: monitor, score, brief, source, and bid in a few minutes a day.",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
   },

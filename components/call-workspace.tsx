@@ -540,9 +540,9 @@ export function CallWorkspace({
                     }
                   >
                     <option value="">—</option>
-                    <option value="high">High — has bid similar projects</option>
-                    <option value="medium">Medium — related experience</option>
-                    <option value="low">Low — new to this scope</option>
+                    <option value="high">High: has bid similar projects</option>
+                    <option value="medium">Medium: related experience</option>
+                    <option value="low">Low: new to this scope</option>
                   </select>
                 </div>
               </Group>
@@ -595,7 +595,7 @@ export function CallWorkspace({
                     }
                   >
                     <option value="">—</option>
-                    <option value="success">Reached — got quote</option>
+                    <option value="success">Reached and got a quote</option>
                     <option value="no_answer">No answer / voicemail</option>
                     <option value="not_interested">Not interested</option>
                     <option value="declined">Declined to bid</option>
