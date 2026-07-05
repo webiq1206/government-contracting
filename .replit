@@ -30,3 +30,6 @@ author = 0
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm install && npm run db:setup && npm run dev"
+
+[agent]
+expertMode = true
