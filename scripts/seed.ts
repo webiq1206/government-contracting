@@ -84,11 +84,33 @@ async function seedOperator() {
   console.log(`+ seeded operator user ${config.auth.operatorEmail}`);
 }
 
+/**
+ * TEMPORARY: seed a "reviewer" operator so the platform reviewer can log in on
+ * this deployment. Idempotent (skips if the email exists). Remove this block
+ * after the review pass is complete.
+ */
+async function seedReviewerOperator() {
+  const email = "reviewer@webiq.co";
+  const hash =
+    "scrypt$a53340627727deab41778b837cd9ff10$93486cf9c3b3ed42b327bcc6a93ceee1df60fc200c216b2e0d183690a390548d0d3f20689d9c168f7f2e07bf60a212355a35fea3a91c4780376aac2fe21f8366";
+  const existing = await queryOne(`select id from users where email = $1`, [email]);
+  if (existing) {
+    console.log("= reviewer user exists (skip)");
+    return;
+  }
+  await query(
+    `insert into users (email, password_hash, name, role) values ($1, $2, 'Reviewer', 'operator')`,
+    [email, hash]
+  );
+  console.log(`+ seeded reviewer user ${email}`);
+}
+
 async function main() {
   await seedProfile();
   await seedScoringWeights();
   await seedTemplates();
   await seedOperator();
+  await seedReviewerOperator();
   console.log("Seed complete.");
   await closePool();
 }
