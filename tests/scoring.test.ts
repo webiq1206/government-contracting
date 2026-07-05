@@ -4,6 +4,9 @@ import {
   sumDimensions,
   checkHardExclusions,
   buildScoreBreakdown,
+  reconcileDimensions,
+  reviewFlags,
+  applyWeightOverrides,
   clamp,
 } from "@/lib/domain/scoring";
 import { DEFAULT_PROFILE } from "@/db/seedData";
@@ -84,6 +87,12 @@ describe("scoring", () => {
     expect(ex).toContain("deadline_too_soon");
   });
 
+  it("hard exclusion: a PAST deadline also triggers deadline_too_soon", () => {
+    const past = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const ex = checkHardExclusions({ ...baseOpp, deadline: past }, DEFAULT_PROFILE);
+    expect(ex).toContain("deadline_too_soon");
+  });
+
   it("no exclusion for an eligible small-business set-aside in range", () => {
     const ex = checkHardExclusions(
       { ...baseOpp, set_aside_type: "Total Small Business Set-Aside", value_estimated: 250_000 },
@@ -115,5 +124,48 @@ describe("scoring", () => {
     const b = buildScoreBreakdown(dims, [], DEFAULT_PROFILE, "great");
     expect(b.total).toBe(100);
     expect(b.tier).toBe("pursue");
+  });
+
+  it("reconcileDimensions fills omitted rubric dimensions at 0 and reports them", () => {
+    const rubric = DEFAULT_PROFILE.scoring_rubric.dimensions;
+    // Model returns only the first two dimensions, at max.
+    const scored = rubric.slice(0, 2).map((d) => ({
+      key: d.key,
+      points: d.max_points,
+      reasoning: "ok",
+    }));
+    const { dims, missingKeys } = reconcileDimensions(rubric, scored);
+    expect(dims).toHaveLength(rubric.length); // every rubric dimension present
+    expect(missingKeys).toHaveLength(rubric.length - 2);
+    // The omitted dimensions contribute 0, not a silent drop that flips tiering.
+    expect(sumDimensions(dims)).toBe(rubric[0].max_points + rubric[1].max_points);
+  });
+
+  it("reconcileDimensions ignores an unknown key and clamps points", () => {
+    const rubric = [{ key: "a", label: "A", max_points: 20 }];
+    const { dims, missingKeys } = reconcileDimensions(rubric, [
+      { key: "a", points: 999, reasoning: "" }, // over-max
+      { key: "ghost", points: 50, reasoning: "" }, // not in rubric
+    ]);
+    expect(dims).toHaveLength(1);
+    expect(dims[0].points).toBe(20); // clamped
+    expect(missingKeys).toHaveLength(0);
+  });
+
+  it("reviewFlags flags value over value_max (350K) and nothing under", () => {
+    expect(reviewFlags({ value_estimated: 500_000 }, DEFAULT_PROFILE)).toContain("value_over_max");
+    expect(reviewFlags({ value_estimated: 200_000 }, DEFAULT_PROFILE)).toHaveLength(0);
+  });
+
+  it("applyWeightOverrides is a no-op with no active weights and normalizes to 100", () => {
+    const rubric = DEFAULT_PROFILE.scoring_rubric.dimensions;
+    expect(applyWeightOverrides(rubric, null)).toEqual(rubric);
+    expect(applyWeightOverrides(rubric, {})).toEqual(rubric);
+    // Approved weights override per-dimension; total stays ~100 so thresholds hold.
+    const weights = { [rubric[0].key]: { weight: 40 }, [rubric[1].key]: { weight: 40 } };
+    const applied = applyWeightOverrides(rubric, weights);
+    const total = applied.reduce((a, d) => a + d.max_points, 0);
+    expect(Math.abs(total - 100)).toBeLessThanOrEqual(1); // rounding tolerance
+    expect(applied[0].max_points).toBeGreaterThan(rubric[0].max_points); // first got heavier
   });
 });

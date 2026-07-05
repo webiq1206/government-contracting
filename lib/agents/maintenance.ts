@@ -84,6 +84,43 @@ export const reviewExpirySweep: AgentDefinition = {
   },
 };
 
+export const stalledPipelineSweep: AgentDefinition = {
+  name: "stalled-pipeline-sweep",
+  label: "Stalled Pipeline Sweep",
+  description:
+    "Flags opportunities stuck mid-pipeline (no sub responded, or every candidate failed verification) for human review so they can't silently die.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    // Opportunities that entered sub research or outreach and made no forward
+    // progress within the grace window (well past the 48h follow-up cycle) get
+    // surfaced to the operator instead of stalling with no human_action flag.
+    // Runs once per opp: flipping human_action_required=true excludes it next run.
+    const stalled = await query<{ id: string; title: string | null; stage: string }>(
+      `update opportunities
+          set human_action_required = true,
+              risk_flags = coalesce(risk_flags, '{}') || array['stalled_' || stage]
+        where status = 'open' and human_action_required = false
+          and stage in ('sub_research', 'outreach')
+          and updated_at < now() - interval '4 days'
+        returning id, title, stage`
+    );
+    for (const o of stalled) {
+      await logAgent({
+        agent: "stalled-pipeline-sweep",
+        action: "flag-stalled",
+        opportunityId: o.id,
+        level: "warn",
+        message: `Flagged stalled opportunity "${o.title ?? o.id}" (no progress in ${o.stage} for 4 days).`,
+        reasoning:
+          o.stage === "outreach"
+            ? "No subcontractor replied after outreach + follow-up. Needs operator attention (call subs directly or dismiss)."
+            : "No subcontractor cleared verification for this opportunity. Needs operator attention (add subs or dismiss).",
+      });
+    }
+    return { ok: true, summary: `Flagged ${stalled.length} stalled opportunit${stalled.length === 1 ? "y" : "ies"} for review.` };
+  },
+};
+
 export const replyPoll: AgentDefinition = {
   name: "reply-poll",
   label: "Reply Poller",

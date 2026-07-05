@@ -7,7 +7,11 @@
 import { queryOne, query } from "../db";
 import type { CompanyProfile, CompanyProfileJson } from "../types";
 
-const CACHE_TTL_MS = 30_000;
+// Short TTL: invalidateProfileCache() busts this process's cache on write, but a
+// separate worker process only picks up a newly-published profile after the TTL,
+// so keep it small to minimize the cross-process window (agents scoring in the
+// gap would otherwise use the old rules/thresholds).
+const CACHE_TTL_MS = 5_000;
 let _cache: { profile: CompanyProfile; at: number } | null = null;
 
 export async function getActiveProfile(

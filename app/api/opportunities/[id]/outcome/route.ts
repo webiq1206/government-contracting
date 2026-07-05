@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
-import { query, queryOne } from "@/lib/db";
+import { query, queryOne, transaction } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
 import type { Opportunity } from "@/lib/types";
@@ -32,33 +32,39 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const awardAmount = body.award_amount != null ? Number(body.award_amount) : null;
   const lossReason = body.loss_reason ?? null;
 
-  if (bid) {
-    await query(
-      `update bids set outcome=$2, award_amount=$3, loss_reason=$4 where id=$1`,
-      [bid.id, outcome, awardAmount, lossReason]
-    );
-  }
-
   if (outcome === "won") {
-    await query(`update opportunities set stage='won', status='closed' where id=$1`, [params.id]);
     const contractNumber = body.contract_number ?? opp.solicitation_number ?? null;
     // CPARS due 7 days after contract close (spec). Default close = +180d if unknown.
     const endDate = body.end_date ?? null;
-    await query(
-      `insert into contracts
-         (bid_id, opportunity_id, contract_number, award_amount, start_date, end_date,
-          cpars_due_at, cpars_status, status)
-       values ($1,$2,$3,$4,$5,$6,$7,'pending','active')`,
-      [
-        bid?.id ?? null,
-        params.id,
-        contractNumber,
-        awardAmount,
-        body.start_date ?? null,
-        endDate,
-        endDate ? new Date(new Date(endDate).getTime() + 7 * 86_400_000).toISOString() : null,
-      ]
-    );
+    // Atomic: mark the bid won, close the opportunity, and create the contract in
+    // one transaction so a partial failure can't leave a "won" bid with no
+    // contract row (or an opportunity closed with no contract).
+    await transaction(async (c) => {
+      if (bid) {
+        await c.query(`update bids set outcome=$2, award_amount=$3, loss_reason=$4 where id=$1`, [
+          bid.id,
+          outcome,
+          awardAmount,
+          lossReason,
+        ]);
+      }
+      await c.query(`update opportunities set stage='won', status='closed' where id=$1`, [params.id]);
+      await c.query(
+        `insert into contracts
+           (bid_id, opportunity_id, contract_number, award_amount, start_date, end_date,
+            cpars_due_at, cpars_status, status)
+         values ($1,$2,$3,$4,$5,$6,$7,'pending','active')`,
+        [
+          bid?.id ?? null,
+          params.id,
+          contractNumber,
+          awardAmount,
+          body.start_date ?? null,
+          endDate,
+          endDate ? new Date(new Date(endDate).getTime() + 7 * 86_400_000).toISOString() : null,
+        ]
+      );
+    });
     await logAgent({
       agent: "operator",
       action: "award-won",
@@ -69,6 +75,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     });
     await enqueue("analytics-engine", {});
   } else {
+    if (bid) {
+      await query(`update bids set outcome=$2, award_amount=$3, loss_reason=$4 where id=$1`, [
+        bid.id,
+        outcome,
+        awardAmount,
+        lossReason,
+      ]);
+    }
     await query(`update opportunities set stage='lost', status='closed' where id=$1`, [params.id]);
     await logAgent({
       agent: "operator",

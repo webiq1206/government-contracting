@@ -11,8 +11,25 @@ import { pool, query, closePool } from "../lib/db";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(__dirname, "..", "db", "migrations");
+// Constant advisory-lock key so only one migrate run touches the schema at a
+// time (a deploy racing a manual run, or two autoscale instances booting).
+const MIGRATE_LOCK_KEY = 4820731;
 
 async function main() {
+  // Serialize concurrent migrate runs. A second runner blocks here until the
+  // first finishes, then finds every migration already applied and skips.
+  const lockClient = await pool().connect();
+  await lockClient.query(`select pg_advisory_lock($1)`, [MIGRATE_LOCK_KEY]);
+  try {
+    await runMigrations();
+  } finally {
+    await lockClient.query(`select pg_advisory_unlock($1)`, [MIGRATE_LOCK_KEY]).catch(() => {});
+    lockClient.release();
+  }
+  await closePool();
+}
+
+async function runMigrations() {
   await query(`
     create table if not exists _migrations (
       name text primary key,
@@ -53,7 +70,6 @@ async function main() {
   }
 
   console.log(count === 0 ? "Up to date." : `Applied ${count} migration(s).`);
-  await closePool();
 }
 
 main().catch((err) => {

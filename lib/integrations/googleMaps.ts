@@ -32,6 +32,8 @@ interface TextSearchResult {
 
 interface TextSearchResponse {
   results?: TextSearchResult[];
+  status?: string; // "OK" | "ZERO_RESULTS" | "REQUEST_DENIED" | "OVER_QUERY_LIMIT" | ...
+  error_message?: string;
 }
 
 interface DetailsResponse {
@@ -65,6 +67,14 @@ export const googleMaps = {
           },
         })
       );
+      // Places returns HTTP 200 with a status field even on failure — a denied
+      // or rate-limited key yields empty results that look like "no contractors."
+      // Surface it so the misconfig isn't silent.
+      if (data.status && !["OK", "ZERO_RESULTS"].includes(data.status)) {
+        console.error(
+          `[googleMaps] Places status ${data.status}${data.error_message ? ": " + data.error_message : ""}`
+        );
+      }
       const results: Contractor[] = (data.results ?? [])
         .slice(0, limit)
         .map((r) => ({

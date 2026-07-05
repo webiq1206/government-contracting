@@ -4,7 +4,7 @@
  * keeps scheduling backend-agnostic and lets the queue provide retries/isolation.
  * A singletonKey per minute prevents duplicate enqueues if two ticks overlap.
  */
-import { cronMatches } from "../lib/cron";
+import { cronMatches, isValidCron } from "../lib/cron";
 import { enqueue } from "../lib/queue";
 import { scheduledAgents } from "../lib/agents/registry";
 import { config } from "../lib/config";
@@ -15,6 +15,14 @@ export function startScheduler(): () => void {
   const schedule = scheduledAgents().filter(
     (s) => !config.worker.disabledAgents.includes(s.agent.name)
   );
+
+  // Catch a typo'd cron at boot rather than letting it silently never fire.
+  for (const { agent, cron } of schedule) {
+    if (!isValidCron(cron)) {
+      console.error(`[scheduler] INVALID cron for ${agent.name}: "${cron}" — it will never run.`);
+    }
+  }
+
   console.log(
     `[scheduler] ${schedule.length} scheduled job(s): ${schedule
       .map((s) => `${s.agent.name}(${s.cron})`)
@@ -23,7 +31,9 @@ export function startScheduler(): () => void {
 
   async function tick() {
     const now = new Date();
-    const stamp = `${now.getUTCFullYear()}${now.getUTCMonth()}${now.getUTCDate()}${now.getUTCHours()}${now.getUTCMinutes()}`;
+    // Stamp uses the SAME clock the cron matcher uses (local time) so the
+    // per-minute dedupe key lines up with the minute the cron actually matched.
+    const stamp = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
     for (const { agent, cron } of schedule) {
       if (cronMatches(cron, now)) {
         await enqueue(

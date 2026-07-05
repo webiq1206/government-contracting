@@ -14,6 +14,7 @@ export type JobHandler = (payload: JobPayload) => Promise<void>;
 export interface EnqueueOptions {
   startAfterSeconds?: number;
   singletonKey?: string; // dedupe: at most one active job with this key
+  singletonSeconds?: number; // dedupe window (pg-boss) — hold the key this long
   priority?: number;
 }
 
@@ -75,6 +76,7 @@ export const QUEUE_NAMES = [
   "outreach-followup",
   "review-expiry-sweep",
   "reply-poll",
+  "stalled-pipeline-sweep",
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];

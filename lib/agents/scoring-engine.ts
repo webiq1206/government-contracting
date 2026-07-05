@@ -14,6 +14,9 @@ import { logAgent } from "../logger";
 import {
   checkHardExclusions,
   buildScoreBreakdown,
+  reconcileDimensions,
+  reviewFlags,
+  applyWeightOverrides,
   type DimensionScore,
 } from "../domain/scoring";
 import type { AgentDefinition } from "./types";
@@ -55,55 +58,81 @@ export const scoringEngine: AgentDefinition = {
     // 1) Deterministic hard exclusions FIRST.
     const structuralExclusions = checkHardExclusions(opp, profile);
 
+    // Valid exclusion keys the model may return in extra_exclusions. Anything
+    // outside this set is a hallucination and must be dropped — an unrecognized
+    // exclusion string would otherwise zero the score and auto-dismiss a good
+    // opportunity (buildScoreBreakdown forces dismiss on ANY exclusion).
+    const validExclusionKeys = new Set(profile.hard_exclusions.map((e) => e.key));
+
     // 2) Rubric scoring via Claude (per-dimension judgment against the profile).
-    const rubric = profile.scoring_rubric;
+    // Apply any operator-approved Learning Loop weights (normalized to 100 pts) so
+    // an approved weight version actually changes scoring; default = raw rubric.
+    const activeWeights = await queryOne<{ weights: Record<string, unknown> }>(
+      `select weights from scoring_weights where is_active = true limit 1`
+    );
+    const rubricDims = applyWeightOverrides(profile.scoring_rubric.dimensions, activeWeights?.weights);
+    const rubric = { ...profile.scoring_rubric, dimensions: rubricDims };
     let dims: DimensionScore[] = [];
     let summary = "";
     let claudeExclusions: string[] = [];
+    let missingKeys: string[] = [];
+    let scoringIncomplete = false;
 
     try {
-      const prompt = buildScoringPrompt(opp, rubric.dimensions);
+      const prompt = buildScoringPrompt(opp, rubric.dimensions, profile.hard_exclusions);
       const { data, usage } = await completeJson(prompt, {
         schema: DimSchema,
         maxTokens: 1500,
       });
-      dims = data.dimensions.map((d) => {
-        const dim = rubric.dimensions.find((x) => x.key === d.key);
-        return {
-          key: d.key,
-          label: dim?.label ?? d.key,
-          points: d.points,
-          max_points: dim?.max_points ?? 0,
-          reasoning: d.reasoning,
-        };
-      });
-      claudeExclusions = data.extra_exclusions;
+      // Reconcile against the FULL rubric so an omitted dimension can't silently
+      // understate the total; a partial response routes to human review below.
+      const reconciled = reconcileDimensions(rubric.dimensions, data.dimensions);
+      dims = reconciled.dims;
+      missingKeys = reconciled.missingKeys;
+      scoringIncomplete = missingKeys.length > 0;
+      // Drop any exclusion key the model invented.
+      claudeExclusions = data.extra_exclusions.filter((k) => validExclusionKeys.has(k));
       summary = data.summary;
       await logAgent({
         agent: "scoring-engine",
         action: "score",
         opportunityId,
-        message: `scored via Claude`,
+        message: scoringIncomplete
+          ? `scored via Claude (incomplete: missing ${missingKeys.join(", ")})`
+          : `scored via Claude`,
         claudeUsage: usage,
       });
     } catch (err) {
-      if (err instanceof ClaudeNotConfiguredError) {
-        // Rule-only fallback: neutral mid scores so the item lands in review.
-        dims = rubric.dimensions.map((d) => ({
-          key: d.key,
-          label: d.label,
-          points: Math.round(d.max_points * 0.6),
-          max_points: d.max_points,
-          reasoning: "Claude not configured — neutral heuristic score; needs human review.",
-        }));
-        summary = "Scored heuristically (Claude disabled). Manual review recommended.";
-      } else {
-        throw err;
-      }
+      // Missing key OR any transient Claude error (429/5xx/network): fall back to
+      // a neutral heuristic so scoring never blocks the pipeline. The item lands
+      // in review for a human rather than crashing the job (which would retry and
+      // could jam intake during a Claude outage).
+      const heuristic = !(err instanceof ClaudeNotConfiguredError);
+      dims = rubric.dimensions.map((d) => ({
+        key: d.key,
+        label: d.label,
+        points: Math.round(d.max_points * 0.6),
+        max_points: d.max_points,
+        reasoning: heuristic
+          ? "Claude error — neutral heuristic score; needs human review."
+          : "Claude not configured — neutral heuristic score; needs human review.",
+      }));
+      summary = heuristic
+        ? `Scored heuristically (Claude error: ${(err as Error).message}). Manual review recommended.`
+        : "Scored heuristically (Claude disabled). Manual review recommended.";
+      scoringIncomplete = true;
     }
 
     const exclusions = [...new Set([...structuralExclusions, ...claudeExclusions])];
     const breakdown = buildScoreBreakdown(dims, exclusions, profile, summary);
+
+    // Non-dismiss review flags (e.g. value over $350K) + incomplete scoring both
+    // downgrade an otherwise-pursue result to human review — never auto-pursue on
+    // a partial score or a contract larger than the company can self-approve.
+    const flags = reviewFlags(opp, profile);
+    if (scoringIncomplete) flags.push("incomplete_scoring");
+    const forceReview = flags.length > 0 && breakdown.tier === "pursue";
+    if (forceReview) breakdown.tier = "review";
 
     // 3) Persist score + tier + route.
     const enqueued: AgentResult["enqueued"] = [];
@@ -156,7 +185,7 @@ export const scoringEngine: AgentDefinition = {
         status,
         humanAction,
         reviewExpires,
-        exclusions,
+        [...new Set([...exclusions, ...flags])],
       ]
     );
 
@@ -175,10 +204,14 @@ export const scoringEngine: AgentDefinition = {
 
 function buildScoringPrompt(
   opp: Opportunity,
-  dimensions: { key: string; label: string; max_points: number; guidance: string }[]
+  dimensions: { key: string; label: string; max_points: number; guidance: string }[],
+  hardExclusions: { key: string; label: string; rule: string }[]
 ): string {
   const dimLines = dimensions
     .map((d) => `- ${d.key} ("${d.label}", max ${d.max_points} pts): ${d.guidance}`)
+    .join("\n");
+  const exclLines = hardExclusions
+    .map((e) => `- ${e.key} ("${e.label}"): ${e.rule}`)
     .join("\n");
   return [
     "Score this government contracting opportunity against our rubric. Use the Company Profile (your system context) as the source of truth for what we pursue, our certifications, service areas, and thresholds.",
@@ -192,11 +225,12 @@ function buildScoringPrompt(
     `Deadline: ${opp.deadline ?? "(unknown)"}`,
     `Description: ${(opp.description ?? "").slice(0, 2000)}`,
     "",
-    "RUBRIC DIMENSIONS (award points up to each max):",
+    "RUBRIC DIMENSIONS (award points up to each max — you MUST return every dimension key below):",
     dimLines,
     "",
-    "Also list any hard-exclusion keys from the profile that this opportunity triggers (free-text rules you must evaluate), in extra_exclusions. If none, use an empty array.",
+    "HARD-EXCLUSION RULES — in extra_exclusions, return ONLY keys from this exact list that this opportunity triggers (evaluate the free-text rules). Never invent a key; if none apply, use an empty array:",
+    exclLines,
     "",
-    "Return JSON: { dimensions: [{ key, points, reasoning }], extra_exclusions: string[], summary: string }. Points must be integers within each dimension's max. The summary is 1-2 sentences on why this scored as it did.",
+    "Return JSON: { dimensions: [{ key, points, reasoning }], extra_exclusions: string[], summary: string }. Include ALL rubric dimension keys. Points must be integers within each dimension's max. The summary is 1-2 sentences on why this scored as it did.",
   ].join("\n");
 }

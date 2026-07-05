@@ -320,10 +320,12 @@ async function recomputeSubScores(): Promise<SubUpdateResult> {
     const isPreferred = !s.blacklisted && reliability >= 80;
     if (isPreferred) promoted++;
 
+    // Preferred status is recomputed each run, NOT a one-way ratchet: a sub whose
+    // reliability drops below 80 or that gets blacklisted MUST be demoted, or Sub
+    // Finder would keep prioritizing a bad/blacklisted sub forever.
     await query(
       `update subcontractors
-          set responsiveness_score=$2, reliability_score=$3,
-              is_preferred = case when $4 then true else is_preferred end
+          set responsiveness_score=$2, reliability_score=$3, is_preferred=$4
         where id=$1`,
       [s.id, responsiveness, reliability, isPreferred]
     );

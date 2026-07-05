@@ -42,12 +42,19 @@ export const texasScraper: StateScraper = {
         // Try to lift a NAICS and a date out of the row text.
         const naics = r.rowText.match(/\b(\d{6})\b/)?.[1];
         const date = r.rowText.match(/\b(\d{1,2}\/\d{1,2}\/\d{2,4})\b/)?.[1];
+        // A string can match the loose date regex yet be invalid (e.g. 13/45/99);
+        // new Date(...).toISOString() would throw RangeError and abort the scrape.
+        let deadline: string | undefined;
+        if (date) {
+          const parsed = new Date(date);
+          if (!Number.isNaN(parsed.getTime())) deadline = parsed.toISOString();
+        }
         const opp: ScrapedOpportunity = {
           source: "state_tx",
           source_id: `tx_${id}`,
           title: r.title.slice(0, 240),
           naics_code: naics,
-          deadline: date ? new Date(date).toISOString() : undefined,
+          deadline,
           location_state: "TX",
           agency: "Texas ESBD",
           raw: { href: r.href, rowText: r.rowText },

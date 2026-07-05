@@ -46,6 +46,7 @@ export interface SearchParams {
   limit?: number;
   offset?: number;
   title?: string;
+  solnum?: string; // solicitation-number lookup (exact), for award tracking
 }
 
 function mmddyyyy(d: Date): string {
@@ -73,16 +74,23 @@ export const sam = {
       state: params.states?.join(","),
       typeOfSetAside: params.setAside,
       title: params.title,
+      solnum: params.solnum,
     };
-    const data = await withRetry(() =>
-      fetchJson<{ totalRecords: number; opportunitiesData: SamOpportunity[] }>(OPP_BASE, {
-        query,
-      })
-    );
-    return {
-      total: data.totalRecords ?? 0,
-      items: data.opportunitiesData ?? [],
-    };
+    // Never throw on a SAM outage / rate-limit (SAM keys are ~1000/day): the
+    // Opportunity Monitor's primary ingestion path must log a skip, not crash.
+    try {
+      const data = await withRetry(() =>
+        fetchJson<{ totalRecords: number; opportunitiesData: SamOpportunity[] }>(OPP_BASE, {
+          query,
+        })
+      );
+      return {
+        total: data.totalRecords ?? 0,
+        items: data.opportunitiesData ?? [],
+      };
+    } catch {
+      return { total: 0, items: [] };
+    }
   },
 
   /** Sources Sought notices specifically (routed to the high-priority sub-queue). */
@@ -117,8 +125,16 @@ export const sam = {
     }
   },
 
-  /** Check whether a company appears on the SAM exclusions (debarment) list. */
-  async isExcluded(name: string): Promise<{ disabled?: boolean; excluded: boolean }> {
+  /**
+   * Check whether a company appears on the SAM exclusions (debarment) list.
+   * On error returns `error:true` (NOT a clean `excluded:false`) so a compliance
+   * check can treat "unknown" differently from "confirmed clear" — a debarment
+   * check that silently reads as clear on an API error is a dangerous false
+   * negative for a gov-contracting gate.
+   */
+  async isExcluded(
+    name: string
+  ): Promise<{ disabled?: boolean; excluded: boolean; error?: boolean }> {
     if (!config.sam.enabled || !name) return { disabled: true, excluded: false };
     try {
       const data = await withRetry(() =>
@@ -128,15 +144,18 @@ export const sam = {
       );
       return { excluded: (data.totalRecords ?? 0) > 0 };
     } catch {
-      return { excluded: false };
+      return { excluded: false, error: true };
     }
   },
 
   /** Award notices for post-submission tracking (win/loss detection). */
   async getAwardNotices(solicitationNumber: string): Promise<SamOpportunity[]> {
     if (!config.sam.enabled || !solicitationNumber) return [];
+    // Look up by exact solicitation number (solnum), not a title keyword — award
+    // notices rarely carry the solicitation number in their title, so the old
+    // title filter returned nothing and win/loss detection never fired.
     const res = await this.searchOpportunities({
-      title: solicitationNumber,
+      solnum: solicitationNumber,
       ptype: "a", // 'a' = Award Notice
       limit: 10,
     });

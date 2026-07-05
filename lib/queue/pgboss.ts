@@ -40,7 +40,13 @@ export async function createPgBossQueue(): Promise<Queue> {
       };
       if (opts?.startAfterSeconds) sendOpts.startAfter = opts.startAfterSeconds;
       if (opts?.priority) sendOpts.priority = opts.priority;
-      if (opts?.singletonKey) sendOpts.singletonKey = opts.singletonKey;
+      if (opts?.singletonKey) {
+        sendOpts.singletonKey = opts.singletonKey;
+        // Pair the key with a time window so dedupe holds across instances even
+        // after the (fast) job completes — otherwise a second worker ticking the
+        // same minute re-enqueues once the first is no longer "active".
+        sendOpts.singletonSeconds = opts.singletonSeconds ?? 55;
+      }
       return boss.send(name, payload, sendOpts);
     },
 

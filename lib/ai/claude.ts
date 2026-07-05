@@ -64,7 +64,7 @@ async function buildSystem(opts: CompleteOptions): Promise<string> {
 export async function complete(
   prompt: string,
   opts: CompleteOptions = {}
-): Promise<{ text: string; usage: ClaudeUsage }> {
+): Promise<{ text: string; usage: ClaudeUsage; stopReason: string | null }> {
   const system = await buildSystem(opts);
   const model = opts.model ?? config.claude.model;
 
@@ -100,6 +100,7 @@ export async function complete(
       output_tokens: res.usage.output_tokens,
       model,
     },
+    stopReason: (res as { stop_reason?: string | null }).stop_reason ?? null,
   };
 }
 
@@ -121,9 +122,13 @@ export async function completeJson<T = unknown>(
   let extra = "";
   let totalIn = 0;
   let totalOut = 0;
+  let maxTokens = opts.maxTokens ?? 2048;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const { text, usage } = await complete(prompt + jsonInstruction + extra, opts);
+    const { text, usage, stopReason } = await complete(prompt + jsonInstruction + extra, {
+      ...opts,
+      maxTokens,
+    });
     totalIn += usage.input_tokens;
     totalOut += usage.output_tokens;
     try {
@@ -135,7 +140,15 @@ export async function completeJson<T = unknown>(
       };
     } catch (err) {
       lastErr = err;
-      extra = `\n\nYour previous response could not be parsed/validated (${(err as Error).message}). Return corrected, strictly-valid JSON only.`;
+      // If the response was cut off at the token ceiling, the JSON is truncated —
+      // retrying at the SAME budget just truncates again. Bump the budget instead
+      // (capped) so the retry has room to finish the object.
+      if (stopReason === "max_tokens") {
+        maxTokens = Math.min(maxTokens * 2, 8192);
+        extra = "\n\nYour previous response was cut off before the JSON was complete. Return the COMPLETE, valid JSON object only.";
+      } else {
+        extra = `\n\nYour previous response could not be parsed/validated (${(err as Error).message}). Return corrected, strictly-valid JSON only.`;
+      }
     }
   }
   throw new Error(

@@ -21,7 +21,7 @@ import { analyticsEngine } from "./analytics-engine";
 import { sourcesSoughtResponder } from "./sources-sought-responder";
 
 // Maintenance jobs (time-based plumbing).
-import { outreachFollowup, reviewExpirySweep, replyPoll } from "./maintenance";
+import { outreachFollowup, reviewExpirySweep, replyPoll, stalledPipelineSweep } from "./maintenance";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -39,7 +39,12 @@ export const ROSTER: AgentDefinition[] = [
   sourcesSoughtResponder,
 ];
 
-export const MAINTENANCE: AgentDefinition[] = [outreachFollowup, reviewExpirySweep, replyPoll];
+export const MAINTENANCE: AgentDefinition[] = [
+  outreachFollowup,
+  reviewExpirySweep,
+  replyPoll,
+  stalledPipelineSweep,
+];
 
 export const ALL_AGENTS: AgentDefinition[] = [...ROSTER, ...MAINTENANCE];
 
@@ -59,7 +64,8 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
   scheduled.push(
     { agent: outreachFollowup, cron: "*/15 * * * *" }, // every 15 min
     { agent: reviewExpirySweep, cron: "*/10 * * * *" }, // every 10 min
-    { agent: replyPoll, cron: "*/15 * * * *" } // every 15 min
+    { agent: replyPoll, cron: "*/15 * * * *" }, // every 15 min
+    { agent: stalledPipelineSweep, cron: "0 8 * * *" } // daily at 08:00
   );
   return scheduled;
 }

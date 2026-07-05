@@ -124,6 +124,10 @@ export const subVerify: AgentDefinition = {
     const excl = await sam.isExcluded(sub.company_name);
     if (excl.disabled) {
       notes.push("SAM exclusions check disabled.");
+    } else if (excl.error) {
+      // API error — do NOT record "clear" (that would be a debarment false
+      // negative). Keep any prior status and flag it as unverified.
+      notes.push("SAM exclusions check errored — status unverified, retry later.");
     } else {
       samExcluded = excl.excluded;
     }

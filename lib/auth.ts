@@ -3,13 +3,45 @@
  * server-side sessions stored in the `sessions` table. Phase 1 is single
  * operator; the users table + role column make multi-user a later add.
  */
-import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypto";
+import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
 import { cookies } from "next/headers";
 import { query, queryOne } from "./db";
 import { config } from "./config";
 
 const SESSION_COOKIE = "brostco_session";
 const SESSION_TTL_DAYS = 30;
+const SESSION_TTL_MS = SESSION_TTL_DAYS * 86_400_000;
+
+/**
+ * The env-operator has no `users`/`sessions` row, so its cookie is a self-signed
+ * token: `env-operator.<issuedAtMs>.<hmac>`. Using a full-length HMAC over the
+ * issued-at time (not a truncated sha256 of a constant) means the token expires
+ * and cannot be recomputed without AUTH_SECRET.
+ */
+function signEnvOperator(issuedAt: number): string {
+  const mac = createHmac("sha256", config.auth.secret)
+    .update(`env-operator|${issuedAt}`)
+    .digest("hex");
+  return `env-operator.${issuedAt}.${mac}`;
+}
+
+/** Refuse the env-operator path in production if AUTH_SECRET is still the default
+ * (a public value would let anyone forge the operator cookie). */
+function envOperatorAllowed(): boolean {
+  return !(config.isProd && config.auth.secretIsDefault);
+}
+
+function verifyEnvOperator(token: string): boolean {
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts[0] !== "env-operator") return false;
+  const issuedAt = Number(parts[1]);
+  if (!Number.isFinite(issuedAt)) return false;
+  if (Date.now() - issuedAt > SESSION_TTL_MS) return false; // expired
+  const expected = signEnvOperator(issuedAt);
+  const a = Buffer.from(token);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -61,8 +93,9 @@ export async function authenticate(
       : null;
   }
 
-  // Env-operator fallback.
+  // Env-operator fallback (disabled in prod when AUTH_SECRET is the default).
   if (
+    envOperatorAllowed() &&
     config.auth.operatorEmail &&
     config.auth.operatorPasswordHash &&
     email.toLowerCase().trim() === config.auth.operatorEmail.toLowerCase() &&
@@ -81,14 +114,9 @@ export async function authenticate(
 export async function createSession(userId: string): Promise<string> {
   const token = randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
-  // env-operator has no users row; store a hashed synthetic id reference safely.
+  // env-operator has no users row; issue a self-signed, time-limited token.
   if (userId === "env-operator") {
-    // Use a signed cookie value instead of a DB row for the env operator.
-    const sig = createHash("sha256")
-      .update(`env-operator|${config.auth.secret}`)
-      .digest("hex")
-      .slice(0, 16);
-    return `env-operator.${sig}`;
+    return signEnvOperator(Date.now());
   }
   await query(
     `insert into sessions (id, user_id, expires_at) values ($1, $2, $3)`,
@@ -100,11 +128,7 @@ export async function createSession(userId: string): Promise<string> {
 export async function resolveSession(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   if (token.startsWith("env-operator.")) {
-    const sig = createHash("sha256")
-      .update(`env-operator|${config.auth.secret}`)
-      .digest("hex")
-      .slice(0, 16);
-    if (token === `env-operator.${sig}` && config.auth.operatorEmail) {
+    if (envOperatorAllowed() && config.auth.operatorEmail && verifyEnvOperator(token)) {
       return {
         id: "env-operator",
         email: config.auth.operatorEmail,

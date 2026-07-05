@@ -4,6 +4,38 @@
  * comma lists. Enough for the agent schedules; no external dependency. Evaluated
  * once per minute by the worker scheduler.
  */
+/**
+ * Validate a 5-field cron expression (structure + parseable numeric parts) so a
+ * typo'd schedule can be caught + logged at boot instead of silently never
+ * firing (cronMatches returns false for both "no match" and "invalid").
+ */
+export function isValidCron(expr: string): boolean {
+  const fields = expr.trim().split(/\s+/);
+  if (fields.length !== 5) return false;
+  const bounds: [number, number][] = [
+    [0, 59],
+    [0, 23],
+    [1, 31],
+    [1, 12],
+    [0, 6],
+  ];
+  return fields.every((field, i) =>
+    field.split(",").every((part) => {
+      const [range, stepStr] = part.split("/");
+      if (stepStr !== undefined) {
+        const step = parseInt(stepStr, 10);
+        if (Number.isNaN(step) || step < 1) return false;
+      }
+      if (range === "*") return true;
+      const [lo, hi] = bounds[i];
+      return range.split("-").every((n) => {
+        const v = parseInt(n, 10);
+        return Number.isFinite(v) && v >= lo && v <= hi;
+      });
+    })
+  );
+}
+
 export function cronMatches(expr: string, date: Date): boolean {
   const fields = expr.trim().split(/\s+/);
   if (fields.length !== 5) return false;

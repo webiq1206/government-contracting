@@ -445,16 +445,26 @@ function buildQaChecklist(i: QaInputs): QaChecklistItem[] {
   return items;
 }
 
-/** Pull a numeric comp benchmark from stored analysis/summary if available. */
+/**
+ * Pull a numeric comp benchmark from the pricing summary that Pricing Research
+ * writes into opportunities.raw_json.pricing_summary. The stats live under
+ * `comp_stats` (a CompStats object) — reading a top-level `median` finds nothing
+ * and silently disables the whole price-sanity QA gate, so read the real path,
+ * falling back to the sub-cost proxy.
+ */
 function extractCompBenchmark(opp: Opportunity): number | null {
   const raw = opp.raw_json as Record<string, unknown> | null;
   const summary = raw?.pricing_summary as Record<string, unknown> | undefined;
-  if (summary) {
-    const benchmark = summary.median ?? summary.average ?? summary.benchmark;
-    const n = Number(benchmark);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return null;
+  if (!summary) return null;
+  const stats = summary.comp_stats as Record<string, unknown> | undefined;
+  const candidate =
+    stats?.median ??
+    stats?.average ??
+    summary.median ?? // tolerate a flat shape too
+    summary.average ??
+    summary.sub_cost_proxy_estimate;
+  const n = Number(candidate);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 /** Required trades from the solicitation analysis, if present. */

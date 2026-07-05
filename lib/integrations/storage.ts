@@ -88,7 +88,10 @@ export const storage = {
       if (error || !data) return null;
       return data.signedUrl;
     }
-    return `${config.appUrl}/api/files/${encodeURIComponent(key)}`;
+    // Encode each path segment (not the whole key) so slashes stay real path
+    // separators — encoding them to %2F produces URLs some proxies/CDNs 404 on.
+    const encoded = key.split("/").map(encodeURIComponent).join("/");
+    return `${config.appUrl}/api/files/${encoded}`;
   },
 
   /** Best-effort private bucket creation. No-op when Supabase is unconfigured. */

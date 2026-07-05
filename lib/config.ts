@@ -42,6 +42,11 @@ export const config = {
 
   auth: {
     secret: str("AUTH_SECRET", "dev-insecure-secret-change-me"),
+    // True when AUTH_SECRET was never set (still the public source default). Used
+    // to disable the forgeable env-operator cookie path in production.
+    get secretIsDefault() {
+      return str("AUTH_SECRET", "dev-insecure-secret-change-me") === "dev-insecure-secret-change-me";
+    },
     operatorEmail: str("OPERATOR_EMAIL"),
     operatorPasswordHash: str("OPERATOR_PASSWORD_HASH"),
   },

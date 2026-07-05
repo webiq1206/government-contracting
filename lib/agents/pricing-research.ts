@@ -81,14 +81,20 @@ export const pricingResearch: AgentDefinition = {
       agency: string;
     }[] = [];
 
+    // When CPI data is present, only CPI-adjusted comps feed the stats so we
+    // never mix real-dollar and nominal-dollar figures into one median (which
+    // biases the sub-cost proxy — and every modeled bid — downward). When CPI is
+    // entirely unavailable (BLS off), fall back to all-nominal, which is
+    // consistent (no blending) rather than an empty comp set.
+    const cpiAvailable = Object.keys(cpiByYear).length > 0;
     for (const a of awards) {
       const awardYear = yearOf(a.action_date);
-      const adj = Number.isFinite(awardYear)
-        ? (cpiByYear[awardYear] && cpiByYear[currentYear]
-            ? round2(a.award_amount * (cpiByYear[currentYear] / cpiByYear[awardYear]))
-            : round2(a.award_amount))
+      const haveCpi =
+        Number.isFinite(awardYear) && !!cpiByYear[awardYear] && !!cpiByYear[currentYear];
+      const adj = haveCpi
+        ? round2(a.award_amount * (cpiByYear[currentYear] / cpiByYear[awardYear]))
         : round2(a.award_amount);
-      if (a.award_amount > 0) adjustedAmounts.push(adj);
+      if (a.award_amount > 0 && (haveCpi || !cpiAvailable)) adjustedAmounts.push(adj);
       compRows.push({
         award_amount: round2(a.award_amount),
         award_amount_adj: adj,

@@ -22,12 +22,18 @@ function oauthClient() {
   );
 }
 
-/** Consent URL for the operator to authorize Gmail (offline access for refresh token). */
-export function getAuthUrl(): string {
+/**
+ * Consent URL for the operator to authorize Gmail (offline access for refresh
+ * token). Accepts an opaque `state` so the callback can verify this browser
+ * initiated the flow (CSRF protection — a logged-in operator who followed an
+ * attacker-crafted callback URL would otherwise connect the attacker's Gmail).
+ */
+export function getAuthUrl(state?: string): string {
   return oauthClient().generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: GMAIL_SCOPES,
+    state,
   });
 }
 
