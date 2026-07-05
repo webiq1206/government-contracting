@@ -1,0 +1,1 @@
+{"version":3,"file":"agentsData.d.ts","sourceRoot":"","sources":["../../../src/generated/types/agentsData.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AACH,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,mBAAmB,CAAC;AACzD,OAAO,KAAK,EAAE,qBAAqB,EAAE,MAAM,yBAAyB,CAAC;AAErE,MAAM,WAAW,UAAU;IACzB,MAAM,EAAE,eAAe,EAAE,CAAC;IAC1B,QAAQ,EAAE,qBAAqB,EAAE,CAAC;CACnC"}
