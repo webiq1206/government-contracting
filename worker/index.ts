@@ -23,12 +23,33 @@ async function main() {
   console.log(`  claude=${config.claude.enabled ? "on" : "off"} sam=${config.sam.enabled ? "on" : "off"} gmail=${config.gmail.configured ? "on" : "off"}`);
   console.log("=".repeat(60));
 
-  if (!(await dbHealthy())) {
-    console.error("[worker] DATABASE_URL not reachable. Set it and run `npm run db:setup`. Exiting.");
-    process.exit(1);
-  }
-
+  // Retry dbHealthy with backoff instead of instant-exit. On cold-start under
+  // `concurrently` (web + worker together), an instant worker exit can kill the
+  // web process before the platform's health check has a chance to succeed, and
+  // the whole deploy fails Promote. Retry for ~60s; the DB is usually reachable
+  // within a few seconds, and this bounds waiting so a real config problem still
+  // surfaces.
   const server = startHealthServer();
+  let dbUp = false;
+  for (let attempt = 1; attempt <= 12; attempt++) {
+    if (await dbHealthy()) {
+      dbUp = true;
+      break;
+    }
+    console.warn(`[worker] DATABASE_URL not reachable (attempt ${attempt}/12); retrying in 5s...`);
+    await new Promise((r) => setTimeout(r, 5_000));
+  }
+  if (!dbUp) {
+    // Keep the health server up so the platform's health check can still pass
+    // and the WEB process (running in parallel via concurrently) isn't collateral
+    // damage. The health endpoint reports 503 while the DB is unreachable.
+    console.error(
+      "[worker] DATABASE_URL still unreachable after 60s. Handlers + scheduler disabled; health only."
+    );
+    process.on("SIGTERM", () => process.exit(0));
+    process.on("SIGINT", () => process.exit(0));
+    return;
+  }
 
   // RUN_WORKER=false → this instance does NOT process jobs or run the scheduler.
   // Set it on web-only instances so exactly one dedicated instance runs cron

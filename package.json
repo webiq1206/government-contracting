@@ -11,7 +11,7 @@
     "dev:web": "next dev -p 3000",
     "dev:worker": "tsx watch worker/index.ts",
     "build": "next build",
-    "start": "concurrently -n web,worker -c cyan,magenta \"npm:start:web\" \"npm:start:worker\"",
+    "start": "concurrently -n web,worker -c cyan,magenta --kill-others-on-fail=false \"npm:start:web\" \"npm:start:worker\"",
     "start:web": "next start -p ${PORT:-3000}",
     "start:worker": "tsx worker/index.ts",
     "worker": "tsx worker/index.ts",
