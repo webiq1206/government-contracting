@@ -2,8 +2,17 @@
  * Postgres access. A single shared pool (Supabase-compatible). All query helpers
  * are thin wrappers so agents and API routes share one connection strategy.
  */
-import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { Pool, types, type PoolClient, type QueryResultRow } from "pg";
 import { config } from "./config";
+
+// Postgres NUMERIC/DECIMAL comes through pg as a STRING by default (to preserve
+// arbitrary precision). Every call site that does `.toFixed()` / arithmetic on a
+// numeric column would otherwise silently break (a rating string ".toFixed(1)"
+// throws; a "10" + 1 concatenates to "101"). Parse them as JS numbers globally.
+// Precision loss beyond 2^53 doesn't apply to our columns (scores 0-100, ratings
+// 0-5, USD amounts well under 2^53).
+// OID 1700 = numeric, 1231 = _numeric (array).
+types.setTypeParser(1700, (val) => (val == null ? null : Number(val)));
 
 let _pool: Pool | null = null;
 

@@ -104,7 +104,7 @@ export default async function SubsPage({
                     {s.google_rating != null ? (
                       <span>
                         <span className="num text-slate-100">
-                          {s.google_rating.toFixed(1)}
+                          {Number(s.google_rating).toFixed(1)}
                         </span>
                         <span className="ml-1 text-xs text-slate-500">
                           ({s.review_count ?? 0})

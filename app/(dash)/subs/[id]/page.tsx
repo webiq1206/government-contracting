@@ -60,7 +60,7 @@ export default async function SubDetailPage({
             value={
               sub.google_rating != null ? (
                 <>
-                  {sub.google_rating.toFixed(1)}
+                  {Number(sub.google_rating).toFixed(1)}
                   <span className="ml-1 text-xs font-normal text-slate-500">
                     ({sub.review_count ?? 0})
                   </span>
