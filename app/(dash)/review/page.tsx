@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { reviewQueue } from "@/lib/data";
 import { PageHeader, ScoreBadge, TierBadge } from "@/components/badges";
 import { ActionButton } from "@/components/action-button";
 import { currency, countdown } from "@/lib/format";
 import type { Opportunity } from "@/lib/types";
+import { StopClickPropagation } from "@/components/stop-click-propagation";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +48,10 @@ function ReviewCard({ o }: { o: Opportunity }) {
   const dims = o.score_breakdown?.dimensions ?? [];
   const expiry = countdown(o.review_expires_at);
   return (
-    <div className="card space-y-4">
+    <Link
+      href={`/opportunity/${o.id}`}
+      className="card block space-y-4 border-border hover:border-accent/60 hover:shadow-md transition-all"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-100">
@@ -135,24 +140,29 @@ function ReviewCard({ o }: { o: Opportunity }) {
         </div>
       )}
 
-      <div className="flex items-center gap-2 border-t border-ink-800 pt-3">
-        <ActionButton
-          endpoint={`/api/opportunities/${o.id}/action`}
-          body={{ action: "pursue" }}
-          className="btn-success"
-        >
-          Pursue
-        </ActionButton>
-        <ActionButton
-          endpoint={`/api/opportunities/${o.id}/action`}
-          body={{ action: "dismiss" }}
-          className="btn-danger"
-          confirm="Dismiss this opportunity?"
-        >
-          Dismiss
-        </ActionButton>
-      </div>
-    </div>
+      <StopClickPropagation className="flex items-center justify-between gap-2 border-t border-border pt-3">
+        <span className="text-xs text-slate-500">
+          Click the card to open the full record →
+        </span>
+        <div className="flex gap-2">
+          <ActionButton
+            endpoint={`/api/opportunities/${o.id}/action`}
+            body={{ action: "pursue" }}
+            className="btn-success"
+          >
+            Pursue
+          </ActionButton>
+          <ActionButton
+            endpoint={`/api/opportunities/${o.id}/action`}
+            body={{ action: "dismiss" }}
+            className="btn-danger"
+            confirm="Dismiss this opportunity?"
+          >
+            Dismiss
+          </ActionButton>
+        </div>
+      </StopClickPropagation>
+    </Link>
   );
 }
 

@@ -46,6 +46,13 @@ export async function reviewQueue(): Promise<Opportunity[]> {
   );
 }
 
+/**
+ * A CallCardRow carries everything the Call Workspace needs to render on a
+ * single screen — contractor contact info, project context (scope, agency,
+ * value, deadline), attachments, prior comms, prior quotes, and the SOW-derived
+ * script + question list. Building the whole workspace off one query means the
+ * operator never has to click into a second page during a call.
+ */
 export interface CallCardRow {
   id: string;
   opportunity_id: string;
@@ -55,19 +62,49 @@ export interface CallCardRow {
   question_list: string[] | null;
   needs_project_history: boolean;
   status: string;
+  response_json: Record<string, unknown> | null;
+  quote_amount: number | null;
+  // Contractor
   company_name: string;
+  owner_name: string | null;
+  email: string | null;
   phone: string | null;
-  trade: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  google_rating: number | null;
+  reliability_score: number | null;
+  license_status: string | null;
+  sam_excluded: boolean;
+  trade_categories: string[] | null;
+  // Opportunity
   opportunity_title: string | null;
+  agency: string | null;
+  naics_code: string | null;
+  set_aside_type: string | null;
+  value_estimated: number | null;
+  location_state: string | null;
   deadline: string | null;
+  solicitation_number: string | null;
+  description: string | null;
+  solicitation_analysis: Record<string, unknown> | null;
+  attachments_json: unknown[] | null;
+  // Contextual (per-call)
+  trade: string | null;
 }
 
 export async function callQueue(): Promise<CallCardRow[]> {
   return query<CallCardRow>(
     `select cc.id, cc.opportunity_id, cc.subcontractor_id, cc.card_json, cc.call_script,
             cc.question_list, cc.needs_project_history, cc.status,
-            s.company_name, s.phone,
-            o.title as opportunity_title, o.deadline,
+            cc.response_json, cc.quote_amount,
+            s.company_name, s.owner_name, s.email, s.phone, s.website, s.address,
+            s.city, s.state, s.google_rating, s.reliability_score, s.license_status,
+            s.sam_excluded, s.trade_categories,
+            o.title as opportunity_title, o.agency, o.naics_code, o.set_aside_type,
+            o.value_estimated, o.location_state, o.deadline, o.solicitation_number,
+            o.description, o.solicitation_analysis, o.attachments_json,
             (select trade from opportunity_subs os
               where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
        from call_cards cc
@@ -76,6 +113,26 @@ export async function callQueue(): Promise<CallCardRow[]> {
       where cc.status='pending'
       order by (o.deadline is null), o.deadline asc`
   );
+}
+
+/** Fetch prior communications + quotes for the (sub, opp) pair — used by the Call Workspace. */
+export async function callCardHistory(subId: string, oppId: string) {
+  const [communications, quotes] = await Promise.all([
+    query(
+      `select id, channel, direction, subject, body, created_at, replied_at
+         from communications
+        where subcontractor_id=$1 and opportunity_id=$2
+        order by created_at desc limit 20`,
+      [subId, oppId]
+    ),
+    query(
+      `select id, trade, quote_amount, payment_terms, is_out_of_range, created_at
+         from quotes where subcontractor_id=$1 and opportunity_id=$2
+        order by created_at desc`,
+      [subId, oppId]
+    ),
+  ]);
+  return { communications, quotes };
 }
 
 export interface SubFilters {
