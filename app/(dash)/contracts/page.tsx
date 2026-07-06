@@ -53,11 +53,17 @@ function NonSsGauge({ pctValue }: { pctValue: number }) {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <p className="label">Non-SS sub spend</p>
+        <p className="label" title="Federal rules cap how much of the work can go to subcontractors that are not small businesses">
+          Non-small-business sub spend
+        </p>
         <span className={`text-sm font-semibold ${textClass}`}>
           {pct(pctValue)} of 50% cap
         </span>
       </div>
+      <p className="mt-0.5 text-xs text-slate-500">
+        Federal rules: subs that are not small businesses can do at most 50% of
+        the work. We warn at 45% and block new non-small-business subs at the cap.
+      </p>
       <div className="relative mt-1 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
         <div
           className={`h-full rounded-full ${barClass}`}
@@ -119,11 +125,16 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
               c.backup_sub_name ? "text-slate-900" : "text-risk"
             }`}
           >
-            {(c.backup_sub_name as string | null) ?? "⚠ Missing"}
+            {(c.backup_sub_name as string | null) ?? "⚠ None assigned. Line up a backup from the Subcontractors page in case the primary falls through."}
           </p>
         </div>
         <div>
-          <p className="label">CPARS request</p>
+          <p
+            className="label"
+            title="CPARS is the government's report card on your performance. A good rating wins future work."
+          >
+            Performance review (CPARS)
+          </p>
           <p className="mt-0.5 text-sm text-slate-900">
             {cparsStatus}
             {c.cpars_due_at ? (
@@ -158,7 +169,7 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
                   </p>
                 </div>
                 <span className={`badge ${milestoneStatusClass(m.status)}`}>
-                  {m.status ?? "pending"}
+                  {m.status ?? "not started"}
                 </span>
               </li>
             ))}
@@ -169,8 +180,10 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
       <div>
         <p className="label">Coordination checklist</p>
         <p className="mt-0.5 text-xs text-slate-500">
-          Checklist items are required activities for pass-through defense,
-          logged with timestamps.
+          Proof that your company actively manages this contract (site visits,
+          sub coordination, QC checks). Agencies require this evidence that you
+          are not just passing the work through to subs. Every item is logged
+          with a timestamp.
         </p>
         {coordination.length === 0 ? (
           <p className="mt-1 text-xs text-slate-500">No activities logged yet.</p>

@@ -9,9 +9,9 @@ import { StopClickPropagation } from "@/components/stop-click-propagation";
 export const dynamic = "force-dynamic";
 
 const PAST_PERF_LABEL: Record<string, string> = {
-  not_required: "Past perf not required",
-  team_accepted: "Team past perf accepted",
-  prime_only: "Prime past perf only",
+  not_required: "Not required",
+  team_accepted: "Team experience counts",
+  prime_only: "Must be our own (blocked)",
 };
 
 function DimensionBar({
@@ -60,7 +60,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
           <p className="mt-0.5 truncate text-xs text-slate-500">
             {o.agency ?? "—"}
             {o.location_state ? ` · ${o.location_state}` : ""}
-            {o.naics_code ? ` · NAICS ${o.naics_code}` : ""}
+            {o.naics_code ? ` · industry code (NAICS) ${o.naics_code}` : ""}
             {o.set_aside_type ? ` · ${o.set_aside_type}` : ""}
           </p>
         </div>
@@ -88,7 +88,12 @@ function ReviewCard({ o }: { o: Opportunity }) {
           </p>
         </div>
         <div>
-          <p className="label">Past perf</p>
+          <p
+            className="label"
+            title="Past performance: proof of similar completed work. Some agencies accept your subs' experience; some require your company's own."
+          >
+            Past performance
+          </p>
           <p className="mt-0.5 text-sm text-slate-900">
             {o.past_perf_classification
               ? (PAST_PERF_LABEL[o.past_perf_classification] ??
@@ -130,6 +135,10 @@ function ReviewCard({ o }: { o: Opportunity }) {
       {o.risk_flags && o.risk_flags.length > 0 && (
         <div>
           <p className="label">Key risk factors</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            These lower the score. Open the card to judge whether your team can
+            work around them.
+          </p>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {o.risk_flags.map((f, i) => (
               <span key={i} className="badge bg-risk/15 text-risk">

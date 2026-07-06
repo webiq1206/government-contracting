@@ -96,6 +96,10 @@ export default async function CompliancePage() {
         {urgent.length > 0 && (
           <section>
             <h2 className="label mb-2 text-risk">Needs attention now</h2>
+            <p className="mb-2 text-xs text-slate-500">
+              These are overdue or blocking. Handle each one today: renew the
+              registration, upload the document, or contact the agency listed.
+            </p>
             <div className="grid gap-2 md:grid-cols-2">
               {urgent.map((r) => (
                 <ComplianceItem key={str(r.id)} row={r} highlight />
@@ -107,6 +111,10 @@ export default async function CompliancePage() {
         {capRows.length > 0 && (
           <section>
             <h2 className="label mb-2">Non-small-business sub spend cap</h2>
+            <p className="mb-2 text-xs text-slate-500">
+              Federal rules: subs that are not small businesses can do at most
+              50% of each contract. We warn at 45%.
+            </p>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
               {capRows.map((r) => (
                 <CapGauge key={str(r.id)} row={r} />
@@ -176,7 +184,7 @@ function ComplianceItem({ row, highlight = false }: { row: Row; highlight?: bool
         </p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className={`badge ${complianceColorClass(color)}`}>{status}</span>
+        <span className={`badge ${complianceColorClass(color)}`}>{status === "ok" ? "On track" : status}</span>
         <span
           className={`num text-xs ${
             color === "red" ? "text-risk" : color === "amber" ? "text-review" : "text-slate-600"
@@ -209,7 +217,7 @@ function CapGauge({ row }: { row: Row }) {
     <div className="card">
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-sm font-medium text-slate-900">{label}</p>
-        <span className={`badge ${complianceColorClass(color)}`}>{status}</span>
+        <span className={`badge ${complianceColorClass(color)}`}>{status === "ok" ? "On track" : status}</span>
       </div>
       <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
         <div

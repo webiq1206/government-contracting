@@ -84,11 +84,16 @@ export default async function SubsPage({
                 >
                   <td className="td text-center">
                     {s.is_preferred ? (
-                      <span title="Preferred" className="text-review">
+                      <span
+                        title="Preferred sub: reliable in past work, contacted first for new bids"
+                        className="text-review"
+                      >
                         ★
                       </span>
                     ) : (
-                      <span className="text-slate-300">☆</span>
+                      <span title="Not marked preferred" className="text-slate-300">
+                        ☆
+                      </span>
                     )}
                   </td>
                   <td className="td">
@@ -166,7 +171,12 @@ export default async function SubsPage({
                         <span className="badge bg-pursue/15 text-pursue">Verified</span>
                       )}
                       {s.sb_certified && (
-                        <span className="badge bg-accent/10 text-accent">SB</span>
+                        <span
+                          className="badge bg-accent/10 text-accent"
+                          title="Certified small business (counts toward federal small-business requirements)"
+                        >
+                          Small business
+                        </span>
                       )}
                     </div>
                   </td>

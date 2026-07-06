@@ -75,7 +75,11 @@ export function SubFilters({ trade, state, minReliability, q }: SubFiltersProps)
         />
       </div>
       <div className="w-32">
-        <label className="label mb-1 block" htmlFor="sub-minrel">
+        <label
+          className="label mb-1 block"
+          htmlFor="sub-minrel"
+          title="0 to 100. Based on how consistently this sub answers calls, quotes on time, and delivers."
+        >
           Min reliability
         </label>
         <input

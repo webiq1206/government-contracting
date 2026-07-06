@@ -100,11 +100,12 @@ export function AutomationSettings({
         />
         <span className="text-sm">
           <span className="font-medium text-foreground">
-            Pause prime-only past-performance bids for my review
+            Pause bids that require our own past performance
           </span>
           <span className="mt-0.5 block text-slate-500">
-            When off (default), high-scoring opportunities auto-pursue even when past
-            performance must be the prime&rsquo;s own. When on, those stop for your OK first.
+            Some agencies require proof that your company itself (not your subs)
+            has done similar work before. When this is on, those opportunities
+            stop and wait for your OK. When off, high scorers proceed automatically.
           </span>
         </span>
       </label>

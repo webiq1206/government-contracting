@@ -259,7 +259,7 @@ export function CallWorkspace({
                 value={card.value_estimated != null ? currency(card.value_estimated) : "—"}
               />
               <Fact label="Location" value={card.location_state ?? "—"} />
-              <Fact label="NAICS" value={card.naics_code ?? "—"} />
+              <Fact label="Industry code (NAICS)" value={card.naics_code ?? "—"} />
               <Fact label="Set-aside" value={card.set_aside_type ?? "—"} />
               <Fact
                 label="Bid due"
@@ -270,7 +270,7 @@ export function CallWorkspace({
                 value={card.solicitation_number ?? "—"}
               />
               <Fact
-                label="Trade to price"
+                label="Trade you're pricing"
                 value={card.trade ?? "—"}
               />
               <Fact
@@ -406,7 +406,7 @@ export function CallWorkspace({
           {/* GUIDED SCRIPT + CAPTURE — the actual call workspace */}
           <Section
             title="Call script + capture"
-            subtitle="Ask each question in order and record the answers below."
+            subtitle="Ask each question in order and record the answers below. You can save a draft at any point and come back later; nothing is final until you press Save & complete call."
           >
             <ol className="mb-5 space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
               {GUIDED_QUESTIONS.map((q, i) => (

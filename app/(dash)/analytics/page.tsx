@@ -155,9 +155,20 @@ export default async function AnalyticsPage() {
           <KpiCard label="Pipeline value" value={currency(pipelineValue)} />
           <KpiCard label="Active contract revenue" value={currency(activeRevenue)} />
         </div>
+        <p className="text-xs text-slate-500">
+          Win rate is wins divided by decided bids. Pipeline value is the total
+          estimated value of everything still in play. These fill in as bids are
+          decided, so early numbers will look sparse.
+        </p>
 
         {/* Win rate breakdowns */}
         {(byNaics.length > 0 || byAgency.length > 0 || byGeography.length > 0) && (
+          <>
+          <p className="text-xs text-slate-500">
+            Use these breakdowns to spot where you win most, then focus bids
+            there. The weekly learning agent uses the same data to propose
+            scoring adjustments.
+          </p>
           <div className="grid gap-6 lg:grid-cols-3">
             <BreakdownTable title="Win rate by NAICS" data={byNaics} keyField="naics" />
             <BreakdownTable title="Win rate by Agency" data={byAgency} keyField="agency" />
@@ -167,6 +178,7 @@ export default async function AnalyticsPage() {
               keyField="state"
             />
           </div>
+          </>
         )}
 
         {/* Cash flow projection 30/60/90 */}

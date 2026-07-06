@@ -74,8 +74,11 @@ function CallCard({ c }: { c: CallCardRow }) {
           )}
           {c.email && <span className="text-slate-500">✉ {c.email}</span>}
           {c.needs_project_history && (
-            <span className="badge bg-review/15 text-review">
-              Collect project history
+            <span
+              className="badge bg-review/15 text-review"
+              title="We have no past projects on file for this sub. Ask about their last 3 similar jobs during the call."
+            >
+              Ask about past projects
             </span>
           )}
           {c.deadline && (
