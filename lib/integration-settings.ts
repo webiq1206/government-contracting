@@ -39,7 +39,9 @@ export function isAllowedKey(key: string): key is AllowedEnvKey {
 }
 
 function encryptionKey(): Buffer {
-  const secret = process.env.AUTH_SECRET ?? "dev-insecure-secret-change-me";
+  // Match config.auth.secret resolution (AUTH_SECRET, then SESSION_SECRET).
+  const secret =
+    process.env.AUTH_SECRET || process.env.SESSION_SECRET || "dev-insecure-secret-change-me";
   return createHash("sha256").update(`integration-settings:${secret}`).digest();
 }
 

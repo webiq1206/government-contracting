@@ -44,11 +44,17 @@ export const config = {
   },
 
   auth: {
-    secret: str("AUTH_SECRET", "dev-insecure-secret-change-me"),
-    // True when AUTH_SECRET was never set (still the public source default). Used
+    // Session-signing + integration-encryption secret. Accept SESSION_SECRET as
+    // a fallback so either common name works (Replit auto-generates
+    // SESSION_SECRET; our docs use AUTH_SECRET). Getter so a value hydrated
+    // later is picked up.
+    get secret() {
+      return str("AUTH_SECRET") || str("SESSION_SECRET") || "dev-insecure-secret-change-me";
+    },
+    // True when no real secret is set (still the public source default). Used
     // to disable the forgeable env-operator cookie path in production.
     get secretIsDefault() {
-      return str("AUTH_SECRET", "dev-insecure-secret-change-me") === "dev-insecure-secret-change-me";
+      return this.secret === "dev-insecure-secret-change-me";
     },
     operatorEmail: str("OPERATOR_EMAIL"),
     operatorPasswordHash: str("OPERATOR_PASSWORD_HASH"),

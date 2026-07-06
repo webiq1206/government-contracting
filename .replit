@@ -12,7 +12,10 @@ NEXT_TELEMETRY_DISABLED = "1"
 
 [deployment]
 run = ["sh", "-c", "npm run start"]
-build = ["sh", "-c", "npm run db:setup && npm run build"]
+# Build does NOT touch the database. The worker applies pending migrations at
+# boot (lib/migrate.ts) and provisions the operator login from secrets, so the
+# cloud build stays hermetic and cannot fail on a transient DB issue.
+build = ["sh", "-c", "npm run build"]
 deploymentTarget = "cloudrun"
 
 [[ports]]
