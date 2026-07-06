@@ -205,6 +205,70 @@ export interface RequiredForm {
   name: string;
   note?: string;
 }
+
+/** Who/what satisfies a submission requirement. */
+export type RequirementSatisfier =
+  | "auto_generated" // the platform generates the document (pricing sheet, cover letter, narrative)
+  | "from_profile" // filled from the Company Profile (identifiers, certifications, capability statement)
+  | "operator_signature" // generated/prefilled but needs the operator's signature
+  | "operator_provided"; // only the operator can supply it (bid bond, notarized letter, wet-ink form)
+
+export type RequirementCategory =
+  | "form" // a government or agency form (SF-1449, reps & certs, bid form)
+  | "pricing" // pricing schedule / bid schedule / cost breakdown
+  | "narrative" // technical approach, experience, cover/transmittal letter
+  | "certification" // a certification/eligibility attestation
+  | "acknowledgment" // amendment/addendum acknowledgment
+  | "attachment" // supporting doc (license, insurance cert, references)
+  | "other";
+
+/**
+ * One row of the submission compliance matrix — a single thing the solicitation
+ * requires in the bid package. Extracted by the Solicitation Analyst from the
+ * instructions, scope, and attachments.
+ */
+export interface ComplianceRequirement {
+  id: string; // stable slug, e.g. "sf1449" or "pricing_schedule"
+  title: string; // plain-English name, e.g. "Signed SF-1449 (offer form)"
+  category: RequirementCategory;
+  mandatory: boolean; // required vs optional/if-applicable
+  source: string; // where it's stated, e.g. "Section L.3" or "Attachment 2"
+  format?: string; // format rules: file type, page limit, font, copies
+  signature_required: boolean;
+  satisfied_by: RequirementSatisfier;
+  instructions?: string; // what the operator must do when they own it
+}
+
+/** A compliance requirement after the package builder has resolved it. */
+export interface ResolvedRequirement extends ComplianceRequirement {
+  status: "satisfied" | "needs_signature" | "needs_operator" | "missing";
+  /** documents.kind of the generated/linked artifact, when one exists. */
+  artifact_kind?: string;
+  /** Operator marked this manually complete (e.g. uploaded a signed copy). */
+  operator_confirmed?: boolean;
+  note?: string;
+}
+
+/** One file in the assembled, ordered submission package. */
+export interface PackageItem {
+  order: number;
+  filename: string; // correctly-named per the solicitation
+  requirement_id: string;
+  category: RequirementCategory;
+  source: "generated" | "solicitation" | "operator";
+  document_kind?: string; // documents.kind, when downloadable
+  status: ResolvedRequirement["status"];
+}
+
+/** Result of the pre-submission compliance validation. */
+export interface PackageValidation {
+  passed: boolean;
+  checked_at: string;
+  blockers: string[]; // must be resolved before submission
+  warnings: string[]; // should be reviewed but don't block
+  satisfied_count: number;
+  total_mandatory: number;
+}
 export interface QaAddendum {
   label: string;
   summary: string;
@@ -261,6 +325,9 @@ export interface SolicitationAnalysis {
   questions_for_subs: string[];
   draft_sow: string;
   set_aside: string | null;
+
+  // --- Submission compliance matrix (every required deliverable) ---
+  compliance_matrix: ComplianceRequirement[];
 }
 
 export interface Subcontractor {
@@ -320,6 +387,11 @@ export interface Bid {
   award_amount: number | null;
   loss_reason: string | null;
   cpars_rating: string | null;
+  // --- Assembled submission package ---
+  compliance_matrix: ResolvedRequirement[] | null;
+  package_manifest: PackageItem[] | null;
+  package_ready: boolean;
+  validation_json: PackageValidation | null;
 }
 
 export interface QaChecklistItem {

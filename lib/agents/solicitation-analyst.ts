@@ -83,6 +83,33 @@ const AnalysisSchema = z.object({
   questions_for_subs: z.array(z.string()).default([]),
   draft_sow: z.string().default(""),
   set_aside: z.string().nullable().default(null),
+  compliance_matrix: z
+    .array(
+      z.object({
+        id: z.string(),
+        title: z.string(),
+        category: z
+          .enum([
+            "form",
+            "pricing",
+            "narrative",
+            "certification",
+            "acknowledgment",
+            "attachment",
+            "other",
+          ])
+          .default("other"),
+        mandatory: z.boolean().default(true),
+        source: z.string().default(NA),
+        format: z.string().optional(),
+        signature_required: z.boolean().default(false),
+        satisfied_by: z
+          .enum(["auto_generated", "from_profile", "operator_signature", "operator_provided"])
+          .default("operator_provided"),
+        instructions: z.string().optional(),
+      })
+    )
+    .default([]),
 });
 
 const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25MB cap per file
@@ -213,8 +240,28 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '  "past_perf_classification": "not_required"|"team_accepted"|"prime_only",',
     '  "questions_for_subs": string[],           // specific questions to ask each subcontractor',
     '  "draft_sow": string,                      // concise scope we can hand to a subcontractor',
-    '  "set_aside": string | null',
+    '  "set_aside": string | null,',
+    '  "compliance_matrix": [                     // EVERY item the bid package must include to be responsive',
+    '     {',
+    '       "id": string,                         // short slug, e.g. "sf1449", "pricing_schedule", "reps_certs", "bid_bond", "amendment_ack_0001"',
+    '       "title": string,                      // plain-English name, e.g. "Signed SF-1449 offer form"',
+    '       "category": "form"|"pricing"|"narrative"|"certification"|"acknowledgment"|"attachment"|"other",',
+    '       "mandatory": boolean,                 // true if required to be responsive; false if optional/if-applicable',
+    '       "source": string,                     // where it is stated, e.g. "Section L.3" or "Attachment 2" (or "Not specified...")',
+    '       "format": string,                     // format rules if any: file type, page limit, font, number of copies (omit if none)',
+    '       "signature_required": boolean,        // does a person have to sign it',
+    '       "satisfied_by": "auto_generated"|"from_profile"|"operator_signature"|"operator_provided",',
+    '       "instructions": string                // if the operator must supply/sign it, what exactly they do (omit otherwise)',
+    '     }',
+    "  ]",
     "}",
+    "",
+    "COMPLIANCE MATRIX — this is critical. List EVERY document, form, schedule, certification, acknowledgment, and attachment the bidder must include for the bid to be responsive. Base it on the instructions to offerors, the scope, and the attachments. Classify each item's `satisfied_by`:",
+    '- "auto_generated": the platform can produce it from the bid data (pricing/bid schedule, technical approach or cover/transmittal letter).',
+    '- "from_profile": it is standard company information (company identifiers, capability statement, small-business status, standard certifications).',
+    '- "operator_signature": the platform can prefill it but a person must sign it (SF-1449, reps & certifications, signed forms).',
+    '- "operator_provided": only the offeror can supply it (bid bond, notarized document, insurance certificate, wet-ink or agency-portal-only forms).',
+    "If the documents do not enumerate submission contents, infer the standard mandatory items for this vehicle (e.g. a signed offer form, a completed pricing schedule, reps & certifications, and acknowledgment of any amendments) and mark their source \"Standard requirement for this solicitation type\".",
   ].join("\n");
 }
 
