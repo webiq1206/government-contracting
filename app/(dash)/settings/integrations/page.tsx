@@ -1,99 +1,74 @@
-import { integrationStatus, config } from "@/lib/config";
+import { integrationStatus } from "@/lib/config";
 import { PageHeader } from "@/components/badges";
+import { IntegrationManager } from "@/components/integration-manager";
+import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-settings";
+import { INTEGRATION_DEFS } from "@/lib/integration-defs";
+import { gmail } from "@/lib/integrations/gmail";
 
 export const dynamic = "force-dynamic";
-
-interface IntegrationDef {
-  key: keyof ReturnType<typeof integrationStatus>;
-  label: string;
-  hint: string;
-}
-
-const INTEGRATIONS: IntegrationDef[] = [
-  { key: "database", label: "Database (Postgres/Supabase)", hint: "DATABASE_URL" },
-  { key: "claude", label: "Claude (Anthropic)", hint: "ANTHROPIC_API_KEY" },
-  { key: "sam", label: "SAM.gov", hint: "SAM_API_KEY" },
-  { key: "usaspending", label: "USASpending", hint: "Public API, no key required" },
-  { key: "bls", label: "Bureau of Labor Statistics", hint: "Works unauthenticated at low volume" },
-  { key: "googleMaps", label: "Google Maps", hint: "GOOGLE_MAPS_API_KEY" },
-  { key: "hunter", label: "Hunter.io", hint: "HUNTER_API_KEY" },
-  { key: "gmail", label: "Gmail", hint: "GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET" },
-  { key: "twilio", label: "Twilio (SMS)", hint: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER" },
-  { key: "resend", label: "Resend (email)", hint: "RESEND_API_KEY" },
-  { key: "supabaseStorage", label: "Supabase Storage", hint: "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY" },
-];
 
 export default async function IntegrationsPage({
   searchParams,
 }: {
   searchParams?: { gmail?: string };
 }) {
+  await hydrateIntegrationEnv();
+  const [sources, gmailConnected] = await Promise.all([
+    settingSources(),
+    gmail.isConnected().catch(() => false),
+  ]);
   const status = integrationStatus();
   const gmailParam = searchParams?.gmail;
+
+  const initial = INTEGRATION_DEFS.map((def) => {
+    const fields = def.fields.map((f) => ({
+      ...f,
+      ...(sources[f.env] ?? { source: "none" as const, masked: null }),
+    }));
+    const required = fields.filter((f) => !f.label.includes("optional"));
+    const configured =
+      def.id === "usaspending" ||
+      (required.length > 0 && required.every((f) => f.source !== "none"));
+    return {
+      ...def,
+      fields,
+      configured: def.id === "gmail" ? gmailConnected || configured : configured,
+      gmailConnected: def.id === "gmail" ? gmailConnected : undefined,
+      last_error: fields.map((f) => f.last_error).find(Boolean) ?? null,
+      last_validated_at:
+        fields
+          .map((f) => f.last_validated_at)
+          .filter(Boolean)
+          .sort()
+          .pop() ?? null,
+    };
+  });
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title="Integrations"
-        subtitle="Informational only. No secrets are ever displayed."
+        subtitle="Connect the services that power the automation. Paste a key, press Test to verify it live, then Save. Everything is managed right here."
       />
 
       <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
         {gmailParam === "connected" && (
           <div className="card border-pursue/40 bg-pursue/5 text-sm text-pursue">
-            Gmail connected successfully.
+            Gmail connected successfully. Outreach emails can now send.
           </div>
         )}
         {gmailParam === "denied" && (
           <div className="card border-review/40 bg-review/5 text-sm text-review">
-            Gmail connection was denied. You can retry the connection below.
+            Gmail connection was denied. You can retry below.
           </div>
         )}
         {gmailParam === "error" && (
           <div className="card border-risk/40 bg-risk/5 text-sm text-risk">
-            Gmail connection failed. Check GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET and try again.
+            Gmail connection failed. Check the OAuth client ID and secret below, then try again.
           </div>
         )}
 
-        <div className="card scroll-thin overflow-x-auto p-0">
-          <table className="w-full">
-            <tbody>
-              {INTEGRATIONS.map((it) => {
-                const connected = Boolean(status[it.key]);
-                return (
-                  <tr key={it.key as string} className="border-b border-border last:border-b-0">
-                    <td className="td">
-                      <p className="font-medium text-slate-900">{it.label}</p>
-                      <p className="mt-0.5 font-mono text-xs text-slate-500">{it.hint}</p>
-                    </td>
-                    <td className="td w-40 text-right align-middle">
-                      {connected ? (
-                        <span className="badge bg-pursue/15 text-pursue">Connected</span>
-                      ) : (
-                        <span className="badge bg-slate-200 text-slate-600">Not configured</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Gmail connect flow: configured (env present) but not yet OAuth-linked */}
-        {!status.gmail && config.gmail.configured && (
-          <div className="card flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-900">Connect your Gmail account</p>
-              <p className="mt-0.5 text-xs text-slate-600">
-                Credentials are configured. Complete the OAuth flow to send and read mail.
-              </p>
-            </div>
-            <a href="/api/integrations/gmail/connect" className="btn-primary">
-              Connect Gmail
-            </a>
-          </div>
-        )}
+        <IntegrationManager initial={initial} />
 
         <div className="card flex items-center justify-between gap-3">
           <div>
@@ -101,11 +76,19 @@ export default async function IntegrationsPage({
             <p className="mt-0.5 text-xs text-slate-600">
               {status.queue === "bullmq"
                 ? "BullMQ (Redis-backed). REDIS_URL is set."
-                : "pg-boss (Postgres-backed). Set REDIS_URL to switch to BullMQ."}
+                : "pg-boss (Postgres-backed). Set REDIS_URL in the environment to switch to BullMQ."}
             </p>
           </div>
           <span className="badge bg-accent/10 font-mono text-accent">{status.queue}</span>
         </div>
+
+        <p className="pb-2 text-xs text-slate-500">
+          Values saved here are encrypted before they reach the database, shown
+          only as a masked preview, and take effect immediately (the background
+          worker refreshes within 5 minutes). Environment variables still work
+          as a fallback; a value saved on this page takes priority over its
+          environment variable.
+        </p>
       </div>
     </div>
   );

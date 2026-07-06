@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { requireUser } from "@/lib/api-auth";
 import { getAuthUrl } from "@/lib/integrations/gmail";
 import { config } from "@/lib/config";
+import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ const STATE_COOKIE = "brostco_gmail_state";
 
 /** Start the Gmail OAuth consent flow (CSRF-protected via `state`). */
 export async function GET() {
+  await hydrateIntegrationEnv();
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
   if (!config.gmail.configured) {

@@ -13,6 +13,7 @@ import { dbHealthy } from "../lib/db";
 import { getQueue, stopQueue } from "../lib/queue";
 import { applyMigrations } from "../lib/migrate";
 import { ensureOperatorFromEnv } from "../lib/operator-bootstrap";
+import { hydrateIntegrationEnv } from "../lib/integration-settings";
 import { ALL_AGENTS } from "../lib/agents/registry";
 import { runAgent } from "../lib/agents/runner";
 import { startScheduler } from "./scheduler";
@@ -64,6 +65,13 @@ async function main() {
 
   // Ensure the owner's operator login exists (from OPERATOR_EMAIL/OPERATOR_PASSWORD secrets).
   await ensureOperatorFromEnv();
+
+  // Load UI-managed integration credentials into the environment, and keep
+  // them fresh so a key saved on the Integrations page reaches agents without
+  // a restart.
+  await hydrateIntegrationEnv();
+  const hydrateTimer = setInterval(() => void hydrateIntegrationEnv(), 5 * 60_000);
+  hydrateTimer.unref?.();
 
   // RUN_WORKER=false → this instance does NOT process jobs or run the scheduler.
   // Set it on web-only instances so exactly one dedicated instance runs cron

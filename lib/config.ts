@@ -1,5 +1,8 @@
 /**
- * Central runtime configuration. Reads process.env once, applies sane defaults,
+ * Central runtime configuration. Secret-bearing fields are getters that read
+ * process.env on every access, so UI-managed integration settings (hydrated
+ * into process.env by lib/integration-settings.ts) take effect without a
+ * restart. Applies sane defaults,
  * and exposes typed helpers. Nothing here throws at import time — the platform
  * must boot even with a partially-filled .env and degrade gracefully.
  */
@@ -52,8 +55,8 @@ export const config = {
   },
 
   supabase: {
-    url: str("SUPABASE_URL"),
-    serviceKey: str("SUPABASE_SERVICE_ROLE_KEY"),
+    get url() { return str("SUPABASE_URL"); },
+    get serviceKey() { return str("SUPABASE_SERVICE_ROLE_KEY"); },
     bucket: str("SUPABASE_STORAGE_BUCKET", "brostco-documents"),
     get enabled() {
       return Boolean(this.url && this.serviceKey);
@@ -61,7 +64,7 @@ export const config = {
   },
 
   claude: {
-    apiKey: str("ANTHROPIC_API_KEY"),
+    get apiKey() { return str("ANTHROPIC_API_KEY"); },
     // Default tier — high-volume, lower-stakes agents (scoring, outreach, call
     // prep, sub-verify, digests). Fast and cheap.
     model: str("CLAUDE_MODEL", "claude-haiku-4-5"),
@@ -75,7 +78,7 @@ export const config = {
   },
 
   sam: {
-    apiKey: str("SAM_API_KEY"),
+    get apiKey() { return str("SAM_API_KEY"); },
     get enabled() {
       return Boolean(this.apiKey);
     },
@@ -86,28 +89,28 @@ export const config = {
   },
 
   bls: {
-    apiKey: str("BLS_API_KEY"),
+    get apiKey() { return str("BLS_API_KEY"); },
   },
 
   googleMaps: {
-    apiKey: str("GOOGLE_MAPS_API_KEY"),
+    get apiKey() { return str("GOOGLE_MAPS_API_KEY"); },
     get enabled() {
       return Boolean(this.apiKey);
     },
   },
 
   hunter: {
-    apiKey: str("HUNTER_API_KEY"),
+    get apiKey() { return str("HUNTER_API_KEY"); },
     get enabled() {
       return Boolean(this.apiKey);
     },
   },
 
   gmail: {
-    clientId: str("GMAIL_CLIENT_ID"),
-    clientSecret: str("GMAIL_CLIENT_SECRET"),
-    refreshToken: str("GMAIL_REFRESH_TOKEN"),
-    sender: str("GMAIL_SENDER"),
+    get clientId() { return str("GMAIL_CLIENT_ID"); },
+    get clientSecret() { return str("GMAIL_CLIENT_SECRET"); },
+    get refreshToken() { return str("GMAIL_REFRESH_TOKEN"); },
+    get sender() { return str("GMAIL_SENDER"); },
     get redirectUri() {
       return `${config.appUrl}/api/integrations/gmail/callback`;
     },
@@ -117,19 +120,19 @@ export const config = {
   },
 
   twilio: {
-    accountSid: str("TWILIO_ACCOUNT_SID"),
-    authToken: str("TWILIO_AUTH_TOKEN"),
-    fromNumber: str("TWILIO_FROM_NUMBER"),
-    alertTo: str("ALERT_SMS_TO"),
+    get accountSid() { return str("TWILIO_ACCOUNT_SID"); },
+    get authToken() { return str("TWILIO_AUTH_TOKEN"); },
+    get fromNumber() { return str("TWILIO_FROM_NUMBER"); },
+    get alertTo() { return str("ALERT_SMS_TO"); },
     get enabled() {
       return Boolean(this.accountSid && this.authToken && this.fromNumber);
     },
   },
 
   resend: {
-    apiKey: str("RESEND_API_KEY"),
-    from: str("RESEND_FROM", "BROSTCO <alerts@brostco.com>"),
-    digestTo: str("DIGEST_EMAIL_TO"),
+    get apiKey() { return str("RESEND_API_KEY"); },
+    get from() { return str("RESEND_FROM", "BROSTCO <alerts@brostco.com>"); },
+    get digestTo() { return str("DIGEST_EMAIL_TO"); },
     get enabled() {
       return Boolean(this.apiKey);
     },
