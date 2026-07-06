@@ -1,12 +1,29 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+const SITE_URL = process.env.APP_URL || "https://brostco.com";
+const DESCRIPTION =
+  "Autonomous federal-services contracting: monitor, score, brief, source, and bid in a few minutes a day.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "BROSTCO | Autonomous Procurement Execution",
-  description:
-    "Autonomous federal-services contracting: monitor, score, brief, source, and bid in a few minutes a day.",
+  description: DESCRIPTION,
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/favicon.svg" }],
+  },
+  openGraph: {
+    type: "website",
+    siteName: "BROSTCO",
+    title: "BROSTCO | Autonomous Procurement Execution",
+    description: DESCRIPTION,
+    url: SITE_URL,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "BROSTCO | Autonomous Procurement Execution",
+    description: DESCRIPTION,
   },
 };
 
