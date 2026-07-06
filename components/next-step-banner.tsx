@@ -160,8 +160,8 @@ function deriveStep(s: StepInput): {
       const missing = Math.max(0, s.requiredTradeCount - s.quoteCount);
       if (s.hasBid && !s.bidSubmitted)
         return {
-          title: "Review the priced bid",
-          why: "Quotes are in and the bid has been priced. Check the numbers and QA list in the Bid Package card, then submit.",
+          title: "Finish and submit the package",
+          why: "The bid is priced and the submission package is assembled. In the Submission package panel, clear any remaining items (signatures, provided documents), then submit.",
           cta: "",
           tone: "action",
         };
@@ -178,8 +178,8 @@ function deriveStep(s: StepInput): {
     case "bid_building":
       return s.hasBid
         ? {
-            title: "Review the priced bid and submit",
-            why: "The bid is priced to your target margin with a QA checklist. Fix anything marked ✗, then press Submit bid.",
+            title: "Review the package and submit",
+            why: "The bid is priced and the submission package is assembled with a compliance checklist. Clear any remaining required items, then submit.",
             cta: "",
             tone: "action",
           }
