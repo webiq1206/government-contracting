@@ -6,26 +6,30 @@ import { useState } from "react";
 
 const NAV: { section: string; items: { href: string; label: string }[] }[] = [
   {
-    section: "Pipeline",
+    section: "Start here",
+    items: [{ href: "/today", label: "Today" }],
+  },
+  {
+    section: "Work the pipeline",
     items: [
       { href: "/pipeline", label: "Pipeline" },
-      { href: "/call-queue", label: "Call Queue" },
       { href: "/review", label: "Review Queue" },
+      { href: "/call-queue", label: "Call Queue" },
     ],
   },
   {
     section: "Records",
     items: [
-      { href: "/subs", label: "Sub Database" },
-      { href: "/contracts", label: "Active Contracts" },
+      { href: "/subs", label: "Subcontractors" },
+      { href: "/contracts", label: "Contracts" },
       { href: "/compliance", label: "Compliance" },
     ],
   },
   {
-    section: "Intelligence",
+    section: "Insight",
     items: [
       { href: "/analytics", label: "Analytics" },
-      { href: "/agents", label: "Agents & Logs" },
+      { href: "/agents", label: "Automation Log" },
     ],
   },
   {

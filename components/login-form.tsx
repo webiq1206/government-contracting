@@ -20,7 +20,7 @@ export function LoginForm() {
       body: JSON.stringify({ email, password }),
     });
     if (res.ok) {
-      router.push("/pipeline");
+      router.push("/today");
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));

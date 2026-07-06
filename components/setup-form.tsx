@@ -30,7 +30,7 @@ export function SetupForm() {
       body: JSON.stringify({ email, password, name: name || null }),
     });
     if (res.ok) {
-      router.push("/pipeline");
+      router.push("/today");
       router.refresh();
     } else {
       const data = await res.json().catch(() => ({}));

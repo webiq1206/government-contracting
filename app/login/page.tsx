@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   const user = await currentUser().catch(() => null);
-  if (user) redirect("/pipeline");
+  if (user) redirect("/today");
   // Fresh deployment with no operator yet: send them straight to first-run setup
   // rather than a login form that can't succeed.
   if (!(await hasAnyOperator())) redirect("/setup");

@@ -338,3 +338,96 @@ export async function pricingSummaryFor(opp: Opportunity): Promise<Record<string
   const raw = opp.raw_json as { pricing_summary?: Record<string, unknown> } | null;
   return raw?.pricing_summary ?? null;
 }
+
+/* ------------------------------------------------------------------------ */
+/* Action Center — powers the guided "Today" home page.                      */
+/* ------------------------------------------------------------------------ */
+
+export interface ActionOppRow {
+  id: string;
+  title: string | null;
+  agency: string | null;
+  stage: string;
+  deadline: string | null;
+  value_estimated: number | null;
+  risk_flags: string[] | null;
+  quote_count: number;
+  has_bid: boolean;
+  bid_submitted: boolean;
+}
+
+export interface ActionCenterData {
+  /** Opportunities awaiting a pursue/dismiss decision. */
+  triage: ActionOppRow[];
+  /** Pending call cards (count + soonest deadline). */
+  calls: { count: number; soonest_deadline: string | null };
+  /** In quote_entry or bid_building: needs quotes entered or bid reviewed. */
+  bidWork: ActionOppRow[];
+  /** Submitted, waiting on the agency's decision. */
+  awaitingOutcome: ActionOppRow[];
+  /** Deadline within 72h and not yet submitted. */
+  urgent: ActionOppRow[];
+  /** Flagged for attention outside the review queue (stalled, blocked, etc.). */
+  flagged: ActionOppRow[];
+  /** Open-pipeline counts per stage for the progress strip. */
+  stageCounts: { stage: string; count: number }[];
+}
+
+const ACTION_OPP_SELECT = `
+  select o.id, o.title, o.agency, o.stage, o.deadline, o.value_estimated, o.risk_flags,
+         (select count(*)::int from quotes q where q.opportunity_id = o.id) as quote_count,
+         exists(select 1 from bids b where b.opportunity_id = o.id) as has_bid,
+         exists(select 1 from bids b where b.opportunity_id = o.id and b.submitted_at is not null) as bid_submitted
+    from opportunities o`;
+
+export async function actionCenter(): Promise<ActionCenterData> {
+  const [triage, callRow, bidWork, awaitingOutcome, urgent, flagged, stageCounts] =
+    await Promise.all([
+      query<ActionOppRow>(
+        `${ACTION_OPP_SELECT}
+          where o.status='open' and o.tier='review' and o.human_action_required=true
+          order by (o.deadline is null), o.deadline asc limit 10`
+      ),
+      queryOne<{ count: number; soonest_deadline: string | null }>(
+        `select count(*)::int as count, min(o.deadline) as soonest_deadline
+           from call_cards cc join opportunities o on o.id = cc.opportunity_id
+          where cc.status='pending'`
+      ),
+      query<ActionOppRow>(
+        `${ACTION_OPP_SELECT}
+          where o.status='open' and o.stage in ('quote_entry','bid_building')
+          order by (o.deadline is null), o.deadline asc limit 10`
+      ),
+      query<ActionOppRow>(
+        `${ACTION_OPP_SELECT}
+          where o.status='open' and o.stage='submitted'
+          order by o.updated_at asc limit 10`
+      ),
+      query<ActionOppRow>(
+        `${ACTION_OPP_SELECT}
+          where o.status='open'
+            and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
+            and o.deadline is not null and o.deadline > now()
+            and o.deadline <= now() + interval '72 hours'
+          order by o.deadline asc limit 10`
+      ),
+      query<ActionOppRow>(
+        `${ACTION_OPP_SELECT}
+          where o.status='open' and o.human_action_required=true and o.tier <> 'review'
+          order by o.updated_at asc limit 10`
+      ),
+      query<{ stage: string; count: number }>(
+        `select stage, count(*)::int as count from opportunities
+          where status='open' group by stage`
+      ),
+    ]);
+  return {
+    triage,
+    calls: callRow ?? { count: 0, soonest_deadline: null },
+    bidWork,
+    awaitingOutcome,
+    urgent,
+    flagged,
+    stageCounts,
+  };
+}
