@@ -271,6 +271,12 @@ export interface ResolvedRequirement extends ComplianceRequirement {
   /** Operator marked this manually complete (e.g. uploaded a signed copy). */
   operator_confirmed?: boolean;
   note?: string;
+  /**
+   * When the required official form was found among the solicitation
+   * attachments, the actual blank form to sign (the real agency document, not
+   * a worksheet).
+   */
+  official_form_doc?: { name: string; path: string };
 }
 
 /** One file in the assembled, ordered submission package. */
@@ -280,7 +286,8 @@ export interface PackageItem {
   requirement_id: string;
   category: RequirementCategory;
   source: "generated" | "solicitation" | "operator";
-  document_kind?: string; // documents.kind, when downloadable
+  document_kind?: string; // documents.kind, when downloadable by kind
+  document_path?: string; // explicit storage path (e.g. the real agency form)
   status: ResolvedRequirement["status"];
 }
 

@@ -22,7 +22,8 @@ import {
   markupForTargetMargin,
   isOutOfRange,
 } from "../domain/pricing";
-import { resolveRequirements, buildManifest, validatePackage } from "../domain/package";
+import { resolveRequirements, buildManifest, validatePackage, computeReady } from "../domain/package";
+import { checkEligibility } from "../domain/eligibility";
 import { assemblePackageDocuments } from "./package-builder";
 import type { AgentDefinition } from "./types";
 import type {
@@ -233,7 +234,24 @@ export const bidBuilder: AgentDefinition = {
 
     // --- Submission compliance matrix + assembled package. ---
     const analysis = (opp.solicitation_analysis as SolicitationAnalysis | null) ?? null;
-    const requirements = analysis?.compliance_matrix ?? [];
+    const requirements = [...(analysis?.compliance_matrix ?? [])];
+    // If amendments were issued but no acknowledgment requirement was captured,
+    // add one — unacknowledged amendments are a common rejection reason.
+    const amendments = analysis?.qa_addenda ?? [];
+    if (
+      amendments.length > 0 &&
+      !requirements.some((r) => r.category === "acknowledgment")
+    ) {
+      requirements.push({
+        id: "amendment_ack",
+        title: "Acknowledgment of amendments",
+        category: "acknowledgment",
+        mandatory: true,
+        source: "Amendments issued to this solicitation",
+        signature_required: true,
+        satisfied_by: "operator_signature",
+      });
+    }
     // Preserve operator confirmations (signed/uploaded) across rebuilds.
     const priorBid = await queryOne<{ compliance_matrix: ResolvedRequirement[] | null }>(
       `select compliance_matrix from bids where opportunity_id = $1 order by created_at asc limit 1`,
@@ -251,6 +269,26 @@ export const bidBuilder: AgentDefinition = {
       hasIdentifiers,
     });
 
+    // Link required official forms to the ACTUAL blank form when it's among the
+    // solicitation attachments, so the operator signs the real agency document.
+    const solDocs = await query<{ name: string; storage_path: string | null }>(
+      `select name, storage_path from documents where opportunity_id=$1 and kind='solicitation'`,
+      [opportunityId]
+    );
+    for (const r of resolved) {
+      if (!r.official_form || !r.official_form_doc) {
+        const token = (r.official_form ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+        if (!token) continue;
+        const match = solDocs.find(
+          (d) => d.storage_path && d.name.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(token)
+        );
+        if (match?.storage_path) {
+          r.official_form_doc = { name: match.name, path: match.storage_path };
+          r.note = `The agency's ${r.official_form} is attached to the solicitation — sign that form and include it.`;
+        }
+      }
+    }
+
     let packageDocs: { name: string; storage_path: string; kind: string }[] = [];
     if (resolved.length > 0) {
       try {
@@ -261,6 +299,11 @@ export const bidBuilder: AgentDefinition = {
           resolved,
           lineItems,
           bidAmount,
+          amendments: amendments.map((a) => ({
+            label: a.label,
+            date: a.date,
+            summary: a.summary,
+          })),
         });
       } catch (err) {
         await logAgent({
@@ -284,6 +327,11 @@ export const bidBuilder: AgentDefinition = {
       nowIso: new Date().toISOString(),
     });
 
+    // Deterministic eligibility findings (set-aside, NAICS, bonding, SAM). These
+    // are preserved by the AI auditor and gate submission immediately.
+    const eligibilityFindings = checkEligibility({ profile, opp, analysis });
+    const packageReady = computeReady(validation, eligibilityFindings);
+
     // Merge generated package docs into documents_json (dedupe by kind).
     for (const d of packageDocs) {
       if (!documentsJson.some((x) => x.kind === d.kind)) documentsJson.push(d);
@@ -305,7 +353,8 @@ export const bidBuilder: AgentDefinition = {
             set sub_quote_total=$2, markup_pct=$3, bid_amount=$4, margin_pct=$5,
                 target_margin_pct=$6, qa_checklist=$7, narrative=$8, documents_json=$9,
                 human_flags=$10, outcome='pending',
-                compliance_matrix=$11, package_manifest=$12, package_ready=$13, validation_json=$14
+                compliance_matrix=$11, package_manifest=$12, package_ready=$13, validation_json=$14,
+                audit_findings=$15, audit_status='pending'
           where id=$1`,
         [
           existing.id,
@@ -320,8 +369,9 @@ export const bidBuilder: AgentDefinition = {
           humanFlags,
           JSON.stringify(resolved),
           JSON.stringify(manifest),
-          validation.passed,
+          packageReady,
           JSON.stringify(validation),
+          JSON.stringify(eligibilityFindings),
         ]
       );
     } else {
@@ -329,8 +379,9 @@ export const bidBuilder: AgentDefinition = {
         `insert into bids
            (opportunity_id, sub_quote_total, markup_pct, bid_amount, margin_pct,
             target_margin_pct, qa_checklist, narrative, documents_json, human_flags, outcome,
-            compliance_matrix, package_manifest, package_ready, validation_json)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14)`,
+            compliance_matrix, package_manifest, package_ready, validation_json,
+            audit_findings, audit_status)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14,$15,'pending')`,
         [
           opportunityId,
           subQuoteTotal,
@@ -344,8 +395,9 @@ export const bidBuilder: AgentDefinition = {
           humanFlags,
           JSON.stringify(resolved),
           JSON.stringify(manifest),
-          validation.passed,
+          packageReady,
           JSON.stringify(validation),
+          JSON.stringify(eligibilityFindings),
         ]
       );
     }
@@ -354,9 +406,6 @@ export const bidBuilder: AgentDefinition = {
       `update opportunities set stage='bid_building', human_action_required=true where id=$1`,
       [opportunityId]
     );
-    // The independent compliance audit runs next; mark it pending so the UI
-    // shows "audit running" rather than a false "clean".
-    await query(`update bids set audit_status='pending' where opportunity_id=$1`, [opportunityId]);
 
     await logAgent({
       agent: "bid-builder",

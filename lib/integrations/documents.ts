@@ -591,6 +591,51 @@ async function buildComplianceMatrixPdf(data: ComplianceMatrixDoc): Promise<Buff
   return Buffer.from(await w.save());
 }
 
+export interface AmendmentAckData {
+  company_name: string;
+  opportunity_title: string;
+  solicitation_number?: string;
+  amendments: Array<{ label: string; date?: string; summary?: string }>;
+  date?: string;
+}
+
+/** Amendment / addendum acknowledgment form with a signature block. */
+async function buildAmendmentAckPdf(data: AmendmentAckData): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const fonts = await makeFonts(doc);
+  const w = new PdfWriter(doc, fonts);
+
+  w.text("Acknowledgment of Amendments", { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text(data.opportunity_title, { size: 12, bold: true });
+  if (data.solicitation_number) {
+    w.text(`Solicitation: ${data.solicitation_number}`, { size: 10, color: [0.35, 0.35, 0.35] });
+  }
+  w.text(`Offeror: ${data.company_name} · ${data.date ?? todayIso()}`, {
+    size: 10,
+    color: [0.35, 0.35, 0.35],
+  });
+
+  w.heading("The offeror acknowledges receipt of the following amendments");
+  if (data.amendments.length > 0) {
+    for (const a of data.amendments) {
+      w.text(`•  ${a.label}${a.date ? ` (${a.date})` : ""}`, { size: 11, bold: true, indent: 6 });
+      if (a.summary) w.text(a.summary, { size: 9, indent: 18, color: [0.4, 0.4, 0.4] });
+    }
+  } else {
+    w.text("No amendments were issued for this solicitation.", {
+      size: 11,
+      color: [0.35, 0.35, 0.35],
+    });
+  }
+
+  w.gap(24);
+  w.row("Authorized signature: ____________________________", "Date: ______________", { size: 11 });
+  w.gap(10);
+  w.text("REQUIRES SIGNATURE BEFORE SUBMISSION.", { size: 10, bold: true, color: [0.7, 0.33, 0.03] });
+
+  return Buffer.from(await w.save());
+}
+
 export const documents = {
   buildBidPdf,
   buildBidDocx,
@@ -599,4 +644,5 @@ export const documents = {
   buildPricingSchedulePdf,
   buildRepsAndCertsPdf,
   buildComplianceMatrixPdf,
+  buildAmendmentAckPdf,
 };

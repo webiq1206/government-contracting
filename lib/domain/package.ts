@@ -21,6 +21,7 @@ export const ARTIFACT_KIND = {
   capability: "capability_statement",
   bidPdf: "bid_pdf",
   complianceChecklist: "compliance_checklist",
+  amendmentAck: "amendment_ack",
 } as const;
 
 export interface ResolveContext {
@@ -34,6 +35,7 @@ export interface ResolveContext {
 
 /** Map an auto/profile requirement to the artifact the platform generates for it. */
 function artifactFor(req: ComplianceRequirement): string {
+  if (req.category === "acknowledgment") return ARTIFACT_KIND.amendmentAck;
   if (req.satisfied_by === "auto_generated") {
     if (req.category === "pricing") return ARTIFACT_KIND.pricingSchedule;
     return ARTIFACT_KIND.coverLetter;
@@ -130,6 +132,19 @@ export function buildManifest(
   return sorted.map((r, i) => {
     const order = i + 1;
     const num = String(order).padStart(2, "0");
+    // When the real agency form was found in the attachments, that file IS the
+    // package item (the operator signs the actual form).
+    if (r.official_form_doc) {
+      return {
+        order,
+        filename: `${num}_${slugify(r.official_form ?? r.title)}${solTag}.pdf`,
+        requirement_id: r.id,
+        category: r.category,
+        source: "solicitation" as const,
+        document_path: r.official_form_doc.path,
+        status: r.status,
+      };
+    }
     const ext = extFor(r.artifact_kind);
     const source: PackageItem["source"] =
       r.satisfied_by === "operator_provided"

@@ -113,9 +113,9 @@ export const complianceAuditor: AgentDefinition = {
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
 
     const bid = await queryOne<
-      Pick<Bid, "id" | "compliance_matrix" | "validation_json">
+      Pick<Bid, "id" | "compliance_matrix" | "validation_json" | "audit_findings">
     >(
-      `select id, compliance_matrix, validation_json
+      `select id, compliance_matrix, validation_json, audit_findings
          from bids where opportunity_id=$1 order by created_at desc limit 1`,
       [opportunityId]
     );
@@ -123,15 +123,20 @@ export const complianceAuditor: AgentDefinition = {
 
     const matrix = (bid.compliance_matrix ?? []) as ResolvedRequirement[];
     const validation = (bid.validation_json ?? null) as PackageValidation | null;
+    // Deterministic eligibility findings (elig_*) are preserved across audits,
+    // keeping their acknowledged state; the AI findings (af_*) are refreshed.
+    const preserved = (bid.audit_findings ?? []).filter((f) => f.id.startsWith("elig_"));
     const profile = await getProfileJson();
     const solText = opp.solicitation_text ?? "";
 
-    // Nothing to audit against — record skipped, don't touch the gate.
+    // Nothing to audit against — keep eligibility findings, skip the AI pass.
     if (!profile || solText.trim().length < 40) {
-      await query(`update bids set audit_findings='[]'::jsonb, audit_status='skipped' where id=$1`, [
-        bid.id,
-      ]);
-      return { ok: true, summary: "audit skipped (no solicitation text or profile)" };
+      const ready = computeReady(validation, preserved);
+      await query(
+        `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
+        [bid.id, JSON.stringify(preserved), ready]
+      );
+      return { ok: true, summary: "AI audit skipped (no solicitation text or profile)" };
     }
 
     let findings: AuditFinding[];
@@ -140,7 +145,7 @@ export const complianceAuditor: AgentDefinition = {
         buildAuditPrompt(opp, solText, matrix, profile),
         { schema: FindingsSchema, model: config.claude.modelSmart, maxTokens: 4096 }
       );
-      findings = data.findings.map((f, i) => ({
+      const aiFindings: AuditFinding[] = data.findings.map((f, i) => ({
         id: `af_${i + 1}`,
         severity: f.severity,
         category: f.category,
@@ -149,6 +154,8 @@ export const complianceAuditor: AgentDefinition = {
         requirement_id: f.requirement_id,
         acknowledged: false,
       }));
+      // Deterministic eligibility findings first, then the AI findings.
+      findings = [...preserved, ...aiFindings];
       await logAgent({
         agent: "compliance-auditor",
         action: "audit",
@@ -162,14 +169,19 @@ export const complianceAuditor: AgentDefinition = {
       });
     } catch (err) {
       if (err instanceof ClaudeNotConfiguredError) {
+        const ready = computeReady(validation, preserved);
         await query(
-          `update bids set audit_findings='[]'::jsonb, audit_status='skipped' where id=$1`,
-          [bid.id]
+          `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
+          [bid.id, JSON.stringify(preserved), ready]
         );
-        return { ok: true, summary: "audit skipped (Claude not configured)" };
+        return { ok: true, summary: "AI audit skipped (Claude not configured)" };
       }
-      // Any other error: skip, never block the pipeline on the auditor.
-      await query(`update bids set audit_status='skipped' where id=$1`, [bid.id]);
+      // Any other error: keep eligibility findings, skip the AI pass.
+      const ready = computeReady(validation, preserved);
+      await query(
+        `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
+        [bid.id, JSON.stringify(preserved), ready]
+      );
       await logAgent({
         agent: "compliance-auditor",
         action: "audit",

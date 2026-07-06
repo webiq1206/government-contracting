@@ -47,8 +47,9 @@ export async function assemblePackageDocuments(args: {
   resolved: ResolvedRequirement[];
   lineItems: Array<{ label: string; amount: number }>;
   bidAmount: number;
+  amendments?: Array<{ label: string; date?: string; summary?: string }>;
 }): Promise<DocRow[]> {
-  const { opportunityId, opp, profile, resolved, lineItems, bidAmount } = args;
+  const { opportunityId, opp, profile, resolved, lineItems, bidAmount, amendments = [] } = args;
   const need = new Set(resolved.map((r) => r.artifact_kind).filter(Boolean) as string[]);
   const out: DocRow[] = [];
   const title = opp.title ?? "(untitled opportunity)";
@@ -109,6 +110,19 @@ export async function assemblePackageDocuments(args: {
     });
     out.push(
       await storeDoc(opportunityId, ARTIFACT_KIND.repsCerts, "Reps & certifications (prefilled)", buf)
+    );
+  }
+
+  // Amendment acknowledgment (when amendments were issued).
+  if (need.has(ARTIFACT_KIND.amendmentAck)) {
+    const buf = await documents.buildAmendmentAckPdf({
+      company_name: profile.legal_name,
+      opportunity_title: title,
+      solicitation_number: sol,
+      amendments,
+    });
+    out.push(
+      await storeDoc(opportunityId, ARTIFACT_KIND.amendmentAck, "Amendment acknowledgment", buf)
     );
   }
 

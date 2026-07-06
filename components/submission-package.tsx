@@ -245,6 +245,16 @@ export function SubmissionPackage({
                       {r.instructions && needsAction && (
                         <p className="mt-0.5 text-xs text-review">{r.instructions}</p>
                       )}
+                      {r.official_form_doc && (
+                        <a
+                          href={`/api/files/${r.official_form_doc.path}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-0.5 inline-block text-xs text-accent hover:underline"
+                        >
+                          Open the agency&rsquo;s form to sign →
+                        </a>
+                      )}
                     </div>
                     {!submitted && (needsAction || r.operator_confirmed) && (
                       <button
@@ -277,7 +287,8 @@ export function SubmissionPackage({
           <p className="label mb-2">Package contents (in order)</p>
           <ul className="divide-y divide-border text-sm">
             {manifest.map((m) => {
-              const path = m.document_kind ? kindToPath[m.document_kind] : undefined;
+              const path =
+                m.document_path ?? (m.document_kind ? kindToPath[m.document_kind] : undefined);
               return (
                 <li key={m.order} className="flex items-center justify-between gap-2 py-1.5">
                   <span className="min-w-0 truncate text-slate-700">

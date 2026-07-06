@@ -52,6 +52,16 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const toProvide: string[] = [];
 
   for (const item of manifest) {
+    // Explicit path (e.g. the real agency form pulled from the solicitation).
+    if (item.document_path) {
+      try {
+        const buf = await storage.download(item.document_path);
+        entries.push({ name: item.filename, data: buf });
+        continue;
+      } catch {
+        /* fall through */
+      }
+    }
     if (item.document_kind && byKind.has(item.document_kind)) {
       const doc = byKind.get(item.document_kind)!;
       if (doc.storage_path) {
