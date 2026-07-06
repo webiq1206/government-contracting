@@ -10,6 +10,7 @@ import type {
   PackageItem,
   PackageValidation,
   RequirementCategory,
+  AuditFinding,
 } from "../types";
 
 /** documents.kind values used for generated package artifacts. */
@@ -58,6 +59,19 @@ export function resolveRequirements(
         status: "satisfied",
         operator_confirmed: true,
         artifact_kind: artifactFor(req) || undefined,
+      };
+    }
+    // A required SPECIFIC agency form cannot be reproduced exactly — the
+    // operator must complete the official form. Any generated document is only
+    // a worksheet. This is always the operator's item until confirmed.
+    if (req.official_form) {
+      return {
+        ...req,
+        status: "needs_operator",
+        artifact_kind: artifactFor(req) || undefined,
+        note: `Use the official ${req.official_form}${
+          req.signature_required ? " and sign it" : ""
+        } from the solicitation — the generated draft is a worksheet only.`,
       };
     }
     switch (req.satisfied_by) {
@@ -191,4 +205,20 @@ export function validatePackage(input: ValidationInput): PackageValidation {
     satisfied_count,
     total_mandatory: mandatory.length,
   };
+}
+
+/** Unresolved (unacknowledged) blocker findings from the independent audit. */
+export function openAuditBlockers(findings: AuditFinding[] | null | undefined): AuditFinding[] {
+  return (findings ?? []).filter((f) => f.severity === "blocker" && !f.acknowledged);
+}
+
+/**
+ * The single source of truth for "can this be submitted": the deterministic
+ * validation must pass AND the independent audit must have no open blockers.
+ */
+export function computeReady(
+  validation: PackageValidation | null,
+  findings: AuditFinding[] | null | undefined
+): boolean {
+  return Boolean(validation?.passed) && openAuditBlockers(findings).length === 0;
 }

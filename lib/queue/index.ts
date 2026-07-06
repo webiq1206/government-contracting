@@ -68,6 +68,7 @@ export const QUEUE_NAMES = [
   "outreach",
   "call-prep",
   "bid-builder",
+  "compliance-auditor",
   "compliance-monitor",
   "learning-loop",
   "analytics-engine",

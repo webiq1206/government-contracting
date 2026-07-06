@@ -14,6 +14,7 @@ import { subFinder } from "./sub-finder";
 import { subVerify } from "./sub-verify";
 import { outreach } from "./outreach";
 import { callPrep } from "./call-prep";
+import { complianceAuditor } from "./compliance-auditor";
 import { bidBuilder } from "./bid-builder";
 import { complianceMonitor } from "./compliance-monitor";
 import { learningLoop } from "./learning-loop";
@@ -40,6 +41,7 @@ export const ROSTER: AgentDefinition[] = [
   outreach,
   callPrep,
   bidBuilder,
+  complianceAuditor,
   complianceMonitor,
   learningLoop,
   analyticsEngine,

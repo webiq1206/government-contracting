@@ -16,6 +16,7 @@ import type {
   PackageItem,
   PackageValidation,
   QaChecklistItem,
+  AuditFinding,
 } from "@/lib/types";
 import { currency, pct, timeAgo } from "@/lib/format";
 
@@ -53,21 +54,23 @@ export function SubmissionPackage({
   const matrix: ResolvedRequirement[] = bid.compliance_matrix ?? [];
   const manifest: PackageItem[] = bid.package_manifest ?? [];
   const validation: PackageValidation | null = bid.validation_json;
+  const findings: AuditFinding[] = bid.audit_findings ?? [];
+  const auditStatus = bid.audit_status;
   const ready = bid.package_ready;
   const submitted = Boolean(bid.submitted_at);
 
-  async function confirm(reqId: string, confirmed: boolean) {
-    setBusyId(reqId);
+  async function post(payload: Record<string, unknown>, busyKey: string) {
+    setBusyId(busyKey);
     setError(null);
     try {
       const res = await fetch(`/api/opportunities/${opportunityId}/requirements`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requirement_id: reqId, confirmed }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        setError(d.error ?? "Could not update the requirement.");
+        setError(d.error ?? "Could not update.");
       } else {
         router.refresh();
       }
@@ -75,6 +78,16 @@ export function SubmissionPackage({
       setBusyId(null);
     }
   }
+  const confirm = (reqId: string, confirmed: boolean) =>
+    post({ requirement_id: reqId, confirmed }, reqId);
+  const acknowledge = (findingId: string, confirmed: boolean) =>
+    post({ finding_id: findingId, confirmed }, findingId);
+
+  const SEV_META: Record<AuditFinding["severity"], { className: string; label: string }> = {
+    blocker: { className: "text-risk", label: "Must fix" },
+    warning: { className: "text-review", label: "Review" },
+    info: { className: "text-slate-500", label: "Note" },
+  };
 
   async function submit(force: boolean) {
     setSubmitting(true);
@@ -136,6 +149,67 @@ export function SubmissionPackage({
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {/* Independent compliance audit */}
+      {auditStatus === "pending" && (
+        <p className="text-xs text-slate-500">
+          Independent compliance audit is running — it re-reads the solicitation
+          against this package and will flag anything missing or non-compliant.
+        </p>
+      )}
+      {auditStatus === "clean" && findings.length === 0 && (
+        <p className="text-xs text-pursue">
+          ✓ Independent compliance audit found no issues. Still worth a final
+          human cross-check against the solicitation.
+        </p>
+      )}
+      {findings.length > 0 && (
+        <div>
+          <p className="label mb-2">
+            Compliance audit ({findings.filter((f) => !f.acknowledged).length} open)
+          </p>
+          <ul className="space-y-2">
+            {findings.map((f) => {
+              const sev = SEV_META[f.severity];
+              return (
+                <li
+                  key={f.id}
+                  className={`rounded-md border px-3 py-2 ${
+                    f.acknowledged
+                      ? "border-border bg-surface opacity-60"
+                      : f.severity === "blocker"
+                        ? "border-risk/40 bg-risk/5"
+                        : "border-border"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm text-slate-800">
+                        <span className={`mr-1.5 text-xs font-semibold uppercase ${sev.className}`}>
+                          {sev.label}
+                        </span>
+                        {f.finding}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">→ {f.recommendation}</p>
+                    </div>
+                    {!submitted && (
+                      <button
+                        onClick={() => acknowledge(f.id, !f.acknowledged)}
+                        disabled={busyId === f.id}
+                        className={`shrink-0 text-xs ${
+                          f.acknowledged ? "text-slate-500 hover:text-slate-700" : "btn-ghost"
+                        }`}
+                      >
+                        {busyId === f.id ? "…" : f.acknowledged ? "Reopen" : "Resolved"}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

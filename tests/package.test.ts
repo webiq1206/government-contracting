@@ -3,9 +3,11 @@ import {
   resolveRequirements,
   buildManifest,
   validatePackage,
+  computeReady,
+  openAuditBlockers,
   type ResolveContext,
 } from "../lib/domain/package";
-import type { ComplianceRequirement } from "../lib/types";
+import type { ComplianceRequirement, AuditFinding, PackageValidation } from "../lib/types";
 
 function req(p: Partial<ComplianceRequirement>): ComplianceRequirement {
   return {
@@ -18,6 +20,7 @@ function req(p: Partial<ComplianceRequirement>): ComplianceRequirement {
     satisfied_by: p.satisfied_by ?? "operator_provided",
     instructions: p.instructions,
     format: p.format,
+    official_form: p.official_form,
   };
 }
 
@@ -63,6 +66,59 @@ describe("resolveRequirements", () => {
     });
     expect(r[0].status).toBe("satisfied");
     expect(r[0].operator_confirmed).toBe(true);
+  });
+
+  it("blocks on a required official agency form even if AI marked it auto", () => {
+    const r = resolveRequirements(
+      [
+        req({
+          id: "sf1449",
+          title: "SF-1449",
+          category: "form",
+          satisfied_by: "auto_generated", // AI over-optimistic
+          official_form: "SF-1449",
+          signature_required: true,
+        }),
+      ],
+      ctx
+    );
+    expect(r[0].status).toBe("needs_operator");
+    expect(r[0].note).toContain("SF-1449");
+  });
+});
+
+describe("computeReady", () => {
+  const passing: PackageValidation = {
+    passed: true,
+    checked_at: "t",
+    blockers: [],
+    warnings: [],
+    satisfied_count: 1,
+    total_mandatory: 1,
+  };
+  const finding = (over: Partial<AuditFinding>): AuditFinding => ({
+    id: over.id ?? "af_1",
+    severity: over.severity ?? "blocker",
+    category: over.category ?? "missing_requirement",
+    finding: "x",
+    recommendation: "y",
+    acknowledged: over.acknowledged,
+  });
+
+  it("is false when an audit blocker is open, even if validation passes", () => {
+    expect(computeReady(passing, [finding({})])).toBe(false);
+    expect(openAuditBlockers([finding({})])).toHaveLength(1);
+  });
+  it("is true when the audit blocker is acknowledged", () => {
+    expect(computeReady(passing, [finding({ acknowledged: true })])).toBe(true);
+  });
+  it("ignores warnings/info for readiness", () => {
+    expect(computeReady(passing, [finding({ severity: "warning" }), finding({ severity: "info" })])).toBe(
+      true
+    );
+  });
+  it("is false when validation fails regardless of audit", () => {
+    expect(computeReady({ ...passing, passed: false }, [])).toBe(false);
   });
 });
 

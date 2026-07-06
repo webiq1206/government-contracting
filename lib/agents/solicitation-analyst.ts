@@ -107,6 +107,7 @@ const AnalysisSchema = z.object({
           .enum(["auto_generated", "from_profile", "operator_signature", "operator_provided"])
           .default("operator_provided"),
         instructions: z.string().optional(),
+        official_form: z.string().optional(),
       })
     )
     .default([]),
@@ -251,7 +252,8 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '       "format": string,                     // format rules if any: file type, page limit, font, number of copies (omit if none)',
     '       "signature_required": boolean,        // does a person have to sign it',
     '       "satisfied_by": "auto_generated"|"from_profile"|"operator_signature"|"operator_provided",',
-    '       "instructions": string                // if the operator must supply/sign it, what exactly they do (omit otherwise)',
+    '       "instructions": string,               // if the operator must supply/sign it, what exactly they do (omit otherwise)',
+    '       "official_form": string               // EXACT form/worksheet id if a SPECIFIC government or agency form is required (e.g. "SF-1449", "SF-33", "SF-18", "SF-1442", "agency pricing worksheet Attachment 3", "SAM.gov reps & certs"). Omit if no specific form is mandated.',
     '     }',
     "  ]",
     "}",
@@ -262,6 +264,7 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '- "operator_signature": the platform can prefill it but a person must sign it (SF-1449, reps & certifications, signed forms).',
     '- "operator_provided": only the offeror can supply it (bid bond, notarized document, insurance certificate, wet-ink or agency-portal-only forms).',
     "If the documents do not enumerate submission contents, infer the standard mandatory items for this vehicle (e.g. a signed offer form, a completed pricing schedule, reps & certifications, and acknowledgment of any amendments) and mark their source \"Standard requirement for this solicitation type\".",
+    "IMPORTANT — official forms: whenever the solicitation requires a SPECIFIC government or agency form or fillable worksheet (any Standard Form like SF-1449/SF-33/SF-18/SF-1442, an agency-provided pricing/bid schedule, a portal-only form), set `official_form` to that exact identifier. These cannot be substituted with a generic document, so be precise. Also capture format constraints (page limits, font/size, number of copies, required file types, submission portal) in `format` and in `submission_requirements`.",
   ].join("\n");
 }
 
@@ -387,13 +390,30 @@ export const solicitationAnalyst: AgentDefinition = {
       enqueued.push({ agent: "sub-finder", payload: { opportunityId } });
     }
 
+    // Persist the parsed solicitation text (capped) so the independent
+    // compliance auditor can re-read it later without re-downloading.
+    const solicitationText = [
+      `TITLE: ${opp.title ?? ""}`,
+      `AGENCY: ${opp.agency ?? ""}`,
+      `SOLICITATION: ${opp.solicitation_number ?? ""}`,
+      "",
+      "DESCRIPTION:",
+      opp.description ?? "",
+      "",
+      "ATTACHMENT TEXT:",
+      attachmentContext,
+    ]
+      .join("\n")
+      .slice(0, 120_000);
+
     await query(
       `update opportunities
          set solicitation_analysis = $2,
              past_perf_classification = $3,
              risk_flags = $4,
              stage = $5,
-             human_action_required = $6
+             human_action_required = $6,
+             solicitation_text = $7
        where id = $1`,
       [
         opportunityId,
@@ -402,6 +422,7 @@ export const solicitationAnalyst: AgentDefinition = {
         mergedRiskFlags,
         stage,
         humanAction,
+        solicitationText,
       ]
     );
 

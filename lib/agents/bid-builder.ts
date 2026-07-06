@@ -354,6 +354,9 @@ export const bidBuilder: AgentDefinition = {
       `update opportunities set stage='bid_building', human_action_required=true where id=$1`,
       [opportunityId]
     );
+    // The independent compliance audit runs next; mark it pending so the UI
+    // shows "audit running" rather than a false "clean".
+    await query(`update bids set audit_status='pending' where opportunity_id=$1`, [opportunityId]);
 
     await logAgent({
       agent: "bid-builder",
@@ -384,6 +387,14 @@ export const bidBuilder: AgentDefinition = {
         failingQa: failing.map((f) => f.item),
       },
       humanActionRequired: true,
+      // Kick the independent compliance audit (singleton per opportunity).
+      enqueued: [
+        {
+          agent: "compliance-auditor",
+          payload: { opportunityId },
+          opts: { singletonKey: `audit:${opportunityId}`, singletonSeconds: 120 },
+        },
+      ],
     };
   },
 };

@@ -237,6 +237,30 @@ export interface ComplianceRequirement {
   signature_required: boolean;
   satisfied_by: RequirementSatisfier;
   instructions?: string; // what the operator must do when they own it
+  /**
+   * When the solicitation requires a SPECIFIC government/agency form or fillable
+   * worksheet (e.g. "SF-1449", "SF-33", agency pricing sheet, portal form), the
+   * exact form identifier. The platform cannot reproduce these exactly, so a
+   * requirement with an official_form is always the operator's to complete.
+   */
+  official_form?: string;
+}
+
+/** A finding from the independent compliance auditor. */
+export interface AuditFinding {
+  id: string;
+  severity: "blocker" | "warning" | "info";
+  category:
+    | "missing_requirement" // required by the solicitation but absent from the package
+    | "official_form" // a specific agency form must be used, not our generated draft
+    | "format" // page limit, font, file type, copies, portal mechanics
+    | "signature" // signature/attestation still required
+    | "content" // a document is present but likely incomplete/non-compliant
+    | "other";
+  finding: string; // what's wrong or at risk
+  recommendation: string; // what the operator should do
+  requirement_id?: string; // links to a compliance_matrix item when applicable
+  acknowledged?: boolean; // operator marked it handled
 }
 
 /** A compliance requirement after the package builder has resolved it. */
@@ -392,6 +416,9 @@ export interface Bid {
   package_manifest: PackageItem[] | null;
   package_ready: boolean;
   validation_json: PackageValidation | null;
+  // --- Independent compliance audit ---
+  audit_findings: AuditFinding[] | null;
+  audit_status: "pending" | "clean" | "issues" | "skipped" | null;
 }
 
 export interface QaChecklistItem {

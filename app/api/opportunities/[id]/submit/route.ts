@@ -23,8 +23,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     qa_checklist: { ok: boolean }[] | null;
     package_ready: boolean;
     validation_json: { blockers?: string[] } | null;
+    audit_findings: { severity: string; acknowledged?: boolean; finding: string }[] | null;
   }>(
-    `select id, human_flags, qa_checklist, package_ready, validation_json
+    `select id, human_flags, qa_checklist, package_ready, validation_json, audit_findings
        from bids where opportunity_id=$1 order by created_at desc limit 1`,
     [params.id]
   );
@@ -38,9 +39,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
-  // Block until the compliance package passes validation, unless forced.
+  // Block until the compliance package passes validation + the independent
+  // audit has no open blockers, unless forced.
   if (!bid.package_ready && !force) {
-    const blockers = bid.validation_json?.blockers ?? [];
+    const validationBlockers = bid.validation_json?.blockers ?? [];
+    const auditBlockers = (bid.audit_findings ?? [])
+      .filter((f) => f.severity === "blocker" && !f.acknowledged)
+      .map((f) => f.finding);
+    const blockers = [...validationBlockers, ...auditBlockers];
     return NextResponse.json(
       {
         error:
