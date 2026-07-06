@@ -99,7 +99,8 @@ export const PAGE_HELP: Record<string, HelpContent> = {
     title: "The complete record for one bid",
     points: [
       "The banner up top always shows the recommended next step.",
-      "Edits here sync everywhere: queues, dashboards, analytics.",
+      "The Submission package panel assembles every required file, validates it, and runs an independent compliance audit.",
+      "Your job is to clear the items marked for you (signatures, provided docs) and submit — it's blocked until compliance passes.",
       "Attachments and the plain-English brief live together below.",
     ],
   },

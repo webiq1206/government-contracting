@@ -40,7 +40,7 @@ const STEPS: Step[] = [
   {
     icon: "📖",
     name: "Understand",
-    what: "For pursued work, the solicitation and attachments are read and turned into a plain-English brief: scope, dates, requirements, and price history for similar jobs.",
+    what: "For pursued work, the solicitation and its attachments are read into a plain-English brief AND a compliance matrix: every form, schedule, certification, and attachment the bid must include, plus price history for similar jobs.",
     who: "auto",
   },
   {
@@ -58,14 +58,20 @@ const STEPS: Step[] = [
   },
   {
     icon: "🧮",
-    name: "Price",
-    what: "The moment quotes are in, the bid is priced to your target margin with a QA checklist.",
+    name: "Price & assemble",
+    what: "When quotes are in, the bid is priced to your target margin and the full submission package is assembled: cover letter, pricing schedule, prefilled reps & certs, capability statement, amendment acknowledgments, and every file named and ordered for submission.",
+    who: "auto",
+  },
+  {
+    icon: "🛡️",
+    name: "Check compliance",
+    what: "Two independent checks run: an eligibility gate (are you actually qualified — set-aside, NAICS, bonding, SAM) and an adversarial audit that re-reads the solicitation to catch anything missing or non-compliant. Required agency forms are flagged to use the real form, never a substitute.",
     who: "auto",
   },
   {
     icon: "✍️",
-    name: "Submit",
-    what: "You review the numbers and submit the bid. Nothing ever goes out without your sign-off.",
+    name: "Review & sign",
+    what: "You get a package that's assembled and validated. Clear the items only a person can do — signatures, the reps & certs attestation, anything you must provide — then submit. Submission is blocked until the compliance checks pass.",
     who: "you",
   },
   {
@@ -81,7 +87,7 @@ export default function HowItWorksPage() {
     <div className="flex h-screen flex-col">
       <PageHeader
         title="How it works"
-        subtitle="Nine steps from a government posting to a won contract. Six run on their own; three need you."
+        subtitle="Ten steps from a government posting to a won contract. Most run on their own; a few need you."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <div className="mx-auto max-w-2xl">
@@ -158,6 +164,22 @@ export default function HowItWorksPage() {
               always lists exactly what needs you, most urgent first, and every
               opportunity shows its own recommended next step. The small ? next
               to each page title explains that page in a few lines.
+            </p>
+          </div>
+
+          <div className="mt-4 rounded-md border border-border bg-surface px-4 py-3">
+            <p className="text-sm font-medium text-foreground">
+              One honest note on bid packages
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              The system assembles, prefills, and validates the package, and runs
+              an independent audit against the solicitation, so your job shrinks
+              to reviewing and signing. It gets you very close, but it isn&rsquo;t
+              a guarantee of perfect compliance: the requirements are read by AI,
+              and some agencies require their exact forms or portal. Before you
+              submit a real bid, give the compliance checklist a final glance
+              against the actual solicitation. The tools make that a short check,
+              not hours of work.
             </p>
           </div>
         </div>
