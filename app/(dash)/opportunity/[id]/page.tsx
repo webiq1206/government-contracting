@@ -8,6 +8,7 @@ import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { BidBrief } from "@/components/bid-brief";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
+import { SubmissionPackage } from "@/components/submission-package";
 import { currency, currencyCents, countdown, timeAgo, pct, shortDate } from "@/lib/format";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
@@ -55,6 +56,13 @@ export default async function OpportunityPage({ params }: { params: { id: string
     storage_path: (d.storage_path as string) ?? null,
     meta: (d.meta as { source_url?: string }) ?? null,
   }));
+  // Latest storage path per document kind, for the submission-package downloads.
+  const kindToPath: Record<string, string> = {};
+  for (const d of documents as Record<string, unknown>[]) {
+    const kind = String(d.kind);
+    const path = d.storage_path ? String(d.storage_path) : "";
+    if (path && !kindToPath[kind]) kindToPath[kind] = path;
+  }
 
   return (
     <div className="flex h-screen flex-col">
@@ -305,51 +313,15 @@ export default async function OpportunityPage({ params }: { params: { id: string
             </div>
 
             {bid && (
-              <div className="card space-y-3">
-                <p className="eyebrow">Bid package</p>
-                <div className="flex items-baseline justify-between">
-                  <span className="num font-serif text-3xl font-semibold text-foreground">
-                    {currency(bid.bid_amount)}
-                  </span>
-                  <span className="text-sm text-slate-500">
-                    margin {pct(bid.margin_pct)}
-                  </span>
-                </div>
-                {bid.qa_checklist && (
-                  <ul className="space-y-1 text-xs">
-                    {bid.qa_checklist.map((c, i) => (
-                      <li
-                        key={i}
-                        className={c.ok ? "text-pursue" : "text-review"}
-                      >
-                        {c.ok ? "✓" : "✗"} {c.item}
-                        {c.note ? (
-                          <span className="text-slate-500"> · {c.note}</span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {bid.human_flags?.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {bid.human_flags.map((f) => (
-                      <span key={f} className="badge bg-review/15 text-review">
-                        {f}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {!bid.submitted_at && (
-                  <ActionButton
-                    endpoint={`/api/opportunities/${opp.id}/submit`}
-                    className="btn-primary w-full"
-                    confirm="Submit this bid package?"
-                  >
-                    Submit bid
-                  </ActionButton>
-                )}
+              <>
+                <SubmissionPackage
+                  opportunityId={opp.id}
+                  bid={bid}
+                  kindToPath={kindToPath}
+                />
                 {bid.submitted_at && (
-                  <div className="space-y-2">
+                  <div className="card space-y-2">
+                    <p className="eyebrow">Outcome</p>
                     <p className="text-xs text-pursue">
                       Submitted {timeAgo(bid.submitted_at)}
                     </p>
@@ -379,7 +351,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     )}
                   </div>
                 )}
-              </div>
+              </>
             )}
 
             <div className="card">
