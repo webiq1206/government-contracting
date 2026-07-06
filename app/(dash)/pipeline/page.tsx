@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { pipelineOpportunities, PIPELINE_STAGES } from "@/lib/data";
 import { PageHeader, ScoreBadge } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { currency, countdown } from "@/lib/format";
 import { integrationStatus } from "@/lib/config";
 import type { Opportunity } from "@/lib/types";
@@ -33,6 +34,7 @@ export default async function PipelinePage() {
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
+        help={PAGE_HELP["pipeline"]}
         title="Pipeline"
         subtitle={`${opps.length} active opportunities. Human-action items in amber.`}
       />

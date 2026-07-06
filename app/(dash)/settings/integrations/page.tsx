@@ -1,5 +1,6 @@
 import { integrationStatus } from "@/lib/config";
 import { PageHeader } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { IntegrationManager } from "@/components/integration-manager";
 import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-settings";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
@@ -47,6 +48,7 @@ export default async function IntegrationsPage({
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        help={PAGE_HELP["integrations"]}
         title="Integrations"
         subtitle="Connect the services that power the automation. Paste a key, press Test to verify it live, then Save. Everything is managed right here."
       />

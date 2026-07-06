@@ -1,5 +1,6 @@
 import { activeContracts } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { currency, shortDate, pct } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -224,6 +225,7 @@ export default async function ContractsPage() {
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
+        help={PAGE_HELP["contracts"]}
         title="Active Contracts"
         subtitle={`${contracts.length} active contract${contracts.length === 1 ? "" : "s"} under performance & compliance tracking.`}
       />

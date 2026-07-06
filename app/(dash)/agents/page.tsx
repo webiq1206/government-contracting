@@ -2,6 +2,7 @@ import Link from "next/link";
 import { agentLogsPaged, jobRunsSummary, LOG_PAGE_SIZE } from "@/lib/data";
 import { ROSTER } from "@/lib/agents/registry";
 import { PageHeader } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { timeAgo } from "@/lib/format";
 
@@ -64,6 +65,7 @@ export default async function AgentsPage({
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        help={PAGE_HELP["agents"]}
         title="Automation Log"
         subtitle={`${ROSTER.length} agents run this platform. See what each one did and why, or run one manually.`}
       />

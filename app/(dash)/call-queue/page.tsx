@@ -1,6 +1,7 @@
 import { callQueue } from "@/lib/data";
 import type { CallCardRow } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { CallWorkspaceLauncher } from "@/components/call-workspace-launcher";
 import { countdown, currency, shortDate } from "@/lib/format";
 
@@ -109,6 +110,7 @@ export default async function CallQueuePage() {
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
+        help={PAGE_HELP["call-queue"]}
         title="Call Queue"
         subtitle={`${cards.length} call${cards.length === 1 ? "" : "s"} to make · soonest deadline first`}
       />

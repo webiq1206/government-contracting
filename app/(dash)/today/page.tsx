@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { actionCenter, type ActionOppRow } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { integrationStatus } from "@/lib/config";
 import { currency, countdown, shortDate } from "@/lib/format";
 
@@ -140,6 +141,7 @@ export default async function TodayPage() {
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
+        help={PAGE_HELP["today"]}
         title="Today"
         subtitle={
           totalActions === 0

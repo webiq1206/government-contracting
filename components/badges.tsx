@@ -1,4 +1,5 @@
 import { tierColor } from "@/lib/format";
+import { HelpPopover, type HelpContent } from "./help-popover";
 
 export function TierBadge({ tier }: { tier: string | null }) {
   if (!tier) return null;
@@ -16,20 +17,25 @@ export function PageHeader({
   title,
   subtitle,
   eyebrow,
+  help,
   children,
 }: {
   title: string;
   subtitle?: string;
   eyebrow?: string;
+  help?: HelpContent;
   children?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-6 py-5">
       <div>
         {eyebrow && <p className="eyebrow mb-1.5">{eyebrow}</p>}
-        <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
-          {title}
-        </h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
+            {title}
+          </h1>
+          {help && <HelpPopover help={help} />}
+        </div>
         {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
       </div>
       {children && <div className="flex items-center gap-2">{children}</div>}

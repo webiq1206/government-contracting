@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { reviewQueue } from "@/lib/data";
 import { PageHeader, ScoreBadge, TierBadge } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { currency, countdown } from "@/lib/format";
 import type { Opportunity } from "@/lib/types";
@@ -181,6 +182,7 @@ export default async function ReviewPage() {
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
+        help={PAGE_HELP["review"]}
         title="Review Queue"
         subtitle={`${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} awaiting triage (scored 50–69).`}
       />

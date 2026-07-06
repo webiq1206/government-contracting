@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { subDatabase } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { SubFilters } from "@/components/sub-filters";
 import type { Subcontractor } from "@/lib/types";
 
@@ -29,6 +30,7 @@ export default async function SubsPage({
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
+        help={PAGE_HELP["subs"]}
         title="Sub Database"
         subtitle={`${subs.length} subcontractor${subs.length === 1 ? "" : "s"}${
           filters.trade || filters.state || filters.q || minReliability != null

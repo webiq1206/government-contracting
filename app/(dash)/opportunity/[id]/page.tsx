@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { opportunityDetail } from "@/lib/data";
 import { PageHeader, ScoreBadge, TierBadge } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { BidBrief } from "@/components/bid-brief";
@@ -58,6 +59,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
+        help={PAGE_HELP["opportunity"]}
         title={opp.title ?? "Opportunity"}
         eyebrow={[opp.agency, opp.solicitation_number].filter(Boolean).join(" · ") || undefined}
         subtitle={`${opp.naics_code ? "NAICS " + opp.naics_code + " · " : ""}${opp.set_aside_type ?? ""}`}

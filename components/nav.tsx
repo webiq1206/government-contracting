@@ -7,7 +7,10 @@ import { useState } from "react";
 const NAV: { section: string; items: { href: string; label: string }[] }[] = [
   {
     section: "Start here",
-    items: [{ href: "/today", label: "Today" }],
+    items: [
+      { href: "/today", label: "Today" },
+      { href: "/how-it-works", label: "How it works" },
+    ],
   },
   {
     section: "Work the pipeline",

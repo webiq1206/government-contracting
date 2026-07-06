@@ -1,5 +1,6 @@
 import { complianceBoard } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate, complianceColorClass } from "@/lib/format";
 import { statusColor } from "@/lib/domain/compliance";
 import type { ComplianceStatus } from "@/lib/domain/compliance";
@@ -49,7 +50,8 @@ export default async function CompliancePage() {
   if (rows.length === 0) {
     return (
       <div className="flex h-full flex-col">
-        <PageHeader title="Compliance Board" />
+        <PageHeader
+        help={PAGE_HELP["compliance"]} title="Compliance Board" />
         <div className="p-6">
           <div className="card text-sm text-slate-600">
             Compliance Monitor has not run yet. Trigger it from{" "}
