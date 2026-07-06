@@ -295,6 +295,53 @@ export async function agentLogs(filters: { agent?: string; limit?: number } = {}
   );
 }
 
+export const LOG_PAGE_SIZE = 50;
+
+/** Paged + filterable activity feed for the Automation Log page. */
+export async function agentLogsPaged(filters: {
+  agent?: string;
+  level?: string;
+  q?: string;
+  page?: number;
+}): Promise<{ rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }> {
+  const params: unknown[] = [];
+  const where: string[] = [];
+  if (filters.agent) {
+    params.push(filters.agent);
+    where.push(`agent = $${params.length}`);
+  }
+  if (filters.level) {
+    // "warn" should also match legacy "warning" rows.
+    params.push(filters.level === "warn" ? ["warn", "warning"] : [filters.level]);
+    where.push(`level = any($${params.length})`);
+  }
+  if (filters.q && filters.q.trim()) {
+    params.push(`%${filters.q.trim()}%`);
+    where.push(
+      `(message ilike $${params.length} or action ilike $${params.length} or reasoning ilike $${params.length})`
+    );
+  }
+  const whereSql = where.length ? `where ${where.join(" and ")}` : "";
+  const page = Math.max(1, filters.page ?? 1);
+  const countParams = [...params];
+  params.push(LOG_PAGE_SIZE, (page - 1) * LOG_PAGE_SIZE);
+  const [rows, totalRow] = await Promise.all([
+    query(
+      `select id, agent, action, level, status, message, reasoning, opportunity_id,
+              duration_ms, created_at
+         from agent_logs ${whereSql}
+        order by created_at desc
+        limit $${params.length - 1} offset $${params.length}`,
+      params
+    ),
+    queryOne<{ total: number }>(
+      `select count(*)::int as total from agent_logs ${whereSql}`,
+      countParams
+    ),
+  ]);
+  return { rows, total: totalRow?.total ?? 0, page, pageSize: LOG_PAGE_SIZE };
+}
+
 export async function jobRunsSummary() {
   return query(
     `select agent,

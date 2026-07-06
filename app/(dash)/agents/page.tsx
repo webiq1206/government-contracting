@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { agentLogs, jobRunsSummary } from "@/lib/data";
+import { agentLogsPaged, jobRunsSummary, LOG_PAGE_SIZE } from "@/lib/data";
 import { ROSTER } from "@/lib/agents/registry";
 import { PageHeader } from "@/components/badges";
 import { ActionButton } from "@/components/action-button";
@@ -33,19 +33,39 @@ function levelColor(level: string): string {
 export default async function AgentsPage({
   searchParams,
 }: {
-  searchParams?: { agent?: string };
+  searchParams?: { agent?: string; level?: string; q?: string; page?: string };
 }) {
   const agentFilter = searchParams?.agent;
-  const [runs, logs] = await Promise.all([
+  const levelFilter = searchParams?.level;
+  const q = searchParams?.q ?? "";
+  const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
+  const [runs, paged] = await Promise.all([
     jobRunsSummary() as Promise<Row[]>,
-    agentLogs({ agent: agentFilter, limit: 150 }) as Promise<Row[]>,
+    agentLogsPaged({ agent: agentFilter, level: levelFilter, q, page }),
   ]);
+  const logs = paged.rows as Row[];
+  const totalPages = Math.max(1, Math.ceil(paged.total / LOG_PAGE_SIZE));
+
+  // Preserve active filters when building filter/pagination links.
+  const link = (patch: Record<string, string | number | undefined>) => {
+    const merged: Record<string, string> = {};
+    const base: Record<string, string | undefined> = {
+      agent: agentFilter,
+      level: levelFilter,
+      q: q || undefined,
+    };
+    for (const [k, v] of Object.entries({ ...base, ...patch })) {
+      if (v != null && v !== "") merged[k] = String(v);
+    }
+    const qs = new URLSearchParams(merged).toString();
+    return qs ? `/agents?${qs}` : "/agents";
+  };
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
-        title="Agents & Logs"
-        subtitle={`${ROSTER.length} agents in the roster`}
+        title="Automation Log"
+        subtitle={`${ROSTER.length} agents run this platform. See what each one did and why, or run one manually.`}
       />
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
@@ -121,33 +141,66 @@ export default async function AgentsPage({
         <section>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h2 className="label">Activity feed</h2>
-            <div className="flex flex-wrap gap-1.5">
-              <Link
-                href="/agents"
-                className={`badge ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
-              >
-                All
+            <span className="num text-xs text-slate-500">
+              {paged.total.toLocaleString()} entr{paged.total === 1 ? "y" : "ies"}
+            </span>
+          </div>
+
+          {/* Search + level filter (GET form so links stay shareable) */}
+          <form method="get" action="/agents" className="mb-2 flex flex-wrap items-center gap-2">
+            {agentFilter && <input type="hidden" name="agent" value={agentFilter} />}
+            <input
+              className="input max-w-xs"
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder="Search messages…"
+            />
+            <select className="select w-auto" name="level" defaultValue={levelFilter ?? ""}>
+              <option value="">All levels</option>
+              <option value="success">Success</option>
+              <option value="info">Info</option>
+              <option value="warn">Warnings</option>
+              <option value="error">Errors</option>
+            </select>
+            <button className="btn-ghost" type="submit">
+              Filter
+            </button>
+            {(q || levelFilter) && (
+              <Link href={link({ q: undefined, level: undefined, page: undefined })} className="text-xs text-slate-500 hover:text-accent">
+                Clear
               </Link>
-              {ROSTER.map((a) => (
-                <Link
-                  key={a.name}
-                  href={`/agents?agent=${a.name}`}
-                  className={`badge ${
-                    agentFilter === a.name
-                      ? "bg-accent/10 text-accent"
-                      : "bg-slate-200 text-slate-600 hover:text-slate-800"
-                  }`}
-                >
-                  {a.name}
-                </Link>
-              ))}
-            </div>
+            )}
+          </form>
+
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            <Link
+              href={link({ agent: undefined, page: undefined })}
+              className={`badge ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
+            >
+              All agents
+            </Link>
+            {ROSTER.map((a) => (
+              <Link
+                key={a.name}
+                href={link({ agent: a.name, page: undefined })}
+                className={`badge ${
+                  agentFilter === a.name
+                    ? "bg-accent/10 text-accent"
+                    : "bg-slate-200 text-slate-600 hover:text-slate-800"
+                }`}
+              >
+                {a.name}
+              </Link>
+            ))}
           </div>
 
           <div className="space-y-2">
             {logs.length === 0 && (
               <div className="card text-sm text-slate-500">
-                No log entries{agentFilter ? ` for ${agentFilter}` : ""} yet.
+                {q || levelFilter
+                  ? "No log entries match these filters."
+                  : `No log entries${agentFilter ? ` for ${agentFilter}` : ""} yet.`}
               </div>
             )}
             {logs.map((log) => {
@@ -183,6 +236,28 @@ export default async function AgentsPage({
               );
             })}
           </div>
+
+          {totalPages > 1 && (
+            <div className="mt-3 flex items-center justify-between">
+              {page > 1 ? (
+                <Link href={link({ page: page - 1 })} className="btn-ghost text-xs">
+                  ← Newer
+                </Link>
+              ) : (
+                <span />
+              )}
+              <span className="num text-xs text-slate-500">
+                Page {page} of {totalPages}
+              </span>
+              {page < totalPages ? (
+                <Link href={link({ page: page + 1 })} className="btn-ghost text-xs">
+                  Older →
+                </Link>
+              ) : (
+                <span />
+              )}
+            </div>
+          )}
         </section>
       </div>
     </div>
