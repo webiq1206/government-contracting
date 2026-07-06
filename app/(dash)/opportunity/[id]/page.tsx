@@ -6,6 +6,7 @@ import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { BidBrief } from "@/components/bid-brief";
 import { AttachmentsPanel } from "@/components/attachments-panel";
+import { NextStepBanner } from "@/components/next-step-banner";
 import { currency, currencyCents, countdown, timeAgo, pct, shortDate } from "@/lib/format";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
@@ -68,6 +69,21 @@ export default async function OpportunityPage({ params }: { params: { id: string
       </PageHeader>
 
       <div className="scroll-thin flex-1 overflow-y-auto">
+        {/* Stage-aware guidance: the single recommended next action. */}
+        <div className="px-5 pt-5">
+          <NextStepBanner
+            stage={opp.stage}
+            tier={opp.tier}
+            humanActionRequired={opp.human_action_required}
+            quoteCount={(quotes as unknown[]).length}
+            requiredTradeCount={analysis?.required_trades?.length ?? 0}
+            hasBid={Boolean(bid)}
+            bidSubmitted={Boolean(bid?.submitted_at)}
+            outcome={bid?.outcome ?? null}
+            pastPerfBlocked={opp.past_perf_classification === "prime_only"}
+          />
+        </div>
+
         {/* Bid Brief — always shown; falls back to lightweight header when no analysis yet */}
         <div className="px-5 pt-5">
           {analysis ? (
