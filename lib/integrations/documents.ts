@@ -372,8 +372,231 @@ async function buildBidDocx(data: BidDocData): Promise<Buffer> {
   return Buffer.from(buffer);
 }
 
+/* ------------------- submission-package document builders ------------------ */
+
+export interface CoverLetterData {
+  company_name: string;
+  company_address?: string;
+  company_contact?: string; // "Name, Title · phone · email"
+  agency?: string;
+  opportunity_title: string;
+  solicitation_number?: string;
+  bid_amount: number;
+  contents: string[]; // what's enclosed, in order
+  date?: string;
+}
+
+/** Transmittal / cover letter that fronts the submission package. */
+async function buildCoverLetterPdf(data: CoverLetterData): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const fonts = await makeFonts(doc);
+  const w = new PdfWriter(doc, fonts);
+
+  w.text(data.company_name, { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
+  if (data.company_address) w.text(data.company_address, { size: 10, color: [0.35, 0.35, 0.35] });
+  if (data.company_contact) w.text(data.company_contact, { size: 10, color: [0.35, 0.35, 0.35] });
+  w.gap(10);
+  w.text(data.date ?? todayIso(), { size: 11 });
+  w.gap(8);
+  if (data.agency) w.text(data.agency, { size: 11 });
+  w.text(
+    `Re: ${data.opportunity_title}${data.solicitation_number ? ` (Solicitation ${data.solicitation_number})` : ""}`,
+    { size: 11, bold: true }
+  );
+  w.gap(10);
+  w.text("To the Contracting Officer:", { size: 11 });
+  w.gap(6);
+  w.text(
+    `${data.company_name} is pleased to submit the enclosed offer in response to the above solicitation. Our total proposed price is ${currency(data.bid_amount)}. We have reviewed the solicitation and its attachments and affirm our intent to perform in full accordance with its terms.`,
+    { size: 11 }
+  );
+  w.gap(6);
+  w.text("The following documents are enclosed as part of this submission:", { size: 11 });
+  w.gap(2);
+  for (const c of data.contents) w.text(`•  ${c}`, { size: 11, indent: 10 });
+  w.gap(10);
+  w.text("We appreciate the opportunity to bid and welcome any questions.", { size: 11 });
+  w.gap(16);
+  w.text("Respectfully submitted,", { size: 11 });
+  w.gap(28);
+  w.text("_______________________________", { size: 11 });
+  w.text(data.company_contact ?? data.company_name, { size: 11 });
+
+  return Buffer.from(await w.save());
+}
+
+export interface PricingScheduleData {
+  company_name: string;
+  opportunity_title: string;
+  solicitation_number?: string;
+  line_items: Array<{ label: string; amount: number }>;
+  bid_amount: number;
+  date?: string;
+}
+
+/** Itemized pricing / bid schedule with a signature block. */
+async function buildPricingSchedulePdf(data: PricingScheduleData): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const fonts = await makeFonts(doc);
+  const w = new PdfWriter(doc, fonts);
+
+  w.text("Pricing Schedule", { size: 20, bold: true, color: [0.09, 0.24, 0.42] });
+  w.gap(2);
+  w.text(data.opportunity_title, { size: 12, bold: true });
+  if (data.solicitation_number) {
+    w.text(`Solicitation: ${data.solicitation_number}`, { size: 10, color: [0.35, 0.35, 0.35] });
+  }
+  w.text(`Offeror: ${data.company_name}`, { size: 10, color: [0.35, 0.35, 0.35] });
+  w.text(`Date: ${data.date ?? todayIso()}`, { size: 10, color: [0.35, 0.35, 0.35] });
+
+  w.heading("Itemized Pricing");
+  if (data.line_items.length > 0) {
+    for (const item of data.line_items) w.row(item.label, currency(item.amount));
+  } else {
+    w.text("No line items provided.", { size: 11, color: [0.35, 0.35, 0.35] });
+  }
+  w.gap(4);
+  w.row("TOTAL PROPOSED PRICE", currency(data.bid_amount), { bold: true, size: 13 });
+
+  w.gap(24);
+  w.text(
+    "The undersigned certifies that the pricing above is firm and complete for the full scope of the solicitation.",
+    { size: 10, color: [0.35, 0.35, 0.35] }
+  );
+  w.gap(24);
+  w.row("Authorized signature: ____________________________", "Date: ______________", { size: 11 });
+
+  return Buffer.from(await w.save());
+}
+
+export interface RepsAndCertsData {
+  legal_name: string;
+  dba?: string;
+  physical_address?: string;
+  uei?: string;
+  cage_code?: string;
+  duns?: string;
+  ein?: string;
+  entity_state?: string;
+  business_structure?: string;
+  small_business: boolean;
+  certifications: string[];
+  naics_codes: string[];
+  owner_name?: string;
+  owner_title?: string;
+  phone?: string;
+  email?: string;
+  solicitation_number?: string;
+}
+
+/**
+ * A pre-filled Representations & Certifications data sheet. Every field the
+ * platform knows is filled from the Company Profile; the attestation and
+ * signature are left for the operator (these are legal statements only a person
+ * may make).
+ */
+async function buildRepsAndCertsPdf(data: RepsAndCertsData): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const fonts = await makeFonts(doc);
+  const w = new PdfWriter(doc, fonts);
+
+  w.text("Representations & Certifications", { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text("Offeror data sheet — pre-filled for review and signature", {
+    size: 10,
+    color: [0.35, 0.35, 0.35],
+  });
+  if (data.solicitation_number) {
+    w.text(`Solicitation: ${data.solicitation_number}`, { size: 10, color: [0.35, 0.35, 0.35] });
+  }
+
+  w.heading("Offeror Identification");
+  w.row("Legal business name", data.legal_name || "—");
+  if (data.dba) w.row("Doing business as (DBA)", data.dba);
+  w.row("Physical address", data.physical_address || "—");
+  w.row("UEI", data.uei || "—");
+  w.row("CAGE code", data.cage_code || "—");
+  if (data.duns) w.row("DUNS", data.duns);
+  w.row("Taxpayer ID (EIN)", data.ein || "—");
+  w.row("State of incorporation", data.entity_state || "—");
+  w.row("Business structure", data.business_structure || "—");
+
+  w.heading("Size & Socioeconomic Status");
+  w.row("Small business", data.small_business ? "Yes" : "No");
+  w.row(
+    "Certifications held",
+    data.certifications.length ? data.certifications.join(", ") : "None on file"
+  );
+  w.row("Primary NAICS codes", data.naics_codes.length ? data.naics_codes.join(", ") : "—");
+
+  w.heading("Representation Statement");
+  w.text(
+    "By signing below, the offeror certifies that the information above is current, accurate, and complete, and adopts the representations and certifications applicable to this solicitation (including those incorporated by reference in SAM.gov).",
+    { size: 10 }
+  );
+
+  w.gap(20);
+  w.row(`Authorized signature: ____________________________`, "Date: ______________", { size: 11 });
+  w.gap(6);
+  w.text(
+    `Name / Title: ${[data.owner_name, data.owner_title].filter(Boolean).join(", ") || "____________________________"}`,
+    { size: 11 }
+  );
+  if (data.phone || data.email) {
+    w.text(`Contact: ${[data.phone, data.email].filter(Boolean).join(" · ")}`, { size: 10, color: [0.35, 0.35, 0.35] });
+  }
+  w.gap(10);
+  w.text("REQUIRES SIGNATURE BEFORE SUBMISSION.", { size: 10, bold: true, color: [0.7, 0.33, 0.03] });
+
+  return Buffer.from(await w.save());
+}
+
+export interface ComplianceMatrixDoc {
+  opportunity_title: string;
+  solicitation_number?: string;
+  company_name: string;
+  rows: Array<{
+    title: string;
+    status: string; // human label
+    mandatory: boolean;
+    source: string;
+    note?: string;
+  }>;
+  date?: string;
+}
+
+/** A checklist cover page listing every requirement and its status. */
+async function buildComplianceMatrixPdf(data: ComplianceMatrixDoc): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const fonts = await makeFonts(doc);
+  const w = new PdfWriter(doc, fonts);
+
+  w.text("Submission Compliance Checklist", { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text(data.opportunity_title, { size: 12, bold: true });
+  if (data.solicitation_number) {
+    w.text(`Solicitation: ${data.solicitation_number}`, { size: 10, color: [0.35, 0.35, 0.35] });
+  }
+  w.text(`Offeror: ${data.company_name} · ${data.date ?? todayIso()}`, {
+    size: 10,
+    color: [0.35, 0.35, 0.35],
+  });
+
+  w.heading("Required items");
+  for (const r of data.rows) {
+    const box = r.status.toLowerCase().includes("satisf") ? "[x]" : "[ ]";
+    w.text(`${box} ${r.title}${r.mandatory ? "" : "  (optional)"}`, { size: 11, bold: true });
+    const detail = [r.status, r.source, r.note].filter(Boolean).join(" · ");
+    if (detail) w.text(detail, { size: 9, indent: 18, color: [0.4, 0.4, 0.4] });
+  }
+
+  return Buffer.from(await w.save());
+}
+
 export const documents = {
   buildBidPdf,
   buildBidDocx,
   buildCapabilityStatementPdf,
+  buildCoverLetterPdf,
+  buildPricingSchedulePdf,
+  buildRepsAndCertsPdf,
+  buildComplianceMatrixPdf,
 };

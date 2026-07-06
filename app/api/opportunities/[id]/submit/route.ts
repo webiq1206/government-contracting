@@ -17,8 +17,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [params.id]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const bid = await queryOne<{ id: string; human_flags: string[]; qa_checklist: { ok: boolean }[] | null }>(
-    `select id, human_flags, qa_checklist from bids where opportunity_id=$1 order by created_at desc limit 1`,
+  const bid = await queryOne<{
+    id: string;
+    human_flags: string[];
+    qa_checklist: { ok: boolean }[] | null;
+    package_ready: boolean;
+    validation_json: { blockers?: string[] } | null;
+  }>(
+    `select id, human_flags, qa_checklist, package_ready, validation_json
+       from bids where opportunity_id=$1 order by created_at desc limit 1`,
     [params.id]
   );
   if (!bid) return NextResponse.json({ error: "No bid package to submit." }, { status: 400 });
@@ -27,6 +34,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (opp.past_perf_classification === "prime_only") {
     return NextResponse.json(
       { error: "Blocked: past performance is prime_only. Requires human resolution before submission." },
+      { status: 409 }
+    );
+  }
+
+  // Block until the compliance package passes validation, unless forced.
+  if (!bid.package_ready && !force) {
+    const blockers = bid.validation_json?.blockers ?? [];
+    return NextResponse.json(
+      {
+        error:
+          blockers.length > 0
+            ? `The submission package is not complete yet:\n• ${blockers.join("\n• ")}`
+            : "The submission package has not passed compliance validation yet.",
+        needsForce: true,
+        blockers,
+      },
       { status: 409 }
     );
   }

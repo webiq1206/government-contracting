@@ -22,6 +22,8 @@ import {
   markupForTargetMargin,
   isOutOfRange,
 } from "../domain/pricing";
+import { resolveRequirements, buildManifest, validatePackage } from "../domain/package";
+import { assemblePackageDocuments } from "./package-builder";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -29,6 +31,8 @@ import type {
   CompanyProfileJson,
   QaChecklistItem,
   ProjectHistoryItem,
+  SolicitationAnalysis,
+  ResolvedRequirement,
 } from "../types";
 
 interface QuoteRow {
@@ -226,7 +230,69 @@ export const bidBuilder: AgentDefinition = {
       { name: `Bid PDF`, storage_path: pdfUpload.path, kind: "bid_pdf" },
       { name: `Bid DOCX`, storage_path: docxUpload.path, kind: "bid_docx" },
     ];
-    const humanFlags = failing.length ? ["qa_failures"] : [];
+
+    // --- Submission compliance matrix + assembled package. ---
+    const analysis = (opp.solicitation_analysis as SolicitationAnalysis | null) ?? null;
+    const requirements = analysis?.compliance_matrix ?? [];
+    // Preserve operator confirmations (signed/uploaded) across rebuilds.
+    const priorBid = await queryOne<{ compliance_matrix: ResolvedRequirement[] | null }>(
+      `select compliance_matrix from bids where opportunity_id = $1 order by created_at asc limit 1`,
+      [opportunityId]
+    );
+    const confirmed = new Set(
+      (priorBid?.compliance_matrix ?? [])
+        .filter((r) => r.operator_confirmed)
+        .map((r) => r.id)
+    );
+    const hasIdentifiers = Boolean(profile.uei || profile.cage_code);
+    const resolved = resolveRequirements(requirements, {
+      confirmed,
+      hasNarrative: Boolean(narrative),
+      hasIdentifiers,
+    });
+
+    let packageDocs: { name: string; storage_path: string; kind: string }[] = [];
+    if (resolved.length > 0) {
+      try {
+        packageDocs = await assemblePackageDocuments({
+          opportunityId,
+          opp,
+          profile,
+          resolved,
+          lineItems,
+          bidAmount,
+        });
+      } catch (err) {
+        await logAgent({
+          agent: "bid-builder",
+          action: "package-docs",
+          opportunityId,
+          level: "warn",
+          message: `Package document generation had an issue: ${(err as Error).message}`,
+        });
+      }
+    }
+
+    const manifest = buildManifest(resolved, opp.solicitation_number);
+    const pricingReconciles =
+      Math.abs(bidAmount - (subQuoteTotal + markupAmount)) < 1; // within $1 rounding
+    const validation = validatePackage({
+      resolved,
+      hasIdentifiers,
+      pricingReconciles,
+      bidAmount,
+      nowIso: new Date().toISOString(),
+    });
+
+    // Merge generated package docs into documents_json (dedupe by kind).
+    for (const d of packageDocs) {
+      if (!documentsJson.some((x) => x.kind === d.kind)) documentsJson.push(d);
+    }
+
+    const humanFlags = [
+      ...(failing.length ? ["qa_failures"] : []),
+      ...(validation.passed ? [] : ["package_incomplete"]),
+    ];
 
     // --- Upsert the bid (one bid per opportunity). ---
     const existing = await queryOne<{ id: string }>(
@@ -238,7 +304,8 @@ export const bidBuilder: AgentDefinition = {
         `update bids
             set sub_quote_total=$2, markup_pct=$3, bid_amount=$4, margin_pct=$5,
                 target_margin_pct=$6, qa_checklist=$7, narrative=$8, documents_json=$9,
-                human_flags=$10, outcome='pending'
+                human_flags=$10, outcome='pending',
+                compliance_matrix=$11, package_manifest=$12, package_ready=$13, validation_json=$14
           where id=$1`,
         [
           existing.id,
@@ -251,14 +318,19 @@ export const bidBuilder: AgentDefinition = {
           narrative,
           JSON.stringify(documentsJson),
           humanFlags,
+          JSON.stringify(resolved),
+          JSON.stringify(manifest),
+          validation.passed,
+          JSON.stringify(validation),
         ]
       );
     } else {
       await query(
         `insert into bids
            (opportunity_id, sub_quote_total, markup_pct, bid_amount, margin_pct,
-            target_margin_pct, qa_checklist, narrative, documents_json, human_flags, outcome)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending')`,
+            target_margin_pct, qa_checklist, narrative, documents_json, human_flags, outcome,
+            compliance_matrix, package_manifest, package_ready, validation_json)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14)`,
         [
           opportunityId,
           subQuoteTotal,
@@ -270,6 +342,10 @@ export const bidBuilder: AgentDefinition = {
           narrative,
           JSON.stringify(documentsJson),
           humanFlags,
+          JSON.stringify(resolved),
+          JSON.stringify(manifest),
+          validation.passed,
+          JSON.stringify(validation),
         ]
       );
     }
