@@ -1,5 +1,5 @@
 /**
- * BID BUILDER — triggered when a sub quote is entered for an opportunity.
+ * BID BUILDER, triggered when a sub quote is entered for an opportunity.
  * Aggregates all sub quotes, prices the bid to the target margin, generates a
  * past-performance narrative (when the solicitation allows a team past-perf
  * approach), runs a QA checklist, renders PDF + DOCX bid documents, and upserts
@@ -14,6 +14,7 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { complete, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
+import { noEmDash } from "../sanitize";
 import { storage } from "../integrations/storage";
 import { documents, type BidDocData } from "../integrations/documents";
 import {
@@ -137,14 +138,14 @@ export const bidBuilder: AgentDefinition = {
         action: "block-prime-only",
         opportunityId,
         level: "warn",
-        message: "Past performance is prime_only — blocked, flagged for human review.",
+        message: "Past performance is prime_only, blocked, flagged for human review.",
         reasoning:
           "Solicitation requires prime past performance we cannot yet meet; no bid documents generated.",
       });
       return {
         ok: true,
         summary:
-          "Past performance is prime_only — blocked and flagged for human review (no documents built).",
+          "Past performance is prime_only, blocked and flagged for human review (no documents built).",
         reasoning: "prime_only past-performance requirement cannot be met as a team.",
         humanActionRequired: true,
       };
@@ -218,10 +219,10 @@ export const bidBuilder: AgentDefinition = {
               ($1,'bid_docx',$5,$6,$7,'application/vnd.openxmlformats-officedocument.wordprocessingml.document')`,
       [
         opportunityId,
-        `Bid — ${opp.title ?? opportunityId}.pdf`,
+        `Bid, ${opp.title ?? opportunityId}.pdf`,
         pdfUpload.path,
         pdfUpload.backend,
-        `Bid — ${opp.title ?? opportunityId}.docx`,
+        `Bid, ${opp.title ?? opportunityId}.docx`,
         docxUpload.path,
         docxUpload.backend,
       ]
@@ -236,7 +237,7 @@ export const bidBuilder: AgentDefinition = {
     const analysis = (opp.solicitation_analysis as SolicitationAnalysis | null) ?? null;
     const requirements = [...(analysis?.compliance_matrix ?? [])];
     // If amendments were issued but no acknowledgment requirement was captured,
-    // add one — unacknowledged amendments are a common rejection reason.
+    // add one, unacknowledged amendments are a common rejection reason.
     const amendments = analysis?.qa_addenda ?? [];
     if (
       amendments.length > 0 &&
@@ -284,7 +285,7 @@ export const bidBuilder: AgentDefinition = {
         );
         if (match?.storage_path) {
           r.official_form_doc = { name: match.name, path: match.storage_path };
-          r.note = `The agency's ${r.official_form} is attached to the solicitation — sign that form and include it.`;
+          r.note = `The agency's ${r.official_form} is attached to the solicitation, sign that form and include it.`;
         }
       }
     }
@@ -420,7 +421,7 @@ export const bidBuilder: AgentDefinition = {
     });
 
     const failNote = failing.length
-      ? ` — QA failing: ${failing.map((f) => f.item).join("; ")}`
+      ? `, QA failing: ${failing.map((f) => f.item).join("; ")}`
       : "";
     return {
       ok: true,
@@ -480,7 +481,7 @@ async function buildNarrative(
   const prompt = [
     "Write a concise past-performance / experience narrative (1-2 paragraphs) for a government bid, drawing ONLY on the subcontractor project history below. Emphasize relevance to the solicitation scope, breadth of trades, and successful delivery. Do not invent projects. Do not use em dashes.",
     "",
-    `SOLICITATION: ${opp.title ?? "(untitled)"}${opp.agency ? ` — ${opp.agency}` : ""}`,
+    `SOLICITATION: ${opp.title ?? "(untitled)"}${opp.agency ? `, ${opp.agency}` : ""}`,
     `SCOPE: ${(opp.description ?? "").slice(0, 1200)}`,
     "",
     "SUBCONTRACTOR PROJECT HISTORY:",
@@ -496,7 +497,7 @@ async function buildNarrative(
       message: "Generated team past-performance narrative.",
       claudeUsage: usage,
     });
-    return text.trim();
+    return noEmDash(text.trim());
   } catch (err) {
     if (err instanceof ClaudeNotConfiguredError) {
       await logAgent({
@@ -505,7 +506,7 @@ async function buildNarrative(
         opportunityId,
         level: "warn",
         status: "skipped",
-        message: "Claude not configured — using a deterministic narrative fallback.",
+        message: "Claude not configured, using a deterministic narrative fallback.",
       });
       return `Our team combines the experience of ${
         subs.length
@@ -618,7 +619,7 @@ function buildQaChecklist(i: QaInputs): QaChecklistItem[] {
 /**
  * Pull a numeric comp benchmark from the pricing summary that Pricing Research
  * writes into opportunities.raw_json.pricing_summary. The stats live under
- * `comp_stats` (a CompStats object) — reading a top-level `median` finds nothing
+ * `comp_stats` (a CompStats object), reading a top-level `median` finds nothing
  * and silently disables the whole price-sanity QA gate, so read the real path,
  * falling back to the sub-cost proxy.
  */

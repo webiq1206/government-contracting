@@ -33,7 +33,7 @@ const STATUS_META: Record<
 const SATISFIER_HINT: Record<string, string> = {
   auto_generated: "Generated for you",
   from_profile: "Filled from your company profile",
-  operator_signature: "Prefilled — sign, then mark complete",
+  operator_signature: "Prefilled, sign, then mark complete",
   operator_provided: "Only you can supply this",
 };
 
@@ -130,8 +130,8 @@ export function SubmissionPackage({
         >
           <p className="font-medium">
             {ready
-              ? `Ready to submit — all ${validation.total_mandatory} required items are in place.`
-              : `Not ready yet — ${validation.blockers.length} thing${
+              ? `Ready to submit, all ${validation.total_mandatory} required items are in place.`
+              : `Not ready yet, ${validation.blockers.length} thing${
                   validation.blockers.length === 1 ? "" : "s"
                 } to finish (${validation.satisfied_count}/${validation.total_mandatory} required items done).`}
           </p>
@@ -155,7 +155,7 @@ export function SubmissionPackage({
       {/* Independent compliance audit */}
       {auditStatus === "pending" && (
         <p className="text-xs text-slate-500">
-          Independent compliance audit is running — it re-reads the solicitation
+          Independent compliance audit is running, it re-reads the solicitation
           against this package and will flag anything missing or non-compliant.
         </p>
       )}

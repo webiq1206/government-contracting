@@ -20,7 +20,7 @@ export function DeadlineCountdown({ deadline }: { deadline: string | null }) {
   }
   const target = new Date(deadline).getTime();
   if (Number.isNaN(target)) {
-    return <span className="text-sm text-slate-500">—</span>;
+    return <span className="text-sm text-slate-500">-</span>;
   }
 
   const ms = target - now;

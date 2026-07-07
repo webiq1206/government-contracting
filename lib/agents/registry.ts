@@ -1,5 +1,5 @@
 /**
- * Agent registry — the single place that knows about every agent. The worker
+ * Agent registry, the single place that knows about every agent. The worker
  * registers a queue handler for each and schedules the cron ones. The dashboard
  * reads this to render the Agents view. Adding an agent = add one import here.
  */

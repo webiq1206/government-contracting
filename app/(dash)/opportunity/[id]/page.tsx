@@ -103,7 +103,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
           />
         </div>
 
-        {/* Bid Brief — always shown; falls back to lightweight header when no analysis yet */}
+        {/* Bid Brief, always shown; falls back to lightweight header when no analysis yet */}
         <div className="px-5 pt-5">
           {analysis ? (
             <BidBrief analysis={analysis} documents={briefDocs} />
@@ -120,12 +120,12 @@ export default async function OpportunityPage({ params }: { params: { id: string
         </div>
 
         <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-3">
-          {/* Column 1 — facts + triage */}
+          {/* Column 1, facts + triage */}
           <div className="space-y-4">
             <div className="card">
               <p className="eyebrow mb-3">At a glance</p>
 
-              {/* Deadline — the single most time-critical fact, live-ticking. */}
+              {/* Deadline, the single most time-critical fact, live-ticking. */}
               <div className="mb-3 rounded-md border border-border bg-surface px-3 py-2.5">
                 <p className="label">Time to submit</p>
                 <div className="mt-0.5">
@@ -140,7 +140,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   value={
                     opp.value_estimated != null
                       ? currency(opp.value_estimated)
-                      : (analysis?.estimated_value ?? "—")
+                      : (analysis?.estimated_value ?? "-")
                   }
                 />
                 {bestQuote != null && (
@@ -157,30 +157,30 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 )}
                 <Fact
                   label="Agency"
-                  value={[opp.agency, opp.sub_agency].filter(Boolean).join(" · ") || "—"}
+                  value={[opp.agency, opp.sub_agency].filter(Boolean).join(" · ") || "-"}
                 />
                 <Fact
                   label="Type"
                   value={opp.is_sources_sought ? "Sources sought" : "Solicitation"}
                 />
-                <Fact label="NAICS" value={opp.naics_code ?? "—"} />
-                <Fact label="PSC" value={opp.psc_code ?? "—"} />
-                <Fact label="Set-aside" value={opp.set_aside_type ?? "—"} />
+                <Fact label="NAICS" value={opp.naics_code ?? "-"} />
+                <Fact label="PSC" value={opp.psc_code ?? "-"} />
+                <Fact label="Set-aside" value={opp.set_aside_type ?? "-"} />
                 <Fact
                   label="Place of performance"
                   value={
-                    [opp.location_text, opp.location_state].filter(Boolean).join(", ") || "—"
+                    [opp.location_text, opp.location_state].filter(Boolean).join(", ") || "-"
                   }
                 />
                 <Fact label="Posted" value={shortDate(opp.posted_at)} />
-                <Fact label="Solicitation #" value={opp.solicitation_number ?? "—"} />
+                <Fact label="Solicitation #" value={opp.solicitation_number ?? "-"} />
                 <Fact
                   label="Past performance"
                   value={
                     opp.past_perf_classification
                       ? (PAST_PERF_LABEL[opp.past_perf_classification] ??
                         opp.past_perf_classification.replace(/_/g, " "))
-                      : "—"
+                      : "-"
                   }
                 />
                 {requiredTradeCount > 0 && (
@@ -247,7 +247,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
             <AttachmentsPanel documents={briefDocs} />
           </div>
 
-          {/* Column 2 — analysis + pricing + subs */}
+          {/* Column 2, analysis + pricing + subs */}
           <div className="space-y-4">
             {breakdown && (
               <div className="card">
@@ -340,7 +340,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
             </div>
           </div>
 
-          {/* Column 3 — quotes + bid + activity */}
+          {/* Column 3, quotes + bid + activity */}
           <div className="space-y-4">
             <div className="card">
               <p className="eyebrow mb-3">Quote entry</p>

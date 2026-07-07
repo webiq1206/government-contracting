@@ -1,5 +1,5 @@
 /**
- * SUB FINDER — triggered when an opportunity advances to sub_research.
+ * SUB FINDER, triggered when an opportunity advances to sub_research.
  * For each required trade (from the Solicitation Analyst, falling back to the
  * profile's primary trades) it searches Google Places for candidate
  * subcontractors in the opportunity's geographic area, scores each 0-100 from
@@ -90,7 +90,7 @@ export const subFinder: AgentDefinition = {
           level: "warn",
           status: "skipped",
           opportunityId,
-          message: `Google Places disabled — skipping trade "${trade}".`,
+          message: `Google Places disabled, skipping trade "${trade}".`,
         });
         continue;
       }

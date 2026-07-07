@@ -1,5 +1,5 @@
 /**
- * Resend email client — transactional sends + the daily digest. Requires
+ * Resend email client, transactional sends + the daily digest. Requires
  * RESEND_API_KEY. When missing, methods return { disabled: true } and log a
  * single skip warning instead of throwing, so the platform boots without email
  * configured.
@@ -24,7 +24,7 @@ export const email = {
     text?: string;
   }): Promise<EmailResult> {
     if (!config.resend.enabled) {
-      console.warn("[resend] Email not configured — skipping send");
+      console.warn("[resend] Email not configured, skipping send");
       return { disabled: true };
     }
     try {
@@ -50,11 +50,11 @@ export const email = {
     text?: string;
   }): Promise<EmailResult> {
     if (!config.resend.enabled) {
-      console.warn("[resend] Email not configured — skipping digest");
+      console.warn("[resend] Email not configured, skipping digest");
       return { disabled: true };
     }
     if (!config.resend.digestTo) {
-      console.warn("[resend] DIGEST_EMAIL_TO not set — skipping digest");
+      console.warn("[resend] DIGEST_EMAIL_TO not set, skipping digest");
       return { disabled: true };
     }
     return this.send({

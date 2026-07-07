@@ -1,5 +1,5 @@
 /**
- * COMPLIANCE MONITOR — daily cron (08:00). Tracks every compliance deadline and
+ * COMPLIANCE MONITOR, daily cron (08:00). Tracks every compliance deadline and
  * cap (SYS-08): SAM registration expiry, small-business certifications, state LLC
  * annual reports, insurance renewals, the non-small-business sub spend cap per
  * active contract, and FAR changes. Upserts a compliance_items row per check and
@@ -31,7 +31,7 @@ interface UpsertArgs {
   detail?: Record<string, unknown>;
 }
 
-/** Upsert by (category, contract_id) — update the existing item or insert a new one. */
+/** Upsert by (category, contract_id), update the existing item or insert a new one. */
 async function upsertItem(a: UpsertArgs): Promise<void> {
   const contractId = a.contractId ?? null;
   const existing = await queryOne<{ id: string }>(
@@ -189,7 +189,7 @@ export const complianceMonitor: AgentDefinition = {
       const status: ComplianceStatus = cap.status;
       await upsertItem({
         category: "non_ss_cap",
-        label: `Non-SB sub spend cap — ${c.contract_number ?? c.id}`,
+        label: `Non-SB sub spend cap, ${c.contract_number ?? c.id}`,
         contractId: c.id,
         status,
         detail: {
@@ -239,7 +239,7 @@ export const complianceMonitor: AgentDefinition = {
         status: "ok",
         detail: {
           titles: farTitles.slice(0, 20),
-          summary: detailText || "Claude disabled — raw titles stored for operator review.",
+          summary: detailText || "Claude disabled, raw titles stored for operator review.",
         },
       });
       tally("ok");

@@ -2,7 +2,7 @@
   "name": "brostco",
   "version": "1.0.0",
   "private": true,
-  "description": "BROSTCO — Autonomous Procurement Execution Platform",
+  "description": "BROSTCO, Autonomous Procurement Execution Platform",
   "engines": {
     "node": ">=20"
   },

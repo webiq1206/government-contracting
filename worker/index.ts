@@ -78,7 +78,7 @@ async function main() {
   // (prevents every autoscale instance from double-enqueuing scheduled jobs).
   // Default is true, so a single-instance deploy is unchanged.
   if (!config.worker.enabled) {
-    console.log("[worker] RUN_WORKER=false — job handlers + scheduler disabled; health only.");
+    console.log("[worker] RUN_WORKER=false, job handlers + scheduler disabled; health only.");
     process.on("SIGTERM", () => process.exit(0));
     process.on("SIGINT", () => process.exit(0));
     console.log("[worker] ready (idle)");

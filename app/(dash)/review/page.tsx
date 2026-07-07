@@ -59,7 +59,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
             {o.title ?? "Untitled"}
           </p>
           <p className="mt-0.5 truncate text-xs text-slate-500">
-            {o.agency ?? "—"}
+            {o.agency ?? "-"}
             {o.location_state ? ` · ${o.location_state}` : ""}
             {o.naics_code ? ` · industry code (NAICS) ${o.naics_code}` : ""}
             {o.set_aside_type ? ` · ${o.set_aside_type}` : ""}
@@ -99,7 +99,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
             {o.past_perf_classification
               ? (PAST_PERF_LABEL[o.past_perf_classification] ??
                 o.past_perf_classification)
-              : "—"}
+              : "-"}
           </p>
         </div>
         <div>
@@ -109,7 +109,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
               o.review_expires_at ? "text-review" : "text-slate-500"
             }`}
           >
-            {o.review_expires_at ? `in ${expiry}` : "—"}
+            {o.review_expires_at ? `in ${expiry}` : "-"}
           </p>
         </div>
       </div>
@@ -184,7 +184,7 @@ export default async function ReviewPage() {
       <PageHeader
         help={PAGE_HELP["review"]}
         title="Review Queue"
-        subtitle={`${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} awaiting triage (scored 50–69).`}
+        subtitle={`${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} awaiting triage (scored 50-69).`}
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-4">
         {opps.length === 0 ? (

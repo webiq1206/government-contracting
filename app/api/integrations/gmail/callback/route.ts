@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const STATE_COOKIE = "brostco_gmail_state";
 
-/** Gmail OAuth callback — exchanges the code for tokens and stores the refresh token. */
+/** Gmail OAuth callback, exchanges the code for tokens and stores the refresh token. */
 export async function GET(req: Request) {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;

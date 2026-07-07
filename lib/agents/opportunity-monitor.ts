@@ -1,5 +1,5 @@
 /**
- * OPPORTUNITY MONITOR — cron every 2 hours.
+ * OPPORTUNITY MONITOR, cron every 2 hours.
  * Polls SAM.gov (and optional state/local scrapers), deduplicates against
  * existing records by source_id, normalizes to the opportunities schema, stores
  * new rows, triggers the Scoring Engine for each, and routes Sources Sought
@@ -127,7 +127,7 @@ export const opportunityMonitor: AgentDefinition = {
         action: "poll-sam",
         level: "warn",
         status: "skipped",
-        message: "SAM_API_KEY not set — federal ingestion skipped.",
+        message: "SAM_API_KEY not set, federal ingestion skipped.",
       });
     } else {
       for (const o of search.items) {

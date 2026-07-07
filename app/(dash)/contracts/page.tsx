@@ -94,7 +94,7 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
             {(c.opportunity_title as string | null) ?? "Untitled contract"}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
-            {(c.contract_number as string | null) ?? "—"}
+            {(c.contract_number as string | null) ?? "-"}
           </p>
         </div>
         <span className="text-sm font-semibold text-slate-900">
@@ -106,14 +106,14 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
         <div>
           <p className="label">Period</p>
           <p className="mt-0.5 text-sm text-slate-900">
-            {shortDate(c.start_date as string | null)} –{" "}
+            {shortDate(c.start_date as string | null)} -{" "}
             {shortDate(c.end_date as string | null)}
           </p>
         </div>
         <div>
           <p className="label">Primary sub</p>
           <p className="mt-0.5 text-sm text-slate-900">
-            {(c.primary_sub_name as string | null) ?? "—"}
+            {(c.primary_sub_name as string | null) ?? "-"}
           </p>
         </div>
         <div>

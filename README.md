@@ -1,9 +1,9 @@
-# BROSTCO — Autonomous Procurement Execution Platform
+# BROSTCO, Autonomous Procurement Execution Platform
 
 An autonomous government-contracting pipeline. It monitors SAM.gov and state
 portals for opportunities, scores them against a versioned **Company Profile**,
 analyzes solicitations, researches pricing, finds and vets subcontractors, runs
-outreach, prepares call cards, builds bid packages, and tracks compliance — with
+outreach, prepares call cards, builds bid packages, and tracks compliance, with
 a human in the loop only where it matters (~20–30 min/day).
 
 Built to the BROSTCO System Design & Build Brief (SYS-01 … SYS-12).
@@ -13,7 +13,7 @@ Built to the BROSTCO System Design & Build Brief (SYS-01 … SYS-12).
 ## Architecture
 
 ```
-Presentation   Next.js 14 (App Router) + Tailwind — dashboard (7 views), mobile-ready Call Queue
+Presentation   Next.js 14 (App Router) + Tailwind, dashboard (7 views), mobile-ready Call Queue
 Agents         13 isolated modules + maintenance jobs, run by a worker via a job queue
 AI             Anthropic Claude (claude-sonnet-4-6). Company Profile injected as system context on EVERY call
 Integrations   SAM.gov · USASpending · BLS CPI · Google Places · Hunter.io · Gmail OAuth · Twilio · Resend · Supabase Storage · Playwright scrapers
@@ -60,24 +60,24 @@ Open http://localhost:3000 and sign in with `OPERATOR_EMAIL` / your password.
 
 ### The only truly required env vars
 
-- `DATABASE_URL` — Postgres/Supabase connection string
-- `ANTHROPIC_API_KEY` — for the AI agents
-- `AUTH_SECRET`, `OPERATOR_EMAIL`, `OPERATOR_PASSWORD_HASH` — to log in
+- `DATABASE_URL`, Postgres/Supabase connection string
+- `ANTHROPIC_API_KEY`, for the AI agents
+- `AUTH_SECRET`, `OPERATOR_EMAIL`, `OPERATOR_PASSWORD_HASH`, to log in
 
 **Everything else is optional.** Each integration degrades gracefully: a missing
 key disables that feature (clearly logged) instead of crashing. Fill keys in as
-you get them — features light up automatically. See `.env.example` for the full,
+you get them, features light up automatically. See `.env.example` for the full,
 annotated list and where to obtain each key.
 
 ---
 
 ## Deploying to Replit
 
-The repo is structured to import into Replit and run with minimal setup — see
+The repo is structured to import into Replit and run with minimal setup, see
 [DEPLOYMENT.md](./DEPLOYMENT.md) for the step-by-step. Summary:
 
 1. Import the repo. `.replit` + `replit.nix` are included (Node 20, Chromium for scrapers).
-2. Add your Secrets (env vars) — at minimum `DATABASE_URL` and `ANTHROPIC_API_KEY`.
+2. Add your Secrets (env vars), at minimum `DATABASE_URL` and `ANTHROPIC_API_KEY`.
 3. Run once: `npm run db:setup`.
 4. Press Run (`npm run start` launches web + worker together via `concurrently`).
 

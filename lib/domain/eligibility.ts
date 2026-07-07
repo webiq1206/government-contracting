@@ -1,5 +1,5 @@
 /**
- * Deterministic eligibility gate — checks whether the company can actually win
+ * Deterministic eligibility gate, checks whether the company can actually win
  * this award before effort is wasted assembling a package. Produces stable
  * `elig_*` findings (blocker/warning) that flow into the compliance audit and
  * gate submission. Pure and unit-tested.
@@ -91,7 +91,7 @@ export function checkEligibility(input: {
       category: "other",
       finding: `This project (est. $${opp.value_estimated.toLocaleString()}) exceeds your bonding capacity ($${profile.bonding_capacity.toLocaleString()}).`,
       recommendation:
-        "Confirm your surety can bond this size before bidding — an insufficient bond makes the offer non-responsive.",
+        "Confirm your surety can bond this size before bidding, an insufficient bond makes the offer non-responsive.",
     });
   }
 

@@ -1,5 +1,5 @@
 /**
- * Hunter.io client — email discovery and verification for vendor/contact
+ * Hunter.io client, email discovery and verification for vendor/contact
  * outreach. Requires config.hunter.apiKey; when missing, every method returns
  * { disabled: true, ... } with a safe empty payload so callers never crash.
  */

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /**
  * First-run setup. Creates the initial operator account on a fresh deployment
  * (empty users table). If an operator already exists, sends the visitor to the
- * normal login page — this route is only reachable once.
+ * normal login page, this route is only reachable once.
  */
 export default async function SetupPage() {
   const user = await currentUser().catch(() => null);

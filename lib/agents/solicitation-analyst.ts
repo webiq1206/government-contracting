@@ -1,12 +1,12 @@
 /**
- * SOLICITATION ANALYST — triggered when an opportunity reaches the pursue tier.
+ * SOLICITATION ANALYST, triggered when an opportunity reaches the pursue tier.
  * Reads the solicitation (description + attachment names/urls; best-effort fetch
  * of attachment text where trivially possible), then uses Claude to produce a
  * structured SolicitationAnalysis: plain-language scope, submission requirements,
  * evaluation criteria, required trades, geographic area, risk flags, a past-perf
  * classification, questions for subs, a draft SOW, and key dates.
  *
- * ROUTING: if past_perf_classification is "prime_only" we BLOCK — flag for human
+ * ROUTING: if past_perf_classification is "prime_only" we BLOCK, flag for human
  * review, keep the opportunity in 'analysis', add a "prime_only_blocked" risk
  * flag, and do NOT enqueue downstream work. Otherwise (not_required |
  * team_accepted) we advance the stage to 'sub_research' and trigger Sub Finder.
@@ -17,6 +17,7 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
+import { deepNoEmDash } from "../sanitize";
 import { storage } from "../integrations/storage";
 import { extractPdfText, looksLikePdf } from "../integrations/pdf";
 import type { AgentDefinition } from "./types";
@@ -133,12 +134,12 @@ async function processAttachment(
   try {
     const res = await fetch(att.url, { method: "GET" });
     if (!res.ok) {
-      return { context: `- ${label} (${att.url}) — could not fetch (HTTP ${res.status})`, parsedChars: 0 };
+      return { context: `- ${label} (${att.url}), could not fetch (HTTP ${res.status})`, parsedChars: 0 };
     }
     const ct = (res.headers.get("content-type") ?? "").toLowerCase();
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.byteLength > MAX_ATTACH_BYTES) {
-      return { context: `- ${label} — too large to parse (${Math.round(buf.byteLength / 1e6)}MB)`, parsedChars: 0 };
+      return { context: `- ${label}, too large to parse (${Math.round(buf.byteLength / 1e6)}MB)`, parsedChars: 0 };
     }
 
     // Persist the raw file + a documents row (best-effort).
@@ -170,15 +171,15 @@ async function processAttachment(
           parsedChars: text.length,
         };
       }
-      return { context: `- ${label} — PDF stored but no extractable text (likely scanned/image-only).`, parsedChars: 0 };
+      return { context: `- ${label}, PDF stored but no extractable text (likely scanned/image-only).`, parsedChars: 0 };
     }
     if (ct.includes("text") || ct.includes("html") || ct.includes("json")) {
       const text = buf.toString("utf8").slice(0, 6000);
       return { context: `- ${label}:\n${text}`, parsedChars: text.length };
     }
-    return { context: `- ${label} (${att.url}) — ${ct || "binary"} stored (not text-parseable)`, parsedChars: 0 };
+    return { context: `- ${label} (${att.url}), ${ct || "binary"} stored (not text-parseable)`, parsedChars: 0 };
   } catch (err) {
-    return { context: `- ${label} (${att.url}) — processing failed (${(err as Error).message})`, parsedChars: 0 };
+    return { context: `- ${label} (${att.url}), processing failed (${(err as Error).message})`, parsedChars: 0 };
   }
 }
 
@@ -186,10 +187,10 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
   return [
     "You are a government-procurement analyst. Read this solicitation and its attachments and produce a COMPLETE, plain-English bid brief so a busy contractor can understand the whole opportunity in a few minutes without reading hundreds of pages.",
     "",
-    "RULES — follow exactly:",
+    "RULES, follow exactly:",
     "1. Extract every important requirement that appears ANYWHERE in the notice or the attachment text below. Never omit a critical requirement, deadline, form, or qualification.",
     "2. Do NOT invent or assume anything. If a field is not stated in the provided material, set it to \"Not specified in the provided documents\" (or an empty list). Never guess a date, dollar amount, or requirement.",
-    "3. Preserve exact figures, dates, times, timezones, form numbers, and clause references verbatim — do not round or paraphrase numbers.",
+    "3. Preserve exact figures, dates, times, timezones, form numbers, and clause references verbatim, do not round or paraphrase numbers.",
     "4. Write in clear plain English an operator can skim. Be concise but complete.",
     "",
     "OPPORTUNITY METADATA:",
@@ -205,10 +206,10 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     "DESCRIPTION:",
     (opp.description ?? "(no description provided)").slice(0, 8000),
     "",
-    "ATTACHMENT TEXT (parsed from the actual bid documents — PRIMARY SOURCE, prefer this over the portal summary):",
+    "ATTACHMENT TEXT (parsed from the actual bid documents, PRIMARY SOURCE, prefer this over the portal summary):",
     (attachmentContext || "(no attachment text extracted)").slice(0, 60000),
     "",
-    "PAST-PERFORMANCE CLASSIFICATION — choose exactly one for past_perf_classification:",
+    "PAST-PERFORMANCE CLASSIFICATION, choose exactly one for past_perf_classification:",
     '- "not_required": the solicitation does not require past performance.',
     '- "team_accepted": past performance may be satisfied by the team, including subcontractor experience.',
     '- "prime_only": past performance must be the prime\'s OWN performance and cannot rely on subs.',
@@ -258,13 +259,13 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     "  ]",
     "}",
     "",
-    "COMPLIANCE MATRIX — this is critical. List EVERY document, form, schedule, certification, acknowledgment, and attachment the bidder must include for the bid to be responsive. Base it on the instructions to offerors, the scope, and the attachments. Classify each item's `satisfied_by`:",
+    "COMPLIANCE MATRIX, this is critical. List EVERY document, form, schedule, certification, acknowledgment, and attachment the bidder must include for the bid to be responsive. Base it on the instructions to offerors, the scope, and the attachments. Classify each item's `satisfied_by`:",
     '- "auto_generated": the platform can produce it from the bid data (pricing/bid schedule, technical approach or cover/transmittal letter).',
     '- "from_profile": it is standard company information (company identifiers, capability statement, small-business status, standard certifications).',
     '- "operator_signature": the platform can prefill it but a person must sign it (SF-1449, reps & certifications, signed forms).',
     '- "operator_provided": only the offeror can supply it (bid bond, notarized document, insurance certificate, wet-ink or agency-portal-only forms).',
     "If the documents do not enumerate submission contents, infer the standard mandatory items for this vehicle (e.g. a signed offer form, a completed pricing schedule, reps & certifications, and acknowledgment of any amendments) and mark their source \"Standard requirement for this solicitation type\".",
-    "IMPORTANT — official forms: whenever the solicitation requires a SPECIFIC government or agency form or fillable worksheet (any Standard Form like SF-1449/SF-33/SF-18/SF-1442, an agency-provided pricing/bid schedule, a portal-only form), set `official_form` to that exact identifier. These cannot be substituted with a generic document, so be precise. Also capture format constraints (page limits, font/size, number of copies, required file types, submission portal) in `format` and in `submission_requirements`.",
+    "IMPORTANT, official forms: whenever the solicitation requires a SPECIFIC government or agency form or fillable worksheet (any Standard Form like SF-1449/SF-33/SF-18/SF-1442, an agency-provided pricing/bid schedule, a portal-only form), set `official_form` to that exact identifier. These cannot be substituted with a generic document, so be precise. Also capture format constraints (page limits, font/size, number of copies, required file types, submission portal) in `format` and in `submission_requirements`.",
   ].join("\n");
 }
 
@@ -322,10 +323,11 @@ export const solicitationAnalyst: AgentDefinition = {
     try {
       const { data, usage } = await completeJson(buildPrompt(opp, attachmentContext), {
         schema: AnalysisSchema,
-        model: config.claude.modelSmart, // bid-critical extraction — never omit a requirement
+        model: config.claude.modelSmart, // bid-critical extraction, never omit a requirement
         maxTokens: 8192,
       });
-      analysis = data;
+      // Hard rule: strip em dashes from all AI text before it is stored or shown.
+      analysis = deepNoEmDash(data);
       await logAgent({
         agent: "solicitation-analyst",
         action: "analyze",
@@ -342,7 +344,7 @@ export const solicitationAnalyst: AgentDefinition = {
           opportunityId,
           level: "warn",
           status: "skipped",
-          message: "Claude not configured — solicitation analysis skipped; flagged for human review.",
+          message: "Claude not configured, solicitation analysis skipped; flagged for human review.",
         });
         await query(
           `update opportunities
@@ -355,7 +357,7 @@ export const solicitationAnalyst: AgentDefinition = {
         );
         return {
           ok: true,
-          summary: "Solicitation analysis skipped (Claude disabled) — flagged for human review.",
+          summary: "Solicitation analysis skipped (Claude disabled), flagged for human review.",
           humanActionRequired: true,
         };
       }
@@ -365,7 +367,7 @@ export const solicitationAnalyst: AgentDefinition = {
     // Persist analysis + past-perf + merge risk flags.
     const isPrimeOnly = analysis.past_perf_classification === "prime_only";
     // Operator preference: by default we do NOT stop for prime-only past
-    // performance — auto-pursue proceeds and a human still reviews before submit.
+    // performance, auto-pursue proceeds and a human still reviews before submit.
     // Set decision_thresholds.block_prime_only = true to restore the hard block.
     const blockPrimeOnly = profile.decision_thresholds.block_prime_only === true;
     const blocked = isPrimeOnly && blockPrimeOnly;
@@ -385,7 +387,7 @@ export const solicitationAnalyst: AgentDefinition = {
       stage = "analysis";
       humanAction = true;
     } else {
-      // Auto-pursue proceeds — prime-only is flagged for visibility but not stopped.
+      // Auto-pursue proceeds, prime-only is flagged for visibility but not stopped.
       stage = "sub_research";
       enqueued.push({ agent: "sub-finder", payload: { opportunityId } });
     }
@@ -430,7 +432,7 @@ export const solicitationAnalyst: AgentDefinition = {
       return {
         ok: true,
         summary:
-          "Past performance is prime-only — BLOCKED and flagged for human review (block_prime_only is on). No downstream work triggered.",
+          "Past performance is prime-only, BLOCKED and flagged for human review (block_prime_only is on). No downstream work triggered.",
         reasoning: analysis.scope_plain_language,
         data: {
           past_perf_classification: analysis.past_perf_classification,
@@ -444,7 +446,7 @@ export const solicitationAnalyst: AgentDefinition = {
     return {
       ok: true,
       summary: `Solicitation analyzed (past-perf: ${analysis.past_perf_classification}${
-        isPrimeOnly ? ", prime-only — flagged but auto-pursuing" : ""
+        isPrimeOnly ? ", prime-only, flagged but auto-pursuing" : ""
       }); advanced to sub research.`,
       reasoning: analysis.scope_plain_language,
       data: {

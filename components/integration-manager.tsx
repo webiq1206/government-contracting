@@ -2,7 +2,7 @@
 
 /**
  * The Integrations manager. Every credential the platform uses can be viewed
- * (masked), added, replaced, tested, and removed right here — no config files,
+ * (masked), added, replaced, tested, and removed right here, no config files,
  * no database access. "Test" runs a real API call before anything is saved.
  */
 

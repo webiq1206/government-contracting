@@ -1,8 +1,8 @@
 /**
- * LEARNING LOOP — weekly cron (Mondays 09:00). Closes the feedback loop:
+ * LEARNING LOOP, weekly cron (Mondays 09:00). Closes the feedback loop:
  *  1) Analyzes recent won/lost bids against the scoring dimensions (via Claude)
  *     and proposes new scoring weights as an INACTIVE scoring_weights version
- *     (operator approves later to activate — this agent never activates).
+ *     (operator approves later to activate, this agent never activates).
  *  2) Recomputes subcontractor responsiveness + reliability scores and elevates
  *     strong performers to preferred.
  *  3) Emits a weekly report (agent_logs reasoning + optional email digest).
@@ -96,7 +96,7 @@ export const learningLoop: AgentDefinition = {
       try {
         const { data, usage } = await completeJson(prompt, {
           schema: AnalysisSchema,
-          model: config.claude.modelSmart, // rubric-weight reasoning — worth the stronger model
+          model: config.claude.modelSmart, // rubric-weight reasoning, worth the stronger model
           maxTokens: 2000,
         });
         analysis = data;
@@ -114,7 +114,7 @@ export const learningLoop: AgentDefinition = {
             action: "analyze-outcomes",
             level: "warn",
             status: "skipped",
-            message: "Claude not configured — skipping weight analysis this run.",
+            message: "Claude not configured, skipping weight analysis this run.",
           });
         } else {
           throw err;
@@ -166,7 +166,7 @@ export const learningLoop: AgentDefinition = {
       `Outcomes analyzed: ${outcomes.length} (${wins} won, ${losses} lost).`
     );
     if (proposedVersion) {
-      reportLines.push(`Proposed scoring weights v${proposedVersion} (inactive — approve to apply).`);
+      reportLines.push(`Proposed scoring weights v${proposedVersion} (inactive, approve to apply).`);
     } else if (claudeSkipped) {
       reportLines.push(`Weight analysis skipped (Claude not configured).`);
     } else {
@@ -197,11 +197,11 @@ export const learningLoop: AgentDefinition = {
 
     // --- Optional email digest. ---
     if (email.enabled()) {
-      const html = `<h2>Learning Loop — Weekly Report</h2><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(
+      const html = `<h2>Learning Loop, Weekly Report</h2><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(
         report
       )}</pre>`;
       await email.sendDigest({
-        subject: `BROSTCO Learning Loop — ${wins}W/${losses}L this cycle`,
+        subject: `BROSTCO Learning Loop, ${wins}W/${losses}L this cycle`,
         html,
         text: report,
       });

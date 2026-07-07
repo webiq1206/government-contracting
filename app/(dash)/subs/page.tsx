@@ -124,7 +124,7 @@ export default async function SubsPage({
                     </div>
                   </td>
                   <td className="td whitespace-nowrap text-slate-600">
-                    {[s.city, s.state].filter(Boolean).join(", ") || "—"}
+                    {[s.city, s.state].filter(Boolean).join(", ") || "-"}
                   </td>
                   <td className="td whitespace-nowrap">
                     {s.google_rating != null ? (
@@ -137,7 +137,7 @@ export default async function SubsPage({
                         </span>
                       </span>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-slate-400">-</span>
                     )}
                   </td>
                   <td className="td">
@@ -146,7 +146,7 @@ export default async function SubsPage({
                         {s.reliability_score}
                       </span>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-slate-400">-</span>
                     )}
                   </td>
                   <td className="td whitespace-nowrap">
@@ -161,7 +161,7 @@ export default async function SubsPage({
                         {s.license_status}
                       </span>
                     ) : (
-                      <span className="text-slate-400">—</span>
+                      <span className="text-slate-400">-</span>
                     )}
                   </td>
                   <td className="td">

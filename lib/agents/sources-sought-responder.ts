@@ -1,5 +1,5 @@
 /**
- * SOURCES SOUGHT RESPONDER — separate from the main scoring pipeline. Triggered
+ * SOURCES SOUGHT RESPONDER, separate from the main scoring pipeline. Triggered
  * when a Sources Sought notice is detected (by the Opportunity Monitor). These
  * are time-sensitive market-research requests: responding well positions us for a
  * future set-aside, so we draft fast and queue for human review within 24 hours.
@@ -28,7 +28,7 @@ const ResponseSchema = z.object({
 
 function buildPrompt(opp: Opportunity): string {
   return [
-    "Draft our response to this federal Sources Sought notice. Sources Sought notices are market research — the goal is to demonstrate that a capable small business (us) exists so the agency can justify a set-aside. Match the tone of our Template 3 (Sources Sought response): professional, concise, capability-forward, no pricing, no unsupported claims.",
+    "Draft our response to this federal Sources Sought notice. Sources Sought notices are market research, the goal is to demonstrate that a capable small business (us) exists so the agency can justify a set-aside. Match the tone of our Template 3 (Sources Sought response): professional, concise, capability-forward, no pricing, no unsupported claims.",
     "Use the Company Profile (your system context) for our certifications, NAICS, trades, and service areas.",
     "",
     "SOURCES SOUGHT NOTICE:",
@@ -95,7 +95,7 @@ export const sourcesSoughtResponder: AgentDefinition = {
           opportunityId,
           level: "warn",
           status: "skipped",
-          message: "Claude not configured — Sources Sought response not drafted; flagged for human.",
+          message: "Claude not configured, Sources Sought response not drafted; flagged for human.",
         });
         await query(
           `update opportunities set human_action_required = true, stage = 'outreach' where id = $1`,
@@ -103,7 +103,7 @@ export const sourcesSoughtResponder: AgentDefinition = {
         );
         return {
           ok: true,
-          summary: "Sources Sought response not drafted (Claude disabled) — flagged for human review.",
+          summary: "Sources Sought response not drafted (Claude disabled), flagged for human review.",
           humanActionRequired: true,
         };
       }
@@ -134,14 +134,14 @@ export const sourcesSoughtResponder: AgentDefinition = {
        values ($1, 'capability_statement', $2, $3, $4, 'application/pdf')`,
       [
         opportunityId,
-        `Capability Statement — ${opp.title ?? opportunityId}`,
+        `Capability Statement, ${opp.title ?? opportunityId}`,
         uploaded.path,
         uploaded.backend,
       ]
     );
 
     // 5) Draft (do NOT send) the outbound email; a human reviews then sends.
-    const noteBody = `${body}\n\n---\n[Attachment: capability statement — ${uploaded.path}]\n[ACTION REQUIRED: review and send within 24 hours of the notice.]`;
+    const noteBody = `${body}\n\n---\n[Attachment: capability statement, ${uploaded.path}]\n[ACTION REQUIRED: review and send within 24 hours of the notice.]`;
     await query(
       `insert into communications
          (opportunity_id, channel, direction, subject, body, meta)

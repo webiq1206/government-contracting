@@ -42,7 +42,7 @@ describe("extractJson", () => {
   });
 
   it("extracts the first balanced object from prose", () => {
-    const text = 'Here is your result: {"score": 80, "tier": "pursue"} — done.';
+    const text = 'Here is your result: {"score": 80, "tier": "pursue"}, done.';
     expect(extractJson(text)).toEqual({ score: 80, tier: "pursue" });
   });
 

@@ -1,5 +1,5 @@
 /**
- * Document storage — Supabase Storage primary, local-disk fallback. When
+ * Document storage, Supabase Storage primary, local-disk fallback. When
  * SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are unset, every operation degrades
  * to a `.data/storage` directory on the local filesystem so the platform keeps
  * working (dev, self-host, or an outage) without throwing.
@@ -55,7 +55,7 @@ export const storage = {
       if (error) throw new Error(`[storage] Supabase upload failed: ${error.message}`);
       return { path: key, backend: "supabase" };
     }
-    console.warn("[storage] Supabase not configured — writing to local disk");
+    console.warn("[storage] Supabase not configured, writing to local disk");
     await writeLocal(key, data);
     return { path: key, backend: "local" };
   },
@@ -89,7 +89,7 @@ export const storage = {
       return data.signedUrl;
     }
     // Encode each path segment (not the whole key) so slashes stay real path
-    // separators — encoding them to %2F produces URLs some proxies/CDNs 404 on.
+    // separators, encoding them to %2F produces URLs some proxies/CDNs 404 on.
     const encoded = key.split("/").map(encodeURIComponent).join("/");
     return `${config.appUrl}/api/files/${encoded}`;
   },
@@ -97,7 +97,7 @@ export const storage = {
   /** Best-effort private bucket creation. No-op when Supabase is unconfigured. */
   async ensureBucket(): Promise<void> {
     if (!config.supabase.enabled) {
-      console.warn("[storage] Supabase not configured — skipping ensureBucket");
+      console.warn("[storage] Supabase not configured, skipping ensureBucket");
       return;
     }
     const { error } = await client().storage.createBucket(config.supabase.bucket, {

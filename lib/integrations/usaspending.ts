@@ -1,5 +1,5 @@
 /**
- * USAspending.gov client — federal award search and incumbent detection.
+ * USAspending.gov client, federal award search and incumbent detection.
  * Public API (no key required); base URL from config.usaspending.baseUrl.
  * Non-ok responses degrade gracefully to empty result sets so agents log a
  * skip instead of crashing.
@@ -116,7 +116,7 @@ export const usaspending = {
   },
 
   /**
-   * Most recent award in a NAICS+state — used to identify a likely incumbent.
+   * Most recent award in a NAICS+state, used to identify a likely incumbent.
    * Returns null when nothing is found.
    */
   async findIncumbent(

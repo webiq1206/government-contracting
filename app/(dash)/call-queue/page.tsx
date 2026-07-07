@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 /**
  * A Call Queue card. The whole card is a single clickable target that opens the
  * Call Workspace slide-over; the "Start call" button opens the same workspace.
- * Everything the operator can decide from without a call — trade, deadline,
- * project value, prior interaction — is visible at a glance on the card itself.
+ * Everything the operator can decide from without a call, trade, deadline,
+ * project value, prior interaction, is visible at a glance on the card itself.
  */
 function CallCard({ c }: { c: CallCardRow }) {
   const expiry = countdown(c.deadline);
@@ -59,7 +59,7 @@ function CallCard({ c }: { c: CallCardRow }) {
             {c.opportunity_title ?? "Untitled opportunity"}
           </p>
           <p className="mt-0.5 flex items-center justify-between text-xs text-slate-500">
-            <span>{c.agency ?? "—"}</span>
+            <span>{c.agency ?? "-"}</span>
             <span className="num font-medium text-slate-700">
               {c.value_estimated != null ? currency(c.value_estimated) : ""}
             </span>

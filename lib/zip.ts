@@ -1,5 +1,5 @@
 /**
- * Minimal, dependency-free ZIP writer (STORE method — no compression).
+ * Minimal, dependency-free ZIP writer (STORE method, no compression).
  *
  * We deliberately avoid adding a zip dependency to keep the Replit deploy
  * lean and hermetic. STORE is valid ZIP: every OS unzips it. Files are small
@@ -37,7 +37,7 @@ export function makeZip(entries: ZipEntry[]): Buffer {
   let offset = 0;
 
   // A fixed, deterministic DOS timestamp (1980-01-01) so output is stable and
-  // reproducible — real time isn't needed and would break test snapshots.
+  // reproducible, real time isn't needed and would break test snapshots.
   const dosTime = 0;
   const dosDate = 0x21; // 1980-01-01
 

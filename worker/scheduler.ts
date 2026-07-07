@@ -1,5 +1,5 @@
 /**
- * Cron scheduler — ticks once per minute and enqueues jobs for any agent whose
+ * Cron scheduler, ticks once per minute and enqueues jobs for any agent whose
  * cron expression matches the current minute. Enqueuing (not direct execution)
  * keeps scheduling backend-agnostic and lets the queue provide retries/isolation.
  * A singletonKey per minute prevents duplicate enqueues if two ticks overlap.
@@ -19,7 +19,7 @@ export function startScheduler(): () => void {
   // Catch a typo'd cron at boot rather than letting it silently never fire.
   for (const { agent, cron } of schedule) {
     if (!isValidCron(cron)) {
-      console.error(`[scheduler] INVALID cron for ${agent.name}: "${cron}" — it will never run.`);
+      console.error(`[scheduler] INVALID cron for ${agent.name}: "${cron}", it will never run.`);
     }
   }
 

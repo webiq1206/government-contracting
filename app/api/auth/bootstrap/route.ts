@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * One-time first-run operator bootstrap. Creates the initial operator when the
- * users table is empty. Refuses (409) if any operator already exists — so this
+ * users table is empty. Refuses (409) if any operator already exists, so this
  * endpoint can't be used to add or overwrite users later. Called from /setup.
  */
 export async function POST(req: Request) {

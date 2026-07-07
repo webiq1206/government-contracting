@@ -1,5 +1,5 @@
 /**
- * SAM.gov client — opportunity ingestion, award/registration monitoring,
+ * SAM.gov client, opportunity ingestion, award/registration monitoring,
  * exclusions list. Uses the public Opportunities v2 and Entity/Exclusions APIs.
  * Requires SAM_API_KEY. When missing, methods return empty results + disabled:true
  * so agents log a skip instead of crashing.
@@ -103,7 +103,7 @@ export const sam = {
     return res.items;
   },
 
-  /** Entity registration status + expiry — used by Compliance Monitor. */
+  /** Entity registration status + expiry, used by Compliance Monitor. */
   async getEntityRegistration(
     uei: string
   ): Promise<{ disabled?: boolean; status?: string; expiresAt?: string } | null> {
@@ -128,7 +128,7 @@ export const sam = {
   /**
    * Check whether a company appears on the SAM exclusions (debarment) list.
    * On error returns `error:true` (NOT a clean `excluded:false`) so a compliance
-   * check can treat "unknown" differently from "confirmed clear" — a debarment
+   * check can treat "unknown" differently from "confirmed clear", a debarment
    * check that silently reads as clear on an API error is a dangerous false
    * negative for a gov-contracting gate.
    */
@@ -151,7 +151,7 @@ export const sam = {
   /** Award notices for post-submission tracking (win/loss detection). */
   async getAwardNotices(solicitationNumber: string): Promise<SamOpportunity[]> {
     if (!config.sam.enabled || !solicitationNumber) return [];
-    // Look up by exact solicitation number (solnum), not a title keyword — award
+    // Look up by exact solicitation number (solnum), not a title keyword, award
     // notices rarely carry the solicitation number in their title, so the old
     // title filter returned nothing and win/loss detection never fired.
     const res = await this.searchOpportunities({

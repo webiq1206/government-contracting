@@ -11,7 +11,7 @@ scripts, SQL migrations, and a seed script.
 1. Create a project at [supabase.com](https://supabase.com).
 2. Project Settings → Database → **Connection string** → copy the URI
    (use the connection pooler URI). This is your `DATABASE_URL`.
-3. (Optional) Project Settings → Storage — the app auto-creates its bucket, or
+3. (Optional) Project Settings → Storage, the app auto-creates its bucket, or
    set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` to store documents there.
    Without them, documents fall back to local disk (fine to start).
 
@@ -27,7 +27,7 @@ You can also use any other Postgres 15+ (Neon, RDS, Railway Postgres).
 
 ## 3. Set Secrets (environment variables)
 
-Open the **Secrets** panel (lock icon) and add — at minimum:
+Open the **Secrets** panel (lock icon) and add, at minimum:
 
 | Secret | Value |
 |---|---|
@@ -39,7 +39,7 @@ Open the **Secrets** panel (lock icon) and add — at minimum:
 | `APP_URL` | your Repl's public URL, e.g. `https://brostco.username.repl.co` |
 
 Add the rest from `.env.example` as you obtain each key (SAM, Google Maps,
-Hunter, Gmail OAuth, Twilio, Resend). Every one is optional — the platform runs
+Hunter, Gmail OAuth, Twilio, Resend). Every one is optional, the platform runs
 and is testable without them and lights each feature up when its key appears.
 
 ## 4. Initialize the database (once)
@@ -55,7 +55,7 @@ npm run db:setup     # runs migrations + seeds the Company Profile, weights, tem
 
 Press **Run**. The default command is `npm run start`, which launches the web
 app and the worker together (via `concurrently`). The worker connects to the
-Postgres-backed queue (pg-boss) — **no Redis needed**.
+Postgres-backed queue (pg-boss), **no Redis needed**.
 
 - Web dashboard: your Repl URL.
 - Worker: runs the cron scheduler (Opportunity Monitor every 2h, Compliance
@@ -76,7 +76,7 @@ For 24/7 operation, use **Replit Deployments**. The included `.replit`
 
 Migration `0002_rls.sql` enables Postgres RLS on every application table and
 revokes the `anon` / `authenticated` grants. The app connects via the direct
-`DATABASE_URL` role (table owner), which bypasses RLS, so it is unaffected — but
+`DATABASE_URL` role (table owner), which bypasses RLS, so it is unaffected, but
 Supabase's auto-generated PostgREST API and the public JS client can read/write
 **nothing**. This runs automatically as part of `npm run db:setup` / `db:migrate`.
 If you later want to expose a table to the browser, add explicit `create policy`
@@ -97,7 +97,7 @@ statements in a new migration.
 Playwright scrapers are **off by default** (`ENABLE_SCRAPERS=false`). To enable:
 set `ENABLE_SCRAPERS=true`. On Replit, `replit.nix` provides Chromium and points
 Playwright at it via `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. Each state is an
-isolated module — a broken scraper never blocks the others or the federal feed.
+isolated module, a broken scraper never blocks the others or the federal feed.
 
 ## Switching the queue to Redis/BullMQ (optional)
 
@@ -119,9 +119,9 @@ The Integrations settings page shows exactly which keys are wired up.
 
 ## Troubleshooting
 
-- **`DATABASE_URL is not set`** — add the secret; re-run `npm run db:setup`.
-- **Login fails** — ensure `OPERATOR_EMAIL` + `OPERATOR_PASSWORD_HASH` are set
+- **`DATABASE_URL is not set`**, add the secret; re-run `npm run db:setup`.
+- **Login fails**, ensure `OPERATOR_EMAIL` + `OPERATOR_PASSWORD_HASH` are set
   (hash generated with `npm run agent -- hash-password`), or seed a user.
-- **Agents log "skipped: ANTHROPIC_API_KEY not set"** — add the Claude key.
-- **TLS errors to Postgres** — the pool already relaxes TLS for managed hosts;
+- **Agents log "skipped: ANTHROPIC_API_KEY not set"**, add the Claude key.
+- **TLS errors to Postgres**, the pool already relaxes TLS for managed hosts;
   ensure the URI is the pooler/connection string from your provider.

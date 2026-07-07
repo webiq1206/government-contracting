@@ -1,5 +1,5 @@
 /**
- * ANALYTICS ENGINE — daily cron (07:00). Computes the platform KPIs (win rates,
+ * ANALYTICS ENGINE, daily cron (07:00). Computes the platform KPIs (win rates,
  * margins, pipeline value, contract revenue, pipeline velocity, sub rankings,
  * and a 30/60/90-day cash-flow projection) with pure SQL + math, then persists
  * the whole snapshot as an agent_logs 'kpi-snapshot' row the dashboard reads.
@@ -177,7 +177,7 @@ export const analyticsEngine: AgentDefinition = {
     const isMonday = new Date().getDay() === 1;
     if (isMonday && email.enabled()) {
       await email.sendDigest({
-        subject: `BROSTCO Weekly KPIs — ${kpis.win_rate.overall}% win rate`,
+        subject: `BROSTCO Weekly KPIs, ${kpis.win_rate.overall}% win rate`,
         html: renderDigestHtml(kpis),
         text: renderDigestText(kpis),
       });

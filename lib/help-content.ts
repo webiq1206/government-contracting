@@ -3,7 +3,7 @@ import type { HelpContent } from "@/components/help-popover";
 /**
  * Per-page help popover content. Keep each page to 3-4 short bullets:
  * what this is, what to do here, what runs on its own. The full journey
- * lives at /how-it-works — don't duplicate it here.
+ * lives at /how-it-works, don't duplicate it here.
  */
 export const PAGE_HELP: Record<string, HelpContent> = {
   today: {
@@ -100,7 +100,7 @@ export const PAGE_HELP: Record<string, HelpContent> = {
     points: [
       "The banner up top always shows the recommended next step.",
       "The Submission package panel assembles every required file, validates it, and runs an independent compliance audit.",
-      "Your job is to clear the items marked for you (signatures, provided docs) and submit — it's blocked until compliance passes.",
+      "Your job is to clear the items marked for you (signatures, provided docs) and submit, it's blocked until compliance passes.",
       "Attachments and the plain-English brief live together below.",
     ],
   },

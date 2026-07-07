@@ -47,7 +47,7 @@ interface DetailsResponse {
 export const googleMaps = {
   /**
    * Find contractors for a trade in a location via Text Search. Returns up to
-   * `limit` (default 12) results. Does NOT fetch per-place details — use
+   * `limit` (default 12) results. Does NOT fetch per-place details, use
    * placeDetails / enrichTopN for phone + website.
    */
   async findContractors(params: {
@@ -67,7 +67,7 @@ export const googleMaps = {
           },
         })
       );
-      // Places returns HTTP 200 with a status field even on failure — a denied
+      // Places returns HTTP 200 with a status field even on failure, a denied
       // or rate-limited key yields empty results that look like "no contractors."
       // Surface it so the misconfig isn't silent.
       if (data.status && !["OK", "ZERO_RESULTS"].includes(data.status)) {

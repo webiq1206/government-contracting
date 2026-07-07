@@ -48,7 +48,7 @@ export async function reviewQueue(): Promise<Opportunity[]> {
 
 /**
  * A CallCardRow carries everything the Call Workspace needs to render on a
- * single screen — contractor contact info, project context (scope, agency,
+ * single screen, contractor contact info, project context (scope, agency,
  * value, deadline), attachments, prior comms, prior quotes, and the SOW-derived
  * script + question list. Building the whole workspace off one query means the
  * operator never has to click into a second page during a call.
@@ -140,7 +140,7 @@ export async function callCardById(id: string): Promise<CallCardRow | null> {
   );
 }
 
-/** Fetch prior communications + quotes for the (sub, opp) pair — used by the Call Workspace. */
+/** Fetch prior communications + quotes for the (sub, opp) pair, used by the Call Workspace. */
 export async function callCardHistory(subId: string, oppId: string) {
   const [communications, quotes] = await Promise.all([
     query(
@@ -387,7 +387,7 @@ export async function pricingSummaryFor(opp: Opportunity): Promise<Record<string
 }
 
 /* ------------------------------------------------------------------------ */
-/* Action Center — powers the guided "Today" home page.                      */
+/* Action Center, powers the guided "Today" home page.                      */
 /* ------------------------------------------------------------------------ */
 
 export interface ActionOppRow {

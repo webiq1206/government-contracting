@@ -1,5 +1,5 @@
 /**
- * PRICING RESEARCH — triggered at the pursue tier, in parallel with the
+ * PRICING RESEARCH, triggered at the pursue tier, in parallel with the
  * Solicitation Analyst. Pure API + math (no Claude), so it runs even when Claude
  * is not configured (worksWithoutClaude: true).
  *
@@ -54,9 +54,9 @@ export const pricingResearch: AgentDefinition = {
         opportunityId,
         level: "warn",
         status: "skipped",
-        message: "opportunity has no NAICS code — cannot pull comps.",
+        message: "opportunity has no NAICS code, cannot pull comps.",
       });
-      return { ok: true, summary: "No NAICS on opportunity — pricing research skipped." };
+      return { ok: true, summary: "No NAICS on opportunity, pricing research skipped." };
     }
 
     // 1) Last 36 months of awards for this NAICS (+ state when known).
@@ -83,7 +83,7 @@ export const pricingResearch: AgentDefinition = {
 
     // When CPI data is present, only CPI-adjusted comps feed the stats so we
     // never mix real-dollar and nominal-dollar figures into one median (which
-    // biases the sub-cost proxy — and every modeled bid — downward). When CPI is
+    // biases the sub-cost proxy, and every modeled bid, downward). When CPI is
     // entirely unavailable (BLS off), fall back to all-nominal, which is
     // consistent (no blending) rather than an empty comp set.
     const cpiAvailable = Object.keys(cpiByYear).length > 0;
@@ -111,7 +111,7 @@ export const pricingResearch: AgentDefinition = {
 
     // 5) Target bid ranges per margin scenario, using median comp as sub-cost proxy.
     const marginScenarios = profile.pricing_rules?.margin_scenarios ?? [];
-    const subCostProxy = stats.median; // rough baseline — an ESTIMATE, not a quote
+    const subCostProxy = stats.median; // rough baseline, an ESTIMATE, not a quote
     const targetBidRanges = marginScenarios.map((marginPct) => ({
       margin_pct: marginPct,
       target_bid: subCostProxy > 0 ? bidForTargetMargin(subCostProxy, marginPct) : 0,
@@ -140,7 +140,7 @@ export const pricingResearch: AgentDefinition = {
       );
     }
 
-    // 7) Compact summary — folded into opportunities.raw_json (no dedicated column).
+    // 7) Compact summary, folded into opportunities.raw_json (no dedicated column).
     const pricingSummary = {
       naics,
       state: state ?? null,
@@ -172,9 +172,9 @@ export const pricingResearch: AgentDefinition = {
     const reasoning = [
       `Pulled ${awards.length} awards for NAICS ${naics}${state ? ` in ${state}` : ""} over the last 36 months.`,
       `CPI-adjusted to ${currentYear} via BLS series ${seriesId} (${Object.keys(cpiByYear).length} years available).`,
-      `Comp stats — count ${stats.count}, median $${stats.median}, avg $${stats.average}, p25 $${stats.p25}, p75 $${stats.p75}.`,
+      `Comp stats, count ${stats.count}, median $${stats.median}, avg $${stats.average}, p25 $${stats.p25}, p75 $${stats.p75}.`,
       incumbent
-        ? `Likely incumbent: ${incumbent.recipient_name} (last award $${round2(incumbent.award_amount)} on ${incumbent.action_date}) — recompete signal.`
+        ? `Likely incumbent: ${incumbent.recipient_name} (last award $${round2(incumbent.award_amount)} on ${incumbent.action_date}), recompete signal.`
         : "No incumbent detected.",
       `Modeled target bids from median proxy for scenarios: ${targetBidRanges
         .map((t) => `${t.margin_pct}% → $${t.target_bid}`)
@@ -195,7 +195,7 @@ export const pricingResearch: AgentDefinition = {
     return {
       ok: true,
       summary: `Pricing research: ${stats.count} comps, median $${stats.median}${
-        incumbent ? ` (recompete — incumbent ${incumbent.recipient_name})` : ""
+        incumbent ? ` (recompete, incumbent ${incumbent.recipient_name})` : ""
       }.`,
       reasoning,
       data: pricingSummary,

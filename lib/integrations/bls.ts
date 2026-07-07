@@ -2,7 +2,7 @@
  * Bureau of Labor Statistics (BLS) CPI client. Used for cost-escalation
  * modeling on multi-year contracts. Works unauthenticated at low volume;
  * config.bls.apiKey (when present) just raises the rate limit.
- * Never throws — failures return empty maps.
+ * Never throws, failures return empty maps.
  */
 import { config } from "../config";
 import { fetchJson, withRetry } from "./http";

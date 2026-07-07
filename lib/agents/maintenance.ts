@@ -1,5 +1,5 @@
 /**
- * Maintenance jobs — not part of the 13-agent roster, but the plumbing that
+ * Maintenance jobs, not part of the 13-agent roster, but the plumbing that
  * keeps time-based workflows moving:
  *   - outreach-followup : send the automated 48-hour follow-up (spec step 6)
  *   - review-expiry-sweep : auto-dismiss review-tier items after the timer (spec)
@@ -43,7 +43,7 @@ export const outreachFollowup: AgentDefinition = {
       await query(`update communications set follow_up_at = null where id = $1`, [row.id]);
       if (!row.email || !row.email_verified) continue;
       const subject = `Following up: ${row.subject ?? "our request"}`;
-      const html = `<p>Just following up on my note below — happy to answer any questions or set up a quick call.</p><hr/>${(row.body ?? "").replace(/\n/g, "<br/>")}`;
+      const html = `<p>Just following up on my note below, happy to answer any questions or set up a quick call.</p><hr/>${(row.body ?? "").replace(/\n/g, "<br/>")}`;
       const res = await gmail.send({ to: row.email, subject, html, trackingId: row.tracking_id ?? undefined });
       if (!res.disabled && !res.error) {
         await query(
@@ -190,11 +190,11 @@ export const replyPoll: AgentDefinition = {
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     if (!(await gmail.isConnected())) {
-      return { ok: true, summary: "Gmail not connected — reply polling skipped." };
+      return { ok: true, summary: "Gmail not connected, reply polling skipped." };
     }
     const sinceSec = Math.floor(Date.now() / 1000) - 3600; // last hour
     const { replies, disabled } = await gmail.fetchReplies(sinceSec);
-    if (disabled) return { ok: true, summary: "Gmail disabled — reply polling skipped." };
+    if (disabled) return { ok: true, summary: "Gmail disabled, reply polling skipped." };
 
     const enqueued: AgentResult["enqueued"] = [];
     let matched = 0;

@@ -1,4 +1,4 @@
-// Best-effort postinstall. Never fails the install — optional deps (playwright,
+// Best-effort postinstall. Never fails the install, optional deps (playwright,
 // bullmq) may be absent on some hosts (e.g. Replit) and that is fine.
 console.log("[postinstall] BROSTCO dependencies installed.");
 console.log("[postinstall] Next steps:");

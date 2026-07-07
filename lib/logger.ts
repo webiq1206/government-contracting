@@ -1,5 +1,5 @@
 /**
- * agent_logs writer — the platform's audit backbone. Every agent action is
+ * agent_logs writer, the platform's audit backbone. Every agent action is
  * logged with its reasoning (architecture principle: "Every agent action is
  * logged with its reasoning in the agent_logs table"). Console output mirrors
  * the DB write so logs are visible during local dev and on Replit.
@@ -25,7 +25,7 @@ export interface AgentLogInput {
 export async function logAgent(entry: AgentLogInput): Promise<void> {
   const level = entry.level ?? "info";
   const prefix = `[${entry.agent}] ${entry.action}`;
-  const line = entry.message ? `${prefix} — ${entry.message}` : prefix;
+  const line = entry.message ? `${prefix}, ${entry.message}` : prefix;
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.log(line);

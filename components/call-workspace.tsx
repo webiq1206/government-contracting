@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Call Workspace — a slide-over that gives the operator EVERYTHING they need
+ * Call Workspace, a slide-over that gives the operator EVERYTHING they need
  * during a sub outreach call on one screen: contractor contact + click-to-call,
  * project context, plain-English scope summary, attachments, prior interaction
  * history, a guided script, and a structured capture form. Saving closes the
@@ -44,7 +44,7 @@ export interface CallWorkspaceData {
   quotes: Quote[];
 }
 
-// Guided call script — the questions the operator should ask, in order.
+// Guided call script, the questions the operator should ask, in order.
 const GUIDED_QUESTIONS = [
   "Can your company perform this scope of work?",
   "Are you interested in bidding this project?",
@@ -250,33 +250,33 @@ export function CallWorkspace({
         </header>
 
         <div className="space-y-6 p-6">
-          {/* CONTEXT — everything the operator needs to know before dialing */}
+          {/* CONTEXT, everything the operator needs to know before dialing */}
           <Section title="Project context">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
-              <Fact label="Agency" value={card.agency ?? "—"} />
+              <Fact label="Agency" value={card.agency ?? "-"} />
               <Fact
                 label="Value"
-                value={card.value_estimated != null ? currency(card.value_estimated) : "—"}
+                value={card.value_estimated != null ? currency(card.value_estimated) : "-"}
               />
-              <Fact label="Location" value={card.location_state ?? "—"} />
-              <Fact label="Industry code (NAICS)" value={card.naics_code ?? "—"} />
-              <Fact label="Set-aside" value={card.set_aside_type ?? "—"} />
+              <Fact label="Location" value={card.location_state ?? "-"} />
+              <Fact label="Industry code (NAICS)" value={card.naics_code ?? "-"} />
+              <Fact label="Set-aside" value={card.set_aside_type ?? "-"} />
               <Fact
                 label="Bid due"
-                value={card.deadline ? shortDate(card.deadline) : "—"}
+                value={card.deadline ? shortDate(card.deadline) : "-"}
               />
               <Fact
                 label="Solicitation"
-                value={card.solicitation_number ?? "—"}
+                value={card.solicitation_number ?? "-"}
               />
               <Fact
                 label="Trade you're pricing"
-                value={card.trade ?? "—"}
+                value={card.trade ?? "-"}
               />
               <Fact
                 label="Service area"
                 value={
-                  [card.city, card.state].filter(Boolean).join(", ") || "—"
+                  [card.city, card.state].filter(Boolean).join(", ") || "-"
                 }
               />
             </dl>
@@ -314,7 +314,7 @@ export function CallWorkspace({
             </Section>
           )}
 
-          {/* ATTACHMENTS — always visible when present */}
+          {/* ATTACHMENTS, always visible when present */}
           {attachments.length > 0 && (
             <Section
               title={`Documents & attachments (${attachments.length})`}
@@ -403,7 +403,7 @@ export function CallWorkspace({
             </Section>
           )}
 
-          {/* GUIDED SCRIPT + CAPTURE — the actual call workspace */}
+          {/* GUIDED SCRIPT + CAPTURE, the actual call workspace */}
           <Section
             title="Call script + capture"
             subtitle="Ask each question in order and record the answers below. You can save a draft at any point and come back later; nothing is final until you press Save & complete call."
@@ -452,7 +452,7 @@ export function CallWorkspace({
                       set("price_type", e.target.value as FormState["price_type"])
                     }
                   >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     <option value="firm">Firm quote</option>
                     <option value="estimate">Estimate</option>
                   </select>
@@ -539,7 +539,7 @@ export function CallWorkspace({
                       )
                     }
                   >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     <option value="high">High: has bid similar projects</option>
                     <option value="medium">Medium: related experience</option>
                     <option value="low">Low: new to this scope</option>
@@ -549,7 +549,7 @@ export function CallWorkspace({
 
               <Group title="Recommendation & follow-up">
                 <div>
-                  <label className="label">Confidence (1–5)</label>
+                  <label className="label">Confidence (1-5)</label>
                   <div className="mt-1 flex items-center gap-2">
                     {[1, 2, 3, 4, 5].map((n) => (
                       <button
@@ -579,7 +579,7 @@ export function CallWorkspace({
                       )
                     }
                   >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     <option value="recommend">Recommend for bid</option>
                     <option value="backup">Backup / second choice</option>
                     <option value="reject">Not a fit</option>
@@ -594,7 +594,7 @@ export function CallWorkspace({
                       set("outcome", e.target.value as FormState["outcome"])
                     }
                   >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     <option value="success">Reached and got a quote</option>
                     <option value="no_answer">No answer / voicemail</option>
                     <option value="not_interested">Not interested</option>

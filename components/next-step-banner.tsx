@@ -91,7 +91,7 @@ function deriveStep(s: StepInput): {
 } | null {
   if (s.stage === "won")
     return {
-      title: "Nothing — this one is won 🎉",
+      title: "Nothing, this one is won 🎉",
       why: "The contract record was created. Track milestones and compliance from the Contracts page.",
       cta: "View contracts",
       href: "/contracts",
@@ -121,21 +121,21 @@ function deriveStep(s: StepInput): {
     case "monitoring":
     case "scoring":
       return {
-        title: "Nothing yet — scoring is running",
+        title: "Nothing yet, scoring is running",
         why: "The system is scoring this against your company profile. It becomes actionable within a few minutes.",
         cta: "",
         tone: "info",
       };
     case "analysis":
       return {
-        title: "Nothing yet — the plain-English brief is being written",
+        title: "Nothing yet, the plain-English brief is being written",
         why: "The analyst is reading the solicitation and attachments. When it's done, sub research starts automatically.",
         cta: "",
         tone: "info",
       };
     case "sub_research":
       return {
-        title: "Nothing yet — finding subcontractors",
+        title: "Nothing yet, finding subcontractors",
         why: "The system is finding and verifying local subs for each required trade. They'll be emailed automatically.",
         cta: "",
         tone: "info",
@@ -184,7 +184,7 @@ function deriveStep(s: StepInput): {
             tone: "action",
           }
         : {
-            title: "Nothing yet — pricing the bid",
+            title: "Nothing yet, pricing the bid",
             why: "The Bid Builder is aggregating quotes and pricing to your target margin. Refresh in a minute.",
             cta: "",
             tone: "info",

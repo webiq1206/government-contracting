@@ -1,5 +1,5 @@
 /**
- * Twilio SMS client — outbound texts + operator alerts. Requires
+ * Twilio SMS client, outbound texts + operator alerts. Requires
  * TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER. When any is
  * missing, methods return { disabled: true } and log a single skip warning
  * instead of throwing, so the platform boots without SMS configured.
@@ -25,7 +25,7 @@ export const sms = {
   /** Send an SMS to an arbitrary recipient. */
   async send(to: string, body: string): Promise<SmsResult> {
     if (!config.twilio.enabled) {
-      console.warn("[twilio] SMS not configured — skipping send");
+      console.warn("[twilio] SMS not configured, skipping send");
       return { disabled: true };
     }
     try {
@@ -44,11 +44,11 @@ export const sms = {
   /** Send an operator alert to the configured ALERT_SMS_TO number. */
   async alert(body: string): Promise<SmsResult> {
     if (!config.twilio.enabled) {
-      console.warn("[twilio] SMS not configured — skipping alert");
+      console.warn("[twilio] SMS not configured, skipping alert");
       return { disabled: true };
     }
     if (!config.twilio.alertTo) {
-      console.warn("[twilio] ALERT_SMS_TO not set — skipping alert");
+      console.warn("[twilio] ALERT_SMS_TO not set, skipping alert");
       return { disabled: true };
     }
     return this.send(config.twilio.alertTo, truncate(`[BROSTCO] ${body}`));

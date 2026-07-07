@@ -1,11 +1,12 @@
 /**
- * Document generation — bid packages and capability statements as PDF (pdf-lib)
+ * Document generation, bid packages and capability statements as PDF (pdf-lib)
  * and DOCX (docx). Pure in-process rendering with no external services, so
  * nothing here degrades or throws on missing config. Returns Node Buffers ready
  * to hand to the storage layer.
  */
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from "pdf-lib";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel } from "docx";
+import { noEmDash, deepNoEmDash } from "../sanitize";
 
 export interface BidDocData {
   company_name: string;
@@ -115,7 +116,8 @@ class PdfWriter {
     const indent = opts.indent ?? 0;
     const color = opts.color ?? [0.1, 0.1, 0.1];
     const lineHeight = size * 1.4;
-    const lines = wrapText(content, font, size, CONTENT_WIDTH - indent);
+    // Hard rule: no em dashes in any generated document.
+    const lines = wrapText(noEmDash(content), font, size, CONTENT_WIDTH - indent);
     for (const line of lines) {
       this.ensureSpace(lineHeight);
       this.page.drawText(line, {
@@ -130,7 +132,8 @@ class PdfWriter {
   }
 
   /** Section heading with an underline rule. */
-  heading(title: string, size = 13): void {
+  heading(rawTitle: string, size = 13): void {
+    const title = noEmDash(rawTitle);
     this.gap(8);
     this.ensureSpace(size * 1.4 + 6);
     this.page.drawText(title, {
@@ -151,7 +154,9 @@ class PdfWriter {
   }
 
   /** A left label + right-aligned value on one row (used for line items). */
-  row(label: string, value: string, opts: { bold?: boolean; size?: number } = {}): void {
+  row(rawLabel: string, rawValue: string, opts: { bold?: boolean; size?: number } = {}): void {
+    const label = noEmDash(rawLabel);
+    const value = noEmDash(rawValue);
     const size = opts.size ?? 11;
     const font = opts.bold ? this.fonts.bold : this.fonts.regular;
     const lineHeight = size * 1.5;
@@ -226,7 +231,7 @@ async function buildBidPdf(data: BidDocData): Promise<Buffer> {
     w.heading("Quality Assurance Checklist");
     for (const q of data.qa_checklist) {
       const glyph = q.ok ? "[x]" : "[ ]";
-      const line = q.note ? `${glyph} ${q.item} — ${q.note}` : `${glyph} ${q.item}`;
+      const line = q.note ? `${glyph} ${q.item}, ${q.note}` : `${glyph} ${q.item}`;
       w.text(line, { size: 11 });
     }
   }
@@ -249,7 +254,7 @@ async function buildCapabilityStatementPdf(data: CapabilityData): Promise<Buffer
   if (data.primary_trades.length > 0) {
     for (const trade of data.primary_trades) w.text(`• ${trade}`, { size: 11, indent: 8 });
   } else {
-    w.text("—", { size: 11, indent: 8 });
+    w.text("-", { size: 11, indent: 8 });
   }
 
   if (data.differentiators && data.differentiators.length > 0) {
@@ -263,14 +268,14 @@ async function buildCapabilityStatementPdf(data: CapabilityData): Promise<Buffer
   w.heading("Company Data");
   if (data.uei) w.row("UEI", data.uei);
   if (data.cage_code) w.row("CAGE Code", data.cage_code);
-  w.row("NAICS Codes", data.naics_codes.length ? data.naics_codes.join(", ") : "—");
-  w.row("Service Areas", data.service_areas.length ? data.service_areas.join(", ") : "—");
+  w.row("NAICS Codes", data.naics_codes.length ? data.naics_codes.join(", ") : "-");
+  w.row("Service Areas", data.service_areas.length ? data.service_areas.join(", ") : "-");
 
   w.heading("Certifications");
   if (data.certifications.length > 0) {
     for (const c of data.certifications) w.text(`• ${c}`, { size: 11, indent: 8 });
   } else {
-    w.text("—", { size: 11, indent: 8 });
+    w.text("-", { size: 11, indent: 8 });
   }
 
   const bytes = await w.save();
@@ -279,7 +284,9 @@ async function buildCapabilityStatementPdf(data: CapabilityData): Promise<Buffer
 
 /* ---------------------------- DOCX builder ------------------------------ */
 
-async function buildBidDocx(data: BidDocData): Promise<Buffer> {
+async function buildBidDocx(rawData: BidDocData): Promise<Buffer> {
+  // Hard rule: no em dashes in any generated document.
+  const data = deepNoEmDash(rawData);
   const children: Paragraph[] = [];
 
   children.push(
@@ -360,7 +367,7 @@ async function buildBidDocx(data: BidDocData): Promise<Buffer> {
     );
     for (const q of data.qa_checklist) {
       const glyph = q.ok ? "☒" : "☐";
-      const text = q.note ? `${glyph} ${q.item} — ${q.note}` : `${glyph} ${q.item}`;
+      const text = q.note ? `${glyph} ${q.item}, ${q.note}` : `${glyph} ${q.item}`;
       children.push(new Paragraph({ children: [new TextRun({ text })] }));
     }
   }
@@ -501,7 +508,7 @@ async function buildRepsAndCertsPdf(data: RepsAndCertsData): Promise<Buffer> {
   const w = new PdfWriter(doc, fonts);
 
   w.text("Representations & Certifications", { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
-  w.text("Offeror data sheet — pre-filled for review and signature", {
+  w.text("Offeror data sheet, pre-filled for review and signature", {
     size: 10,
     color: [0.35, 0.35, 0.35],
   });
@@ -510,15 +517,15 @@ async function buildRepsAndCertsPdf(data: RepsAndCertsData): Promise<Buffer> {
   }
 
   w.heading("Offeror Identification");
-  w.row("Legal business name", data.legal_name || "—");
+  w.row("Legal business name", data.legal_name || "-");
   if (data.dba) w.row("Doing business as (DBA)", data.dba);
-  w.row("Physical address", data.physical_address || "—");
-  w.row("UEI", data.uei || "—");
-  w.row("CAGE code", data.cage_code || "—");
+  w.row("Physical address", data.physical_address || "-");
+  w.row("UEI", data.uei || "-");
+  w.row("CAGE code", data.cage_code || "-");
   if (data.duns) w.row("DUNS", data.duns);
-  w.row("Taxpayer ID (EIN)", data.ein || "—");
-  w.row("State of incorporation", data.entity_state || "—");
-  w.row("Business structure", data.business_structure || "—");
+  w.row("Taxpayer ID (EIN)", data.ein || "-");
+  w.row("State of incorporation", data.entity_state || "-");
+  w.row("Business structure", data.business_structure || "-");
 
   w.heading("Size & Socioeconomic Status");
   w.row("Small business", data.small_business ? "Yes" : "No");
@@ -526,7 +533,7 @@ async function buildRepsAndCertsPdf(data: RepsAndCertsData): Promise<Buffer> {
     "Certifications held",
     data.certifications.length ? data.certifications.join(", ") : "None on file"
   );
-  w.row("Primary NAICS codes", data.naics_codes.length ? data.naics_codes.join(", ") : "—");
+  w.row("Primary NAICS codes", data.naics_codes.length ? data.naics_codes.join(", ") : "-");
 
   w.heading("Representation Statement");
   w.text(

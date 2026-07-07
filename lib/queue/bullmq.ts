@@ -16,7 +16,7 @@ export async function createBullQueue(): Promise<Queue> {
   const connection = new IORedis(config.queue.redisUrl, {
     maxRetriesPerRequest: null,
   });
-  // ioredis is a peer of bullmq; the nested-copy type hazard is cosmetic — the
+  // ioredis is a peer of bullmq; the nested-copy type hazard is cosmetic, the
   // runtime instance is fully compatible. Cast through the expected shape.
   const conn = connection as unknown as Conn;
   const queue = new BullQueue("agents", { connection: conn });

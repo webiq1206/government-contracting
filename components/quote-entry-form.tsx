@@ -89,7 +89,7 @@ export function QuoteEntryForm({
         <span className="font-medium text-slate-700">Trade</span> is the type of
         work (e.g. HVAC, electrical, roofing).{" "}
         <span className="font-medium text-slate-700">Subcontractor</span> is the
-        company giving you that price — pick one you&rsquo;ve already found, or
+        company giving you that price, pick one you&rsquo;ve already found, or
         leave it blank if you don&rsquo;t have them on file yet.
       </p>
       {rows.map((row, i) => (
@@ -115,7 +115,7 @@ export function QuoteEntryForm({
               {subs.map((s) => (
                 <option key={s.subcontractor_id} value={s.subcontractor_id}>
                   {s.company_name}
-                  {s.trade ? ` — ${s.trade}` : ""}
+                  {s.trade ? `, ${s.trade}` : ""}
                 </option>
               ))}
             </select>

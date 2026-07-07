@@ -79,18 +79,18 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       }
     }
     // Operator-provided or unavailable: note it in the README instead.
-    toProvide.push(`${item.filename} — ${item.status.replace(/_/g, " ")}`);
+    toProvide.push(`${item.filename}, ${item.status.replace(/_/g, " ")}`);
   }
 
   const readme = [
-    `SUBMISSION PACKAGE — ${opp.title ?? params.id}`,
+    `SUBMISSION PACKAGE, ${opp.title ?? params.id}`,
     opp.solicitation_number ? `Solicitation: ${opp.solicitation_number}` : "",
     "",
     "This archive contains the documents the platform generated, named and",
     "ordered for submission. Before you submit, complete the following items,",
     "which require your signature or documents only you can supply:",
     "",
-    ...(toProvide.length ? toProvide.map((t) => `  • ${t}`) : ["  (nothing — the package is complete)"]),
+    ...(toProvide.length ? toProvide.map((t) => `  • ${t}`) : ["  (nothing, the package is complete)"]),
     "",
     "Always confirm against the actual solicitation's instructions to offerors.",
   ]

@@ -76,7 +76,7 @@ export interface MarginBand {
   category: string;
   target_low_pct: number;
   target_high_pct: number;
-  floor_pct: number; // hard floor — never compress below
+  floor_pct: number; // hard floor, never compress below
   cap_pct: number;
 }
 
@@ -131,11 +131,11 @@ export interface DecisionThresholds {
   cert_alert_days: number[]; // [90, 30, 7]
   state_llc_alert_days: number[]; // [60, 30, 7]
   insurance_alert_days: number[]; // [60, 30, 7]
-  value_min?: number; // 50000 — below this: auto-dismiss
-  value_max?: number; // 350000 — above this: flag for review
-  deadline_min_days?: number; // 7 — fewer days: auto-dismiss unless in pipeline
-  unrestricted_min_value?: number; // 150000 — unrestricted below this: auto-dismiss
-  pricing_gap_flag_pct?: number; // 20 — flag if min-margin bid > this % above median
+  value_min?: number; // 50000, below this: auto-dismiss
+  value_max?: number; // 350000, above this: flag for review
+  deadline_min_days?: number; // 7, fewer days: auto-dismiss unless in pipeline
+  unrestricted_min_value?: number; // 150000, unrestricted below this: auto-dismiss
+  pricing_gap_flag_pct?: number; // 20, flag if min-margin bid > this % above median
   block_prime_only?: boolean; // false (default): auto-pursue proceeds even when past-perf is prime-only
 }
 
@@ -223,7 +223,7 @@ export type RequirementCategory =
   | "other";
 
 /**
- * One row of the submission compliance matrix — a single thing the solicitation
+ * One row of the submission compliance matrix, a single thing the solicitation
  * requires in the bid package. Extracted by the Solicitation Analyst from the
  * instructions, scope, and attachments.
  */
@@ -322,7 +322,7 @@ export interface Qualifications {
  * A comprehensive, plain-English bid brief. The Solicitation Analyst fills every
  * field it can from the notice + extracted attachment text. Fields it cannot
  * find are set to an explicit "Not specified in the provided documents" string
- * or empty list — never fabricated. Legacy fields (scope_plain_language,
+ * or empty list, never fabricated. Legacy fields (scope_plain_language,
  * required_trades, past_perf_classification, questions_for_subs, draft_sow) are
  * retained for the downstream agents.
  */

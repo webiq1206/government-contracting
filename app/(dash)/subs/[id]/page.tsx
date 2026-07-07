@@ -66,22 +66,22 @@ export default async function SubDetailPage({
                   </span>
                 </>
               ) : (
-                "—"
+                "-"
               )
             }
           />
           <Stat
             label="Reliability"
-            value={sub.reliability_score != null ? sub.reliability_score : "—"}
+            value={sub.reliability_score != null ? sub.reliability_score : "-"}
           />
           <Stat
             label="Responsiveness"
-            value={sub.responsiveness_score != null ? sub.responsiveness_score : "—"}
+            value={sub.responsiveness_score != null ? sub.responsiveness_score : "-"}
           />
           <Stat
             label="Last contacted"
             value={
-              <span className="text-sm">{sub.last_contacted ? timeAgo(sub.last_contacted) : "—"}</span>
+              <span className="text-sm">{sub.last_contacted ? timeAgo(sub.last_contacted) : "-"}</span>
             }
           />
         </div>
@@ -94,14 +94,14 @@ export default async function SubDetailPage({
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div>
                   <span className="label block">Email</span>
-                  <span className="text-slate-800">{sub.email ?? "—"}</span>
+                  <span className="text-slate-800">{sub.email ?? "-"}</span>
                   {sub.email_verified && (
                     <span className="badge ml-2 bg-pursue/15 text-pursue">Verified</span>
                   )}
                 </div>
                 <div>
                   <span className="label block">Phone</span>
-                  <span className="text-slate-800">{sub.phone ?? "—"}</span>
+                  <span className="text-slate-800">{sub.phone ?? "-"}</span>
                 </div>
                 <div>
                   <span className="label block">Website</span>
@@ -115,12 +115,12 @@ export default async function SubDetailPage({
                       {sub.website}
                     </a>
                   ) : (
-                    <span className="text-slate-800">—</span>
+                    <span className="text-slate-800">-</span>
                   )}
                 </div>
                 <div>
                   <span className="label block">License status</span>
-                  <span className="text-slate-800">{sub.license_status ?? "—"}</span>
+                  <span className="text-slate-800">{sub.license_status ?? "-"}</span>
                 </div>
                 <div>
                   <span className="label block">SAM exclusion</span>
@@ -139,7 +139,7 @@ export default async function SubDetailPage({
                       </span>
                     ))}
                     {(sub.trade_categories?.length ?? 0) === 0 && (
-                      <span className="text-slate-500">—</span>
+                      <span className="text-slate-500">-</span>
                     )}
                   </div>
                 </div>
@@ -252,7 +252,7 @@ export default async function SubDetailPage({
                       const amt = q.quote_amount;
                       return (
                         <tr key={s(q.id) ?? i} className="border-t border-border">
-                          <td className="td">{s(q.opportunity_title) ?? "—"}</td>
+                          <td className="td">{s(q.opportunity_title) ?? "-"}</td>
                           <td className="td num">
                             {typeof amt === "number" ? currency(amt) : currency(Number(amt) || null)}
                           </td>

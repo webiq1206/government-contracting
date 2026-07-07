@@ -1,5 +1,5 @@
 /**
- * COMPLIANCE AUDITOR — an independent, adversarial review of an assembled bid
+ * COMPLIANCE AUDITOR, an independent, adversarial review of an assembled bid
  * package. It re-reads the actual solicitation text and, acting as a strict
  * contracting-officer's reviewer, hunts for every way the package could be
  * rejected as non-responsive: requirements the matrix missed, required agency
@@ -8,7 +8,7 @@
  * Findings with severity "blocker" gate submission (combined with the
  * deterministic validation). Fully resilient: if Claude is unavailable or
  * errors, the bid is marked audit_status='skipped' and left submittable via the
- * normal validation gate — the auditor only ever ADDS scrutiny.
+ * normal validation gate, the auditor only ever ADDS scrutiny.
  */
 import { z } from "zod";
 import { query, queryOne } from "../db";
@@ -16,6 +16,7 @@ import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { config } from "../config";
 import { logAgent } from "../logger";
+import { noEmDash } from "../sanitize";
 import { computeReady } from "../domain/package";
 import type { AgentDefinition } from "./types";
 import type {
@@ -56,7 +57,7 @@ function buildAuditPrompt(
       (r) =>
         `- [${r.status}] ${r.title} (${r.category}${r.official_form ? `, official_form: ${r.official_form}` : ""}${
           r.mandatory ? ", mandatory" : ", optional"
-        }) — satisfied_by ${r.satisfied_by}`
+        }), satisfied_by ${r.satisfied_by}`
     )
     .join("\n");
 
@@ -68,21 +69,21 @@ function buildAuditPrompt(
     "WHAT THE PLATFORM AUTO-GENERATES (drafts, NOT official agency forms): a cover/transmittal letter, an itemized pricing schedule, a prefilled reps & certifications DATA SHEET (not the official form), a capability statement. It CANNOT reproduce official government forms (SF-1449, SF-33, agency worksheets) or apply signatures.",
     "",
     "Find and report:",
-    "1. missing_requirement — anything the solicitation REQUIRES for a responsive offer that is absent from the matrix/package.",
-    "2. official_form — any place a SPECIFIC agency form/worksheet is required but the matrix relies on a generated draft instead.",
-    "3. format — page limits, font/size, number of copies, required file types, labeling, or portal/mechanics rules that could cause rejection.",
-    "4. signature — required signatures or attestations not yet satisfied.",
-    "5. content — a required document that is present but likely incomplete or non-compliant.",
+    "1. missing_requirement, anything the solicitation REQUIRES for a responsive offer that is absent from the matrix/package.",
+    "2. official_form, any place a SPECIFIC agency form/worksheet is required but the matrix relies on a generated draft instead.",
+    "3. format, page limits, font/size, number of copies, required file types, labeling, or portal/mechanics rules that could cause rejection.",
+    "4. signature, required signatures or attestations not yet satisfied.",
+    "5. content, a required document that is present but likely incomplete or non-compliant.",
     "Assign severity: blocker (would likely make the bid non-responsive), warning (real risk, review), info (minor).",
     "Do NOT invent requirements that are not supported by the solicitation text. If the text is silent on submission contents, say so as an info finding rather than guessing.",
     "",
-    `OPPORTUNITY: ${opp.title ?? ""} — ${opp.agency ?? ""} — ${opp.solicitation_number ?? ""}`,
+    `OPPORTUNITY: ${opp.title ?? ""}, ${opp.agency ?? ""}, ${opp.solicitation_number ?? ""}`,
     `BIDDER: ${profile.legal_name} (small_business=${profile.small_business}, certs=${(profile.certifications ?? []).join("/") || "none"}, UEI=${profile.uei ?? "MISSING"}, CAGE=${profile.cage_code ?? "MISSING"})`,
     "",
     "ASSEMBLED COMPLIANCE MATRIX / PACKAGE:",
     matrixLines || "(empty)",
     "",
-    "SOLICITATION TEXT (authoritative — read carefully):",
+    "SOLICITATION TEXT (authoritative, read carefully):",
     solicitationText.slice(0, 90_000),
     "",
     'Return JSON: { "findings": [{ "severity", "category", "finding", "recommendation", "requirement_id"? }], "overall": string }. requirement_id should reference a matrix item id when the finding is about one.',
@@ -129,7 +130,7 @@ export const complianceAuditor: AgentDefinition = {
     const profile = await getProfileJson();
     const solText = opp.solicitation_text ?? "";
 
-    // Nothing to audit against — keep eligibility findings, skip the AI pass.
+    // Nothing to audit against, keep eligibility findings, skip the AI pass.
     if (!profile || solText.trim().length < 40) {
       const ready = computeReady(validation, preserved);
       await query(
@@ -149,8 +150,8 @@ export const complianceAuditor: AgentDefinition = {
         id: `af_${i + 1}`,
         severity: f.severity,
         category: f.category,
-        finding: f.finding,
-        recommendation: f.recommendation,
+        finding: noEmDash(f.finding),
+        recommendation: noEmDash(f.recommendation),
         requirement_id: f.requirement_id,
         acknowledged: false,
       }));

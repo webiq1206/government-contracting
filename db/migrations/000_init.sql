@@ -1,13 +1,13 @@
 -- ============================================================================
--- BROSTCO — Autonomous Procurement Execution Platform
--- Migration 0001 — initial schema (SYS-03 plus supporting tables)
+-- BROSTCO, Autonomous Procurement Execution Platform
+-- Migration 0001, initial schema (SYS-03 plus supporting tables)
 -- Target: PostgreSQL 15+ (Supabase). Safe to re-run (IF NOT EXISTS everywhere).
 -- ============================================================================
 
 create extension if not exists "pgcrypto";   -- gen_random_uuid()
 
 -- ---------------------------------------------------------------------------
--- company_profile — versioned single source of truth injected into every
+-- company_profile, versioned single source of truth injected into every
 -- Claude API call as system context. Only one row is "active" at a time.
 -- ---------------------------------------------------------------------------
 create table if not exists company_profile (
@@ -25,7 +25,7 @@ create unique index if not exists company_profile_version_uidx
   on company_profile (version);
 
 -- ---------------------------------------------------------------------------
--- scoring_weights — versioned 100-point rubric weights. Learning Loop proposes
+-- scoring_weights, versioned 100-point rubric weights. Learning Loop proposes
 -- new versions (proposed_at set, approved_at null); operator approves to apply.
 -- ---------------------------------------------------------------------------
 create table if not exists scoring_weights (
@@ -44,7 +44,7 @@ create unique index if not exists scoring_weights_active_uidx
   on scoring_weights (is_active) where is_active;
 
 -- ---------------------------------------------------------------------------
--- opportunities — the core pipeline record (SYS-03).
+-- opportunities, the core pipeline record (SYS-03).
 -- ---------------------------------------------------------------------------
 create table if not exists opportunities (
   id                     uuid primary key default gen_random_uuid(),
@@ -89,7 +89,7 @@ create index if not exists opportunities_naics_idx    on opportunities (naics_co
 create index if not exists opportunities_ss_idx       on opportunities (is_sources_sought) where is_sources_sought;
 
 -- ---------------------------------------------------------------------------
--- subcontractors — the sub database (SYS-03).
+-- subcontractors, the sub database (SYS-03).
 -- ---------------------------------------------------------------------------
 create table if not exists subcontractors (
   id                   uuid primary key default gen_random_uuid(),
@@ -129,7 +129,7 @@ create index if not exists subcontractors_trades_idx on subcontractors using gin
 create index if not exists subcontractors_naics_idx  on subcontractors using gin (naics_codes);
 
 -- ---------------------------------------------------------------------------
--- opportunity_subs — join: which subs are candidates for which opportunity,
+-- opportunity_subs, join: which subs are candidates for which opportunity,
 -- per trade, with verification + outreach state.
 -- ---------------------------------------------------------------------------
 create table if not exists opportunity_subs (
@@ -149,7 +149,7 @@ create index if not exists opportunity_subs_opp_idx on opportunity_subs (opportu
 create index if not exists opportunity_subs_sub_idx on opportunity_subs (subcontractor_id);
 
 -- ---------------------------------------------------------------------------
--- quotes — written sub quotes entered by the operator after calls.
+-- quotes, written sub quotes entered by the operator after calls.
 -- ---------------------------------------------------------------------------
 create table if not exists quotes (
   id                uuid primary key default gen_random_uuid(),
@@ -166,7 +166,7 @@ create table if not exists quotes (
 create index if not exists quotes_opp_idx on quotes (opportunity_id);
 
 -- ---------------------------------------------------------------------------
--- pricing_comps — USASpending historical awards, CPI inflation-adjusted.
+-- pricing_comps, USASpending historical awards, CPI inflation-adjusted.
 -- ---------------------------------------------------------------------------
 create table if not exists pricing_comps (
   id                uuid primary key default gen_random_uuid(),
@@ -185,7 +185,7 @@ create table if not exists pricing_comps (
 create index if not exists pricing_comps_opp_idx on pricing_comps (opportunity_id);
 
 -- ---------------------------------------------------------------------------
--- bids — the assembled bid record (SYS-03).
+-- bids, the assembled bid record (SYS-03).
 -- ---------------------------------------------------------------------------
 create table if not exists bids (
   id                uuid primary key default gen_random_uuid(),
@@ -211,7 +211,7 @@ create index if not exists bids_opp_idx     on bids (opportunity_id);
 create index if not exists bids_outcome_idx on bids (outcome);
 
 -- ---------------------------------------------------------------------------
--- contracts — won contracts (SYS-03) with pass-through defense logging.
+-- contracts, won contracts (SYS-03) with pass-through defense logging.
 -- ---------------------------------------------------------------------------
 create table if not exists contracts (
   id                uuid primary key default gen_random_uuid(),
@@ -236,7 +236,7 @@ create table if not exists contracts (
 create index if not exists contracts_status_idx on contracts (status);
 
 -- ---------------------------------------------------------------------------
--- communications — every outreach/reply, with open/click tracking.
+-- communications, every outreach/reply, with open/click tracking.
 -- ---------------------------------------------------------------------------
 create table if not exists communications (
   id                uuid primary key default gen_random_uuid(),
@@ -263,7 +263,7 @@ create index if not exists communications_followup_idx on communications (follow
   where follow_up_at is not null and replied_at is null;
 
 -- ---------------------------------------------------------------------------
--- documents — generated + downloaded files (templates, bids, cap statements).
+-- documents, generated + downloaded files (templates, bids, cap statements).
 -- ---------------------------------------------------------------------------
 create table if not exists documents (
   id                uuid primary key default gen_random_uuid(),
@@ -281,7 +281,7 @@ create table if not exists documents (
 create index if not exists documents_opp_idx on documents (opportunity_id);
 
 -- ---------------------------------------------------------------------------
--- templates — outreach/response templates with version history.
+-- templates, outreach/response templates with version history.
 -- ---------------------------------------------------------------------------
 create table if not exists templates (
   id          uuid primary key default gen_random_uuid(),
@@ -296,7 +296,7 @@ create table if not exists templates (
 );
 
 -- ---------------------------------------------------------------------------
--- compliance_items — tracked deadlines (SYS-08). Compliance Monitor updates.
+-- compliance_items, tracked deadlines (SYS-08). Compliance Monitor updates.
 -- ---------------------------------------------------------------------------
 create table if not exists compliance_items (
   id             uuid primary key default gen_random_uuid(),
@@ -315,7 +315,7 @@ create index if not exists compliance_items_due_idx on compliance_items (due_at)
 create index if not exists compliance_items_cat_idx on compliance_items (category);
 
 -- ---------------------------------------------------------------------------
--- agent_logs — every agent action with full reasoning (architecture principle).
+-- agent_logs, every agent action with full reasoning (architecture principle).
 -- ---------------------------------------------------------------------------
 create table if not exists agent_logs (
   id             uuid primary key default gen_random_uuid(),
@@ -327,7 +327,7 @@ create table if not exists agent_logs (
   level          text not null default 'info',-- info | warn | error | success
   status         text not null default 'ok',  -- ok | error | skipped
   message        text,
-  reasoning      text,                        -- the "why" — model or rule rationale
+  reasoning      text,                        -- the "why", model or rule rationale
   input_json     jsonb,
   output_json    jsonb,
   duration_ms    integer,
@@ -339,7 +339,7 @@ create index if not exists agent_logs_opp_idx   on agent_logs (opportunity_id);
 create index if not exists agent_logs_time_idx  on agent_logs (created_at desc);
 
 -- ---------------------------------------------------------------------------
--- call_cards — pre-built one-screen call cards for the Call Queue (Call Prep).
+-- call_cards, pre-built one-screen call cards for the Call Queue (Call Prep).
 -- ---------------------------------------------------------------------------
 create table if not exists call_cards (
   id                uuid primary key default gen_random_uuid(),
@@ -358,7 +358,7 @@ create table if not exists call_cards (
 create index if not exists call_cards_status_idx on call_cards (status);
 
 -- ---------------------------------------------------------------------------
--- users — operator auth (Phase 1 single-user; extensible to multi-user).
+-- users, operator auth (Phase 1 single-user; extensible to multi-user).
 -- ---------------------------------------------------------------------------
 create table if not exists users (
   id            uuid primary key default gen_random_uuid(),
@@ -370,7 +370,7 @@ create table if not exists users (
 );
 
 -- ---------------------------------------------------------------------------
--- sessions — server-side session store for cookie auth.
+-- sessions, server-side session store for cookie auth.
 -- ---------------------------------------------------------------------------
 create table if not exists sessions (
   id         text primary key,                -- random token (also the cookie value)
@@ -381,7 +381,7 @@ create table if not exists sessions (
 create index if not exists sessions_user_idx on sessions (user_id);
 
 -- ---------------------------------------------------------------------------
--- integration_tokens — OAuth tokens (Gmail) + scraper state, encrypted at rest
+-- integration_tokens, OAuth tokens (Gmail) + scraper state, encrypted at rest
 -- by the app layer. Single-row-per-provider.
 -- ---------------------------------------------------------------------------
 create table if not exists integration_tokens (
@@ -391,7 +391,7 @@ create table if not exists integration_tokens (
 );
 
 -- ---------------------------------------------------------------------------
--- job_runs — lightweight audit of cron/queue runs for the Agents dashboard.
+-- job_runs, lightweight audit of cron/queue runs for the Agents dashboard.
 -- ---------------------------------------------------------------------------
 create table if not exists job_runs (
   id          uuid primary key default gen_random_uuid(),

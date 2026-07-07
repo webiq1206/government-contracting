@@ -3,7 +3,7 @@
  *
  * If OPERATOR_EMAIL and OPERATOR_PASSWORD are set (Replit Secrets), the worker
  * ensures at boot that an operator with that email exists and that its
- * password matches — creating the account or updating the hash as needed.
+ * password matches, creating the account or updating the hash as needed.
  *
  * This is how the owner's login is provisioned WITHOUT any password ever
  * being committed to the repo or typed by anyone but the owner: the secret

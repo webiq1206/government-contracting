@@ -1,7 +1,7 @@
 /**
  * State / local procurement scrapers. Most state contractor and procurement
  * portals have no public API, so we scrape them with Playwright (headless
- * Chromium). Each state is a SEPARATE module — a broken scraper never blocks
+ * Chromium). Each state is a SEPARATE module, a broken scraper never blocks
  * the others (each is wrapped in its own try/catch here).
  *
  * Scrapers are OFF by default (ENABLE_SCRAPERS=false) because they need browser

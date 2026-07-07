@@ -1,5 +1,5 @@
 /**
- * Pluggable job queue. Default backend is pg-boss (Postgres-backed — no Redis,
+ * Pluggable job queue. Default backend is pg-boss (Postgres-backed, no Redis,
  * runs on Replit out of the box). If REDIS_URL is set, BullMQ is used instead.
  *
  * The interface is intentionally tiny: enqueue a job by agent name, and register
@@ -14,7 +14,7 @@ export type JobHandler = (payload: JobPayload) => Promise<void>;
 export interface EnqueueOptions {
   startAfterSeconds?: number;
   singletonKey?: string; // dedupe: at most one active job with this key
-  singletonSeconds?: number; // dedupe window (pg-boss) — hold the key this long
+  singletonSeconds?: number; // dedupe window (pg-boss), hold the key this long
   priority?: number;
 }
 

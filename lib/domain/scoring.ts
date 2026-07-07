@@ -1,5 +1,5 @@
 /**
- * Scoring domain logic — pure and deterministic (unit-tested). The Scoring
+ * Scoring domain logic, pure and deterministic (unit-tested). The Scoring
  * Engine agent uses these to (1) check hard exclusions FIRST, (2) tier a total
  * score. The per-dimension point judgement is produced by Claude against the
  * rubric; the arithmetic and thresholds live here.
@@ -37,7 +37,7 @@ export function clamp(n: number, lo: number, hi: number): number {
 }
 
 /**
- * Deterministic hard-exclusion (auto-dismiss) checks — Company Profile §7.
+ * Deterministic hard-exclusion (auto-dismiss) checks, Company Profile §7.
  * Returns the list of triggered exclusion keys. Any hit means auto-dismiss
  * regardless of dimension scores. Free-text rules are additionally evaluated by
  * Claude. Note: "NAICS not in active list", "construction >$150K w/o past perf",
@@ -107,7 +107,7 @@ export function checkHardExclusions(
 
   // Deadline too soon (< min days) OR already past: insufficient time for sub
   // research + quotes. A past deadline (days < 0) is the most insufficient case,
-  // so it must trigger too — not be skipped.
+  // so it must trigger too, not be skipped.
   const minDays = t.deadline_min_days ?? 7;
   if (opp.deadline) {
     const days = (new Date(opp.deadline).getTime() - now.getTime()) / 86_400_000;
@@ -126,7 +126,7 @@ function normalizeCert(c: string): string {
  * Iterating the rubric (not the model output) guarantees every dimension is
  * represented, so a dimension the model omits can never silently drop points
  * from the total. Returns the reconciled dimensions plus the rubric keys the
- * model failed to score — the caller should route an incomplete scoring to human
+ * model failed to score, the caller should route an incomplete scoring to human
  * review rather than trusting a partial total for auto-pursue/auto-dismiss.
  */
 export function reconcileDimensions(
@@ -143,7 +143,7 @@ export function reconcileDimensions(
       label: rd.label,
       points: s ? clamp(Math.round(s.points), 0, rd.max_points) : 0,
       max_points: rd.max_points,
-      reasoning: s?.reasoning ?? "Not scored by the model — treated as 0, flagged for review.",
+      reasoning: s?.reasoning ?? "Not scored by the model, treated as 0, flagged for review.",
     };
   });
   return { dims, missingKeys };
@@ -186,7 +186,7 @@ export function applyWeightOverrides<
 
 /**
  * Non-dismiss "flag for review" checks (Company Profile). Unlike hard exclusions
- * these do NOT zero the score — they force an otherwise-pursue opportunity into
+ * these do NOT zero the score, they force an otherwise-pursue opportunity into
  * human review instead of unconditional auto-pursue. Currently: contract value
  * above value_max (the company is too new to self-approve a contract this large).
  */

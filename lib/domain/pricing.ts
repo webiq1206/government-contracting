@@ -1,5 +1,5 @@
 /**
- * Pricing domain logic — pure and deterministic (unit-tested). Bid math,
+ * Pricing domain logic, pure and deterministic (unit-tested). Bid math,
  * margin/markup conversions, CPI inflation adjustment, and out-of-range
  * detection against historical comps.
  */

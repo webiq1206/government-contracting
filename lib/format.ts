@@ -1,7 +1,7 @@
 /** Small formatting helpers shared across dashboard views. */
 
 export function currency(n: number | null | undefined): string {
-  if (n == null) return "—";
+  if (n == null) return "-";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -10,7 +10,7 @@ export function currency(n: number | null | undefined): string {
 }
 
 export function currencyCents(n: number | null | undefined): string {
-  if (n == null) return "—";
+  if (n == null) return "-";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
@@ -19,15 +19,15 @@ export function currencyCents(n: number | null | undefined): string {
 }
 
 export function pct(n: number | null | undefined): string {
-  if (n == null) return "—";
+  if (n == null) return "-";
   return `${Math.round(n)}%`;
 }
 
 /** Human countdown to a deadline, e.g. "3d 4h", "12h", "overdue". */
 export function countdown(deadline: string | null | undefined, now: Date = new Date()): string {
-  if (!deadline) return "—";
+  if (!deadline) return "-";
   const ms = new Date(deadline).getTime() - now.getTime();
-  if (Number.isNaN(ms)) return "—";
+  if (Number.isNaN(ms)) return "-";
   if (ms <= 0) return "overdue";
   const days = Math.floor(ms / 86_400_000);
   const hours = Math.floor((ms % 86_400_000) / 3_600_000);
@@ -37,7 +37,7 @@ export function countdown(deadline: string | null | undefined, now: Date = new D
 }
 
 export function timeAgo(ts: string | null | undefined, now: Date = new Date()): string {
-  if (!ts) return "—";
+  if (!ts) return "-";
   const ms = now.getTime() - new Date(ts).getTime();
   const mins = Math.floor(ms / 60_000);
   if (mins < 1) return "just now";
@@ -49,9 +49,9 @@ export function timeAgo(ts: string | null | undefined, now: Date = new Date()): 
 }
 
 export function shortDate(ts: string | null | undefined): string {
-  if (!ts) return "—";
+  if (!ts) return "-";
   const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return "—";
+  if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 

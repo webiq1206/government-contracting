@@ -14,7 +14,7 @@ import { getProfileSystemText } from "./companyProfile";
 
 export class ClaudeNotConfiguredError extends Error {
   constructor() {
-    super("ANTHROPIC_API_KEY is not set — Claude-dependent step skipped.");
+    super("ANTHROPIC_API_KEY is not set, Claude-dependent step skipped.");
     this.name = "ClaudeNotConfiguredError";
   }
 }
@@ -82,7 +82,7 @@ export async function complete(
   } else if (!/fable/.test(model)) {
     // These models default to adaptive thinking, which would eat into max_tokens
     // and can truncate the (usually JSON) response. Disable it so the full budget
-    // goes to the answer. (Fable rejects an explicit "disabled" — omit there.)
+    // goes to the answer. (Fable rejects an explicit "disabled", omit there.)
     body.thinking = { type: "disabled" };
   }
 
@@ -140,7 +140,7 @@ export async function completeJson<T = unknown>(
       };
     } catch (err) {
       lastErr = err;
-      // If the response was cut off at the token ceiling, the JSON is truncated —
+      // If the response was cut off at the token ceiling, the JSON is truncated,
       // retrying at the SAME budget just truncates again. Bump the budget instead
       // (capped) so the retry has room to finish the object.
       if (stopReason === "max_tokens") {

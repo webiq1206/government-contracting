@@ -79,7 +79,7 @@ export default async function PipelinePage() {
                     </Link>
                   ))}
                   {cards.length === 0 && (
-                    <p className="px-1 py-4 text-center text-xs text-slate-400">—</p>
+                    <p className="px-1 py-4 text-center text-xs text-slate-400">-</p>
                   )}
                 </div>
               </div>
@@ -93,7 +93,7 @@ export default async function PipelinePage() {
 
 /**
  * Empty-pipeline onboarding banner. A first-time operator lands on 11 blank
- * columns with no explanation — this replaces the em-dash silence with a
+ * columns with no explanation, this replaces the em-dash silence with a
  * concrete "what to do next" tied to which integrations are missing.
  */
 function PipelineOnboarding() {

@@ -3,7 +3,7 @@
  * process.env on every access, so UI-managed integration settings (hydrated
  * into process.env by lib/integration-settings.ts) take effect without a
  * restart. Applies sane defaults,
- * and exposes typed helpers. Nothing here throws at import time — the platform
+ * and exposes typed helpers. Nothing here throws at import time, the platform
  * must boot even with a partially-filled .env and degrade gracefully.
  */
 import "./env";
@@ -71,10 +71,10 @@ export const config = {
 
   claude: {
     get apiKey() { return str("ANTHROPIC_API_KEY"); },
-    // Default tier — high-volume, lower-stakes agents (scoring, outreach, call
+    // Default tier, high-volume, lower-stakes agents (scoring, outreach, call
     // prep, sub-verify, digests). Fast and cheap.
     model: str("CLAUDE_MODEL", "claude-haiku-4-5"),
-    // High-stakes tier — the bid-critical path where a missed requirement or a
+    // High-stakes tier, the bid-critical path where a missed requirement or a
     // fabricated fact costs a bid: the Solicitation Analyst (bid brief) and the
     // Learning Loop (rubric-weight analysis). Stronger model.
     modelSmart: str("CLAUDE_MODEL_SMART", "claude-sonnet-5"),

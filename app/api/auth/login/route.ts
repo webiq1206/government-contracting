@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * In-memory brute-force throttle. Single-operator phase, single instance — a
+ * In-memory brute-force throttle. Single-operator phase, single instance, a
  * pg-backed counter is overkill; this stops trivial credential stuffing without
  * new infra. 10 failures per (ip+email) inside 10 minutes locks the pair out for
  * 10 minutes. A successful login clears the counter.

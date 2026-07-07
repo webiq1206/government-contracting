@@ -1,12 +1,12 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "nodejs";
-export const alt = "BROSTCO — Autonomous Procurement Execution";
+export const alt = "BROSTCO, Autonomous Procurement Execution";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 /**
- * Open Graph / social sharing image — the BROSTCO wordmark rendered as a real
+ * Open Graph / social sharing image, the BROSTCO wordmark rendered as a real
  * PNG (1200×630) on the brand's cream ground: uppercase tracked eyebrow, the
  * serif wordmark, and the forest-green accent rule. The Cormorant Garamond
  * serif is loaded when reachable; if not, it degrades to the built-in font so

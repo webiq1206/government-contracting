@@ -85,7 +85,7 @@ export async function hasAnyOperator(): Promise<boolean> {
 
 /**
  * Verify credentials. Falls back to the env operator (OPERATOR_EMAIL +
- * OPERATOR_PASSWORD_HASH) when the users table has no matching row yet — so the
+ * OPERATOR_PASSWORD_HASH) when the users table has no matching row yet, so the
  * platform is loginnable immediately after setting those two env vars.
  */
 export async function authenticate(

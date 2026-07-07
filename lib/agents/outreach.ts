@@ -1,5 +1,5 @@
 /**
- * OUTREACH — triggered when a sub clears verification.
+ * OUTREACH, triggered when a sub clears verification.
  * Renders the active outreach template (Template 1) with the opportunity, sub,
  * and profile context, sends it from the real Gmail account with open/click
  * tracking, records the communication with a 48h follow-up timestamp, and moves
@@ -121,7 +121,7 @@ export const outreach: AgentDefinition = {
           status: "skipped",
           opportunityId,
           subcontractorId,
-          message: "Gmail not connected — outreach stored as draft for manual send.",
+          message: "Gmail not connected, outreach stored as draft for manual send.",
         });
       } else if (res.error) {
         humanAction = true;
@@ -141,7 +141,7 @@ export const outreach: AgentDefinition = {
         threadId = res.threadId ?? null;
       }
     } else {
-      // No verified email — record a draft and require a human.
+      // No verified email, record a draft and require a human.
       humanAction = true;
     }
 

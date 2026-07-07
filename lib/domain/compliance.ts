@@ -1,5 +1,5 @@
 /**
- * Compliance domain logic — pure and deterministic (unit-tested). Maps a
+ * Compliance domain logic, pure and deterministic (unit-tested). Maps a
  * days-remaining figure to a status using the profile's alert cadences (SYS-08),
  * and computes the non-small-business sub spend cap state per contract.
  */

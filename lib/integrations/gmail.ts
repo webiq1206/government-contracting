@@ -1,5 +1,5 @@
 /**
- * Gmail client — all outreach sends from the real Gmail account, with reply
+ * Gmail client, all outreach sends from the real Gmail account, with reply
  * detection and open/click tracking (tracking pixel + wrapped links). OAuth 2.0
  * refresh-token flow. Tokens live in integration_tokens (or GMAIL_REFRESH_TOKEN
  * env for a headless setup). Degrades gracefully when not configured.
@@ -25,7 +25,7 @@ function oauthClient() {
 /**
  * Consent URL for the operator to authorize Gmail (offline access for refresh
  * token). Accepts an opaque `state` so the callback can verify this browser
- * initiated the flow (CSRF protection — a logged-in operator who followed an
+ * initiated the flow (CSRF protection, a logged-in operator who followed an
  * attacker-crafted callback URL would otherwise connect the attacker's Gmail).
  */
 export function getAuthUrl(state?: string): string {

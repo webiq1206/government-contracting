@@ -1,14 +1,14 @@
 -- ============================================================================
--- Migration 0002 — Row-Level Security lockdown (Supabase hardening)
+-- Migration 0002, Row-Level Security lockdown (Supabase hardening)
 --
 -- The BROSTCO server connects to Postgres via the direct DATABASE_URL role,
--- which OWNS these tables and therefore BYPASSES RLS — the app is unaffected.
+-- which OWNS these tables and therefore BYPASSES RLS, the app is unaffected.
 -- What this migration does is lock down Supabase's auto-generated PostgREST API:
 -- enabling RLS with no permissive policies means the `anon` and `authenticated`
 -- API roles can read/write NOTHING. Combined with revoking their table grants,
 -- no application table is reachable through the public Supabase REST/JS client.
 --
--- (We intentionally do NOT `FORCE` RLS — forcing it would also subject the table
+-- (We intentionally do NOT `FORCE` RLS, forcing it would also subject the table
 -- owner our server connects as, which would lock the application out.)
 --
 -- Safe on plain Postgres too: the anon/authenticated roles simply may not exist,
@@ -50,7 +50,7 @@ end $$;
 
 -- NOTE for future maintainers:
 -- The Supabase `service_role` has the BYPASSRLS attribute and is what the
--- SUPABASE_SERVICE_ROLE_KEY uses (Storage + any admin ops) — it is intentionally
+-- SUPABASE_SERVICE_ROLE_KEY uses (Storage + any admin ops), it is intentionally
 -- unrestricted and unaffected by the above. If you ever want to expose a table
 -- to the browser via PostgREST, add explicit `create policy ...` statements here
 -- scoped to `authenticated` with an appropriate `using`/`with check` clause.

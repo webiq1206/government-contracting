@@ -71,7 +71,7 @@ export function AutomationSettings({
             <span className="text-sm text-slate-500">/ 100</span>
           </div>
           <p className="mt-1.5 text-xs text-slate-500">
-            Review band: {review}–{Math.max(score - 1, review)}. Dismiss below {review}.
+            Review band: {review}-{Math.max(score - 1, review)}. Dismiss below {review}.
           </p>
         </div>
 

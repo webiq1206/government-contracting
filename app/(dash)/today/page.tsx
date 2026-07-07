@@ -8,7 +8,7 @@ import { currency, countdown, shortDate } from "@/lib/format";
 export const dynamic = "force-dynamic";
 
 /**
- * "Today" — the guided home page. Answers one question the moment the
+ * "Today", the guided home page. Answers one question the moment the
  * operator logs in: what should I do next, and why? Everything here is a
  * deep link into the exact place the work happens, ordered by urgency.
  */

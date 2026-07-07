@@ -1,5 +1,5 @@
 /**
- * SCORING ENGINE — triggered on every new opportunity.
+ * SCORING ENGINE, triggered on every new opportunity.
  * Applies the 100-point rubric from the Company Profile. Checks hard exclusions
  * FIRST (deterministic + Claude for free-text rules). Assigns tier: pursue (>=70),
  * review (50-69), dismiss (<50). Logs the full breakdown. On pursue: triggers
@@ -59,7 +59,7 @@ export const scoringEngine: AgentDefinition = {
     const structuralExclusions = checkHardExclusions(opp, profile);
 
     // Valid exclusion keys the model may return in extra_exclusions. Anything
-    // outside this set is a hallucination and must be dropped — an unrecognized
+    // outside this set is a hallucination and must be dropped, an unrecognized
     // exclusion string would otherwise zero the score and auto-dismiss a good
     // opportunity (buildScoreBreakdown forces dismiss on ANY exclusion).
     const validExclusionKeys = new Set(profile.hard_exclusions.map((e) => e.key));
@@ -114,8 +114,8 @@ export const scoringEngine: AgentDefinition = {
         points: Math.round(d.max_points * 0.6),
         max_points: d.max_points,
         reasoning: heuristic
-          ? "Claude error — neutral heuristic score; needs human review."
-          : "Claude not configured — neutral heuristic score; needs human review.",
+          ? "Claude error, neutral heuristic score; needs human review."
+          : "Claude not configured, neutral heuristic score; needs human review.",
       }));
       summary = heuristic
         ? `Scored heuristically (Claude error: ${(err as Error).message}). Manual review recommended.`
@@ -127,7 +127,7 @@ export const scoringEngine: AgentDefinition = {
     const breakdown = buildScoreBreakdown(dims, exclusions, profile, summary);
 
     // Non-dismiss review flags (e.g. value over $350K) + incomplete scoring both
-    // downgrade an otherwise-pursue result to human review — never auto-pursue on
+    // downgrade an otherwise-pursue result to human review, never auto-pursue on
     // a partial score or a contract larger than the company can self-approve.
     const flags = reviewFlags(opp, profile);
     if (scoringIncomplete) flags.push("incomplete_scoring");
@@ -142,7 +142,7 @@ export const scoringEngine: AgentDefinition = {
     let status = "open";
 
     if (breakdown.tier === "pursue") {
-      // AUTO-PURSUE — unconditional above the pursue threshold (operator preference).
+      // AUTO-PURSUE, unconditional above the pursue threshold (operator preference).
       // A score >= pursue_min_score that isn't hard-excluded advances straight into
       // the pipeline (analysis -> pricing -> subs -> outreach) with NO human gate.
       // Risk conditions (high value, new NAICS, unusual clauses, prime-only) do not
@@ -233,10 +233,10 @@ function buildScoringPrompt(
     `Deadline: ${opp.deadline ?? "(unknown)"}`,
     `Description: ${(opp.description ?? "").slice(0, 2000)}`,
     "",
-    "RUBRIC DIMENSIONS (award points up to each max — you MUST return every dimension key below):",
+    "RUBRIC DIMENSIONS (award points up to each max, you MUST return every dimension key below):",
     dimLines,
     "",
-    "HARD-EXCLUSION RULES — in extra_exclusions, return ONLY keys from this exact list that this opportunity triggers (evaluate the free-text rules). Never invent a key; if none apply, use an empty array:",
+    "HARD-EXCLUSION RULES, in extra_exclusions, return ONLY keys from this exact list that this opportunity triggers (evaluate the free-text rules). Never invent a key; if none apply, use an empty array:",
     exclLines,
     "",
     "Return JSON: { dimensions: [{ key, points, reasoning }], extra_exclusions: string[], summary: string }. Include ALL rubric dimension keys. Points must be integers within each dimension's max. The summary is 1-2 sentences on why this scored as it did.",

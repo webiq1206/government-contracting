@@ -1,7 +1,7 @@
 /**
  * Agent runner. Wraps every agent execution with: a job_runs audit row, an
  * agent_logs entry (success or error), downstream job enqueueing, and total
- * isolation — a thrown error is logged and swallowed so it never cascades.
+ * isolation, a thrown error is logged and swallowed so it never cascades.
  */
 import { randomUUID } from "node:crypto";
 import { query, queryOne } from "../db";

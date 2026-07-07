@@ -1,5 +1,5 @@
 /**
- * Texas — Electronic State Business Daily (ESBD) scraper. Reference
+ * Texas, Electronic State Business Daily (ESBD) scraper. Reference
  * implementation of a dedicated state scraper with real navigation. ESBD lists
  * open solicitations at https://www.txsmartbuy.gov/esbd. This extracts the
  * listing table rows and normalizes them.

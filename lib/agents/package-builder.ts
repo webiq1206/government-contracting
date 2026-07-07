@@ -12,7 +12,7 @@ import type { CompanyProfileJson, Opportunity, ResolvedRequirement } from "../ty
 
 const STATUS_LABEL: Record<ResolvedRequirement["status"], string> = {
   satisfied: "Included",
-  needs_signature: "Prefilled — needs signature",
+  needs_signature: "Prefilled, needs signature",
   needs_operator: "You must provide this",
   missing: "Missing",
 };

@@ -133,7 +133,7 @@ export async function POST(
         [subcontractor_id, appendedNote]
       );
 
-      // 4) Upsert a quote if a price was captured — Bid Builder reads from here.
+      // 4) Upsert a quote if a price was captured, Bid Builder reads from here.
       let quoteRowId: string | null = null;
       if (quoteAmountNum != null) {
         const existing = (

@@ -75,7 +75,7 @@ export async function transaction<T>(
   }
 }
 
-/** True if the DB is reachable — used by health checks and boot gating. */
+/** True if the DB is reachable, used by health checks and boot gating. */
 export async function dbHealthy(): Promise<boolean> {
   try {
     await query("select 1");

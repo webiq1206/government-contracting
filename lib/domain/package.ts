@@ -1,5 +1,5 @@
 /**
- * Submission-package domain logic — pure and unit-tested. Given the extracted
+ * Submission-package domain logic, pure and unit-tested. Given the extracted
  * compliance matrix, the company profile, and which documents the platform
  * generates, it resolves each requirement to a status + artifact, assembles an
  * ordered manifest, and validates the package before submission.
@@ -29,7 +29,7 @@ export interface ResolveContext {
   confirmed: Set<string>;
   /** True when a past-performance / technical narrative was generated. */
   hasNarrative: boolean;
-  /** Key company identifiers present (UEI/CAGE) — affects reps&certs warnings. */
+  /** Key company identifiers present (UEI/CAGE), affects reps&certs warnings. */
   hasIdentifiers: boolean;
 }
 
@@ -63,7 +63,7 @@ export function resolveRequirements(
         artifact_kind: artifactFor(req) || undefined,
       };
     }
-    // A required SPECIFIC agency form cannot be reproduced exactly — the
+    // A required SPECIFIC agency form cannot be reproduced exactly, the
     // operator must complete the official form. Any generated document is only
     // a worksheet. This is always the operator's item until confirmed.
     if (req.official_form) {
@@ -73,7 +73,7 @@ export function resolveRequirements(
         artifact_kind: artifactFor(req) || undefined,
         note: `Use the official ${req.official_form}${
           req.signature_required ? " and sign it" : ""
-        } from the solicitation — the generated draft is a worksheet only.`,
+        } from the solicitation, the generated draft is a worksheet only.`,
       };
     }
     switch (req.satisfied_by) {
@@ -85,7 +85,7 @@ export function resolveRequirements(
           ...req,
           status: "needs_signature",
           artifact_kind: artifactFor(req) || undefined,
-          note: "Prefilled — review and sign, then mark complete.",
+          note: "Prefilled, review and sign, then mark complete.",
         };
       case "operator_provided":
       default:
@@ -202,7 +202,7 @@ export function validatePackage(input: ValidationInput): PackageValidation {
     blockers.push("Bid price is not set. Enter subcontractor quotes so the bid can be priced.");
   }
   if (!input.pricingReconciles) {
-    warnings.push("Pricing total does not reconcile with the line items — review the numbers.");
+    warnings.push("Pricing total does not reconcile with the line items, review the numbers.");
   }
   if (!input.hasIdentifiers) {
     warnings.push(

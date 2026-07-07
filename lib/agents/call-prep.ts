@@ -1,5 +1,5 @@
 /**
- * CALL PREP — triggered when a sub replies to outreach.
+ * CALL PREP, triggered when a sub replies to outreach.
  * Assembles a one-screen call card for the operator: everything worth knowing
  * about the sub, plus a Claude-generated call script and question list tailored
  * to the draft SOW. A project-history collection question is always appended
@@ -118,7 +118,7 @@ export const callPrep: AgentDefinition = {
         status: "skipped",
         opportunityId,
         subcontractorId,
-        message: "Claude not configured — using a generic call script.",
+        message: "Claude not configured, using a generic call script.",
       });
     }
 
@@ -163,7 +163,7 @@ export const callPrep: AgentDefinition = {
       ok: true,
       summary: `Call card ready for ${sub.company_name} on "${
         opp.title ?? "opportunity"
-      }" — ${questionList.length} questions${
+      }", ${questionList.length} questions${
         needsProjectHistory ? " (incl. project-history collection)" : ""
       }. Queued for the operator.`,
       reasoning: `Built one-screen card + ${questionList.length}-question list tailored to the draft SOW; opportunity moved to call_queue and flagged for human action.`,
@@ -196,6 +196,6 @@ function buildCallPrompt(
     "PRE-DRAFTED QUESTIONS FOR SUBS (incorporate the relevant ones):",
     (analysis?.questions_for_subs ?? []).map((q) => `- ${q}`).join("\n") || "(none)",
     "",
-    "Return JSON: { call_script: string, question_list: string[] }. The call_script is a natural 4-6 sentence opener the estimator can read. The question_list is the specific things to confirm on this call (availability, pricing basis, scope clarifications). Do not include a project-history question — that is appended separately.",
+    "Return JSON: { call_script: string, question_list: string[] }. The call_script is a natural 4-6 sentence opener the estimator can read. The question_list is the specific things to confirm on this call (availability, pricing basis, scope clarifications). Do not include a project-history question, that is appended separately.",
   ].join("\n");
 }

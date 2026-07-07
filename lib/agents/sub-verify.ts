@@ -1,8 +1,8 @@
 /**
- * SUB VERIFY — triggered per candidate by Sub Finder.
+ * SUB VERIFY, triggered per candidate by Sub Finder.
  * Enriches and vets a single subcontractor: finds + verifies a contact email
  * (Hunter), fills in a missing phone (Google Place Details), records license
- * status (no state-license API exists yet — kept 'unknown' with a note that the
+ * status (no state-license API exists yet, kept 'unknown' with a note that the
  * state scraper still owes this), checks SAM exclusions, and summarizes Google
  * reviews with Claude. Findings are written back to the subcontractors row and
  * the opportunity_subs verification record. Subs that clear our standards are
@@ -78,7 +78,7 @@ export const subVerify: AgentDefinition = {
     if (domain) {
       const ds = await hunter.domainSearch(domain);
       if (ds.disabled) {
-        notes.push("Hunter disabled — email not discovered.");
+        notes.push("Hunter disabled, email not discovered.");
       } else {
         const best = pickBestEmail(ds.emails);
         if (best) {
@@ -90,10 +90,10 @@ export const subVerify: AgentDefinition = {
         }
       }
     } else {
-      // No website domain — try to guess from the company name.
+      // No website domain, try to guess from the company name.
       const fe = await hunter.findEmail({ company: sub.company_name, domain: "" });
       if (fe.disabled) {
-        notes.push("Hunter disabled — email not discovered.");
+        notes.push("Hunter disabled, email not discovered.");
       } else if (fe.email) {
         email = fe.email;
         const v = await hunter.verifyEmail(fe.email);
@@ -115,14 +115,14 @@ export const subVerify: AgentDefinition = {
     // --- License status: no state-license API yet ---
     const licenseStatus = sub.license_status ?? "unknown";
     if (licenseStatus === "unknown") {
-      notes.push("License status unverified — needs the state license-board scraper.");
+      notes.push("License status unverified, needs the state license-board scraper.");
     }
     verification.license_status = licenseStatus;
 
     // --- SAM exclusions ---
     let samExcluded = sub.sam_excluded ?? false;
     // True only when the exclusion status is actually CONFIRMED this run. An
-    // API error must not let an unchecked sub through to outreach — that's a
+    // API error must not let an unchecked sub through to outreach, that's a
     // debarment false negative. (Column is NOT NULL default false, so the
     // stored value alone can't distinguish "checked clear" from "never checked".)
     let samConfirmed = false;
@@ -132,7 +132,7 @@ export const subVerify: AgentDefinition = {
       samConfirmed = true; // operator explicitly runs without SAM checks
     } else if (excl.error) {
       notes.push(
-        "SAM exclusions check errored — status unverified. Outreach held until the next verify run confirms."
+        "SAM exclusions check errored, status unverified. Outreach held until the next verify run confirms."
       );
     } else {
       samExcluded = excl.excluded;
@@ -152,13 +152,13 @@ export const subVerify: AgentDefinition = {
         reviewsSummary = text.trim();
       } catch (err) {
         if (!(err instanceof ClaudeNotConfiguredError)) throw err;
-        notes.push("Claude not configured — reviews summary skipped.");
+        notes.push("Claude not configured, reviews summary skipped.");
       }
     }
 
     // --- BBB: no API ---
     const bbbSummary: string | null = sub.bbb_summary ?? null;
-    notes.push("BBB rating unavailable — no BBB API.");
+    notes.push("BBB rating unavailable, no BBB API.");
 
     // --- Persist findings to the subcontractor row ---
     await query(

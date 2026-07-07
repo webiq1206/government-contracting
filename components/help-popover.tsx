@@ -3,7 +3,7 @@
 /**
  * The small "?" next to each page title. Opens a compact popover with a few
  * bullets: what this page is for, what to do here, and what runs on its own.
- * Deliberately short — the full journey lives at /how-it-works.
+ * Deliberately short, the full journey lives at /how-it-works.
  */
 
 import Link from "next/link";

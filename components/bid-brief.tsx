@@ -13,7 +13,7 @@ const NA = "Not specified in the provided documents";
 const has = (s?: string | null) => Boolean(s && s.trim() && s !== NA);
 
 /**
- * The Bid Brief — a complete, plain-English summary of a solicitation so the
+ * The Bid Brief, a complete, plain-English summary of a solicitation so the
  * operator can decide to pursue in a couple of minutes, with the full original
  * documents one click away. Renders defensively: sections with no content are
  * skipped, and anything the analyst couldn't find shows "Not specified".

@@ -1,8 +1,8 @@
 /**
- * Company Profile — persistent system context. Loaded from the company_profile
+ * Company Profile, persistent system context. Loaded from the company_profile
  * table (single active, versioned row) and injected as the system prompt into
  * every Claude API call. "When updated, all agents immediately operate from the
- * new version" — so we cache with a short TTL and bust the cache on write.
+ * new version", so we cache with a short TTL and bust the cache on write.
  */
 import { queryOne, query } from "../db";
 import type { CompanyProfile, CompanyProfileJson } from "../types";
@@ -75,7 +75,7 @@ export async function publishProfile(
  */
 export function renderProfileText(p: CompanyProfileJson): string {
   const lines: string[] = [];
-  lines.push(`# ${p.legal_name}${p.dba ? ` (DBA ${p.dba})` : ""} — Company Profile`);
+  lines.push(`# ${p.legal_name}${p.dba ? ` (DBA ${p.dba})` : ""}, Company Profile`);
   lines.push("");
   lines.push("You are an autonomous procurement agent operating on behalf of this company. Use this profile as authoritative context for every decision: who we are, what work we pursue, how to score opportunities, how to price bids, which subcontractors meet our standards, and every decision threshold. When a rule here conflicts with a general instinct, follow the rule.");
   lines.push("");
@@ -84,7 +84,7 @@ export function renderProfileText(p: CompanyProfileJson): string {
   if (p.business_structure) lines.push(`- Structure: ${p.business_structure}`);
   if (p.owner_name) lines.push(`- Owner / authorized signer: ${p.owner_name}${p.owner_title ? ` (${p.owner_title})` : ""}`);
   if (p.uei) lines.push(`- UEI: ${p.uei}`);
-  else lines.push("- UEI: not yet assigned (SAM.gov registration pending) — block bid submission until active.");
+  else lines.push("- UEI: not yet assigned (SAM.gov registration pending), block bid submission until active.");
   if (p.cage_code) lines.push(`- CAGE: ${p.cage_code}`);
   if (p.ein) lines.push(`- EIN: ${p.ein}`);
   if (p.entity_state) lines.push(`- State of formation: ${p.entity_state}`);
@@ -92,7 +92,7 @@ export function renderProfileText(p: CompanyProfileJson): string {
   if (p.phone) lines.push(`- Phone: ${p.phone}`);
   if (p.outreach_email) lines.push(`- Outreach email (ALL sub outreach must originate here): ${p.outreach_email}`);
   lines.push(`- Small business: ${p.small_business ? "yes" : "no"}`);
-  if (p.business_model) lines.push(`- Business model: ${p.business_model} — we win contracts and fulfill them through vetted local subcontractors; we do not self-perform.`);
+  if (p.business_model) lines.push(`- Business model: ${p.business_model}, we win contracts and fulfill them through vetted local subcontractors; we do not self-perform.`);
   if (p.certifications?.length) lines.push(`- Certifications: ${p.certifications.join(", ")}`);
   lines.push("");
   lines.push("## What we pursue");
@@ -103,7 +103,7 @@ export function renderProfileText(p: CompanyProfileJson): string {
   lines.push(`- Service areas: ${p.service_areas.join(", ")}`);
   const dt = p.decision_thresholds;
   if (dt.value_min || dt.value_max) {
-    lines.push(`- Target contract value: $${(dt.value_min ?? 0).toLocaleString()}–$${(dt.value_max ?? 0).toLocaleString()}. Below minimum: auto-dismiss. Above maximum: flag for review (only after 3+ contracts won).`);
+    lines.push(`- Target contract value: $${(dt.value_min ?? 0).toLocaleString()}-$${(dt.value_max ?? 0).toLocaleString()}. Below minimum: auto-dismiss. Above maximum: flag for review (only after 3+ contracts won).`);
   }
   lines.push("- Highest priority: multi-year and IDIQ vehicles. Small Business set-asides preferred over unrestricted.");
   lines.push("");
@@ -111,12 +111,12 @@ export function renderProfileText(p: CompanyProfileJson): string {
   if (p.pricing_philosophy) lines.push(p.pricing_philosophy);
   lines.push(`- Target margin: ${p.target_margin_pct}%; minimum floor: ${p.min_margin_pct}%.`);
   lines.push(`- Margin scenarios to model: ${p.pricing_rules.margin_scenarios.map((m) => `${m}%`).join(", ")}. Gross margin = (bid − sub quote) / bid, computed on total value including all option years.`);
-  lines.push(`- Never estimate sub cost — always use an actual written quote (the cost floor). Collect quotes from at least 2 subs.`);
+  lines.push(`- Never estimate sub cost, always use an actual written quote (the cost floor). Collect quotes from at least 2 subs.`);
   lines.push(`- Flag quotes out of range beyond ±${p.pricing_rules.out_of_range_tolerance_pct}% of historical comps.`);
   if (p.pricing_rules.margin_by_category?.length) {
     lines.push("- Margin targets by contract type (target / hard floor / cap):");
     for (const m of p.pricing_rules.margin_by_category) {
-      lines.push(`  - ${m.category}: ${m.target_low_pct}–${m.target_high_pct}% / floor ${m.floor_pct}% / cap ${m.cap_pct}%`);
+      lines.push(`  - ${m.category}: ${m.target_low_pct}-${m.target_high_pct}% / floor ${m.floor_pct}% / cap ${m.cap_pct}%`);
     }
     if (p.pricing_rules.remote_premium_pct) lines.push(`  - Remote location (>80mi from a metro): +${p.pricing_rules.remote_premium_pct}% to the applicable floor.`);
     if (p.pricing_rules.new_naics_learning_premium_pct) lines.push(`  - First bid in a new NAICS: +${p.pricing_rules.new_naics_learning_premium_pct}% to target margin (learning premium).`);
@@ -127,7 +127,7 @@ export function renderProfileText(p: CompanyProfileJson): string {
     lines.push(`- ${d.label} (${d.max_points} pts): ${d.guidance}`);
   }
   lines.push("");
-  lines.push("## Hard exclusions (checked FIRST — any hit means dismiss)");
+  lines.push("## Hard exclusions (checked FIRST, any hit means dismiss)");
   for (const h of p.hard_exclusions) {
     lines.push(`- ${h.label}: ${h.rule}`);
   }
@@ -159,7 +159,7 @@ export function renderProfileText(p: CompanyProfileJson): string {
   lines.push("- If not_required, omit the past-performance section.");
   if (p.legal_guardrails?.length) {
     lines.push("");
-    lines.push("## Legal guardrails (NON-NEGOTIABLE — never override; any ambiguity stops and escalates to human review)");
+    lines.push("## Legal guardrails (NON-NEGOTIABLE, never override; any ambiguity stops and escalates to human review)");
     for (const g of p.legal_guardrails) lines.push(`- ${g}`);
   }
   if (p.notes) {

@@ -14,10 +14,10 @@ function num(v: unknown): number | null {
 }
 
 function str(v: unknown): string {
-  if (v == null) return "—";
+  if (v == null) return "-";
   if (typeof v === "string") return v;
   if (typeof v === "number") return String(v);
-  return "—";
+  return "-";
 }
 
 /** A row in a defensively-rendered breakdown table. */
@@ -80,13 +80,13 @@ function BreakdownTable({
             const wins = num(r.wins ?? r.won);
             const losses = num(r.losses ?? r.lost);
             const key =
-              str(r[keyField] ?? r.key ?? r.name ?? r.label ?? r.code) || "—";
+              str(r[keyField] ?? r.key ?? r.name ?? r.label ?? r.code) || "-";
             return (
               <tr key={i} className="border-t border-border">
                 <td className="td">{key}</td>
-                <td className="td num">{winRate != null ? pct(winRate) : "—"}</td>
+                <td className="td num">{winRate != null ? pct(winRate) : "-"}</td>
                 <td className="td text-slate-500">
-                  {wins != null || losses != null ? `${wins ?? 0} / ${losses ?? 0}` : "—"}
+                  {wins != null || losses != null ? `${wins ?? 0} / ${losses ?? 0}` : "-"}
                 </td>
               </tr>
             );
@@ -145,13 +145,13 @@ export default async function AnalyticsPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             label="Win rate"
-            value={winRate != null ? `${winRate}%` : "—"}
+            value={winRate != null ? `${winRate}%` : "-"}
             sub={`${wins ?? 0} wins · ${losses ?? 0} losses`}
             accent
           />
           <KpiCard
             label="Avg margin on wins"
-            value={avgMargin != null ? `${avgMargin}%` : "—"}
+            value={avgMargin != null ? `${avgMargin}%` : "-"}
             accent
           />
           <KpiCard label="Pipeline value" value={currency(pipelineValue)} />
@@ -224,7 +224,7 @@ export default async function AnalyticsPage() {
                       {str(r.company_name ?? r.name ?? r.sub ?? r.label)}
                     </td>
                     <td className="td num">
-                      {num(r.score ?? r.reliability_score ?? r.rating) ?? "—"}
+                      {num(r.score ?? r.reliability_score ?? r.rating) ?? "-"}
                     </td>
                   </tr>
                 ))}

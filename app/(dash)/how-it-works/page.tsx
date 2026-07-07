@@ -65,13 +65,13 @@ const STEPS: Step[] = [
   {
     icon: "🛡️",
     name: "Check compliance",
-    what: "Two independent checks run: an eligibility gate (are you actually qualified — set-aside, NAICS, bonding, SAM) and an adversarial audit that re-reads the solicitation to catch anything missing or non-compliant. Required agency forms are flagged to use the real form, never a substitute.",
+    what: "Two independent checks run: an eligibility gate (are you actually qualified, set-aside, NAICS, bonding, SAM) and an adversarial audit that re-reads the solicitation to catch anything missing or non-compliant. Required agency forms are flagged to use the real form, never a substitute.",
     who: "auto",
   },
   {
     icon: "✍️",
     name: "Review & sign",
-    what: "You get a package that's assembled and validated. Clear the items only a person can do — signatures, the reps & certs attestation, anything you must provide — then submit. Submission is blocked until the compliance checks pass.",
+    what: "You get a package that's assembled and validated. Clear the items only a person can do, signatures, the reps & certs attestation, anything you must provide, then submit. Submission is blocked until the compliance checks pass.",
     who: "you",
   },
   {
