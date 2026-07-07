@@ -188,7 +188,14 @@ export function BidBrief({
                       {c.email}
                     </a>
                   )}
-                  {c.phone && <p className="text-slate-700">{c.phone}</p>}
+                  {c.phone && (
+                    <a
+                      className="mt-0.5 block text-accent hover:underline"
+                      href={`tel:${c.phone.replace(/[^\d+]/g, "")}`}
+                    >
+                      {c.phone}
+                    </a>
+                  )}
                 </div>
               ))}
             </div>

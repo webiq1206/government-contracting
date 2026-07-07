@@ -69,11 +69,25 @@ function CallCard({ c }: { c: CallCardRow }) {
         {/* Signals */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {c.phone ? (
-            <span className="text-slate-500">📞 {c.phone}</span>
+            <a
+              href={`tel:${c.phone.replace(/[^\d+]/g, "")}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-accent hover:underline"
+            >
+              📞 {c.phone}
+            </a>
           ) : (
             <span className="text-risk">⚠ No phone on file</span>
           )}
-          {c.email && <span className="text-slate-500">✉ {c.email}</span>}
+          {c.email && (
+            <a
+              href={`mailto:${c.email}`}
+              onClick={(e) => e.stopPropagation()}
+              className="text-accent hover:underline"
+            >
+              ✉ {c.email}
+            </a>
+          )}
           {c.needs_project_history && (
             <span
               className="badge bg-review/15 text-review"

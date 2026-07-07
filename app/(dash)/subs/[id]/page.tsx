@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { subDetail } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { SubNotes } from "@/components/sub-notes";
+import { SubEditor } from "@/components/sub-editor";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import type { ProjectHistoryItem } from "@/lib/types";
 
@@ -88,69 +89,27 @@ export default async function SubDetailPage({
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
-            {/* Contact + verification */}
-            <div className="card space-y-3">
-              <h2 className="text-sm font-semibold text-neutral-900">Contact & Verification</h2>
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <div>
-                  <span className="label block">Email</span>
-                  <span className="text-slate-800">{sub.email ?? "-"}</span>
-                  {sub.email_verified && (
-                    <span className="badge ml-2 bg-pursue/15 text-pursue">Verified</span>
-                  )}
-                </div>
-                <div>
-                  <span className="label block">Phone</span>
-                  <span className="text-slate-800">{sub.phone ?? "-"}</span>
-                </div>
-                <div>
-                  <span className="label block">Website</span>
-                  {sub.website ? (
-                    <a
-                      href={sub.website}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-accent hover:underline"
-                    >
-                      {sub.website}
-                    </a>
-                  ) : (
-                    <span className="text-slate-800">-</span>
-                  )}
-                </div>
-                <div>
-                  <span className="label block">License status</span>
-                  <span className="text-slate-800">{sub.license_status ?? "-"}</span>
-                </div>
-                <div>
-                  <span className="label block">SAM exclusion</span>
-                  {sub.sam_excluded ? (
-                    <span className="badge bg-risk/15 text-risk">Excluded</span>
-                  ) : (
-                    <span className="badge bg-pursue/15 text-pursue">Clear</span>
-                  )}
-                </div>
-                <div>
-                  <span className="label block">Trades</span>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {(sub.trade_categories ?? []).map((t) => (
-                      <span key={t} className="badge bg-slate-200 text-slate-700">
-                        {t}
-                      </span>
-                    ))}
-                    {(sub.trade_categories?.length ?? 0) === 0 && (
-                      <span className="text-slate-500">-</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              {sub.reviews_summary && (
-                <div className="border-t border-border pt-3">
-                  <span className="label block">Reviews summary</span>
-                  <p className="mt-1 text-sm text-slate-700">{sub.reviews_summary}</p>
-                </div>
-              )}
-            </div>
+            {/* Contact + verification (editable in place) */}
+            <SubEditor
+              sub={{
+                id: sub.id,
+                company_name: sub.company_name,
+                owner_name: sub.owner_name ?? null,
+                email: sub.email ?? null,
+                email_verified: Boolean(sub.email_verified),
+                phone: sub.phone ?? null,
+                website: sub.website ?? null,
+                license_number: sub.license_number ?? null,
+                license_status: sub.license_status ?? null,
+                sam_excluded: Boolean(sub.sam_excluded),
+                trade_categories: sub.trade_categories ?? [],
+                address: sub.address ?? null,
+                city: sub.city ?? null,
+                state: sub.state ?? null,
+                is_preferred: Boolean(sub.is_preferred),
+                reviews_summary: sub.reviews_summary ?? null,
+              }}
+            />
 
             {/* Project history */}
             <div className="card">
