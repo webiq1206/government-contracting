@@ -62,6 +62,8 @@ export interface CallCardRow {
   question_list: string[] | null;
   needs_project_history: boolean;
   status: string;
+  /** 'reply' = the sub responded; 'outreach' = cold follow-up after we emailed. */
+  source: string;
   response_json: Record<string, unknown> | null;
   quote_amount: number | null;
   // Contractor
@@ -97,7 +99,7 @@ export interface CallCardRow {
 export async function callQueue(): Promise<CallCardRow[]> {
   return query<CallCardRow>(
     `select cc.id, cc.opportunity_id, cc.subcontractor_id, cc.card_json, cc.call_script,
-            cc.question_list, cc.needs_project_history, cc.status,
+            cc.question_list, cc.needs_project_history, cc.status, cc.source,
             cc.response_json, cc.quote_amount,
             s.company_name, s.owner_name, s.email, s.phone, s.website, s.address,
             s.city, s.state, s.google_rating, s.reliability_score, s.license_status,
@@ -111,7 +113,7 @@ export async function callQueue(): Promise<CallCardRow[]> {
        join subcontractors s on s.id = cc.subcontractor_id
        join opportunities o on o.id = cc.opportunity_id
       where cc.status='pending'
-      order by (o.deadline is null), o.deadline asc`
+      order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc`
   );
 }
 
@@ -122,7 +124,7 @@ export async function callQueue(): Promise<CallCardRow[]> {
 export async function callCardById(id: string): Promise<CallCardRow | null> {
   return queryOne<CallCardRow>(
     `select cc.id, cc.opportunity_id, cc.subcontractor_id, cc.card_json, cc.call_script,
-            cc.question_list, cc.needs_project_history, cc.status,
+            cc.question_list, cc.needs_project_history, cc.status, cc.source,
             cc.response_json, cc.quote_amount,
             s.company_name, s.owner_name, s.email, s.phone, s.website, s.address,
             s.city, s.state, s.google_rating, s.reliability_score, s.license_status,

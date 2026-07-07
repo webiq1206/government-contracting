@@ -177,8 +177,20 @@ export const outreach: AgentDefinition = {
 
     await query(`update opportunities set stage='outreach' where id=$1`, [opportunityId]);
 
+    // Every sub we actually email becomes a call card so the operator can follow
+    // up by phone; not everyone replies to email. A later reply upgrades this
+    // same card from a cold follow-up to a warm one (see call-prep).
+    const enqueued: AgentResult["enqueued"] = sent
+      ? [
+          {
+            agent: "call-prep",
+            payload: { opportunityId, subcontractorId, trade, source: "outreach" },
+          },
+        ]
+      : [];
+
     const summary = sent
-      ? `Sent outreach to ${sub.company_name} <${sub.email}>; 48h follow-up scheduled.`
+      ? `Sent outreach to ${sub.company_name} <${sub.email}>; 48h follow-up scheduled, call card queued.`
       : `Outreach to ${sub.company_name} stored as draft (${
           sub.email ? "Gmail unavailable" : "no verified email"
         }); needs manual send.`;
@@ -191,6 +203,7 @@ export const outreach: AgentDefinition = {
       } vars; tracking_id=${trackingId}; follow_up_at=${followUpAt}.`,
       data: { sent, outreachState, trackingId, messageId },
       humanActionRequired: humanAction,
+      enqueued,
     };
   },
 };

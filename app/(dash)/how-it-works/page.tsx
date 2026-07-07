@@ -70,7 +70,7 @@ const PHASES: Phase[] = [
         name: "Call",
         who: "you",
         href: "/call-queue",
-        what: "Interested subs become call cards. A guided workspace walks you through each call and captures their price.",
+        what: "Every sub we email becomes a call card so you can follow up by phone, since not everyone replies to email. Subs who did reply are marked and sorted first. A guided workspace walks you through each call and captures their price.",
       },
       {
         n: 7,

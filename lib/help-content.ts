@@ -32,8 +32,10 @@ export const PAGE_HELP: Record<string, HelpContent> = {
     ],
   },
   "call-queue": {
-    title: "Subcontractors ready to be called",
+    title: "Subcontractors to call",
     points: [
+      "Every sub we email becomes a card here so you can follow up by phone.",
+      "Subs who replied are marked 'interested' and sorted to the top.",
       "Each card opens a workspace with a script and everything about the job.",
       "Fill in answers during the call; one save updates every record.",
       "A captured price automatically moves the bid forward.",

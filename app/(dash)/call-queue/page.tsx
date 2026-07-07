@@ -30,7 +30,19 @@ function CallCard({ c }: { c: CallCardRow }) {
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="eyebrow mb-1">{c.trade ?? "General"}</p>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <p className="eyebrow">{c.trade ?? "General"}</p>
+              {c.source === "reply" ? (
+                <span className="badge bg-pursue/15 text-pursue">Replied, interested</span>
+              ) : (
+                <span
+                  className="badge bg-review/15 text-review"
+                  title="We emailed this sub but they haven't replied. Call to follow up; not everyone responds to email."
+                >
+                  Emailed, no reply yet
+                </span>
+              )}
+            </div>
             <p className="font-serif text-xl font-semibold text-foreground truncate">
               {c.company_name}
             </p>
@@ -136,8 +148,8 @@ export default async function CallQueuePage() {
               No calls in the queue.
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              Subcontractor call cards appear here as soon as Sub Finder + Sub
-              Verify identify responsive subs for a pursued opportunity.
+              A call card appears here for every sub we email, so you can follow
+              up by phone. Subs who reply are marked and sorted to the top.
             </p>
           </div>
         ) : (

@@ -32,6 +32,11 @@ export const callPrep: AgentDefinition = {
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string;
     const subcontractorId = ctx.payload.subcontractorId as string;
+    // 'reply'    = the sub responded (warm).
+    // 'outreach' = we emailed them and want a call card so we can follow up by
+    //              phone whether or not they ever reply.
+    const source = ctx.payload.source === "outreach" ? "outreach" : "reply";
+    const replied = source === "reply";
     if (!opportunityId || !subcontractorId)
       return { ok: false, summary: "missing opportunityId or subcontractorId in payload" };
 
@@ -94,7 +99,7 @@ export const callPrep: AgentDefinition = {
     let questionList: string[] = analysis?.questions_for_subs?.slice() ?? [];
 
     try {
-      const prompt = buildCallPrompt(opp, sub, oppSub?.trade ?? null);
+      const prompt = buildCallPrompt(opp, sub, oppSub?.trade ?? null, replied);
       const { data, usage } = await completeJson(prompt, {
         schema: CallPlanSchema,
         maxTokens: 900,
@@ -130,13 +135,16 @@ export const callPrep: AgentDefinition = {
     await query(
       `insert into call_cards
          (opportunity_id, subcontractor_id, card_json, call_script, question_list,
-          needs_project_history, status)
-       values ($1,$2,$3,$4,$5,$6,'pending')
+          needs_project_history, status, source)
+       values ($1,$2,$3,$4,$5,$6,'pending',$7)
        on conflict (opportunity_id, subcontractor_id)
        do update set card_json=excluded.card_json, call_script=excluded.call_script,
                      question_list=excluded.question_list,
                      needs_project_history=excluded.needs_project_history,
-                     status='pending'`,
+                     status='pending',
+                     -- a reply upgrades a cold card, but never the reverse.
+                     source=case when call_cards.source='reply' then 'reply'
+                                 else excluded.source end`,
       [
         opportunityId,
         subcontractorId,
@@ -144,26 +152,42 @@ export const callPrep: AgentDefinition = {
         callScript,
         JSON.stringify(questionList),
         needsProjectHistory,
+        source,
       ]
     );
 
-    await query(
-      `update opportunity_subs
-         set outreach_state='responsive', responded_at=now()
-       where opportunity_id=$1 and subcontractor_id=$2`,
-      [opportunityId, subcontractorId]
-    );
+    // A reply marks the sub responsive; a cold follow-up card leaves the
+    // outreach state alone (they haven't replied yet).
+    if (replied) {
+      await query(
+        `update opportunity_subs
+           set outreach_state='responsive', responded_at=now()
+         where opportunity_id=$1 and subcontractor_id=$2`,
+        [opportunityId, subcontractorId]
+      );
+    }
 
-    await query(
-      `update opportunities set stage='call_queue', human_action_required=true where id=$1`,
-      [opportunityId]
-    );
+    // Surface the opportunity in the Call Queue. A reply always warrants it; a
+    // cold card only advances from the outreach stage so it never drags an
+    // opportunity backwards out of pricing or bidding.
+    if (replied) {
+      await query(
+        `update opportunities set stage='call_queue', human_action_required=true where id=$1`,
+        [opportunityId]
+      );
+    } else {
+      await query(
+        `update opportunities set stage='call_queue', human_action_required=true
+         where id=$1 and stage='outreach'`,
+        [opportunityId]
+      );
+    }
 
     return {
       ok: true,
-      summary: `Call card ready for ${sub.company_name} on "${
-        opp.title ?? "opportunity"
-      }", ${questionList.length} questions${
+      summary: `${replied ? "Reply" : "Follow-up"} call card ready for ${
+        sub.company_name
+      } on "${opp.title ?? "opportunity"}", ${questionList.length} questions${
         needsProjectHistory ? " (incl. project-history collection)" : ""
       }. Queued for the operator.`,
       reasoning: `Built one-screen card + ${questionList.length}-question list tailored to the draft SOW; opportunity moved to call_queue and flagged for human action.`,
@@ -180,11 +204,15 @@ export const callPrep: AgentDefinition = {
 function buildCallPrompt(
   opp: Opportunity,
   sub: Subcontractor,
-  trade: string | null
+  trade: string | null,
+  replied: boolean
 ): string {
   const analysis = opp.solicitation_analysis;
+  const intro = replied
+    ? "Write a short phone-call plan for our estimator to call a subcontractor who replied to our outreach. We want to confirm interest, availability, and get a rough quote for their trade on this opportunity."
+    : "Write a short phone-call plan for our estimator to make a follow-up call to a subcontractor we emailed about this opportunity who has not replied yet. The goal is a warm, low-pressure call to gauge interest and availability and get a rough quote for their trade. Open by noting we sent an email and are following up.";
   return [
-    "Write a short phone-call plan for our estimator to call a subcontractor who replied to our outreach. We want to confirm interest, availability, and get a rough quote for their trade on this opportunity.",
+    intro,
     "",
     `SUBCONTRACTOR: ${sub.company_name}${sub.owner_name ? ` (owner: ${sub.owner_name})` : ""}`,
     `TRADE: ${trade ?? "(scope work)"}`,
