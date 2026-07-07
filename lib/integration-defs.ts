@@ -1,7 +1,7 @@
 /**
  * Shared catalog of manageable integrations: what each one powers (in plain
- * English), which env keys it uses, and where to get credentials. Used by the
- * Integrations page and its API routes.
+ * English), which env keys it uses, where to get credentials, and a step-by-step
+ * guide with direct links. Used by the Integrations page and its API routes.
  */
 
 export interface IntegrationFieldDef {
@@ -10,6 +10,16 @@ export interface IntegrationFieldDef {
   /** Secret values render masked and are never echoed back in full. */
   secret: boolean;
   placeholder?: string;
+}
+
+/** Plain-English "how to get this key", shown in an info box on the card. */
+export interface IntegrationGuide {
+  /** Short cost/renewal note, e.g. "Free. Renew yearly." */
+  cost?: string;
+  /** Numbered, do-this-then-that steps a non-technical owner can follow. */
+  steps: string[];
+  /** Direct links straight to the page they need. */
+  links: { label: string; url: string }[];
 }
 
 export interface IntegrationDef {
@@ -21,6 +31,7 @@ export interface IntegrationDef {
   fields: IntegrationFieldDef[];
   /** Has a live "Test connection" validator. */
   testable: boolean;
+  guide?: IntegrationGuide;
 }
 
 export const INTEGRATION_DEFS: IntegrationDef[] = [
@@ -32,6 +43,19 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     where: "sam.gov → sign in → Account Details → Request API Key (free; renew yearly).",
     fields: [{ env: "SAM_API_KEY", label: "API key", secret: true }],
     testable: true,
+    guide: {
+      cost: "Free. The key expires once a year, so renew it annually.",
+      steps: [
+        "Open SAM.gov and sign in (create a free Login.gov account if you don't have one).",
+        "Click your name in the top-right corner and choose Account Details.",
+        "Scroll to the API Keys section and click Request/Generate a public API key.",
+        "Copy the key it shows you and paste it in the box above, then press Test connection and Save.",
+      ],
+      links: [
+        { label: "Open SAM.gov", url: "https://sam.gov/" },
+        { label: "Account details", url: "https://sam.gov/profile/details" },
+      ],
+    },
   },
   {
     id: "claude",
@@ -41,6 +65,19 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     where: "console.anthropic.com → API Keys.",
     fields: [{ env: "ANTHROPIC_API_KEY", label: "API key", secret: true }],
     testable: true,
+    guide: {
+      cost: "Pay only for what you use. Add a small credit (about $5-10) to start.",
+      steps: [
+        "Open the Anthropic Console and sign in or sign up.",
+        "Go to Settings, then API keys, and click Create Key. Give it a name.",
+        "Copy the key immediately (it is only shown once) and paste it above.",
+        "Open Billing and add a little credit so the key can be used.",
+      ],
+      links: [
+        { label: "Create an API key", url: "https://console.anthropic.com/settings/keys" },
+        { label: "Add billing credit", url: "https://console.anthropic.com/settings/billing" },
+      ],
+    },
   },
   {
     id: "googleMaps",
@@ -50,6 +87,20 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     where: "console.cloud.google.com → enable the Places API → create an API key.",
     fields: [{ env: "GOOGLE_MAPS_API_KEY", label: "API key", secret: true }],
     testable: true,
+    guide: {
+      cost: "Google gives a free monthly credit that covers normal use; heavy use is pay-per-lookup.",
+      steps: [
+        "Open the Google Cloud Console and sign in. Create a project (or pick one) at the top.",
+        "Use the Enable Places API link below and click Enable.",
+        "Go to APIs & Services, then Credentials, click Create credentials, and choose API key.",
+        "Copy the key and paste it above. Then press Test connection and Save.",
+      ],
+      links: [
+        { label: "Google Cloud Console", url: "https://console.cloud.google.com/" },
+        { label: "Enable Places API", url: "https://console.cloud.google.com/apis/library/places-backend.googleapis.com" },
+        { label: "Credentials page", url: "https://console.cloud.google.com/apis/credentials" },
+      ],
+    },
   },
   {
     id: "hunter",
@@ -59,6 +110,18 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     where: "hunter.io → API.",
     fields: [{ env: "HUNTER_API_KEY", label: "API key", secret: true }],
     testable: true,
+    guide: {
+      cost: "Free tier covers light use; paid plans add volume.",
+      steps: [
+        "Open Hunter.io and create a free account.",
+        "Go to the API keys page (link below).",
+        "Copy your API key and paste it above, then press Test connection and Save.",
+      ],
+      links: [
+        { label: "Hunter.io API keys", url: "https://hunter.io/api-keys" },
+        { label: "Create an account", url: "https://hunter.io/users/sign_up" },
+      ],
+    },
   },
   {
     id: "gmail",
@@ -72,6 +135,19 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
       { env: "GMAIL_SENDER", label: "Send-as address", secret: false, placeholder: "you@yourcompany.com" },
     ],
     testable: false,
+    guide: {
+      cost: "Free. Uses your own Gmail or Google Workspace account.",
+      steps: [
+        "In the Google Cloud Console, open APIs & Services, then OAuth consent screen. Choose External, fill the basics, and add your own email as a test user.",
+        "Go to Credentials, click Create credentials, and choose OAuth client ID. Pick Application type: Web application.",
+        "Under Authorized redirect URIs, add your site address followed by /api/integrations/gmail/callback (for example https://brostco.com/api/integrations/gmail/callback).",
+        "Copy the Client ID and Client secret into the boxes above, put your Gmail address in Send-as, press Save, then click Connect Gmail and approve.",
+      ],
+      links: [
+        { label: "OAuth consent screen", url: "https://console.cloud.google.com/apis/credentials/consent" },
+        { label: "Create OAuth client", url: "https://console.cloud.google.com/apis/credentials" },
+      ],
+    },
   },
   {
     id: "resend",
@@ -84,6 +160,19 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
       { env: "DIGEST_EMAIL_TO", label: "Send digest to", secret: false, placeholder: "you@yourcompany.com" },
     ],
     testable: true,
+    guide: {
+      cost: "Free tier covers low volume.",
+      steps: [
+        "Open Resend and sign up.",
+        "Go to API Keys and click Create API Key (Sending access is enough). Copy it.",
+        "Paste the key above and enter where the daily digest should go in Send digest to.",
+        "For best delivery, verify your own domain under Domains (optional to start).",
+      ],
+      links: [
+        { label: "Resend API keys", url: "https://resend.com/api-keys" },
+        { label: "Verify a domain", url: "https://resend.com/domains" },
+      ],
+    },
   },
   {
     id: "twilio",
@@ -98,6 +187,19 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
       { env: "ALERT_SMS_TO", label: "Send alerts to", secret: false, placeholder: "+1208..." },
     ],
     testable: true,
+    guide: {
+      cost: "Pay per text (pennies). A phone number is about $1-2 per month.",
+      steps: [
+        "Open the Twilio Console and sign in or sign up.",
+        "On the dashboard, copy your Account SID and Auth Token into the boxes above.",
+        "Buy a phone number with SMS enabled (Phone Numbers link below) and put it in From number.",
+        "Put your own cell number in Send alerts to, then press Test connection and Save.",
+      ],
+      links: [
+        { label: "Twilio Console", url: "https://console.twilio.com/" },
+        { label: "Buy a phone number", url: "https://console.twilio.com/us1/develop/phone-numbers/manage/search" },
+      ],
+    },
   },
   {
     id: "bls",
@@ -107,6 +209,17 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     where: "data.bls.gov/registrationEngine (free).",
     fields: [{ env: "BLS_API_KEY", label: "API key (optional)", secret: true }],
     testable: true,
+    guide: {
+      cost: "Free, and optional. Only raises the daily request limit.",
+      steps: [
+        "Open the BLS registration page (link below).",
+        "Enter your email address to receive a free registration key.",
+        "Paste the key above, then press Test connection and Save.",
+      ],
+      links: [
+        { label: "BLS key registration", url: "https://data.bls.gov/registrationEngine/" },
+      ],
+    },
   },
   {
     id: "supabaseStorage",
@@ -119,6 +232,18 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
       { env: "SUPABASE_SERVICE_ROLE_KEY", label: "Service role key", secret: true },
     ],
     testable: true,
+    guide: {
+      cost: "Free tier is generous for documents.",
+      steps: [
+        "Open the Supabase dashboard and open your project (or create a free one).",
+        "Go to Project Settings, then API.",
+        "Copy the Project URL into the first box above.",
+        "Copy the service_role key (not the anon key) into the second box, then Test connection and Save. Keep this key private.",
+      ],
+      links: [
+        { label: "Supabase dashboard", url: "https://supabase.com/dashboard" },
+      ],
+    },
   },
   {
     id: "usaspending",

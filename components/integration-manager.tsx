@@ -20,6 +20,12 @@ interface FieldState {
   last_error?: string | null;
 }
 
+interface IntegrationGuide {
+  cost?: string;
+  steps: string[];
+  links: { label: string; url: string }[];
+}
+
 interface IntegrationState {
   id: string;
   name: string;
@@ -32,6 +38,7 @@ interface IntegrationState {
   last_error: string | null;
   last_validated_at: string | null;
   fields: FieldState[];
+  guide?: IntegrationGuide;
 }
 
 export function IntegrationManager({ initial }: { initial: IntegrationState[] }) {
@@ -169,6 +176,45 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
               <p className="text-xs text-slate-500">
                 Last verified {new Date(def.last_validated_at).toLocaleString()}
               </p>
+            )}
+
+            {def.guide && (
+              <details className="group rounded-md border border-accent/30 bg-accent-soft/60 open:pb-3">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium text-accent-strong [&::-webkit-details-marker]:hidden">
+                  <span>How do I get this?</span>
+                  <span
+                    aria-hidden
+                    className="text-xs text-accent transition-transform group-open:rotate-180"
+                  >
+                    ▾
+                  </span>
+                </summary>
+                <div className="space-y-3 px-3">
+                  {def.guide.cost && (
+                    <p className="text-xs font-medium text-accent-strong">{def.guide.cost}</p>
+                  )}
+                  <ol className="list-decimal space-y-1.5 pl-4 text-sm text-slate-700">
+                    {def.guide.steps.map((s, i) => (
+                      <li key={i} className="leading-relaxed">
+                        {s}
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="flex flex-wrap gap-2">
+                    {def.guide.links.map((l) => (
+                      <a
+                        key={l.url}
+                        href={l.url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="btn-ghost text-xs"
+                      >
+                        {l.label} ↗
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              </details>
             )}
 
             {def.fields.map((f) => (

@@ -88,7 +88,9 @@ export function Nav({
         <div className="scroll-thin space-y-5 p-3 md:flex-1 md:overflow-y-auto md:px-4">
           {NAV.map((group) => (
             <div key={group.section}>
-              <p className="eyebrow mb-1.5 px-2 text-[0.62rem]">{group.section}</p>
+              <p className="eyebrow mb-1.5 px-2 text-[0.62rem] font-bold text-slate-500">
+                {group.section}
+              </p>
               <ul className="space-y-0.5">
                 {group.items.map((item) => {
                   const active =

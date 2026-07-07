@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { pipelineOpportunities, PIPELINE_STAGES } from "@/lib/data";
 import { PageHeader, ScoreBadge } from "@/components/badges";
+import { PipelineCardMenu } from "@/components/pipeline-card-menu";
 import { PAGE_HELP } from "@/lib/help-content";
 import { currency, countdown } from "@/lib/format";
 import { integrationStatus } from "@/lib/config";
@@ -62,7 +63,15 @@ export default async function PipelinePage() {
                         <p className="line-clamp-2 text-sm font-medium text-slate-900">
                           {o.title ?? "Untitled"}
                         </p>
-                        <ScoreBadge score={o.score} />
+                        <div className="flex shrink-0 items-center gap-1">
+                          <ScoreBadge score={o.score} />
+                          {stage.key !== "won" && stage.key !== "lost" && (
+                            <PipelineCardMenu
+                              opportunityId={o.id}
+                              stage={o.stage}
+                            />
+                          )}
+                        </div>
                       </div>
                       <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
                         <span>{currency(o.value_estimated)}</span>
