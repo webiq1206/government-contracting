@@ -36,7 +36,8 @@ export function PageHeader({
           </h1>
           {help && <HelpPopover help={help} />}
         </div>
-        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        <div className="mt-2 h-[3px] w-11 rounded-full bg-accent" />
+        {subtitle && <p className="mt-2 text-sm text-slate-500">{subtitle}</p>}
       </div>
       {children && <div className="flex items-center gap-2">{children}</div>}
     </div>

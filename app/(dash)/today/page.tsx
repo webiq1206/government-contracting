@@ -41,9 +41,9 @@ function OppActionRow({
   return (
     <Link
       href={`/opportunity/${o.id}`}
-      className="flex items-center justify-between gap-3 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-slate-900">
           {o.title ?? "Untitled opportunity"}
         </p>
@@ -68,21 +68,42 @@ function OppActionRow({
   );
 }
 
+/**
+ * A collapsible section with a prominent, green-underlined heading. Uses native
+ * <details> so it needs no client JS; the chevron rotates when open.
+ */
 function Section({
   eyebrow,
   title,
+  count,
   children,
 }: {
   eyebrow: string;
   title: string;
+  count?: number;
   children: React.ReactNode;
 }) {
   return (
-    <section>
-      <p className="eyebrow">{eyebrow}</p>
-      <h2 className="mt-1 font-serif text-xl font-semibold text-foreground">{title}</h2>
+    <details open className="group">
+      <summary className="flex cursor-pointer list-none items-end justify-between gap-3 border-b-2 border-accent/80 pb-2 [&::-webkit-details-marker]:hidden">
+        <div>
+          <p className="eyebrow">{eyebrow}</p>
+          <h2 className="mt-0.5 font-serif text-2xl font-semibold text-foreground">
+            {title}
+            {typeof count === "number" && (
+              <span className="num ml-2 text-base font-normal text-slate-400">{count}</span>
+            )}
+          </h2>
+        </div>
+        <span
+          aria-hidden
+          className="mb-1 select-none text-slate-400 transition-transform group-open:rotate-180"
+        >
+          ▾
+        </span>
+      </summary>
       <div className="mt-3 space-y-2">{children}</div>
-    </section>
+    </details>
   );
 }
 
@@ -149,7 +170,8 @@ export default async function TodayPage() {
             : `${totalActions} thing${totalActions === 1 ? "" : "s"} need${totalActions === 1 ? "s" : ""} your attention, most urgent first.`
         }
       />
-      <div className="scroll-thin flex-1 space-y-8 overflow-y-auto p-5">
+      <div className="scroll-thin flex-1 overflow-y-auto p-5">
+       <div className="mx-auto w-full max-w-5xl space-y-8">
         {/* Pipeline progress strip */}
         <div className="card scroll-thin overflow-x-auto">
           <p className="eyebrow mb-3">Where your pipeline stands</p>
@@ -196,7 +218,11 @@ export default async function TodayPage() {
         )}
 
         {data.urgent.length > 0 && (
-          <Section eyebrow="Do this first" title="Deadlines in the next 3 days">
+          <Section
+            eyebrow="Do this first"
+            title="Deadlines in the next 3 days"
+            count={data.urgent.length}
+          >
             {data.urgent.map((o) => (
               <OppActionRow
                 key={o.id}
@@ -211,7 +237,8 @@ export default async function TodayPage() {
         {data.triage.length > 0 && (
           <Section
             eyebrow="Needs your decision"
-            title={`Decide: pursue or pass (${data.triage.length})`}
+            title="Decide: pursue or pass"
+            count={data.triage.length}
           >
             <p className="-mt-1 text-sm text-slate-500">
               These scored in the borderline band, so the system wants your
@@ -224,7 +251,7 @@ export default async function TodayPage() {
         )}
 
         {data.calls.count > 0 && (
-          <Section eyebrow="Keep things moving" title="Calls to make">
+          <Section eyebrow="Keep things moving" title="Calls to make" count={data.calls.count}>
             <Link
               href="/call-queue"
               className="flex items-center justify-between gap-3 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
@@ -249,7 +276,7 @@ export default async function TodayPage() {
         )}
 
         {bidWork.length > 0 && (
-          <Section eyebrow="Keep things moving" title="Quotes & bids in progress">
+          <Section eyebrow="Keep things moving" title="Quotes & bids in progress" count={bidWork.length}>
             {bidWork.map((o) => (
               <OppActionRow
                 key={o.id}
@@ -275,6 +302,7 @@ export default async function TodayPage() {
           <Section
             eyebrow="Waiting on the government"
             title="Submitted, awaiting a decision"
+            count={data.awaitingOutcome.length}
           >
             <p className="-mt-1 text-sm text-slate-500">
               When the agency announces, record the result so the platform can
@@ -287,7 +315,7 @@ export default async function TodayPage() {
         )}
 
         {flagged.length > 0 && (
-          <Section eyebrow="Needs a look" title="Flagged by the system">
+          <Section eyebrow="Needs a look" title="Flagged by the system" count={flagged.length}>
             {flagged.map((o) => (
               <OppActionRow
                 key={o.id}
@@ -300,7 +328,7 @@ export default async function TodayPage() {
         )}
 
         {setupGaps.length > 0 && (
-          <Section eyebrow="Finish setting up" title="Unlock more automation">
+          <Section eyebrow="Finish setting up" title="Unlock more automation" count={setupGaps.length}>
             {setupGaps.map((g) => (
               <Link
                 key={g.label}
@@ -318,6 +346,7 @@ export default async function TodayPage() {
             ))}
           </Section>
         )}
+       </div>
       </div>
     </div>
   );

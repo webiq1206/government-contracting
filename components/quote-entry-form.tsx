@@ -85,40 +85,60 @@ export function QuoteEntryForm({
 
   return (
     <div className="space-y-3">
+      <p className="text-xs leading-relaxed text-slate-500">
+        <span className="font-medium text-slate-700">Trade</span> is the type of
+        work (e.g. HVAC, electrical, roofing).{" "}
+        <span className="font-medium text-slate-700">Subcontractor</span> is the
+        company giving you that price — pick one you&rsquo;ve already found, or
+        leave it blank if you don&rsquo;t have them on file yet.
+      </p>
       {rows.map((row, i) => (
         <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-          <input
-            className="input"
-            placeholder="Trade"
-            value={row.trade}
-            onChange={(e) => update(i, { trade: e.target.value })}
-            list="trades"
-          />
-          <select
-            className="input"
-            value={row.subcontractorId}
-            onChange={(e) => update(i, { subcontractorId: e.target.value })}
-          >
-            <option value="">Sub (optional)</option>
-            {subs.map((s) => (
-              <option key={s.subcontractor_id} value={s.subcontractor_id}>
-                {s.company_name}
-              </option>
-            ))}
-          </select>
-          <input
-            className="input"
-            type="number"
-            placeholder="Quote amount"
-            value={row.quote_amount}
-            onChange={(e) => update(i, { quote_amount: e.target.value })}
-          />
-          <input
-            className="input"
-            placeholder="Payment terms"
-            value={row.payment_terms}
-            onChange={(e) => update(i, { payment_terms: e.target.value })}
-          />
+          <label className="block">
+            <span className="label mb-1 block">Trade (type of work)</span>
+            <input
+              className="input w-full"
+              placeholder="e.g. HVAC"
+              value={row.trade}
+              onChange={(e) => update(i, { trade: e.target.value })}
+              list="trades"
+            />
+          </label>
+          <label className="block">
+            <span className="label mb-1 block">Subcontractor (optional)</span>
+            <select
+              className="input w-full"
+              value={row.subcontractorId}
+              onChange={(e) => update(i, { subcontractorId: e.target.value })}
+            >
+              <option value="">Not on file yet</option>
+              {subs.map((s) => (
+                <option key={s.subcontractor_id} value={s.subcontractor_id}>
+                  {s.company_name}
+                  {s.trade ? ` — ${s.trade}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="label mb-1 block">Their quote ($)</span>
+            <input
+              className="input w-full"
+              type="number"
+              placeholder="e.g. 42000"
+              value={row.quote_amount}
+              onChange={(e) => update(i, { quote_amount: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="label mb-1 block">Payment terms</span>
+            <input
+              className="input w-full"
+              placeholder="e.g. Net 30"
+              value={row.payment_terms}
+              onChange={(e) => update(i, { payment_terms: e.target.value })}
+            />
+          </label>
         </div>
       ))}
       {error && <p className="text-sm text-risk">{error}</p>}
