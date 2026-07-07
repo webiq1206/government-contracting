@@ -9,10 +9,13 @@ import { BidBrief } from "@/components/bid-brief";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { SubmissionPackage } from "@/components/submission-package";
-import { currency, currencyCents, countdown, timeAgo, pct, shortDate } from "@/lib/format";
+import { DeadlineCountdown } from "@/components/deadline-countdown";
+import { currency, timeAgo, shortDate } from "@/lib/format";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+const NA_TEXT = "Not specified in the provided documents";
 
 /** Plain-English labels for internal enums shown on this page. */
 const PAST_PERF_LABEL: Record<string, string> = {
@@ -63,6 +66,12 @@ export default async function OpportunityPage({ params }: { params: { id: string
     const path = d.storage_path ? String(d.storage_path) : "";
     if (path && !kindToPath[kind]) kindToPath[kind] = path;
   }
+  // Lowest quote captured so far, for the at-a-glance summary.
+  const quoteAmounts = (quotes as Record<string, unknown>[])
+    .map((q) => Number(q.quote_amount))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const bestQuote = quoteAmounts.length ? Math.min(...quoteAmounts) : null;
+  const requiredTradeCount = analysis?.required_trades?.length ?? 0;
 
   return (
     <div className="flex h-screen flex-col">
@@ -115,14 +124,56 @@ export default async function OpportunityPage({ params }: { params: { id: string
           <div className="space-y-4">
             <div className="card">
               <p className="eyebrow mb-3">At a glance</p>
+
+              {/* Deadline — the single most time-critical fact, live-ticking. */}
+              <div className="mb-3 rounded-md border border-border bg-surface px-3 py-2.5">
+                <p className="label">Time to submit</p>
+                <div className="mt-0.5">
+                  <DeadlineCountdown deadline={opp.deadline} />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <Fact label="Score" value={<ScoreBadge score={opp.score} />} />
-                <Fact label="Value" value={currency(opp.value_estimated)} />
+                <Fact
+                  label="Est. value"
+                  value={
+                    opp.value_estimated != null
+                      ? currency(opp.value_estimated)
+                      : (analysis?.estimated_value ?? "—")
+                  }
+                />
+                {bestQuote != null && (
+                  <Fact
+                    label="Lowest sub quote"
+                    value={<span className="num">{currency(bestQuote)}</span>}
+                  />
+                )}
+                {bid?.bid_amount != null && (
+                  <Fact
+                    label="Priced bid"
+                    value={<span className="num text-accent">{currency(bid.bid_amount)}</span>}
+                  />
+                )}
+                <Fact
+                  label="Agency"
+                  value={[opp.agency, opp.sub_agency].filter(Boolean).join(" · ") || "—"}
+                />
+                <Fact
+                  label="Type"
+                  value={opp.is_sources_sought ? "Sources sought" : "Solicitation"}
+                />
                 <Fact label="NAICS" value={opp.naics_code ?? "—"} />
+                <Fact label="PSC" value={opp.psc_code ?? "—"} />
                 <Fact label="Set-aside" value={opp.set_aside_type ?? "—"} />
-                <Fact label="State" value={opp.location_state ?? "—"} />
-                <Fact label="Deadline" value={countdown(opp.deadline)} />
-                <Fact label="Solicitation" value={opp.solicitation_number ?? "—"} />
+                <Fact
+                  label="Place of performance"
+                  value={
+                    [opp.location_text, opp.location_state].filter(Boolean).join(", ") || "—"
+                  }
+                />
+                <Fact label="Posted" value={shortDate(opp.posted_at)} />
+                <Fact label="Solicitation #" value={opp.solicitation_number ?? "—"} />
                 <Fact
                   label="Past performance"
                   value={
@@ -132,6 +183,16 @@ export default async function OpportunityPage({ params }: { params: { id: string
                       : "—"
                   }
                 />
+                {requiredTradeCount > 0 && (
+                  <Fact
+                    label="Trades needed"
+                    value={<span className="num">{requiredTradeCount}</span>}
+                  />
+                )}
+                {analysis?.submission_method &&
+                  analysis.submission_method !== NA_TEXT && (
+                    <Fact label="How to submit" value={analysis.submission_method} />
+                  )}
               </div>
               {opp.risk_flags.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-1">
@@ -303,7 +364,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                           q.is_out_of_range ? "text-review" : "text-slate-700"
                         }`}
                       >
-                        {currencyCents(Number(q.quote_amount))}
+                        {currency(Number(q.quote_amount))}
                         {q.is_out_of_range ? " ⚠" : ""}
                       </span>
                     </li>
