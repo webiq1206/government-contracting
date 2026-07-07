@@ -60,7 +60,9 @@ export const PAGE_HELP: Record<string, HelpContent> = {
   compliance: {
     title: "Stay eligible to bid",
     points: [
-      "Registrations, certifications, and insurance are checked daily.",
+      "The system checks registrations, certifications, and insurance daily.",
+      "Renewing is your job: open an item to set its date, link, and document.",
+      "Set a renewal date and the board counts down and warns you.",
       "Anything under 'Needs attention now' should be handled today.",
       "You get an SMS if something turns critical (when Twilio is connected).",
     ],

@@ -4,6 +4,11 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate, complianceColorClass } from "@/lib/format";
 import { statusColor } from "@/lib/domain/compliance";
 import type { ComplianceStatus } from "@/lib/domain/compliance";
+import {
+  ComplianceItemCard,
+  type ComplianceCardData,
+  type CategoryInfo,
+} from "@/components/compliance-item";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,115 @@ function asStatus(v: unknown): ComplianceStatus {
 function detailObj(v: unknown): Record<string, unknown> {
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   return {};
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  ok: "On track",
+  resolved: "Resolved",
+  warning: "Warning",
+  critical: "Critical",
+  blocked: "Blocked",
+};
+
+/** Plain-English "what this is + where to renew" per compliance category. */
+const CATEGORY_INFO: Record<string, CategoryInfo> = {
+  sam_registration: {
+    what: "Your federal vendor registration. You can't receive an award without it, and it expires every year.",
+    how: "Renew it free on SAM.gov before the date below.",
+    links: [{ label: "Renew on SAM.gov", url: "https://sam.gov/" }],
+  },
+  certification: {
+    what: "Your small-business or set-aside certifications (SDVOSB, HUBZone, 8(a), WOSB).",
+    how: "Recertify through the program that issued it before it lapses.",
+    links: [
+      { label: "SBA certifications", url: "https://certify.sba.gov/" },
+      { label: "SDVOSB (VetCert)", url: "https://veterans.certify.sba.gov/" },
+    ],
+  },
+  state_llc: {
+    what: "Your state business registration and annual report.",
+    how: "File the annual report with your Secretary of State to stay in good standing.",
+    links: [],
+  },
+  insurance: {
+    what: "General liability or bonding coverage that many solicitations require.",
+    how: "Renew with your insurance agent and keep the certificate on hand.",
+    links: [],
+  },
+  far_change: {
+    what: "Federal Acquisition Regulation updates that can change what a bid must include.",
+    how: "Skim the latest changes so nothing surprises you mid-bid.",
+    links: [{ label: "acquisition.gov", url: "https://www.acquisition.gov/" }],
+  },
+  cpars: {
+    what: "Your past-performance ratings from completed contracts.",
+    how: "Review and respond to any evaluation in CPARS.",
+    links: [{ label: "CPARS", url: "https://www.cpars.gov/" }],
+  },
+  contract_deadline: {
+    what: "A deliverable or milestone on an active contract.",
+    how: "Complete and submit it before the date below.",
+    links: [],
+  },
+};
+
+function infoFor(cat: string): CategoryInfo | undefined {
+  if (cat === "sb_cert") return CATEGORY_INFO.certification;
+  return CATEGORY_INFO[cat];
+}
+
+/** Build the serializable card projection (all date math done here on the server). */
+function buildCard(row: Row): ComplianceCardData {
+  const override = str(row.due_at_override) || null;
+  const monitorDue = str(row.due_at) || null;
+  const effDue = override || monitorDue;
+
+  let dateInputValue = "";
+  let days: number | null = null;
+  if (effDue) {
+    const d = new Date(effDue);
+    if (!Number.isNaN(d.getTime())) {
+      dateInputValue = d.toISOString().slice(0, 10);
+      days = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+    }
+  }
+
+  const statusOverride = str(row.status_override);
+  const monitorStatus = str(row.status) || "ok";
+  const effStatus = statusOverride || monitorStatus;
+
+  let color: ComplianceCardData["color"];
+  if (statusOverride) {
+    color = statusColor(asStatus(statusOverride));
+  } else if (days != null) {
+    color = days < 0 ? "red" : days <= 30 ? "amber" : "green";
+  } else {
+    color = effDue ? "green" : "slate";
+  }
+
+  const countdownText =
+    days == null
+      ? "no date set"
+      : days < 0
+        ? `${Math.abs(days)}d overdue`
+        : days === 0
+          ? "due today"
+          : `${days}d left`;
+
+  return {
+    id: str(row.id),
+    label: str(row.label) || "Untitled item",
+    contract_number: str(row.contract_number) || null,
+    dueDisplay: effDue ? shortDate(effDue) : "-",
+    dateInputValue,
+    statusValue: statusOverride, // "" = automatic
+    statusLabel: STATUS_LABEL[effStatus] ?? effStatus,
+    countdownText,
+    color,
+    notes: str(row.notes),
+    link_url: str(row.link_url),
+    doc_url: str(row.doc_url),
+  };
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -69,11 +183,13 @@ export default async function CompliancePage() {
   const capRows = rows.filter((r) => str(r.category) === "non_ss_cap");
   const deadlineRows = rows.filter((r) => str(r.category) !== "non_ss_cap");
 
-  // Highlight blocked/critical up top (data already sorted by status).
-  const urgent = deadlineRows.filter((r) => {
-    const s = str(r.status);
-    return s === "blocked" || s === "critical";
-  });
+  // Build each card's display projection once (respects operator overrides).
+  const cardById = new Map<string, ComplianceCardData>(
+    deadlineRows.map((r) => [str(r.id), buildCard(r)])
+  );
+
+  // Highlight overdue/blocking items up top.
+  const urgent = deadlineRows.filter((r) => cardById.get(str(r.id))?.color === "red");
 
   // Group deadline items by category (input is already sorted).
   const groups = new Map<string, Row[]>();
@@ -86,6 +202,7 @@ export default async function CompliancePage() {
   return (
     <div className="flex h-full flex-col">
       <PageHeader
+        help={PAGE_HELP["compliance"]}
         title="Compliance Board"
         subtitle={`${deadlineRows.length} tracked item${deadlineRows.length === 1 ? "" : "s"}${
           capRows.length ? ` · ${capRows.length} contract cap gauge${capRows.length === 1 ? "" : "s"}` : ""
@@ -95,16 +212,35 @@ export default async function CompliancePage() {
       </PageHeader>
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
+        {/* How this board works: automatic tracking vs your job. */}
+        <div className="callout-panel">
+          <p className="text-sm font-medium text-foreground">
+            The system watches these for you. Renewing is your job.
+          </p>
+          <p className="mt-1 text-sm text-slate-600">
+            Every day it checks each item and warns you before anything lapses.
+            For it to count down, it needs a date. Open any item, set its renewal
+            date, add the renewal link and a link to your document, and you&rsquo;ll
+            get alerts as the deadline gets close. Items showing &ldquo;no date
+            set&rdquo; can&rsquo;t be tracked yet.
+          </p>
+        </div>
+
         {urgent.length > 0 && (
           <section>
             <h2 className="label mb-2 text-risk">Needs attention now</h2>
             <p className="mb-2 text-xs text-slate-500">
-              These are overdue or blocking. Handle each one today: renew the
-              registration, upload the document, or contact the agency listed.
+              These are overdue or blocking. Handle each one today: renew it, then
+              update the date or mark it resolved.
             </p>
             <div className="grid gap-2 md:grid-cols-2">
               {urgent.map((r) => (
-                <ComplianceItem key={str(r.id)} row={r} highlight />
+                <ComplianceItemCard
+                  key={str(r.id)}
+                  item={cardById.get(str(r.id))!}
+                  info={infoFor(str(r.category))}
+                  highlight
+                />
               ))}
             </div>
           </section>
@@ -130,7 +266,11 @@ export default async function CompliancePage() {
             <h2 className="label mb-2">{categoryLabel(cat)}</h2>
             <div className="grid gap-2 md:grid-cols-2">
               {items.map((r) => (
-                <ComplianceItem key={str(r.id)} row={r} />
+                <ComplianceItemCard
+                  key={str(r.id)}
+                  item={cardById.get(str(r.id))!}
+                  info={infoFor(cat)}
+                />
               ))}
             </div>
           </section>
@@ -152,49 +292,6 @@ function Legend() {
       <span className="inline-flex items-center gap-1.5">
         <span className="h-2.5 w-2.5 rounded-full bg-risk" /> Critical / blocked
       </span>
-    </div>
-  );
-}
-
-function ComplianceItem({ row, highlight = false }: { row: Row; highlight?: boolean }) {
-  const status = asStatus(row.status);
-  const color = statusColor(status);
-  const days = num(row.days_remaining);
-  const label = str(row.label) || "Untitled item";
-  const contractNumber = str(row.contract_number);
-
-  const countdownText =
-    days == null
-      ? "no date"
-      : days < 0
-        ? `${Math.abs(days)}d overdue`
-        : days === 0
-          ? "due today"
-          : `${days}d left`;
-
-  return (
-    <div
-      className={`card flex items-start justify-between gap-3 ${
-        highlight ? "border-risk/50 bg-risk/5" : ""
-      }`}
-    >
-      <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-slate-900">{label}</p>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Due {shortDate(str(row.due_at) || null)}
-          {contractNumber ? ` · ${contractNumber}` : ""}
-        </p>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className={`badge ${complianceColorClass(color)}`}>{status === "ok" ? "On track" : status}</span>
-        <span
-          className={`num text-xs ${
-            color === "red" ? "text-risk" : color === "amber" ? "text-review" : "text-slate-600"
-          }`}
-        >
-          {countdownText}
-        </span>
-      </div>
     </div>
   );
 }

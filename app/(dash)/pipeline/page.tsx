@@ -2,6 +2,7 @@ import Link from "next/link";
 import { pipelineOpportunities, PIPELINE_STAGES } from "@/lib/data";
 import { PageHeader, ScoreBadge } from "@/components/badges";
 import { PipelineCardMenu } from "@/components/pipeline-card-menu";
+import { stageMode } from "@/lib/stage-meta";
 import { PAGE_HELP } from "@/lib/help-content";
 import { currency, countdown } from "@/lib/format";
 import { integrationStatus } from "@/lib/config";
@@ -37,7 +38,7 @@ export default async function PipelinePage() {
       <PageHeader
         help={PAGE_HELP["pipeline"]}
         title="Pipeline"
-        subtitle={`${opps.length} active opportunities. Human-action items in amber.`}
+        subtitle={`${opps.length} active opportunities. Columns marked "Automatic" run on their own; "Needs you" columns wait for you (amber cards).`}
       />
       {opps.length === 0 && <PipelineOnboarding />}
       <div className="scroll-thin flex-1 overflow-x-auto p-4">
@@ -46,9 +47,16 @@ export default async function PipelinePage() {
             const cards = byStage.get(stage.key) ?? [];
             return (
               <div key={stage.key} className="flex w-72 flex-col">
-                <div className="mb-2 flex items-center justify-between px-1">
-                  <span className="text-sm font-semibold text-slate-800">{stage.label}</span>
-                  <span className="badge bg-slate-200 text-slate-600">{cards.length}</span>
+                <div className="mb-2 px-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-slate-800">{stage.label}</span>
+                    <span className="badge bg-slate-200 text-slate-600">{cards.length}</span>
+                  </div>
+                  {stageMode(stage.key) === "you" ? (
+                    <span className="badge mt-1 bg-review/15 text-review">Needs you</span>
+                  ) : (
+                    <span className="badge mt-1 bg-slate-100 text-slate-500">Automatic</span>
+                  )}
                 </div>
                 <div className="scroll-thin flex-1 space-y-2 overflow-y-auto pr-1">
                   {cards.map((o) => (
