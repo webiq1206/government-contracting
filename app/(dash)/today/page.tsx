@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { actionCenter, type ActionOppRow } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { PipelineStrip } from "@/components/pipeline-strip";
 import { PAGE_HELP } from "@/lib/help-content";
 import { integrationStatus } from "@/lib/config";
 import { currency, countdown, shortDate } from "@/lib/format";
@@ -146,19 +147,6 @@ export default async function TodayPage() {
     data.awaitingOutcome.length +
     flagged.length;
 
-  const pipelineOrder = [
-    "monitoring",
-    "scoring",
-    "analysis",
-    "sub_research",
-    "outreach",
-    "call_queue",
-    "quote_entry",
-    "bid_building",
-    "submitted",
-  ];
-  const countByStage = new Map(data.stageCounts.map((s) => [s.stage, s.count]));
-
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
@@ -172,36 +160,8 @@ export default async function TodayPage() {
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
        <div className="mx-auto w-full max-w-5xl space-y-8">
-        {/* Pipeline progress strip */}
-        <div className="card scroll-thin overflow-x-auto">
-          <p className="eyebrow mb-3">Where your pipeline stands</p>
-          <div className="flex min-w-max items-stretch gap-2">
-            {pipelineOrder.map((stage, i) => (
-              <div key={stage} className="flex items-center gap-2">
-                <Link
-                  href={
-                    stage === "call_queue"
-                      ? "/call-queue"
-                      : stage === "quote_entry" || stage === "bid_building"
-                        ? "/pipeline"
-                        : "/pipeline"
-                  }
-                  className="rounded-md border border-border px-3 py-2 text-center transition-colors hover:border-accent/60"
-                >
-                  <p className="num text-lg font-semibold text-foreground">
-                    {countByStage.get(stage) ?? 0}
-                  </p>
-                  <p className="text-[0.65rem] uppercase tracking-wide text-slate-500">
-                    {STAGE_LABEL[stage]}
-                  </p>
-                </Link>
-                {i < pipelineOrder.length - 1 && (
-                  <span className="text-slate-300">→</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        {/* Pipeline progress rail */}
+        <PipelineStrip counts={data.stageCounts} />
 
         {totalActions === 0 && setupGaps.length === 0 && (
           <div className="card mx-auto max-w-lg text-center">
