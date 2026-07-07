@@ -16,13 +16,20 @@ interface SubOption {
   trade: string | null;
 }
 
-/** Enter one or more written sub quotes; posts to /api/opportunities/[id]/quote (triggers Bid Builder). */
+/**
+ * Enter one or more written sub quotes; posts to /api/opportunities/[id]/quote
+ * (triggers the Bid Builder). Laid out to breathe at full width: each quote is
+ * its own labeled row of four fields. `layout="stacked"` collapses the fields
+ * into a single column for narrow placements (e.g. beside a finished bid).
+ */
 export function QuoteEntryForm({
   opportunityId,
   subs,
+  layout = "wide",
 }: {
   opportunityId: string;
   subs: SubOption[];
+  layout?: "wide" | "stacked";
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([
@@ -34,6 +41,10 @@ export function QuoteEntryForm({
 
   function update(i: number, patch: Partial<Row>) {
     setRows((r) => r.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  }
+
+  function removeRow(i: number) {
+    setRows((r) => (r.length === 1 ? r : r.filter((_, idx) => idx !== i)));
   }
 
   async function submit() {
@@ -83,76 +94,113 @@ export function QuoteEntryForm({
     setLoading(false);
   }
 
+  const fieldGrid =
+    layout === "stacked"
+      ? "grid grid-cols-1 gap-3"
+      : "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1.4fr_1fr_1fr_auto] lg:items-end";
+
   return (
-    <div className="space-y-3">
-      <p className="text-xs leading-relaxed text-slate-500">
-        <span className="font-medium text-slate-700">Trade</span> is the type of
-        work (e.g. HVAC, electrical, roofing).{" "}
-        <span className="font-medium text-slate-700">Subcontractor</span> is the
-        company giving you that price, pick one you&rsquo;ve already found, or
-        leave it blank if you don&rsquo;t have them on file yet.
-      </p>
+    <div className="space-y-4">
       {rows.map((row, i) => (
-        <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-          <label className="block">
-            <span className="label mb-1 block">Trade (type of work)</span>
-            <input
-              className="input w-full"
-              placeholder="e.g. HVAC"
-              value={row.trade}
-              onChange={(e) => update(i, { trade: e.target.value })}
-              list="trades"
-            />
-          </label>
-          <label className="block">
-            <span className="label mb-1 block">Subcontractor (optional)</span>
-            <select
-              className="input w-full"
-              value={row.subcontractorId}
-              onChange={(e) => update(i, { subcontractorId: e.target.value })}
+        <div
+          key={i}
+          className={
+            layout === "wide" && rows.length > 1
+              ? "rounded-md border border-border bg-surface/50 p-3"
+              : ""
+          }
+        >
+          {layout === "wide" && rows.length > 1 && (
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Quote {i + 1}
+            </p>
+          )}
+          <div className={fieldGrid}>
+            <label className="block">
+              <span className="label mb-1.5 block">Trade (type of work)</span>
+              <input
+                className="input"
+                placeholder="e.g. HVAC"
+                value={row.trade}
+                onChange={(e) => update(i, { trade: e.target.value })}
+                list="trades"
+              />
+            </label>
+            <label className="block">
+              <span className="label mb-1.5 block">Subcontractor (optional)</span>
+              <select
+                className="input"
+                value={row.subcontractorId}
+                onChange={(e) => update(i, { subcontractorId: e.target.value })}
+              >
+                <option value="">Not on file yet</option>
+                {subs.map((s) => (
+                  <option key={s.subcontractor_id} value={s.subcontractor_id}>
+                    {s.company_name}
+                    {s.trade ? `, ${s.trade}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="label mb-1.5 block">Their quote ($)</span>
+              <input
+                className="input num"
+                type="number"
+                inputMode="numeric"
+                placeholder="e.g. 42000"
+                value={row.quote_amount}
+                onChange={(e) => update(i, { quote_amount: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="label mb-1.5 block">Payment terms</span>
+              <input
+                className="input"
+                placeholder="e.g. Net 30"
+                value={row.payment_terms}
+                onChange={(e) => update(i, { payment_terms: e.target.value })}
+              />
+            </label>
+            {rows.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeRow(i)}
+                aria-label={`Remove quote ${i + 1}`}
+                className="mb-0.5 hidden h-9 w-9 items-center justify-center rounded-md border border-border text-slate-400 transition-colors hover:border-risk/60 hover:text-risk lg:inline-flex"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {rows.length > 1 && (
+            <button
+              type="button"
+              onClick={() => removeRow(i)}
+              className="mt-2 text-xs text-slate-400 hover:text-risk lg:hidden"
             >
-              <option value="">Not on file yet</option>
-              {subs.map((s) => (
-                <option key={s.subcontractor_id} value={s.subcontractor_id}>
-                  {s.company_name}
-                  {s.trade ? `, ${s.trade}` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block">
-            <span className="label mb-1 block">Their quote ($)</span>
-            <input
-              className="input w-full"
-              type="number"
-              placeholder="e.g. 42000"
-              value={row.quote_amount}
-              onChange={(e) => update(i, { quote_amount: e.target.value })}
-            />
-          </label>
-          <label className="block">
-            <span className="label mb-1 block">Payment terms</span>
-            <input
-              className="input w-full"
-              placeholder="e.g. Net 30"
-              value={row.payment_terms}
-              onChange={(e) => update(i, { payment_terms: e.target.value })}
-            />
-          </label>
+              Remove this quote
+            </button>
+          )}
         </div>
       ))}
+
       {error && <p className="text-sm text-risk">{error}</p>}
       {notice && !error && <p className="text-sm text-accent">{notice}</p>}
-      <div className="flex gap-2">
+
+      <div className="flex flex-wrap items-center gap-2">
         <button
           className="btn-ghost"
           onClick={() =>
-            setRows((r) => [...r, { trade: "", subcontractorId: "", quote_amount: "", payment_terms: "" }])
+            setRows((r) => [
+              ...r,
+              { trade: "", subcontractorId: "", quote_amount: "", payment_terms: "" },
+            ])
           }
         >
-          + Add trade
+          + Add another trade
         </button>
-        <button className="btn-primary" onClick={submit} disabled={loading}>
+        <button className="btn-success" onClick={submit} disabled={loading}>
           {loading ? "Saving..." : "Save quotes & build bid"}
         </button>
       </div>

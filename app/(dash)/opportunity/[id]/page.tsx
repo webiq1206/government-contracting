@@ -73,6 +73,22 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const bestQuote = quoteAmounts.length ? Math.min(...quoteAmounts) : null;
   const requiredTradeCount = analysis?.required_trades?.length ?? 0;
 
+  // Quote collection is the operator's active job before a bid exists. Surface it
+  // full-width and up front once the opportunity has reached a stage where quotes
+  // make sense (subs are being worked, or some quotes are already in). Once a bid
+  // is built the focus shifts to review, so the panel steps aside.
+  const quotesEntered = (quotes as unknown[]).length;
+  const hasBid = Boolean(bid);
+  const bidSubmitted = Boolean(bid?.submitted_at);
+  const QUOTE_STAGES = ["sub_research", "outreach", "call_queue", "quote_entry"];
+  const showQuotePanel =
+    !hasBid &&
+    !bidSubmitted &&
+    (quotesEntered > 0 ||
+      subOptions.length > 0 ||
+      QUOTE_STAGES.includes(opp.stage));
+  const emphasizeQuotePanel = showQuotePanel && quotesEntered === 0;
+
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
@@ -102,6 +118,80 @@ export default async function OpportunityPage({ params }: { params: { id: string
             pastPerfBlocked={opp.past_perf_classification === "prime_only"}
           />
         </div>
+
+        {/* Quote entry, promoted full-width and up front while quotes are the job. */}
+        {showQuotePanel && (
+          <div className="px-5 pt-5">
+            <div
+              className={`card ${
+                emphasizeQuotePanel ? "border-accent bg-accent-soft" : ""
+              }`}
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <p className="eyebrow text-accent-strong">Your turn</p>
+                  <h2 className="mt-0.5 font-serif text-2xl font-semibold text-foreground">
+                    {quotesEntered === 0
+                      ? "Enter subcontractor quotes"
+                      : "Quotes collected"}
+                    <span className="num ml-2 text-base font-normal text-slate-400">
+                      {quotesEntered}
+                    </span>
+                  </h2>
+                </div>
+                {requiredTradeCount > 0 && (
+                  <span className="text-sm text-slate-500">
+                    {requiredTradeCount} trade{requiredTradeCount === 1 ? "" : "s"}{" "}
+                    needed for this job
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">
+                Enter each price a subcontractor gave you. As soon as you save,
+                the Bid Builder prices and assembles the full package for your
+                review. <span className="font-medium text-slate-700">Trade</span>{" "}
+                is the type of work (e.g. HVAC, electrical, roofing).{" "}
+                <span className="font-medium text-slate-700">Subcontractor</span>{" "}
+                is the company giving you that price, pick one you&rsquo;ve
+                already found or leave it blank if they&rsquo;re not on file yet.
+              </p>
+
+              <div className="mt-4">
+                <QuoteEntryForm opportunityId={opp.id} subs={subOptions} />
+              </div>
+
+              {quotesEntered > 0 && (
+                <div className="mt-5 border-t border-border pt-4">
+                  <p className="label mb-2">Quotes on file</p>
+                  <ul className="divide-y divide-border text-sm">
+                    {(quotes as Record<string, unknown>[]).map((q) => (
+                      <li
+                        key={String(q.id)}
+                        className="flex items-center justify-between py-2"
+                      >
+                        <span className="min-w-0 truncate text-slate-700">
+                          {q.company_name
+                            ? String(q.company_name)
+                            : q.trade
+                              ? String(q.trade)
+                              : "Quote"}
+                        </span>
+                        <span
+                          className={`num ${
+                            q.is_out_of_range ? "text-review" : "text-slate-700"
+                          }`}
+                        >
+                          {currency(Number(q.quote_amount))}
+                          {q.is_out_of_range ? " ⚠" : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Bid Brief, always shown; falls back to lightweight header when no analysis yet */}
         <div className="px-5 pt-5">
@@ -342,36 +432,47 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
           {/* Column 3, quotes + bid + activity */}
           <div className="space-y-4">
-            <div className="card">
-              <p className="eyebrow mb-3">Quote entry</p>
-              <QuoteEntryForm opportunityId={opp.id} subs={subOptions} />
-              {(quotes as Record<string, unknown>[]).length > 0 && (
-                <ul className="mt-4 divide-y divide-border text-sm">
-                  {(quotes as Record<string, unknown>[]).map((q) => (
-                    <li
-                      key={String(q.id)}
-                      className="flex items-center justify-between py-2"
-                    >
-                      <span className="min-w-0 truncate text-slate-700">
-                        {q.company_name
-                          ? String(q.company_name)
-                          : q.trade
-                            ? String(q.trade)
-                            : "Quote"}
-                      </span>
-                      <span
-                        className={`num ${
-                          q.is_out_of_range ? "text-review" : "text-slate-700"
-                        }`}
+            {/* After a bid exists, revisions live here in a compact form; before a
+                bid, the full-width panel above owns quote entry (no duplication). */}
+            {hasBid && !bidSubmitted && (
+              <div className="card">
+                <p className="eyebrow mb-3">Revise quotes</p>
+                <p className="mb-3 text-xs leading-relaxed text-slate-500">
+                  Saving a new quote re-prices and rebuilds the bid.
+                </p>
+                <QuoteEntryForm
+                  opportunityId={opp.id}
+                  subs={subOptions}
+                  layout="stacked"
+                />
+                {(quotes as Record<string, unknown>[]).length > 0 && (
+                  <ul className="mt-4 divide-y divide-border text-sm">
+                    {(quotes as Record<string, unknown>[]).map((q) => (
+                      <li
+                        key={String(q.id)}
+                        className="flex items-center justify-between py-2"
                       >
-                        {currency(Number(q.quote_amount))}
-                        {q.is_out_of_range ? " ⚠" : ""}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                        <span className="min-w-0 truncate text-slate-700">
+                          {q.company_name
+                            ? String(q.company_name)
+                            : q.trade
+                              ? String(q.trade)
+                              : "Quote"}
+                        </span>
+                        <span
+                          className={`num ${
+                            q.is_out_of_range ? "text-review" : "text-slate-700"
+                          }`}
+                        >
+                          {currency(Number(q.quote_amount))}
+                          {q.is_out_of_range ? " ⚠" : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
 
             {bid && (
               <>
