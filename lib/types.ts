@@ -168,6 +168,7 @@ export interface Opportunity {
   risk_flags: string[];
   stage: PipelineStage;
   status: string;
+  notes: string | null;
   human_action_required: boolean;
   review_expires_at: string | null;
   created_at: string;
@@ -453,4 +454,23 @@ export interface AgentContext {
   runId: string;
   trigger: "cron" | "queue" | "manual";
   payload: Record<string, unknown>;
+}
+
+/** A reusable, operator-approved content snippet the AI agents draw from. */
+export type ContentCategory =
+  | "past_performance"
+  | "capability"
+  | "win_theme"
+  | "technical_approach"
+  | "boilerplate";
+
+export interface ContentLibraryItem {
+  id: string;
+  title: string;
+  category: ContentCategory;
+  body: string;
+  tags: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }

@@ -38,6 +38,7 @@ async function upsertItem(a: UpsertArgs): Promise<void> {
     `select id from compliance_items
       where category = $1 and coalesce(contract_id::text,'') = coalesce($2::text,'')
         and label = $3
+        and coalesce(source,'monitor') = 'monitor'
       limit 1`,
     [a.category, contractId, a.label]
   );

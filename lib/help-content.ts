@@ -99,6 +99,14 @@ export const PAGE_HELP: Record<string, HelpContent> = {
       "Each card says what stops working without it.",
     ],
   },
+  content: {
+    title: "Reusable language the automation drafts from",
+    points: [
+      "Save your best past-performance, capability, and win-theme snippets once.",
+      "The Bid Builder and Sources Sought Responder pull the best matches in automatically.",
+      "Tag each snippet (trades, agencies, NAICS) so the right one is chosen.",
+    ],
+  },
   opportunity: {
     title: "The complete record for one bid",
     points: [

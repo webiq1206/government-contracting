@@ -41,7 +41,9 @@ export default async function PipelinePage() {
         subtitle={`${opps.length} active opportunities. Columns marked "Automatic" run on their own; "Needs you" columns wait for you (amber cards).`}
       />
       {opps.length === 0 && <PipelineOnboarding />}
-      <div className="scroll-thin flex-1 overflow-x-auto p-4">
+
+      {/* Desktop: horizontal kanban across all stages. */}
+      <div className="scroll-thin hidden flex-1 overflow-x-auto p-4 lg:block">
         <div className="flex h-full gap-3" style={{ minWidth: "max-content" }}>
           {PIPELINE_STAGES.map((stage) => {
             const cards = byStage.get(stage.key) ?? [];
@@ -60,40 +62,7 @@ export default async function PipelinePage() {
                 </div>
                 <div className="scroll-thin flex-1 space-y-2 overflow-y-auto pr-1">
                   {cards.map((o) => (
-                    <Link
-                      key={o.id}
-                      href={`/opportunity/${o.id}`}
-                      className={`card card-hover block ${
-                        o.human_action_required ? "border-review/60 bg-review/5" : ""
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-2 text-sm font-medium text-slate-900">
-                          {o.title ?? "Untitled"}
-                        </p>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <ScoreBadge score={o.score} />
-                          {stage.key !== "won" && stage.key !== "lost" && (
-                            <PipelineCardMenu
-                              opportunityId={o.id}
-                              stage={o.stage}
-                            />
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
-                        <span>{currency(o.value_estimated)}</span>
-                        <span className={countdown(o.deadline) === "overdue" ? "text-risk" : ""}>
-                          ⏱ {countdown(o.deadline)}
-                        </span>
-                      </div>
-                      {o.agency && (
-                        <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>
-                      )}
-                      <p className="mt-2 text-xs font-medium text-accent">
-                        {NEXT_ACTION[o.stage] ?? o.stage}
-                      </p>
-                    </Link>
+                    <PipelineCard key={o.id} o={o} />
                   ))}
                   {cards.length === 0 && (
                     <p className="px-1 py-4 text-center text-xs text-slate-400">-</p>
@@ -104,7 +73,72 @@ export default async function PipelinePage() {
           })}
         </div>
       </div>
+
+      {/* Mobile: one simple vertical list, grouped by stage, empty stages hidden.
+          No sideways scrolling, tap a card to open it, tap its menu to move it. */}
+      <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-4 lg:hidden">
+        {PIPELINE_STAGES.filter((s) => (byStage.get(s.key)?.length ?? 0) > 0).map((stage) => {
+          const cards = byStage.get(stage.key) ?? [];
+          return (
+            <section key={stage.key}>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold text-slate-800">{stage.label}</span>
+                <span className="badge bg-slate-200 text-slate-600">{cards.length}</span>
+                {stageMode(stage.key) === "you" ? (
+                  <span className="badge bg-review/15 text-review">Needs you</span>
+                ) : (
+                  <span className="badge bg-slate-100 text-slate-500">Automatic</span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {cards.map((o) => (
+                  <PipelineCard key={o.id} o={o} />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+        {opps.length > 0 && (
+          <p className="pt-2 text-center text-xs text-slate-400">
+            That&rsquo;s every active opportunity.
+          </p>
+        )}
+      </div>
     </div>
+  );
+}
+
+/** One opportunity card, shared by the desktop kanban and the mobile list. */
+function PipelineCard({ o }: { o: Opportunity }) {
+  return (
+    <Link
+      href={`/opportunity/${o.id}`}
+      className={`card card-hover block ${
+        o.human_action_required ? "border-review/60 bg-review/5" : ""
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="line-clamp-2 text-sm font-medium text-slate-900">
+          {o.title ?? "Untitled"}
+        </p>
+        <div className="flex shrink-0 items-center gap-1">
+          <ScoreBadge score={o.score} />
+          {o.stage !== "won" && o.stage !== "lost" && (
+            <PipelineCardMenu opportunityId={o.id} stage={o.stage} />
+          )}
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+        <span>{currency(o.value_estimated)}</span>
+        <span className={countdown(o.deadline) === "overdue" ? "text-risk" : ""}>
+          ⏱ {countdown(o.deadline)}
+        </span>
+      </div>
+      {o.agency && <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>}
+      <p className="mt-2 text-xs font-medium text-accent">
+        {NEXT_ACTION[o.stage] ?? o.stage}
+      </p>
+    </Link>
   );
 }
 

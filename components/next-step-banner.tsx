@@ -1,11 +1,16 @@
 import Link from "next/link";
+import { ActionButton } from "./action-button";
 
 /**
  * Stage-aware guidance shown at the top of the opportunity detail page.
  * Derives the single recommended next action from the record's actual state
- * so the operator never has to work out what comes next.
+ * so the operator never has to work out what comes next. When that next action
+ * is a decision only the operator can make (pursue/pass, won/lost), the buttons
+ * live right here in the banner, so the decision is one tap from the top of the
+ * page on every device instead of buried in a card far down the mobile scroll.
  */
 export function NextStepBanner({
+  opportunityId,
   stage,
   tier,
   humanActionRequired,
@@ -16,6 +21,7 @@ export function NextStepBanner({
   outcome,
   pastPerfBlocked,
 }: {
+  opportunityId: string;
   stage: string;
   tier: string | null;
   humanActionRequired: boolean;
@@ -39,6 +45,8 @@ export function NextStepBanner({
   });
   if (!step) return null;
 
+  const hasLink = Boolean(step.cta && (step.href || step.anchor));
+
   return (
     <div
       className={`flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 ${
@@ -55,16 +63,64 @@ export function NextStepBanner({
         </p>
         <p className="mt-0.5 text-sm text-slate-600">{step.why}</p>
       </div>
-      {step.href && (
-        <Link href={step.href} className="btn-primary shrink-0 text-xs">
-          {step.cta} →
-        </Link>
-      )}
-      {!step.href && step.anchor && (
-        <a href={step.anchor} className="btn-primary shrink-0 text-xs">
-          {step.cta} ↓
-        </a>
-      )}
+
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {step.decision === "triage" && (
+          <>
+            <ActionButton
+              endpoint={`/api/opportunities/${opportunityId}/action`}
+              body={{ action: "pursue" }}
+              className="btn-success text-xs"
+            >
+              Pursue
+            </ActionButton>
+            <ActionButton
+              endpoint={`/api/opportunities/${opportunityId}/action`}
+              body={{ action: "dismiss" }}
+              className="btn-danger text-xs"
+              confirm="Dismiss this opportunity? It moves to the archive."
+            >
+              Dismiss
+            </ActionButton>
+          </>
+        )}
+        {step.decision === "outcome" && (
+          <>
+            <ActionButton
+              endpoint={`/api/opportunities/${opportunityId}/outcome`}
+              body={{ outcome: "won" }}
+              className="btn-success text-xs"
+              confirm="Mark as WON and create the contract?"
+            >
+              Mark won
+            </ActionButton>
+            <ActionButton
+              endpoint={`/api/opportunities/${opportunityId}/outcome`}
+              body={{ outcome: "lost" }}
+              className="btn-danger text-xs"
+              confirm="Mark this bid as lost?"
+            >
+              Mark lost
+            </ActionButton>
+          </>
+        )}
+        {hasLink && step.href && (
+          <Link
+            href={step.href}
+            className={`${step.decision ? "btn-ghost" : "btn-primary"} text-xs`}
+          >
+            {step.cta} →
+          </Link>
+        )}
+        {hasLink && !step.href && step.anchor && (
+          <a
+            href={step.anchor}
+            className={`${step.decision ? "btn-ghost" : "btn-primary"} text-xs`}
+          >
+            {step.cta} {step.decision ? "" : "↓"}
+          </a>
+        )}
+      </div>
     </div>
   );
 }
@@ -88,6 +144,8 @@ function deriveStep(s: StepInput): {
   href?: string;
   anchor?: string;
   tone: "action" | "warn" | "info";
+  /** When set, the banner renders the matching decision buttons inline. */
+  decision?: "triage" | "outcome";
 } | null {
   if (s.stage === "won")
     return {
@@ -106,15 +164,17 @@ function deriveStep(s: StepInput): {
       cta: "See details below",
       anchor: "#attachments",
       tone: "warn",
+      decision: "triage",
     };
 
   if (s.tier === "review" && s.humanActionRequired)
     return {
       title: "Decide: pursue or pass",
-      why: "This scored in the borderline band. Use the Pursue / Dismiss buttons in the Triage card. If you don't act before the timer, it auto-dismisses.",
+      why: "This scored in the borderline band. If you don't act before the timer, it auto-dismisses.",
       cta: "Read the brief",
       anchor: "#attachments",
       tone: "action",
+      decision: "triage",
     };
 
   switch (s.stage) {
@@ -161,8 +221,9 @@ function deriveStep(s: StepInput): {
       if (s.hasBid && !s.bidSubmitted)
         return {
           title: "Finish and submit the package",
-          why: "The bid is priced and the submission package is assembled. In the Submission package panel, clear any remaining items (signatures, provided documents), then submit.",
-          cta: "",
+          why: "The bid is priced and the submission package is assembled. Clear any remaining items (signatures, provided documents), then submit.",
+          cta: "Go to submission",
+          anchor: "#submission",
           tone: "action",
         };
       return {
@@ -180,7 +241,8 @@ function deriveStep(s: StepInput): {
         ? {
             title: "Review the package and submit",
             why: "The bid is priced and the submission package is assembled with a compliance checklist. Clear any remaining required items, then submit.",
-            cta: "",
+            cta: "Go to submission",
+            anchor: "#submission",
             tone: "action",
           }
         : {
@@ -192,9 +254,10 @@ function deriveStep(s: StepInput): {
     case "submitted":
       return {
         title: "Record the result when the agency announces",
-        why: "Mark it Won or Lost in the Bid Package card. A win sets up the contract automatically; a loss teaches the scoring system.",
+        why: "A win sets up the contract automatically; a loss teaches the scoring system.",
         cta: "",
-        tone: "info",
+        tone: "action",
+        decision: "outcome",
       };
     default:
       return null;

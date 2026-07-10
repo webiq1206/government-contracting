@@ -4,7 +4,8 @@
  * mutations go through API routes in app/api/*.
  */
 import { query, queryOne } from "./db";
-import type { Opportunity, Subcontractor } from "./types";
+import type { KpiParams } from "./domain/kpi";
+import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 
 export async function queueCounts(): Promise<{ review: number; callQueue: number }> {
   const row = await queryOne<{ review: string; call: string }>(
@@ -241,6 +242,21 @@ export async function activeContracts() {
   );
 }
 
+/** Contracts no longer active (completed/closed), for the Past contracts view. */
+export async function completedContracts() {
+  return query(
+    `select c.*, o.title as opportunity_title,
+            ps.company_name as primary_sub_name,
+            bs.company_name as backup_sub_name
+       from contracts c
+       left join opportunities o on o.id = c.opportunity_id
+       left join subcontractors ps on ps.id = c.primary_sub_id
+       left join subcontractors bs on bs.id = c.backup_sub_id
+      where c.status <> 'active'
+      order by c.end_date desc nulls last, c.updated_at desc`
+  );
+}
+
 export async function latestKpiSnapshot(): Promise<Record<string, unknown> | null> {
   const row = await queryOne<{ output_json: Record<string, unknown> }>(
     `select output_json from agent_logs
@@ -278,6 +294,136 @@ export async function computeKpisFallback() {
     pipeline_value: Number(row?.pipeline_value ?? 0),
     active_contract_revenue: Number(row?.active_revenue ?? 0),
   };
+}
+
+/**
+ * Live built-in analytics that don't depend on the AI Analytics Engine snapshot,
+ * so the dashboard is useful the moment there's data: current pipeline counts and
+ * the value sitting in each stage.
+ */
+export async function analyticsExtras(): Promise<{
+  counts: { open_opps: number; new_30d: number; bids_30d: number; active_contracts: number };
+  byStage: { stage: string; count: number; value: number }[];
+}> {
+  const [counts, byStage] = await Promise.all([
+    queryOne<{ open_opps: number; new_30d: number; bids_30d: number; active_contracts: number }>(
+      `select
+         (select count(*)::int from opportunities where status='open' and stage not in ('dismissed','lost')) as open_opps,
+         (select count(*)::int from opportunities where created_at >= now() - interval '30 days') as new_30d,
+         (select count(*)::int from bids where submitted_at is not null and submitted_at >= now() - interval '30 days') as bids_30d,
+         (select count(*)::int from contracts where status='active') as active_contracts`
+    ),
+    query<{ stage: string; count: number; value: number }>(
+      `select stage, count(*)::int as count, coalesce(sum(value_estimated),0)::float8 as value
+         from opportunities
+        where status='open' and stage not in ('dismissed','lost')
+        group by stage`
+    ),
+  ]);
+  return {
+    counts: counts ?? { open_opps: 0, new_30d: 0, bids_30d: 0, active_contracts: 0 },
+    byStage,
+  };
+}
+
+export interface CustomKpiRow {
+  id: string;
+  label: string;
+  metric: string;
+  params: KpiParams;
+  sort_order: number;
+}
+
+/** Operator-defined KPI definitions for the Analytics dashboard. [] pre-migration. */
+export async function customKpis(): Promise<CustomKpiRow[]> {
+  try {
+    return await query<CustomKpiRow>(
+      `select id, label, metric, params, sort_order from custom_kpis
+        order by sort_order asc, created_at asc limit 50`
+    );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Compute one custom KPI. Each metric maps to a fixed, bounded, parameterized
+ * query (no free-form SQL), and every failure returns null so a bad definition
+ * or a not-yet-migrated table can't break the dashboard. Percent metrics return
+ * a 0..100 number; currency/count return the raw number.
+ */
+export async function computeCustomKpi(metric: string, params: KpiParams): Promise<number | null> {
+  const days = params.days ?? 0;
+  const minScore = params.minScore ?? 0;
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  try {
+    switch (metric) {
+      case "open_opportunities": {
+        const r = await queryOne<{ n: number }>(
+          `select count(*)::int as n from opportunities
+            where status='open' and stage not in ('dismissed','lost') and coalesce(score,0) >= $1`,
+          [minScore]
+        );
+        return Number(r?.n ?? 0);
+      }
+      case "pipeline_value": {
+        const r = await queryOne<{ n: number }>(
+          `select coalesce(sum(value_estimated),0)::float8 as n from opportunities
+            where status='open' and stage not in ('dismissed','lost') and coalesce(score,0) >= $1`,
+          [minScore]
+        );
+        return Number(r?.n ?? 0);
+      }
+      case "opportunities_added": {
+        const r = await queryOne<{ n: number }>(
+          `select count(*)::int as n from opportunities where created_at >= $1`,
+          [since]
+        );
+        return Number(r?.n ?? 0);
+      }
+      case "bids_submitted": {
+        const r = await queryOne<{ n: number }>(
+          `select count(*)::int as n from bids where submitted_at is not null and submitted_at >= $1`,
+          [since]
+        );
+        return Number(r?.n ?? 0);
+      }
+      case "win_rate": {
+        const r = await queryOne<{ won: number; decided: number }>(
+          `select count(*) filter (where outcome='won')::int as won,
+                  count(*) filter (where outcome in ('won','lost'))::int as decided
+             from bids
+            where ($1::boolean is false or submitted_at >= $2)`,
+          [days > 0, since]
+        );
+        const won = Number(r?.won ?? 0);
+        const decided = Number(r?.decided ?? 0);
+        return decided > 0 ? (won / decided) * 100 : null;
+      }
+      case "avg_margin": {
+        const r = await queryOne<{ n: number | null }>(
+          `select avg(margin_pct)::float8 as n from bids where outcome='won'`
+        );
+        return r?.n != null ? Number(r.n) : null;
+      }
+      case "active_contracts": {
+        const r = await queryOne<{ n: number }>(
+          `select count(*)::int as n from contracts where status='active'`
+        );
+        return Number(r?.n ?? 0);
+      }
+      case "active_contract_revenue": {
+        const r = await queryOne<{ n: number }>(
+          `select coalesce(sum(award_amount),0)::float8 as n from contracts where status='active'`
+        );
+        return Number(r?.n ?? 0);
+      }
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
 }
 
 export async function agentLogs(filters: { agent?: string; limit?: number } = {}) {
@@ -355,12 +501,52 @@ export async function jobRunsSummary() {
   );
 }
 
+/**
+ * One competing firm's footprint in this opportunity's NAICS + state, rolled up
+ * from the CPI-adjusted pricing_comps the Pricing Research agent already stores.
+ * Numeric aggregates are cast to float8 in SQL so they arrive as JS numbers.
+ */
+export interface CompetitorRow {
+  recipient_name: string;
+  award_count: number;
+  total_adj: number;
+  median_adj: number;
+  last_award_at: string | null;
+  is_incumbent: boolean;
+}
+
+/**
+ * Competitive landscape for one opportunity: every firm that has won work in
+ * the same NAICS + state over the comp window, ranked by how often they win.
+ * Reuses the pricing_comps rows already gathered at the pursue tier, so it
+ * needs no new API calls and lights up on every opportunity that has been
+ * priced. Bounded to keep the render cheap (comps are ≤100 per opportunity).
+ */
+export async function opportunityCompetitors(id: string): Promise<CompetitorRow[]> {
+  return query<CompetitorRow>(
+    `select recipient_name,
+            count(*)::int                                                   as award_count,
+            coalesce(sum(award_amount_adj), 0)::float8                       as total_adj,
+            coalesce(percentile_cont(0.5) within group
+              (order by award_amount_adj), 0)::float8                       as median_adj,
+            max(awarded_at)::text                                           as last_award_at,
+            bool_or(is_incumbent)                                           as is_incumbent
+       from pricing_comps
+      where opportunity_id = $1
+        and recipient_name is not null and btrim(recipient_name) <> ''
+      group by recipient_name
+      order by award_count desc, total_adj desc
+      limit 50`,
+    [id]
+  );
+}
+
 export async function opportunityDetail(id: string) {
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [id]);
   if (!opp) return null;
   // Independent lookups run in parallel; every list is bounded so an aged
   // opportunity can't balloon the page render.
-  const [bid, quotes, subs, documents, logs] = await Promise.all([
+  const [bid, quotes, subs, documents, logs, competitors] = await Promise.all([
     queryOne(`select * from bids where opportunity_id=$1 order by created_at desc limit 1`, [id]),
     query(
       `select q.*, s.company_name from quotes q left join subcontractors s on s.id=q.subcontractor_id
@@ -379,13 +565,31 @@ export async function opportunityDetail(id: string) {
         where opportunity_id=$1 order by created_at desc limit 50`,
       [id]
     ),
+    opportunityCompetitors(id),
   ]);
-  return { opp, bid, quotes, subs, documents, logs };
+  return { opp, bid, quotes, subs, documents, logs, competitors };
 }
 
 export async function pricingSummaryFor(opp: Opportunity): Promise<Record<string, unknown> | null> {
   const raw = opp.raw_json as { pricing_summary?: Record<string, unknown> } | null;
   return raw?.pricing_summary ?? null;
+}
+
+/**
+ * Every content-library snippet, for the management screen. Returns [] if the
+ * table hasn't been migrated yet so the settings page still renders its empty
+ * state instead of erroring.
+ */
+export async function contentLibrary(): Promise<ContentLibraryItem[]> {
+  try {
+    return await query<ContentLibraryItem>(
+      `select * from content_library
+        order by is_active desc, category asc, updated_at desc
+        limit 500`
+    );
+  } catch {
+    return [];
+  }
 }
 
 /* ------------------------------------------------------------------------ */

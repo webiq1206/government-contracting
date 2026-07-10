@@ -8,10 +8,18 @@
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
-import { sam, type SamOpportunity } from "../integrations/sam";
+import { sam, wantNoticeType, type SamOpportunity } from "../integrations/sam";
 import { runEnabledScrapers } from "../integrations/scrapers";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
+
+// SAM's ncode/ptype/state are all single-value, so federal ingestion queries
+// ONE NAICS code per request and filters notice types client-side. These bounds
+// keep a busy profile within the ~1000/day SAM key quota (the 2-hour cron picks
+// up anything skipped on the next run; dedup by source_id prevents re-ingest).
+const SAM_MAX_NAICS = 60; // codes queried per run (most profiles have far fewer)
+const SAM_PAGES_PER_NAICS = 3; // 300 notices/code/run is ample for a 3-day window
+const SAM_REQUEST_BUDGET = 150; // hard cap on SAM calls per run
 
 function firstPoc(o: SamOpportunity) {
   const poc = o.pointOfContact?.[0];
@@ -94,31 +102,58 @@ export const opportunityMonitor: AgentDefinition = {
     let skippedDisabled = false;
 
     // --- Federal (SAM.gov) ---
-    // Paginate so a busy NAICS window can't silently drop notices past the
-    // first page. Bounded at 5 pages/run (500 notices) to respect the daily
-    // SAM key quota; the 2-hour cron catches anything beyond that next run.
-    const samItems: Awaited<ReturnType<typeof sam.searchOpportunities>>["items"] = [];
+    // SAM accepts a SINGLE ncode per request, so we query once per NAICS code
+    // (never a comma-joined list, which SAM silently rejects), paginate each,
+    // and keep only biddable + sources-sought notices (filtered client-side,
+    // since ptype is also single-value). This is the correct, complete mapping
+    // of the profile's NAICS codes to SAM requests.
+    const samItems: SamOpportunity[] = [];
+    const seenNoticeIds = new Set<string>();
     let samDisabled = false;
-    const search0 = await sam.searchOpportunities({
-      naicsCodes: naics.length ? naics : undefined,
-      ptype: "o,p,k,r", // Solicitation, Presol, Combined, Sources Sought
-      limit: 100,
-      offset: 0,
-    });
-    samDisabled = !!search0.disabled;
-    samItems.push(...(search0.items ?? []));
-    if (!samDisabled && (search0.items?.length ?? 0) === 100) {
-      for (let page = 1; page < 5; page++) {
-        const next = await sam.searchOpportunities({
-          naicsCodes: naics.length ? naics : undefined,
-          ptype: "o,p,k,r",
-          limit: 100,
-          offset: page * 100,
-        });
-        samItems.push(...(next.items ?? []));
-        if ((next.items?.length ?? 0) < 100) break;
+    let samRequests = 0;
+    let samCapped = false;
+
+    if (naics.length === 0) {
+      // No NAICS on the profile means we can't target federal notices without
+      // pulling the entire firehose. Skip + warn rather than ingest noise.
+      await logAgent({
+        agent: "opportunity-monitor",
+        action: "poll-sam",
+        level: "warn",
+        status: "skipped",
+        message: "No NAICS codes on the Company Profile, federal ingestion skipped. Add NAICS codes in Settings to enable it.",
+      });
+    } else {
+      const codes = naics.slice(0, SAM_MAX_NAICS);
+      if (naics.length > SAM_MAX_NAICS) samCapped = true;
+      naicsLoop: for (const code of codes) {
+        for (let page = 0; page < SAM_PAGES_PER_NAICS; page++) {
+          if (samRequests >= SAM_REQUEST_BUDGET) {
+            samCapped = true;
+            break naicsLoop;
+          }
+          const res = await sam.searchOpportunities({
+            naics: code,
+            limit: 100,
+            offset: page * 100,
+          });
+          samRequests++;
+          if (res.disabled) {
+            samDisabled = true;
+            break naicsLoop;
+          }
+          const items = res.items ?? [];
+          for (const o of items) {
+            if (!wantNoticeType(o.type)) continue; // drop award/special/etc.
+            if (o.noticeId && seenNoticeIds.has(o.noticeId)) continue;
+            if (o.noticeId) seenNoticeIds.add(o.noticeId);
+            samItems.push(o);
+          }
+          if (items.length < 100) break; // last page for this NAICS
+        }
       }
     }
+
     const search = { disabled: samDisabled, items: samItems };
     if (search.disabled) {
       skippedDisabled = true;
@@ -130,6 +165,14 @@ export const opportunityMonitor: AgentDefinition = {
         message: "SAM_API_KEY not set, federal ingestion skipped.",
       });
     } else {
+      if (samCapped) {
+        await logAgent({
+          agent: "opportunity-monitor",
+          action: "poll-sam",
+          level: "info",
+          message: `SAM request budget reached (${samRequests} calls, ${naics.length} NAICS). Remaining codes/pages will be picked up on the next 2-hour run.`,
+        });
+      }
       for (const o of search.items) {
         const res = await ingestOne(normalizeSam(o));
         if (res.inserted && res.id) {

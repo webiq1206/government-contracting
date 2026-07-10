@@ -13,6 +13,7 @@ import { z } from "zod";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
+import { retrieveRelevantContent, renderContentForPrompt } from "../ai/contentLibrary";
 import { logAgent } from "../logger";
 import { storage } from "../integrations/storage";
 import { documents } from "../integrations/documents";
@@ -26,7 +27,7 @@ const ResponseSchema = z.object({
   capability_summary: z.string(),
 });
 
-function buildPrompt(opp: Opportunity): string {
+function buildPrompt(opp: Opportunity, reusable?: string | null): string {
   return [
     "Draft our response to this federal Sources Sought notice. Sources Sought notices are market research, the goal is to demonstrate that a capable small business (us) exists so the agency can justify a set-aside. Match the tone of our Template 3 (Sources Sought response): professional, concise, capability-forward, no pricing, no unsupported claims.",
     "Use the Company Profile (your system context) for our certifications, NAICS, trades, and service areas.",
@@ -40,6 +41,7 @@ function buildPrompt(opp: Opportunity): string {
     "",
     "SCOPE / DESCRIPTION:",
     (opp.description ?? "(no description provided)").slice(0, 5000),
+    ...(reusable ? ["", reusable] : []),
     "",
     "Return JSON: { email_subject: string, email_body: string, differentiators: string[], capability_summary: string }.",
     "email_body is the full outbound email a human will review and send (address it to the notice's point of contact / contracting officer, sign as our company). differentiators are 2-5 short bullets on why we are a strong candidate. capability_summary is one paragraph.",
@@ -65,13 +67,23 @@ export const sourcesSoughtResponder: AgentDefinition = {
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 
+    // Pre-approved reusable content matched to this notice's NAICS + set-aside.
+    // Empty/absent library retrieves nothing, leaving the prompt at baseline.
+    const reusable = renderContentForPrompt(
+      await retrieveRelevantContent({
+        categories: ["capability", "past_performance", "win_theme", "boilerplate"],
+        tags: [opp.naics_code ?? "", opp.set_aside_type ?? ""].filter(Boolean),
+        limit: 3,
+      })
+    );
+
     // 1) Draft the response body via Claude.
     let subject: string;
     let body: string;
     let differentiators: string[];
     let capabilitySummary: string;
     try {
-      const { data, usage } = await completeJson(buildPrompt(opp), {
+      const { data, usage } = await completeJson(buildPrompt(opp, reusable), {
         schema: ResponseSchema,
         maxTokens: 2000,
       });

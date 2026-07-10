@@ -4,6 +4,7 @@
  * score. The per-dimension point judgement is produced by Claude against the
  * rubric; the arithmetic and thresholds live here.
  */
+import { serviceAreaStateCodes } from "../us-states";
 import type {
   CompanyProfileJson,
   Opportunity,
@@ -191,7 +192,7 @@ export function applyWeightOverrides<
  * above value_max (the company is too new to self-approve a contract this large).
  */
 export function reviewFlags(
-  opp: Pick<Opportunity, "value_estimated">,
+  opp: Pick<Opportunity, "value_estimated" | "location_state">,
   profile: CompanyProfileJson
 ): string[] {
   const flags: string[] = [];
@@ -199,7 +200,31 @@ export function reviewFlags(
   if (max != null && opp.value_estimated != null && opp.value_estimated > max) {
     flags.push("value_over_max");
   }
+  if (serviceAreaFit(opp.location_state, profile.service_areas) === "mismatch") {
+    flags.push("out_of_service_area");
+  }
   return flags;
+}
+
+/**
+ * Deterministic geographic fit between an opportunity's place of performance and
+ * the company's service areas. Returns:
+ *   - "unknown"  when we can't judge (no PoP state, or the company is nationwide
+ *                / has no usable service areas) — never penalize on uncertainty.
+ *   - "fit"      when the PoP state is within the company's service areas.
+ *   - "mismatch" when the company is regional and the PoP state is outside it.
+ * A mismatch is a REVIEW flag (downgrades auto-pursue to human review), not a
+ * hard exclusion, so a valid out-of-area opportunity is surfaced, never dropped.
+ */
+export function serviceAreaFit(
+  locationState: string | null | undefined,
+  serviceAreas: string[] | null | undefined
+): "fit" | "mismatch" | "unknown" {
+  const codes = serviceAreaStateCodes(serviceAreas); // null = nationwide / none
+  if (!codes) return "unknown";
+  const loc = (locationState ?? "").trim().toUpperCase();
+  if (!loc) return "unknown"; // no place of performance to compare against
+  return codes.has(loc) ? "fit" : "mismatch";
 }
 
 /** Assemble a full ScoreBreakdown from dimension scores + exclusions. */

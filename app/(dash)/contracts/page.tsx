@@ -1,5 +1,6 @@
-import { activeContracts } from "@/lib/data";
+import { activeContracts, completedContracts } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { ActionButton } from "@/components/action-button";
 import { PAGE_HELP } from "@/lib/help-content";
 import { currency, shortDate, pct } from "@/lib/format";
 
@@ -80,14 +81,14 @@ function NonSsGauge({ pctValue }: { pctValue: number }) {
   );
 }
 
-function ContractCard({ c }: { c: Record<string, unknown> }) {
+function ContractCard({ c, completed = false }: { c: Record<string, unknown>; completed?: boolean }) {
   const milestones = (c.milestones as Milestone[] | null) ?? [];
   const coordination = (c.coordination_log as CoordinationEntry[] | null) ?? [];
   const nonSsPct = Number(c.non_ss_sub_pct ?? 0);
   const cparsStatus = (c.cpars_status as string | null) ?? "not_started";
 
   return (
-    <div className="card space-y-5">
+    <div className={`card space-y-5 ${completed ? "opacity-80" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-sm font-medium text-slate-900">
@@ -97,9 +98,23 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
             {(c.contract_number as string | null) ?? "-"}
           </p>
         </div>
-        <span className="text-sm font-semibold text-slate-900">
-          {currency(c.award_amount as number | null)}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <span className="text-sm font-semibold text-slate-900">
+            {currency(c.award_amount as number | null)}
+          </span>
+          <ActionButton
+            endpoint={`/api/contracts/${String(c.id)}/status`}
+            body={{ status: completed ? "active" : "completed" }}
+            className="btn-ghost text-xs"
+            confirm={
+              completed
+                ? "Reopen this contract as active?"
+                : "Mark this contract completed? It moves to Past contracts."
+            }
+          >
+            {completed ? "Reopen" : "Mark complete"}
+          </ActionButton>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
@@ -220,33 +235,52 @@ function ContractCard({ c }: { c: Record<string, unknown> }) {
 }
 
 export default async function ContractsPage() {
-  const contracts = (await activeContracts()) as Record<string, unknown>[];
+  const [contracts, past] = await Promise.all([
+    activeContracts() as Promise<Record<string, unknown>[]>,
+    completedContracts() as Promise<Record<string, unknown>[]>,
+  ]);
 
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
         help={PAGE_HELP["contracts"]}
-        title="Active Contracts"
-        subtitle={`${contracts.length} active contract${contracts.length === 1 ? "" : "s"} under performance & compliance tracking.`}
+        title="Contracts"
+        subtitle={`${contracts.length} active${
+          past.length ? ` · ${past.length} completed` : ""
+        } under performance & compliance tracking.`}
       />
-      <div className="scroll-thin flex-1 overflow-y-auto p-4">
-        {contracts.length === 0 ? (
-          <div className="card mx-auto mt-8 max-w-md text-center">
-            <p className="text-2xl">📁</p>
-            <p className="mt-2 text-sm font-medium text-slate-800">
-              No active contracts.
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Awarded opportunities will appear here for milestone and compliance
-              tracking.
-            </p>
-          </div>
-        ) : (
-          <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4">
-            {contracts.map((c) => (
-              <ContractCard key={String(c.id)} c={c} />
-            ))}
-          </div>
+      <div className="scroll-thin flex-1 space-y-8 overflow-y-auto p-4">
+        <section className="mx-auto max-w-4xl">
+          <h2 className="label mb-3">Active ({contracts.length})</h2>
+          {contracts.length === 0 ? (
+            <div className="card mx-auto max-w-md text-center">
+              <p className="text-2xl">📁</p>
+              <p className="mt-2 text-sm font-medium text-slate-800">
+                No active contracts.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Awarded opportunities will appear here for milestone and compliance
+                tracking.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4">
+              {contracts.map((c) => (
+                <ContractCard key={String(c.id)} c={c} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {past.length > 0 && (
+          <section className="mx-auto max-w-4xl">
+            <h2 className="label mb-3">Past / completed ({past.length})</h2>
+            <div className="grid grid-cols-1 gap-4">
+              {past.map((c) => (
+                <ContractCard key={String(c.id)} c={c} completed />
+              ))}
+            </div>
+          </section>
         )}
       </div>
     </div>

@@ -81,3 +81,31 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   return NextResponse.json({ ok: true });
 }
+
+/** Delete an operator-created item. Monitor-managed items can't be deleted here
+ *  (the monitor would just recreate them), so this only removes source='operator'. */
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+
+  const item = await queryOne<{ id: string; label: string; source: string }>(
+    `select id, label, coalesce(source,'monitor') as source from compliance_items where id=$1`,
+    [params.id]
+  );
+  if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (item.source !== "operator") {
+    return NextResponse.json(
+      { error: "This item is tracked automatically and can't be deleted." },
+      { status: 400 }
+    );
+  }
+
+  await query(`delete from compliance_items where id=$1`, [params.id]);
+  await logAgent({
+    agent: "operator",
+    action: "compliance-delete",
+    level: "info",
+    message: `${auth.email} deleted compliance item "${item.label}".`,
+  });
+  return NextResponse.json({ ok: true });
+}

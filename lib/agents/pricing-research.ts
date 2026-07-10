@@ -71,7 +71,18 @@ export const pricingResearch: AgentDefinition = {
     const seriesId = profile.pricing_rules?.cpi_series_id ?? "CUUR0000SA0";
     const cpiByYear = await bls.getCpiSeries(seriesId, currentYear - 4, currentYear);
 
-    // 3) Adjust each award to current-year dollars and stage comp rows.
+    // Adjust TO the latest year CPI is actually published for, not the calendar
+    // current year. BLS lags, so early in a year (or for any not-yet-published
+    // year) cpiByYear[currentYear] is missing; using it as the numerator made
+    // every award fail the CPI check and drop out, leaving empty comp stats
+    // (median 0 → target bids 0 → the "bid within comps" QA gate silently off).
+    const cpiYears = Object.keys(cpiByYear)
+      .map(Number)
+      .filter((y) => Number.isFinite(y) && cpiByYear[y] > 0)
+      .sort((a, b) => a - b);
+    const refYear = cpiYears.length ? cpiYears[cpiYears.length - 1] : currentYear;
+
+    // 3) Adjust each award to reference-year dollars and stage comp rows.
     const adjustedAmounts: number[] = [];
     const compRows: {
       award_amount: number;
@@ -81,20 +92,20 @@ export const pricingResearch: AgentDefinition = {
       agency: string;
     }[] = [];
 
-    // When CPI data is present, only CPI-adjusted comps feed the stats so we
-    // never mix real-dollar and nominal-dollar figures into one median (which
-    // biases the sub-cost proxy, and every modeled bid, downward). When CPI is
-    // entirely unavailable (BLS off), fall back to all-nominal, which is
-    // consistent (no blending) rather than an empty comp set.
-    const cpiAvailable = Object.keys(cpiByYear).length > 0;
+    // Every positive-value award feeds the comp stats. Each is CPI-adjusted to
+    // reference-year dollars when its year is known and in the CPI series, and
+    // used at nominal value otherwise (many USASpending award rows carry no
+    // usable date). Previously undated awards were dropped whenever CPI was
+    // available, which silently emptied the stats (median 0 → target bids 0 →
+    // the price-sanity QA gate off) any time award dates were missing.
     for (const a of awards) {
       const awardYear = yearOf(a.action_date);
       const haveCpi =
-        Number.isFinite(awardYear) && !!cpiByYear[awardYear] && !!cpiByYear[currentYear];
+        Number.isFinite(awardYear) && !!cpiByYear[awardYear] && !!cpiByYear[refYear];
       const adj = haveCpi
-        ? round2(a.award_amount * (cpiByYear[currentYear] / cpiByYear[awardYear]))
+        ? round2(a.award_amount * (cpiByYear[refYear] / cpiByYear[awardYear]))
         : round2(a.award_amount);
-      if (a.award_amount > 0 && (haveCpi || !cpiAvailable)) adjustedAmounts.push(adj);
+      if (a.award_amount > 0) adjustedAmounts.push(adj);
       compRows.push({
         award_amount: round2(a.award_amount),
         award_amount_adj: adj,
@@ -145,7 +156,7 @@ export const pricingResearch: AgentDefinition = {
       naics,
       state: state ?? null,
       cpi_series_id: seriesId,
-      current_year: currentYear,
+      current_year: refYear,
       comp_count: stats.count,
       comp_stats: stats,
       sub_cost_proxy_estimate: subCostProxy,
@@ -171,7 +182,7 @@ export const pricingResearch: AgentDefinition = {
 
     const reasoning = [
       `Pulled ${awards.length} awards for NAICS ${naics}${state ? ` in ${state}` : ""} over the last 36 months.`,
-      `CPI-adjusted to ${currentYear} via BLS series ${seriesId} (${Object.keys(cpiByYear).length} years available).`,
+      `CPI-adjusted to ${refYear} dollars via BLS series ${seriesId} (${cpiYears.length} years available).`,
       `Comp stats, count ${stats.count}, median $${stats.median}, avg $${stats.average}, p25 $${stats.p25}, p75 $${stats.p75}.`,
       incumbent
         ? `Likely incumbent: ${incumbent.recipient_name} (last award $${round2(incumbent.award_amount)} on ${incumbent.action_date}), recompete signal.`

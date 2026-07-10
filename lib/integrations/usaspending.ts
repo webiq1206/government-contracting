@@ -29,7 +29,11 @@ export interface SearchAwardsParams {
 /** Raw row shape from spending_by_award (keys are the requested field labels). */
 interface RawAwardRow {
   "Award Amount"?: unknown;
-  "Action Date"?: unknown;
+  // "Action Date" is NOT a valid spending_by_award field (it's transaction-level)
+  // and always returned null, which broke CPI adjustment. These are the valid
+  // award-level date fields; Base Obligation Date is closest to the award date.
+  "Base Obligation Date"?: unknown;
+  "Start Date"?: unknown;
   "Recipient Name"?: unknown;
   "Awarding Agency"?: unknown;
   "Award ID"?: unknown;
@@ -75,7 +79,8 @@ export const usaspending = {
       },
       fields: [
         "Award Amount",
-        "Action Date",
+        "Base Obligation Date",
+        "Start Date",
         "Recipient Name",
         "Awarding Agency",
         "Award ID",
@@ -98,7 +103,8 @@ export const usaspending = {
       const rows = data.results ?? [];
       const results: UsaAward[] = rows.map((r) => ({
         award_amount: toNum(r["Award Amount"]),
-        action_date: toStr(r["Action Date"]),
+        // Prefer Base Obligation Date (award timing); fall back to Start Date.
+        action_date: toStr(r["Base Obligation Date"] || r["Start Date"]),
         recipient_name: toStr(r["Recipient Name"]),
         awarding_agency: toStr(r["Awarding Agency"]),
         award_id: toStr(r["Award ID"]),

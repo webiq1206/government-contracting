@@ -2,8 +2,11 @@ import Link from "next/link";
 import { actionCenter, type ActionOppRow } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PipelineStrip } from "@/components/pipeline-strip";
+import { SetupChecklist } from "@/components/setup-checklist";
 import { PAGE_HELP } from "@/lib/help-content";
 import { integrationStatus } from "@/lib/config";
+import { getActiveProfile } from "@/lib/ai/companyProfile";
+import { computeSetupChecklist } from "@/lib/domain/setup";
 import { currency, countdown, shortDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -109,30 +112,12 @@ function Section({
 }
 
 export default async function TodayPage() {
-  const data = await actionCenter();
+  const [data, profile] = await Promise.all([actionCenter(), getActiveProfile()]);
   const integrations = integrationStatus();
-
-  const setupGaps: { label: string; why: string }[] = [];
-  if (!integrations.sam)
-    setupGaps.push({
-      label: "Connect SAM.gov",
-      why: "This is where new federal opportunities come from. Without it, nothing new enters your pipeline.",
-    });
-  if (!integrations.claude)
-    setupGaps.push({
-      label: "Connect Claude (Anthropic)",
-      why: "Powers scoring, plain-English bid briefs, and call scripts.",
-    });
-  if (!integrations.googleMaps)
-    setupGaps.push({
-      label: "Connect Google Maps",
-      why: "Finds local subcontractors for each trade automatically.",
-    });
-  if (!integrations.gmail)
-    setupGaps.push({
-      label: "Connect Gmail",
-      why: "Sends subcontractor outreach and detects their replies.",
-    });
+  const setup = computeSetupChecklist({
+    profile: profile?.profile_json ?? null,
+    integrations,
+  });
 
   // Items already surfaced in a more urgent section shouldn't repeat below it.
   const urgentIds = new Set(data.urgent.map((o) => o.id));
@@ -163,7 +148,10 @@ export default async function TodayPage() {
         {/* Pipeline progress rail */}
         <PipelineStrip counts={data.stageCounts} />
 
-        {totalActions === 0 && setupGaps.length === 0 && (
+        {/* Guided setup, pinned up top until the platform is fully configured. */}
+        <SetupChecklist checklist={setup} />
+
+        {totalActions === 0 && setup.complete && (
           <div className="card mx-auto max-w-lg text-center">
             <p className="text-3xl">✅</p>
             <p className="mt-3 text-base font-semibold text-foreground">
@@ -287,25 +275,6 @@ export default async function TodayPage() {
           </Section>
         )}
 
-        {setupGaps.length > 0 && (
-          <Section eyebrow="Finish setting up" title="Unlock more automation" count={setupGaps.length}>
-            {setupGaps.map((g) => (
-              <Link
-                key={g.label}
-                href="/settings/integrations"
-                className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
-              >
-                <div>
-                  <p className="text-sm font-medium text-slate-900">{g.label}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">{g.why}</p>
-                </div>
-                <span className="btn-ghost pointer-events-none shrink-0 text-xs">
-                  Set up →
-                </span>
-              </Link>
-            ))}
-          </Section>
-        )}
        </div>
       </div>
     </div>

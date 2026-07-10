@@ -1,7 +1,16 @@
-import { latestKpiSnapshot, computeKpisFallback } from "@/lib/data";
+import {
+  latestKpiSnapshot,
+  computeKpisFallback,
+  analyticsExtras,
+  customKpis,
+  computeCustomKpi,
+} from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
+import { KpiManager, KpiDeleteButton } from "@/components/kpi-manager";
+import { getMetric, formatKpiValue, describeKpiParams } from "@/lib/domain/kpi";
 import { currency, pct } from "@/lib/format";
+import { PIPELINE_STAGES } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -97,18 +106,42 @@ function BreakdownTable({
   );
 }
 
-export default async function AnalyticsPage() {
-  const [snap, fb] = await Promise.all([latestKpiSnapshot(), computeKpisFallback()]);
+const STAGE_LABEL: Record<string, string> = Object.fromEntries(
+  PIPELINE_STAGES.map((s) => [s.key, s.label])
+);
 
-  // Prefer richer snapshot fields where present, fall back to live-computed basics.
-  const winRate = snap ? num(snap.win_rate) ?? fb.win_rate : fb.win_rate;
-  const avgMargin = snap ? num(snap.avg_margin_on_wins) ?? fb.avg_margin_on_wins : fb.avg_margin_on_wins;
-  const pipelineValue = snap ? num(snap.pipeline_value) ?? fb.pipeline_value : fb.pipeline_value;
-  const activeRevenue = snap
-    ? num(snap.active_contract_revenue) ?? fb.active_contract_revenue
-    : fb.active_contract_revenue;
-  const wins = snap ? num(snap.wins) ?? fb.wins : fb.wins;
-  const losses = snap ? num(snap.losses) ?? fb.losses : fb.losses;
+export default async function AnalyticsPage() {
+  const [snap, fb, extras, kpis] = await Promise.all([
+    latestKpiSnapshot(),
+    computeKpisFallback(),
+    analyticsExtras(),
+    customKpis(),
+  ]);
+  // Compute each operator-defined KPI live (each is a bounded, safe query).
+  const kpiValues = await Promise.all(
+    kpis.map(async (k) => ({
+      ...k,
+      value: await computeCustomKpi(k.metric, k.params),
+      unit: getMetric(k.metric)?.unit ?? "count",
+    }))
+  );
+  // Stages that actually hold value, largest first, for the by-stage breakdown.
+  const stageValue = extras.byStage
+    .filter((s) => s.value > 0 || s.count > 0)
+    .sort((a, b) => b.value - a.value);
+
+  // Headline KPIs read LIVE, not from the stored snapshot. These are point-in-
+  // time / cumulative values the live query always computes correctly and
+  // currently; the snapshot is only a stale copy of them (a stale 0 used to hide
+  // real pipeline value). The snapshot still powers the richer breakdowns below
+  // (by NAICS/agency/geography, cash flow, sub rankings, velocity), which have no
+  // live equivalent.
+  const winRate = fb.win_rate;
+  const avgMargin = fb.avg_margin_on_wins;
+  const pipelineValue = fb.pipeline_value;
+  const activeRevenue = fb.active_contract_revenue;
+  const wins = fb.wins;
+  const losses = fb.losses;
 
   const byNaics = snap ? rows(snap.by_naics) : [];
   const byAgency = snap ? rows(snap.by_agency) : [];
@@ -129,15 +162,16 @@ export default async function AnalyticsPage() {
         title="Analytics"
         subtitle={
           snap
-            ? "Latest snapshot from the Analytics Engine."
-            : "Live-computed basics."
+            ? "Headline numbers are live; breakdowns are from the latest Analytics Engine run."
+            : "Live-computed. Deeper breakdowns appear once the Analytics Engine runs."
         }
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
         {!snap && (
           <div className="card border-review/40 bg-review/5 text-sm text-slate-700">
-            Analytics Engine has not run yet, so these numbers are computed live. Trigger it from
-            Agents.
+            The headline numbers below are always live. The deeper breakdowns (win rate
+            by NAICS/agency/geography, cash flow, sub rankings, velocity) appear once the
+            Analytics Engine runs, trigger it from Agents.
           </div>
         )}
 
@@ -162,6 +196,78 @@ export default async function AnalyticsPage() {
           estimated value of everything still in play. These fill in as bids are
           decided, so early numbers will look sparse.
         </p>
+
+        {/* Live activity, computed straight from the data (no engine run needed). */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <KpiCard label="Open opportunities" value={extras.counts.open_opps} />
+          <KpiCard label="New (30 days)" value={extras.counts.new_30d} />
+          <KpiCard label="Bids submitted (30 days)" value={extras.counts.bids_30d} />
+          <KpiCard label="Active contracts" value={extras.counts.active_contracts} />
+        </div>
+
+        {/* Custom, operator-defined KPIs. */}
+        <section>
+          <div className="mb-3 flex items-center justify-between gap-3 border-b-2 border-accent/80 pb-2">
+            <div>
+              <p className="eyebrow">Your metrics</p>
+              <h2 className="mt-0.5 font-serif text-2xl font-semibold text-foreground">
+                Custom KPIs
+              </h2>
+            </div>
+            <KpiManager />
+          </div>
+          {kpiValues.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Pin the numbers you care about. Add a KPI, pick a metric, and it
+              shows here every time you open Analytics.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {kpiValues.map((k) => {
+                const desc = describeKpiParams(k.metric, k.params);
+                return (
+                  <div key={k.id} className="card">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="label">{k.label}</div>
+                      <KpiDeleteButton id={k.id} />
+                    </div>
+                    <div className="num mt-1.5 text-4xl font-semibold tracking-tight text-neutral-900">
+                      {formatKpiValue(k.value, k.unit)}
+                    </div>
+                    {desc && <div className="mt-1.5 text-xs text-slate-500">{desc}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Where the pipeline value is sitting, by stage. */}
+        {stageValue.length > 0 && (
+          <div className="card scroll-thin overflow-x-auto">
+            <h3 className="mb-3 text-sm font-semibold text-neutral-900">
+              Pipeline value by stage
+            </h3>
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th className="th">Stage</th>
+                  <th className="th">Opportunities</th>
+                  <th className="th">Estimated value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stageValue.map((s) => (
+                  <tr key={s.stage} className="border-t border-border">
+                    <td className="td">{STAGE_LABEL[s.stage] ?? s.stage.replace(/_/g, " ")}</td>
+                    <td className="td num">{s.count}</td>
+                    <td className="td num">{currency(s.value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Win rate breakdowns */}
         {(byNaics.length > 0 || byAgency.length > 0 || byGeography.length > 0) && (

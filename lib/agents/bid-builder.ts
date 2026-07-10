@@ -25,6 +25,9 @@ import {
 } from "../domain/pricing";
 import { resolveRequirements, buildManifest, validatePackage, computeReady } from "../domain/package";
 import { checkEligibility } from "../domain/eligibility";
+import { competitivePositioningBrief } from "../domain/competition";
+import { opportunityCompetitors } from "../data";
+import { retrieveRelevantContent, renderContentForPrompt } from "../ai/contentLibrary";
 import { assemblePackageDocuments } from "./package-builder";
 import type { AgentDefinition } from "./types";
 import type {
@@ -478,11 +481,31 @@ async function buildNarrative(
     return "Our assembled team brings directly relevant trade experience to this scope of work. Detailed project references are available upon request.";
   }
 
+  // Competitive positioning, derived from the CPI-adjusted award history Pricing
+  // Research already gathered for this NAICS + state. It only shapes emphasis
+  // (what to lead with), never introduces competitor names or facts, so the
+  // narrative stays grounded in the team's own verifiable history.
+  const competitors = await opportunityCompetitors(opportunityId);
+  const positioning = competitivePositioningBrief(competitors);
+
+  // Pre-approved reusable content matched to this job's trades, agency, and
+  // NAICS. Retrieval degrades to nothing when the library is empty or absent, so
+  // this only ever adds vetted language the operator already stands behind.
+  const reusable = renderContentForPrompt(
+    await retrieveRelevantContent({
+      categories: ["past_performance", "win_theme", "technical_approach"],
+      tags: [...requiredTrades(opp), opp.agency ?? "", opp.naics_code ?? ""].filter(Boolean),
+      limit: 3,
+    })
+  );
+
   const prompt = [
-    "Write a concise past-performance / experience narrative (1-2 paragraphs) for a government bid, drawing ONLY on the subcontractor project history below. Emphasize relevance to the solicitation scope, breadth of trades, and successful delivery. Do not invent projects. Do not use em dashes.",
+    "Write a concise past-performance / experience narrative (1-2 paragraphs) for a government bid, drawing on the subcontractor project history and any approved reusable content provided below. Emphasize relevance to the solicitation scope, breadth of trades, and successful delivery. Do not invent projects or add facts beyond what is provided. Do not use em dashes.",
     "",
     `SOLICITATION: ${opp.title ?? "(untitled)"}${opp.agency ? `, ${opp.agency}` : ""}`,
     `SCOPE: ${(opp.description ?? "").slice(0, 1200)}`,
+    ...(positioning ? ["", positioning] : []),
+    ...(reusable ? ["", reusable] : []),
     "",
     "SUBCONTRACTOR PROJECT HISTORY:",
     ...historyLines.map((l) => `- ${l}`),

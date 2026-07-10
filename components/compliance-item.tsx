@@ -16,6 +16,8 @@ export interface ComplianceCardData {
   notes: string;
   link_url: string;
   doc_url: string;
+  /** True for operator-added items (deletable; not touched by the monitor). */
+  manual: boolean;
 }
 
 export interface CategoryInfo {
@@ -58,6 +60,23 @@ export function ComplianceItemCard({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function remove() {
+    if (!window.confirm(`Delete "${item.label}"?`)) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/compliance/${item.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Could not delete.");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const [form, setForm] = useState({
     due_at_override: item.dateInputValue,
@@ -176,7 +195,12 @@ export function ComplianceItemCard({
     <div className={`card ${highlight ? "border-risk/50 bg-risk/5" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-900">{item.label}</p>
+          <p className="text-sm font-medium text-slate-900">
+            {item.label}
+            {item.manual && (
+              <span className="badge ml-1.5 bg-slate-100 text-slate-500">yours</span>
+            )}
+          </p>
           <p className="mt-0.5 text-xs text-slate-500">
             Due {item.dueDisplay}
             {item.contract_number ? ` · ${item.contract_number}` : ""}
@@ -205,6 +229,15 @@ export function ComplianceItemCard({
         <button className="btn-ghost text-xs" onClick={() => setEditing(true)}>
           Edit
         </button>
+        {item.manual && (
+          <button
+            className="btn-ghost text-xs text-risk"
+            onClick={remove}
+            disabled={saving}
+          >
+            Delete
+          </button>
+        )}
         {item.link_url && (
           <a
             href={item.link_url}

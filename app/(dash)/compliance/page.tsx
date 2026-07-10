@@ -1,5 +1,6 @@
 import { complianceBoard } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { AddComplianceItem } from "@/components/add-compliance-item";
 import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate, complianceColorClass } from "@/lib/format";
 import { statusColor } from "@/lib/domain/compliance";
@@ -138,6 +139,7 @@ function buildCard(row: Row): ComplianceCardData {
     notes: str(row.notes),
     link_url: str(row.link_url),
     doc_url: str(row.doc_url),
+    manual: str(row.source) === "operator",
   };
 }
 
@@ -166,14 +168,15 @@ export default async function CompliancePage() {
       <div className="flex h-full flex-col">
         <PageHeader
         help={PAGE_HELP["compliance"]} title="Compliance Board" />
-        <div className="p-6">
+        <div className="space-y-4 p-6">
           <div className="card text-sm text-slate-600">
             Compliance Monitor has not run yet. Trigger it from{" "}
             <a href="/agents" className="text-accent hover:underline">
               Agents
             </a>
-            .
+            . You can also add your own items to track in the meantime.
           </div>
+          <AddComplianceItem />
         </div>
       </div>
     );
@@ -224,6 +227,9 @@ export default async function CompliancePage() {
             get alerts as the deadline gets close. Items showing &ldquo;no date
             set&rdquo; can&rsquo;t be tracked yet.
           </p>
+          <div className="mt-3">
+            <AddComplianceItem />
+          </div>
         </div>
 
         {urgent.length > 0 && (

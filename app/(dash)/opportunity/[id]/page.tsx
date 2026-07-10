@@ -9,6 +9,9 @@ import { BidBrief } from "@/components/bid-brief";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { SubmissionPackage } from "@/components/submission-package";
+import { OpportunityNotes } from "@/components/opportunity-notes";
+import { Collapsible } from "@/components/collapsible";
+import { CompetitiveLandscape } from "@/components/competitive-landscape";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
@@ -42,7 +45,7 @@ const OUTREACH_LABEL: Record<string, string> = {
 export default async function OpportunityPage({ params }: { params: { id: string } }) {
   const detail = await opportunityDetail(params.id);
   if (!detail) notFound();
-  const { opp, quotes, subs, documents, logs } = detail;
+  const { opp, quotes, subs, documents, logs, competitors } = detail;
   const bid = detail.bid as Bid | null;
   const breakdown = opp.score_breakdown as ScoreBreakdown | null;
   const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
@@ -107,6 +110,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
         {/* Stage-aware guidance: the single recommended next action. */}
         <div className="px-5 pt-5">
           <NextStepBanner
+            opportunityId={opp.id}
             stage={opp.stage}
             tier={opp.tier}
             humanActionRequired={opp.human_action_required}
@@ -332,6 +336,10 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </div>
             )}
 
+            <Collapsible title="Notes" defaultOpen={Boolean(opp.notes)}>
+              <OpportunityNotes opportunityId={opp.id} initialNotes={opp.notes} />
+            </Collapsible>
+
             {/* Always-visible attachments panel, so the record is complete even
                 if the AI analysis has not run yet. */}
             <AttachmentsPanel documents={briefDocs} />
@@ -340,10 +348,10 @@ export default async function OpportunityPage({ params }: { params: { id: string
           {/* Column 2, analysis + pricing + subs */}
           <div className="space-y-4">
             {breakdown && (
-              <div className="card">
-                <p className="eyebrow mb-3">
-                  Score breakdown · <span className="num">{breakdown.total}/100</span>
-                </p>
+              <Collapsible
+                title="Score breakdown"
+                meta={<span className="num">{breakdown.total}/100</span>}
+              >
                 <div className="space-y-2">
                   {breakdown.dimensions.map((d) => (
                     <div key={d.key} className="text-sm">
@@ -367,33 +375,50 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 {breakdown.summary && (
                   <p className="mt-3 text-xs text-slate-500">{breakdown.summary}</p>
                 )}
-              </div>
+              </Collapsible>
             )}
 
-            {pricing && (
-              <div className="card text-sm">
-                <p className="eyebrow mb-3">Pricing comps · CPI-adjusted</p>
-                <div className="grid grid-cols-2 gap-2 text-slate-700">
-                  {["count", "median", "average", "p25", "p75"].map((k) =>
-                    pricing[k] != null ? (
+            {pricing && (() => {
+              // Stats live under `comp_stats` (count/median/average/p25/p75), not at
+              // the top of pricing_summary; read the correct path (fall back to the
+              // flat shape defensively) so the card isn't silently empty.
+              const stats =
+                (pricing.comp_stats as Record<string, unknown> | undefined) ?? pricing;
+              const LABELS: Record<string, string> = {
+                count: "comps",
+                median: "median",
+                average: "average",
+                p25: "25th pct",
+                p75: "75th pct",
+              };
+              const rows = ["count", "median", "average", "p25", "p75"].filter(
+                (k) => stats[k] != null
+              );
+              if (rows.length === 0) return null;
+              return (
+                <Collapsible title="Pricing comps · CPI-adjusted">
+                  <div className="grid grid-cols-2 gap-2 text-sm text-slate-700">
+                    {rows.map((k) => (
                       <div key={k} className="flex justify-between">
-                        <span className="text-slate-500">{k}</span>
+                        <span className="text-slate-500">{LABELS[k]}</span>
                         <span className="num">
                           {k === "count"
-                            ? String(pricing[k])
-                            : currency(Number(pricing[k]))}
+                            ? String(stats[k])
+                            : currency(Number(stats[k]))}
                         </span>
                       </div>
-                    ) : null,
-                  )}
-                </div>
-              </div>
-            )}
+                    ))}
+                  </div>
+                </Collapsible>
+              );
+            })()}
 
-            <div className="card">
-              <p className="eyebrow mb-3">
-                Subcontractors · <span className="num">{subOptions.length}</span>
-              </p>
+            <CompetitiveLandscape competitors={competitors} pricing={pricing} />
+
+            <Collapsible
+              title="Subcontractors"
+              meta={<span className="num">{subOptions.length}</span>}
+            >
               {subOptions.length === 0 ? (
                 <p className="text-sm text-slate-500">
                   No subs paired yet. Sub Finder will run once this opportunity
@@ -427,7 +452,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   ))}
                 </ul>
               )}
-            </div>
+            </Collapsible>
           </div>
 
           {/* Column 3, quotes + bid + activity */}
@@ -476,11 +501,13 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
             {bid && (
               <>
-                <SubmissionPackage
-                  opportunityId={opp.id}
-                  bid={bid}
-                  kindToPath={kindToPath}
-                />
+                <div id="submission" className="scroll-mt-4">
+                  <SubmissionPackage
+                    opportunityId={opp.id}
+                    bid={bid}
+                    kindToPath={kindToPath}
+                  />
+                </div>
                 {bid.submitted_at && (
                   <div className="card space-y-2">
                     <p className="eyebrow">Outcome</p>
@@ -516,8 +543,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </>
             )}
 
-            <div className="card">
-              <p className="eyebrow mb-3">Agent activity</p>
+            <Collapsible title="Agent activity">
               <ul className="space-y-2 text-xs">
                 {(logs as Record<string, unknown>[]).slice(0, 20).map((l, i) => (
                   <li
@@ -544,7 +570,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   <li className="text-slate-500">No activity yet.</li>
                 )}
               </ul>
-            </div>
+            </Collapsible>
           </div>
         </div>
       </div>

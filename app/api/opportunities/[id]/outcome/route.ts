@@ -24,8 +24,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [params.id]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const bid = await queryOne<{ id: string }>(
-    `select id from bids where opportunity_id=$1 order by created_at desc limit 1`,
+  const bid = await queryOne<{ id: string; bid_amount: number | null }>(
+    `select id, bid_amount from bids where opportunity_id=$1 order by created_at desc limit 1`,
     [params.id]
   );
 
@@ -55,6 +55,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       );
     }
     const contractNumber = body.contract_number ?? opp.solicitation_number ?? null;
+    // Default the award amount to what we bid when the operator marks a win
+    // without entering one, so the contract, active-revenue KPI, and non-SS cap
+    // math have a real figure instead of a blank.
+    const effectiveAward = awardAmount ?? bid.bid_amount ?? null;
     // CPARS due 7 days after contract close (spec). Default close = +180d if unknown.
     const endDate = body.end_date ?? null;
     // Atomic: mark the bid won, close the opportunity, and create the contract in
@@ -65,7 +69,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         await c.query(`update bids set outcome=$2, award_amount=$3, loss_reason=$4 where id=$1`, [
           bid.id,
           outcome,
-          awardAmount,
+          effectiveAward,
           lossReason,
         ]);
       }
@@ -79,7 +83,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           bid?.id ?? null,
           params.id,
           contractNumber,
-          awardAmount,
+          effectiveAward,
           body.start_date ?? null,
           endDate,
           endDate ? new Date(new Date(endDate).getTime() + 7 * 86_400_000).toISOString() : null,

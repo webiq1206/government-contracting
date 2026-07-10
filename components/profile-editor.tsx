@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { TokenMultiSelect, type TokenOption } from "@/components/token-multi-select";
+import { NAICS_CODES } from "@/lib/naics";
+import { US_SERVICE_AREAS, FEDERAL_CERTIFICATIONS } from "@/lib/us-states";
 import type {
   CompanyProfileJson,
   HardExclusion,
@@ -9,6 +12,14 @@ import type {
   PricingRules,
   DecisionThresholds,
 } from "@/lib/types";
+
+// Option lists for the scope multi-selects, built once at module load.
+const NAICS_OPTIONS: TokenOption[] = NAICS_CODES.map((n) => ({
+  value: n.code,
+  label: `${n.code} · ${n.title}`,
+}));
+const SERVICE_AREA_OPTIONS: TokenOption[] = US_SERVICE_AREAS.map((s) => ({ value: s, label: s }));
+const CERT_OPTIONS: TokenOption[] = FEDERAL_CERTIFICATIONS.map((c) => ({ value: c, label: c }));
 
 /**
  * Plain-English company profile editor. Everything an operator needs to change
@@ -248,17 +259,56 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
       </Section>
 
       {/* Scope */}
-      <Section title="What you bid on" hint="Type each item and separate with commas.">
+      <Section title="What you bid on" hint="Search and pick, or type your own and press Enter.">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Certifications" value={certifications} onChange={setCertifications} hint={ARRAY_HELP.certifications} />
-          <Field label="Industry codes (NAICS)" value={naics} onChange={setNaics} hint={ARRAY_HELP.naics_codes} />
+          <PickerField label="Certifications" hint={ARRAY_HELP.certifications}>
+            <TokenMultiSelect
+              value={certifications}
+              onChange={setCertifications}
+              options={CERT_OPTIONS}
+              allowCustom
+              placeholder="Search certifications, or type your own…"
+            />
+          </PickerField>
+          <PickerField label="Industry codes (NAICS)" hint={ARRAY_HELP.naics_codes}>
+            <TokenMultiSelect
+              value={naics}
+              onChange={setNaics}
+              options={NAICS_OPTIONS}
+              allowCustom
+              placeholder="Search by code or keyword, e.g. janitorial…"
+            />
+          </PickerField>
           <Field label="Primary trades" value={trades} onChange={setTrades} hint={ARRAY_HELP.primary_trades} />
-          <Field label="Service areas" value={serviceAreas} onChange={setServiceAreas} hint={ARRAY_HELP.service_areas} />
+          <PickerField label="Service areas" hint={ARRAY_HELP.service_areas}>
+            <TokenMultiSelect
+              value={serviceAreas}
+              onChange={setServiceAreas}
+              options={SERVICE_AREA_OPTIONS}
+              allowCustom
+              placeholder="Search states, or type a region…"
+            />
+          </PickerField>
         </div>
       </Section>
 
       {/* Pricing */}
       <Section title="Pricing" hint="How the Bid Builder prices your bids.">
+        <div className="mb-4 rounded-md border border-border bg-surface px-3 py-2.5 text-xs leading-relaxed text-slate-600">
+          <p className="font-medium text-slate-700">Margin vs. markup, the quick version</p>
+          <p className="mt-1">
+            <span className="font-medium text-slate-700">Margin</span> is your profit as a
+            share of the final bid.{" "}
+            <span className="font-medium text-slate-700">Markup</span> is what you add on
+            top of your costs to reach it.
+          </p>
+          <p className="mt-1">
+            Example: on $10,000 of costs, a 30% markup makes your bid $13,000, which is a
+            23% margin ($3,000 &divide; $13,000). You set the{" "}
+            <span className="font-medium text-slate-700">target margin</span>; markup is
+            just the lever that gets there.
+          </p>
+        </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Target margin %" value={targetMargin} onChange={setTargetMargin} type="number" hint="What you aim to make on a job." />
           <Field label="Minimum margin %" value={minMargin} onChange={setMinMargin} type="number" hint="Never bid below this." />
@@ -434,6 +484,25 @@ function Field({
       />
       {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
     </label>
+  );
+}
+
+/** Wraps a non-input control (e.g. the multi-select) with the same label + hint. */
+function PickerField({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="block">
+      <span className="label mb-1 block">{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
+    </div>
   );
 }
 

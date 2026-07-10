@@ -125,6 +125,39 @@ body {
     @apply pt-5;
     border-top: 2px solid #111111;
   }
+
+  /* Collapsible section: a tap-to-expand accordion on mobile, an always-open
+     card on desktop (so the desktop layout is unchanged). */
+  .acc {
+    @apply card;
+  }
+  .acc > summary {
+    @apply flex list-none cursor-pointer items-center justify-between gap-2;
+  }
+  .acc > summary::-webkit-details-marker {
+    display: none;
+  }
+  .acc > summary::after {
+    content: "";
+    @apply ml-2 h-2 w-2 shrink-0 rotate-45 border-b-2 border-r-2 border-slate-400 transition-transform;
+  }
+  .acc[open] > summary::after {
+    transform: rotate(-135deg);
+  }
+  .acc > .acc-body {
+    @apply mt-3;
+  }
+  @media (min-width: 1024px) {
+    .acc > .acc-body {
+      display: block !important;
+    }
+    .acc > summary {
+      @apply cursor-default;
+    }
+    .acc > summary::after {
+      display: none;
+    }
+  }
   .result-hero {
     @apply text-4xl leading-none text-accent;
     font-family: theme("fontFamily.sans");
