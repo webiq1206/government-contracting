@@ -31,6 +31,8 @@ export const ALLOWED_ENV_KEYS = [
   "GMAIL_SENDER",
   "SUPABASE_URL",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "AHREFS_API_KEY",
+  "AHREFS_TARGET",
 ] as const;
 export type AllowedEnvKey = (typeof ALLOWED_ENV_KEYS)[number];
 

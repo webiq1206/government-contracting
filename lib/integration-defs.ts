@@ -80,6 +80,31 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     },
   },
   {
+    id: "ahrefs",
+    name: "Ahrefs (Site Authority)",
+    what: "Powers the autonomous Site Authority module: tracks your Domain Rating and referring domains, mines competitors' backlink profiles for prospects, and monitors new and lost backlinks.",
+    without: "The Site Authority dashboard has no live data and no backlink prospects are discovered.",
+    where: "ahrefs.com → Account → API keys (requires an API-enabled plan).",
+    fields: [
+      { env: "AHREFS_API_KEY", label: "API key", secret: true },
+      { env: "AHREFS_TARGET", label: "Your domain", secret: false, placeholder: "brostco.com" },
+    ],
+    testable: true,
+    guide: {
+      cost: "Paid. Requires an Ahrefs plan with API access; billed per row of data pulled.",
+      steps: [
+        "Sign in to Ahrefs and open your Account settings.",
+        "Go to the API keys section and generate a new API key (API access must be enabled on your plan).",
+        "Copy the key and paste it above. Put the domain you're building authority for (e.g. brostco.com) in Your domain.",
+        "Press Test connection and Save. The Site Authority dashboard will populate on the next scan.",
+      ],
+      links: [
+        { label: "Ahrefs API keys", url: "https://app.ahrefs.com/api/profile" },
+        { label: "Ahrefs API docs", url: "https://docs.ahrefs.com/docs/api/reference/introduction" },
+      ],
+    },
+  },
+  {
     id: "googleMaps",
     name: "Google Maps (Places)",
     what: "Finds and ranks local subcontractors for each trade a project needs.",

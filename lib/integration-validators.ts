@@ -129,6 +129,19 @@ export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>
     return { ok: true, message: "Connected. SMS alerts can send." };
   },
 
+  ahrefs: async (v) => {
+    const key = v.AHREFS_API_KEY;
+    if (!key) return { ok: false, message: "Enter your Ahrefs API key first." };
+    // Cheapest possible check: read the account's own limits/usage (no row units).
+    const res = await timedFetch("https://api.ahrefs.com/v3/subscription-info/limits-and-usage", {
+      headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
+    });
+    if (res.status === 401 || res.status === 403)
+      return { ok: false, message: "Ahrefs rejected this key. Check that API access is enabled on your plan." };
+    if (!res.ok) return { ok: false, message: `Ahrefs returned an error (HTTP ${res.status}).` };
+    return { ok: true, message: "Connected. Site Authority tracking is live." };
+  },
+
   usaspending: async () => {
     const res = await timedFetch("https://api.usaspending.gov/api/v2/references/agency/456/");
     return res.ok

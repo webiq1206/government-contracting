@@ -90,6 +90,17 @@ export const config = {
     },
   },
 
+  // Ahrefs API v3 — powers the autonomous Site Authority / backlink module
+  // (authority snapshots, competitor referring-domain mining, backlink monitoring).
+  ahrefs: {
+    get apiKey() { return str("AHREFS_API_KEY"); },
+    // The domain we're building authority for (our own site).
+    get target() { return str("AHREFS_TARGET", "brostco.com"); },
+    get enabled() {
+      return Boolean(this.apiKey);
+    },
+  },
+
   usaspending: {
     baseUrl: str("USASPENDING_BASE_URL", "https://api.usaspending.gov"),
   },
@@ -164,6 +175,7 @@ export function integrationStatus() {
     database: Boolean(config.database.url),
     claude: config.claude.enabled,
     sam: config.sam.enabled,
+    ahrefs: config.ahrefs.enabled,
     usaspending: true, // public API, always available
     bls: true, // works unauthenticated at low volume
     googleMaps: config.googleMaps.enabled,

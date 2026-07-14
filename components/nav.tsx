@@ -33,6 +33,7 @@ const NAV: { section: string; items: { href: string; label: string }[] }[] = [
     section: "Insight",
     items: [
       { href: "/analytics", label: "Analytics" },
+      { href: "/authority", label: "Site Authority" },
       { href: "/agents", label: "Automation Log" },
     ],
   },

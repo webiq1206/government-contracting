@@ -20,6 +20,7 @@ import { complianceMonitor } from "./compliance-monitor";
 import { learningLoop } from "./learning-loop";
 import { analyticsEngine } from "./analytics-engine";
 import { sourcesSoughtResponder } from "./sources-sought-responder";
+import { backlinkScout } from "./backlink-scout";
 
 // Maintenance jobs (time-based plumbing).
 import {
@@ -46,6 +47,7 @@ export const ROSTER: AgentDefinition[] = [
   learningLoop,
   analyticsEngine,
   sourcesSoughtResponder,
+  backlinkScout,
 ];
 
 export const MAINTENANCE: AgentDefinition[] = [

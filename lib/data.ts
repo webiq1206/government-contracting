@@ -684,3 +684,138 @@ export async function actionCenter(): Promise<ActionCenterData> {
     stageCounts,
   };
 }
+
+// --- Site Authority / backlink module ---
+
+export interface AuthorityOverview {
+  latest: { domain_rating: number | null; referring_domains: number | null; backlinks_total: number | null; captured_at: string } | null;
+  first: { domain_rating: number | null; captured_at: string } | null;
+  trend: { domain_rating: number | null; captured_at: string }[];
+}
+
+/** Latest authority snapshot + a trend series (most recent 60 points). */
+export async function authorityOverview(): Promise<AuthorityOverview> {
+  const rows = await query<{ domain_rating: string | null; referring_domains: number | null; backlinks_total: number | null; captured_at: string }>(
+    `select domain_rating, referring_domains, backlinks_total, captured_at
+       from authority_snapshots order by captured_at desc limit 60`
+  );
+  const asNum = (v: string | null) => (v == null ? null : Number(v));
+  const latest = rows[0]
+    ? { domain_rating: asNum(rows[0].domain_rating), referring_domains: rows[0].referring_domains, backlinks_total: rows[0].backlinks_total, captured_at: rows[0].captured_at }
+    : null;
+  const first = rows.length
+    ? { domain_rating: asNum(rows[rows.length - 1].domain_rating), captured_at: rows[rows.length - 1].captured_at }
+    : null;
+  const trend = [...rows].reverse().map((r) => ({ domain_rating: asNum(r.domain_rating), captured_at: r.captured_at }));
+  return { latest, first, trend };
+}
+
+export interface ProspectRow {
+  id: string;
+  domain: string;
+  opportunity_type: string;
+  domain_rating: number | null;
+  relevance: number | null;
+  traffic: number | null;
+  priority_score: number | null;
+  tier: string | null;
+  link_type: string | null;
+  status: string;
+  qualification_json: unknown;
+  outreach_status: string | null;
+}
+
+/** Qualified prospects (highest priority first), excluding rejects, with any outreach state. */
+export async function backlinkProspects(limit = 200): Promise<ProspectRow[]> {
+  const rows = await query<Record<string, unknown>>(
+    `select p.id, p.domain, p.opportunity_type, p.domain_rating, p.relevance, p.traffic,
+            p.priority_score, p.tier, p.link_type, p.status, p.qualification_json,
+            (select o.approval_status from backlink_outreach o
+               where o.prospect_id = p.id order by o.created_at desc limit 1) as outreach_status
+       from backlink_prospects p
+      where p.tier is not null and p.tier <> 'reject'
+      order by p.priority_score desc nulls last
+      limit $1`,
+    [limit]
+  );
+  return rows.map((r) => ({
+    id: String(r.id),
+    domain: String(r.domain),
+    opportunity_type: String(r.opportunity_type),
+    domain_rating: r.domain_rating == null ? null : Number(r.domain_rating),
+    relevance: r.relevance == null ? null : Number(r.relevance),
+    traffic: r.traffic == null ? null : Number(r.traffic),
+    priority_score: r.priority_score == null ? null : Number(r.priority_score),
+    tier: r.tier == null ? null : String(r.tier),
+    link_type: r.link_type == null ? null : String(r.link_type),
+    status: String(r.status),
+    qualification_json: r.qualification_json,
+    outreach_status: r.outreach_status == null ? null : String(r.outreach_status),
+  }));
+}
+
+export interface OutreachRow {
+  id: string;
+  prospect_id: string;
+  domain: string;
+  channel: string;
+  subject: string | null;
+  body: string | null;
+  approval_status: string;
+  created_at: string;
+  sent_at: string | null;
+}
+
+/** Drafted outreach awaiting a human decision (the approval gate). */
+export async function outreachQueue(status = "pending"): Promise<OutreachRow[]> {
+  const rows = await query<Record<string, unknown>>(
+    `select o.id, o.prospect_id, p.domain, o.channel, o.subject, o.body,
+            o.approval_status, o.created_at, o.sent_at
+       from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
+      where o.approval_status = $1
+      order by p.priority_score desc nulls last, o.created_at desc`,
+    [status]
+  );
+  return rows.map((r) => ({
+    id: String(r.id),
+    prospect_id: String(r.prospect_id),
+    domain: String(r.domain),
+    channel: String(r.channel),
+    subject: r.subject == null ? null : String(r.subject),
+    body: r.body == null ? null : String(r.body),
+    approval_status: String(r.approval_status),
+    created_at: String(r.created_at),
+    sent_at: r.sent_at == null ? null : String(r.sent_at),
+  }));
+}
+
+export interface BacklinkChange {
+  source_domain: string;
+  domain_rating: number | null;
+  link_type: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  lost_at: string | null;
+}
+
+/** Recent backlink changes: newest live links and recently-lost links. */
+export async function backlinkChanges(): Promise<{ recent: BacklinkChange[]; lost: BacklinkChange[]; liveCount: number }> {
+  const map = (r: Record<string, unknown>): BacklinkChange => ({
+    source_domain: String(r.source_domain),
+    domain_rating: r.domain_rating == null ? null : Number(r.domain_rating),
+    link_type: r.link_type == null ? null : String(r.link_type),
+    first_seen_at: String(r.first_seen_at),
+    last_seen_at: String(r.last_seen_at),
+    lost_at: r.lost_at == null ? null : String(r.lost_at),
+  });
+  const recent = await query<Record<string, unknown>>(
+    `select source_domain, domain_rating, link_type, first_seen_at, last_seen_at, lost_at
+       from backlinks where lost_at is null order by first_seen_at desc limit 25`
+  );
+  const lost = await query<Record<string, unknown>>(
+    `select source_domain, domain_rating, link_type, first_seen_at, last_seen_at, lost_at
+       from backlinks where lost_at is not null order by lost_at desc limit 25`
+  );
+  const live = await queryOne<{ n: string }>(`select count(*)::text as n from backlinks where lost_at is null`);
+  return { recent: recent.map(map), lost: lost.map(map), liveCount: Number(live?.n ?? 0) };
+}

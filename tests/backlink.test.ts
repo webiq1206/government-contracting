@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { qualifyProspect, tierFor, prioritize } from "@/lib/domain/backlink";
+import {
+  qualifyProspect,
+  tierFor,
+  prioritize,
+  domainNicheRelevance,
+  outreachTemplate,
+} from "@/lib/domain/backlink";
 
 describe("qualifyProspect — hard rejects (protect the domain)", () => {
   it("rejects un-indexed domains", () => {
@@ -71,9 +77,62 @@ describe("tierFor", () => {
   });
 });
 
+describe("domainNicheRelevance", () => {
+  const niche = ["general construction", "roofing", "facilities maintenance", "HVAC"];
+  it("returns neutral when there are no niche terms", () => {
+    expect(domainNicheRelevance("example.com", [])).toBe(0.4);
+  });
+  it("returns neutral for an off-topic domain", () => {
+    expect(domainNicheRelevance("cookingblog.com", niche)).toBe(0.4);
+  });
+  it("lifts relevance when the domain name matches a niche term", () => {
+    expect(domainNicheRelevance("roofing-today.com", niche)).toBeGreaterThan(0.4);
+  });
+  it("rewards multiple on-topic tokens more", () => {
+    const one = domainNicheRelevance("roofing-news.com", niche);
+    const two = domainNicheRelevance("roofing-construction.org", niche);
+    expect(two).toBeGreaterThan(one);
+  });
+  it("ignores the www prefix and TLD", () => {
+    expect(domainNicheRelevance("www.roofing.io", niche)).toBeGreaterThan(0.4);
+  });
+});
+
 describe("prioritize", () => {
   it("sorts highest score first", () => {
     const out = prioritize([{ score: 30 }, { score: 88 }, { score: 55 }]);
     expect(out.map((o) => o.score)).toEqual([88, 55, 30]);
+  });
+});
+
+describe("outreachTemplate", () => {
+  const base = {
+    domain: "roofingtoday.com",
+    senderName: "Jared Brost",
+    companyName: "BROSTCO",
+    companyUrl: "https://brostco.com",
+    valueProp: "We deliver federal facilities and construction projects.",
+  };
+  it("includes the sender, company and site in the signature", () => {
+    const d = outreachTemplate({ ...base, opportunityType: "resource_page" });
+    expect(d.body).toContain("Jared Brost");
+    expect(d.body).toContain("BROSTCO");
+    expect(d.body).toContain("brostco.com");
+    expect(d.subject.length).toBeGreaterThan(0);
+  });
+  it("varies the pitch by opportunity type", () => {
+    const resource = outreachTemplate({ ...base, opportunityType: "resource_page" });
+    const broken = outreachTemplate({ ...base, opportunityType: "broken_link" });
+    expect(resource.body).not.toBe(broken.body);
+    expect(broken.subject.toLowerCase()).toContain("broken");
+  });
+  it("falls back to a generic intro for unknown types", () => {
+    const d = outreachTemplate({ ...base, opportunityType: "made_up_type" });
+    expect(d.body).toContain("BROSTCO");
+    expect(d.subject.length).toBeGreaterThan(0);
+  });
+  it("never offers payment (Google-guideline safe)", () => {
+    const d = outreachTemplate({ ...base, opportunityType: "competitor_gap" });
+    expect(d.body.toLowerCase()).not.toMatch(/\$|\bpay\b|payment|compensat|sponsor/);
   });
 });
