@@ -223,9 +223,9 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
   },
   {
     id: "supabaseStorage",
-    name: "Supabase Storage",
-    what: "Durable cloud storage for solicitation attachments and generated bid documents.",
-    without: "Files are stored on local disk, which does not survive redeploys on Replit.",
+    name: "Supabase Storage (optional)",
+    what: "Optional off-database storage for attachments and bid documents. Not required, by default files are stored durably in your database and survive redeploys.",
+    without: "Files are stored durably in your Postgres database (survives redeploys). Connect this only if you'd rather keep large files out of the database.",
     where: "supabase.com → Project Settings → API.",
     fields: [
       { env: "SUPABASE_URL", label: "Project URL", secret: false, placeholder: "https://xxxx.supabase.co" },
