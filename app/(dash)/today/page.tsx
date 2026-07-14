@@ -93,7 +93,7 @@ function Section({
       <summary className="flex cursor-pointer list-none items-end justify-between gap-3 border-b-2 border-accent/80 pb-2 [&::-webkit-details-marker]:hidden">
         <div>
           <p className="eyebrow">{eyebrow}</p>
-          <h2 className="mt-0.5 font-serif text-2xl font-semibold text-foreground">
+          <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
             {title}
             {typeof count === "number" && (
               <span className="num ml-2 text-base font-normal text-slate-400">{count}</span>

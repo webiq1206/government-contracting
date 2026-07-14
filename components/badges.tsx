@@ -31,7 +31,7 @@ export function PageHeader({
       <div>
         {eyebrow && <p className="eyebrow mb-1.5">{eyebrow}</p>}
         <div className="flex items-center gap-2.5">
-          <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
             {title}
           </h1>
           {help && <HelpPopover help={help} />}

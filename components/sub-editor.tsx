@@ -83,7 +83,7 @@ export function SubEditor({ sub }: { sub: EditableSub }) {
     return (
       <div className="card space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-neutral-900">Edit subcontractor</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Edit subcontractor</h2>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <F label="Company name" value={form.company_name} onChange={(v) => set("company_name", v)} />
@@ -143,7 +143,7 @@ export function SubEditor({ sub }: { sub: EditableSub }) {
   return (
     <div className="card space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-neutral-900">Contact &amp; Verification</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Contact &amp; Verification</h2>
         <button className="btn-ghost text-xs" onClick={() => setEditing(true)}>
           Edit
         </button>

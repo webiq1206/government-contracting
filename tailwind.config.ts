@@ -1,12 +1,14 @@
 import type { Config } from "tailwindcss";
 
 /**
- * BROSTCO editorial theme (inspired by bacwater.ai): white / near-black
- * monochrome with a forest-green accent, Cormorant Garamond display serif,
- * Inter body, JetBrains Mono for data. Flat, border-driven.
+ * BROSTCO brand theme, five tones (a warm, quiet range):
+ *   Bone #F7F5F3, Charcoal #2C302F, Sage #5D6561, Mist #9AA098, Line #E4E1DD.
+ * Bone and charcoal do the work (background + text); sage and mist carry the
+ * secondary type; line is for hairlines only. Montserrat is the voice; Fraunces
+ * italic is a sparing accent (the `.font-accent` class). Flat, border-driven.
  *
- * The slate ramp uses zinc hues in STANDARD Tailwind orientation
- * (100 = light, 900 = dark). Do not invert it again.
+ * The slate ramp is a WARM gray ramp aligned to the palette, in standard
+ * Tailwind orientation (100 = light, 900 = dark). Do not invert it.
  */
 const config: Config = {
   content: [
@@ -17,41 +19,44 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#ffffff",
-        foreground: "#111111",
-        surface: "#fafaf9",
-        "surface-raised": "#f5f5f4",
-        muted: "#f5f5f4",
-        "muted-foreground": "#71717a",
-        border: "#e4e4e7",
-        "border-strong": "#d4d4d8",
-        accent: "#2d6a4f",
-        "accent-soft": "#f0f7f2",
-        "accent-strong": "#21503b",
+        background: "#F7F5F3", // Bone
+        foreground: "#2C302F", // Charcoal
+        surface: "#F1EEEA", // warm off-bone (subtle raised / hover)
+        "surface-raised": "#ECE8E3",
+        muted: "#F1EEEA",
+        "muted-foreground": "#5D6561", // Sage (secondary type)
+        border: "#E4E1DD", // Line (hairlines)
+        "border-strong": "#CFCBC4",
+        accent: "#5D6561", // Sage
+        "accent-soft": "#E9ECE8", // very light sage/mist tint
+        "accent-strong": "#464C49", // deeper sage (hover)
 
-        pursue: "#2d6a4f",
-        review: "#b45309",
-        dismiss: "#a1a1aa",
-        risk: "#b91c1c",
+        // Functional status tones, muted to sit in the warm palette while staying
+        // clearly distinguishable (go / caution / danger).
+        pursue: "#4F6A5A",
+        review: "#9A6B34",
+        dismiss: "#9AA098", // Mist
+        risk: "#A2453C",
 
-        // Zinc-hued gray ramp in standard Tailwind orientation (100 light -> 900 dark).
+        // Warm gray ramp aligned to the palette (100 light -> 900 dark).
         slate: {
-          50: "#fafafa",
-          100: "#f4f4f5",
-          200: "#e4e4e7",
-          300: "#d4d4d8",
-          400: "#a1a1aa",
-          500: "#71717a",
-          600: "#52525b",
-          700: "#3f3f46",
-          800: "#27272a",
-          900: "#18181b",
-          950: "#09090b",
+          50: "#F7F5F3",
+          100: "#F1EEEA",
+          200: "#E4E1DD", // Line
+          300: "#CFCBC4",
+          400: "#9AA098", // Mist
+          500: "#5D6561", // Sage
+          600: "#4C524E",
+          700: "#3B403D",
+          800: "#2C302F", // Charcoal
+          900: "#232624",
+          950: "#1A1D1C",
         },
       },
       fontFamily: {
-        sans: ['"Inter"', "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
-        serif: ['"Cormorant Garamond"', "Georgia", '"Times New Roman"', "serif"],
+        sans: ['"Montserrat"', "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+        // Fraunces is reserved for sparing italic accents (see `.font-accent`).
+        serif: ['"Fraunces"', "Georgia", '"Times New Roman"', "serif"],
         mono: ['"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
     },

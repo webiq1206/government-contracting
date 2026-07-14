@@ -47,7 +47,7 @@ export function BidBrief({
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-6 py-4">
         <div>
           <p className="eyebrow">Plain-English summary</p>
-          <h2 className="mt-1 font-serif text-2xl font-semibold text-foreground">Bid Brief</h2>
+          <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">Bid Brief</h2>
         </div>
         {documents.length > 0 && (
           <a href="#attachments" className="btn-ghost text-xs">

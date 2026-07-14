@@ -43,7 +43,7 @@ function CallCard({ c }: { c: CallCardRow }) {
                 </span>
               )}
             </div>
-            <p className="font-serif text-xl font-semibold text-foreground truncate">
+            <p className="font-display text-xl font-semibold text-foreground truncate">
               {c.company_name}
             </p>
             {c.owner_name && (

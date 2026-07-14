@@ -205,7 +205,7 @@ export function CallWorkspace({
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <p className="eyebrow">{card.trade ?? "General"} · Call Card</p>
-              <h2 className="mt-1 truncate font-serif text-2xl font-semibold text-foreground">
+              <h2 className="mt-1 truncate font-display text-2xl font-semibold text-foreground">
                 {card.company_name}
               </h2>
               <p className="mt-0.5 truncate text-sm text-slate-500">
@@ -702,7 +702,7 @@ function Section({
   return (
     <section className="card">
       <div className="mb-3">
-        <h3 className="font-serif text-lg font-semibold text-foreground">{title}</h3>
+        <h3 className="font-display text-lg font-semibold text-foreground">{title}</h3>
         {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
       </div>
       {children}

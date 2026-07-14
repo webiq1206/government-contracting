@@ -51,7 +51,7 @@ function KpiCard({
       <div className="label">{label}</div>
       <div
         className={`num mt-1.5 text-4xl font-semibold tracking-tight ${
-          accent ? "text-accent" : "text-neutral-900"
+          accent ? "text-accent" : "text-slate-900"
         }`}
       >
         {value}
@@ -74,7 +74,7 @@ function BreakdownTable({
   if (data.length === 0) return null;
   return (
     <div className="card scroll-thin overflow-x-auto">
-      <h3 className="mb-3 text-sm font-semibold text-neutral-900">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold text-slate-900">{title}</h3>
       <table className="w-full">
         <thead>
           <tr>
@@ -210,7 +210,7 @@ export default async function AnalyticsPage() {
           <div className="mb-3 flex items-center justify-between gap-3 border-b-2 border-accent/80 pb-2">
             <div>
               <p className="eyebrow">Your metrics</p>
-              <h2 className="mt-0.5 font-serif text-2xl font-semibold text-foreground">
+              <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
                 Custom KPIs
               </h2>
             </div>
@@ -231,7 +231,7 @@ export default async function AnalyticsPage() {
                       <div className="label">{k.label}</div>
                       <KpiDeleteButton id={k.id} />
                     </div>
-                    <div className="num mt-1.5 text-4xl font-semibold tracking-tight text-neutral-900">
+                    <div className="num mt-1.5 text-4xl font-semibold tracking-tight text-slate-900">
                       {formatKpiValue(k.value, k.unit)}
                     </div>
                     {desc && <div className="mt-1.5 text-xs text-slate-500">{desc}</div>}
@@ -245,7 +245,7 @@ export default async function AnalyticsPage() {
         {/* Where the pipeline value is sitting, by stage. */}
         {stageValue.length > 0 && (
           <div className="card scroll-thin overflow-x-auto">
-            <h3 className="mb-3 text-sm font-semibold text-neutral-900">
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">
               Pipeline value by stage
             </h3>
             <table className="w-full">
@@ -292,7 +292,7 @@ export default async function AnalyticsPage() {
         {/* Cash flow projection 30/60/90 */}
         {cashFlow && (
           <div className="card">
-            <h3 className="mb-3 text-sm font-semibold text-neutral-900">Cash Flow Projection</h3>
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">Cash Flow Projection</h3>
             <div className="grid grid-cols-3 gap-3">
               {["30", "60", "90"].map((d) => {
                 const v =
@@ -315,7 +315,7 @@ export default async function AnalyticsPage() {
         {/* Sub rankings */}
         {subRankings.length > 0 && (
           <div className="card scroll-thin overflow-x-auto">
-            <h3 className="mb-3 text-sm font-semibold text-neutral-900">Top Subcontractors</h3>
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">Top Subcontractors</h3>
             <table className="w-full">
               <thead>
                 <tr>
@@ -342,7 +342,7 @@ export default async function AnalyticsPage() {
         {/* Pipeline velocity */}
         {velocity && Object.keys(velocity).length > 0 && (
           <div className="card">
-            <h3 className="mb-3 text-sm font-semibold text-neutral-900">Pipeline Velocity</h3>
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">Pipeline Velocity</h3>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {Object.entries(velocity).map(([stage, count]) => (
                 <div

@@ -135,7 +135,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
                   <p className="eyebrow text-accent-strong">Your turn</p>
-                  <h2 className="mt-0.5 font-serif text-2xl font-semibold text-foreground">
+                  <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
                     {quotesEntered === 0
                       ? "Enter subcontractor quotes"
                       : "Quotes collected"}

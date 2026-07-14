@@ -18,7 +18,7 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="eyebrow text-accent-strong">Finish setting up</p>
-          <h2 className="mt-0.5 font-serif text-2xl font-semibold text-foreground">
+          <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
             {checklist.done} of {checklist.total} steps done
           </h2>
         </div>

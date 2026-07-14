@@ -48,7 +48,7 @@ export function AutomationSettings({
   return (
     <div className="card">
       <p className="eyebrow">Automation</p>
-      <h2 className="mt-1 font-serif text-xl font-semibold text-foreground">Auto-pursue</h2>
+      <h2 className="mt-1 font-display text-xl font-semibold text-foreground">Auto-pursue</h2>
       <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">
         Any opportunity scoring at or above this number is pursued automatically:
         analysis, pricing, sub-finding, and outreach run with no human step. Scores in the

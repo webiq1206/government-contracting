@@ -449,7 +449,7 @@ function Section({
   return (
     <section className="card space-y-4">
       <div>
-        <h2 className="font-serif text-lg font-semibold text-foreground">{title}</h2>
+        <h2 className="font-display text-lg font-semibold text-foreground">{title}</h2>
         {hint && <p className="mt-0.5 text-sm text-slate-500">{hint}</p>}
       </div>
       {children}

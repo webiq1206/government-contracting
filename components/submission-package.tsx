@@ -115,7 +115,7 @@ export function SubmissionPackage({
         <p className="eyebrow">Submission package</p>
         <span className="text-sm text-slate-500">margin {pct(bid.margin_pct)}</span>
       </div>
-      <div className="num font-serif text-3xl font-semibold text-foreground">
+      <div className="num font-display text-3xl font-semibold text-foreground">
         {currency(bid.bid_amount)}
       </div>
 

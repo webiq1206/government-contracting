@@ -127,7 +127,7 @@ function StepRow({ step, last }: { step: Step; last: boolean }) {
       </span>
       <div className="min-w-0 pt-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="font-serif text-lg font-semibold text-foreground">
+          <h3 className="font-display text-lg font-semibold text-foreground">
             {step.name}
           </h3>
           <span
@@ -183,7 +183,7 @@ export default function HowItWorksPage() {
               <section key={phase.title}>
                 <div className="mb-5 border-b-2 border-accent/80 pb-2">
                   <p className="eyebrow">{phase.eyebrow}</p>
-                  <h2 className="mt-0.5 font-serif text-2xl font-semibold text-foreground">
+                  <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
                     {phase.title}
                   </h2>
                 </div>

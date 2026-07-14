@@ -3,7 +3,9 @@
 @tailwind utilities;
 
 /* ==========================================================================
-   BROSTCO editorial design system (inspired by bacwater.ai)
+   BROSTCO brand design system, five tones
+   Bone #F7F5F3 · Charcoal #2C302F · Sage #5D6561 · Mist #9AA098 · Line #E4E1DD
+   Montserrat is the voice; Fraunces italic is a sparing accent (.font-accent).
    ========================================================================== */
 
 :root {
@@ -12,8 +14,8 @@
 
 html,
 body {
-  background: #ffffff;
-  color: #111111;
+  background: #F7F5F3; /* Bone */
+  color: #2C302F; /* Charcoal */
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -23,19 +25,30 @@ body {
 *,
 ::before,
 ::after {
-  border-color: #e4e4e7;
+  border-color: #E4E1DD; /* Line, hairlines */
 }
 
 ::selection {
-  background-color: rgba(45, 106, 79, 0.12);
-  color: #111111;
+  background-color: rgba(93, 101, 97, 0.16); /* Sage tint */
+  color: #2C302F;
 }
 
 @layer components {
-  .font-serif {
-    font-family: theme("fontFamily.serif");
+  /* Headings. Montserrat carries the voice, tightened tracking for a crisp,
+     modern display feel. (Formerly the serif; renamed from .font-serif.) */
+  .font-display {
+    font-family: theme("fontFamily.sans");
     font-weight: 600;
-    letter-spacing: -0.01em;
+    letter-spacing: -0.015em;
+    font-feature-settings: "kern" 1, "liga" 1;
+  }
+
+  /* The accent typeface: Fraunces italic, used sparingly for a single word or
+     the "Co." Applied via class, never as a default. */
+  .font-accent {
+    font-family: theme("fontFamily.serif");
+    font-style: italic;
+    font-weight: 500;
     font-feature-settings: "kern" 1, "liga" 1, "dlig" 1;
   }
 
@@ -115,15 +128,15 @@ body {
   }
   .callout-panel {
     @apply rounded-md border border-border bg-accent-soft p-5;
-    border-left: 3px solid #2d6a4f;
+    border-left: 3px solid #5D6561; /* Sage */
   }
   .accent-left {
     @apply pl-4;
-    border-left: 3px solid #2d6a4f;
+    border-left: 3px solid #5D6561; /* Sage */
   }
   .section-prominent {
     @apply pt-5;
-    border-top: 2px solid #111111;
+    border-top: 2px solid #2C302F; /* Charcoal */
   }
 
   /* Collapsible section: a tap-to-expand accordion on mobile, an always-open
@@ -179,15 +192,15 @@ body {
   }
   .warning-strip {
     @apply rounded-md px-4 py-3 text-sm;
-    border-left: 3px solid #b45309;
-    background: #fffbeb;
-    color: #92400e;
+    border-left: 3px solid #9A6B34; /* muted ochre */
+    background: #F6F1E8;
+    color: #7A5628;
   }
   .badge-match {
     @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-[0.6875rem] font-semibold uppercase text-accent;
     letter-spacing: 0.04em;
-    background: #f0f7f2;
-    border: 1px solid rgba(45, 106, 79, 0.25);
+    background: #E9ECE8; /* light sage */
+    border: 1px solid rgba(93, 101, 97, 0.28);
   }
 }
 
@@ -196,11 +209,11 @@ body {
   width: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
+  background: #CFCBC4;
   border-radius: 4px;
 }
 
 :focus-visible {
-  outline: 2px solid #2d6a4f;
+  outline: 2px solid #5D6561; /* Sage */
   outline-offset: 2px;
 }

@@ -15,8 +15,8 @@ export default async function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-10 text-center">
           <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
-          <h1 className="font-serif text-5xl font-semibold tracking-tight text-foreground">
-            BROSTCO
+          <h1 className="font-display text-5xl font-semibold tracking-tight text-foreground">
+            BROST<span className="font-accent">co</span>
           </h1>
           <div className="mx-auto mt-4 h-px w-12 bg-accent" />
         </div>
