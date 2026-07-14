@@ -75,6 +75,15 @@ export const PAGE_HELP: Record<string, HelpContent> = {
       "The weekly learning agent uses this data to propose scoring tweaks.",
     ],
   },
+  authority: {
+    title: "Grow your Domain Rating, hands-off",
+    points: [
+      "The Backlink Scout runs daily: it tracks your DR, finds prospects from competitors' links and their broken links, and looks up a free contact email for each.",
+      "Spammy, off-topic, and unindexed sites are rejected automatically, only quality opportunities show here.",
+      "Click Draft outreach on a prospect, review the message, then Approve. Nothing is ever sent until you approve it.",
+      "Once approved, it emails from your connected Gmail and sends one polite follow-up. New and lost links are tracked automatically.",
+    ],
+  },
   agents: {
     title: "The automation, fully transparent",
     points: [

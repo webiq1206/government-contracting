@@ -30,6 +30,7 @@ import {
   stalledPipelineSweep,
   deadlineMonitor,
   logRetentionSweep,
+  backlinkOutreachSweep,
 } from "./maintenance";
 
 export const ROSTER: AgentDefinition[] = [
@@ -57,6 +58,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   stalledPipelineSweep,
   deadlineMonitor,
   logRetentionSweep,
+  backlinkOutreachSweep,
 ];
 
 export const ALL_AGENTS: AgentDefinition[] = [...ROSTER, ...MAINTENANCE];
@@ -80,7 +82,8 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     { agent: replyPoll, cron: "*/15 * * * *" }, // every 15 min
     { agent: stalledPipelineSweep, cron: "0 8 * * *" }, // daily at 08:00
     { agent: deadlineMonitor, cron: "0 */6 * * *" }, // every 6 hours
-    { agent: logRetentionSweep, cron: "30 3 * * *" } // daily at 03:30
+    { agent: logRetentionSweep, cron: "30 3 * * *" }, // daily at 03:30
+    { agent: backlinkOutreachSweep, cron: "*/20 * * * *" } // every 20 min
   );
   return scheduled;
 }

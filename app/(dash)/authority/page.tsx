@@ -5,10 +5,13 @@ import {
   authorityOverview,
   backlinkProspects,
   outreachQueue,
+  outreachActivity,
   backlinkChanges,
   type ProspectRow,
+  type OutreachActivityRow,
 } from "@/lib/data";
 import { integrationStatus } from "@/lib/config";
+import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -51,11 +54,13 @@ function reasonsOf(p: ProspectRow): string[] {
 }
 
 export default async function AuthorityPage() {
-  const connected = integrationStatus().ahrefs;
-  const [overview, prospects, pending, changes] = await Promise.all([
+  const status = integrationStatus();
+  const connected = status.ahrefs;
+  const [overview, prospects, pending, activity, changes] = await Promise.all([
     authorityOverview(),
     backlinkProspects(150),
     outreachQueue("pending"),
+    outreachActivity(50),
     backlinkChanges(),
   ]);
 
@@ -71,6 +76,7 @@ export default async function AuthorityPage() {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Site Authority"
+        help={PAGE_HELP["authority"]}
         subtitle="Autonomous backlink discovery + qualification. Outreach is drafted for you, then you approve before anything is sent."
       >
         {connected && (
@@ -153,6 +159,28 @@ export default async function AuthorityPage() {
           )}
         </section>
 
+        {/* In outreach — approved, sent, replied. */}
+        {activity.length > 0 && (
+          <section>
+            <h2 className="label mb-2">In outreach</h2>
+            {!status.gmail && activity.some((a) => !a.sent_at) && (
+              <div className="callout-panel mb-2 text-sm text-slate-600">
+                Some outreach is approved but not sent yet because Gmail isn&rsquo;t connected. Connect
+                it on the{" "}
+                <a href="/settings/integrations" className="text-accent hover:underline">
+                  Integrations
+                </a>{" "}
+                page and it sends automatically.
+              </div>
+            )}
+            <div className="card divide-y divide-border p-0">
+              {activity.map((a) => (
+                <OutreachActivityItem key={a.id} a={a} />
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Prospects. */}
         <section>
           <h2 className="label mb-2">
@@ -234,6 +262,7 @@ function ProspectItem({ p }: { p: ProspectRow }) {
         <p className="mt-1 text-xs text-slate-500">
           DR {p.domain_rating ?? "—"} · relevance {p.relevance != null ? Math.round(p.relevance * 100) : "—"}
           % · {fmtInt(p.traffic)} visits/mo · {p.link_type ?? "unknown"}
+          {p.contact_email && <> · ✉ {p.contact_email}</>}
           {reasons.length > 0 && <> · {reasons.slice(0, 2).join(", ")}</>}
         </p>
       </div>
@@ -252,6 +281,29 @@ function ProspectItem({ p }: { p: ProspectRow }) {
           </ActionButton>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function OutreachActivityItem({ a }: { a: OutreachActivityRow }) {
+  let state: { label: string; cls: string };
+  if (a.replied_at) state = { label: `Replied ${shortDate(a.replied_at)}`, cls: "bg-pursue/15 text-pursue" };
+  else if (a.send_error) state = { label: "Send failed", cls: "bg-risk/15 text-risk" };
+  else if (a.sent_at)
+    state = {
+      label: `Sent ${shortDate(a.sent_at)}${a.follow_up_sent ? " · followed up" : ""}`,
+      cls: "bg-slate-200 text-slate-600",
+    };
+  else if (a.contact_email) state = { label: "Approved · sending", cls: "bg-review/15 text-review" };
+  else state = { label: "Approved · awaiting contact", cls: "bg-review/15 text-review" };
+
+  return (
+    <div className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
+      <div className="min-w-0">
+        <span className="text-foreground">{a.domain}</span>
+        {a.contact_email && <span className="ml-2 text-xs text-slate-500">✉ {a.contact_email}</span>}
+      </div>
+      <span className={`badge shrink-0 ${state.cls}`}>{state.label}</span>
     </div>
   );
 }

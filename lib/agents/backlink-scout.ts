@@ -20,6 +20,7 @@ import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { config } from "../config";
 import { ahrefs, type RefDomain, type BrokenBacklink } from "../integrations/ahrefs";
+import { findContact } from "../integrations/contact-finder";
 import {
   qualifyProspect,
   domainNicheRelevance,
@@ -36,6 +37,7 @@ const OWN_REFDOMAINS = 100; // our own backlinks refreshed per run
 const MIN_COMPETITOR_DR = 15; // ignore weak referring domains outright
 const BROKEN_COMPETITORS = 3; // competitors to mine for broken links (cost control)
 const BROKEN_PER_COMPETITOR = 20; // broken backlinks pulled per competitor
+const CONTACT_LOOKUPS_PER_RUN = 20; // free site crawls for contact emails per run
 
 /** Build the niche-term set used to estimate topical relevance of a domain. */
 function nicheTerms(profile: Awaited<ReturnType<typeof getProfileJson>>): string[] {
@@ -278,7 +280,42 @@ export const backlinkScout: AgentDefinition = {
       }
     }
 
-    const summary = `DR ${snap?.domain_rating ?? "?"}; ${competitors.length} competitors; ${qualified} prospects qualified (${brokenQualified} broken-link, ${rejected} rejected); ${newBacklinks} new / ${lostBacklinks} lost backlinks.`;
+    // --- 6) Free contact discovery for the highest-priority prospects. ---
+    // Crawl each prospect's own site for a published contact email (no paid API).
+    let contactsFound = 0;
+    const needContact = await query<{ id: string; domain: string; contact_json: unknown }>(
+      `select id, domain, contact_json from backlink_prospects
+        where tier is not null and tier <> 'reject'
+          and contact_email is null and status = 'qualified'
+        order by priority_score desc nulls last
+        limit $1`,
+      [CONTACT_LOOKUPS_PER_RUN]
+    );
+    for (const row of needContact) {
+      const result = await findContact(row.domain).catch(() => null);
+      if (result?.email) {
+        contactsFound++;
+        const existing = (row.contact_json && typeof row.contact_json === "object" ? row.contact_json : {}) as Record<string, unknown>;
+        await query(
+          `update backlink_prospects
+              set contact_email = $2, contact_json = $3, updated_at = now()
+            where id = $1`,
+          [
+            row.id,
+            result.email,
+            JSON.stringify({ ...existing, emails: result.emails, contact_form: result.contactForm }),
+          ]
+        );
+      } else if (result?.contactForm) {
+        const existing = (row.contact_json && typeof row.contact_json === "object" ? row.contact_json : {}) as Record<string, unknown>;
+        await query(
+          `update backlink_prospects set contact_json = $2, updated_at = now() where id = $1`,
+          [row.id, JSON.stringify({ ...existing, contact_form: result.contactForm })]
+        );
+      }
+    }
+
+    const summary = `DR ${snap?.domain_rating ?? "?"}; ${competitors.length} competitors; ${qualified} prospects qualified (${brokenQualified} broken-link, ${rejected} rejected); ${contactsFound} contacts found; ${newBacklinks} new / ${lostBacklinks} lost backlinks.`;
     await logAgent({
       agent: "backlink-scout",
       action: "scan",
@@ -292,6 +329,7 @@ export const backlinkScout: AgentDefinition = {
         discovered,
         qualified,
         brokenQualified,
+        contactsFound,
         rejected,
         newBacklinks,
         lostBacklinks,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
+import { sendApprovedOutreach } from "@/lib/backlink-send";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       level: "success",
       message: `Approved backlink outreach to ${domainRow?.domain ?? outreach.prospect_id}.`,
     });
+    // If we already have a contact email and Gmail is connected, send it now.
+    // Otherwise it stays approved and is sent automatically once a contact is
+    // discovered (sendPendingApproved runs on a schedule).
+    const send = await sendApprovedOutreach(params.id);
+    return NextResponse.json({ ok: true, action: "approve", send });
   } else {
     await query(
       `update backlink_outreach set approval_status = 'rejected', updated_at = now() where id = $1`,

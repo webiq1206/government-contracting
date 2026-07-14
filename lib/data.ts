@@ -722,6 +722,7 @@ export interface ProspectRow {
   link_type: string | null;
   status: string;
   qualification_json: unknown;
+  contact_email: string | null;
   outreach_status: string | null;
 }
 
@@ -729,7 +730,7 @@ export interface ProspectRow {
 export async function backlinkProspects(limit = 200): Promise<ProspectRow[]> {
   const rows = await query<Record<string, unknown>>(
     `select p.id, p.domain, p.opportunity_type, p.domain_rating, p.relevance, p.traffic,
-            p.priority_score, p.tier, p.link_type, p.status, p.qualification_json,
+            p.priority_score, p.tier, p.link_type, p.status, p.qualification_json, p.contact_email,
             (select o.approval_status from backlink_outreach o
                where o.prospect_id = p.id order by o.created_at desc limit 1) as outreach_status
        from backlink_prospects p
@@ -750,7 +751,42 @@ export async function backlinkProspects(limit = 200): Promise<ProspectRow[]> {
     link_type: r.link_type == null ? null : String(r.link_type),
     status: String(r.status),
     qualification_json: r.qualification_json,
+    contact_email: r.contact_email == null ? null : String(r.contact_email),
     outreach_status: r.outreach_status == null ? null : String(r.outreach_status),
+  }));
+}
+
+export interface OutreachActivityRow {
+  id: string;
+  domain: string;
+  contact_email: string | null;
+  subject: string | null;
+  sent_at: string | null;
+  replied_at: string | null;
+  follow_up_sent: boolean;
+  send_error: string | null;
+}
+
+/** Approved outreach and its send/reply state (the "in outreach" tracker). */
+export async function outreachActivity(limit = 100): Promise<OutreachActivityRow[]> {
+  const rows = await query<Record<string, unknown>>(
+    `select o.id, p.domain, p.contact_email, o.subject, o.sent_at, o.replied_at,
+            o.follow_up_sent, o.send_error
+       from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
+      where o.approval_status = 'approved'
+      order by o.replied_at desc nulls last, o.sent_at desc nulls last, o.updated_at desc
+      limit $1`,
+    [limit]
+  );
+  return rows.map((r) => ({
+    id: String(r.id),
+    domain: String(r.domain),
+    contact_email: r.contact_email == null ? null : String(r.contact_email),
+    subject: r.subject == null ? null : String(r.subject),
+    sent_at: r.sent_at == null ? null : String(r.sent_at),
+    replied_at: r.replied_at == null ? null : String(r.replied_at),
+    follow_up_sent: Boolean(r.follow_up_sent),
+    send_error: r.send_error == null ? null : String(r.send_error),
   }));
 }
 

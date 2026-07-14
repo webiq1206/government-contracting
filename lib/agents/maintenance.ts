@@ -9,6 +9,7 @@ import { query, queryOne } from "../db";
 import { gmail } from "../integrations/gmail";
 import { sms } from "../integrations/twilio";
 import { logAgent } from "../logger";
+import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -180,6 +181,57 @@ export const logRetentionSweep: AgentDefinition = {
         returning id`
     );
     return { ok: true, summary: `Pruned ${res.length} log entr${res.length === 1 ? "y" : "ies"} older than 90 days.` };
+  },
+};
+
+/**
+ * Backlink outreach sweep: sends approved outreach that now has a contact email,
+ * sends one polite follow-up when due, and matches inbound replies to backlink
+ * outreach threads. Only ever touches APPROVED outreach — the human gate is
+ * enforced upstream. Rule-only; no-ops cleanly when Gmail isn't connected.
+ */
+export const backlinkOutreachSweep: AgentDefinition = {
+  name: "backlink-outreach-sweep",
+  label: "Backlink Outreach Sweep",
+  description: "Sends approved backlink outreach, follow-ups, and records replies.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    const send = await sendPendingApproved(25);
+    const followUp = await sendFollowUps(25);
+
+    // Reply detection for backlink outreach threads.
+    let repliesMatched = 0;
+    if (await gmail.isConnected()) {
+      const sinceSec = Math.floor(Date.now() / 1000) - 3600;
+      const { replies, disabled } = await gmail.fetchReplies(sinceSec);
+      if (!disabled) {
+        for (const r of replies) {
+          const fromEmail = (r.from.match(/<([^>]+)>/)?.[1] ?? r.from).toLowerCase().trim();
+          const hit = await queryOne<{ id: string }>(
+            `select o.id from backlink_outreach o
+               join backlink_prospects p on p.id = o.prospect_id
+              where (o.gmail_thread_id = $1 or lower(p.contact_email) = $2)
+                and o.sent_at is not null and o.replied_at is null
+              order by o.sent_at desc limit 1`,
+            [r.threadId, fromEmail]
+          );
+          if (!hit) continue;
+          repliesMatched++;
+          await query(`update backlink_outreach set replied_at = now(), updated_at = now() where id = $1`, [
+            hit.id,
+          ]);
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      summary: `Backlink outreach: ${send.sent} sent, ${followUp.sent} follow-ups, ${repliesMatched} replies.${
+        send.errors ? ` ${send.errors} errors.` : ""
+      }`,
+      data: { ...send, followUps: followUp.sent, repliesMatched },
+      humanActionRequired: repliesMatched > 0,
+    };
   },
 };
 
