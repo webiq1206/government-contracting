@@ -7,6 +7,7 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { integrationStatus } from "@/lib/config";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { computeSetupChecklist } from "@/lib/domain/setup";
+import { flagSummary } from "@/lib/flag-labels";
 import { currency, countdown, shortDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -269,7 +270,7 @@ export default async function TodayPage() {
                 key={o.id}
                 o={o}
                 action="Open"
-                detail={(o.risk_flags ?? []).join(", ").replace(/_/g, " ") || undefined}
+                detail={flagSummary(o.risk_flags ?? []) || undefined}
               />
             ))}
           </Section>

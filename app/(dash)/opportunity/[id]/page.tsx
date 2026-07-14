@@ -14,6 +14,7 @@ import { Collapsible } from "@/components/collapsible";
 import { CompetitiveLandscape } from "@/components/competitive-landscape";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
 import { currency, timeAgo, shortDate } from "@/lib/format";
+import { flagLabel } from "@/lib/flag-labels";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -292,7 +293,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 <div className="mt-3 flex flex-wrap gap-1">
                   {opp.risk_flags.map((f) => (
                     <span key={f} className="badge bg-risk/15 text-risk">
-                      ⚠ {f}
+                      ⚠ {flagLabel(f)}
                     </span>
                   ))}
                 </div>
@@ -395,20 +396,30 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 (k) => stats[k] != null
               );
               if (rows.length === 0) return null;
+              // When there are no real comps (count/median both 0), a grid of "$0"
+              // is misleading, show a plain note instead.
+              const hasComps =
+                Number(stats.count) > 0 && Number(stats.median) > 0;
               return (
                 <Collapsible title="Pricing comps · CPI-adjusted">
-                  <div className="grid grid-cols-2 gap-2 text-sm text-slate-700">
-                    {rows.map((k) => (
-                      <div key={k} className="flex justify-between">
-                        <span className="text-slate-500">{LABELS[k]}</span>
-                        <span className="num">
-                          {k === "count"
-                            ? String(stats[k])
-                            : currency(Number(stats[k]))}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {hasComps ? (
+                    <div className="grid grid-cols-2 gap-2 text-sm text-slate-700">
+                      {rows.map((k) => (
+                        <div key={k} className="flex justify-between">
+                          <span className="text-slate-500">{LABELS[k]}</span>
+                          <span className="num">
+                            {k === "count"
+                              ? String(stats[k])
+                              : currency(Number(stats[k]))}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">
+                      No comparable awards found for this NAICS and area yet.
+                    </p>
+                  )}
                 </Collapsible>
               );
             })()}

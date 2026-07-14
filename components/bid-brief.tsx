@@ -13,6 +13,21 @@ const NA = "Not specified in the provided documents";
 const has = (s?: string | null) => Boolean(s && s.trim() && s !== NA);
 
 /**
+ * Format a date-ish string cleanly (e.g. a raw JS Date/ISO the analyst returned,
+ * "Tue Aug 18 2026 13:27:22 GMT+0000 (Coordinated Universal Time)") into
+ * "Aug 18, 2026". Anything that isn't a real, full date (e.g. "Not specified",
+ * "TBD", "2026") is returned untouched.
+ */
+function fmtDate(v?: string): string | undefined {
+  if (!v) return v;
+  const s = v.trim();
+  if (s.length < 8) return v; // too short to be a full date (guards "2026", "Q1")
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return v;
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+/**
  * The Bid Brief, a complete, plain-English summary of a solicitation so the
  * operator can decide to pursue in a couple of minutes, with the full original
  * documents one click away. Renders defensively: sections with no content are
@@ -54,7 +69,7 @@ export function BidBrief({
 
         {/* Key facts */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-          <Fact label="Bid due" value={analysis.due_date} strong />
+          <Fact label="Bid due" value={fmtDate(analysis.due_date)} strong />
           <Fact label="Estimated value" value={analysis.estimated_value} />
           <Fact label="Location" value={analysis.location} />
           <Fact label="Submission" value={analysis.submission_method} />
@@ -133,7 +148,7 @@ export function BidBrief({
               {analysis.key_dates.map((d, i) => (
                 <li key={i} className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
                   <span className="text-slate-700">{d.label}</span>
-                  <span className="num text-slate-900">{d.date}</span>
+                  <span className="num text-slate-900">{fmtDate(d.date)}</span>
                 </li>
               ))}
             </ul>
@@ -147,7 +162,7 @@ export function BidBrief({
               {analysis.qa_addenda.map((a, i) => (
                 <li key={i} className="accent-left">
                   <span className="font-medium text-slate-900">{a.label}</span>
-                  {a.date && <span className="ml-2 text-xs text-slate-500">{a.date}</span>}
+                  {a.date && <span className="ml-2 text-xs text-slate-500">{fmtDate(a.date)}</span>}
                   <p className="mt-0.5 text-slate-700">{a.summary}</p>
                 </li>
               ))}
