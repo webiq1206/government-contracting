@@ -30,9 +30,11 @@ export async function POST(req: Request) {
     domain: string;
     opportunity_type: string;
     tier: string | null;
-  }>(`select id, domain, opportunity_type, tier from backlink_prospects where id = $1`, [
-    body.prospectId,
-  ]);
+    contact_json: unknown;
+  }>(
+    `select id, domain, opportunity_type, tier, contact_json from backlink_prospects where id = $1`,
+    [body.prospectId]
+  );
   if (!prospect) return NextResponse.json({ error: "Prospect not found." }, { status: 404 });
   if (prospect.tier === "reject") {
     return NextResponse.json({ error: "This prospect was rejected in qualification." }, { status: 400 });
@@ -63,6 +65,13 @@ export async function POST(req: Request) {
     valueProp,
   });
 
+  // Pull the dead URL for broken-link prospects so the draft can be specific.
+  const contact = (prospect.contact_json ?? {}) as { dead_url?: string; source_page?: string };
+  const deadUrlLine =
+    prospect.opportunity_type === "broken_link" && contact.dead_url
+      ? `The specific dead link is ${contact.dead_url}${contact.source_page ? ` on the page ${contact.source_page}` : ""}. Reference it concretely.`
+      : "";
+
   // Optional Claude refinement — keep it honest, brief, no incentives.
   try {
     const { text, usage } = await complete(
@@ -72,6 +81,7 @@ export async function POST(req: Request) {
         "",
         `Prospect site: ${prospect.domain}`,
         `Opportunity type: ${prospect.opportunity_type}`,
+        deadUrlLine,
         "",
         `Subject: ${draft.subject}`,
         "",

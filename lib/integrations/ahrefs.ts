@@ -48,6 +48,18 @@ export interface Competitor {
   keywords_common: number | null;
 }
 
+export interface BrokenBacklink {
+  root_name_source: string; // referring domain (the prospect)
+  url_from: string; // the page that has the broken link
+  domain_rating_source: number | null;
+  traffic_domain: number | null;
+  is_spam: boolean | null;
+  is_dofollow: boolean | null;
+  url_to: string; // the now-dead URL it points to (on the competitor)
+  anchor: string | null;
+  title: string | null;
+}
+
 export const ahrefs = {
   enabled: () => config.ahrefs.enabled,
 
@@ -167,6 +179,47 @@ export const ahrefs = {
         )
       );
       return { items: data.competitors ?? [] };
+    } catch {
+      return { items: [] };
+    }
+  },
+
+  /**
+   * Broken backlinks pointing at a target (typically a competitor): pages that
+   * link to a URL on the competitor that is now dead (404/gone). These are prime
+   * broken-link-building prospects — we can offer our live page as a replacement
+   * for the dead link. Deduped to one per referring domain to keep it actionable.
+   */
+  async brokenBacklinks(
+    target: string,
+    { limit = 20, minDr = 0 }: { limit?: number; minDr?: number } = {}
+  ): Promise<{ disabled?: boolean; items: BrokenBacklink[] }> {
+    if (!config.ahrefs.enabled || !target) return { disabled: true, items: [] };
+    const where =
+      minDr > 0
+        ? JSON.stringify({ field: "domain_rating_source", is: ["gte", minDr] })
+        : undefined;
+    try {
+      const data = await withRetry(() =>
+        fetchJson<{ backlinks?: BrokenBacklink[] }>(
+          `${BASE}/site-explorer/broken-backlinks`,
+          {
+            headers: auth(),
+            query: {
+              target,
+              mode: "subdomains",
+              aggregation: "1_per_domain",
+              select:
+                "root_name_source,url_from,domain_rating_source,traffic_domain,is_spam,is_dofollow,url_to,anchor,title",
+              order_by: "domain_rating_source:desc",
+              limit,
+              where,
+              output: "json",
+            },
+          }
+        )
+      );
+      return { items: data.backlinks ?? [] };
     } catch {
       return { items: [] };
     }

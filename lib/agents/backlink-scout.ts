@@ -19,7 +19,7 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { config } from "../config";
-import { ahrefs, type RefDomain } from "../integrations/ahrefs";
+import { ahrefs, type RefDomain, type BrokenBacklink } from "../integrations/ahrefs";
 import {
   qualifyProspect,
   domainNicheRelevance,
@@ -34,6 +34,8 @@ const MAX_COMPETITORS = 5; // competitors whose profiles we mine per run
 const REFDOMAINS_PER_COMPETITOR = 40; // referring domains pulled per competitor
 const OWN_REFDOMAINS = 100; // our own backlinks refreshed per run
 const MIN_COMPETITOR_DR = 15; // ignore weak referring domains outright
+const BROKEN_COMPETITORS = 3; // competitors to mine for broken links (cost control)
+const BROKEN_PER_COMPETITOR = 20; // broken backlinks pulled per competitor
 
 /** Build the niche-term set used to estimate topical relevance of a domain. */
 function nicheTerms(profile: Awaited<ReturnType<typeof getProfileJson>>): string[] {
@@ -207,19 +209,89 @@ export const backlinkScout: AgentDefinition = {
       }
     }
 
-    const summary = `DR ${snap?.domain_rating ?? "?"}; ${competitors.length} competitors; ${qualified} prospects qualified (${rejected} rejected); ${newBacklinks} new / ${lostBacklinks} lost backlinks.`;
+    // --- 5) Broken-link building: dead links on competitors we can replace. ---
+    let brokenQualified = 0;
+    for (const c of competitors.slice(0, BROKEN_COMPETITORS)) {
+      const compRow = await queryOne<{ id: string }>(
+        `select id from backlink_competitors where domain = $1`,
+        [c.competitor_domain]
+      );
+      const broken = await ahrefs.brokenBacklinks(c.competitor_domain!, {
+        limit: BROKEN_PER_COMPETITOR,
+        minDr: MIN_COMPETITOR_DR,
+      });
+      for (const bl of broken.items) {
+        const domain = (bl.root_name_source || "").toLowerCase();
+        if (!domain) continue;
+        const relevance = domainNicheRelevance(domain, terms);
+        const linkType: LinkType = bl.is_dofollow == null ? "unknown" : bl.is_dofollow ? "dofollow" : "nofollow";
+        const q = qualifyProspect({
+          opportunityType: "broken_link",
+          dr: bl.domain_rating_source,
+          relevance,
+          traffic: bl.traffic_domain,
+          spamScore: bl.is_spam ? 80 : 0,
+          indexed: true,
+          linkType,
+        });
+        discovered++;
+        if (q.tier === "reject") {
+          rejected++;
+          continue;
+        }
+        brokenQualified++;
+        qualified++;
+        await query(
+          `insert into backlink_prospects
+             (domain, url, opportunity_type, domain_rating, relevance, traffic, spam_score,
+              indexed, link_type, priority_score, tier, qualification_json,
+              contact_json, discovered_via, competitor_id, status)
+           values ($1,$2,'broken_link',$3,$4,$5,$6,true,$7,$8,$9,$10,$11,$12,$13,'qualified')
+           on conflict (domain, opportunity_type) do update set
+             url = excluded.url,
+             domain_rating = excluded.domain_rating,
+             relevance = excluded.relevance,
+             traffic = excluded.traffic,
+             spam_score = excluded.spam_score,
+             link_type = excluded.link_type,
+             priority_score = excluded.priority_score,
+             tier = excluded.tier,
+             qualification_json = excluded.qualification_json,
+             contact_json = excluded.contact_json,
+             updated_at = now()`,
+          [
+            domain,
+            bl.url_from,
+            bl.domain_rating_source,
+            relevance,
+            bl.traffic_domain,
+            bl.is_spam ? 80 : 0,
+            linkType,
+            q.score,
+            q.tier,
+            JSON.stringify({ reasons: q.reasons, dead_url: bl.url_to, anchor: bl.anchor, page_title: bl.title }),
+            JSON.stringify({ dead_url: bl.url_to, source_page: bl.url_from }),
+            `broken:${c.competitor_domain}`,
+            compRow?.id ?? null,
+          ]
+        );
+      }
+    }
+
+    const summary = `DR ${snap?.domain_rating ?? "?"}; ${competitors.length} competitors; ${qualified} prospects qualified (${brokenQualified} broken-link, ${rejected} rejected); ${newBacklinks} new / ${lostBacklinks} lost backlinks.`;
     await logAgent({
       agent: "backlink-scout",
       action: "scan",
       level: lostBacklinks > 0 ? "warn" : "info",
       message: summary,
-      reasoning: `Snapshot + ${own.items.length} own refdomains + ${competitors.length} competitors x ${REFDOMAINS_PER_COMPETITOR} refdomains, qualified via quality-first scoring.`,
+      reasoning: `Snapshot + ${own.items.length} own refdomains + ${competitors.length} competitors x ${REFDOMAINS_PER_COMPETITOR} refdomains (+ broken-link mining), qualified via quality-first scoring.`,
       output: {
         domainRating: snap?.domain_rating ?? null,
         referringDomains: snap?.referring_domains ?? null,
         competitors: competitors.length,
         discovered,
         qualified,
+        brokenQualified,
         rejected,
         newBacklinks,
         lostBacklinks,

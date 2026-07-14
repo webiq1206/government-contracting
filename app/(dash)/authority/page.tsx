@@ -25,6 +25,22 @@ function fmtInt(n: number | null): string {
   return n == null ? "—" : new Intl.NumberFormat("en-US").format(Math.round(n));
 }
 
+const OPP_LABELS: Record<string, string> = {
+  competitor_gap: "Competitor link",
+  broken_link: "Broken link",
+  resource_page: "Resource page",
+  unlinked_mention: "Unlinked mention",
+  guest_post: "Guest post",
+  directory: "Directory",
+  association: "Association",
+  partnership: "Partnership",
+  supplier: "Supplier",
+  haro: "HARO",
+};
+function oppLabel(t: string): string {
+  return OPP_LABELS[t] ?? t.replace(/_/g, " ");
+}
+
 function reasonsOf(p: ProspectRow): string[] {
   const q = p.qualification_json;
   if (q && typeof q === "object" && "reasons" in q) {
@@ -212,6 +228,7 @@ function ProspectItem({ p }: { p: ProspectRow }) {
         <div className="flex items-center gap-2">
           <span className="num text-lg font-semibold text-foreground">{p.priority_score ?? "—"}</span>
           <span className={`badge uppercase ${tierBadgeClass(p.tier)}`}>{p.tier}</span>
+          <span className="badge bg-slate-200 text-slate-600">{oppLabel(p.opportunity_type)}</span>
           <span className="truncate text-sm font-medium text-foreground">{p.domain}</span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
