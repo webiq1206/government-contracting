@@ -30,8 +30,13 @@ export function pool(): Pool {
       ? undefined
       : { rejectUnauthorized: false },
     max: Number(process.env.PG_POOL_MAX ?? 10),
-    idleTimeoutMillis: 30_000,
+    // Recycle idle connections before Supabase's pooler closes them server-side
+    // (which surfaced as intermittent "Connection terminated due to connection
+    // timeout" errors in the frequent worker crons), and keep sockets warm.
+    idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
   });
   _pool.on("error", (err) => {
     // Never crash the process on an idle client error.
