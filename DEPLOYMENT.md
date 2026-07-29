@@ -39,8 +39,15 @@ Open the **Secrets** panel (lock icon) and add, at minimum:
 | `APP_URL` | your Repl's public URL, e.g. `https://brostco.username.repl.co` |
 
 Add the rest from `.env.example` as you obtain each key (SAM, Google Maps,
-Hunter, Gmail OAuth, Twilio, Resend). Every one is optional, the platform runs
-and is testable without them and lights each feature up when its key appears.
+Hunter, Gmail OAuth, Twilio, Resend, Ahrefs). Every one is optional, the
+platform runs and is testable without them and lights each feature up when its
+key appears.
+
+Most of these do not have to be Secrets at all, **Settings → Integrations** in
+the running app manages them from the UI (encrypted at rest, with a per-service
+Test connection button) and takes precedence over the environment. Only the
+infrastructure values, `DATABASE_URL`, `AUTH_SECRET`, `REDIS_URL` and the
+operator login, are env-only on purpose.
 
 ## 4. Initialize the database (once)
 
