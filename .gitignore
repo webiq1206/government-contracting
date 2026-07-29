@@ -28,6 +28,9 @@ yarn-error.log*
 .vscode/
 .idea/
 
+# claude code, per-machine local settings (shared config lives in .claude/launch.json)
+.claude/settings.local.json
+
 # testing
 /coverage
 

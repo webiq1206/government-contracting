@@ -1,6 +1,12 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "nodejs";
+// Rendered per-request rather than prerendered at build. Next's bundled
+// @vercel/og resolves its wasm/font assets with path.join() over a file:// URL,
+// which only survives on POSIX, so prerendering this route breaks any build run
+// from Windows. Social crawlers hit this a handful of times, so generating on
+// demand costs nothing and keeps `npm run build` portable.
+export const dynamic = "force-dynamic";
 export const alt = "BROSTCO, Autonomous Procurement Execution";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
