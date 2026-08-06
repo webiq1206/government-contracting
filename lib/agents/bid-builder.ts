@@ -329,6 +329,10 @@ export const bidBuilder: AgentDefinition = {
       pricingReconciles,
       bidAmount,
       nowIso: new Date().toISOString(),
+      // Every document kind actually written this build: if package assembly
+      // failed above (caught + logged), the missing artifacts block readiness
+      // here instead of shipping a "ready" package with absent files.
+      presentDocKinds: new Set([...documentsJson, ...packageDocs].map((d) => d.kind)),
     });
 
     // Deterministic eligibility findings (set-aside, NAICS, bonding, SAM). These

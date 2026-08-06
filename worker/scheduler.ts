@@ -8,6 +8,7 @@ import { cronMatches, isValidCron } from "../lib/cron";
 import { enqueue } from "../lib/queue";
 import { scheduledAgents } from "../lib/agents/registry";
 import { config } from "../lib/config";
+import { getAutomationState } from "../lib/app-settings";
 
 let timer: NodeJS.Timeout | null = null;
 
@@ -29,7 +30,20 @@ export function startScheduler(): () => void {
       .join(", ")}`
   );
 
+  // Log pause/resume transitions once instead of spamming every skipped tick.
+  let wasPaused = false;
+
   async function tick() {
+    // Operator-controlled pause switch (Agents page). While paused no new
+    // scheduled runs start; manual "Run now" and already-queued jobs still
+    // process because only the cron enqueue is gated here.
+    const { paused } = await getAutomationState();
+    if (paused !== wasPaused) {
+      console.log(`[scheduler] automation ${paused ? "PAUSED" : "RESUMED"} by operator`);
+      wasPaused = paused;
+    }
+    if (paused) return;
+
     const now = new Date();
     // Stamp uses the SAME clock the cron matcher uses (local time) so the
     // per-minute dedupe key lines up with the minute the cron actually matched.

@@ -4,6 +4,8 @@ import { ROSTER } from "@/lib/agents/registry";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
+import { AutomationControl } from "@/components/automation-control";
+import { getAutomationState } from "@/lib/app-settings";
 import { timeAgo } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -40,9 +42,10 @@ export default async function AgentsPage({
   const levelFilter = searchParams?.level;
   const q = searchParams?.q ?? "";
   const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
-  const [runs, paged] = await Promise.all([
+  const [runs, paged, automation] = await Promise.all([
     jobRunsSummary() as Promise<Row[]>,
     agentLogsPaged({ agent: agentFilter, level: levelFilter, q, page }),
+    getAutomationState(),
   ]);
   const logs = paged.rows as Row[];
   const totalPages = Math.max(1, Math.ceil(paged.total / LOG_PAGE_SIZE));
@@ -71,6 +74,9 @@ export default async function AgentsPage({
       />
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
+        {/* Master switch: pause/resume the entire cron loop. */}
+        <AutomationControl state={automation} />
+
         {/* Roster grid with run controls */}
         <section>
           <h2 className="label mb-2">Roster</h2>

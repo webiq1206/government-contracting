@@ -173,4 +173,89 @@ describe("validatePackage", () => {
     expect(v.total_mandatory).toBe(1);
     expect(v.satisfied_count).toBe(1);
   });
+
+  it("blocks a 'satisfied' generated artifact whose file was never stored", () => {
+    // Pricing schedule requirement resolves to satisfied via auto_generated,
+    // but the pricing_schedule document is absent from storage.
+    const resolved = resolveRequirements(
+      [req({ id: "price", title: "Pricing Schedule", category: "pricing", satisfied_by: "auto_generated" })],
+      ctx
+    );
+    const v = validatePackage({
+      resolved,
+      hasIdentifiers: true,
+      pricingReconciles: true,
+      bidAmount: 50000,
+      nowIso: "2026-01-01T00:00:00Z",
+      presentDocKinds: new Set(["bid_pdf", "bid_docx"]),
+    });
+    expect(v.passed).toBe(false);
+    expect(v.blockers.some((b) => b.includes("Pricing Schedule") && b.includes("missing"))).toBe(
+      true
+    );
+  });
+
+  it("blocks when the bid PDF itself is missing from storage", () => {
+    const v = validatePackage({
+      resolved: [],
+      hasIdentifiers: true,
+      pricingReconciles: true,
+      bidAmount: 50000,
+      nowIso: "2026-01-01T00:00:00Z",
+      presentDocKinds: new Set(["cover_letter"]),
+    });
+    expect(v.passed).toBe(false);
+    expect(v.blockers.some((b) => b.includes("bid PDF"))).toBe(true);
+  });
+
+  it("passes the artifact check when every generated document exists", () => {
+    const resolved = resolveRequirements(
+      [req({ id: "price", title: "Pricing Schedule", category: "pricing", satisfied_by: "auto_generated" })],
+      ctx
+    );
+    const v = validatePackage({
+      resolved,
+      hasIdentifiers: true,
+      pricingReconciles: true,
+      bidAmount: 50000,
+      nowIso: "2026-01-01T00:00:00Z",
+      presentDocKinds: new Set(["bid_pdf", "bid_docx", "pricing_schedule"]),
+    });
+    expect(v.passed).toBe(true);
+  });
+
+  it("exempts operator-confirmed items and official solicitation forms", () => {
+    const resolved = resolveRequirements(
+      [
+        req({ id: "sig", title: "Signed Offer", category: "form", satisfied_by: "operator_signature" }),
+      ],
+      { ...ctx, confirmed: new Set(["sig"]) }
+    );
+    const v = validatePackage({
+      resolved,
+      hasIdentifiers: true,
+      pricingReconciles: true,
+      bidAmount: 50000,
+      nowIso: "2026-01-01T00:00:00Z",
+      // reps_certs (the artifact backing "sig") is absent, but the operator
+      // confirmed the item, so only the bid PDF presence matters.
+      presentDocKinds: new Set(["bid_pdf"]),
+    });
+    expect(v.passed).toBe(true);
+  });
+
+  it("skips the artifact check entirely when presentDocKinds is not provided", () => {
+    const resolved = resolveRequirements(
+      [req({ id: "price", category: "pricing", satisfied_by: "auto_generated" })],
+      ctx
+    );
+    const v = validatePackage({
+      resolved,
+      hasIdentifiers: true,
+      pricingReconciles: true,
+      bidAmount: 50000,
+      nowIso: "2026-01-01T00:00:00Z",
+    });
+    expect(v.passed).toBe(true);
+  });
 });

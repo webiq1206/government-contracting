@@ -174,6 +174,13 @@ export interface ValidationInput {
   pricingReconciles: boolean;
   bidAmount: number | null;
   nowIso: string;
+  /**
+   * documents.kind values actually stored for this opportunity. When provided,
+   * a requirement "satisfied" by a generated artifact whose file was never
+   * written (e.g. document assembly failed mid-build) becomes a blocker
+   * instead of silently shipping an incomplete package.
+   */
+  presentDocKinds?: Set<string> | null;
 }
 
 export function validatePackage(input: ValidationInput): PackageValidation {
@@ -189,6 +196,24 @@ export function validatePackage(input: ValidationInput): PackageValidation {
       blockers.push(`Provide "${r.title}": ${r.instructions ?? "required item"}.`);
     } else {
       blockers.push(`Missing required item: "${r.title}".`);
+    }
+  }
+
+  // Generated-artifact existence: "satisfied by a generated document" only
+  // counts if that document actually exists in storage. Operator-confirmed
+  // items are exempt (the human vouched for them), as are items backed by an
+  // official solicitation file (already stored with the solicitation).
+  if (input.presentDocKinds) {
+    for (const r of mandatory) {
+      if (r.status !== "satisfied" || r.operator_confirmed || r.official_form_doc) continue;
+      if (r.artifact_kind && !input.presentDocKinds.has(r.artifact_kind)) {
+        blockers.push(
+          `The generated document for "${r.title}" (${r.artifact_kind.replace(/_/g, " ")}) is missing from storage. Re-run the Bid Builder.`
+        );
+      }
+    }
+    if (!input.presentDocKinds.has(ARTIFACT_KIND.bidPdf)) {
+      blockers.push("The bid PDF is missing from storage. Re-run the Bid Builder.");
     }
   }
 

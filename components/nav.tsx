@@ -41,6 +41,7 @@ const NAV: { section: string; items: { href: string; label: string }[] }[] = [
     section: "Settings",
     items: [
       { href: "/settings/profile", label: "Company Profile" },
+      { href: "/settings/rules", label: "Automation Rules" },
       { href: "/settings/content", label: "Content Library" },
       { href: "/settings/integrations", label: "Integrations" },
     ],

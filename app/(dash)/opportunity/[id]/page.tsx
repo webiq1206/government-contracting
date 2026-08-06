@@ -8,6 +8,9 @@ import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { BidBrief } from "@/components/bid-brief";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
+import { OpportunityJourney } from "@/components/opportunity-journey";
+import { DeadlineBadge } from "@/components/deadline-badge";
+import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
 import { SubmissionPackage } from "@/components/submission-package";
 import { OpportunityNotes } from "@/components/opportunity-notes";
 import { Collapsible } from "@/components/collapsible";
@@ -44,9 +47,17 @@ const OUTREACH_LABEL: Record<string, string> = {
  * next server render (all wrapping views call `router.refresh()` after save).
  */
 export default async function OpportunityPage({ params }: { params: { id: string } }) {
-  const detail = await opportunityDetail(params.id);
+  const [detail, automation, rules] = await Promise.all([
+    opportunityDetail(params.id),
+    getAutomationState(),
+    getAutomationRules(),
+  ]);
   if (!detail) notFound();
   const { opp, quotes, subs, documents, logs, competitors } = detail;
+  // Hours since the record last changed, feeds the banner's stall detection.
+  const hoursSinceUpdate = opp.updated_at
+    ? (Date.now() - new Date(opp.updated_at).getTime()) / 3_600_000
+    : null;
   const bid = detail.bid as Bid | null;
   const breakdown = opp.score_breakdown as ScoreBreakdown | null;
   const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
@@ -86,6 +97,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const bidSubmitted = Boolean(bid?.submitted_at);
   const QUOTE_STAGES = ["sub_research", "outreach", "call_queue", "quote_entry"];
   const showQuotePanel =
+    opp.status === "open" && // archived/expired records are read-only
     !hasBid &&
     !bidSubmitted &&
     (quotesEntered > 0 ||
@@ -105,11 +117,17 @@ export default async function OpportunityPage({ params }: { params: { id: string
         <span className="badge bg-surface text-slate-600">
           {opp.stage.replace(/_/g, " ")}
         </span>
+        <DeadlineBadge deadline={opp.deadline} rules={rules} showDate />
       </PageHeader>
 
       <div className="scroll-thin flex-1 overflow-y-auto">
+        {/* Where this opportunity is on the path, and whose turn it is. */}
+        <div className="px-5 pt-4">
+          <OpportunityJourney stage={opp.stage} />
+        </div>
+
         {/* Stage-aware guidance: the single recommended next action. */}
-        <div className="px-5 pt-5">
+        <div className="px-5 pt-4">
           <NextStepBanner
             opportunityId={opp.id}
             stage={opp.stage}
@@ -121,6 +139,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
             bidSubmitted={Boolean(bid?.submitted_at)}
             outcome={bid?.outcome ?? null}
             pastPerfBlocked={opp.past_perf_classification === "prime_only"}
+            automationPaused={automation.paused}
+            hoursSinceUpdate={hoursSinceUpdate}
+            expired={opp.status === "archived" && (opp.risk_flags ?? []).includes("expired")}
           />
         </div>
 

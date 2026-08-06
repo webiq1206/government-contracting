@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "concurrently -n web,worker -c cyan,magenta \"npm:dev:web\" \"npm:dev:worker\"",
-    "dev:web": "next dev -p 3000",
+    "dev:web": "next dev",
     "dev:worker": "tsx watch worker/index.ts",
     "build": "next build",
     "start": "concurrently -n web,worker -c cyan,magenta --kill-others-on-fail=false \"npm:start:web\" \"npm:start:worker\"",

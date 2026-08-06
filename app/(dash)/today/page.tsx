@@ -2,13 +2,19 @@ import Link from "next/link";
 import { actionCenter, type ActionOppRow } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PipelineStrip } from "@/components/pipeline-strip";
+import { AutomationPausedBanner } from "@/components/automation-control";
+import { getAutomationState } from "@/lib/app-settings";
 import { SetupChecklist } from "@/components/setup-checklist";
 import { PAGE_HELP } from "@/lib/help-content";
 import { integrationStatus } from "@/lib/config";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
-import { currency, countdown, shortDate } from "@/lib/format";
+import { stageParty, PARTY_LABEL } from "@/lib/domain/journey";
+import { DeadlineBadge } from "@/components/deadline-badge";
+import { getAutomationRules } from "@/lib/app-settings";
+import type { AutomationRules } from "@/lib/domain/intake";
+import { currency, shortDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -37,12 +43,14 @@ function OppActionRow({
   o,
   action,
   detail,
+  rules,
 }: {
   o: ActionOppRow;
   action: string;
   detail?: string;
+  rules?: AutomationRules;
 }) {
-  const expiry = o.deadline ? countdown(o.deadline) : null;
+  const party = stageParty(o.stage, { hasBid: o.has_bid });
   return (
     <Link
       href={`/opportunity/${o.id}`}
@@ -60,13 +68,16 @@ function OppActionRow({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-3">
-        {expiry && (
+        {party && (
           <span
-            className={`num text-xs ${expiry === "overdue" ? "text-risk" : "text-slate-500"}`}
+            className={`badge ${
+              party === "you" ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"
+            }`}
           >
-            due {expiry === "overdue" ? "now (overdue)" : `in ${expiry}`}
+            waiting on {PARTY_LABEL[party]}
           </span>
         )}
+        <DeadlineBadge deadline={o.deadline} rules={rules} />
         <span className="btn-ghost pointer-events-none text-xs">{action} →</span>
       </div>
     </Link>
@@ -113,7 +124,12 @@ function Section({
 }
 
 export default async function TodayPage() {
-  const [data, profile] = await Promise.all([actionCenter(), getActiveProfile()]);
+  const [data, profile, automation, rules] = await Promise.all([
+    actionCenter(),
+    getActiveProfile(),
+    getAutomationState(),
+    getAutomationRules(),
+  ]);
   const integrations = integrationStatus();
   const setup = computeSetupChecklist({
     profile: profile?.profile_json ?? null,
@@ -146,6 +162,9 @@ export default async function TodayPage() {
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
        <div className="mx-auto w-full max-w-5xl space-y-8">
+        {/* Site-wide warning while the operator has paused the cron loop. */}
+        <AutomationPausedBanner state={automation} />
+
         {/* Pipeline progress rail */}
         <PipelineStrip counts={data.stageCounts} />
 
@@ -178,6 +197,7 @@ export default async function TodayPage() {
                 o={o}
                 action={o.has_bid ? "Review & submit" : "Open"}
                 detail={`still ${STAGE_LABEL[o.stage]?.toLowerCase() ?? o.stage.replace(/_/g, " ")}`}
+                rules={rules}
               />
             ))}
           </Section>
@@ -194,7 +214,7 @@ export default async function TodayPage() {
               judgment. Unactioned items auto-dismiss when their timer runs out.
             </p>
             {data.triage.map((o) => (
-              <OppActionRow key={o.id} o={o} action="Decide" />
+              <OppActionRow key={o.id} o={o} action="Decide" rules={rules} />
             ))}
           </Section>
         )}
@@ -242,6 +262,7 @@ export default async function TodayPage() {
                     ? "bid is priced and waiting for your sign-off"
                     : `${o.quote_count} quote${o.quote_count === 1 ? "" : "s"} entered so far`
                 }
+                rules={rules}
               />
             ))}
           </Section>
@@ -258,7 +279,7 @@ export default async function TodayPage() {
               set up the contract (win) or learn from the loss.
             </p>
             {data.awaitingOutcome.map((o) => (
-              <OppActionRow key={o.id} o={o} action="Record result" />
+              <OppActionRow key={o.id} o={o} action="Record result" rules={rules} />
             ))}
           </Section>
         )}
@@ -271,6 +292,7 @@ export default async function TodayPage() {
                 o={o}
                 action="Open"
                 detail={flagSummary(o.risk_flags ?? []) || undefined}
+                rules={rules}
               />
             ))}
           </Section>

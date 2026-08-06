@@ -8,8 +8,11 @@ describe("flagLabel", () => {
     expect(flagLabel("value_over_max")).toBe("Value over your ceiling");
   });
   it("humanizes unknown keys generically", () => {
-    expect(flagLabel("stalled_sub_research")).toBe("Stalled sub research");
     expect(flagLabel("some_new_flag")).toBe("Some new flag");
+  });
+  it("labels stalled-stage flags with plain-English descriptions", () => {
+    expect(flagLabel("stalled_sub_research")).toBe("Stuck finding subs");
+    expect(flagLabel("stalled_outreach")).toBe("Stalled: no sub replies");
   });
 });
 

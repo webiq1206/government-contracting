@@ -4,8 +4,11 @@ import { PageHeader, ScoreBadge } from "@/components/badges";
 import { PipelineCardMenu } from "@/components/pipeline-card-menu";
 import { stageMode } from "@/lib/stage-meta";
 import { PAGE_HELP } from "@/lib/help-content";
-import { currency, countdown } from "@/lib/format";
+import { currency } from "@/lib/format";
 import { integrationStatus } from "@/lib/config";
+import { DeadlineBadge } from "@/components/deadline-badge";
+import { getAutomationRules } from "@/lib/app-settings";
+import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +28,7 @@ const NEXT_ACTION: Record<string, string> = {
 };
 
 export default async function PipelinePage() {
-  const opps = await pipelineOpportunities();
+  const [opps, rules] = await Promise.all([pipelineOpportunities(), getAutomationRules()]);
   const byStage = new Map<string, Opportunity[]>();
   for (const s of PIPELINE_STAGES) byStage.set(s.key, []);
   for (const o of opps) {
@@ -62,7 +65,7 @@ export default async function PipelinePage() {
                 </div>
                 <div className="scroll-thin flex-1 space-y-2 overflow-y-auto pr-1">
                   {cards.map((o) => (
-                    <PipelineCard key={o.id} o={o} />
+                    <PipelineCard key={o.id} o={o} rules={rules} />
                   ))}
                   {cards.length === 0 && (
                     <p className="px-1 py-4 text-center text-xs text-slate-400">-</p>
@@ -92,7 +95,7 @@ export default async function PipelinePage() {
               </div>
               <div className="space-y-2">
                 {cards.map((o) => (
-                  <PipelineCard key={o.id} o={o} />
+                  <PipelineCard key={o.id} o={o} rules={rules} />
                 ))}
               </div>
             </section>
@@ -109,7 +112,7 @@ export default async function PipelinePage() {
 }
 
 /** One opportunity card, shared by the desktop kanban and the mobile list. */
-function PipelineCard({ o }: { o: Opportunity }) {
+function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules }) {
   return (
     <Link
       href={`/opportunity/${o.id}`}
@@ -128,11 +131,9 @@ function PipelineCard({ o }: { o: Opportunity }) {
           )}
         </div>
       </div>
-      <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
+      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-600">
         <span>{currency(o.value_estimated)}</span>
-        <span className={countdown(o.deadline) === "overdue" ? "text-risk" : ""}>
-          ⏱ {countdown(o.deadline)}
-        </span>
+        <DeadlineBadge deadline={o.deadline} rules={rules} />
       </div>
       {o.agency && <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>}
       <p className="mt-2 text-xs font-medium text-accent">

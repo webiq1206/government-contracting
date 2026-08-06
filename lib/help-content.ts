@@ -100,6 +100,15 @@ export const PAGE_HELP: Record<string, HelpContent> = {
       "Approve proposed weight changes when the learning agent suggests them.",
     ],
   },
+  rules: {
+    title: "Guardrails for the automation",
+    points: [
+      "Set how close a deadline must be to count as approaching or urgent.",
+      "Skip solicitations that are due too soon to finish properly.",
+      "Choose how long archived records are kept before cleanup.",
+      "The preview shows how many records each rule would touch before you save.",
+    ],
+  },
   integrations: {
     title: "Connect the services that power automation",
     points: [

@@ -310,22 +310,46 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Target margin %" value={targetMargin} onChange={setTargetMargin} type="number" hint="What you aim to make on a job." />
-          <Field label="Minimum margin %" value={minMargin} onChange={setMinMargin} type="number" hint="Never bid below this." />
-          <Field label="Max markup %" value={maxMarkup} onChange={setMaxMarkup} type="number" />
-          <Field label="Default markup %" value={markupDefault} onChange={setMarkupDefault} type="number" />
+          <Field
+            label="Target margin %"
+            value={targetMargin}
+            onChange={setTargetMargin}
+            type="number"
+            hint="The profit you aim to make on a job. The Bid Builder prices every bid to hit this automatically."
+          />
+          <Field
+            label="Minimum margin %"
+            value={minMargin}
+            onChange={setMinMargin}
+            type="number"
+            hint="The floor. A bid that would earn less than this fails its quality check and stops for your review instead of going out thin."
+          />
+          <Field
+            label="Max markup %"
+            value={maxMarkup}
+            onChange={setMaxMarkup}
+            type="number"
+            hint="Safety ceiling: costs are never marked up beyond this, even to reach the target, so a bid can't be priced out of the market chasing margin."
+          />
+          <Field
+            label="Default markup %"
+            value={markupDefault}
+            onChange={setMarkupDefault}
+            type="number"
+            hint="The starting markup on subcontractor quotes when there is no pricing history to compare against."
+          />
           <Field
             label="Flag a quote if it is this % off comps"
             value={tolerance}
             onChange={setTolerance}
             type="number"
-            hint="A sub quote far from comparable prices gets flagged for a second look."
+            hint="Any sub quote this far from comparable government awards is marked ⚠ in the quote list and on the bid's quality checklist, so one bad number can't sink the bid unnoticed."
           />
           <Field
             label="Margin scenarios to model %"
             value={marginScenarios}
             onChange={setMarginScenarios}
-            hint="Comma-separated, e.g. 25, 35, 50."
+            hint="Extra what-if margins shown in the bid brief (price and profit at each), for comparing before you sign off. Comma-separated, e.g. 25, 35, 50."
           />
         </div>
       </Section>
@@ -337,10 +361,38 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
           <CheckRow checked={requireNotExcluded} onChange={setRequireNotExcluded} label="Skip debarred (government-excluded) companies" />
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Min Google rating" value={minRating} onChange={setMinRating} type="number" placeholder="4.0" hint="Out of 5. Blank = no minimum." />
-          <Field label="Min number of reviews" value={minReviews} onChange={setMinReviews} type="number" placeholder="10" />
-          <Field label="Subs to find per trade" value={perTrade} onChange={setPerTrade} type="number" placeholder="12" />
-          <Field label="Subs to verify closely" value={verifyTop} onChange={setVerifyTop} type="number" placeholder="5" />
+          <Field
+            label="Min Google rating"
+            value={minRating}
+            onChange={setMinRating}
+            type="number"
+            placeholder="4.0"
+            hint="Out of 5. Candidates below this never make the list. Blank = no minimum."
+          />
+          <Field
+            label="Min number of reviews"
+            value={minReviews}
+            onChange={setMinReviews}
+            type="number"
+            placeholder="10"
+            hint="A high rating from 2 reviews is weak evidence. This many reviews are required before the rating counts."
+          />
+          <Field
+            label="Subs to find per trade"
+            value={perTrade}
+            onChange={setPerTrade}
+            type="number"
+            placeholder="12"
+            hint="How wide the automatic search casts for each trade. More = better coverage, but more outreach volume per job."
+          />
+          <Field
+            label="Subs to verify closely"
+            value={verifyTop}
+            onChange={setVerifyTop}
+            type="number"
+            placeholder="5"
+            hint="Only the top-ranked candidates get the full check (license, verified email, exclusion list) before any email goes out."
+          />
         </div>
       </Section>
 
@@ -350,15 +402,46 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
         hint="Size and timing limits. The pursue / review score bands are set in the card above."
       >
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Smallest contract ($)" value={valueMin} onChange={setValueMin} type="number" placeholder="50000" hint="Below this, auto-pass." />
-          <Field label="Largest before manual review ($)" value={valueMax} onChange={setValueMax} type="number" placeholder="350000" />
-          <Field label="Min subs per trade to bid" value={minSubs} onChange={setMinSubs} type="number" placeholder="2" />
-          <Field label="Submit this many hours early" value={leadHours} onChange={setLeadHours} type="number" placeholder="2" />
+          <Field
+            label="Smallest contract ($)"
+            value={valueMin}
+            onChange={setValueMin}
+            type="number"
+            placeholder="50000"
+            hint="Anything smaller is passed automatically, too small to cover the overhead of bidding."
+          />
+          <Field
+            label="Largest before manual review ($)"
+            value={valueMax}
+            onChange={setValueMax}
+            type="number"
+            placeholder="350000"
+            hint="Bigger jobs still enter the pipeline, but always stop for your explicit approval instead of auto-pursuing."
+          />
+          <Field
+            label="Min subs per trade to bid"
+            value={minSubs}
+            onChange={setMinSubs}
+            type="number"
+            placeholder="2"
+            hint="Below this many verified subs for any required trade, the bid pauses and asks you rather than pricing from a single quote."
+          />
+          <Field
+            label="Submit this many hours early"
+            value={leadHours}
+            onChange={setLeadHours}
+            type="number"
+            placeholder="2"
+            hint="Submission is blocked closer to the deadline than this, your buffer for portal outages and last-minute fixes. You can override with an explicit confirmation."
+          />
         </div>
       </Section>
 
       {/* Hard exclusions */}
-      <Section title="Things you never bid on" hint="Deal-breakers. Any opportunity matching one of these is passed automatically.">
+      <Section
+        title="Things you never bid on"
+        hint="Deal-breakers, written in plain English. The scoring system reads each rule and checks every incoming notice against it; a match means the opportunity is passed automatically, with the rule it hit recorded on the record so you can always see why. Keep each rule specific: name the exact condition that makes a job a no-go."
+      >
         <div className="space-y-3">
           {exclusions.length === 0 && (
             <p className="text-sm text-slate-400">None yet. Add one below if there is work you always avoid.</p>
@@ -411,7 +494,10 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
       </Section>
 
       {/* Notes */}
-      <Section title="Notes" hint="Anything else the system should keep in mind. Free text.">
+      <Section
+        title="Notes"
+        hint="Standing instructions in your own words. This text rides along on every AI decision (scoring, analysis, outreach, bids), so anything written here is honored across the whole platform. Good for policies that don't fit a field above."
+      >
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}

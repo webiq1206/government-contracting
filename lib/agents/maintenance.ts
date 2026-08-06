@@ -9,6 +9,8 @@ import { query, queryOne } from "../db";
 import { gmail } from "../integrations/gmail";
 import { sms } from "../integrations/twilio";
 import { logAgent } from "../logger";
+import { STALL_HOURS } from "../domain/journey";
+import { getAutomationRules } from "../app-settings";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
@@ -86,37 +88,61 @@ export const reviewExpirySweep: AgentDefinition = {
   },
 };
 
+/** Why each auto stage stalls, and what the operator should do about it. */
+const STALL_REASONING: Record<string, string> = {
+  scoring:
+    "Scoring never completed. The Scoring Engine may have errored or the Claude key may be missing; check its log and re-run it.",
+  analysis:
+    "The solicitation analysis never completed. Check the Solicitation Analyst's log and re-run it.",
+  sub_research:
+    "No subcontractor cleared verification for this opportunity. Needs operator attention (add subs or dismiss).",
+  outreach:
+    "No subcontractor replied after outreach + follow-up. Needs operator attention (call subs directly or dismiss).",
+  bid_building:
+    "Quotes were entered but the Bid Builder never priced the bid. Check its log and re-run it.",
+};
+
 export const stalledPipelineSweep: AgentDefinition = {
   name: "stalled-pipeline-sweep",
   label: "Stalled Pipeline Sweep",
   description:
-    "Flags opportunities stuck mid-pipeline (no sub responded, or every candidate failed verification) for human review so they can't silently die.",
+    "Flags opportunities stuck in an automatic stage beyond its expected window (same thresholds as the on-page 'looks stuck' banner) so nothing silently dies.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    // Opportunities that entered sub research or outreach and made no forward
-    // progress within the grace window (well past the 48h follow-up cycle) get
-    // surfaced to the operator instead of stalling with no human_action flag.
-    // Runs once per opp: flipping human_action_required=true excludes it next run.
-    const stalled = await query<{ id: string; title: string | null; stage: string }>(
-      `update opportunities
-          set human_action_required = true,
-              risk_flags = coalesce(risk_flags, '{}') || array['stalled_' || stage]
-        where status = 'open' and human_action_required = false
-          and stage in ('sub_research', 'outreach')
-          and updated_at < now() - interval '4 days'
-        returning id, title, stage`
-    );
+    // One threshold table drives both this sweep and the opportunity page's
+    // "this looks stuck" banner (lib/domain/journey), so the operator is
+    // notified about exactly the records the UI calls stuck. Runs once per
+    // opp: flipping human_action_required=true excludes it next run.
+    const stalled: { id: string; title: string | null; stage: string; hours: number }[] = [];
+    for (const [stage, hours] of Object.entries(STALL_HOURS)) {
+      if (hours == null) continue;
+      // bid_building only counts as a system stall while no bid exists yet;
+      // once the bid is built, the stage is legitimately waiting on the human.
+      const bidGuard =
+        stage === "bid_building"
+          ? "and not exists (select 1 from bids b where b.opportunity_id = opportunities.id)"
+          : "";
+      const rows = await query<{ id: string; title: string | null; stage: string }>(
+        `update opportunities
+            set human_action_required = true,
+                risk_flags = coalesce(risk_flags, '{}') || array['stalled_' || stage]
+          where status = 'open' and human_action_required = false
+            and stage = $1
+            and updated_at < now() - make_interval(hours => $2)
+            ${bidGuard}
+          returning id, title, stage`,
+        [stage, hours]
+      );
+      stalled.push(...rows.map((r) => ({ ...r, hours })));
+    }
     for (const o of stalled) {
       await logAgent({
         agent: "stalled-pipeline-sweep",
         action: "flag-stalled",
         opportunityId: o.id,
         level: "warn",
-        message: `Flagged stalled opportunity "${o.title ?? o.id}" (no progress in ${o.stage} for 4 days).`,
-        reasoning:
-          o.stage === "outreach"
-            ? "No subcontractor replied after outreach + follow-up. Needs operator attention (call subs directly or dismiss)."
-            : "No subcontractor cleared verification for this opportunity. Needs operator attention (add subs or dismiss).",
+        message: `Flagged stalled opportunity "${o.title ?? o.id}" (no progress in ${o.stage.replace(/_/g, " ")} for over ${o.hours}h).`,
+        reasoning: STALL_REASONING[o.stage] ?? "No progress beyond the stage's expected window.",
       });
     }
     return { ok: true, summary: `Flagged ${stalled.length} stalled opportunit${stalled.length === 1 ? "y" : "ies"} for review.` };
@@ -163,6 +189,91 @@ export const deadlineMonitor: AgentDefinition = {
     return {
       ok: true,
       summary: `Deadline check: ${urgent.length} opportunit${urgent.length === 1 ? "y" : "ies"} due within 48h flagged.`,
+    };
+  },
+};
+
+export const expiredOpportunitySweep: AgentDefinition = {
+  name: "expired-opportunity-sweep",
+  label: "Expired Opportunity Sweep",
+  description:
+    "Archives opportunities whose submission deadline passed without a bid. Nothing is deleted: all documents, communications, and history stay on the archived record.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    // A passed deadline with no submitted bid means the record can never be
+    // won; it leaves the active pipeline (status=archived) so lists stay
+    // clean, but keeps its stage and full history for reference. Submitted /
+    // won / lost records are untouched — the agency decides those timelines.
+    const expired = await query<{ id: string; title: string | null; stage: string; deadline: string }>(
+      `update opportunities
+          set status='archived', human_action_required=false,
+              risk_flags = (select array(select distinct unnest(coalesce(risk_flags,'{}') || array['expired'])))
+        where status='open'
+          and stage not in ('submitted','won','lost')
+          and deadline is not null and deadline < now()
+        returning id, title, stage, deadline`
+    );
+    for (const o of expired) {
+      await logAgent({
+        agent: "expired-opportunity-sweep",
+        action: "archive-expired",
+        opportunityId: o.id,
+        level: "info",
+        message: `Archived "${o.title ?? o.id}": the ${new Date(o.deadline).toISOString().slice(0, 10)} deadline passed while it was still in ${o.stage.replace(/_/g, " ")}.`,
+        reasoning:
+          "A passed deadline with no submitted bid cannot be won. The record was archived (never deleted) with all documents, communications, and history preserved.",
+      });
+    }
+    return {
+      ok: true,
+      summary: `Archived ${expired.length} expired opportunit${expired.length === 1 ? "y" : "ies"}.`,
+    };
+  },
+};
+
+export const retentionSweep: AgentDefinition = {
+  name: "retention-sweep",
+  label: "Retention Sweep",
+  description:
+    "Permanently deletes archived opportunities past the configured retention period, only when they have no bids or contracts. Off by default (retention 0 = keep forever).",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    const rules = await getAutomationRules();
+    if (rules.retention_days <= 0) {
+      return {
+        ok: true,
+        summary: "Retention is set to keep archived records forever; nothing deleted.",
+      };
+    }
+    // Safeguards: only archived records, past retention, with NO bid and NO
+    // contract. Anything with a bid or contract is part of the business
+    // record and is never auto-deleted. Cascades clean up their documents,
+    // quotes, sub pairings, and call cards.
+    const deleted = await query<{ id: string; title: string | null }>(
+      `delete from opportunities o
+        where o.status='archived'
+          and o.updated_at < now() - make_interval(days => $1)
+          and not exists (select 1 from bids b where b.opportunity_id = o.id)
+          and not exists (select 1 from contracts c where c.opportunity_id = o.id)
+        returning o.id, o.title`,
+      [rules.retention_days]
+    );
+    if (deleted.length > 0) {
+      await logAgent({
+        agent: "retention-sweep",
+        action: "purge-archived",
+        level: "info",
+        message: `Permanently deleted ${deleted.length} archived opportunit${deleted.length === 1 ? "y" : "ies"} older than ${rules.retention_days} days with no bids or contracts.`,
+        reasoning:
+          "Retention policy (Settings → Automation rules). Records with bids or contracts are always kept.",
+      });
+    }
+    return {
+      ok: true,
+      summary:
+        deleted.length > 0
+          ? `Purged ${deleted.length} archived record(s) past the ${rules.retention_days}-day retention.`
+          : `No archived records past the ${rules.retention_days}-day retention.`,
     };
   },
 };

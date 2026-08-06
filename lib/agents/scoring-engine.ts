@@ -19,6 +19,8 @@ import {
   applyWeightOverrides,
   type DimensionScore,
 } from "../domain/scoring";
+import { intakeChecks, intakeVerdict } from "../domain/intake";
+import { getAutomationRules } from "../app-settings";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
 
@@ -54,6 +56,54 @@ export const scoringEngine: AgentDefinition = {
 
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
+
+    // 0) Intake quality gate, BEFORE any scoring spend: minimum lead time,
+    // missing deadline, duplicate solicitation number. Nothing is excluded
+    // silently: every finding is logged with a full explanation and lands on
+    // the record's risk flags.
+    const rules = await getAutomationRules();
+    const dupRow = opp.solicitation_number
+      ? await queryOne<{ n: number }>(
+          `select count(*)::int as n from opportunities
+            where solicitation_number = $1 and id <> $2 and status = 'open'`,
+          [opp.solicitation_number, opportunityId]
+        )
+      : null;
+    const findings = intakeChecks({
+      deadline: opp.deadline,
+      duplicateSolicitationCount: dupRow?.n ?? 0,
+      rules,
+      now: new Date(),
+    });
+    const gate = intakeVerdict(findings);
+    for (const f of findings) {
+      await logAgent({
+        agent: "scoring-engine",
+        action: `intake-${f.rule.replace(/_/g, "-")}`,
+        opportunityId,
+        level: f.verdict === "dismiss" ? "warn" : "info",
+        message: f.explanation,
+      });
+    }
+    if (gate === "dismiss") {
+      await query(
+        `update opportunities
+            set stage='dismissed', status='archived', tier='dismiss',
+                human_action_required=false,
+                risk_flags = (select array(select distinct unnest(coalesce(risk_flags,'{}') || $2::text[])))
+          where id=$1`,
+        [opportunityId, findings.map((f) => f.flag)]
+      );
+      return {
+        ok: true,
+        summary: `Intake gate auto-passed this opportunity: ${findings
+          .map((f) => f.rule.replace(/_/g, " "))
+          .join(", ")}.`,
+        reasoning: findings.map((f) => f.explanation).join(" "),
+      };
+    }
+    const intakeFlags = findings.map((f) => f.flag);
+    const forceIntakeReview = gate === "review";
 
     // 1) Deterministic hard exclusions FIRST.
     const structuralExclusions = checkHardExclusions(opp, profile);
@@ -131,7 +181,9 @@ export const scoringEngine: AgentDefinition = {
     // a partial score or a contract larger than the company can self-approve.
     const flags = reviewFlags(opp, profile);
     if (scoringIncomplete) flags.push("incomplete_scoring");
-    const forceReview = flags.length > 0 && breakdown.tier === "pursue";
+    flags.push(...intakeFlags);
+    const forceReview =
+      (flags.length > 0 || forceIntakeReview) && breakdown.tier === "pursue";
     if (forceReview) breakdown.tier = "review";
 
     // 3) Persist score + tier + route.

@@ -90,6 +90,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const bidAmount = bid.bid_amount != null ? Number(bid.bid_amount) : null;
   const subtotal = bid.sub_quote_total != null ? Number(bid.sub_quote_total) : 0;
   const markup = bid.markup_pct != null ? Number(bid.markup_pct) : 0;
+  const docKinds = await query<{ kind: string }>(
+    `select distinct kind from documents where opportunity_id=$1`,
+    [params.id]
+  );
   const validation = validatePackage({
     resolved: matrix,
     hasIdentifiers: true,
@@ -99,6 +103,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         : Math.abs(bidAmount - subtotal * (1 + markup / 100)) < Math.max(1, bidAmount * 0.02),
     bidAmount,
     nowIso: new Date().toISOString(),
+    presentDocKinds: new Set(docKinds.map((d) => d.kind)),
   });
   const ready = computeReady(validation, findings);
 

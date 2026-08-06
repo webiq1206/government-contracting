@@ -24,6 +24,15 @@ const OVERRIDES: Record<string, string> = {
   incomplete_scoring: "Needs a human to finish scoring",
   qa_failures: "QA checks failing",
   package_incomplete: "Submission package incomplete",
+  below_min_lead_time: "Not enough lead time",
+  missing_deadline: "No deadline on the notice",
+  possible_duplicate: "Possible duplicate",
+  expired: "Deadline passed, expired",
+  stalled_scoring: "Stuck in scoring",
+  stalled_analysis: "Stuck in analysis",
+  stalled_sub_research: "Stuck finding subs",
+  stalled_outreach: "Stalled: no sub replies",
+  stalled_bid_building: "Stuck pricing the bid",
 };
 
 /** One flag key → a short, plain-English label. */
