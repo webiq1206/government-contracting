@@ -4,6 +4,7 @@ import { PageHeader, ScoreBadge, TierBadge } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { currency, countdown } from "@/lib/format";
+import { flagLabel } from "@/lib/flag-labels";
 import type { Opportunity } from "@/lib/types";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
 
@@ -137,13 +138,13 @@ function ReviewCard({ o }: { o: Opportunity }) {
         <div>
           <p className="label">Key risk factors</p>
           <p className="mt-0.5 text-xs text-slate-500">
-            These lower the score. Open the card to judge whether your team can
-            work around them.
+            Reasons this needs your judgment. Open the card to decide whether
+            your team can work around them.
           </p>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {o.risk_flags.map((f, i) => (
               <span key={i} className="badge bg-risk/15 text-risk">
-                ⚠ {f}
+                ⚠ {flagLabel(f)}
               </span>
             ))}
           </div>

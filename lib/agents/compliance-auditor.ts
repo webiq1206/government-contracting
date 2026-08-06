@@ -96,7 +96,10 @@ export const complianceAuditor: AgentDefinition = {
   description:
     "Independently re-reads the solicitation against the assembled bid package and reports missing or non-compliant items. Blocker findings gate submission.",
   cron: undefined,
-  worksWithoutClaude: false,
+  // Runs without Claude too: the AI re-read is skipped (audit_status='skipped',
+  // shown honestly in the UI) while the deterministic eligibility findings are
+  // preserved and still gate submission.
+  worksWithoutClaude: true,
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string | undefined;
     if (!opportunityId) return { ok: false, summary: "no opportunityId in payload" };
@@ -129,6 +132,22 @@ export const complianceAuditor: AgentDefinition = {
     const preserved = (bid.audit_findings ?? []).filter((f) => f.id.startsWith("elig_"));
     const profile = await getProfileJson();
     const solText = opp.solicitation_text ?? "";
+
+    // No Claude key: the AI re-read can't run. Record 'skipped' (the UI says
+    // so) instead of leaving the audit "pending" forever; deterministic
+    // eligibility findings still apply and still gate submission.
+    if (!config.claude.enabled) {
+      const ready = computeReady(validation, preserved);
+      await query(
+        `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
+        [bid.id, JSON.stringify(preserved), ready]
+      );
+      return {
+        ok: true,
+        summary:
+          "AI audit skipped (Claude not configured). Deterministic eligibility checks still gate submission.",
+      };
+    }
 
     // Nothing to audit against, keep eligibility findings, skip the AI pass.
     if (!profile || solText.trim().length < 40) {

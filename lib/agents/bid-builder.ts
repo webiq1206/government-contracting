@@ -63,7 +63,10 @@ export const bidBuilder: AgentDefinition = {
   description:
     "Aggregates sub quotes, prices to target margin, drafts narrative + QA, renders PDF/DOCX, and stages the bid for operator review.",
   cron: undefined,
-  worksWithoutClaude: false,
+  // Pricing, documents, compliance matrix, and QA are all deterministic; the
+  // narrative has a rule-based fallback when Claude is unavailable. Marking
+  // this false would dead-end the pipeline at quote_entry without an API key.
+  worksWithoutClaude: true,
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string | undefined;
     if (!opportunityId) return { ok: false, summary: "no opportunityId in payload" };

@@ -159,6 +159,14 @@ export function SubmissionPackage({
           against this package and will flag anything missing or non-compliant.
         </p>
       )}
+      {auditStatus === "skipped" && (
+        <p className="text-xs text-slate-500">
+          The AI compliance audit could not run (no solicitation text or the AI
+          key is not set). Eligibility checks above still apply; give the
+          package one careful human read against the solicitation before
+          submitting.
+        </p>
+      )}
       {auditStatus === "clean" && findings.length === 0 && (
         <p className="text-xs text-pursue">
           ✓ Independent compliance audit found no issues. Still worth a final

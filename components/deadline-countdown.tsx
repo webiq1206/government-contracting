@@ -8,9 +8,13 @@ import { useEffect, useState } from "react";
  * inside 48 hours and red once overdue.
  */
 export function DeadlineCountdown({ deadline }: { deadline: string | null }) {
-  const [now, setNow] = useState<number>(() => Date.now());
+  // null until mounted: the server can't know the viewer's clock or timezone,
+  // so rendering the ticking value during SSR guarantees a hydration mismatch.
+  // Render a stable placeholder first; the real countdown appears on mount.
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
@@ -21,6 +25,13 @@ export function DeadlineCountdown({ deadline }: { deadline: string | null }) {
   const target = new Date(deadline).getTime();
   if (Number.isNaN(target)) {
     return <span className="text-sm text-slate-500">-</span>;
+  }
+  if (now === null) {
+    return (
+      <span className="block">
+        <span className="num text-lg font-semibold tabular-nums text-foreground">…</span>
+      </span>
+    );
   }
 
   const ms = target - now;

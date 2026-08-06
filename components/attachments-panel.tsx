@@ -25,7 +25,11 @@ export function AttachmentsPanel({ documents }: { documents: DocRow[] }) {
       ) : (
         <ul className="divide-y divide-border text-sm">
           {documents.map((d) => {
-            const href = d.meta?.source_url ?? d.storage_path ?? "#";
+            // Stored files are served through the authenticated file route; a
+            // raw storage_path is not a URL and would 404 relative to this page.
+            const href =
+              d.meta?.source_url ??
+              (d.storage_path ? `/api/files/${d.storage_path}` : "#");
             const canOpen = href !== "#";
             return (
               <li key={d.id} className="py-2">
