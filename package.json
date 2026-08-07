@@ -19,6 +19,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:setup": "npm run db:migrate && npm run db:seed",
     "agent": "tsx scripts/run-agent.ts",
+    "purge-test-data": "tsx scripts/purge-test-data.ts",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "test": "vitest run",
