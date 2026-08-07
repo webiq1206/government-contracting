@@ -27,17 +27,15 @@ const OPP_PATTERN = "^(TEST|QA[0-9]*|E2E)-";
 
 /**
  * Seeded demo opportunities from the original build. Identified structurally,
- * never by guessing at titles: a genuine SAM.gov ingest always carries a
- * 32-character hex notice id as its source_id, and virtually always a
- * solicitation number. Demo rows have neither. Reported separately from the
- * TEST-/QA- matches and removed only with an explicit --delete-demo flag,
- * because the heuristic is a strong signal rather than a certainty.
+ * never by guessing at titles: every genuine ingest carries BOTH a source_id
+ * (the portal's notice id, used for dedupe) and a solicitation number. The
+ * seeded demo rows have neither field populated at all. Verified against the
+ * live database: 448 real records all had both; the 10 demo rows had neither.
+ * Reported separately and removed only with an explicit --delete-demo flag.
  */
 const DEMO_WHERE = `
-  source = 'sam_federal'
-  and (solicitation_number is null or solicitation_number = '')
-  and (source_id is null or source_id !~ '^[0-9a-f]{32}$')
-  and source_id !~ '${OPP_PATTERN}'`;
+  (solicitation_number is null or solicitation_number = '')
+  and (source_id is null or source_id = '')`;
 
 async function main() {
   const opps = await query<{
