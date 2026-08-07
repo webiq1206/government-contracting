@@ -126,6 +126,25 @@ export default async function OpportunityPage({ params }: { params: { id: string
           <OpportunityJourney stage={opp.stage} />
         </div>
 
+        {/* Mobile: one-tap jumps to the page's key sections, this page is a
+            long scroll on a phone. Hidden on desktop where columns fit. */}
+        <div className="sticky top-0 z-20 mt-2 flex gap-1.5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2 backdrop-blur lg:hidden">
+          {[
+            ...(bid ? [{ href: "#submission", label: "Bid package" }] : []),
+            ...(showQuotePanel ? [{ href: "#quotes", label: "Quotes" }] : []),
+            { href: "#attachments", label: "Attachments" },
+            { href: "#activity", label: "Activity" },
+          ].map((s) => (
+            <a
+              key={s.href}
+              href={s.href}
+              className="badge shrink-0 bg-slate-200 text-slate-600"
+            >
+              {s.label} ↓
+            </a>
+          ))}
+        </div>
+
         {/* Stage-aware guidance: the single recommended next action. */}
         <div className="px-5 pt-4">
           <NextStepBanner
@@ -147,7 +166,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
         {/* Quote entry, promoted full-width and up front while quotes are the job. */}
         {showQuotePanel && (
-          <div className="px-5 pt-5">
+          <div className="scroll-mt-12 px-5 pt-5" id="quotes">
             <div
               className={`card ${
                 emphasizeQuotePanel ? "border-accent bg-accent-soft" : ""
@@ -575,6 +594,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </>
             )}
 
+            <div id="activity" className="scroll-mt-12">
             <Collapsible title="Agent activity">
               <ul className="space-y-2 text-xs">
                 {(logs as Record<string, unknown>[]).slice(0, 20).map((l, i) => (
@@ -603,6 +623,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 )}
               </ul>
             </Collapsible>
+            </div>
           </div>
         </div>
       </div>

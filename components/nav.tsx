@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Wordmark } from "./wordmark";
+import { SearchButton } from "./command-palette";
 
 const NAV: { section: string; items: { href: string; label: string }[] }[] = [
   {
@@ -85,6 +86,11 @@ export function Nav({
         <div className="hidden shrink-0 px-6 py-6 md:block">
           <Wordmark className="text-2xl font-semibold tracking-tight text-foreground" />
           <p className="eyebrow mt-1">Procurement Execution</p>
+        </div>
+
+        {/* Global search entry point; ⌘K works from anywhere. */}
+        <div className="shrink-0 px-3 pb-1 md:px-4">
+          <SearchButton className="flex w-full items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-slate-500 transition-colors hover:border-border-strong hover:text-foreground" />
         </div>
 
         <div className="scroll-thin space-y-5 p-3 md:flex-1 md:overflow-y-auto md:px-4">

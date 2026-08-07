@@ -8,8 +8,52 @@ import { currency } from "@/lib/format";
 import { integrationStatus } from "@/lib/config";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { getAutomationRules } from "@/lib/app-settings";
+import { stageParty } from "@/lib/domain/journey";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
+
+/**
+ * The simple (default) pipeline view groups by who the ball is with rather
+ * than by internal stage: three lanes an operator actually thinks in, plus
+ * recently decided. The full 11-stage board stays one click away.
+ */
+type LaneKey = "you" | "system" | "waiting" | "decided";
+
+const LANES: { key: LaneKey; label: string; blurb: string; badge: string }[] = [
+  {
+    key: "you",
+    label: "Needs you",
+    blurb: "Decisions, calls, quotes, and sign-offs only a person can do.",
+    badge: "bg-review/15 text-review",
+  },
+  {
+    key: "system",
+    label: "System is working",
+    blurb: "Scoring, analysis, and research running on their own.",
+    badge: "bg-slate-200 text-slate-600",
+  },
+  {
+    key: "waiting",
+    label: "Waiting on others",
+    blurb: "Subcontractor replies and agency award decisions.",
+    badge: "bg-slate-200 text-slate-600",
+  },
+  {
+    key: "decided",
+    label: "Recently decided",
+    blurb: "Won and lost. Wins move on to Contracts.",
+    badge: "bg-pursue/10 text-pursue",
+  },
+];
+
+function laneFor(o: Opportunity): LaneKey {
+  if (o.stage === "won" || o.stage === "lost") return "decided";
+  if (o.human_action_required) return "you";
+  const party = stageParty(o.stage);
+  if (party === "you") return "you";
+  if (party === "subs" || party === "agency") return "waiting";
+  return "system";
+}
 
 export const dynamic = "force-dynamic";
 
@@ -27,23 +71,84 @@ const NEXT_ACTION: Record<string, string> = {
   lost: "Archived",
 };
 
-export default async function PipelinePage() {
+export default async function PipelinePage({
+  searchParams,
+}: {
+  searchParams?: { view?: string };
+}) {
   const [opps, rules] = await Promise.all([pipelineOpportunities(), getAutomationRules()]);
+  const view = searchParams?.view === "stages" ? "stages" : "lanes";
   const byStage = new Map<string, Opportunity[]>();
   for (const s of PIPELINE_STAGES) byStage.set(s.key, []);
   for (const o of opps) {
     if (!byStage.has(o.stage)) byStage.set(o.stage, []);
     byStage.get(o.stage)!.push(o);
   }
+  const byLane = new Map<LaneKey, Opportunity[]>(LANES.map((l) => [l.key, []]));
+  for (const o of opps) byLane.get(laneFor(o))!.push(o);
 
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
         help={PAGE_HELP["pipeline"]}
         title="Pipeline"
-        subtitle={`${opps.length} active opportunities. Columns marked "Automatic" run on their own; "Needs you" columns wait for you (amber cards).`}
-      />
+        subtitle={
+          view === "lanes"
+            ? `${opps.length} active opportunities, grouped by whose turn it is.`
+            : `${opps.length} active opportunities. Columns marked "Automatic" run on their own; "Needs you" columns wait for you (amber cards).`
+        }
+      >
+        <div className="flex gap-1 rounded-md border border-border p-0.5">
+          <Link
+            href="/pipeline"
+            className={`rounded px-2.5 py-1 text-xs ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+          >
+            Simple
+          </Link>
+          <Link
+            href="/pipeline?view=stages"
+            className={`rounded px-2.5 py-1 text-xs ${view === "stages" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+          >
+            All stages
+          </Link>
+        </div>
+      </PageHeader>
       {opps.length === 0 && <PipelineOnboarding />}
+
+      {/* Simple view: four owner lanes, no horizontal scrolling on desktop. */}
+      {view === "lanes" && opps.length > 0 && (
+        <div className="scroll-thin flex-1 overflow-y-auto p-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {LANES.map((lane) => {
+              const cards = byLane.get(lane.key) ?? [];
+              return (
+                <section key={lane.key} className="min-w-0">
+                  <div className="mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`badge ${lane.badge}`}>{lane.label}</span>
+                      <span className="num text-xs text-slate-500">{cards.length}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{lane.blurb}</p>
+                  </div>
+                  <div className="space-y-2">
+                    {cards.map((o) => (
+                      <PipelineCard key={o.id} o={o} rules={rules} />
+                    ))}
+                    {cards.length === 0 && (
+                      <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-slate-400">
+                        Nothing here right now.
+                      </p>
+                    )}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {view === "stages" && (
+      <>
 
       {/* Desktop: horizontal kanban across all stages. */}
       <div className="scroll-thin hidden flex-1 overflow-x-auto p-4 lg:block">
@@ -107,6 +212,8 @@ export default async function PipelinePage() {
           </p>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

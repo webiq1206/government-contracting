@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { Nav } from "@/components/nav";
+import { CommandPalette } from "@/components/command-palette";
+import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ToastProvider } from "@/components/toaster";
 import { queueCounts } from "@/lib/data";
 
@@ -16,8 +18,11 @@ export default async function DashLayout({ children }: { children: React.ReactNo
     <ToastProvider>
       <div className="flex min-h-screen flex-col md:flex-row">
         <Nav email={user.email} reviewCount={counts.review} callCount={counts.callQueue} />
-        <main className="min-w-0 flex-1 bg-surface">{children}</main>
+        {/* pb-16 keeps content clear of the mobile bottom tab bar. */}
+        <main className="min-w-0 flex-1 bg-surface pb-16 md:pb-0">{children}</main>
       </div>
+      <CommandPalette />
+      <MobileTabBar reviewCount={counts.review} callCount={counts.callQueue} />
     </ToastProvider>
   );
 }
