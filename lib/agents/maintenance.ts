@@ -236,6 +236,52 @@ export const deadlineMonitor: AgentDefinition = {
   },
 };
 
+export const scoringRecoverySweep: AgentDefinition = {
+  name: "scoring-recovery-sweep",
+  label: "Scoring Recovery",
+  description:
+    "Safety net: re-queues scoring for any opportunity that was ingested but never scored, so nothing can sit in Scoring forever.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    // Deliberately its OWN job rather than a step inside the Opportunity
+    // Monitor: recovery must keep working even when ingestion is failing,
+    // which is precisely when records get stranded. Singleton per opportunity
+    // per hour makes repeated sweeps idempotent.
+    const unscored = await query<{ id: string; title: string | null }>(
+      `select id, title from opportunities
+        where status='open' and stage in ('monitoring','scoring')
+          and score is null
+          and created_at < now() - interval '20 minutes'
+        order by created_at asc
+        limit 200`
+    );
+    for (const o of unscored) {
+      await enqueue(
+        "scoring-engine",
+        { opportunityId: o.id, trigger: "recovery" },
+        { singletonKey: `score:${o.id}`, singletonSeconds: 3600 }
+      ).catch(() => {});
+    }
+    if (unscored.length > 0) {
+      await logAgent({
+        agent: "scoring-recovery-sweep",
+        action: "requeue-scoring",
+        level: "info",
+        message: `Re-queued scoring for ${unscored.length} opportunit${unscored.length === 1 ? "y" : "ies"} that were ingested but never scored.`,
+        reasoning:
+          "Their original scoring job was lost or failed out of retries. Scoring is idempotent, so re-running is safe.",
+      });
+    }
+    return {
+      ok: true,
+      summary:
+        unscored.length > 0
+          ? `Re-queued scoring for ${unscored.length} unscored opportunit${unscored.length === 1 ? "y" : "ies"}.`
+          : "No unscored opportunities; nothing to recover.",
+    };
+  },
+};
+
 export const expiredOpportunitySweep: AgentDefinition = {
   name: "expired-opportunity-sweep",
   label: "Expired Opportunity Sweep",

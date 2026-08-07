@@ -29,6 +29,7 @@ import {
   replyPoll,
   stalledPipelineSweep,
   deadlineMonitor,
+  scoringRecoverySweep,
   expiredOpportunitySweep,
   retentionSweep,
   logRetentionSweep,
@@ -59,6 +60,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   replyPoll,
   stalledPipelineSweep,
   deadlineMonitor,
+  scoringRecoverySweep,
   expiredOpportunitySweep,
   retentionSweep,
   logRetentionSweep,
@@ -86,6 +88,7 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     { agent: replyPoll, cron: "*/15 * * * *" }, // every 15 min
     { agent: stalledPipelineSweep, cron: "0 */2 * * *" }, // every 2h (matches the tightest STALL_HOURS window)
     { agent: deadlineMonitor, cron: "0 */6 * * *" }, // every 6 hours
+    { agent: scoringRecoverySweep, cron: "*/15 * * * *" }, // every 15 min
     { agent: expiredOpportunitySweep, cron: "15 * * * *" }, // hourly at :15
     { agent: retentionSweep, cron: "45 3 * * *" }, // daily at 03:45
     { agent: logRetentionSweep, cron: "30 3 * * *" }, // daily at 03:30

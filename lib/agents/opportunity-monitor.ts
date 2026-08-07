@@ -10,6 +10,7 @@ import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { sam, wantNoticeType, type SamOpportunity } from "../integrations/sam";
 import { runEnabledScrapers } from "../integrations/scrapers";
+import { enqueue } from "../queue";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -26,8 +27,21 @@ function firstPoc(o: SamOpportunity) {
   return poc ? { name: poc.fullName, email: poc.email, phone: poc.phone } : null;
 }
 
+/**
+ * SAM sends "" (and occasionally unparseable text) for missing dates. Passing
+ * that straight to a timestamptz column throws `invalid input syntax for type
+ * timestamp with time zone: ""`, which used to abort the entire ingest run.
+ * Normalize to null so a missing date is simply a missing date.
+ */
+function ts(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (!s) return null;
+  return Number.isNaN(new Date(s).getTime()) ? null : s;
+}
+
 /** Normalize a SAM notice into an opportunities insert payload. */
-function normalizeSam(o: SamOpportunity) {
+export function normalizeSamNotice(o: SamOpportunity) {
   const isSourcesSought =
     (o.type ?? "").toLowerCase().includes("sources sought") ||
     (o.type ?? "").toLowerCase() === "r";
@@ -41,8 +55,8 @@ function normalizeSam(o: SamOpportunity) {
     psc_code: o.classificationCode ?? null,
     set_aside_type: o.typeOfSetAsideDescription ?? o.typeOfSetAside ?? null,
     value_estimated: o.award?.amount ? Number(o.award.amount) : null,
-    deadline: o.responseDeadLine ?? null,
-    posted_at: o.postedDate ?? null,
+    deadline: ts(o.responseDeadLine),
+    posted_at: ts(o.postedDate),
     location_state: o.placeOfPerformance?.state?.code ?? null,
     location_text: o.placeOfPerformance?.city?.name ?? null,
     agency: o.fullParentPathName ?? o.department ?? null,
@@ -55,7 +69,7 @@ function normalizeSam(o: SamOpportunity) {
 }
 
 async function ingestOne(
-  n: ReturnType<typeof normalizeSam>
+  n: ReturnType<typeof normalizeSamNotice>
 ): Promise<{ inserted: boolean; id?: string; isSourcesSought: boolean }> {
   if (!n.source_id) return { inserted: false, isSourcesSought: n.is_sources_sought };
   const existing = await queryOne<{ id: string }>(
@@ -99,6 +113,7 @@ export const opportunityMonitor: AgentDefinition = {
     const enqueued: AgentResult["enqueued"] = [];
     let ingested = 0;
     let sourcesSought = 0;
+    let ingestErrors = 0;
     let skippedDisabled = false;
 
     // --- Federal (SAM.gov) ---
@@ -174,8 +189,15 @@ export const opportunityMonitor: AgentDefinition = {
         });
       }
       for (const o of search.items) {
-        const res = await ingestOne(normalizeSam(o));
-        if (res.inserted && res.id) {
+        // Fault-isolate EVERY notice. A single malformed record (bad date,
+        // oversized field) used to throw out of this loop, abort the whole
+        // run, and, because the runner only enqueues downstream work on a
+        // clean return, silently discard the scoring jobs for every record
+        // already inserted in this batch. That is how hundreds of records
+        // ended up sitting in Scoring forever.
+        try {
+          const res = await ingestOne(normalizeSamNotice(o));
+          if (!res.inserted || !res.id) continue;
           ingested++;
           if (res.isSourcesSought) {
             sourcesSought++;
@@ -184,13 +206,24 @@ export const opportunityMonitor: AgentDefinition = {
               payload: { opportunityId: res.id },
             });
           }
-          // Always score newly ingested opportunities. Singleton per opp so a
-          // re-run within the window can't double-score (and double-trigger
-          // the whole downstream pipeline).
-          enqueued.push({
-            agent: "scoring-engine",
-            payload: { opportunityId: res.id },
-            opts: { singletonKey: `score:${res.id}`, singletonSeconds: 3600 },
+          // Enqueue scoring IMMEDIATELY rather than accumulating it for the
+          // runner to flush at the end: a later failure can no longer strand
+          // the records ingested before it. Singleton per opp so a re-run
+          // within the window can't double-score.
+          await enqueue(
+            "scoring-engine",
+            { opportunityId: res.id },
+            { singletonKey: `score:${res.id}`, singletonSeconds: 3600 }
+          ).catch((e) =>
+            console.error("[opportunity-monitor] enqueue scoring failed:", (e as Error).message)
+          );
+        } catch (err) {
+          ingestErrors++;
+          await logAgent({
+            agent: "opportunity-monitor",
+            action: "ingest-skip",
+            level: "warn",
+            message: `Skipped one malformed notice (${o.noticeId ?? "no id"}): ${(err as Error).message}`,
           });
         }
       }
@@ -225,35 +258,11 @@ export const opportunityMonitor: AgentDefinition = {
       }
     }
 
-    // Self-heal: re-enqueue scoring for any open record that never got a score
-    // (its original scoring job was lost or failed out of retries). Singleton
-    // per opportunity per hour keeps this idempotent across runs.
-    const unscored = await query<{ id: string }>(
-      `select id from opportunities
-        where status='open' and stage in ('monitoring','scoring')
-          and score is null and tier is null
-          and created_at < now() - interval '30 minutes'
-        limit 50`
-    );
-    for (const row of unscored) {
-      enqueued.push({
-        agent: "scoring-engine",
-        payload: { opportunityId: row.id, trigger: "self-heal" },
-        opts: { singletonKey: `score:${row.id}`, singletonSeconds: 3600 },
-      });
-    }
-    if (unscored.length > 0) {
-      await logAgent({
-        agent: "opportunity-monitor",
-        action: "self-heal",
-        level: "info",
-        message: `Re-queued scoring for ${unscored.length} record(s) that never received a score.`,
-      });
-    }
-
     const summary = skippedDisabled
       ? `Ingestion partial (SAM disabled). ${ingested} new from other sources.`
-      : `Ingested ${ingested} new opportunities (${sourcesSought} sources-sought), triggered scoring.`;
+      : `Ingested ${ingested} new opportunities (${sourcesSought} sources-sought), triggered scoring.${
+          ingestErrors > 0 ? ` Skipped ${ingestErrors} malformed notice(s).` : ""
+        }`;
     return {
       ok: true,
       summary,
