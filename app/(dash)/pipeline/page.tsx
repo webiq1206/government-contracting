@@ -4,10 +4,10 @@ import { PageHeader, ScoreBadge } from "@/components/badges";
 import { PipelineCardMenu } from "@/components/pipeline-card-menu";
 import { stageMode } from "@/lib/stage-meta";
 import { PAGE_HELP } from "@/lib/help-content";
-import { currency } from "@/lib/format";
 import { integrationStatus } from "@/lib/config";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { DeadlineBadge } from "@/components/deadline-badge";
+import { EstimatedValue } from "@/components/estimated-value";
 import { getAutomationRules } from "@/lib/app-settings";
 import { stageParty } from "@/lib/domain/journey";
 import type { AutomationRules } from "@/lib/domain/intake";
@@ -240,7 +240,7 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
         </div>
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-600">
-        <span>{currency(o.value_estimated)}</span>
+        <EstimatedValue value={o.value_estimated} source={o.value_estimated_source} />
         <DeadlineBadge deadline={o.deadline} rules={rules} />
       </div>
       {o.agency && <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>}
