@@ -8,6 +8,8 @@
 import { query, queryOne } from "../db";
 import { gmail } from "../integrations/gmail";
 import { sms } from "../integrations/twilio";
+import { email } from "../integrations/resend";
+import { config } from "../config";
 import { logAgent } from "../logger";
 import { STALL_HOURS } from "../domain/journey";
 import { getAutomationRules } from "../app-settings";
@@ -346,10 +348,23 @@ export const backlinkOutreachSweep: AgentDefinition = {
   },
 };
 
+/**
+ * Best-effort price spotting in a reply snippet: the largest plausible dollar
+ * figure. Never auto-entered as a quote (a human confirms it on the call);
+ * it only pre-fills the "their email mentioned $X" hint.
+ */
+export function extractMentionedPrice(text: string): number | null {
+  const matches = [...text.matchAll(/\$\s?([\d][\d,]*(?:\.\d{1,2})?)/g)]
+    .map((m) => Number(m[1].replace(/,/g, "")))
+    .filter((n) => Number.isFinite(n) && n >= 100 && n <= 100_000_000);
+  return matches.length ? Math.max(...matches) : null;
+}
+
 export const replyPoll: AgentDefinition = {
   name: "reply-poll",
   label: "Reply Poller",
-  description: "Detects subcontractor email replies and triggers Call Prep.",
+  description:
+    "Detects subcontractor email replies, updates the sub's status, triggers Call Prep, and notifies you about who replied and what changed.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     if (!(await gmail.isConnected())) {
@@ -360,14 +375,23 @@ export const replyPoll: AgentDefinition = {
     if (disabled) return { ok: true, summary: "Gmail disabled, reply polling skipped." };
 
     const enqueued: AgentResult["enqueued"] = [];
+    const notifyLines: string[] = [];
     let matched = 0;
     for (const r of replies) {
       // Match reply to an outbound communication by thread id, else by sender email.
       const fromEmail = (r.from.match(/<([^>]+)>/)?.[1] ?? r.from).toLowerCase().trim();
-      const comm = await queryOne<{ id: string; subcontractor_id: string; opportunity_id: string }>(
-        `select c.id, c.subcontractor_id, c.opportunity_id
+      const comm = await queryOne<{
+        id: string;
+        subcontractor_id: string;
+        opportunity_id: string;
+        company_name: string;
+        opportunity_title: string | null;
+      }>(
+        `select c.id, c.subcontractor_id, c.opportunity_id,
+                s.company_name, o.title as opportunity_title
            from communications c
            join subcontractors s on s.id = c.subcontractor_id
+           join opportunities o on o.id = c.opportunity_id
           where (c.gmail_thread_id = $1 or lower(s.email) = $2)
             and c.direction='outbound' and c.replied_at is null
           order by c.created_at desc limit 1`,
@@ -375,6 +399,7 @@ export const replyPoll: AgentDefinition = {
       );
       if (!comm) continue;
       matched++;
+      const mentionedPrice = extractMentionedPrice(r.snippet);
       await query(
         `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, replied_at)
          values ($1,$2,'email','inbound',$3,$4,$5,$6, now())`,
@@ -388,12 +413,50 @@ export const replyPoll: AgentDefinition = {
       );
       enqueued.push({
         agent: "call-prep",
-        payload: { opportunityId: comm.opportunity_id, subcontractorId: comm.subcontractor_id },
+        payload: {
+          opportunityId: comm.opportunity_id,
+          subcontractorId: comm.subcontractor_id,
+          ...(mentionedPrice != null ? { emailMentionedPrice: mentionedPrice } : {}),
+        },
       });
+
+      // Tell the operator exactly what happened and what changed.
+      const priceNote =
+        mentionedPrice != null
+          ? ` Their email mentions $${mentionedPrice.toLocaleString()}, confirm it on the call.`
+          : "";
+      await logAgent({
+        agent: "reply-poll",
+        action: "reply-received",
+        opportunityId: comm.opportunity_id,
+        subcontractorId: comm.subcontractor_id,
+        level: "success",
+        message: `${comm.company_name} replied about "${comm.opportunity_title ?? "an opportunity"}". Marked responsive; their reply is saved on the record and a call card is being prepared for Today.${priceNote}`,
+        reasoning: `Reply snippet: ${r.snippet.slice(0, 300)}`,
+      });
+      notifyLines.push(
+        `<li><strong>${comm.company_name}</strong> replied about &ldquo;${comm.opportunity_title ?? "an opportunity"}&rdquo;.` +
+          `${mentionedPrice != null ? ` Mentions <strong>$${mentionedPrice.toLocaleString()}</strong>.` : ""}` +
+          ` Updated: marked responsive, reply saved, call card queued.` +
+          `<br/><span style="color:#5D6561">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
+      );
     }
+
+    // One notification email per poll (not per reply), best-effort: silently
+    // skipped when Resend isn't configured; Today + the log still surface it.
+    if (notifyLines.length > 0 && email.enabled() && config.resend.digestTo) {
+      await email
+        .send({
+          to: config.resend.digestTo,
+          subject: `BROSTCO: ${notifyLines.length} subcontractor repl${notifyLines.length === 1 ? "y" : "ies"} received`,
+          html: `<p>Replies just came in. Each sub is marked responsive and has a call card on Today:</p><ul>${notifyLines.join("")}</ul><p>Open Today to start the calls.</p>`,
+        })
+        .catch(() => undefined);
+    }
+
     return {
       ok: true,
-      summary: `Polled replies: ${matched} matched, triggered Call Prep for each.`,
+      summary: `Polled replies: ${matched} matched; statuses updated, Call Prep triggered, operator notified.`,
       enqueued,
     };
   },

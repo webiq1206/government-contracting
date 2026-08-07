@@ -41,10 +41,20 @@ export function SubmissionPackage({
   opportunityId,
   bid,
   kindToPath,
+  submissionMethod,
+  contact,
+  solicitationNumber,
+  opportunityTitle,
 }: {
   opportunityId: string;
   bid: Bid;
   kindToPath: Record<string, string>;
+  /** How the agency wants the bid delivered (from the solicitation analysis). */
+  submissionMethod?: string | null;
+  /** The contracting officer from the notice. */
+  contact?: { name?: string; email?: string; phone?: string } | null;
+  solicitationNumber?: string | null;
+  opportunityTitle?: string | null;
 }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -346,6 +356,53 @@ export function SubmissionPackage({
       )}
 
       {error && <p className="text-sm text-risk whitespace-pre-line">{error}</p>}
+
+      {/* Exactly how to send it, no guessing at the last step. */}
+      {ready && !submitted && (
+        <div className="rounded-md border border-pursue/30 bg-pursue/5 px-4 py-3 text-sm">
+          <p className="label mb-1.5 text-pursue">When you&rsquo;re ready to send</p>
+          <ol className="list-decimal space-y-1 pl-5 text-slate-800">
+            <li>Download the full package (.zip) above and unzip it.</li>
+            <li>
+              {contact?.email ? (
+                <>
+                  Email every file to{" "}
+                  <span className="font-medium">
+                    {contact.name ? `${contact.name}, ` : ""}
+                    {contact.email}
+                  </span>
+                  {" · "}
+                  <a
+                    className="text-accent-strong underline"
+                    href={`mailto:${contact.email}?subject=${encodeURIComponent(
+                      `Quote Submission${solicitationNumber ? ` – ${solicitationNumber}` : ""}${opportunityTitle ? ` – ${opportunityTitle}` : ""}`
+                    )}&body=${encodeURIComponent(
+                      "Good morning,\n\nPlease find our quote attached for the referenced solicitation. All required documents are included.\n\nWe appreciate your consideration and are available for any questions.\n\n[Your name]\n[Your company]\n[Your phone]"
+                    )}`}
+                  >
+                    open a pre-written email
+                  </a>{" "}
+                  <span className="text-slate-500">(attach the unzipped files before sending)</span>
+                </>
+              ) : submissionMethod ? (
+                <>
+                  Deliver it the way the solicitation asks:{" "}
+                  <span className="font-medium">{submissionMethod}</span>
+                </>
+              ) : (
+                <>Deliver it per the solicitation&rsquo;s instructions (see the Bid Brief).</>
+              )}
+              {contact?.phone && (
+                <span className="text-slate-500"> · questions: {contact.phone}</span>
+              )}
+            </li>
+            <li>
+              Come back and press <span className="font-medium">Submit bid package</span>{" "}
+              below so the platform starts tracking the award.
+            </li>
+          </ol>
+        </div>
+      )}
 
       {/* Submit / submitted state */}
       {!submitted && (

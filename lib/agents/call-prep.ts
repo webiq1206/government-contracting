@@ -71,9 +71,16 @@ export const callPrep: AgentDefinition = {
       projectHistoryEmpty || Boolean(oppSub?.verification_json?.needs_project_history);
 
     // One-screen card object.
+    // If the reply-poll spotted a dollar figure in the sub's email, carry it
+    // onto the card so the workspace's pricing step says "their email
+    // mentioned $X, confirm it on the call".
+    const emailPrice = Number(ctx.payload.emailMentionedPrice);
     const card = {
       company_name: sub.company_name,
       owner_name: sub.owner_name,
+      ...(Number.isFinite(emailPrice) && emailPrice > 0
+        ? { email_mentioned_price: emailPrice }
+        : {}),
       phone: sub.phone,
       google_rating: sub.google_rating,
       review_count: sub.review_count,

@@ -557,6 +557,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     opportunityId={opp.id}
                     bid={bid}
                     kindToPath={kindToPath}
+                    submissionMethod={
+                      analysis?.submission_method && analysis.submission_method !== NA_TEXT
+                        ? analysis.submission_method
+                        : null
+                    }
+                    contact={opp.contact_json as { name?: string; email?: string; phone?: string } | null}
+                    solicitationNumber={opp.solicitation_number}
+                    opportunityTitle={opp.title}
                   />
                 </div>
                 {bid.submitted_at && (

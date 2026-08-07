@@ -45,20 +45,28 @@ export interface CallWorkspaceData {
   quotes: Quote[];
 }
 
-// Guided call script, the questions the operator should ask, in order.
-const GUIDED_QUESTIONS = [
-  "Can your company perform this scope of work?",
-  "Are you interested in bidding this project?",
-  "Have you reviewed the attached plans and specifications?",
-  "Do you have any questions about the scope?",
-  "What is your quoted price?",
-  "Is that a firm quote or an estimate?",
-  "What assumptions or exclusions should we note?",
-  "When could you begin the project?",
-  "Can you meet the required schedule?",
-  "Are there any concerns that could impact your bid?",
-  "Is there anything else we should know?",
-];
+/**
+ * Teleprompter blocks. The operator should never have to compose a sentence
+ * mid-call: green "SAY" boxes hold exact words to speak, amber "ASK" lines
+ * hold exact questions, and the answer fields sit directly beneath each ask.
+ */
+function Say({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-pursue/30 bg-pursue/5 px-4 py-3">
+      <p className="label mb-1 text-pursue">Say</p>
+      <p className="text-sm leading-relaxed text-slate-800">&ldquo;{children}&rdquo;</p>
+    </div>
+  );
+}
+
+function Ask({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-sm leading-relaxed text-slate-800">
+      <span className="label mr-2 text-review">Ask</span>
+      &ldquo;{children}&rdquo;
+    </p>
+  );
+}
 
 interface FormState {
   can_perform: "yes" | "no" | "";
@@ -80,6 +88,8 @@ interface FormState {
   followup_reason: string;
   outcome: "success" | "no_answer" | "not_interested" | "declined" | "skipped" | "";
   assumptions: string;
+  /** Answers to the job-specific questions Call Prep generated. */
+  scope_answers: string;
   notes: string;
 }
 
@@ -111,6 +121,7 @@ function initialForm(card: CallCardRow): FormState {
     followup_reason: (prev.followup_reason as string) ?? "",
     outcome: (prev.outcome as FormState["outcome"]) ?? "",
     assumptions: (prev.assumptions as string) ?? "",
+    scope_answers: (prev.scope_answers as string) ?? "",
     notes: (prev.notes as string) ?? "",
   };
 }
@@ -481,32 +492,90 @@ export function CallWorkspace({
 
           {/* GUIDED SCRIPT + CAPTURE, the actual call workspace */}
           <Section
-            title="Call script + capture"
-            subtitle="Ask each question in order and record the answers below. You can save a draft at any point and come back later; nothing is final until you press Save & complete call."
+            title="Your call, word for word"
+            subtitle="Read the green boxes out loud, ask the amber questions exactly as written, and type each answer right where you ask it. Save a draft any time; nothing is final until Save & complete call."
           >
-            <ol className="mb-5 space-y-1.5 pl-5 text-sm leading-relaxed text-slate-700">
-              {GUIDED_QUESTIONS.map((q, i) => (
-                <li key={i} className="list-decimal">
-                  {q}
-                </li>
-              ))}
-            </ol>
-
-            {/* CAPTURE FORM */}
             <div className="space-y-5">
-              <Group title="Fit & interest">
+              {/* 1 · Opening line, personalized to this contractor + job. */}
+              <Say>
+                Hi, is this {card.owner_name ?? "the owner"}? This is [your name] with
+                [your company].{" "}
+                {card.source === "reply" ? (
+                  <>Thanks for replying to my email about the {card.trade?.toLowerCase() ?? ""} work</>
+                ) : (
+                  <>I emailed you about a {card.trade?.toLowerCase() ?? ""} job we&rsquo;re bidding</>
+                )}
+                {card.opportunity_location || card.location_state
+                  ? ` at ${[card.opportunity_location, card.location_state].filter(Boolean).join(", ")}`
+                  : ""}
+                {card.agency ? ` for the ${card.agency}` : ""}. We win the government
+                contract and hire you to do the work at your price. Do you have two
+                minutes? I&rsquo;d like to get your number for this one.
+              </Say>
+
+              <Group title="Step 1 · Fit & interest">
+                <div className="sm:col-span-2">
+                  <Ask>
+                    Is this the kind of work your crew does, and would you want it if we
+                    win?
+                  </Ask>
+                </div>
                 <Trio label="Can perform the work">
                   <YesNo value={form.can_perform} onChange={(v) => set("can_perform", v)} />
                 </Trio>
                 <Trio label="Interested in bidding">
                   <YesNo value={form.interested} onChange={(v) => set("interested", v)} />
                 </Trio>
-                <Trio label="Bid submitted">
+                <div className="sm:col-span-2">
+                  <Ask>
+                    One check so we don&rsquo;t collide: have you already bid this exact
+                    project yourselves?
+                  </Ask>
+                </div>
+                <Trio label="Already bid it themselves">
                   <YesNo value={form.bid_submitted} onChange={(v) => set("bid_submitted", v)} />
                 </Trio>
               </Group>
 
-              <Group title="Pricing">
+              {Array.isArray(card.question_list) && card.question_list.length > 0 && (
+                <Group title="Step 2 · About this job specifically">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    {card.question_list.map((q, i) => (
+                      <Ask key={i}>{q}</Ask>
+                    ))}
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="label">Their answers</label>
+                    <textarea
+                      className="input mt-1 min-h-[90px] w-full"
+                      value={form.scope_answers}
+                      onChange={(e) => set("scope_answers", e.target.value)}
+                      placeholder="Jot what they say, one line per question is plenty."
+                    />
+                  </div>
+                </Group>
+              )}
+
+              <Group title="Step 3 · Pricing">
+                <div className="sm:col-span-2 space-y-1.5">
+                  <Ask>
+                    What would you charge for that scope, all-in? And is that a firm
+                    number or an estimate?
+                  </Ask>
+                  {typeof (card.card_json as Record<string, unknown>)?.email_mentioned_price ===
+                    "number" && (
+                    <p className="rounded-md border border-review/40 bg-review/5 px-3 py-1.5 text-xs text-slate-700">
+                      Their email mentioned{" "}
+                      <span className="num font-semibold">
+                        {currency(
+                          (card.card_json as Record<string, unknown>)
+                            .email_mentioned_price as number
+                        )}
+                      </span>
+                      , confirm it on the call before entering it.
+                    </p>
+                  )}
+                </div>
                 <div>
                   <label className="label">Quoted price</label>
                   <input
@@ -544,7 +613,14 @@ export function CallWorkspace({
                 </div>
               </Group>
 
-              <Group title="Schedule & availability">
+              <Group title="Step 4 · Schedule">
+                <div className="sm:col-span-2">
+                  <Ask>
+                    If we win this, when could you start, and is anything on your
+                    calendar that could get in the way
+                    {card.deadline ? ` before ${shortDate(card.deadline)}` : ""}?
+                  </Ask>
+                </div>
                 <div>
                   <label className="label">Est. start date</label>
                   <input
@@ -575,7 +651,17 @@ export function CallWorkspace({
                 </div>
               </Group>
 
-              <Group title="Qualifications confirmed">
+              <Group title="Step 5 · Qualifications">
+                <div className="sm:col-span-2">
+                  <Ask>
+                    Last thing: can you confirm you carry current insurance
+                    {requiredBonding.length > 0 ? ", bonding" : ""}
+                    {requiredCerts.length > 0 || requiredLicenses.length > 0
+                      ? ", and the licenses this job calls for"
+                      : ""}
+                    ? The government checks all of it.
+                  </Ask>
+                </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -623,7 +709,15 @@ export function CallWorkspace({
                 </div>
               </Group>
 
-              <Group title="Recommendation & follow-up">
+              {/* Wrap up: exactly how to end the call. */}
+              <Say>
+                That&rsquo;s everything I need, thank you. I&rsquo;ll price your number
+                into our bid to {card.agency ?? "the agency"}. If we win, you do the
+                work at the price you just gave me, and I&rsquo;ll email you a
+                confirmation of what we discussed either way. Talk soon.
+              </Say>
+
+              <Group title="After you hang up · your private notes">
                 <div>
                   <label className="label">Confidence (1-5)</label>
                   <div className="mt-1 flex items-center gap-2">

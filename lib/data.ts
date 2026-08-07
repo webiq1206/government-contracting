@@ -88,6 +88,8 @@ export interface CallCardRow {
   set_aside_type: string | null;
   value_estimated: number | null;
   location_state: string | null;
+  /** The job site from the notice (city/base), not the sub's own city. */
+  opportunity_location: string | null;
   deadline: string | null;
   solicitation_number: string | null;
   description: string | null;
@@ -106,7 +108,8 @@ export async function callQueue(): Promise<CallCardRow[]> {
             s.city, s.state, s.google_rating, s.reliability_score, s.license_status,
             s.sam_excluded, s.trade_categories,
             o.title as opportunity_title, o.agency, o.naics_code, o.set_aside_type,
-            o.value_estimated, o.location_state, o.deadline, o.solicitation_number,
+            o.value_estimated, o.location_state, o.location_text as opportunity_location,
+            o.deadline, o.solicitation_number,
             o.description, o.solicitation_analysis, o.attachments_json,
             (select trade from opportunity_subs os
               where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
@@ -132,7 +135,8 @@ export async function callCardById(id: string): Promise<CallCardRow | null> {
             s.city, s.state, s.google_rating, s.reliability_score, s.license_status,
             s.sam_excluded, s.trade_categories,
             o.title as opportunity_title, o.agency, o.naics_code, o.set_aside_type,
-            o.value_estimated, o.location_state, o.deadline, o.solicitation_number,
+            o.value_estimated, o.location_state, o.location_text as opportunity_location,
+            o.deadline, o.solicitation_number,
             o.description, o.solicitation_analysis, o.attachments_json,
             (select trade from opportunity_subs os
               where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
