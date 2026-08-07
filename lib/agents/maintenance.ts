@@ -313,9 +313,46 @@ export const expiredOpportunitySweep: AgentDefinition = {
           "A passed deadline with no submitted bid cannot be won. The record was archived (never deleted) with all documents, communications, and history preserved.",
       });
     }
+    // --- Delete unworkable junk outright. ---
+    // A notice that is past due (or was auto-passed for insufficient lead
+    // time) and that NOBODY ever touched is pure noise: it has no bid, no
+    // contract, no quote, no call card, no communication, no note, and no
+    // pending human action. Keeping thousands of those forever just buries
+    // the real records. Anything with a shred of actual work attached is
+    // archived instead, never deleted, because that is business history.
+    const deleted = await query<{ id: string; title: string | null }>(
+      `delete from opportunities o
+        where (
+                (o.deadline is not null and o.deadline < now())
+                or 'below_min_lead_time' = any(coalesce(o.risk_flags, '{}'))
+                or 'deadline_too_soon'   = any(coalesce(o.risk_flags, '{}'))
+              )
+          and o.stage in ('monitoring','scoring','dismissed')
+          and o.human_action_required = false
+          and coalesce(o.notes, '') = ''
+          and not exists (select 1 from bids b           where b.opportunity_id  = o.id)
+          and not exists (select 1 from contracts c      where c.opportunity_id  = o.id)
+          and not exists (select 1 from quotes q         where q.opportunity_id  = o.id)
+          and not exists (select 1 from communications m where m.opportunity_id  = o.id)
+          and not exists (select 1 from call_cards cc    where cc.opportunity_id = o.id)
+        returning o.id, o.title`
+    );
+    if (deleted.length > 0) {
+      await logAgent({
+        agent: "expired-opportunity-sweep",
+        action: "delete-unworkable",
+        level: "info",
+        message: `Deleted ${deleted.length} unworkable notice(s): past the deadline or below your minimum lead time, and never worked (no bid, quote, call, message, or note).`,
+        reasoning:
+          "Keeps the database and search clean. Anything with real work attached is archived instead, never deleted.",
+      });
+    }
+
     return {
       ok: true,
-      summary: `Archived ${expired.length} expired opportunit${expired.length === 1 ? "y" : "ies"}.`,
+      summary:
+        `Archived ${expired.length} expired opportunit${expired.length === 1 ? "y" : "ies"}` +
+        (deleted.length > 0 ? `; deleted ${deleted.length} unworkable notice(s).` : "."),
     };
   },
 };
