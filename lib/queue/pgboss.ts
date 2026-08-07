@@ -32,6 +32,12 @@ export async function createPgBossQueue(): Promise<Queue> {
     },
 
     async enqueue(name: string, payload: JobPayload, opts?: EnqueueOptions) {
+      // pg-boss v10 silently DROPS a send to a queue that was never created
+      // (returns null). That is how agents missing from QUEUE_NAMES ended up
+      // never running at all, with no error anywhere. Creating the queue here
+      // is idempotent and cheap, so a name that drifts out of the list can
+      // never again fail silently.
+      await boss.createQueue(name).catch(() => {});
       const sendOpts: PgBoss.SendOptions = {
         retryLimit: 3,
         retryDelay: 30,

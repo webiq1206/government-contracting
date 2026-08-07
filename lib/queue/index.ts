@@ -73,13 +73,18 @@ export const QUEUE_NAMES = [
   "learning-loop",
   "analytics-engine",
   "sources-sought-responder",
+  "backlink-scout",
   // maintenance jobs
   "outreach-followup",
   "review-expiry-sweep",
   "reply-poll",
   "stalled-pipeline-sweep",
   "deadline-monitor",
+  "scoring-recovery-sweep",
+  "expired-opportunity-sweep",
+  "retention-sweep",
   "log-retention-sweep",
+  "backlink-outreach-sweep",
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];
