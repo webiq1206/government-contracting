@@ -26,7 +26,7 @@ function tierBadgeClass(tier: string | null): string {
 }
 
 function fmtInt(n: number | null): string {
-  return n == null ? "—" : new Intl.NumberFormat("en-US").format(Math.round(n));
+  return n == null ? "-" : new Intl.NumberFormat("en-US").format(Math.round(n));
 }
 
 const OPP_LABELS: Record<string, string> = {
@@ -110,7 +110,7 @@ export default async function AuthorityPage() {
         <section className="grid gap-3 sm:grid-cols-3">
           <div className="card">
             <p className="label">Domain Rating</p>
-            <p className="num mt-1 text-3xl font-semibold text-foreground">{dr ?? "—"}</p>
+            <p className="num mt-1 text-3xl font-semibold text-foreground">{dr ?? "-"}</p>
             <p className="mt-1 text-xs text-slate-500">
               {drDelta == null
                 ? "Baseline pending"
@@ -219,7 +219,7 @@ export default async function AuthorityPage() {
                   <div key={b.source_domain} className="flex items-center justify-between px-4 py-2 text-sm">
                     <span className="truncate text-foreground">{b.source_domain}</span>
                     <span className="text-xs text-slate-500">
-                      DR {b.domain_rating ?? "—"} · {shortDate(b.first_seen_at)}
+                      DR {b.domain_rating ?? "-"} · {shortDate(b.first_seen_at)}
                     </span>
                   </div>
                 ))}
@@ -236,7 +236,7 @@ export default async function AuthorityPage() {
                   <div key={b.source_domain} className="flex items-center justify-between px-4 py-2 text-sm">
                     <span className="truncate text-foreground">{b.source_domain}</span>
                     <span className="text-xs text-slate-500">
-                      DR {b.domain_rating ?? "—"} · lost {b.lost_at ? shortDate(b.lost_at) : "—"}
+                      DR {b.domain_rating ?? "-"} · lost {b.lost_at ? shortDate(b.lost_at) : "-"}
                     </span>
                   </div>
                 ))}
@@ -256,13 +256,13 @@ function ProspectItem({ p }: { p: ProspectRow }) {
     <div className="card flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <span className="num text-lg font-semibold text-foreground">{p.priority_score ?? "—"}</span>
+          <span className="num text-lg font-semibold text-foreground">{p.priority_score ?? "-"}</span>
           <span className={`badge uppercase ${tierBadgeClass(p.tier)}`}>{p.tier}</span>
           <span className="badge bg-slate-200 text-slate-600">{oppLabel(p.opportunity_type)}</span>
           <span className="truncate text-sm font-medium text-foreground">{p.domain}</span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          DR {p.domain_rating ?? "—"} · relevance {p.relevance != null ? Math.round(p.relevance * 100) : "—"}
+          DR {p.domain_rating ?? "-"} · relevance {p.relevance != null ? Math.round(p.relevance * 100) : "-"}
           % · {fmtInt(p.traffic)} visits/mo · {p.link_type ?? "unknown"}
           {p.contact_email && <> · ✉ {p.contact_email}</>}
           {reasons.length > 0 && <> · {reasons.slice(0, 2).join(", ")}</>}

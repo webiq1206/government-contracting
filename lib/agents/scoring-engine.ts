@@ -20,6 +20,7 @@ import {
   type DimensionScore,
 } from "../domain/scoring";
 import { intakeChecks, intakeVerdict } from "../domain/intake";
+import { resolveEstimatedValue } from "../domain/value-extract";
 import { getAutomationRules } from "../app-settings";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
@@ -66,6 +67,22 @@ export const scoringEngine: AgentDefinition = {
       opportunityId,
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
+
+    // Backstop for records ingested before value extraction existed (or from
+    // a source that didn't run it): try once more here, right before scoring
+    // needs the number, so nothing scores as permanently "unknown" just
+    // because it predates this pass.
+    if (opp.value_estimated == null) {
+      const resolved = resolveEstimatedValue({ title: opp.title, description: opp.description });
+      if (resolved) {
+        await query(
+          `update opportunities set value_estimated=$2, value_estimated_source=$3 where id=$1`,
+          [opportunityId, resolved.amount, resolved.source]
+        );
+        opp.value_estimated = resolved.amount;
+        opp.value_estimated_source = resolved.source;
+      }
+    }
 
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };

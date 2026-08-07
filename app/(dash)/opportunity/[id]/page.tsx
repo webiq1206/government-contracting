@@ -18,6 +18,7 @@ import { CompetitiveLandscape } from "@/components/competitive-landscape";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
+import { EstimatedValue } from "@/components/estimated-value";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -273,9 +274,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 <Fact
                   label="Est. value"
                   value={
-                    opp.value_estimated != null
-                      ? currency(opp.value_estimated)
-                      : (analysis?.estimated_value ?? "-")
+                    opp.value_estimated != null ? (
+                      <EstimatedValue
+                        value={opp.value_estimated}
+                        source={opp.value_estimated_source}
+                      />
+                    ) : (
+                      (analysis?.estimated_value ?? "-")
+                    )
                   }
                 />
                 {bestQuote != null && (

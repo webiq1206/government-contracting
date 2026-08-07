@@ -68,7 +68,7 @@ export function OutreachApprovalCard({ draft }: { draft: OutreachDraftData }) {
         />
       </label>
       <p className="text-xs text-slate-500">
-        Review and edit the copy, then approve. Nothing is sent automatically — approval marks it
+        Review and edit the copy, then approve. Nothing is sent automatically: approval marks it
         ready so you stay in control and compliant with anti-spam rules.
       </p>
       <div className="flex items-center gap-2">

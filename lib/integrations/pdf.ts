@@ -35,3 +35,23 @@ function normalize(s: string): string {
 export function looksLikePdf(url: string, contentType: string): boolean {
   return contentType.includes("pdf") || /\.pdf(\?|$)/i.test(url);
 }
+
+/**
+ * Sniff the actual file bytes for the PDF magic number ("%PDF-"). SAM.gov's
+ * attachment endpoint serves virtually every file, PDF included, as
+ * `content-type: application/octet-stream` behind an opaque URL with no file
+ * extension, so looksLikePdf() (header/URL based) misses almost all of them
+ * and every real attachment fell through to "binary, not text-parseable"
+ * with zero characters extracted. The magic number is authoritative
+ * regardless of what the server's headers claim.
+ */
+export function looksLikePdfBytes(data: Uint8Array | Buffer): boolean {
+  if (data.length < 5) return false;
+  return (
+    data[0] === 0x25 && // %
+    data[1] === 0x50 && // P
+    data[2] === 0x44 && // D
+    data[3] === 0x46 && // F
+    data[4] === 0x2d // -
+  );
+}

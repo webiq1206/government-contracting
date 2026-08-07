@@ -11,6 +11,7 @@ import { logAgent } from "../logger";
 import { sam, wantNoticeType, type SamOpportunity } from "../integrations/sam";
 import { runEnabledScrapers } from "../integrations/scrapers";
 import { enqueue } from "../queue";
+import { resolveEstimatedValue } from "../domain/value-extract";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -45,6 +46,17 @@ export function normalizeSamNotice(o: SamOpportunity) {
   const isSourcesSought =
     (o.type ?? "").toLowerCase().includes("sources sought") ||
     (o.type ?? "").toLowerCase() === "r";
+  // Extract an estimated value at ingest time, when possible: SAM's own
+  // award.amount is authoritative but only ever set on award notices; for a
+  // live solicitation, sweep the title/description for a stated ceiling,
+  // budget, or IGCE figure so scoring and the UI have a real number from the
+  // moment the record exists, rather than waiting on a human to pursue it
+  // before the deeper Solicitation Analyst pass runs.
+  const resolvedValue = resolveEstimatedValue({
+    listedAmount: o.award?.amount ? Number(o.award.amount) : null,
+    title: o.title,
+    description: o.description,
+  });
   return {
     source: "sam_federal",
     source_id: o.noticeId,
@@ -54,7 +66,8 @@ export function normalizeSamNotice(o: SamOpportunity) {
     naics_code: o.naicsCode ?? null,
     psc_code: o.classificationCode ?? null,
     set_aside_type: o.typeOfSetAsideDescription ?? o.typeOfSetAside ?? null,
-    value_estimated: o.award?.amount ? Number(o.award.amount) : null,
+    value_estimated: resolvedValue?.amount ?? null,
+    value_estimated_source: resolvedValue?.source ?? null,
     deadline: ts(o.responseDeadLine),
     posted_at: ts(o.postedDate),
     location_state: o.placeOfPerformance?.state?.code ?? null,
@@ -81,15 +94,17 @@ async function ingestOne(
   const row = await queryOne<{ id: string }>(
     `insert into opportunities
       (source, source_id, solicitation_number, title, description, naics_code, psc_code,
-       set_aside_type, value_estimated, deadline, posted_at, location_state, location_text,
+       set_aside_type, value_estimated, value_estimated_source, deadline, posted_at,
+       location_state, location_text,
        agency, sub_agency, contact_json, attachments_json, raw_json, is_sources_sought,
        stage, status)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
              'scoring','open')
      returning id`,
     [
       n.source, n.source_id, n.solicitation_number, n.title, n.description, n.naics_code,
-      n.psc_code, n.set_aside_type, n.value_estimated, n.deadline, n.posted_at,
+      n.psc_code, n.set_aside_type, n.value_estimated, n.value_estimated_source,
+      n.deadline, n.posted_at,
       n.location_state, n.location_text, n.agency, n.sub_agency,
       n.contact_json ? JSON.stringify(n.contact_json) : null,
       JSON.stringify(n.attachments_json),
@@ -237,14 +252,20 @@ export const opportunityMonitor: AgentDefinition = {
         [s.source_id]
       );
       if (existing) continue;
+      const scraperValue = resolveEstimatedValue({
+        listedAmount: s.value_estimated ?? null, // scrapers that already parsed a value pass it directly
+        title: s.title,
+        description: s.description,
+      });
       const row = await queryOne<{ id: string }>(
         `insert into opportunities
            (source, source_id, title, description, naics_code, set_aside_type,
-            value_estimated, deadline, location_state, agency, raw_json, stage, status)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'scoring','open') returning id`,
+            value_estimated, value_estimated_source, deadline, location_state, agency, raw_json, stage, status)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'scoring','open') returning id`,
         [
           s.source, s.source_id, s.title, s.description ?? null, s.naics_code ?? null,
-          s.set_aside_type ?? null, s.value_estimated ?? null, s.deadline ?? null,
+          s.set_aside_type ?? null, scraperValue?.amount ?? null, scraperValue?.source ?? null,
+          s.deadline ?? null,
           s.location_state ?? null, s.agency ?? null, JSON.stringify(s.raw ?? {}),
         ]
       );

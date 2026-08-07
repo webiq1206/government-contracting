@@ -5,6 +5,7 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { currency, countdown } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
+import { EstimatedValue } from "@/components/estimated-value";
 import type { Opportunity } from "@/lib/types";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
 
@@ -76,7 +77,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
         <div>
           <p className="label">Est. value</p>
           <p className="mt-0.5 text-sm font-medium text-slate-900">
-            {currency(o.value_estimated)}
+            <EstimatedValue value={o.value_estimated} source={o.value_estimated_source} />
           </p>
         </div>
         <div>

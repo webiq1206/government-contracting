@@ -18,8 +18,9 @@ import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
+import { extractValueFromText } from "../domain/value-extract";
 import { storage } from "../integrations/storage";
-import { extractPdfText, looksLikePdf } from "../integrations/pdf";
+import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -163,7 +164,8 @@ async function processAttachment(
       /* storage/documents are best-effort; continue with extraction */
     }
 
-    if (looksLikePdf(att.url, ct)) {
+    // Trust the actual bytes over SAM's (usually generic/wrong) headers.
+    if (looksLikePdf(att.url, ct) || looksLikePdfBytes(buf)) {
       const { text, pages } = await extractPdfText(buf);
       if (text) {
         return {
@@ -408,6 +410,21 @@ export const solicitationAnalyst: AgentDefinition = {
       .join("\n")
       .slice(0, 120_000);
 
+    // Deepest-pass value backfill: this agent has now read the FULL
+    // solicitation text plus every extractable attachment (PWS/SOW/IGCE),
+    // far more than the title/description scoring saw. If nothing upstream
+    // ever found a value, take one more shot from Claude's own read before
+    // giving up on this opportunity ever getting a number.
+    let valueUpdate = "";
+    const valueParams: unknown[] = [];
+    if (opp.value_estimated == null) {
+      const fromAnalysis = extractValueFromText(analysis.estimated_value);
+      if (fromAnalysis != null) {
+        valueUpdate = ", value_estimated = $8, value_estimated_source = 'analysis'";
+        valueParams.push(fromAnalysis);
+      }
+    }
+
     await query(
       `update opportunities
          set solicitation_analysis = $2,
@@ -416,6 +433,7 @@ export const solicitationAnalyst: AgentDefinition = {
              stage = $5,
              human_action_required = $6,
              solicitation_text = $7
+             ${valueUpdate}
        where id = $1`,
       [
         opportunityId,
@@ -425,6 +443,7 @@ export const solicitationAnalyst: AgentDefinition = {
         stage,
         humanAction,
         solicitationText,
+        ...valueParams,
       ]
     );
 

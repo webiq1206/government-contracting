@@ -11,6 +11,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { config } from "../config";
 import { getProfileSystemText } from "./companyProfile";
+import { noEmDash, deepNoEmDash } from "../sanitize";
 
 export class ClaudeNotConfiguredError extends Error {
   constructor() {
@@ -89,10 +90,17 @@ export async function complete(
   const res = await client().messages.create(
     body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming
   );
-  const text = res.content
+  const rawText = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("");
+  // Single choke point: EVERY Claude call, in every agent, present and
+  // future, comes through here. Sanitizing once at the source is the only
+  // way to actually guarantee "never any em dashes on the site", rather than
+  // relying on each of the dozen call sites to remember to do it (several
+  // didn't). Safe to run before JSON parsing downstream: the regex only
+  // touches em/en dash characters, never JSON syntax.
+  const text = noEmDash(rawText);
   return {
     text,
     usage: {

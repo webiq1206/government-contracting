@@ -150,6 +150,8 @@ export interface Opportunity {
   psc_code: string | null;
   set_aside_type: string | null;
   value_estimated: number | null;
+  /** Where value_estimated came from: 'sam_award' | 'extracted' | 'analysis' | null. */
+  value_estimated_source: string | null;
   deadline: string | null;
   posted_at: string | null;
   location_state: string | null;
