@@ -21,8 +21,23 @@ import "../lib/env";
 import { query, pool } from "../lib/db";
 
 const DELETE = process.argv.includes("--delete");
+const DELETE_DEMO = process.argv.includes("--delete-demo");
 
 const OPP_PATTERN = "^(TEST|QA[0-9]*|E2E)-";
+
+/**
+ * Seeded demo opportunities from the original build. Identified structurally,
+ * never by guessing at titles: a genuine SAM.gov ingest always carries a
+ * 32-character hex notice id as its source_id, and virtually always a
+ * solicitation number. Demo rows have neither. Reported separately from the
+ * TEST-/QA- matches and removed only with an explicit --delete-demo flag,
+ * because the heuristic is a strong signal rather than a certainty.
+ */
+const DEMO_WHERE = `
+  source = 'sam_federal'
+  and (solicitation_number is null or solicitation_number = '')
+  and (source_id is null or source_id !~ '^[0-9a-f]{32}$')
+  and source_id !~ '${OPP_PATTERN}'`;
 
 async function main() {
   const opps = await query<{
@@ -57,11 +72,44 @@ async function main() {
       order by company_name`
   );
 
+  const demo = await query<{
+    id: string;
+    source_id: string | null;
+    title: string | null;
+    stage: string;
+    bids: number;
+    contracts: number;
+  }>(
+    `select o.id, o.source_id, o.title, o.stage,
+            (select count(*)::int from bids b where b.opportunity_id = o.id) as bids,
+            (select count(*)::int from contracts c where c.opportunity_id = o.id) as contracts
+       from opportunities o
+      where ${DEMO_WHERE}
+      order by o.created_at`
+  );
+
   console.log("=".repeat(64));
   console.log(DELETE ? "PURGE TEST DATA (deleting)" : "PURGE TEST DATA (dry run, nothing deleted)");
   console.log("=".repeat(64));
 
-  if (opps.length === 0 && subs.length === 0) {
+  if (demo.length > 0) {
+    console.log(`\nLikely seeded DEMO opportunities (${demo.length}):`);
+    console.log("  (no SAM notice id and no solicitation number, real ingests have both)");
+    for (const o of demo) {
+      console.log(
+        `  - "${o.title ?? "(untitled)"}" · ${o.stage}` +
+          (o.bids ? ` · ${o.bids} bid(s)` : "") +
+          (o.contracts ? ` · ${o.contracts} contract(s)` : "")
+      );
+    }
+    console.log(
+      DELETE_DEMO
+        ? "    -> these WILL be deleted (--delete-demo given)"
+        : "    Review this list. To remove them:  npm run purge-test-data -- --delete-demo"
+    );
+  }
+
+  if (opps.length === 0 && subs.length === 0 && demo.length === 0) {
     console.log("\nNo test data found. The database looks clean. ✓");
     return;
   }
@@ -81,22 +129,27 @@ async function main() {
     );
   }
 
-  if (subs.length > 0) {
+  if (DELETE && subs.length > 0) {
     console.log(`\nTest subcontractors (${subs.length}):`);
     for (const s of subs) {
       console.log(`  - ${s.company_name} · ${s.email ?? "no email"} · ${s.phone ?? "no phone"}`);
     }
   }
 
-  if (!DELETE) {
+  if (!DELETE && !DELETE_DEMO) {
     console.log(
-      "\nDry run only. Review the list above, then run:\n  npm run purge-test-data -- --delete"
+      "\nDry run only. Review the list above, then run:\n" +
+        "  npm run purge-test-data -- --delete        (TEST-/QA- records + fake subs)\n" +
+        "  npm run purge-test-data -- --delete-demo   (the seeded demo opportunities)"
     );
     return;
   }
 
   // --- Deletion, narrowest first. ---
-  const oppIds = opps.map((o) => o.id);
+  const oppIds = [
+    ...(DELETE ? opps.map((o) => o.id) : []),
+    ...(DELETE_DEMO ? demo.map((o) => o.id) : []),
+  ];
   if (oppIds.length > 0) {
     const delContracts = await query<{ id: string }>(
       `delete from contracts where opportunity_id = any($1::uuid[]) returning id`,
@@ -115,7 +168,7 @@ async function main() {
         `${delContracts.length} contract(s), ${delLogs.length} related log entr${delLogs.length === 1 ? "y" : "ies"} (+ cascaded children).`
     );
   }
-  if (subs.length > 0) {
+  if (DELETE && subs.length > 0) {
     const delSubs = await query<{ id: string }>(
       `delete from subcontractors where id = any($1::uuid[]) returning id`,
       [subs.map((s) => s.id)]
