@@ -11,6 +11,7 @@ import {
   type OutreachActivityRow,
 } from "@/lib/data";
 import { integrationStatus } from "@/lib/config";
+import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate } from "@/lib/format";
 
@@ -54,6 +55,7 @@ function reasonsOf(p: ProspectRow): string[] {
 }
 
 export default async function AuthorityPage() {
+  await hydrateIntegrationEnv();
   const status = integrationStatus();
   const connected = status.ahrefs;
   const [overview, prospects, pending, activity, changes] = await Promise.all([

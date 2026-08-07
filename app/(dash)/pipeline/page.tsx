@@ -6,6 +6,7 @@ import { stageMode } from "@/lib/stage-meta";
 import { PAGE_HELP } from "@/lib/help-content";
 import { currency } from "@/lib/format";
 import { integrationStatus } from "@/lib/config";
+import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { getAutomationRules } from "@/lib/app-settings";
 import { stageParty } from "@/lib/domain/journey";
@@ -255,7 +256,8 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
  * columns with no explanation, this replaces the em-dash silence with a
  * concrete "what to do next" tied to which integrations are missing.
  */
-function PipelineOnboarding() {
+async function PipelineOnboarding() {
+  await hydrateIntegrationEnv();
   const st = integrationStatus();
   const missing: string[] = [];
   if (!st.sam) missing.push("SAM.gov (opportunity ingestion)");

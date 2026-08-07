@@ -7,6 +7,7 @@ import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
 import { SetupChecklist } from "@/components/setup-checklist";
 import { PAGE_HELP } from "@/lib/help-content";
 import { integrationStatus } from "@/lib/config";
+import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
@@ -188,6 +189,11 @@ export default async function TodayPage() {
     digest.bidsPriced > 0 && `${digest.bidsPriced} bid${digest.bidsPriced === 1 ? "" : "s"} priced`,
     digest.expiredArchived > 0 && `${digest.expiredArchived} expired archived`,
   ].filter(Boolean) as string[];
+  // Keys saved on the Integrations page live encrypted in the DB and are
+  // mirrored into process.env. A server instance that never served that
+  // page (or restarted since) has an empty env, which made connected
+  // integrations show as "not set up" here. Hydrate before reading.
+  await hydrateIntegrationEnv();
   const integrations = integrationStatus();
   const setup = computeSetupChecklist({
     profile: profile?.profile_json ?? null,
