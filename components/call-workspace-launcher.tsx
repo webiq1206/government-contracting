@@ -8,7 +8,7 @@
  * page doesn't have to serialize every call card's full context upfront.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CallWorkspace, type CallWorkspaceData } from "./call-workspace";
 
 export function CallWorkspaceLauncher({
@@ -16,16 +16,28 @@ export function CallWorkspaceLauncher({
   children,
   className = "",
   label = "Start call",
+  autoOpen = false,
 }: {
   cardId: string;
   children?: React.ReactNode;
   className?: string;
   label?: string;
+  /** Open the workspace immediately on mount (deep links: /call-queue?open=<id>). */
+  autoOpen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<CallWorkspaceData | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const autoOpened = useRef(false);
+
+  useEffect(() => {
+    if (autoOpen && !autoOpened.current) {
+      autoOpened.current = true;
+      void launch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
 
   async function launch() {
     setOpen(true);

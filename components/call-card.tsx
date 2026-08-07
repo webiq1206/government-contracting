@@ -14,7 +14,7 @@ import { countdown, currency, shortDate } from "@/lib/format";
  * on them dials/emails instead of opening the workspace, and event handlers
  * can't cross a server->client boundary.
  */
-export function CallCard({ c }: { c: CallCardRow }) {
+export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: boolean }) {
   const expiry = countdown(c.deadline);
   const overdue = expiry === "overdue";
   const soon =
@@ -25,6 +25,7 @@ export function CallCard({ c }: { c: CallCardRow }) {
   return (
     <CallWorkspaceLauncher
       cardId={c.id}
+      autoOpen={autoOpen}
       className="card group cursor-pointer border-border hover:border-accent/60 hover:shadow-md transition-all"
     >
       <div className="space-y-4">

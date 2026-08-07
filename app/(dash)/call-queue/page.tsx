@@ -5,8 +5,15 @@ import { CallCard } from "@/components/call-card";
 
 export const dynamic = "force-dynamic";
 
-export default async function CallQueuePage() {
+export default async function CallQueuePage({
+  searchParams,
+}: {
+  searchParams?: { open?: string };
+}) {
   const cards = await callQueue();
+  // Deep link support: /call-queue?open=<cardId> opens that card's workspace
+  // immediately (used by the Today page so one click lands in the call).
+  const openId = searchParams?.open;
 
   return (
     <div className="flex h-screen flex-col">
@@ -30,7 +37,7 @@ export default async function CallQueuePage() {
         ) : (
           <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4 lg:grid-cols-2">
             {cards.map((c) => (
-              <CallCard key={c.id} c={c} />
+              <CallCard key={c.id} c={c} autoOpen={c.id === openId} />
             ))}
           </div>
         )}

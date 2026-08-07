@@ -13,6 +13,12 @@ interface ActionButtonProps {
   /** Called with the JSON response on success. */
   onDone?: (data: unknown) => void;
   refresh?: boolean;
+  /**
+   * Short confirmation shown next to the button after success (e.g.
+   * "Pursued, analysis started"). Says what happened AND what happens next,
+   * so the operator is never left wondering whether the click worked.
+   */
+  successText?: string;
 }
 
 /** Generic button that calls an API route, shows a spinner, and refreshes the view. */
@@ -25,12 +31,15 @@ export function ActionButton({
   confirm,
   onDone,
   refresh = true,
+  successText,
 }: ActionButtonProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
 
   async function go() {
+    if (loading) return; // double-click guard
     if (confirm && !window.confirm(confirm)) return;
     setLoading(true);
     setError(null);
@@ -46,6 +55,10 @@ export function ActionButton({
         return;
       }
       onDone?.(data);
+      if (successText) {
+        setDone(true);
+        setTimeout(() => setDone(false), 6000);
+      }
       if (refresh) router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -67,6 +80,11 @@ export function ActionButton({
         )}
       </button>
       {error && <span className="mt-1 text-xs text-risk">{error}</span>}
+      {done && !error && (
+        <span aria-live="polite" className="mt-1 text-xs text-pursue">
+          ✓ {successText}
+        </span>
+      )}
     </span>
   );
 }

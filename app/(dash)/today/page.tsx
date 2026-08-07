@@ -3,7 +3,7 @@ import { actionCenter, type ActionOppRow } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PipelineStrip } from "@/components/pipeline-strip";
 import { AutomationPausedBanner } from "@/components/automation-control";
-import { getAutomationState } from "@/lib/app-settings";
+import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
 import { SetupChecklist } from "@/components/setup-checklist";
 import { PAGE_HELP } from "@/lib/help-content";
 import { integrationStatus } from "@/lib/config";
@@ -12,9 +12,10 @@ import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
 import { stageParty, PARTY_LABEL } from "@/lib/domain/journey";
 import { DeadlineBadge } from "@/components/deadline-badge";
-import { getAutomationRules } from "@/lib/app-settings";
+import { ActionButton } from "@/components/action-button";
+import { StopClickPropagation } from "@/components/stop-click-propagation";
 import type { AutomationRules } from "@/lib/domain/intake";
-import { currency, shortDate } from "@/lib/format";
+import { currency, shortDate, timeAgo } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +45,14 @@ function OppActionRow({
   action,
   detail,
   rules,
+  inlineTriage = false,
 }: {
   o: ActionOppRow;
   action: string;
   detail?: string;
   rules?: AutomationRules;
+  /** Render Pursue/Dismiss right on the row so the decision happens here. */
+  inlineTriage?: boolean;
 }) {
   const party = stageParty(o.stage, { hasBid: o.has_bid });
   return (
@@ -68,7 +72,7 @@ function OppActionRow({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-3">
-        {party && (
+        {party && !inlineTriage && (
           <span
             className={`badge ${
               party === "you" ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"
@@ -78,7 +82,29 @@ function OppActionRow({
           </span>
         )}
         <DeadlineBadge deadline={o.deadline} rules={rules} />
-        <span className="btn-ghost pointer-events-none text-xs">{action} →</span>
+        {inlineTriage ? (
+          <StopClickPropagation className="flex items-center gap-2">
+            <ActionButton
+              endpoint={`/api/opportunities/${o.id}/action`}
+              body={{ action: "pursue" }}
+              className="btn-success text-xs"
+              successText="Pursued. Analysis and pricing are running."
+            >
+              Pursue
+            </ActionButton>
+            <ActionButton
+              endpoint={`/api/opportunities/${o.id}/action`}
+              body={{ action: "dismiss" }}
+              className="btn-danger text-xs"
+              confirm="Dismiss this opportunity? It moves to the archive."
+            >
+              Dismiss
+            </ActionButton>
+            <span className="btn-ghost pointer-events-none text-xs">Read brief →</span>
+          </StopClickPropagation>
+        ) : (
+          <span className="btn-ghost pointer-events-none text-xs">{action} →</span>
+        )}
       </div>
     </Link>
   );
@@ -124,11 +150,11 @@ function Section({
 }
 
 export default async function TodayPage() {
-  const [data, profile, automation, rules] = await Promise.all([
-    actionCenter(),
+  const rules = await getAutomationRules();
+  const [data, profile, automation] = await Promise.all([
+    actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
     getAutomationState(),
-    getAutomationRules(),
   ]);
   const integrations = integrationStatus();
   const setup = computeSetupChecklist({
@@ -141,13 +167,18 @@ export default async function TodayPage() {
   const bidWork = data.bidWork.filter((o) => !urgentIds.has(o.id));
   const flagged = data.flagged.filter((o) => !urgentIds.has(o.id));
 
+  const approvalCount =
+    data.complianceAlerts.length +
+    data.proposedWeights.length +
+    (data.backlinkApprovals > 0 ? 1 : 0);
   const totalActions =
     data.urgent.length +
     data.triage.length +
-    (data.calls.count > 0 ? 1 : 0) +
+    data.calls.count +
     bidWork.length +
     data.awaitingOutcome.length +
-    flagged.length;
+    flagged.length +
+    approvalCount;
 
   return (
     <div className="flex h-screen flex-col">
@@ -188,7 +219,7 @@ export default async function TodayPage() {
         {data.urgent.length > 0 && (
           <Section
             eyebrow="Do this first"
-            title="Deadlines in the next 3 days"
+            title={`Deadlines in the next ${rules.urgent_days} day${rules.urgent_days === 1 ? "" : "s"}`}
             count={data.urgent.length}
           >
             {data.urgent.map((o) => (
@@ -211,36 +242,58 @@ export default async function TodayPage() {
           >
             <p className="-mt-1 text-sm text-slate-500">
               These scored in the borderline band, so the system wants your
-              judgment. Unactioned items auto-dismiss when their timer runs out.
+              judgment. Decide right here, or click a row to read the full
+              brief first. Unactioned items auto-dismiss when their timer runs
+              out.
             </p>
             {data.triage.map((o) => (
-              <OppActionRow key={o.id} o={o} action="Decide" rules={rules} />
+              <OppActionRow key={o.id} o={o} action="Decide" rules={rules} inlineTriage />
             ))}
           </Section>
         )}
 
         {data.calls.count > 0 && (
           <Section eyebrow="Keep things moving" title="Calls to make" count={data.calls.count}>
-            <Link
-              href="/call-queue"
-              className="flex items-center justify-between gap-3 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
-            >
-              <div>
-                <p className="text-sm font-medium text-slate-900">
-                  {data.calls.count} subcontractor call{data.calls.count === 1 ? "" : "s"} waiting
-                </p>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Each opens a guided workspace with the script, project details,
-                  and a form that saves everything in one step.
-                  {data.calls.soonest_deadline
-                    ? ` Soonest bid deadline: ${shortDate(data.calls.soonest_deadline)}.`
-                    : ""}
-                </p>
-              </div>
-              <span className="btn-primary pointer-events-none shrink-0 text-xs">
-                Start calling →
-              </span>
-            </Link>
+            <p className="-mt-1 text-sm text-slate-500">
+              Each row opens that call&rsquo;s guided workspace: the script,
+              project details, and a form that saves the quote and every answer
+              in one step.
+            </p>
+            {data.calls.rows.map((c) => (
+              <Link
+                key={c.id}
+                href={`/call-queue?open=${c.id}`}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    Call {c.company_name}
+                    {c.trade ? ` about ${c.trade.toLowerCase()} pricing` : " for their quote"}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {[c.opportunity_title, c.phone ?? "no phone on file"]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  {c.source === "reply" && (
+                    <span className="badge bg-pursue/15 text-pursue">Replied, interested</span>
+                  )}
+                  <DeadlineBadge deadline={c.deadline} rules={rules} />
+                  <span className="btn-primary pointer-events-none text-xs">Start call →</span>
+                </div>
+              </Link>
+            ))}
+            {data.calls.count > data.calls.rows.length && (
+              <Link
+                href="/call-queue"
+                className="block rounded-md border border-border bg-background px-4 py-2.5 text-center text-xs text-slate-600 transition-colors hover:border-accent/60"
+              >
+                {data.calls.count - data.calls.rows.length} more call
+                {data.calls.count - data.calls.rows.length === 1 ? "" : "s"} in the queue →
+              </Link>
+            )}
           </Section>
         )}
 
@@ -295,6 +348,100 @@ export default async function TodayPage() {
                 rules={rules}
               />
             ))}
+          </Section>
+        )}
+
+        {approvalCount > 0 && (
+          <Section eyebrow="Approvals & renewals" title="Sign-offs waiting on you" count={approvalCount}>
+            {data.complianceAlerts.map((c) => (
+              <Link
+                key={c.id}
+                href="/compliance"
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+              >
+                <div className="min-w-[14rem] flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    Renew: {c.label}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {c.days_remaining != null && c.days_remaining >= 0
+                      ? `${c.days_remaining} day${c.days_remaining === 1 ? "" : "s"} until it lapses`
+                      : c.due_at
+                        ? `was due ${shortDate(c.due_at)}`
+                        : "no date on record"}
+                    {" · a lapse can block bidding"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span
+                    className={`badge ${
+                      c.status === "warning"
+                        ? "bg-review/15 text-review"
+                        : "bg-risk/15 text-risk"
+                    }`}
+                  >
+                    {c.status}
+                  </span>
+                  <span className="btn-ghost pointer-events-none text-xs">Open compliance →</span>
+                </div>
+              </Link>
+            ))}
+            {data.proposedWeights.map((w) => (
+              <div
+                key={w.id}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    Approve new scoring weights (v{w.version}), proposed {timeAgo(w.proposed_at)}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {w.rationale ??
+                      "The Learning Loop analyzed recent wins and losses and suggests adjusting how opportunities are scored."}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <ActionButton
+                    endpoint={`/api/scoring-weights/${w.id}/approve`}
+                    body={{ action: "approve" }}
+                    className="btn-success text-xs"
+                    successText="Approved. Future scoring uses the new weights."
+                  >
+                    Approve
+                  </ActionButton>
+                  <ActionButton
+                    endpoint={`/api/scoring-weights/${w.id}/approve`}
+                    body={{ action: "reject" }}
+                    className="btn-danger text-xs"
+                  >
+                    Reject
+                  </ActionButton>
+                  <Link href="/settings/profile" className="btn-ghost text-xs">
+                    Details →
+                  </Link>
+                </div>
+              </div>
+            ))}
+            {data.backlinkApprovals > 0 && (
+              <Link
+                href="/authority"
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    Approve {data.backlinkApprovals} drafted outreach email
+                    {data.backlinkApprovals === 1 ? "" : "s"} before they send
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    Site Authority drafted these to earn backlinks. Nothing sends
+                    without your approval.
+                  </p>
+                </div>
+                <span className="btn-ghost pointer-events-none shrink-0 text-xs">
+                  Review drafts →
+                </span>
+              </Link>
+            )}
           </Section>
         )}
 

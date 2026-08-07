@@ -609,19 +609,51 @@ export interface ActionOppRow {
   bid_submitted: boolean;
 }
 
+export interface ActionCallRow {
+  id: string;
+  company_name: string;
+  phone: string | null;
+  opportunity_title: string | null;
+  deadline: string | null;
+  source: string;
+  trade: string | null;
+}
+
+export interface ComplianceAlertRow {
+  id: string;
+  category: string;
+  label: string;
+  due_at: string | null;
+  status: string;
+  days_remaining: number | null;
+}
+
+export interface ProposedWeightsRow {
+  id: string;
+  version: number;
+  rationale: string | null;
+  proposed_at: string;
+}
+
 export interface ActionCenterData {
   /** Opportunities awaiting a pursue/dismiss decision. */
   triage: ActionOppRow[];
-  /** Pending call cards (count + soonest deadline). */
-  calls: { count: number; soonest_deadline: string | null };
+  /** Pending call cards: count, soonest deadline, and the top cards to call. */
+  calls: { count: number; soonest_deadline: string | null; rows: ActionCallRow[] };
   /** In quote_entry or bid_building: needs quotes entered or bid reviewed. */
   bidWork: ActionOppRow[];
   /** Submitted, waiting on the agency's decision. */
   awaitingOutcome: ActionOppRow[];
-  /** Deadline within 72h and not yet submitted. */
+  /** Deadline inside the configurable urgent window and not yet submitted. */
   urgent: ActionOppRow[];
   /** Flagged for attention outside the review queue (stalled, blocked, etc.). */
   flagged: ActionOppRow[];
+  /** Compliance renewals that are past "ok" (warning/critical/blocked). */
+  complianceAlerts: ComplianceAlertRow[];
+  /** Learning Loop scoring-weight proposals awaiting approve/reject. */
+  proposedWeights: ProposedWeightsRow[];
+  /** Backlink outreach drafts awaiting the operator's send approval. */
+  backlinkApprovals: number;
   /** Open-pipeline counts per stage for the progress strip. */
   stageCounts: { stage: string; count: number }[];
 }
@@ -633,54 +665,110 @@ const ACTION_OPP_SELECT = `
          exists(select 1 from bids b where b.opportunity_id = o.id and b.submitted_at is not null) as bid_submitted
     from opportunities o`;
 
-export async function actionCenter(): Promise<ActionCenterData> {
-  const [triage, callRow, bidWork, awaitingOutcome, urgent, flagged, stageCounts] =
-    await Promise.all([
-      query<ActionOppRow>(
-        `${ACTION_OPP_SELECT}
-          where o.status='open' and o.tier='review' and o.human_action_required=true
-          order by (o.deadline is null), o.deadline asc limit 10`
-      ),
-      queryOne<{ count: number; soonest_deadline: string | null }>(
-        `select count(*)::int as count, min(o.deadline) as soonest_deadline
-           from call_cards cc join opportunities o on o.id = cc.opportunity_id
-          where cc.status='pending'`
-      ),
-      query<ActionOppRow>(
-        `${ACTION_OPP_SELECT}
-          where o.status='open' and o.stage in ('quote_entry','bid_building')
-          order by (o.deadline is null), o.deadline asc limit 10`
-      ),
-      query<ActionOppRow>(
-        `${ACTION_OPP_SELECT}
-          where o.status='open' and o.stage='submitted'
-          order by o.updated_at asc limit 10`
-      ),
-      query<ActionOppRow>(
-        `${ACTION_OPP_SELECT}
-          where o.status='open'
-            and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
-            and o.deadline is not null and o.deadline > now()
-            and o.deadline <= now() + interval '72 hours'
-          order by o.deadline asc limit 10`
-      ),
-      query<ActionOppRow>(
-        `${ACTION_OPP_SELECT}
-          where o.status='open' and o.human_action_required=true and o.tier <> 'review'
-          order by o.updated_at asc limit 10`
-      ),
-      query<{ stage: string; count: number }>(
-        `select stage, count(*)::int as count from opportunities
-          where status='open' group by stage`
-      ),
-    ]);
-  return {
+export async function actionCenter(opts?: { urgentDays?: number }): Promise<ActionCenterData> {
+  // The "do this first" window matches the configurable red deadline badge, so
+  // "urgent" means the same thing everywhere (Settings → Automation rules).
+  const urgentDays = Math.max(1, opts?.urgentDays ?? 3);
+  const [
     triage,
-    calls: callRow ?? { count: 0, soonest_deadline: null },
+    callRow,
+    callRows,
     bidWork,
     awaitingOutcome,
     urgent,
     flagged,
+    complianceAlerts,
+    proposedWeights,
+    backlinkRow,
+    stageCounts,
+  ] = await Promise.all([
+    query<ActionOppRow>(
+      `${ACTION_OPP_SELECT}
+          where o.status='open' and o.tier='review' and o.human_action_required=true
+          order by (o.deadline is null), o.deadline asc limit 10`
+    ),
+    queryOne<{ count: number; soonest_deadline: string | null }>(
+      `select count(*)::int as count, min(o.deadline) as soonest_deadline
+           from call_cards cc join opportunities o on o.id = cc.opportunity_id
+          where cc.status='pending'`
+    ),
+    query<ActionCallRow>(
+      `select cc.id, s.company_name, s.phone, o.title as opportunity_title,
+              o.deadline, cc.source,
+              (select trade from opportunity_subs os
+                where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
+         from call_cards cc
+         join subcontractors s on s.id = cc.subcontractor_id
+         join opportunities o on o.id = cc.opportunity_id
+        where cc.status='pending'
+        order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc
+        limit 6`
+    ),
+    query<ActionOppRow>(
+      `${ACTION_OPP_SELECT}
+          where o.status='open' and o.stage in ('quote_entry','bid_building')
+          order by (o.deadline is null), o.deadline asc limit 10`
+    ),
+    query<ActionOppRow>(
+      `${ACTION_OPP_SELECT}
+          where o.status='open' and o.stage='submitted'
+          order by o.updated_at asc limit 10`
+    ),
+    query<ActionOppRow>(
+      `${ACTION_OPP_SELECT}
+          where o.status='open'
+            and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
+            and o.deadline is not null and o.deadline > now()
+            and o.deadline <= now() + make_interval(days => $1)
+          order by o.deadline asc limit 10`,
+      [urgentDays]
+    ),
+    // `is distinct from` so records without a tier yet (e.g. a flagged
+    // sources-sought notice racing its first scoring run) still surface.
+    query<ActionOppRow>(
+      `${ACTION_OPP_SELECT}
+          where o.status='open' and o.human_action_required=true
+            and o.tier is distinct from 'review'
+          order by o.updated_at asc limit 10`
+    ),
+    query<ComplianceAlertRow>(
+      `select id, category, label, due_at,
+              coalesce(status_override, status) as status, days_remaining
+         from compliance_items
+        where coalesce(status_override, status) in ('warning','critical','blocked')
+        order by case coalesce(status_override, status)
+                   when 'blocked' then 0 when 'critical' then 1 else 2 end,
+                 (due_at is null), due_at asc
+        limit 8`
+    ),
+    query<ProposedWeightsRow>(
+      `select id, version, rationale, proposed_at
+         from scoring_weights
+        where approved_at is null and proposed_by = 'learning-loop'
+        order by proposed_at desc limit 3`
+    ),
+    queryOne<{ n: number }>(
+      `select count(*)::int as n from backlink_outreach where approval_status='pending'`
+    ),
+    query<{ stage: string; count: number }>(
+      `select stage, count(*)::int as count from opportunities
+          where status='open' group by stage`
+    ),
+  ]);
+  return {
+    triage,
+    calls: {
+      count: callRow?.count ?? 0,
+      soonest_deadline: callRow?.soonest_deadline ?? null,
+      rows: callRows,
+    },
+    bidWork,
+    awaitingOutcome,
+    urgent,
+    flagged,
+    complianceAlerts,
+    proposedWeights,
+    backlinkApprovals: backlinkRow?.n ?? 0,
     stageCounts,
   };
 }
