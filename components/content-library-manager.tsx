@@ -226,7 +226,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
                       ))}
                     </div>
                   )}
-                  <p className="mt-1 text-xs text-slate-400">
+                  <p className="mt-1 text-xs text-slate-500">
                     Updated {shortDate(item.updated_at)}
                   </p>
                 </div>

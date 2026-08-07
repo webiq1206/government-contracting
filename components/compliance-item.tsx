@@ -125,7 +125,7 @@ export function ComplianceItemCard({
             value={form.due_at_override}
             onChange={(e) => set("due_at_override", e.target.value)}
           />
-          <span className="mt-1 block text-xs text-slate-400">
+          <span className="mt-1 block text-xs text-slate-500">
             Set this and the board counts down and warns you before it lapses.
           </span>
         </label>

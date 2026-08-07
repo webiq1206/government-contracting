@@ -34,7 +34,9 @@ const config: Config = {
         // Functional status tones, muted to sit in the warm palette while staying
         // clearly distinguishable (go / caution / danger).
         pursue: "#4F6A5A",
-        review: "#9A6B34",
+        // Caution amber, deepened from #9A6B34 so 12px badge text passes
+        // WCAG AA (4.5:1) on both the bone background and the /15 tint.
+        review: "#855C2C",
         dismiss: "#9AA098", // Mist
         risk: "#A2453C",
 

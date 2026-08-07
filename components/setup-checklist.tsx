@@ -43,7 +43,7 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
             >
               <div className="min-w-0">
                 <p className="text-sm font-medium text-slate-900">
-                  <span className="mr-1.5 text-slate-400" aria-hidden>
+                  <span className="mr-1.5 text-slate-500" aria-hidden>
                     ○
                   </span>
                   {item.label}

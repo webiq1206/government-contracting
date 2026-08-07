@@ -791,6 +791,38 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
   };
 }
 
+export interface AgentHealth {
+  runs24h: number;
+  errors24h: number;
+  lastRunAt: string | null;
+  /** Agent with the most failures in the window, when any failed. */
+  worstAgent: string | null;
+}
+
+/** One-look answer to "is the machine OK?", shown atop the Automation Log. */
+export async function agentHealth(): Promise<AgentHealth> {
+  const [totals, worst] = await Promise.all([
+    queryOne<{ runs: number; errors: number; last_run: string | null }>(
+      `select count(*)::int as runs,
+              count(*) filter (where status='error')::int as errors,
+              max(started_at) as last_run
+         from job_runs
+        where started_at > now() - interval '24 hours'`
+    ),
+    queryOne<{ agent: string }>(
+      `select agent from job_runs
+        where status='error' and started_at > now() - interval '24 hours'
+        group by agent order by count(*) desc limit 1`
+    ),
+  ]);
+  return {
+    runs24h: totals?.runs ?? 0,
+    errors24h: totals?.errors ?? 0,
+    lastRunAt: totals?.last_run ?? null,
+    worstAgent: worst?.agent ?? null,
+  };
+}
+
 export interface DailyDigest {
   found: number;
   autoPursued: number;

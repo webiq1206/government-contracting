@@ -48,7 +48,7 @@ export function AttachmentsPanel({ documents }: { documents: DocRow[] }) {
                       Open →
                     </a>
                   ) : (
-                    <span className="text-xs text-slate-400">Local file</span>
+                    <span className="text-xs text-slate-500">Local file</span>
                   )}
                 </div>
               </li>

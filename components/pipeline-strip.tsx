@@ -83,7 +83,7 @@ export function PipelineStrip({ counts }: { counts: { stage: string; count: numb
                       ? needsYou
                         ? "text-review"
                         : "text-slate-700"
-                      : "text-slate-400"
+                      : "text-slate-500"
                   }`}
                 >
                   {s.label}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { agentLogsPaged, jobRunsSummary, LOG_PAGE_SIZE } from "@/lib/data";
+import { agentHealth, agentLogsPaged, jobRunsSummary, LOG_PAGE_SIZE } from "@/lib/data";
 import { ROSTER } from "@/lib/agents/registry";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -42,10 +42,11 @@ export default async function AgentsPage({
   const levelFilter = searchParams?.level;
   const q = searchParams?.q ?? "";
   const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
-  const [runs, paged, automation] = await Promise.all([
+  const [runs, paged, automation, health] = await Promise.all([
     jobRunsSummary() as Promise<Row[]>,
     agentLogsPaged({ agent: agentFilter, level: levelFilter, q, page }),
     getAutomationState(),
+    agentHealth(),
   ]);
   const logs = paged.rows as Row[];
   const totalPages = Math.max(1, Math.ceil(paged.total / LOG_PAGE_SIZE));
@@ -76,6 +77,41 @@ export default async function AgentsPage({
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {/* Master switch: pause/resume the entire cron loop. */}
         <AutomationControl state={automation} />
+
+        {/* One-look health: is the machine OK? */}
+        {health.errors24h > 0 ? (
+          <Link
+            href={link({ level: "error", page: undefined })}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-risk/40 bg-risk/5 px-4 py-2.5 text-sm transition-colors hover:border-risk/70"
+          >
+            <span className="text-slate-800">
+              <span className="font-semibold text-risk">
+                {health.errors24h} of {health.runs24h} runs failed
+              </span>{" "}
+              in the last 24 hours
+              {health.worstAgent ? (
+                <>
+                  , most affected:{" "}
+                  <span className="font-mono text-xs">{health.worstAgent}</span>
+                </>
+              ) : null}
+              .
+            </span>
+            <span className="btn-ghost pointer-events-none text-xs">See the errors →</span>
+          </Link>
+        ) : health.runs24h > 0 ? (
+          <p className="rounded-md border border-pursue/30 bg-pursue/5 px-4 py-2.5 text-sm text-slate-700">
+            <span className="font-semibold text-pursue">✓ All agents healthy.</span>{" "}
+            {health.runs24h} run{health.runs24h === 1 ? "" : "s"} in the last 24 hours, no
+            failures. Last activity {timeAgo(health.lastRunAt)}.
+          </p>
+        ) : (
+          <p className="rounded-md border border-border bg-surface px-4 py-2.5 text-sm text-slate-600">
+            No agent runs in the last 24 hours. If automation is running (above), the next
+            scheduled job will appear here; you can also press &ldquo;Run now&rdquo; on any
+            agent below.
+          </p>
+        )}
 
         {/* Roster grid with run controls */}
         <section>
@@ -237,7 +273,7 @@ export default async function AgentsPage({
                   <div className="shrink-0 text-right">
                     <p className="text-xs text-slate-600">{timeAgo(str(log.created_at) || null)}</p>
                     {duration != null && (
-                      <p className="mt-0.5 num text-xs text-slate-400">{duration}ms</p>
+                      <p className="mt-0.5 num text-xs text-slate-500">{duration}ms</p>
                     )}
                   </div>
                 </div>

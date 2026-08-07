@@ -137,7 +137,7 @@ export default async function SubsPage({
                         </span>
                       </span>
                     ) : (
-                      <span className="text-slate-400">-</span>
+                      <span className="text-slate-500">-</span>
                     )}
                   </td>
                   <td className="td">
@@ -146,7 +146,7 @@ export default async function SubsPage({
                         {s.reliability_score}
                       </span>
                     ) : (
-                      <span className="text-slate-400">-</span>
+                      <span className="text-slate-500">-</span>
                     )}
                   </td>
                   <td className="td whitespace-nowrap">
@@ -161,7 +161,7 @@ export default async function SubsPage({
                         {s.license_status}
                       </span>
                     ) : (
-                      <span className="text-slate-400">-</span>
+                      <span className="text-slate-500">-</span>
                     )}
                   </td>
                   <td className="td">

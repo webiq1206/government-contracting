@@ -213,7 +213,7 @@ function ContractCard({ c, completed = false }: { c: Record<string, unknown>; co
                   key={i}
                   className="flex items-start gap-2 rounded-md border border-border px-3 py-2"
                 >
-                  <span className={done ? "text-pursue" : "text-slate-400"}>
+                  <span className={done ? "text-pursue" : "text-slate-500"}>
                     {done ? "☑" : "☐"}
                   </span>
                   <div className="min-w-0 flex-1">

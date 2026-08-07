@@ -1,4 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <rect width="128" height="128" rx="24" fill="#5D6561"/>
-  <text x="64" y="86" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-weight="bold" fill="#F0EEE9">B</text>
+  <!-- Matches the BROSTco wordmark: charcoal Montserrat "B" + Fraunces-italic
+       "co" on the bone background, with the sage underline the app uses under
+       page titles. -->
+  <rect width="128" height="128" rx="28" fill="#F7F5F3"/>
+  <text x="34" y="82" font-family="Montserrat, 'Helvetica Neue', Arial, sans-serif" font-size="58" font-weight="700" fill="#2C302F">B</text>
+  <text x="72" y="82" font-family="Fraunces, Georgia, 'Times New Roman', serif" font-size="40" font-style="italic" fill="#2C302F">co</text>
+  <rect x="34" y="94" width="34" height="5" rx="2.5" fill="#5D6561"/>
 </svg>

@@ -135,7 +135,7 @@ export default async function PipelinePage({
                       <PipelineCard key={o.id} o={o} rules={rules} />
                     ))}
                     {cards.length === 0 && (
-                      <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-slate-400">
+                      <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-slate-500">
                         Nothing here right now.
                       </p>
                     )}
@@ -173,7 +173,7 @@ export default async function PipelinePage({
                     <PipelineCard key={o.id} o={o} rules={rules} />
                   ))}
                   {cards.length === 0 && (
-                    <p className="px-1 py-4 text-center text-xs text-slate-400">-</p>
+                    <p className="px-1 py-4 text-center text-xs text-slate-500">-</p>
                   )}
                 </div>
               </div>
@@ -207,7 +207,7 @@ export default async function PipelinePage({
           );
         })}
         {opps.length > 0 && (
-          <p className="pt-2 text-center text-xs text-slate-400">
+          <p className="pt-2 text-center text-xs text-slate-500">
             That&rsquo;s every active opportunity.
           </p>
         )}
@@ -269,7 +269,7 @@ function PipelineOnboarding() {
       <h2 className="font-display text-xl font-semibold text-foreground">
         Your pipeline is empty. That&rsquo;s expected on a fresh setup.
       </h2>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">
         Opportunities flow in from the Opportunity Monitor (SAM.gov, every 2 hours) and are
         scored, briefed, and routed through the 11 stages you see here automatically. Add the
         integration keys below in your deployment secrets, then the pipeline will start filling

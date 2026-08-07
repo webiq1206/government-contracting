@@ -81,7 +81,7 @@ export function CompetitiveLandscape({
                 {c.award_count} win{c.award_count === 1 ? "" : "s"}
               </span>
               {c.median_adj > 0 && (
-                <span className="num text-slate-400">~{currency(c.median_adj)}</span>
+                <span className="num text-slate-500">~{currency(c.median_adj)}</span>
               )}
             </span>
           </li>

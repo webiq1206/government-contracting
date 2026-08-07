@@ -172,7 +172,7 @@ export function SubEditor({ sub }: { sub: EditableSub }) {
               {sub.website}
             </a>
           ) : (
-            <span className="text-slate-400">-</span>
+            <span className="text-slate-500">-</span>
           )}
         </div>
         <div>

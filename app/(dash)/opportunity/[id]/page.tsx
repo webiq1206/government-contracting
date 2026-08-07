@@ -179,7 +179,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     {quotesEntered === 0
                       ? "Enter subcontractor quotes"
                       : "Quotes collected"}
-                    <span className="num ml-2 text-base font-normal text-slate-400">
+                    <span className="num ml-2 text-base font-normal text-slate-500">
                       {quotesEntered}
                     </span>
                   </h2>
@@ -614,7 +614,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                       {String(l.message ?? l.action)}
                     </p>
                     {l.created_at ? (
-                      <p className="text-slate-400">{shortDate(String(l.created_at))}</p>
+                      <p className="text-slate-500">{shortDate(String(l.created_at))}</p>
                     ) : null}
                   </li>
                 ))}

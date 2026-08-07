@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TokenMultiSelect, type TokenOption } from "@/components/token-multi-select";
 import { NAICS_CODES } from "@/lib/naics";
@@ -115,8 +115,23 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
+  // Any edit marks the form dirty (via onChangeCapture on the root, plus the
+  // click-driven rule add/remove below); the sticky bar says so, and leaving
+  // the page with unsaved edits asks first.
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   function updateExclusion(i: number, patch: Partial<HardExclusion>) {
+    setDirty(true);
     setExclusions((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
@@ -209,6 +224,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
         return;
       }
       setOk(true);
+      setDirty(false);
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -218,7 +234,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" onChangeCapture={() => setDirty(true)}>
       {/* Identity */}
       <Section title="Company identity" hint="The legal details that go on every bid.">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -444,7 +460,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
       >
         <div className="space-y-3">
           {exclusions.length === 0 && (
-            <p className="text-sm text-slate-400">None yet. Add one below if there is work you always avoid.</p>
+            <p className="text-sm text-slate-500">None yet. Add one below if there is work you always avoid.</p>
           )}
           {exclusions.map((row, i) => (
             <div key={i} className="grid gap-3 sm:grid-cols-[1fr_1.6fr_auto] sm:items-end">
@@ -469,15 +485,15 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
               <button
                 type="button"
                 aria-label="Remove"
-                onClick={() => setExclusions((r) => r.filter((_, idx) => idx !== i))}
-                className="mb-0.5 hidden h-9 w-9 items-center justify-center rounded-md border border-border text-slate-400 transition-colors hover:border-risk/60 hover:text-risk sm:inline-flex"
+                onClick={() => { setDirty(true); setExclusions((r) => r.filter((_, idx) => idx !== i)); }}
+                className="mb-0.5 hidden h-9 w-9 items-center justify-center rounded-md border border-border text-slate-500 transition-colors hover:border-risk/60 hover:text-risk sm:inline-flex"
               >
                 ✕
               </button>
               <button
                 type="button"
-                onClick={() => setExclusions((r) => r.filter((_, idx) => idx !== i))}
-                className="text-left text-xs text-slate-400 hover:text-risk sm:hidden"
+                onClick={() => { setDirty(true); setExclusions((r) => r.filter((_, idx) => idx !== i)); }}
+                className="text-left text-xs text-slate-500 hover:text-risk sm:hidden"
               >
                 Remove this rule
               </button>
@@ -486,7 +502,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
           <button
             type="button"
             className="btn-ghost"
-            onClick={() => setExclusions((r) => [...r, { key: "", label: "", rule: "" }])}
+            onClick={() => { setDirty(true); setExclusions((r) => [...r, { key: "", label: "", rule: "" }]); }}
           >
             + Add a rule
           </button>
@@ -507,17 +523,28 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
         />
       </Section>
 
-      <p className="px-1 text-xs text-slate-400">
+      <p className="px-1 text-xs text-slate-500">
         Scoring weights and technical schedules are tuned automatically in the
         background, so they are not shown here. Nothing you leave untouched is lost.
       </p>
 
-      <div className="sticky bottom-0 flex items-center gap-3 border-t border-border bg-background/95 py-3 backdrop-blur">
+      <div
+        className={`sticky bottom-0 flex items-center gap-3 border-t py-3 backdrop-blur ${
+          dirty ? "border-review/50 bg-review/5" : "border-border bg-background/95"
+        }`}
+      >
         <button className="btn-primary" onClick={save} disabled={saving}>
           {saving ? "Saving..." : "Save profile"}
         </button>
+        {dirty && !saving && !error && (
+          <span className="text-sm font-medium text-review">
+            Unsaved changes, they apply to scoring only after you save.
+          </span>
+        )}
         {error && <span className="text-sm text-risk">{error}</span>}
-        {ok && !error && <span className="text-sm text-pursue">Saved. New version published.</span>}
+        {ok && !error && !dirty && (
+          <span className="text-sm text-pursue">Saved. New version published.</span>
+        )}
       </div>
     </div>
   );
@@ -568,7 +595,7 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         className="input"
       />
-      {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
     </label>
   );
 }
@@ -587,7 +614,7 @@ function PickerField({
     <div className="block">
       <span className="label mb-1 block">{label}</span>
       {children}
-      {hint && <span className="mt-1 block text-xs text-slate-400">{hint}</span>}
+      {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}
     </div>
   );
 }

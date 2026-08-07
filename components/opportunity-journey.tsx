@@ -36,7 +36,7 @@ export function OpportunityJourney({ stage }: { stage: string }) {
                 ? "border-pursue/30 bg-pursue/10 text-pursue"
                 : step.status === "current"
                   ? "border-accent bg-accent-soft font-semibold text-accent-strong"
-                  : "border-border bg-surface text-slate-400"
+                  : "border-border bg-surface text-slate-500"
             }`}
           >
             {step.status === "done" ? (

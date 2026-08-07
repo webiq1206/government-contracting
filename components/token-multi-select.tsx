@@ -126,7 +126,7 @@ export function TokenMultiSelect({
               >
                 <span className="text-slate-800">{o.label}</span>
                 {o.label !== o.value && !o.label.includes(o.value) && (
-                  <span className="ml-2 text-xs text-slate-400">{o.value}</span>
+                  <span className="ml-2 text-xs text-slate-500">{o.value}</span>
                 )}
               </button>
             </li>
@@ -144,7 +144,7 @@ export function TokenMultiSelect({
             </li>
           )}
           {matches.length === 0 && !allowCustom && (
-            <li className="px-3 py-1.5 text-xs text-slate-400">{emptyText}</li>
+            <li className="px-3 py-1.5 text-xs text-slate-500">{emptyText}</li>
           )}
         </ul>
       )}

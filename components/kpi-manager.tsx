@@ -69,7 +69,7 @@ export function KpiManager() {
               </option>
             ))}
           </select>
-          {def && <span className="mt-1 block text-xs text-slate-400">{def.help}</span>}
+          {def && <span className="mt-1 block text-xs text-slate-500">{def.help}</span>}
         </label>
         <label className="block">
           <span className="label mb-1 block">Name (optional)</span>
@@ -132,7 +132,7 @@ export function KpiDeleteButton({ id }: { id: string }) {
   }
   return (
     <button
-      className="text-xs text-slate-400 hover:text-risk"
+      className="text-xs text-slate-500 hover:text-risk"
       onClick={remove}
       disabled={busy}
       aria-label="Remove KPI"

@@ -240,7 +240,7 @@ export function SubmissionPackage({
                         </span>
                         {r.title}
                         {!r.mandatory && (
-                          <span className="ml-1 text-xs text-slate-400">(optional)</span>
+                          <span className="ml-1 text-xs text-slate-500">(optional)</span>
                         )}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
@@ -300,7 +300,7 @@ export function SubmissionPackage({
               return (
                 <li key={m.order} className="flex items-center justify-between gap-2 py-1.5">
                   <span className="min-w-0 truncate text-slate-700">
-                    <span className="num mr-1.5 text-slate-400">
+                    <span className="num mr-1.5 text-slate-500">
                       {String(m.order).padStart(2, "0")}
                     </span>
                     {m.filename}
@@ -315,7 +315,7 @@ export function SubmissionPackage({
                       Open
                     </a>
                   ) : (
-                    <span className="shrink-0 text-xs text-slate-400">you provide</span>
+                    <span className="shrink-0 text-xs text-slate-500">you provide</span>
                   )}
                 </li>
               );

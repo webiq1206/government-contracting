@@ -120,7 +120,7 @@ export function CommandPalette() {
             }
           }}
           placeholder="Search opportunities, subcontractors, contracts…"
-          className="w-full border-b border-border bg-background px-4 py-3.5 text-sm text-foreground outline-none placeholder:text-slate-400"
+          className="w-full border-b border-border bg-background px-4 py-3.5 text-sm text-foreground outline-none placeholder:text-slate-500"
         />
         <div className="scroll-thin max-h-[50vh] overflow-y-auto">
           {q.trim().length >= 2 && !searching && results.length === 0 && (
@@ -130,7 +130,7 @@ export function CommandPalette() {
             </p>
           )}
           {q.trim().length < 2 && (
-            <p className="px-4 py-6 text-center text-xs text-slate-400">
+            <p className="px-4 py-6 text-center text-xs text-slate-500">
               Type at least 2 characters. Tip: open this anywhere with ⌘K.
             </p>
           )}
@@ -170,7 +170,7 @@ export function SearchButton({ className = "" }: { className?: string }) {
       title="Search everything (⌘K)"
     >
       <span aria-hidden>⌕</span> Search
-      <kbd className="ml-auto hidden rounded border border-border px-1 text-[10px] text-slate-400 md:inline">
+      <kbd className="ml-auto hidden rounded border border-border px-1 text-[10px] text-slate-500 md:inline">
         ⌘K
       </kbd>
     </button>

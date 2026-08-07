@@ -111,7 +111,7 @@ export function QuoteEntryForm({
           }
         >
           {layout === "wide" && rows.length > 1 && (
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
               Quote {i + 1}
             </p>
           )}
@@ -167,7 +167,7 @@ export function QuoteEntryForm({
                 type="button"
                 onClick={() => removeRow(i)}
                 aria-label={`Remove quote ${i + 1}`}
-                className="mb-0.5 hidden h-9 w-9 items-center justify-center rounded-md border border-border text-slate-400 transition-colors hover:border-risk/60 hover:text-risk lg:inline-flex"
+                className="mb-0.5 hidden h-9 w-9 items-center justify-center rounded-md border border-border text-slate-500 transition-colors hover:border-risk/60 hover:text-risk lg:inline-flex"
               >
                 ✕
               </button>
@@ -177,7 +177,7 @@ export function QuoteEntryForm({
             <button
               type="button"
               onClick={() => removeRow(i)}
-              className="mt-2 text-xs text-slate-400 hover:text-risk lg:hidden"
+              className="mt-2 text-xs text-slate-500 hover:text-risk lg:hidden"
             >
               Remove this quote
             </button>

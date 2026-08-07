@@ -13,7 +13,7 @@ export function PhoneLink({
   className?: string;
   fallback?: React.ReactNode;
 }) {
-  if (!phone) return <span className="text-slate-400">{fallback}</span>;
+  if (!phone) return <span className="text-slate-500">{fallback}</span>;
   const tel = phone.replace(/[^\d+]/g, "");
   return (
     <a href={`tel:${tel}`} className={className ?? "text-accent hover:underline"}>
@@ -31,7 +31,7 @@ export function EmailLink({
   className?: string;
   fallback?: React.ReactNode;
 }) {
-  if (!email) return <span className="text-slate-400">{fallback}</span>;
+  if (!email) return <span className="text-slate-500">{fallback}</span>;
   return (
     <a href={`mailto:${email}`} className={className ?? "text-accent hover:underline"}>
       {email}

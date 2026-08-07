@@ -120,7 +120,7 @@ function StepRow({ step, last }: { step: Step; last: boolean }) {
         className={`num relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
           isYou
             ? "border-accent bg-accent text-white"
-            : "border-border bg-background text-slate-400"
+            : "border-border bg-background text-slate-500"
         }`}
       >
         {step.n}
@@ -164,7 +164,7 @@ export default function HowItWorksPage() {
           {/* Legend */}
           <div className="mb-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-600">
             <span className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-[0.6rem] font-semibold text-slate-400">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-[0.6rem] font-semibold text-slate-500">
                 #
               </span>
               runs on its own

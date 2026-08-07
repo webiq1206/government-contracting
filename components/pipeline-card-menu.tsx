@@ -107,7 +107,7 @@ export function PipelineCardMenu({
           setOpen((o) => !o);
           setMsg(null);
         }}
-        className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-surface hover:text-slate-700"
+        className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-surface hover:text-slate-700"
       >
         <span className="text-lg leading-none">⋯</span>
       </button>
@@ -120,7 +120,7 @@ export function PipelineCardMenu({
           {canPursue && (
             <MenuItem disabled={busy} onClick={(e) => run(e, "pursue")}>
               <span className="text-accent-strong">Pursue now</span>
-              <span className="block text-xs text-slate-400">
+              <span className="block text-xs text-slate-500">
                 Skip ahead and start the analysis
               </span>
             </MenuItem>
@@ -128,7 +128,7 @@ export function PipelineCardMenu({
           {canRerun && (
             <MenuItem disabled={busy} onClick={(e) => run(e, "rerun")}>
               Re-run this stage
-              <span className="block text-xs text-slate-400">
+              <span className="block text-xs text-slate-500">
                 Use if an agent looks stuck
               </span>
             </MenuItem>
@@ -136,7 +136,7 @@ export function PipelineCardMenu({
           {canSendBack && (
             <MenuItem disabled={busy} onClick={(e) => run(e, "send_back")}>
               Send back a stage
-              <span className="block text-xs text-slate-400">
+              <span className="block text-xs text-slate-500">
                 Return to {prevLabel} and redo it
               </span>
             </MenuItem>
@@ -149,7 +149,7 @@ export function PipelineCardMenu({
             }
           >
             Dismiss
-            <span className="block text-xs text-slate-400">
+            <span className="block text-xs text-slate-500">
               Stop working it and archive
             </span>
           </MenuItem>

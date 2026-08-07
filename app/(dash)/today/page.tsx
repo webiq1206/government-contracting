@@ -147,13 +147,13 @@ function Section({
           <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
             {title}
             {typeof count === "number" && (
-              <span className="num ml-2 text-base font-normal text-slate-400">{count}</span>
+              <span className="num ml-2 text-base font-normal text-slate-500">{count}</span>
             )}
           </h2>
         </div>
         <span
           aria-hidden
-          className="mb-1 select-none text-slate-400 transition-transform group-open:rotate-180"
+          className="mb-1 select-none text-slate-500 transition-transform group-open:rotate-180"
         >
           ▾
         </span>
