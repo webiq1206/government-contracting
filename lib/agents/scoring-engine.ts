@@ -24,6 +24,19 @@ import { getAutomationRules } from "../app-settings";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
 
+/**
+ * Exclusion keys that depend on a dollar figure. The deterministic checker in
+ * lib/domain/scoring owns these entirely (and correctly skips them when the
+ * value is unknown), so the model must never be able to apply one.
+ */
+const VALUE_BASED_EXCLUSIONS = new Set([
+  "value_below_min",
+  "value_over_max",
+  "value_exceeds_ceiling",
+  "value_above_target_range",
+  "unrestricted_under_threshold",
+]);
+
 const DimSchema = z.object({
   dimensions: z.array(
     z.object({
@@ -142,6 +155,25 @@ export const scoringEngine: AgentDefinition = {
       scoringIncomplete = missingKeys.length > 0;
       // Drop any exclusion key the model invented.
       claudeExclusions = data.extra_exclusions.filter((k) => validExclusionKeys.has(k));
+      // Value-based rules are OWNED by the deterministic checker above, which
+      // correctly ignores an unknown value. Federal solicitations almost never
+      // publish an estimated value, and the model was reading "value: unknown"
+      // as "cannot confirm it clears the minimum" and excluding the record,
+      // which would auto-dismiss nearly every real notice. Never let the model
+      // apply a money rule to a number it does not have.
+      if (opp.value_estimated == null) {
+        const dropped = claudeExclusions.filter((k) => VALUE_BASED_EXCLUSIONS.has(k));
+        claudeExclusions = claudeExclusions.filter((k) => !VALUE_BASED_EXCLUSIONS.has(k));
+        if (dropped.length > 0) {
+          await logAgent({
+            agent: "scoring-engine",
+            action: "ignore-value-exclusion",
+            opportunityId,
+            level: "info",
+            message: `Ignored ${dropped.join(", ")} because this notice publishes no estimated value. Value limits are applied only against a real number; the record is scored on its other merits.`,
+          });
+        }
+      }
       summary = data.summary;
       await logAgent({
         agent: "scoring-engine",
@@ -280,7 +312,10 @@ function buildScoringPrompt(
     `Title: ${opp.title ?? "(none)"}`,
     `Agency: ${opp.agency ?? "(none)"}`,
     `NAICS: ${opp.naics_code ?? "(none)"}  Set-aside: ${opp.set_aside_type ?? "(none)"}`,
-    `Estimated value: ${opp.value_estimated ?? "(unknown)"}`,
+    `Estimated value: ${
+      opp.value_estimated ??
+      "(not published, normal for a federal solicitation and NOT a negative signal)"
+    }`,
     `Location: ${opp.location_state ?? "(unknown)"}`,
     `Deadline: ${opp.deadline ?? "(unknown)"}`,
     `Description: ${(opp.description ?? "").slice(0, 2000)}`,
@@ -288,7 +323,9 @@ function buildScoringPrompt(
     "RUBRIC DIMENSIONS (award points up to each max, you MUST return every dimension key below):",
     dimLines,
     "",
-    "HARD-EXCLUSION RULES, in extra_exclusions, return ONLY keys from this exact list that this opportunity triggers (evaluate the free-text rules). Never invent a key; if none apply, use an empty array:",
+    "HARD-EXCLUSION RULES, in extra_exclusions, return ONLY keys from this exact list that this opportunity triggers (evaluate the free-text rules). Never invent a key; if none apply, use an empty array.",
+    "IMPORTANT: rules about contract VALUE, DEADLINE, and SET-ASIDE eligibility are checked separately by the platform against the actual figures. Do NOT return those keys, and never treat a missing/unknown value or deadline as grounds for exclusion. Judge only the rules you can decide from the notice TEXT (e.g. security clearance, licensed/stamped professional, hazardous material, prime-only past performance).",
+    "Score the opportunity on its stated scope and fit. An unpublished value is normal and must not reduce the score.",
     exclLines,
     "",
     "Return JSON: { dimensions: [{ key, points, reasoning }], extra_exclusions: string[], summary: string }. Include ALL rubric dimension keys. Points must be integers within each dimension's max. The summary is 1-2 sentences on why this scored as it did.",
