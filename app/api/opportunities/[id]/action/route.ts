@@ -87,6 +87,33 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ ok: true, stage: "dismissed" });
   }
 
+  // Undo a dismissal: back to the review queue with a fresh decision timer.
+  // Only dismissed records restore this way; anything else is a no-op error.
+  if (action === "restore") {
+    if (opp.stage !== "dismissed") {
+      return NextResponse.json(
+        { error: "Only dismissed opportunities can be restored." },
+        { status: 400 }
+      );
+    }
+    await query(
+      `update opportunities
+          set tier='review', stage='scoring', status='open',
+              human_action_required=true,
+              review_expires_at=now() + interval '24 hours'
+        where id=$1`,
+      [params.id]
+    );
+    await logAgent({
+      agent: "operator",
+      action: "restore",
+      opportunityId: params.id,
+      level: "info",
+      message: `Operator ${auth.email} restored a dismissed opportunity to the review queue (24h decision timer).`,
+    });
+    return NextResponse.json({ ok: true, stage: "scoring" });
+  }
+
   if (action === "rerun") {
     const agents = STAGE_AGENTS[opp.stage] ?? [];
     if (agents.length === 0) {

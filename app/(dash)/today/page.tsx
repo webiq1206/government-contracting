@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { actionCenter, type ActionOppRow } from "@/lib/data";
+import { actionCenter, dailyDigest, type ActionOppRow } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PipelineStrip } from "@/components/pipeline-strip";
 import { AutomationPausedBanner } from "@/components/automation-control";
@@ -13,7 +13,9 @@ import { flagSummary } from "@/lib/flag-labels";
 import { stageParty, PARTY_LABEL } from "@/lib/domain/journey";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { ActionButton } from "@/components/action-button";
+import { SnoozeButton } from "@/components/snooze-button";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
+import { TodayLive } from "@/components/today-live";
 import type { AutomationRules } from "@/lib/domain/intake";
 import { currency, shortDate, timeAgo } from "@/lib/format";
 
@@ -82,8 +84,14 @@ function OppActionRow({
           </span>
         )}
         <DeadlineBadge deadline={o.deadline} rules={rules} />
+        {!inlineTriage && (
+          <StopClickPropagation className="inline-flex">
+            <SnoozeButton kind="opportunity" id={o.id} />
+          </StopClickPropagation>
+        )}
         {inlineTriage ? (
           <StopClickPropagation className="flex items-center gap-2">
+            <SnoozeButton kind="opportunity" id={o.id} />
             <ActionButton
               endpoint={`/api/opportunities/${o.id}/action`}
               body={{ action: "pursue" }}
@@ -96,7 +104,13 @@ function OppActionRow({
               endpoint={`/api/opportunities/${o.id}/action`}
               body={{ action: "dismiss" }}
               className="btn-danger text-xs"
-              confirm="Dismiss this opportunity? It moves to the archive."
+              toast={{
+                message: `Dismissed "${o.title ?? "opportunity"}". It's archived, not deleted.`,
+                undo: {
+                  endpoint: `/api/opportunities/${o.id}/action`,
+                  body: { action: "restore" },
+                },
+              }}
             >
               Dismiss
             </ActionButton>
@@ -151,11 +165,20 @@ function Section({
 
 export default async function TodayPage() {
   const rules = await getAutomationRules();
-  const [data, profile, automation] = await Promise.all([
+  const [data, profile, automation, digest] = await Promise.all([
     actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
     getAutomationState(),
+    dailyDigest(),
   ]);
+  const digestParts = [
+    digest.found > 0 && `${digest.found} new opportunit${digest.found === 1 ? "y" : "ies"} found`,
+    digest.autoPursued > 0 && `${digest.autoPursued} auto-pursued`,
+    digest.replies > 0 && `${digest.replies} sub repl${digest.replies === 1 ? "y" : "ies"} received`,
+    digest.callsLogged > 0 && `${digest.callsLogged} call${digest.callsLogged === 1 ? "" : "s"} logged`,
+    digest.bidsPriced > 0 && `${digest.bidsPriced} bid${digest.bidsPriced === 1 ? "" : "s"} priced`,
+    digest.expiredArchived > 0 && `${digest.expiredArchived} expired archived`,
+  ].filter(Boolean) as string[];
   const integrations = integrationStatus();
   const setup = computeSetupChecklist({
     profile: profile?.profile_json ?? null,
@@ -182,6 +205,7 @@ export default async function TodayPage() {
 
   return (
     <div className="flex h-screen flex-col">
+      <TodayLive />
       <PageHeader
         help={PAGE_HELP["today"]}
         title="Today"
@@ -195,6 +219,18 @@ export default async function TodayPage() {
        <div className="mx-auto w-full max-w-5xl space-y-8">
         {/* Site-wide warning while the operator has paused the cron loop. */}
         <AutomationPausedBanner state={automation} />
+
+        {/* What the machine did while you were away. */}
+        {digestParts.length > 0 && (
+          <Link
+            href="/agents"
+            className="block rounded-md border border-accent/30 bg-accent-soft/50 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:border-accent/60"
+          >
+            <span className="font-semibold text-accent-strong">Last 24 hours:</span>{" "}
+            {digestParts.join(" · ")}
+            <span className="text-slate-500"> · details in the Automation Log →</span>
+          </Link>
+        )}
 
         {/* Pipeline progress rail */}
         <PipelineStrip counts={data.stageCounts} />
@@ -281,6 +317,9 @@ export default async function TodayPage() {
                     <span className="badge bg-pursue/15 text-pursue">Replied, interested</span>
                   )}
                   <DeadlineBadge deadline={c.deadline} rules={rules} />
+                  <StopClickPropagation className="inline-flex">
+                    <SnoozeButton kind="call_card" id={c.id} />
+                  </StopClickPropagation>
                   <span className="btn-primary pointer-events-none text-xs">Start call →</span>
                 </div>
               </Link>
@@ -443,6 +482,25 @@ export default async function TodayPage() {
               </Link>
             )}
           </Section>
+        )}
+
+        {/* Items the operator snoozed. Kept visible as a count so nothing can
+            feel "lost"; they return to their sections automatically. */}
+        {data.snoozedCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-border px-4 py-2.5 text-xs text-slate-500">
+            <span>
+              {data.snoozedCount} snoozed item{data.snoozedCount === 1 ? "" : "s"} hidden for
+              now. Each returns automatically; deadline alerts keep running meanwhile.
+            </span>
+            <ActionButton
+              endpoint="/api/snooze"
+              body={{ wakeAll: true }}
+              className="btn-ghost text-xs"
+              toast={{ message: "All snoozed items are back on the list." }}
+            >
+              Bring them all back now
+            </ActionButton>
+          </div>
         )}
 
        </div>

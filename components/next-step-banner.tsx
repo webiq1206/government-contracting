@@ -63,7 +63,13 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
               endpoint={`/api/opportunities/${opportunityId}/action`}
               body={{ action: "dismiss" }}
               className="btn-danger text-xs"
-              confirm="Dismiss this opportunity? It moves to the archive."
+              toast={{
+                message: "Dismissed. It's archived, not deleted.",
+                undo: {
+                  endpoint: `/api/opportunities/${opportunityId}/action`,
+                  body: { action: "restore" },
+                },
+              }}
             >
               Dismiss
             </ActionButton>

@@ -114,6 +114,7 @@ export async function callQueue(): Promise<CallCardRow[]> {
        join subcontractors s on s.id = cc.subcontractor_id
        join opportunities o on o.id = cc.opportunity_id
       where cc.status='pending'
+        and (cc.snoozed_until is null or cc.snoozed_until <= now())
       order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc`
   );
 }
@@ -654,6 +655,8 @@ export interface ActionCenterData {
   proposedWeights: ProposedWeightsRow[];
   /** Backlink outreach drafts awaiting the operator's send approval. */
   backlinkApprovals: number;
+  /** Items the operator snoozed that are still hidden (they return on their own). */
+  snoozedCount: number;
   /** Open-pipeline counts per stage for the progress strip. */
   stageCounts: { stage: string; count: number }[];
 }
@@ -680,17 +683,20 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     complianceAlerts,
     proposedWeights,
     backlinkRow,
+    snoozedRow,
     stageCounts,
   ] = await Promise.all([
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
           where o.status='open' and o.tier='review' and o.human_action_required=true
+            and (o.snoozed_until is null or o.snoozed_until <= now())
           order by (o.deadline is null), o.deadline asc limit 10`
     ),
     queryOne<{ count: number; soonest_deadline: string | null }>(
       `select count(*)::int as count, min(o.deadline) as soonest_deadline
            from call_cards cc join opportunities o on o.id = cc.opportunity_id
-          where cc.status='pending'`
+          where cc.status='pending'
+            and (cc.snoozed_until is null or cc.snoozed_until <= now())`
     ),
     query<ActionCallRow>(
       `select cc.id, s.company_name, s.phone, o.title as opportunity_title,
@@ -701,17 +707,20 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          join subcontractors s on s.id = cc.subcontractor_id
          join opportunities o on o.id = cc.opportunity_id
         where cc.status='pending'
+          and (cc.snoozed_until is null or cc.snoozed_until <= now())
         order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc
         limit 6`
     ),
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
           where o.status='open' and o.stage in ('quote_entry','bid_building')
+            and (o.snoozed_until is null or o.snoozed_until <= now())
           order by (o.deadline is null), o.deadline asc limit 10`
     ),
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
           where o.status='open' and o.stage='submitted'
+            and (o.snoozed_until is null or o.snoozed_until <= now())
           order by o.updated_at asc limit 10`
     ),
     query<ActionOppRow>(
@@ -720,6 +729,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
             and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
             and o.deadline is not null and o.deadline > now()
             and o.deadline <= now() + make_interval(days => $1)
+            and (o.snoozed_until is null or o.snoozed_until <= now())
           order by o.deadline asc limit 10`,
       [urgentDays]
     ),
@@ -729,6 +739,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
       `${ACTION_OPP_SELECT}
           where o.status='open' and o.human_action_required=true
             and o.tier is distinct from 'review'
+            and (o.snoozed_until is null or o.snoozed_until <= now())
           order by o.updated_at asc limit 10`
     ),
     query<ComplianceAlertRow>(
@@ -750,6 +761,12 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     queryOne<{ n: number }>(
       `select count(*)::int as n from backlink_outreach where approval_status='pending'`
     ),
+    queryOne<{ n: number }>(
+      `select (select count(*) from opportunities
+                where status='open' and snoozed_until > now())::int
+           + (select count(*) from call_cards
+                where status='pending' and snoozed_until > now())::int as n`
+    ),
     query<{ stage: string; count: number }>(
       `select stage, count(*)::int as count from opportunities
           where status='open' group by stage`
@@ -769,7 +786,51 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     complianceAlerts,
     proposedWeights,
     backlinkApprovals: backlinkRow?.n ?? 0,
+    snoozedCount: snoozedRow?.n ?? 0,
     stageCounts,
+  };
+}
+
+export interface DailyDigest {
+  found: number;
+  autoPursued: number;
+  replies: number;
+  bidsPriced: number;
+  expiredArchived: number;
+  callsLogged: number;
+}
+
+/**
+ * What the automation did in the last 24 hours, the "while you were away"
+ * strip on Today. Counts real events (rows + agent logs), never estimates.
+ */
+export async function dailyDigest(): Promise<DailyDigest> {
+  const row = await queryOne<Record<keyof DailyDigest, number>>(
+    `select
+       (select count(*) from opportunities
+         where created_at > now() - interval '24 hours')::int as found,
+       (select count(*) from agent_logs
+         where agent='scoring-engine' and action='auto-pursue'
+           and created_at > now() - interval '24 hours')::int as "autoPursued",
+       (select count(*) from communications
+         where direction='inbound' and channel='email'
+           and created_at > now() - interval '24 hours')::int as replies,
+       (select count(distinct opportunity_id) from bids
+         where updated_at > now() - interval '24 hours')::int as "bidsPriced",
+       (select count(*) from agent_logs
+         where agent='expired-opportunity-sweep' and action='archive-expired'
+           and created_at > now() - interval '24 hours')::int as "expiredArchived",
+       (select count(*) from agent_logs
+         where agent='operator' and action='call-logged'
+           and created_at > now() - interval '24 hours')::int as "callsLogged"`
+  );
+  return {
+    found: row?.found ?? 0,
+    autoPursued: row?.autoPursued ?? 0,
+    replies: row?.replies ?? 0,
+    bidsPriced: row?.bidsPriced ?? 0,
+    expiredArchived: row?.expiredArchived ?? 0,
+    callsLogged: row?.callsLogged ?? 0,
   };
 }
 

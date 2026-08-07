@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useToast } from "@/components/toaster";
 
 interface ActionButtonProps {
   endpoint: string;
@@ -19,6 +20,16 @@ interface ActionButtonProps {
    * so the operator is never left wondering whether the click worked.
    */
   successText?: string;
+  /**
+   * Success feedback as a global toast instead of inline text. Survives the
+   * refresh that removes this button's row, so pair it with `undo` for
+   * immediate-but-reversible actions (the modern replacement for a native
+   * confirm dialog).
+   */
+  toast?: {
+    message: string;
+    undo?: { endpoint: string; body?: Record<string, unknown> };
+  };
 }
 
 /** Generic button that calls an API route, shows a spinner, and refreshes the view. */
@@ -32,8 +43,10 @@ export function ActionButton({
   onDone,
   refresh = true,
   successText,
+  toast,
 }: ActionButtonProps) {
   const router = useRouter();
+  const { push } = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -55,6 +68,7 @@ export function ActionButton({
         return;
       }
       onDone?.(data);
+      if (toast) push(toast);
       if (successText) {
         setDone(true);
         setTimeout(() => setDone(false), 6000);

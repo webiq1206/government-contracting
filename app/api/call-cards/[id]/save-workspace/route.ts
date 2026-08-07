@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
-import { transaction } from "@/lib/db";
+import { transaction, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
 
@@ -243,7 +243,25 @@ export async function POST(
         : "Call draft saved.",
     });
 
-    return NextResponse.json({ ok: true, ...result });
+    // Dialer mode: after completing a call, offer the next one in the queue
+    // (same ordering as the Call Queue page, snoozed cards excluded).
+    let nextCall: { id: string; company_name: string } | null = null;
+    if (closeCard) {
+      nextCall =
+        (await queryOne<{ id: string; company_name: string }>(
+          `select cc.id, s.company_name
+             from call_cards cc
+             join subcontractors s on s.id = cc.subcontractor_id
+             join opportunities o on o.id = cc.opportunity_id
+            where cc.status='pending' and cc.id <> $1
+              and (cc.snoozed_until is null or cc.snoozed_until <= now())
+            order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc
+            limit 1`,
+          [params.id]
+        )) ?? null;
+    }
+
+    return NextResponse.json({ ok: true, ...result, nextCall });
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message },

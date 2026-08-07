@@ -160,6 +160,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
             endpoint={`/api/opportunities/${o.id}/action`}
             body={{ action: "pursue" }}
             className="btn-success"
+            toast={{ message: "Pursued. Analysis and pricing are running." }}
           >
             Pursue
           </ActionButton>
@@ -167,7 +168,13 @@ function ReviewCard({ o }: { o: Opportunity }) {
             endpoint={`/api/opportunities/${o.id}/action`}
             body={{ action: "dismiss" }}
             className="btn-danger"
-            confirm="Dismiss this opportunity?"
+            toast={{
+              message: `Dismissed "${o.title ?? "opportunity"}". It's archived, not deleted.`,
+              undo: {
+                endpoint: `/api/opportunities/${o.id}/action`,
+                body: { action: "restore" },
+              },
+            }}
           >
             Dismiss
           </ActionButton>

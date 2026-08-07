@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CallCardRow } from "@/lib/data";
 import { currency, shortDate } from "@/lib/format";
+import { useToast } from "@/components/toaster";
 
 type Attachment = { name?: string; url?: string; storage_path?: string } & Record<
   string,
@@ -122,11 +123,53 @@ export function CallWorkspace({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const { push } = useToast();
   const { card, communications, quotes } = data;
   const [form, setForm] = useState<FormState>(() => initialForm(card));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedOk, setSavedOk] = useState(false);
+  // Dialer mode: after completing a call, offer the next one in the queue.
+  const [nextCall, setNextCall] = useState<{ id: string; company_name: string } | null>(null);
+  const [completed, setCompleted] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [noAnswerBusy, setNoAnswerBusy] = useState(false);
+
+  async function copyPhone() {
+    if (!card.phone) return;
+    try {
+      await navigator.clipboard.writeText(card.phone);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable; the number is visible either way */
+    }
+  }
+
+  /** One tap for the most common outcome: nobody picked up. */
+  async function noAnswer() {
+    setNoAnswerBusy(true);
+    try {
+      const res = await fetch("/api/snooze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "call_card", id: card.id, until: "tomorrow" }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? "Could not schedule the retry.");
+        return;
+      }
+      push({
+        message: `No answer logged for ${card.company_name}. The call returns tomorrow morning.`,
+        undo: { endpoint: "/api/snooze", body: { kind: "call_card", id: card.id, until: null } },
+      });
+      router.refresh();
+      onClose();
+    } finally {
+      setNoAnswerBusy(false);
+    }
+  }
 
   // Close on Esc.
   useEffect(() => {
@@ -180,9 +223,23 @@ export function CallWorkspace({
         return;
       }
       setSavedOk(true);
-      router.refresh();
       if (closeAfter) {
-        setTimeout(onClose, 400);
+        // Dialer mode: offer the next pending call instead of just closing.
+        // IMPORTANT: don't router.refresh() yet — the refresh removes this
+        // completed card from the queue list, which unmounts the launcher
+        // (and this workspace with it) before the "next call" bar can show.
+        // The refresh happens when the operator picks Done or Next.
+        const next = (data as { nextCall?: { id: string; company_name: string } | null }).nextCall;
+        if (next) {
+          setNextCall(next);
+          setCompleted(true);
+        } else {
+          push({ message: "Call saved. That was the last call in the queue. 🎉" });
+          router.refresh();
+          setTimeout(onClose, 400);
+        }
+      } else {
+        router.refresh();
       }
     } catch (e) {
       setError((e as Error).message);
@@ -222,7 +279,7 @@ export function CallWorkspace({
             </button>
           </div>
           {/* Action bar */}
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             {card.phone && (
               <a
                 href={`tel:${card.phone}`}
@@ -231,6 +288,25 @@ export function CallWorkspace({
                 📞 Call {card.phone}
               </a>
             )}
+            {card.phone && (
+              <button
+                type="button"
+                onClick={() => void copyPhone()}
+                className="btn-ghost text-xs"
+                title="Copy the phone number"
+              >
+                {copied ? "✓ Copied" : "Copy number"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void noAnswer()}
+              disabled={noAnswerBusy}
+              className="btn-ghost text-xs"
+              title="Logs the attempt and brings this call back tomorrow morning"
+            >
+              {noAnswerBusy ? "Scheduling…" : "No answer, retry tomorrow"}
+            </button>
             {card.email && (
               <a href={`mailto:${card.email}`} className="btn-ghost">
                 ✉ Email
@@ -661,27 +737,59 @@ export function CallWorkspace({
           </Section>
         </div>
 
-        {/* Sticky footer actions */}
-        <footer className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-border bg-background/95 px-6 py-4 backdrop-blur">
-          <button onClick={onClose} className="btn-ghost" disabled={saving}>
-            Cancel
-          </button>
-          <div className="flex gap-2">
-            <button
-              onClick={() => save(false)}
-              className="btn-ghost"
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save draft"}
-            </button>
-            <button
-              onClick={() => save(true)}
-              className="btn-primary"
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save & complete call"}
-            </button>
-          </div>
+        {/* Sticky footer: normal actions, or the dialer's "next call" bar
+            after this one is saved. */}
+        <footer className="sticky bottom-0 z-10 border-t border-border bg-background/95 px-6 py-4 backdrop-blur">
+          {completed && nextCall ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-pursue">
+                ✓ Call saved. All records updated.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    router.refresh();
+                    onClose();
+                  }}
+                  className="btn-ghost"
+                >
+                  Done for now
+                </button>
+                <button
+                  onClick={() => {
+                    onClose();
+                    router.push(`/call-queue?open=${nextCall.id}`);
+                    router.refresh();
+                  }}
+                  className="btn-primary"
+                >
+                  Next call: {nextCall.company_name} →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <button onClick={onClose} className="btn-ghost" disabled={saving}>
+                Cancel
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => save(false)}
+                  className="btn-ghost"
+                  disabled={saving}
+                >
+                  {saving ? "Saving…" : "Save draft"}
+                </button>
+                <button
+                  onClick={() => save(true)}
+                  className="btn-primary"
+                  disabled={saving}
+                >
+                  {saving ? "Saving…" : "Save & complete call"}
+                </button>
+              </div>
+            </div>
+          )}
         </footer>
       </aside>
     </div>
