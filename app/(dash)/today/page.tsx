@@ -270,22 +270,20 @@ export default async function TodayPage() {
           </Link>
         )}
 
-        {/* Pipeline progress rail */}
-        <PipelineStrip counts={data.stageCounts} />
-
-        {/* Guided setup, pinned up top until the platform is fully configured. */}
-        <SetupChecklist checklist={setup} />
+        {/* Setup stays on top ONLY while the platform can't run on its own,
+            it is blocking work. Once complete it disappears entirely. */}
+        {!setup.complete && <SetupChecklist checklist={setup} />}
 
         {totalActions === 0 && setup.complete && (
           <div className="card mx-auto max-w-lg text-center">
             <p className="text-3xl">✅</p>
             <p className="mt-3 text-base font-semibold text-foreground">
-              You&rsquo;re all caught up.
+              You&rsquo;re done for today.
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              The agents check SAM.gov every 2 hours. Anything that needs a human
-              decision will appear here, and you&rsquo;ll get an alert if a
-              deadline gets close.
+              {data.stageCounts.reduce((n, s) => n + s.count, 0).toLocaleString()} opportunities
+              are being worked automatically. Anything that needs a person will show up here,
+              and you&rsquo;ll be warned before any deadline gets close.
             </p>
           </div>
         )}
@@ -540,6 +538,13 @@ export default async function TodayPage() {
             </ActionButton>
           </div>
         )}
+
+        {/* Context, below the work. What the machine is carrying for you, and
+            the setup list once it is no longer blocking anything. */}
+        <div className="space-y-6 border-t border-border pt-6">
+          <PipelineStrip counts={data.stageCounts} />
+          {setup.complete && <SetupChecklist checklist={setup} />}
+        </div>
 
        </div>
       </div>
