@@ -39,14 +39,30 @@ const INTEGRATIONS_HREF = "/settings/integrations";
 
 export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
   const p = i.profile;
+  // The identity item needs BOTH federal identifiers. Say exactly which one is
+  // still missing, "Add your UEI and CAGE code" staying open after the UEI was
+  // entered reads like a bug when the real gap is the other field.
+  const hasUei = filled(p?.uei);
+  const hasCage = filled(p?.cage_code);
+  const identity: SetupItem = {
+    key: "identity",
+    label:
+      hasUei && !hasCage
+        ? "Add your CAGE code (UEI ✓ saved)"
+        : !hasUei && hasCage
+          ? "Add your UEI (CAGE ✓ saved)"
+          : "Add your UEI and CAGE code",
+    hint:
+      hasUei && !hasCage
+        ? "Your UEI is saved. The CAGE code is still blank, both identifiers go on every bid and required form."
+        : !hasUei && hasCage
+          ? "Your CAGE code is saved. The UEI is still blank, both identifiers go on every bid and required form."
+          : "Your federal identifiers go on every bid and required form.",
+    done: hasUei && hasCage,
+    href: PROFILE_HREF,
+  };
   const items: SetupItem[] = [
-    {
-      key: "identity",
-      label: "Add your UEI and CAGE code",
-      hint: "Your federal identifiers go on every bid and required form.",
-      done: filled(p?.uei) && filled(p?.cage_code),
-      href: PROFILE_HREF,
-    },
+    identity,
     {
       key: "naics",
       label: "Pick your NAICS codes",

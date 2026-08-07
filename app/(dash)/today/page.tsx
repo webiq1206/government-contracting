@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { actionCenter, dailyDigest, type ActionOppRow } from "@/lib/data";
+import { actionCenter, dailyDigest, engineStatus, type ActionOppRow } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PipelineStrip } from "@/components/pipeline-strip";
 import { AutomationPausedBanner } from "@/components/automation-control";
@@ -165,12 +165,21 @@ function Section({
 
 export default async function TodayPage() {
   const rules = await getAutomationRules();
-  const [data, profile, automation, digest] = await Promise.all([
+  const [data, profile, automation, digest, engine] = await Promise.all([
     actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
     getAutomationState(),
     dailyDigest(),
+    engineStatus(),
   ]);
+  // Engine liveness: sweeps run every 10-20 min, so hours of silence while
+  // records sit open means the worker process itself is down, which strands
+  // EVERYTHING. Surface that here, not buried in the Automation Log.
+  const engineDown =
+    !automation.paused &&
+    ((engine.lastRunAt != null &&
+      Date.now() - new Date(engine.lastRunAt).getTime() > 2 * 3_600_000) ||
+      (engine.lastRunAt == null && engine.openCount > 0));
   const digestParts = [
     digest.found > 0 && `${digest.found} new opportunit${digest.found === 1 ? "y" : "ies"} found`,
     digest.autoPursued > 0 && `${digest.autoPursued} auto-pursued`,
@@ -219,6 +228,29 @@ export default async function TodayPage() {
        <div className="mx-auto w-full max-w-5xl space-y-8">
         {/* Site-wide warning while the operator has paused the cron loop. */}
         <AutomationPausedBanner state={automation} />
+
+        {/* The one failure that strands everything: the background engine
+            isn't running. Say so in plain language, with the fix. */}
+        {engineDown && (
+          <div className="rounded-md border border-risk/50 bg-risk/5 px-4 py-3">
+            <p className="text-sm font-semibold text-risk">
+              The automation engine is not running.
+            </p>
+            <p className="mt-1 text-sm text-slate-700">
+              {engine.lastRunAt
+                ? `Nothing has run since ${timeAgo(engine.lastRunAt)}. `
+                : "No automated work has ever run, though opportunities are waiting. "}
+              Records will not move, be scored, or be monitored until it&rsquo;s back. On
+              Replit this usually means the app isn&rsquo;t running as an always-on
+              deployment: open your Repl and press <span className="font-medium">Run</span>{" "}
+              (or use a Reserved-VM deployment for 24/7 operation). The{" "}
+              <Link href="/agents" className="underline">
+                Automation Log
+              </Link>{" "}
+              shows the moment it comes back.
+            </p>
+          </div>
+        )}
 
         {/* What the machine did while you were away. */}
         {digestParts.length > 0 && (

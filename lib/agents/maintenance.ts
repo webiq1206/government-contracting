@@ -11,8 +11,9 @@ import { sms } from "../integrations/twilio";
 import { email } from "../integrations/resend";
 import { config } from "../config";
 import { logAgent } from "../logger";
-import { STALL_HOURS } from "../domain/journey";
+import { STALL_HOURS, STAGE_AGENT } from "../domain/journey";
 import { getAutomationRules } from "../app-settings";
+import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
@@ -112,9 +113,13 @@ export const stalledPipelineSweep: AgentDefinition = {
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     // One threshold table drives both this sweep and the opportunity page's
-    // "this looks stuck" banner (lib/domain/journey), so the operator is
-    // notified about exactly the records the UI calls stuck. Runs once per
-    // opp: flipping human_action_required=true excludes it next run.
+    // "this looks stuck" banner (lib/domain/journey). Two-strike policy:
+    //   1st time a record is found stuck -> re-enqueue the responsible agent
+    //      automatically (most stalls are a lost/failed job) + mark it.
+    //   still stuck on a later sweep    -> flag for the operator.
+    // Nothing is ever silently abandoned, and humans are only pulled in when
+    // an automatic retry didn't fix it.
+    let rescued = 0;
     const stalled: { id: string; title: string | null; stage: string; hours: number }[] = [];
     for (const [stage, hours] of Object.entries(STALL_HOURS)) {
       if (hours == null) continue;
@@ -124,6 +129,38 @@ export const stalledPipelineSweep: AgentDefinition = {
         stage === "bid_building"
           ? "and not exists (select 1 from bids b where b.opportunity_id = opportunities.id)"
           : "";
+      const agent = STAGE_AGENT[stage];
+      const retryMarker = `auto_retried_${stage}`;
+
+      // Strike 1: stuck, no retry attempted yet, and we know which agent to
+      // re-run -> rescue automatically instead of bothering the operator.
+      if (agent) {
+        const rescuable = await query<{ id: string; title: string | null }>(
+          `update opportunities
+              set risk_flags = coalesce(risk_flags, '{}') || array[$3::text]
+            where status = 'open' and human_action_required = false
+              and stage = $1
+              and updated_at < now() - make_interval(hours => $2)
+              and not ($3 = any(coalesce(risk_flags, '{}')))
+              ${bidGuard}
+            returning id, title`,
+          [stage, hours, retryMarker]
+        );
+        for (const o of rescuable) {
+          rescued++;
+          await enqueue(agent, { opportunityId: o.id, trigger: "rescue" }).catch(() => {});
+          await logAgent({
+            agent: "stalled-pipeline-sweep",
+            action: "auto-retry",
+            opportunityId: o.id,
+            level: "info",
+            message: `"${o.title ?? o.id}" sat in ${stage.replace(/_/g, " ")} past its ${hours}h window; re-running ${agent} automatically. You'll only be asked to step in if this retry doesn't move it.`,
+          });
+        }
+      }
+
+      // Strike 2: still stuck after a rescue (or no agent to rescue with) ->
+      // the operator's judgment is genuinely needed.
       const rows = await query<{ id: string; title: string | null; stage: string }>(
         `update opportunities
             set human_action_required = true,
@@ -131,9 +168,10 @@ export const stalledPipelineSweep: AgentDefinition = {
           where status = 'open' and human_action_required = false
             and stage = $1
             and updated_at < now() - make_interval(hours => $2)
+            and ($3::text is null or $4 = any(coalesce(risk_flags, '{}')))
             ${bidGuard}
           returning id, title, stage`,
-        [stage, hours]
+        [stage, hours, agent ?? null, `auto_retried_${stage}`]
       );
       stalled.push(...rows.map((r) => ({ ...r, hours })));
     }
@@ -143,11 +181,14 @@ export const stalledPipelineSweep: AgentDefinition = {
         action: "flag-stalled",
         opportunityId: o.id,
         level: "warn",
-        message: `Flagged stalled opportunity "${o.title ?? o.id}" (no progress in ${o.stage.replace(/_/g, " ")} for over ${o.hours}h).`,
+        message: `Flagged stalled opportunity "${o.title ?? o.id}" (no progress in ${o.stage.replace(/_/g, " ")} for over ${o.hours}h, automatic retry did not move it).`,
         reasoning: STALL_REASONING[o.stage] ?? "No progress beyond the stage's expected window.",
       });
     }
-    return { ok: true, summary: `Flagged ${stalled.length} stalled opportunit${stalled.length === 1 ? "y" : "ies"} for review.` };
+    return {
+      ok: true,
+      summary: `Auto-retried ${rescued} stuck record(s); flagged ${stalled.length} for review (retry didn't help).`,
+    };
   },
 };
 

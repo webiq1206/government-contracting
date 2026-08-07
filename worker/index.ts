@@ -90,7 +90,14 @@ async function main() {
   // Register a handler for every agent + maintenance job.
   for (const def of ALL_AGENTS) {
     await queue.work(def.name, async (payload) => {
-      await runAgent(def, "queue", payload as Record<string, unknown>);
+      const result = await runAgent(def, "queue", payload as Record<string, unknown>);
+      // The runner isolates errors (logs + returns ok:false) so one agent can
+      // never crash another. But swallowing the error here too would tell
+      // pg-boss the job SUCCEEDED, its retryLimit/backoff would never fire,
+      // and a single transient failure (Claude 429, DB blip) would strand the
+      // record forever: nothing ever re-enqueues a consumed job. Rethrow so
+      // the queue retries; the runner has already logged the details.
+      if (!result.ok) throw new Error(result.summary);
     });
   }
   console.log(`[worker] registered ${ALL_AGENTS.length} handlers`);

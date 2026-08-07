@@ -43,6 +43,32 @@ describe("computeSetupChecklist", () => {
     expect(onlyUei.items.find((i) => i.key === "identity")!.done).toBe(false);
   });
 
+  it("says exactly which federal identifier is still missing", () => {
+    const onlyUei = computeSetupChecklist({
+      ...allOn,
+      profile: { ...allOn.profile, cage_code: "" },
+    });
+    const ueiItem = onlyUei.items.find((i) => i.key === "identity")!;
+    expect(ueiItem.label).toContain("CAGE");
+    expect(ueiItem.label).toContain("UEI ✓");
+
+    const onlyCage = computeSetupChecklist({
+      ...allOn,
+      profile: { ...allOn.profile, uei: null },
+    });
+    const cageItem = onlyCage.items.find((i) => i.key === "identity")!;
+    expect(cageItem.label).toContain("UEI");
+    expect(cageItem.label).toContain("CAGE ✓");
+
+    const neither = computeSetupChecklist({
+      ...allOn,
+      profile: { ...allOn.profile, uei: "", cage_code: "" },
+    });
+    expect(neither.items.find((i) => i.key === "identity")!.label).toBe(
+      "Add your UEI and CAGE code"
+    );
+  });
+
   it("treats empty arrays as not done", () => {
     const c = computeSetupChecklist({
       ...allOn,

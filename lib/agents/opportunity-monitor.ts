@@ -225,6 +225,32 @@ export const opportunityMonitor: AgentDefinition = {
       }
     }
 
+    // Self-heal: re-enqueue scoring for any open record that never got a score
+    // (its original scoring job was lost or failed out of retries). Singleton
+    // per opportunity per hour keeps this idempotent across runs.
+    const unscored = await query<{ id: string }>(
+      `select id from opportunities
+        where status='open' and stage in ('monitoring','scoring')
+          and score is null and tier is null
+          and created_at < now() - interval '30 minutes'
+        limit 50`
+    );
+    for (const row of unscored) {
+      enqueued.push({
+        agent: "scoring-engine",
+        payload: { opportunityId: row.id, trigger: "self-heal" },
+        opts: { singletonKey: `score:${row.id}`, singletonSeconds: 3600 },
+      });
+    }
+    if (unscored.length > 0) {
+      await logAgent({
+        agent: "opportunity-monitor",
+        action: "self-heal",
+        level: "info",
+        message: `Re-queued scoring for ${unscored.length} record(s) that never received a score.`,
+      });
+    }
+
     const summary = skippedDisabled
       ? `Ingestion partial (SAM disabled). ${ingested} new from other sources.`
       : `Ingested ${ingested} new opportunities (${sourcesSought} sources-sought), triggered scoring.`;

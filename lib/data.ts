@@ -795,6 +795,25 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
   };
 }
 
+export interface EngineStatus {
+  lastRunAt: string | null;
+  openCount: number;
+}
+
+/**
+ * Is the background engine (worker + scheduler) alive at all? Maintenance
+ * sweeps run every 10-20 minutes, so a multi-hour silence while opportunities
+ * sit open means the worker process isn't running, the single failure mode
+ * that strands every record at once (e.g. a web-only deployment).
+ */
+export async function engineStatus(): Promise<EngineStatus> {
+  const row = await queryOne<{ last_run: string | null; open_count: number }>(
+    `select (select max(started_at) from job_runs) as last_run,
+            (select count(*)::int from opportunities where status='open') as open_count`
+  );
+  return { lastRunAt: row?.last_run ?? null, openCount: row?.open_count ?? 0 };
+}
+
 export interface AgentHealth {
   runs24h: number;
   errors24h: number;
