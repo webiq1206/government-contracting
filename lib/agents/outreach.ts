@@ -13,7 +13,7 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { sendOutreachEmail } from "../integrations/email-transport";
-import { gatherOpportunityAttachments } from "../opportunity-attachments";
+import { scrubGovtContacts } from "../integrations/scrub-contacts";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -75,10 +75,27 @@ export const outreach: AgentDefinition = {
     if (!tmpl) return { ok: false, summary: "no active template_1_outreach template" };
 
     const analysis = opp.solicitation_analysis;
-    const scopeSummary = (analysis?.scope_plain_language ?? opp.description ?? "").slice(0, 400);
+    const rawScopeSummary = (analysis?.scope_plain_language ?? opp.description ?? "").slice(0, 400);
+
+    // Scrub government contact info (CO phone numbers and email addresses) from
+    // every solicitation-derived string before it reaches the sub. This prevents
+    // subs from contacting the contracting officer directly and pricing toward the
+    // contract ceiling. Apply at the outbound boundary so nothing leaks through
+    // any template variable, including AI-generated scope questions which are
+    // derived from raw solicitation text and may reproduce CO contact data.
+    const { sanitised: scopeSummary, count: scopeRedacted } =
+      scrubGovtContacts(rawScopeSummary);
+
+    let questionsRedacted = 0;
     const questions = (analysis?.questions_for_subs ?? [])
-      .map((q) => `- ${q}`)
+      .map((q) => {
+        const { sanitised, count } = scrubGovtContacts(String(q));
+        questionsRedacted += count;
+        return `- ${sanitised}`;
+      })
       .join("\n");
+
+    const contactsRedacted = scopeRedacted + questionsRedacted;
 
     const vars: Record<string, string> = {
       owner_name: sub.owner_name || "there",
@@ -97,37 +114,43 @@ export const outreach: AgentDefinition = {
     const subject = render(tmpl.subject ?? "Partnership opportunity", vars);
     const plainBody = render(tmpl.body, vars);
 
-    // Solicitation/SOW documents so the sub has everything needed to price
-    // the work. Oversized/unfetchable docs become links instead.
-    const { files: attachments, links: attachmentLinks } = await gatherOpportunityAttachments(
-      opp
-    ).catch(() => ({ files: [], links: [] }));
+    // Government solicitation documents are NOT attached to automated outreach
+    // emails. Raw SOW/RFQ files often include the contracting officer's phone
+    // and email, which would let subs bypass BROSTCO or anchor their price to
+    // the contract ceiling. The plain-text scope extract above (already
+    // sanitised) gives the sub what they need to quote. Files remain stored
+    // internally for the operator's reference. Count them for the audit log.
+    const withheldDocs = await query<{ count: string }>(
+      `select count(*)::text as count from documents
+        where opportunity_id = $1 and kind in ('solicitation','sow')`,
+      [opp.id]
+    ).then((r) => parseInt(r[0]?.count ?? "0", 10)).catch(() => 0);
 
-    // Pricing-relevant details block, appended regardless of template so every
-    // outreach email carries the reference info and a clear price ask.
+    await logAgent({
+      agent: "outreach",
+      action: "sanitise",
+      level: "info",
+      opportunityId,
+      subcontractorId,
+      message:
+        `[outreach] scope sanitised (${contactsRedacted} contact(s) redacted), ` +
+        `0 files attached (${withheldDocs} govt doc(s) withheld). ` +
+        `Subject: "${subject}" | Body preview: "${plainBody.slice(0, 120).replace(/\n/g, " ")}…"`,
+    });
+
+    // Pricing-relevant details block — reference info only, no document links.
     const detailLines = [
       opp.title ? `Project: ${opp.title}` : "",
       opp.solicitation_number ? `Solicitation #: ${opp.solicitation_number}` : "",
       opp.agency ? `Agency: ${opp.agency}` : "",
       opp.deadline ? `Bid deadline: ${formatDeadline(opp.deadline)}` : "",
-      attachments.length
-        ? `Attached: ${attachments.map((a) => a.filename).join(", ")}`
-        : "",
     ].filter(Boolean);
     const detailsPlain =
       (detailLines.length ? `\n\n---\n${detailLines.join("\n")}` : "") +
-      (attachmentLinks.length
-        ? `\nAdditional documents:\n${attachmentLinks.map((l) => `- ${l.name}: ${l.url}`).join("\n")}`
-        : "") +
       `\n\nPlease reply to this email with your price for the ${trade || "described"} scope (include payment terms and any exclusions).`;
     const detailsHtml =
       (detailLines.length
         ? `<div style="border-top:2px solid #B28F5D;margin-top:16px;padding-top:12px"><p style="color:#242424">${detailLines.map((l) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br/>")}</p></div>`
-        : "") +
-      (attachmentLinks.length
-        ? `<p>Additional documents:<br/>${attachmentLinks
-            .map((l) => `<a href="${l.url}">${l.name.replace(/</g, "&lt;")}</a>`)
-            .join("<br/>")}</p>`
         : "") +
       `<p><strong>Please reply to this email with your price</strong> for the ${trade || "described"} scope (include payment terms and any exclusions).</p>`;
 
@@ -151,7 +174,7 @@ export const outreach: AgentDefinition = {
         html,
         text: fullPlain,
         trackingId,
-        attachments,
+        attachments: [], // govt docs withheld — see sanitise log above
       });
       if (res.disabled) {
         humanAction = true;
