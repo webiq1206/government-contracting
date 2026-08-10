@@ -60,14 +60,26 @@ export function CallWorkspaceLauncher({
 
   return (
     <>
-      {/* Whole-card click target. Keep children clickable via the wrapping button. */}
-      <button
+      {/* Whole-card click target. Not a native <button>: the card contains its
+          own interactive controls (tel/mailto links, quick-edit popover), and
+          nesting those inside a button is invalid HTML. A div with role=button
+          + keyboard activation keeps it accessible without the nesting. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={launch}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return; // don't hijack inner controls
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            void launch();
+          }
+        }}
         className={`w-full text-left ${className}`}
         aria-label="Open call workspace"
       >
         {children}
-      </button>
+      </div>
 
       {open && (
         <>

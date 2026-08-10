@@ -2,6 +2,7 @@
 
 import type { CallCardRow } from "@/lib/data";
 import { CallWorkspaceLauncher } from "@/components/call-workspace-launcher";
+import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import { countdown, currency, shortDate } from "@/lib/format";
 
 /**
@@ -102,6 +103,14 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
               ✉ {c.email}
             </a>
           )}
+          <ContactQuickEdit
+            subId={c.subcontractor_id}
+            companyName={c.company_name}
+            email={c.email}
+            phone={c.phone}
+            website={c.website}
+            ownerName={c.owner_name}
+          />
           {c.needs_project_history && (
             <span
               className="badge bg-review/15 text-review"

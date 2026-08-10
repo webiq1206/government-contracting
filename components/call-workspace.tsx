@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import type { CallCardRow } from "@/lib/data";
 import { currency, shortDate } from "@/lib/format";
 import { useToast } from "@/components/toaster";
+import { ContactQuickEdit } from "@/components/contact-quick-edit";
 
 type Attachment = { name?: string; url?: string; storage_path?: string } & Record<
   string,
@@ -135,7 +136,9 @@ export function CallWorkspace({
 }) {
   const router = useRouter();
   const { push } = useToast();
-  const { card, communications, quotes } = data;
+  const { communications, quotes } = data;
+  // Local copy so contact quick-edits show immediately in the slide-over.
+  const [card, setCard] = useState<CallCardRow>(data.card);
   const [form, setForm] = useState<FormState>(() => initialForm(card));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -333,6 +336,15 @@ export function CallWorkspace({
                 🌐 Website
               </a>
             )}
+            <ContactQuickEdit
+              subId={card.subcontractor_id}
+              companyName={card.company_name}
+              email={card.email}
+              phone={card.phone}
+              website={card.website}
+              ownerName={card.owner_name}
+              onSaved={(v) => setCard((c) => ({ ...c, ...v }))}
+            />
           </div>
         </header>
 

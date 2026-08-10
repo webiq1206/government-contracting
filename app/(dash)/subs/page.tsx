@@ -3,6 +3,7 @@ import { subDatabase } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { SubFilters } from "@/components/sub-filters";
+import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import type { Subcontractor } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -152,6 +153,15 @@ export default async function SubsPage({
                     )}
                   </td>
                   <td className="td whitespace-nowrap">
+                    <ContactQuickEdit
+                      subId={s.id}
+                      companyName={s.company_name}
+                      email={s.email}
+                      phone={s.phone}
+                      website={s.website}
+                      ownerName={s.owner_name}
+                      className="mr-1 align-middle"
+                    />
                     {s.email && s.email_verified ? (
                       <span className="badge bg-pursue/15 text-pursue" title={s.email}>
                         Email verified
