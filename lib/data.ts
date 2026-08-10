@@ -204,6 +204,62 @@ export async function subDatabase(filters: SubFilters = {}): Promise<Subcontract
   );
 }
 
+export const EMAIL_LOG_PAGE_SIZE = 50;
+
+export interface EmailLogRow {
+  id: string;
+  created_at: string;
+  subject: string | null;
+  body: string | null;
+  provider: string | null;
+  recipient_email: string | null;
+  opened_at: string | null;
+  clicked_at: string | null;
+  replied_at: string | null;
+  direction: string;
+  // sub
+  subcontractor_id: string;
+  company_name: string | null;
+  // opportunity
+  opportunity_id: string | null;
+  opportunity_title: string | null;
+}
+
+export async function emailLogPaged(opts: {
+  page: number;
+  q?: string;
+}): Promise<{ rows: EmailLogRow[]; total: number }> {
+  const { page, q } = opts;
+  const offset = (Math.max(1, page) - 1) * EMAIL_LOG_PAGE_SIZE;
+
+  const base = `
+    from communications c
+    join subcontractors s on s.id = c.subcontractor_id
+    left join opportunities o on o.id = c.opportunity_id
+    where c.channel = 'email'
+      and c.direction = 'outbound'
+      ${q ? `and (lower(s.company_name) like lower($3) or lower(coalesce(c.subject,'')) like lower($3))` : ""}
+  `;
+  const params: unknown[] = [EMAIL_LOG_PAGE_SIZE, offset];
+  if (q) params.push(`%${q}%`);
+
+  const [rows, totals] = await Promise.all([
+    query<EmailLogRow>(
+      `select c.id, c.created_at, c.subject, c.body, c.provider,
+              c.recipient_email, c.opened_at, c.clicked_at, c.replied_at, c.direction,
+              c.subcontractor_id, s.company_name,
+              c.opportunity_id, o.title as opportunity_title
+       ${base}
+       order by c.created_at desc
+       limit $1 offset $2`,
+      params
+    ),
+    query<{ count: string }>(`select count(*)::text as count ${base}`, params.slice(2)),
+  ]);
+
+  return { rows, total: parseInt(totals[0]?.count ?? "0", 10) };
+}
+
 export async function subDetail(id: string) {
   const sub = await queryOne<Subcontractor>(`select * from subcontractors where id=$1`, [id]);
   if (!sub) return null;

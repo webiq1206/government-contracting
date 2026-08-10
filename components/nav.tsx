@@ -42,6 +42,7 @@ const MORE: { section: string; items: Item[] }[] = [
     section: "Check on the system",
     items: [
       { href: "/agents", label: "What the system did" },
+      { href: "/email-log", label: "Email log" },
       { href: "/analytics", label: "Results & numbers" },
       { href: "/authority", label: "Site authority" },
       { href: "/how-it-works", label: "How this all works" },

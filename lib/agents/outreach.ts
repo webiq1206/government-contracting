@@ -224,8 +224,9 @@ export const outreach: AgentDefinition = {
     await query(
       `insert into communications
          (subcontractor_id, opportunity_id, channel, direction, subject, body,
-          gmail_message_id, gmail_thread_id, tracking_id, follow_up_at, provider)
-       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9)`,
+          gmail_message_id, gmail_thread_id, tracking_id, follow_up_at, provider,
+          recipient_email)
+       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9,$10)`,
       [
         subcontractorId,
         opportunityId,
@@ -239,6 +240,8 @@ export const outreach: AgentDefinition = {
         // "following up on my note below" about a note that was never sent.
         sent ? followUpAt : null,
         provider,
+        // Capture exact address used — sub record may be updated later.
+        sub.email ?? null,
       ]
     );
 

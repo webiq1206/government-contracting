@@ -84,6 +84,14 @@ export const PAGE_HELP: Record<string, HelpContent> = {
       "Once approved, it emails from your connected Gmail and sends one polite follow-up. New and lost links are tracked automatically.",
     ],
   },
+  "email-log": {
+    title: "Every outreach email, exactly as sent",
+    points: [
+      "Shows every automated email sent to a subcontractor, newest first.",
+      "Click any row to read the full message body as it was delivered.",
+      "Open and click badges update when tracking pixels fire.",
+    ],
+  },
   agents: {
     title: "The automation, fully transparent",
     points: [
