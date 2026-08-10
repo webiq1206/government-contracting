@@ -119,7 +119,7 @@ export function Nav({
     <>
       {/* mobile top bar */}
       <div className="flex items-center justify-between border-b border-border bg-background px-4 py-3 md:hidden">
-        <Wordmark className="text-xl font-semibold text-foreground" />
+        <Wordmark className="h-5" />
         <button className="btn-ghost" onClick={() => setOpen((o) => !o)} aria-label="menu">
           ☰
         </button>
@@ -131,7 +131,7 @@ export function Nav({
         } w-full shrink-0 border-b border-border bg-background md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col md:border-b-0 md:border-r`}
       >
         <div className="hidden shrink-0 px-6 py-6 md:block">
-          <Wordmark className="text-2xl font-semibold tracking-tight text-foreground" />
+          <Wordmark className="h-7" />
           <p className="eyebrow mt-1">Procurement Execution</p>
         </div>
 

@@ -122,7 +122,7 @@ export const outreach: AgentDefinition = {
       `\n\nPlease reply to this email with your price for the ${trade || "described"} scope (include payment terms and any exclusions).`;
     const detailsHtml =
       (detailLines.length
-        ? `<hr/><p>${detailLines.map((l) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br/>")}</p>`
+        ? `<div style="border-top:2px solid #B28F5D;margin-top:16px;padding-top:12px"><p style="color:#242424">${detailLines.map((l) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br/>")}</p></div>`
         : "") +
       (attachmentLinks.length
         ? `<p>Additional documents:<br/>${attachmentLinks

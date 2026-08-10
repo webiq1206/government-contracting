@@ -376,7 +376,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 </p>
                 <p className="mt-1 text-sm text-slate-700">
                   This agency wants proof that your company itself (not your
-                  subcontractors) has done similar work before. BROSTCO does not
+                  subcontractors) has done similar work before. BROST CO does not
                   have that track record yet, so automation stopped here. You can
                   pursue it anyway as an exception, or dismiss it.
                 </p>

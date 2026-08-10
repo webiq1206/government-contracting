@@ -3,9 +3,11 @@
 @tailwind utilities;
 
 /* ==========================================================================
-   BROSTCO brand design system, five tones
-   Bone #F7F5F3 · Charcoal #2C302F · Sage #5D6561 · Mist #9AA098 · Line #E4E1DD
-   Montserrat is the voice; Fraunces italic is a sparing accent (.font-accent).
+   BROST CO brand design system (2026 brand guide)
+   Charcoal #242424 · Gold #B28F5D · Ivory #F7F4EE · Stone #D8D2C7 · White
+   Background stays #F7F5F3 by explicit user preference.
+   Inter is the UI/body voice; GFS Didot is display (.font-display).
+   Gold signals importance only — never a large background field.
    ========================================================================== */
 
 :root {
@@ -14,8 +16,8 @@
 
 html,
 body {
-  background: #F7F5F3; /* Bone */
-  color: #2C302F; /* Charcoal */
+  background: #F7F5F3; /* kept per user preference */
+  color: #242424; /* Charcoal */
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -25,31 +27,30 @@ body {
 *,
 ::before,
 ::after {
-  border-color: #E4E1DD; /* Line, hairlines */
+  border-color: #E6E1D8; /* light stone hairlines */
 }
 
 ::selection {
-  background-color: rgba(93, 101, 97, 0.16); /* Sage tint */
-  color: #2C302F;
+  background-color: rgba(178, 143, 93, 0.20); /* Gold tint */
+  color: #242424;
 }
 
 @layer components {
-  /* Headings. Montserrat carries the voice, tightened tracking for a crisp,
-     modern display feel. (Formerly the serif; renamed from .font-serif.) */
+  /* Headings. GFS Didot: editorial display serif for premium headlines and
+     selective brand moments. */
   .font-display {
-    font-family: theme("fontFamily.sans");
-    font-weight: 600;
-    letter-spacing: -0.015em;
+    font-family: theme("fontFamily.serif");
+    font-weight: 400;
+    letter-spacing: 0.01em;
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
-  /* The accent typeface: Fraunces italic, used sparingly for a single word or
-     the "Co." Applied via class, never as a default. */
+  /* The accent treatment: small-cap-feel gold, echoing the CO in the wordmark.
+     Applied via class, never as a default. */
   .font-accent {
     font-family: theme("fontFamily.serif");
-    font-style: italic;
-    font-weight: 500;
-    font-feature-settings: "kern" 1, "liga" 1, "dlig" 1;
+    color: #B28F5D; /* Gold */
+    font-feature-settings: "kern" 1, "liga" 1;
   }
 
   /* Numeric data. Inter with lining, tabular figures so digits stay aligned and
@@ -81,7 +82,7 @@ body {
     @apply bg-risk text-white hover:bg-red-800;
   }
   .btn-success {
-    @apply bg-accent text-white hover:bg-accent-strong;
+    @apply bg-pursue text-white hover:bg-[#4A5943];
   }
 
   /* Surfaces */
@@ -128,15 +129,15 @@ body {
   }
   .callout-panel {
     @apply rounded-md border border-border bg-accent-soft p-5;
-    border-left: 3px solid #5D6561; /* Sage */
+    border-left: 3px solid #B28F5D; /* Gold */
   }
   .accent-left {
     @apply pl-4;
-    border-left: 3px solid #5D6561; /* Sage */
+    border-left: 3px solid #B28F5D; /* Gold */
   }
   .section-prominent {
     @apply pt-5;
-    border-top: 2px solid #2C302F; /* Charcoal */
+    border-top: 2px solid #242424; /* Charcoal */
   }
 
   /* Collapsible section: a tap-to-expand accordion on mobile, an always-open
@@ -197,10 +198,10 @@ body {
     color: #7A5628;
   }
   .badge-match {
-    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-[0.6875rem] font-semibold uppercase text-accent;
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-[0.6875rem] font-semibold uppercase text-accent-strong;
     letter-spacing: 0.04em;
-    background: #E9ECE8; /* light sage */
-    border: 1px solid rgba(93, 101, 97, 0.28);
+    background: #F3ECE0; /* pale gold */
+    border: 1px solid rgba(178, 143, 93, 0.35);
   }
 }
 
@@ -209,11 +210,11 @@ body {
   width: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #CFCBC4;
+  background: #D8D2C7; /* Stone */
   border-radius: 4px;
 }
 
 :focus-visible {
-  outline: 2px solid #5D6561; /* Sage */
+  outline: 2px solid #7E5E33; /* accessible gold-brown (3:1+ vs background) */
   outline-offset: 2px;
 }

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentUser, hasAnyOperator } from "@/lib/auth";
 import { SetupForm } from "@/components/setup-form";
+import { Wordmark } from "@/components/wordmark";
 
 export const dynamic = "force-dynamic";
 
@@ -19,8 +20,8 @@ export default async function SetupPage() {
       <div className="w-full max-w-sm">
         <div className="mb-10 text-center">
           <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
-          <h1 className="font-display text-5xl font-semibold tracking-tight text-foreground">
-            BROST<span className="font-accent">co</span>
+          <h1 className="flex justify-center">
+            <Wordmark className="h-12" />
           </h1>
           <div className="mx-auto mt-4 h-px w-12 bg-accent" />
           <p className="mt-6 text-sm text-slate-500">

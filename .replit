@@ -1,6 +1,6 @@
 run = "npm run start"
 entrypoint = "app/page.tsx"
-modules = ["nodejs-20", "web", "nix"]
+modules = ["nodejs-20", "web", "nix", "python-base-3.13"]
 hidden = [".next", "node_modules"]
 
 [nix]

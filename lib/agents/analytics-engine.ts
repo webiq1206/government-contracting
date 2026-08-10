@@ -177,7 +177,7 @@ export const analyticsEngine: AgentDefinition = {
     const isMonday = new Date().getDay() === 1;
     if (isMonday && email.enabled()) {
       await email.sendDigest({
-        subject: `BROSTCO Weekly KPIs, ${kpis.win_rate.overall}% win rate`,
+        subject: `BROST CO Weekly KPIs, ${kpis.win_rate.overall}% win rate`,
         html: renderDigestHtml(kpis),
         text: renderDigestText(kpis),
       });
@@ -272,7 +272,7 @@ function renderDigestText(k: {
     .map((b) => `${b.days}d: ${usd(b.amount)}`)
     .join(", ");
   return [
-    `BROSTCO Weekly KPIs`,
+    `BROST CO Weekly KPIs`,
     `Win rate: ${k.win_rate.overall}% (${k.win_rate.won}W/${k.win_rate.lost}L)`,
     `Avg margin on wins: ${k.avg_margin_on_wins_pct}%`,
     `Pipeline value: ${usd(k.pipeline_value)}`,
@@ -303,5 +303,9 @@ function renderDigestHtml(k: {
         `<tr><td style="padding:4px 12px 4px 0">${label}</td><td style="padding:4px 0;font-weight:600">${val}</td></tr>`
     )
     .join("");
-  return `<h2>BROSTCO Weekly KPIs</h2><table style="border-collapse:collapse">${trs}</table>`;
+  return `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424">
+<h2 style="font-family:Georgia,'Times New Roman',serif;font-weight:400;color:#242424;margin:0 0 4px">BROST CO Weekly KPIs</h2>
+<div style="width:48px;height:2px;background:#B28F5D;margin:0 0 14px"></div>
+<table style="border-collapse:collapse">${trs}</table>
+</div>`;
 }

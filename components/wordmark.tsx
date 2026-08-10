@@ -1,12 +1,23 @@
+/* eslint-disable @next/next/no-img-element */
 /**
- * The BROSTCO wordmark. Montserrat carries the name; the "co" is set in the
- * Fraunces-italic accent, the one sparing use of the accent face called for by
- * the brand ("a single word or the Co."). Size/weight come from `className`.
+ * The BROST CO wordmark — the approved artwork, never re-typed (brand guide
+ * rule 01). `variant="dark"` is the charcoal+gold mark for light backgrounds;
+ * `variant="light"` is the white+gold inverse for dark backgrounds. Size via
+ * `className` (height utilities); width scales with the artwork's ratio.
  */
-export function Wordmark({ className }: { className?: string }) {
+export function Wordmark({
+  className,
+  variant = "dark",
+}: {
+  className?: string;
+  variant?: "dark" | "light";
+}) {
   return (
-    <span className={`font-display ${className ?? ""}`}>
-      BROST<span className="font-accent">co</span>
-    </span>
+    <img
+      src={variant === "light" ? "/brand/wordmark-light.png" : "/brand/wordmark-dark.png"}
+      alt="BROST CO"
+      className={`w-auto select-none ${className ?? ""}`}
+      draggable={false}
+    />
   );
 }

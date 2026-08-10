@@ -141,14 +141,14 @@ class PdfWriter {
       y: this.y - size,
       size,
       font: this.fonts.bold,
-      color: rgb(0.09, 0.24, 0.42),
+      color: rgb(0.141, 0.141, 0.141), // brand charcoal #242424
     });
     this.y -= size * 1.4;
     this.page.drawLine({
       start: { x: MARGIN, y: this.y + 2 },
       end: { x: PAGE_WIDTH - MARGIN, y: this.y + 2 },
       thickness: 0.75,
-      color: rgb(0.09, 0.24, 0.42),
+      color: rgb(0.698, 0.561, 0.365), // brand gold #B28F5D
     });
     this.y -= 6;
   }
@@ -198,7 +198,7 @@ async function buildBidPdf(data: BidDocData): Promise<Buffer> {
   const fonts = await makeFonts(doc);
   const w = new PdfWriter(doc, fonts);
 
-  w.text("Bid Proposal", { size: 22, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text("Bid Proposal", { size: 22, bold: true, color: [0.141, 0.141, 0.141] });
   w.gap(4);
   w.text(data.opportunity_title, { size: 14, bold: true });
   w.gap(6);
@@ -245,7 +245,7 @@ async function buildCapabilityStatementPdf(data: CapabilityData): Promise<Buffer
   const fonts = await makeFonts(doc);
   const w = new PdfWriter(doc, fonts);
 
-  w.text(data.company_name, { size: 22, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text(data.company_name, { size: 22, bold: true, color: [0.141, 0.141, 0.141] });
   w.gap(2);
   w.text("Capability Statement", { size: 13, color: [0.3, 0.3, 0.3] });
   if (data.contact) w.text(data.contact, { size: 11, color: [0.3, 0.3, 0.3] });
@@ -399,7 +399,7 @@ async function buildCoverLetterPdf(data: CoverLetterData): Promise<Buffer> {
   const fonts = await makeFonts(doc);
   const w = new PdfWriter(doc, fonts);
 
-  w.text(data.company_name, { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text(data.company_name, { size: 18, bold: true, color: [0.141, 0.141, 0.141] });
   if (data.company_address) w.text(data.company_address, { size: 10, color: [0.35, 0.35, 0.35] });
   if (data.company_contact) w.text(data.company_contact, { size: 10, color: [0.35, 0.35, 0.35] });
   w.gap(10);
@@ -447,7 +447,7 @@ async function buildPricingSchedulePdf(data: PricingScheduleData): Promise<Buffe
   const fonts = await makeFonts(doc);
   const w = new PdfWriter(doc, fonts);
 
-  w.text("Pricing Schedule", { size: 20, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text("Pricing Schedule", { size: 20, bold: true, color: [0.141, 0.141, 0.141] });
   w.gap(2);
   w.text(data.opportunity_title, { size: 12, bold: true });
   if (data.solicitation_number) {
@@ -507,7 +507,7 @@ async function buildRepsAndCertsPdf(data: RepsAndCertsData): Promise<Buffer> {
   const fonts = await makeFonts(doc);
   const w = new PdfWriter(doc, fonts);
 
-  w.text("Representations & Certifications", { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text("Representations & Certifications", { size: 18, bold: true, color: [0.141, 0.141, 0.141] });
   w.text("Offeror data sheet, pre-filled for review and signature", {
     size: 10,
     color: [0.35, 0.35, 0.35],
@@ -577,7 +577,7 @@ async function buildComplianceMatrixPdf(data: ComplianceMatrixDoc): Promise<Buff
   const fonts = await makeFonts(doc);
   const w = new PdfWriter(doc, fonts);
 
-  w.text("Submission Compliance Checklist", { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text("Submission Compliance Checklist", { size: 18, bold: true, color: [0.141, 0.141, 0.141] });
   w.text(data.opportunity_title, { size: 12, bold: true });
   if (data.solicitation_number) {
     w.text(`Solicitation: ${data.solicitation_number}`, { size: 10, color: [0.35, 0.35, 0.35] });
@@ -612,7 +612,7 @@ async function buildAmendmentAckPdf(data: AmendmentAckData): Promise<Buffer> {
   const fonts = await makeFonts(doc);
   const w = new PdfWriter(doc, fonts);
 
-  w.text("Acknowledgment of Amendments", { size: 18, bold: true, color: [0.09, 0.24, 0.42] });
+  w.text("Acknowledgment of Amendments", { size: 18, bold: true, color: [0.141, 0.141, 0.141] });
   w.text(data.opportunity_title, { size: 12, bold: true });
   if (data.solicitation_number) {
     w.text(`Solicitation: ${data.solicitation_number}`, { size: 10, color: [0.35, 0.35, 0.35] });

@@ -201,7 +201,7 @@ export const learningLoop: AgentDefinition = {
         report
       )}</pre>`;
       await email.sendDigest({
-        subject: `BROSTCO Learning Loop, ${wins}W/${losses}L this cycle`,
+        subject: `BROST CO Learning Loop, ${wins}W/${losses}L this cycle`,
         html,
         text: report,
       });

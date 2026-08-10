@@ -51,7 +51,7 @@ export const outreachFollowup: AgentDefinition = {
       await query(`update communications set follow_up_at = null where id = $1`, [row.id]);
       if (!row.email || !row.email_verified) continue;
       const subject = `Following up: ${row.subject ?? "our request"}`;
-      const html = `<p>Just following up on my note below, happy to answer any questions or set up a quick call.</p><hr/>${(row.body ?? "").replace(/\n/g, "<br/>")}`;
+      const html = `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424"><p>Just following up on my note below, happy to answer any questions or set up a quick call.</p><div style="border-top:2px solid #B28F5D;margin-top:16px;padding-top:12px">${(row.body ?? "").replace(/\n/g, "<br/>")}</div></div>`;
       const res = await sendOutreachEmail({
         to: row.email,
         subject,
@@ -579,7 +579,7 @@ export const replyPoll: AgentDefinition = {
                   : ""
           }` +
           ` Updated: marked responsive, reply saved, call card queued.` +
-          `<br/><span style="color:#5D6561">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
+          `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
       );
     }
 
@@ -589,8 +589,8 @@ export const replyPoll: AgentDefinition = {
       await email
         .send({
           to: config.resend.digestTo,
-          subject: `BROSTCO: ${notifyLines.length} subcontractor repl${notifyLines.length === 1 ? "y" : "ies"} received`,
-          html: `<p>Replies just came in. Each sub is marked responsive and has a call card on Today:</p><ul>${notifyLines.join("")}</ul><p>Open Today to start the calls.</p>`,
+          subject: `BROST CO: ${notifyLines.length} subcontractor repl${notifyLines.length === 1 ? "y" : "ies"} received`,
+          html: `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424"><p>Replies just came in. Each sub is marked responsive and has a call card on Today:</p><ul>${notifyLines.join("")}</ul><p>Open Today to start the calls.</p><div style="width:48px;height:2px;background:#B28F5D;margin-top:16px"></div></div>`,
         })
         .catch(() => undefined);
     }
