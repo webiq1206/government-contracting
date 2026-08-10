@@ -54,7 +54,7 @@ export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>
   },
 
   googleMaps: async (v) => {
-    const key = v.GOOGLE_MAPS_API_KEY;
+    const key = v.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
     if (!key) return { ok: false, message: "Enter your Google Maps API key first." };
     const res = await timedFetch(
       `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent("general contractor in Boise ID")}&key=${encodeURIComponent(key)}`

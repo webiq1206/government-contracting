@@ -110,7 +110,7 @@ export const config = {
   },
 
   googleMaps: {
-    get apiKey() { return str("GOOGLE_MAPS_API_KEY"); },
+    get apiKey() { return str("GOOGLE_MAPS_API_KEY") || str("GOOGLE_PLACES_API_KEY"); },
     get enabled() {
       return Boolean(this.apiKey);
     },
