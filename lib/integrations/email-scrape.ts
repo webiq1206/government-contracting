@@ -69,7 +69,7 @@ async function isSafeUrl(url: URL): Promise<boolean> {
  * (re-validated on every redirect hop), manual redirects capped at 3, and a
  * streaming body-size cap so a hostile site can't force an unbounded read.
  */
-async function fetchPage(rawUrl: string): Promise<string | null> {
+export async function safeFetchPage(rawUrl: string): Promise<string | null> {
   try {
     let url = new URL(rawUrl);
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -144,7 +144,7 @@ export async function scrapeWebsiteEmail(website: string): Promise<ScrapedEmail 
   const base = `https://${domain}`;
   const all: ScrapedEmail[] = [];
   for (const path of CONTACT_PATHS) {
-    const html = await fetchPage(base + path);
+    const html = await safeFetchPage(base + path);
     if (!html) continue;
     all.push(...extractEmails(html, domain));
     // Stop early once we have an own-domain hit; more pages won't beat it.

@@ -15,6 +15,7 @@ import { logAgent } from "../logger";
 import { googleMaps } from "../integrations/googleMaps";
 import { hunter } from "../integrations/hunter";
 import { scrapeWebsiteEmail, domainHasMx } from "../integrations/email-scrape";
+import { findWebsiteBysearch } from "../integrations/website-finder";
 import { sam } from "../integrations/sam";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Subcontractor } from "../types";
@@ -88,6 +89,21 @@ export const subVerify: AgentDefinition = {
       }
     }
 
+    // Key-free fallback: find the website via free web search (company name +
+    // city/state), sanity-checked so the wrong company's site is never saved.
+    if (!website) {
+      website = await findWebsiteBysearch({
+        companyName: sub.company_name,
+        city: sub.city ?? null,
+        state: sub.state ?? null,
+      });
+      if (website) {
+        notes.push(`Website discovered via web search: ${website}.`);
+      } else {
+        notes.push("Web-search website lookup found no confident match.");
+      }
+    }
+
     // --- Email discovery + verification ---
     // Ladder: Hunter (domain search / name guess) → website scrape fallback.
     // Verification: Hunter SMTP-level verify when available, else DNS MX check.
@@ -133,22 +149,29 @@ export const subVerify: AgentDefinition = {
       if (scraped) {
         email = scraped.email;
         emailSource = "website_scrape";
-        // Prefer Hunter's SMTP-level verify when configured. A DNS MX check
-        // only proves the domain accepts mail, NOT that this mailbox exists —
-        // so MX-only addresses stay unverified (outreach drafts them for
-        // operator approval instead of auto-sending to a possibly-dead inbox).
+        // Prefer Hunter's SMTP-level verify when configured. Without Hunter,
+        // policy (operator-approved): an address published on the sub's OWN
+        // website whose domain accepts mail (MX) is treated as sendable —
+        // the sub itself asks to be contacted there. Free-mail / off-domain
+        // or MX-missing finds stay unverified drafts for operator approval.
         const v = await hunter.verifyEmail(scraped.email);
         if (!v.disabled) {
           emailVerified = v.status === "valid";
           verification.email_status = v.status ?? null;
         } else {
-          emailVerified = false;
           const mxOk = await domainHasMx(scraped.email);
-          verification.email_status = mxOk ? "mx_ok_unverified" : "mx_missing";
+          emailVerified = mxOk && scraped.ownDomain;
+          verification.email_status = emailVerified
+            ? "scraped_own_domain_mx_ok"
+            : mxOk
+              ? "mx_ok_unverified"
+              : "mx_missing";
           notes.push(
-            mxOk
-              ? "Email scraped from website (domain accepts mail); mailbox unverified — approve manually or add HUNTER_API_KEY for automatic verification."
-              : "Email scraped from website but its domain has no MX records; likely undeliverable."
+            emailVerified
+              ? "Email published on the sub's own website and its domain accepts mail — treated as sendable."
+              : mxOk
+                ? "Email scraped from website is off-domain (free-mail or third party); kept as a draft for operator approval."
+                : "Email scraped from website but its domain has no MX records; likely undeliverable."
           );
         }
         verification.email_own_domain = scraped.ownDomain;
