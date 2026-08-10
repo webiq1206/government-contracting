@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scrubGovtContacts } from "../lib/integrations/scrub-contacts";
+import { scrubGovtContacts, rewriteSamUrls } from "../lib/integrations/scrub-contacts";
 
 describe("scrubGovtContacts", () => {
   // ── Email addresses ──────────────────────────────────────────────────────
@@ -89,6 +89,35 @@ describe("scrubGovtContacts", () => {
     // Contract numbers like W912JC26Q2715 are alphanumeric and won't match
     const { sanitised } = scrubGovtContacts("Solicitation W912JC26Q2715 is due Aug 17.");
     expect(sanitised).toBe("Solicitation W912JC26Q2715 is due Aug 17.");
+  });
+});
+
+describe("rewriteSamUrls", () => {
+  it("rewrites a prod api.sam.gov noticedesc URL to the public sam.gov URL", () => {
+    const input =
+      "Scope: https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=57cdf3ebdd6d4ceb8c69dc9ffd2e8cec";
+    const out = rewriteSamUrls(input);
+    expect(out).toBe(
+      "Scope: https://sam.gov/opp/57cdf3ebdd6d4ceb8c69dc9ffd2e8cec/view"
+    );
+    expect(out).not.toContain("api.sam.gov");
+  });
+
+  it("handles a URL with additional query params", () => {
+    const out = rewriteSamUrls(
+      "https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=abc123def456&index=1"
+    );
+    expect(out).toContain("sam.gov/opp/abc123def456/view");
+  });
+
+  it("leaves non-SAM URLs untouched", () => {
+    const clean = "See https://www.usace.army.mil for more details.";
+    expect(rewriteSamUrls(clean)).toBe(clean);
+  });
+
+  it("leaves clean text without URLs untouched", () => {
+    const clean = "HVAC maintenance at Fort Bragg, NC.";
+    expect(rewriteSamUrls(clean)).toBe(clean);
   });
 });
 

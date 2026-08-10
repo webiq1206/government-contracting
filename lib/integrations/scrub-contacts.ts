@@ -24,6 +24,24 @@ const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
 const REDACTED = "[CONTACT REDACTED]";
 
 /**
+ * Rewrite raw SAM API notice URLs to the public SAM.gov web URL so external
+ * recipients (subs) can actually open the link without an API key.
+ *
+ * Converts:
+ *   https://api.sam.gov/prod/opportunities/v1/noticedesc?noticeid=<id>
+ * To:
+ *   https://sam.gov/opp/<id>/view
+ */
+const SAM_API_RE =
+  /https?:\/\/api\.sam\.gov\/[^?]*[?&]noticeid=([a-fA-F0-9-]{8,})/gi;
+
+export function rewriteSamUrls(text: string): string {
+  return text.replace(SAM_API_RE, (_m, noticeId: string) =>
+    `https://sam.gov/opp/${noticeId}/view`
+  );
+}
+
+/**
  * Remove phone numbers and email addresses from `text`.
  * Returns the sanitised string and a count of how many matches were removed.
  */

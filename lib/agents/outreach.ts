@@ -13,7 +13,7 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { sendOutreachEmail } from "../integrations/email-transport";
-import { scrubGovtContacts } from "../integrations/scrub-contacts";
+import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -75,7 +75,11 @@ export const outreach: AgentDefinition = {
     if (!tmpl) return { ok: false, summary: "no active template_1_outreach template" };
 
     const analysis = opp.solicitation_analysis;
-    const rawScopeSummary = (analysis?.scope_plain_language ?? opp.description ?? "").slice(0, 400);
+    // Rewrite raw api.sam.gov notice URLs to the public sam.gov/opp/{id}/view
+    // equivalent before any further processing so they're clickable for subs.
+    const rawScopeSummary = rewriteSamUrls(
+      (analysis?.scope_plain_language ?? opp.description ?? "").slice(0, 400)
+    );
 
     // Scrub government contact info (CO phone numbers and email addresses) from
     // every solicitation-derived string before it reaches the sub. This prevents
@@ -106,7 +110,10 @@ export const outreach: AgentDefinition = {
       trade,
       scope_summary: scopeSummary,
       questions,
-      sender_name: profile.legal_name,
+      // Use the operator's personal name (owner_name) so the greeting reads
+      // "I'm Jared with BROSTCO Holdings" — not the company name twice.
+      sender_name: profile.owner_name || profile.legal_name,
+      phone: profile.phone ?? "",
       solicitation_number: opp.solicitation_number ?? "",
       agency: opp.agency ?? "",
     };
