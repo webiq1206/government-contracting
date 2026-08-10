@@ -40,7 +40,7 @@ export const DEFAULT_RULES: AutomationRules = {
   lead_action: "review",
   approaching_days: 7,
   urgent_days: 3,
-  retention_days: 0,
+  retention_days: 30,  // 30 days; set to 0 in Settings to keep archived records forever
 };
 
 /** Merge a stored partial config over the defaults, clamping nonsense. */

@@ -34,7 +34,7 @@ describe("normalizeRules", () => {
     expect(r.min_lead_days).toBe(0);
     expect(r.approaching_days).toBe(DEFAULT_RULES.approaching_days);
     expect(r.urgent_days).toBe(1); // min 1
-    expect(r.retention_days).toBe(0);
+    expect(r.retention_days).toBe(DEFAULT_RULES.retention_days); // 30 days default
   });
 
   it("keeps urgent inside approaching", () => {

@@ -5,7 +5,7 @@
  *   - review-expiry-sweep : auto-dismiss review-tier items after the timer (spec)
  *   - reply-poll : detect sub replies via Gmail, mark responsive, trigger Call Prep
  */
-import { query, queryOne } from "../db";
+import { query, queryOne, transaction } from "../db";
 import { gmail } from "../integrations/gmail";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { captureReply, matchInboundReply } from "../reply-capture";
@@ -327,29 +327,36 @@ export const expiredOpportunitySweep: AgentDefinition = {
     // pending human action. Keeping thousands of those forever just buries
     // the real records. Anything with a shred of actual work attached is
     // archived instead, never deleted, because that is business history.
-    const deleted = await query<{ id: string; title: string | null }>(
-      `delete from opportunities o
-        where (
-                (o.deadline is not null and o.deadline < now())
-                or 'below_min_lead_time' = any(coalesce(o.risk_flags, '{}'))
-                or 'deadline_too_soon'   = any(coalesce(o.risk_flags, '{}'))
-              )
-          and o.stage in ('monitoring','scoring','dismissed')
-          and o.human_action_required = false
-          and coalesce(o.notes, '') = ''
-          and not exists (select 1 from bids b           where b.opportunity_id  = o.id)
-          and not exists (select 1 from contracts c      where c.opportunity_id  = o.id)
-          and not exists (select 1 from quotes q         where q.opportunity_id  = o.id)
-          and not exists (select 1 from communications m where m.opportunity_id  = o.id)
-          and not exists (select 1 from call_cards cc    where cc.opportunity_id = o.id)
-        returning o.id, o.title`
-    );
-    if (deleted.length > 0) {
+    //
+    // The WHERE clause is passed into purgeOpportunitiesWithBlobs so it is
+    // re-evaluated atomically inside the DELETE — any bid, quote, or message
+    // added after candidate selection prevents that row from being deleted.
+    const JUNK_WHERE = `
+      (
+        (o.deadline is not null and o.deadline < now())
+        or 'below_min_lead_time' = any(coalesce(o.risk_flags, '{}'))
+        or 'deadline_too_soon'   = any(coalesce(o.risk_flags, '{}'))
+      )
+      and o.stage in ('monitoring','scoring','dismissed')
+      and o.human_action_required = false
+      and coalesce(o.notes, '') = ''
+      and not exists (select 1 from bids b           where b.opportunity_id  = o.id)
+      and not exists (select 1 from contracts c      where c.opportunity_id  = o.id)
+      and not exists (select 1 from quotes q         where q.opportunity_id  = o.id)
+      and not exists (select 1 from communications m where m.opportunity_id  = o.id)
+      and not exists (select 1 from call_cards cc    where cc.opportunity_id = o.id)`;
+
+    let deletedCount = 0;
+    const junkResult = await purgeOpportunitiesWithBlobs(JUNK_WHERE, []);
+    deletedCount = junkResult.deleted;
+    if (deletedCount > 0) {
       await logAgent({
         agent: "expired-opportunity-sweep",
         action: "delete-unworkable",
         level: "info",
-        message: `Deleted ${deleted.length} unworkable notice(s): past the deadline or below your minimum lead time, and never worked (no bid, quote, call, message, or note).`,
+        message:
+          `Deleted ${deletedCount} unworkable notice(s) (past deadline or below min lead time, ` +
+          `never worked); ${junkResult.blobsDeleted} orphaned file blob(s) freed.`,
         reasoning:
           "Keeps the database and search clean. Anything with real work attached is archived instead, never deleted.",
       });
@@ -359,16 +366,115 @@ export const expiredOpportunitySweep: AgentDefinition = {
       ok: true,
       summary:
         `Archived ${expired.length} expired opportunit${expired.length === 1 ? "y" : "ies"}` +
-        (deleted.length > 0 ? `; deleted ${deleted.length} unworkable notice(s).` : "."),
+        (deletedCount > 0 ? `; deleted ${deletedCount} unworkable notice(s).` : "."),
     };
   },
 };
+
+// ---------------------------------------------------------------------------
+// Shared helper: transactional opportunity + orphaned blob deletion
+// ---------------------------------------------------------------------------
+
+type PurgeResult = { deleted: number; blobsDeleted: number; bytesFreed: number };
+
+/**
+ * Atomically purge opportunities that satisfy `whereSql` and clean up their
+ * file blobs — all inside a single database transaction:
+ *
+ *  1. Snapshot document storage paths for matching opportunities, locking the
+ *     opportunity rows (`FOR UPDATE OF o`) to serialise concurrent sweeps.
+ *  2. DELETE opportunities WHERE the **full** eligibility predicate is
+ *     re-evaluated at delete time. Under PostgreSQL's default READ COMMITTED
+ *     isolation each DML statement takes a fresh snapshot, so any bid, quote,
+ *     or other guard row inserted after step 1 will be visible here and will
+ *     prevent that opportunity from being deleted — closing the race.
+ *  3. Delete file_blobs whose path is not referenced by any remaining document
+ *     (shared-path safe: if another opportunity's document still points to the
+ *     same path the blob is kept).
+ *
+ * @param whereSql  Full WHERE clause body (no "WHERE" keyword) referencing
+ *                  the opportunity alias "o". Uses $1, $2, … for params.
+ * @param params    Positional parameters matching `whereSql`.
+ */
+async function purgeOpportunitiesWithBlobs(
+  whereSql: string,
+  params: unknown[]
+): Promise<PurgeResult> {
+  return transaction(async (client) => {
+    // 1. Lock candidate opportunity rows to serialise concurrent sweeps.
+    //    FOR UPDATE requires no DISTINCT, so we lock by ID then get paths
+    //    separately. Under PostgreSQL READ COMMITTED the DELETE in step 3
+    //    takes its own snapshot, re-evaluating all predicates — any bid or
+    //    quote inserted after this lock is acquired will be visible there.
+    const lockRows = await client.query<{ id: string }>(
+      `select o.id from opportunities o where (${whereSql}) for update of o`,
+      params
+    );
+    const candidateIds = lockRows.rows.map((r) => r.id);
+
+    if (candidateIds.length === 0) {
+      return { deleted: 0, blobsDeleted: 0, bytesFreed: 0 };
+    }
+
+    // 2. Snapshot document storage paths for those IDs before cascade removes them.
+    const pathRows = await client.query<{ storage_path: string }>(
+      `select distinct d.storage_path
+         from documents d
+        where d.opportunity_id = any($1)
+          and d.storage_path is not null`,
+      [candidateIds]
+    );
+    const candidatePaths = pathRows.rows.map((r) => r.storage_path);
+
+    // 3. Delete with the full predicate re-evaluated at this statement's
+    //    snapshot so any concurrent bid/quote insertion prevents deletion of
+    //    that row. No id-filter needed: the FOR UPDATE lock in step 1 prevents
+    //    concurrent sweeps from selecting the same rows; the predicate already
+    //    carries all safety guards and any new violation (bid added after lock)
+    //    is visible to this statement's fresh snapshot.
+    const delRows = await client.query<{ id: string }>(
+      `delete from opportunities o where (${whereSql}) returning o.id`,
+      params
+    );
+    const deleted = delRows.rowCount ?? 0;
+
+    // 3. Delete orphaned blobs — only those with no remaining document reference.
+    //    Cascade already removed our doc rows; paths still referenced by other
+    //    documents belong to surviving records and must not be touched.
+    let blobsDeleted = 0;
+    let bytesFreed = 0;
+    if (candidatePaths.length > 0) {
+      const bytesRow = await client.query<{ total: string }>(
+        `select coalesce(sum(octet_length(bytes)), 0)::text as total
+           from file_blobs
+          where path = any($1)
+            and not exists (
+              select 1 from documents d2 where d2.storage_path = file_blobs.path
+            )`,
+        [candidatePaths]
+      );
+      bytesFreed = parseInt(bytesRow.rows[0]?.total ?? "0", 10);
+
+      const blobDel = await client.query(
+        `delete from file_blobs
+          where path = any($1)
+            and not exists (
+              select 1 from documents d2 where d2.storage_path = file_blobs.path
+            )`,
+        [candidatePaths]
+      );
+      blobsDeleted = blobDel.rowCount ?? 0;
+    }
+
+    return { deleted, blobsDeleted, bytesFreed };
+  });
+}
 
 export const retentionSweep: AgentDefinition = {
   name: "retention-sweep",
   label: "Retention Sweep",
   description:
-    "Permanently deletes archived opportunities past the configured retention period, only when they have no bids or contracts. Off by default (retention 0 = keep forever).",
+    "Permanently deletes archived opportunities past the configured retention period (default 30 days), only when they have no bids, contracts, or sub quotes. Also deletes orphaned file_blobs for those documents. Set retention to 0 in Settings to keep records forever.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     const rules = await getAutomationRules();
@@ -378,36 +484,49 @@ export const retentionSweep: AgentDefinition = {
         summary: "Retention is set to keep archived records forever; nothing deleted.",
       };
     }
-    // Safeguards: only archived records, past retention, with NO bid and NO
-    // contract. Anything with a bid or contract is part of the business
-    // record and is never auto-deleted. Cascades clean up their documents,
-    // quotes, sub pairings, and call cards.
-    const deleted = await query<{ id: string; title: string | null }>(
-      `delete from opportunities o
-        where o.status='archived'
-          and o.updated_at < now() - make_interval(days => $1)
-          and not exists (select 1 from bids b where b.opportunity_id = o.id)
-          and not exists (select 1 from contracts c where c.opportunity_id = o.id)
-        returning o.id, o.title`,
+
+    // Eligibility: archived, past the retention window, no bids/contracts/quotes.
+    // The WHERE clause is passed into purgeOpportunitiesWithBlobs so it is
+    // re-evaluated atomically inside the DELETE — preventing a bid or quote
+    // inserted after candidate selection from being silently cascaded away.
+    const RETENTION_WHERE = `
+      o.status = 'archived'
+      and coalesce(o.deadline, o.updated_at::date)::timestamptz
+          < now() - make_interval(days => $1)
+      and not exists (select 1 from bids      b where b.opportunity_id = o.id)
+      and not exists (select 1 from contracts c where c.opportunity_id = o.id)
+      and not exists (select 1 from quotes    q where q.opportunity_id = o.id)`;
+
+    const { deleted, blobsDeleted, bytesFreed } = await purgeOpportunitiesWithBlobs(
+      RETENTION_WHERE,
       [rules.retention_days]
     );
-    if (deleted.length > 0) {
-      await logAgent({
-        agent: "retention-sweep",
-        action: "purge-archived",
-        level: "info",
-        message: `Permanently deleted ${deleted.length} archived opportunit${deleted.length === 1 ? "y" : "ies"} older than ${rules.retention_days} days with no bids or contracts.`,
-        reasoning:
-          "Retention policy (Settings → Automation rules). Records with bids or contracts are always kept.",
-      });
+
+    if (deleted === 0) {
+      return {
+        ok: true,
+        summary: `No archived records past the ${rules.retention_days}-day retention window.`,
+      };
     }
-    return {
-      ok: true,
-      summary:
-        deleted.length > 0
-          ? `Purged ${deleted.length} archived record(s) past the ${rules.retention_days}-day retention.`
-          : `No archived records past the ${rules.retention_days}-day retention.`,
-    };
+
+    const mbFreed = (bytesFreed / 1024 / 1024).toFixed(2);
+    const summary =
+      `Purged ${deleted} archived opportunit${deleted === 1 ? "y" : "ies"} ` +
+      `(${rules.retention_days}-day window); ` +
+      `${blobsDeleted} file blob(s) deleted, ${mbFreed} MB freed.`;
+
+    await logAgent({
+      agent: "retention-sweep",
+      action: "purge-archived",
+      level: "info",
+      message: summary,
+      reasoning:
+        "Retention policy (Settings → Automation rules, default 30 days). " +
+        "Records with bids, contracts, or sub quotes are always kept regardless of age. " +
+        "File blobs are only deleted when no other document references the same path.",
+    });
+
+    return { ok: true, summary };
   },
 };
 

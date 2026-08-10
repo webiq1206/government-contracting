@@ -30,11 +30,16 @@ async function previewCounts(rules: AutomationRules) {
       : Promise.resolve({ n: 0 }),
     rules.retention_days > 0
       ? queryOne<{ n: number }>(
+          // Mirror the retentionSweep predicate exactly so the preview count
+          // matches what the sweep will actually delete.
+          // Uses deadline (falls back to updated_at) and includes the quotes guard.
           `select count(*)::int as n from opportunities o
             where o.status='archived'
-              and o.updated_at < now() - make_interval(days => $1)
-              and not exists (select 1 from bids b where b.opportunity_id = o.id)
-              and not exists (select 1 from contracts c where c.opportunity_id = o.id)`,
+              and coalesce(o.deadline, o.updated_at::date)::timestamptz
+                  < now() - make_interval(days => $1)
+              and not exists (select 1 from bids      b where b.opportunity_id = o.id)
+              and not exists (select 1 from contracts c where c.opportunity_id = o.id)
+              and not exists (select 1 from quotes    q where q.opportunity_id = o.id)`,
           [rules.retention_days]
         )
       : Promise.resolve({ n: 0 }),
