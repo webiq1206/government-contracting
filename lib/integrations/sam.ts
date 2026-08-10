@@ -9,7 +9,8 @@ import { fetchJson, withRetry } from "./http";
 
 const OPP_BASE = "https://api.sam.gov/opportunities/v2/search";
 const ENTITY_BASE = "https://api.sam.gov/entity-information/v3/entities";
-const EXCLUSION_BASE = "https://api.sam.gov/entity-information/v2/exclusions";
+// v4 is the current Exclusions API (v2 is dead and returns 404 for every call).
+const EXCLUSION_BASE = "https://api.sam.gov/entity-information/v4/exclusions";
 
 export interface SamOpportunity {
   noticeId: string;

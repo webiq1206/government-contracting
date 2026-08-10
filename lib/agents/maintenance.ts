@@ -602,3 +602,69 @@ export const replyPoll: AgentDefinition = {
     };
   },
 };
+
+/**
+ * Contact Recheck Sweep — re-runs Sub Verify for subs that still have no
+ * email so contacts get discovered as soon as discovery inputs exist
+ * (Hunter key added, Google Maps key added, or a website saved manually).
+ * Batched small to respect Hunter/Maps API quotas; skips entirely when no
+ * discovery path is configured (nothing would change).
+ */
+export const contactRecheckSweep: AgentDefinition = {
+  name: "contact-recheck-sweep",
+  label: "Contact Recheck Sweep",
+  description:
+    "Re-runs Sub Verify for subcontractors with no email on file, so contacts are discovered once Hunter/Google Maps keys or websites become available.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    // Keys widen the discovery paths, but a website on file is enough for the
+    // key-free scrape path — so only skip a sub when NO path could work for it.
+    const keysAvailable = config.hunter.enabled || config.googleMaps.enabled;
+    // Subs missing an email that are attached to an open opportunity. Bounded
+    // retry: never checked first, then rechecks no sooner than every 7 days
+    // (so earlier "no_email_found"/"no_website" outcomes are reconsidered once
+    // keys or manually-added websites appear, without hammering APIs). Small
+    // batch per run: full verify hits external APIs.
+    const rows = await query<{
+      subcontractor_id: string;
+      opportunity_id: string;
+      trade: string;
+    }>(
+      `select distinct on (s.id) os.subcontractor_id, os.opportunity_id, os.trade
+         from subcontractors s
+         join opportunity_subs os on os.subcontractor_id = s.id
+         join opportunities o on o.id = os.opportunity_id and o.status = 'open'
+        where s.email is null and s.blacklisted = false
+          and (s.contact_checked_at is null or s.contact_checked_at < now() - interval '7 days')
+          and ($1 or s.website is not null)
+        order by s.id, s.contact_checked_at asc nulls first
+        limit 20`,
+      [keysAvailable]
+    );
+    if (rows.length === 0) {
+      return {
+        ok: true,
+        summary: keysAvailable
+          ? "Contact recheck: no subs due for email discovery."
+          : "Contact recheck: no subs due (no discovery keys configured; only subs with a website on file can be checked).",
+      };
+    }
+    const enqueued: AgentResult["enqueued"] = rows.map((r) => ({
+      agent: "sub-verify",
+      payload: {
+        opportunityId: r.opportunity_id,
+        subcontractorId: r.subcontractor_id,
+        trade: r.trade,
+      },
+      opts: {
+        singletonKey: `verify:${r.opportunity_id}:${r.subcontractor_id}:${r.trade}`,
+        singletonSeconds: 3600,
+      },
+    }));
+    return {
+      ok: true,
+      summary: `Contact recheck: enqueued Sub Verify for ${rows.length} sub(s) with no email on file.`,
+      enqueued,
+    };
+  },
+};

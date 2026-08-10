@@ -155,6 +155,7 @@ export const outreach: AgentDefinition = {
       });
       if (res.disabled) {
         humanAction = true;
+        outreachState = "draft";
         await logAgent({
           agent: "outreach",
           action: "send",
@@ -167,6 +168,7 @@ export const outreach: AgentDefinition = {
         });
       } else if (res.error) {
         humanAction = true;
+        outreachState = "send_failed";
         await logAgent({
           agent: "outreach",
           action: "send",
@@ -186,6 +188,7 @@ export const outreach: AgentDefinition = {
     } else {
       // No verified email, record a draft and require a human.
       humanAction = true;
+      outreachState = sub.email ? "email_unverified" : "no_email";
     }
 
     await query(
@@ -201,7 +204,10 @@ export const outreach: AgentDefinition = {
         messageId,
         threadId,
         trackingId,
-        followUpAt,
+        // Only schedule the automated 48h follow-up when the initial message
+        // actually went out — following up on a draft/failed send would email
+        // "following up on my note below" about a note that was never sent.
+        sent ? followUpAt : null,
         provider,
       ]
     );

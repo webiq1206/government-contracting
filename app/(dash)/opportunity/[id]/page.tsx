@@ -35,6 +35,10 @@ const PAST_PERF_LABEL: Record<string, string> = {
 const OUTREACH_LABEL: Record<string, string> = {
   pending: "Not contacted yet",
   sent: "Email sent",
+  draft: "Draft (no email transport)",
+  send_failed: "Send failed",
+  no_email: "No email on file",
+  email_unverified: "Email unverified",
   followed_up: "Followed up",
   responsive: "Responded",
   unresponsive: "No response",

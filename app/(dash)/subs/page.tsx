@@ -26,6 +26,7 @@ export default async function SubsPage({
   };
 
   const subs = await subDatabase(filters);
+  const contactable = subs.filter((s) => s.email && s.email_verified).length;
 
   return (
     <div className="flex h-screen flex-col">
@@ -36,7 +37,7 @@ export default async function SubsPage({
           filters.trade || filters.state || filters.q || minReliability != null
             ? " matching filters"
             : ""
-        }`}
+        } · ${contactable} contactable by email`}
       />
       <SubFilters
         trade={searchParams.trade}
@@ -74,6 +75,7 @@ export default async function SubsPage({
                 <th className="th">Location</th>
                 <th className="th">Rating</th>
                 <th className="th">Reliability</th>
+                <th className="th">Contact</th>
                 <th className="th">License</th>
                 <th className="th">Flags</th>
               </tr>
@@ -150,6 +152,28 @@ export default async function SubsPage({
                     )}
                   </td>
                   <td className="td whitespace-nowrap">
+                    {s.email && s.email_verified ? (
+                      <span className="badge bg-pursue/15 text-pursue" title={s.email}>
+                        Email verified
+                      </span>
+                    ) : s.email ? (
+                      <span className="badge bg-review/15 text-review" title={s.email}>
+                        Email unverified
+                      </span>
+                    ) : s.contact_status === "no_email_found" ? (
+                      <span className="badge bg-slate-200 text-slate-600">No email found</span>
+                    ) : s.contact_status === "no_website" ? (
+                      <span className="badge bg-slate-200 text-slate-600">No website</span>
+                    ) : (
+                      <span
+                        className="badge bg-slate-200 text-slate-500"
+                        title="Sub Verify has not completed email discovery for this sub yet"
+                      >
+                        Not checked
+                      </span>
+                    )}
+                  </td>
+                  <td className="td whitespace-nowrap">
                     {s.license_status ? (
                       <span
                         className={`badge ${
@@ -186,7 +210,7 @@ export default async function SubsPage({
               ))}
               {subs.length === 0 && (
                 <tr>
-                  <td className="td py-8 text-center text-slate-500" colSpan={8}>
+                  <td className="td py-8 text-center text-slate-500" colSpan={9}>
                     No subcontractors match these filters.
                   </td>
                 </tr>

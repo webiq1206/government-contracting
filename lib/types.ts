@@ -394,6 +394,11 @@ export interface Subcontractor {
   reviews_summary: string | null;
   last_contacted: string | null;
   notes: string | null;
+  /** Explicit contactability outcome from Sub Verify:
+   *  'verified' | 'unverified' | 'no_email_found' | 'no_website' | null (never checked). */
+  contact_status: string | null;
+  /** Where the email came from: 'hunter' | 'website_scrape' | 'manual' | null. */
+  email_source: string | null;
 }
 
 export interface ProjectHistoryItem {

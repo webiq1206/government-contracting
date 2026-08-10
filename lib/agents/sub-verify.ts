@@ -14,6 +14,7 @@ import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { googleMaps } from "../integrations/googleMaps";
 import { hunter } from "../integrations/hunter";
+import { scrapeWebsiteEmail, domainHasMx } from "../integrations/email-scrape";
 import { sam } from "../integrations/sam";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Subcontractor } from "../types";
@@ -70,46 +71,104 @@ export const subVerify: AgentDefinition = {
     const notes: string[] = [];
     const verification: Record<string, unknown> = {};
 
-    // --- Email discovery + verification ---
-    let email: string | null = sub.email ?? null;
-    let emailVerified = sub.email_verified ?? false;
-    const domain = domainOf((sub as { website?: string | null }).website ?? null);
-
-    if (domain) {
-      const ds = await hunter.domainSearch(domain);
-      if (ds.disabled) {
-        notes.push("Hunter disabled, email not discovered.");
-      } else {
-        const best = pickBestEmail(ds.emails);
-        if (best) {
-          email = best.value;
-          const v = await hunter.verifyEmail(best.value);
-          emailVerified = v.status === "valid";
-          verification.email_confidence = best.confidence;
-          verification.email_status = v.status ?? null;
-        }
-      }
-    } else {
-      // No website domain, try to guess from the company name.
-      const fe = await hunter.findEmail({ company: sub.company_name, domain: "" });
-      if (fe.disabled) {
-        notes.push("Hunter disabled, email not discovered.");
-      } else if (fe.email) {
-        email = fe.email;
-        const v = await hunter.verifyEmail(fe.email);
-        emailVerified = v.status === "valid";
-        verification.email_status = v.status ?? null;
-      } else {
-        notes.push("No website domain and no email guess available.");
+    // --- Website + phone enrichment via Google Place Details ---
+    // Nearly all subs arrive from Places text search with a place_id but no
+    // website; Place Details is the one call that recovers both website and
+    // phone, and the website is the anchor for all email discovery below.
+    let website: string | null = (sub as { website?: string | null }).website ?? null;
+    let phone: string | null = sub.phone ?? null;
+    const placeId = (sub as { google_place_id?: string | null }).google_place_id ?? null;
+    if ((!website || !phone) && placeId) {
+      const details = await googleMaps.placeDetails(placeId);
+      if (details) {
+        if (!website && details.website) website = details.website;
+        if (!phone && details.phone) phone = details.phone;
+      } else if (!website) {
+        notes.push("Google Maps disabled or Place Details empty; no website on file.");
       }
     }
 
-    // --- Phone via Google Place Details (only if missing) ---
-    let phone: string | null = sub.phone ?? null;
-    const placeId = (sub as { google_place_id?: string | null }).google_place_id ?? null;
-    if (!phone && placeId) {
-      const details = await googleMaps.placeDetails(placeId);
-      if (details?.phone) phone = details.phone;
+    // --- Email discovery + verification ---
+    // Ladder: Hunter (domain search / name guess) → website scrape fallback.
+    // Verification: Hunter SMTP-level verify when available, else DNS MX check.
+    let email: string | null = sub.email ?? null;
+    let emailVerified = sub.email_verified ?? false;
+    let emailSource: string | null = (sub as { email_source?: string | null }).email_source ?? null;
+    const domain = domainOf(website);
+
+    if (!email) {
+      if (domain) {
+        const ds = await hunter.domainSearch(domain);
+        if (ds.disabled) {
+          notes.push("Hunter disabled, skipping Hunter email discovery.");
+        } else {
+          const best = pickBestEmail(ds.emails);
+          if (best) {
+            email = best.value;
+            emailSource = "hunter";
+            const v = await hunter.verifyEmail(best.value);
+            emailVerified = v.status === "valid";
+            verification.email_confidence = best.confidence;
+            verification.email_status = v.status ?? null;
+          }
+        }
+      } else {
+        // No website domain, try to guess from the company name.
+        const fe = await hunter.findEmail({ company: sub.company_name, domain: "" });
+        if (fe.disabled) {
+          notes.push("Hunter disabled, skipping Hunter email discovery.");
+        } else if (fe.email) {
+          email = fe.email;
+          emailSource = "hunter";
+          const v = await hunter.verifyEmail(fe.email);
+          emailVerified = v.status === "valid";
+          verification.email_status = v.status ?? null;
+        }
+      }
+    }
+
+    // Key-free fallback: the sub's own site usually publishes a contact email.
+    if (!email && website) {
+      const scraped = await scrapeWebsiteEmail(website).catch(() => null);
+      if (scraped) {
+        email = scraped.email;
+        emailSource = "website_scrape";
+        // Prefer Hunter's SMTP-level verify when configured. A DNS MX check
+        // only proves the domain accepts mail, NOT that this mailbox exists —
+        // so MX-only addresses stay unverified (outreach drafts them for
+        // operator approval instead of auto-sending to a possibly-dead inbox).
+        const v = await hunter.verifyEmail(scraped.email);
+        if (!v.disabled) {
+          emailVerified = v.status === "valid";
+          verification.email_status = v.status ?? null;
+        } else {
+          emailVerified = false;
+          const mxOk = await domainHasMx(scraped.email);
+          verification.email_status = mxOk ? "mx_ok_unverified" : "mx_missing";
+          notes.push(
+            mxOk
+              ? "Email scraped from website (domain accepts mail); mailbox unverified — approve manually or add HUNTER_API_KEY for automatic verification."
+              : "Email scraped from website but its domain has no MX records; likely undeliverable."
+          );
+        }
+        verification.email_own_domain = scraped.ownDomain;
+      }
+    }
+
+    // Explicit contactability outcome — "no email" must never be silent.
+    const contactStatus = email
+      ? emailVerified
+        ? "verified"
+        : "unverified"
+      : website
+        ? "no_email_found"
+        : "no_website";
+    if (!email) {
+      notes.push(
+        website
+          ? "No contact email found via Hunter or website scrape."
+          : "No website on file, email discovery impossible."
+      );
     }
 
     // --- License status: no state-license API yet ---
@@ -164,7 +223,9 @@ export const subVerify: AgentDefinition = {
     await query(
       `update subcontractors
          set email=$2, email_verified=$3, phone=$4, license_status=$5,
-             sam_excluded=$6, reviews_summary=$7, bbb_summary=$8
+             sam_excluded=$6, reviews_summary=$7, bbb_summary=$8,
+             website=coalesce($9, website), contact_status=$10, email_source=$11,
+             contact_checked_at=now()
        where id=$1`,
       [
         subcontractorId,
@@ -175,6 +236,9 @@ export const subVerify: AgentDefinition = {
         samExcluded,
         reviewsSummary,
         bbbSummary,
+        website,
+        contactStatus,
+        emailSource,
       ]
     );
 
@@ -185,7 +249,10 @@ export const subVerify: AgentDefinition = {
     verification.notes = notes;
     verification.email = email;
     verification.email_verified = emailVerified;
+    verification.email_source = emailSource;
+    verification.contact_status = contactStatus;
     verification.phone = phone;
+    verification.website = website;
 
     await query(
       `update opportunity_subs
@@ -212,7 +279,7 @@ export const subVerify: AgentDefinition = {
     }
 
     const summary = `Verified ${sub.company_name}: email ${
-      emailVerified ? "verified" : email ? "unverified" : "not found"
+      emailVerified ? `verified (${emailSource ?? "existing"})` : email ? "unverified" : website ? "not found" : "not found (no website)"
     }, SAM ${samExcluded ? "EXCLUDED" : samConfirmed ? "clear" : "UNVERIFIED"}, license ${licenseStatus}${
       passes ? " → outreach queued" : " → held (failed standards)"
     }.`;
@@ -223,7 +290,7 @@ export const subVerify: AgentDefinition = {
       reasoning: `Standards gate: sam_excluded=${samExcluded}, rating_ok=${ratingOk}. Notes: ${
         notes.join(" ") || "none"
       }`,
-      data: { email, emailVerified, phone, samExcluded, licenseStatus, needsProjectHistory, passes },
+      data: { email, emailVerified, emailSource, contactStatus, website, phone, samExcluded, licenseStatus, needsProjectHistory, passes },
       enqueued,
     };
   },
