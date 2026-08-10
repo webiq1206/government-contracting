@@ -186,7 +186,7 @@ export function QuoteEntryForm({
       ))}
 
       {error && <p className="text-sm text-risk">{error}</p>}
-      {notice && !error && <p className="text-sm text-accent">{notice}</p>}
+      {notice && !error && <p className="text-sm text-pursue">{notice}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
         <button

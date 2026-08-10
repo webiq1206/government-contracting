@@ -35,7 +35,7 @@ export function OpportunityJourney({ stage }: { stage: string }) {
               step.status === "done"
                 ? "border-pursue/30 bg-pursue/10 text-pursue"
                 : step.status === "current"
-                  ? "border-accent bg-accent-soft font-semibold text-accent-strong"
+                  ? "border-pursue bg-pursue-soft font-semibold text-pursue-strong"
                   : "border-border bg-surface text-slate-500"
             }`}
           >
@@ -44,7 +44,7 @@ export function OpportunityJourney({ stage }: { stage: string }) {
             ) : step.status === "current" ? (
               <span
                 aria-hidden
-                className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent"
+                className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-pursue"
               />
             ) : null}
             {step.label}

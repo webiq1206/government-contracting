@@ -78,7 +78,7 @@ function OppActionRow({
         {party && !inlineTriage && (
           <span
             className={`badge ${
-              party === "you" ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"
+              party === "you" ? "bg-pursue/10 text-pursue" : "bg-slate-200 text-slate-600"
             }`}
           >
             waiting on {PARTY_LABEL[party]}

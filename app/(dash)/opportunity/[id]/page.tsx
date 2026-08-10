@@ -174,12 +174,12 @@ export default async function OpportunityPage({ params }: { params: { id: string
           <div className="scroll-mt-12 px-5 pt-5" id="quotes">
             <div
               className={`card ${
-                emphasizeQuotePanel ? "border-accent bg-accent-soft" : ""
+                emphasizeQuotePanel ? "border-pursue bg-pursue-soft" : ""
               }`}
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <div>
-                  <p className="eyebrow text-accent-strong">Your turn</p>
+                  <p className="eyebrow text-pursue-strong">Your turn</p>
                   <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
                     {quotesEntered === 0
                       ? "Enter subcontractor quotes"

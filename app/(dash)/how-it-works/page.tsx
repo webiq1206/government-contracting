@@ -119,7 +119,7 @@ function StepRow({ step, last }: { step: Step; last: boolean }) {
       <span
         className={`num relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
           isYou
-            ? "border-accent bg-accent text-white"
+            ? "border-pursue bg-pursue text-white"
             : "border-border bg-background text-slate-500"
         }`}
       >
@@ -132,7 +132,7 @@ function StepRow({ step, last }: { step: Step; last: boolean }) {
           </h3>
           <span
             className={`badge ${
-              isYou ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"
+              isYou ? "bg-pursue/10 text-pursue" : "bg-slate-200 text-slate-600"
             }`}
           >
             {isYou ? "needs you" : "automatic"}

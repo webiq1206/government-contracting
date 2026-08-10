@@ -264,7 +264,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
             )}
 
             {result && (
-              <p className={`text-sm ${result.ok ? "text-accent" : "text-risk"}`}>
+              <p className={`text-sm ${result.ok ? "text-pursue" : "text-risk"}`}>
                 {result.message}
               </p>
             )}

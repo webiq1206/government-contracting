@@ -8,6 +8,8 @@
    Background stays #F7F5F3 by explicit user preference.
    Inter is the UI/body voice; GFS Didot is display (.font-display).
    Gold signals importance only — never a large background field.
+   Sage green (`pursue` #5A6B52 family) is the positive/"go" accent: success,
+   matches, progress, and "your turn" cues. Gold stays brand emphasis.
    ========================================================================== */
 
 :root {
@@ -82,7 +84,7 @@ body {
     @apply bg-risk text-white hover:bg-red-800;
   }
   .btn-success {
-    @apply bg-pursue text-white hover:bg-[#4A5943];
+    @apply bg-pursue text-white hover:bg-pursue-strong;
   }
 
   /* Surfaces */
@@ -198,10 +200,11 @@ body {
     color: #7A5628;
   }
   .badge-match {
-    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-[0.6875rem] font-semibold uppercase text-accent-strong;
+    /* A positive "this fits" signal, so it reads green, not gold. */
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-[0.6875rem] font-semibold uppercase text-pursue-strong;
     letter-spacing: 0.04em;
-    background: #F3ECE0; /* pale gold */
-    border: 1px solid rgba(178, 143, 93, 0.35);
+    background: #E9EDE5; /* pale sage */
+    border: 1px solid rgba(90, 107, 82, 0.35);
   }
 }
 

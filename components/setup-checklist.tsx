@@ -26,7 +26,7 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
       </div>
 
       <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-background">
-        <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-pursue" style={{ width: `${pct}%` }} />
       </div>
 
       <p className="mt-3 text-sm text-slate-600">

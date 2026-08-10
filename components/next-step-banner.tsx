@@ -22,7 +22,7 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
     <div
       className={`flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 ${
         step.tone === "action"
-          ? "border-accent/40 bg-accent-soft"
+          ? "border-pursue/40 bg-pursue-soft"
           : step.tone === "warn"
             ? "border-review/40 bg-review/5"
             : "border-border bg-surface"
@@ -36,7 +36,7 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
           <span
             className={`badge ${
               step.waitingOn === "you"
-                ? "bg-accent/10 text-accent"
+                ? "bg-pursue/10 text-pursue"
                 : "bg-slate-200 text-slate-600"
             }`}
           >

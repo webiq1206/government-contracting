@@ -39,7 +39,17 @@ const config: Config = {
 
         // Functional status tones, muted to sit in the warm palette while staying
         // clearly distinguishable (go / caution / danger).
+        //
+        // GREEN vs GOLD roles:
+        //   `pursue` (sage green) is the positive/"go" accent: success states,
+        //   match badges, progress/coverage fills, "system is working" and
+        //   "your turn" cues. `accent`/`gold` stay the brand-emphasis accent:
+        //   rules, selected navigation, editorial highlights, brand moments.
+        // pursue is AA (5.2:1) as text on the page ground and on pursue-soft,
+        // and carries white text at 5.7:1 on filled controls.
         pursue: "#5A6B52",
+        "pursue-strong": "#4A5943", // deeper (hover / emphasis)
+        "pursue-soft": "#E9EDE5", // pale sage tint for filled chips/panels
         // Caution amber, deep enough that 12px badge text passes WCAG AA
         // (4.5:1) on both the light background and the /15 tint.
         review: "#855C2C",

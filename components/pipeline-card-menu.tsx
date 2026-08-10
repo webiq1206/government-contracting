@@ -119,7 +119,7 @@ export function PipelineCardMenu({
         >
           {canPursue && (
             <MenuItem disabled={busy} onClick={(e) => run(e, "pursue")}>
-              <span className="text-accent-strong">Pursue now</span>
+              <span className="text-pursue-strong">Pursue now</span>
               <span className="block text-xs text-slate-500">
                 Skip ahead and start the analysis
               </span>
@@ -157,7 +157,7 @@ export function PipelineCardMenu({
           {msg && (
             <p
               className={`border-t border-border px-3 py-2 text-xs ${
-                msg.ok ? "text-accent" : "text-risk"
+                msg.ok ? "text-pursue" : "text-risk"
               }`}
             >
               {msg.text}

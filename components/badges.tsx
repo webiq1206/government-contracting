@@ -9,7 +9,7 @@ export function TierBadge({ tier }: { tier: string | null }) {
 export function ScoreBadge({ score }: { score: number | null }) {
   if (score == null) return <span className="text-slate-500">-</span>;
   const color =
-    score >= 70 ? "text-accent" : score >= 50 ? "text-review" : "text-slate-600";
+    score >= 70 ? "text-pursue" : score >= 50 ? "text-review" : "text-slate-600";
   return <span className={`num text-base font-semibold ${color}`}>{score}</span>;
 }
 

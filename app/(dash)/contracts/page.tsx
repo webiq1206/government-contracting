@@ -31,7 +31,7 @@ function milestoneStatusClass(status?: string): string {
       return "bg-pursue/15 text-pursue";
     case "in_progress":
     case "active":
-      return "bg-accent/10 text-accent";
+      return "bg-pursue/10 text-pursue";
     case "overdue":
     case "late":
     case "blocked":

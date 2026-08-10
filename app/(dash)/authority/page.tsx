@@ -119,7 +119,7 @@ export default async function AuthorityPage() {
                   : `▼ ${Math.abs(drDelta)} since tracking began`}
             </p>
             <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-200">
-              <div className="h-full rounded-full bg-accent" style={{ width: `${progressPct}%` }} />
+              <div className="h-full rounded-full bg-pursue" style={{ width: `${progressPct}%` }} />
             </div>
             <p className="mt-1 text-xs text-slate-500">Goal: DR {DR_GOAL}</p>
           </div>

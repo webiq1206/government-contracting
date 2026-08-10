@@ -68,9 +68,9 @@ export function TodayLive() {
           setStale(false);
           router.refresh();
         }}
-        className="pointer-events-auto flex items-center gap-2 rounded-full border border-accent/50 bg-accent-soft px-4 py-1.5 text-sm font-medium text-accent-strong shadow-lg transition-colors hover:border-accent"
+        className="pointer-events-auto flex items-center gap-2 rounded-full border border-pursue/50 bg-pursue-soft px-4 py-1.5 text-sm font-medium text-pursue-strong shadow-lg transition-colors hover:border-pursue"
       >
-        <span aria-hidden className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />
+        <span aria-hidden className="inline-block h-2 w-2 animate-pulse rounded-full bg-pursue" />
         New activity, refresh the list
       </button>
     </div>

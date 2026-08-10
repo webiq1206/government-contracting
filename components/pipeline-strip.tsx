@@ -43,7 +43,7 @@ export function PipelineStrip({ counts }: { counts: { stage: string; count: numb
         <p className="eyebrow">Where your pipeline stands</p>
         <div className="flex items-center gap-3 text-xs text-slate-500">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-accent" /> automatic
+            <span className="h-2.5 w-2.5 rounded-full bg-pursue" /> automatic
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-review" /> needs you
@@ -71,8 +71,8 @@ export function PipelineStrip({ counts }: { counts: { stage: string; count: numb
                     active
                       ? needsYou
                         ? "border-review bg-review text-white shadow-sm group-hover:brightness-95"
-                        : "border-accent bg-accent text-white shadow-sm group-hover:bg-accent-strong"
-                      : "border-border bg-background text-slate-300 group-hover:border-accent/50"
+                        : "border-pursue bg-pursue text-white shadow-sm group-hover:bg-pursue-strong"
+                      : "border-border bg-background text-slate-300 group-hover:border-pursue/50"
                   }`}
                 >
                   {count}
@@ -93,7 +93,7 @@ export function PipelineStrip({ counts }: { counts: { stage: string; count: numb
                 <span
                   aria-hidden
                   className={`mt-[21px] h-0.5 w-6 rounded-full ${
-                    connectorFilled ? "bg-accent" : "bg-border"
+                    connectorFilled ? "bg-pursue" : "bg-border"
                   }`}
                 />
               )}
