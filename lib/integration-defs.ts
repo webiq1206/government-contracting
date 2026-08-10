@@ -151,7 +151,7 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
   {
     id: "gmail",
     name: "Gmail",
-    what: "Sends subcontractor outreach from your address, sends the 48-hour follow-ups, and detects replies to queue calls automatically.",
+    what: "Sends subcontractor outreach from your address, sends the 48-hour follow-ups, and detects replies to queue calls automatically. Reply detection and automatic price capture require Gmail (Resend can send, but cannot read your inbox).",
     without: "No automated outreach emails; you contact subs manually.",
     where: "console.cloud.google.com → OAuth client (Web) → paste ID + secret here, then click Connect Gmail.",
     fields: [
@@ -177,12 +177,14 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
   {
     id: "resend",
     name: "Resend",
-    what: "Sends your daily analytics digest and system emails.",
+    what: "Sends your daily analytics digest and system emails. Also carries subcontractor outreach and follow-ups whenever Gmail is not connected; add the inbound webhook secret to capture replies and prices automatically without Gmail.",
     without: "No email digests (everything is still visible in the app).",
-    where: "resend.com → API Keys.",
+    where: "resend.com → API Keys. For reply capture: resend.com → Webhooks → add endpoint /api/webhooks/resend-inbound (event: email.received) and paste its signing secret.",
     fields: [
       { env: "RESEND_API_KEY", label: "API key", secret: true },
       { env: "DIGEST_EMAIL_TO", label: "Send digest to", secret: false, placeholder: "you@yourcompany.com" },
+      { env: "RESEND_OUTREACH_FROM", label: "Outreach send-from (optional)", secret: false, placeholder: "BROSTCO <info@brostco.com>" },
+      { env: "RESEND_WEBHOOK_SECRET", label: "Inbound webhook signing secret (optional)", secret: true, placeholder: "whsec_..." },
     ],
     testable: true,
     guide: {

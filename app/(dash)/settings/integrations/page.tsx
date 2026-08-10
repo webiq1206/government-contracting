@@ -1,4 +1,4 @@
-import { integrationStatus } from "@/lib/config";
+import { config, integrationStatus } from "@/lib/config";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { IntegrationManager } from "@/components/integration-manager";
@@ -20,8 +20,18 @@ export default async function IntegrationsPage({
   ]);
   const status = integrationStatus();
   const gmailParam = searchParams?.gmail;
+  const resendOutreachActive = !gmailConnected && config.resend.enabled;
 
   const initial = INTEGRATION_DEFS.map((def) => {
+    // When Resend is carrying outreach, the Gmail card's "no outreach" warning
+    // is wrong; say what is actually happening instead.
+    const without =
+      def.id === "gmail" && resendOutreachActive
+        ? `Outreach and follow-ups are sending via Resend from ${config.resend.outreachFrom}.` +
+          (config.resend.inboundEnabled
+            ? " Reply detection and price capture run through the Resend inbound webhook."
+            : " Connect Gmail (or add the Resend inbound webhook secret) to enable reply detection and automatic price capture.")
+        : def.without;
     const fields = def.fields.map((f) => ({
       ...f,
       ...(sources[f.env] ?? { source: "none" as const, masked: null }),
@@ -32,6 +42,7 @@ export default async function IntegrationsPage({
       (required.length > 0 && required.every((f) => f.source !== "none"));
     return {
       ...def,
+      without,
       fields,
       configured: def.id === "gmail" ? gmailConnected || configured : configured,
       gmailConnected: def.id === "gmail" ? gmailConnected : undefined,
@@ -62,6 +73,16 @@ export default async function IntegrationsPage({
         {gmailParam === "denied" && (
           <div className="card border-review/40 bg-review/5 text-sm text-review">
             Gmail connection was denied. You can retry below.
+          </div>
+        )}
+        {resendOutreachActive && (
+          <div className="card border-accent/40 bg-accent-soft/60 text-sm text-accent-strong">
+            Subcontractor outreach is sending via <strong>Resend</strong> from{" "}
+            {config.resend.outreachFrom}.{" "}
+            {config.resend.inboundEnabled
+              ? "Replies are captured automatically through the Resend inbound webhook (prices are extracted and saved to the record)."
+              : "Reply detection and automatic price capture need Gmail connected or the Resend inbound webhook configured (add the webhook signing secret below)."}{" "}
+            Make sure the sender domain is verified in Resend, or sends will fail.
           </div>
         )}
         {gmailParam === "error" && (

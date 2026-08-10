@@ -15,6 +15,26 @@ import { query, queryOne } from "../db";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { promises as fs } from "fs";
 import path from "path";
+import { createHmac, timingSafeEqual } from "crypto";
+
+/** HMAC token for time-limited public access to a stored file. */
+export function fileToken(key: string, exp: number): string {
+  return createHmac("sha256", config.auth.secret)
+    .update(`file:${key}:${exp}`)
+    .digest("hex");
+}
+
+/** Validate a file-access token produced by `fileToken`. */
+export function verifyFileToken(key: string, exp: number, sig: string): boolean {
+  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return false;
+  const expected = fileToken(key, exp);
+  if (sig.length !== expected.length) return false;
+  try {
+    return timingSafeEqual(Buffer.from(sig, "hex"), Buffer.from(expected, "hex"));
+  } catch {
+    return false;
+  }
+}
 
 type Backend = "supabase" | "db" | "local";
 
@@ -137,8 +157,13 @@ export const storage = {
     }
     // Encode each path segment (not the whole key) so slashes stay real path
     // separators, encoding them to %2F produces URLs some proxies/CDNs 404 on.
+    // Sign the URL with a time-limited HMAC token so external recipients
+    // (e.g. subcontractors receiving document links) can access it without an
+    // app login.
     const encoded = key.split("/").map(encodeURIComponent).join("/");
-    return `${config.appUrl}/api/files/${encoded}`;
+    const exp = Math.floor(Date.now() / 1000) + expiresSeconds;
+    const sig = fileToken(key, exp);
+    return `${config.appUrl}/api/files/${encoded}?exp=${exp}&sig=${sig}`;
   },
 
   /** Best-effort private bucket creation. No-op when Supabase is unconfigured. */

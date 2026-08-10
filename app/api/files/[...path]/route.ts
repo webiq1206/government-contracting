@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
-import { storage } from "@/lib/integrations/storage";
+import { storage, verifyFileToken } from "@/lib/integrations/storage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,13 +11,21 @@ const MIME: Record<string, string> = {
 };
 
 /** Serve a stored document (local backend) or redirect to a Supabase signed URL. */
-export async function GET(_req: Request, { params }: { params: { path: string[] } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
-
+export async function GET(req: Request, { params }: { params: { path: string[] } }) {
   const key = params.path.join("/");
   // Reject traversal.
   if (key.includes("..")) return NextResponse.json({ error: "bad path" }, { status: 400 });
+
+  // Access: either a valid time-limited signed token (links emailed to
+  // external recipients, e.g. subcontractors) or a logged-in app user.
+  const url = new URL(req.url);
+  const exp = Number(url.searchParams.get("exp"));
+  const sig = url.searchParams.get("sig") ?? "";
+  const tokenOk = sig !== "" && verifyFileToken(key, exp, sig);
+  if (!tokenOk) {
+    const auth = await requireUser();
+    if (auth instanceof NextResponse) return auth;
+  }
 
   try {
     const signed = await storage.signedUrl(key);

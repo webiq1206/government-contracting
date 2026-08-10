@@ -7,6 +7,8 @@
  */
 import { query, queryOne } from "../db";
 import { gmail } from "../integrations/gmail";
+import { sendOutreachEmail } from "../integrations/email-transport";
+import { captureReply, matchInboundReply } from "../reply-capture";
 import { sms } from "../integrations/twilio";
 import { email } from "../integrations/resend";
 import { config } from "../config";
@@ -50,12 +52,17 @@ export const outreachFollowup: AgentDefinition = {
       if (!row.email || !row.email_verified) continue;
       const subject = `Following up: ${row.subject ?? "our request"}`;
       const html = `<p>Just following up on my note below, happy to answer any questions or set up a quick call.</p><hr/>${(row.body ?? "").replace(/\n/g, "<br/>")}`;
-      const res = await gmail.send({ to: row.email, subject, html, trackingId: row.tracking_id ?? undefined });
+      const res = await sendOutreachEmail({
+        to: row.email,
+        subject,
+        html,
+        trackingId: row.tracking_id ?? undefined,
+      });
       if (!res.disabled && !res.error) {
         await query(
-          `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id)
-           values ($1,$2,'email','outbound',$3,$4,$5)`,
-          [row.subcontractor_id, row.opportunity_id, subject, html, res.messageId ?? null]
+          `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider)
+           values ($1,$2,'email','outbound',$3,$4,$5,$6)`,
+          [row.subcontractor_id, row.opportunity_id, subject, html, res.messageId ?? null, res.provider]
         );
         sent++;
       }
@@ -502,65 +509,75 @@ export const replyPoll: AgentDefinition = {
     const notifyLines: string[] = [];
     let matched = 0;
     for (const r of replies) {
-      // Match reply to an outbound communication by thread id, else by sender email.
+      // Match reply to an outbound communication by thread id (reliable), else
+      // by sender email (weaker: an unrelated email from a known sub would also
+      // match, so email-matched replies never auto-save quotes).
       const fromEmail = (r.from.match(/<([^>]+)>/)?.[1] ?? r.from).toLowerCase().trim();
-      const comm = await queryOne<{
-        id: string;
-        subcontractor_id: string;
-        opportunity_id: string;
-        company_name: string;
-        opportunity_title: string | null;
-      }>(
-        `select c.id, c.subcontractor_id, c.opportunity_id,
-                s.company_name, o.title as opportunity_title
-           from communications c
-           join subcontractors s on s.id = c.subcontractor_id
-           join opportunities o on o.id = c.opportunity_id
-          where (c.gmail_thread_id = $1 or lower(s.email) = $2)
-            and c.direction='outbound' and c.replied_at is null
-          order by c.created_at desc limit 1`,
-        [r.threadId, fromEmail]
-      );
+      const { comm, strongMatch } = await matchInboundReply({
+        threadId: r.threadId,
+        fromEmail,
+      });
       if (!comm) continue;
       matched++;
-      const mentionedPrice = extractMentionedPrice(r.snippet);
-      await query(
-        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, replied_at)
-         values ($1,$2,'email','inbound',$3,$4,$5,$6, now())`,
-        [comm.subcontractor_id, comm.opportunity_id, "Re: outreach", r.snippet, r.threadId, r.messageId]
-      );
-      await query(`update communications set replied_at = now() where id = $1`, [comm.id]);
-      await query(
-        `update opportunity_subs set outreach_state='responsive', responded_at=now()
-          where opportunity_id=$1 and subcontractor_id=$2`,
-        [comm.opportunity_id, comm.subcontractor_id]
-      );
-      enqueued.push({
-        agent: "call-prep",
-        payload: {
-          opportunityId: comm.opportunity_id,
-          subcontractorId: comm.subcontractor_id,
-          ...(mentionedPrice != null ? { emailMentionedPrice: mentionedPrice } : {}),
-        },
+
+      const replyText = r.body || r.snippet;
+      // Shared capture pipeline: resolves/creates the sub, records the reply,
+      // marks responsive, and auto-saves the quote only under the safety rules
+      // (strong correlation + sender ownership + AI-confirmed price + no
+      // existing quote).
+      const result = await captureReply({
+        comm,
+        strongMatch,
+        fromEmail,
+        replyText,
+        threadId: r.threadId,
+        messageId: r.messageId,
       });
+      // Already captured (e.g. by the Resend inbound webhook or a previous
+      // poll of the sliding window): skip notifications and re-enqueues.
+      if (result.duplicate) continue;
+      const { subId, companyName, extracted, quoteSaved, quoteSkippedExisting } = result;
+      const mentionedPrice = extracted.quoteAmount ?? extractMentionedPrice(replyText);
+
+      if (subId) {
+        enqueued.push({
+          agent: "call-prep",
+          payload: {
+            opportunityId: comm.opportunity_id,
+            subcontractorId: subId,
+            ...(mentionedPrice != null ? { emailMentionedPrice: mentionedPrice } : {}),
+          },
+        });
+      }
 
       // Tell the operator exactly what happened and what changed.
-      const priceNote =
-        mentionedPrice != null
-          ? ` Their email mentions $${mentionedPrice.toLocaleString()}, confirm it on the call.`
-          : "";
+      const priceNote = quoteSaved
+        ? ` Their quote of $${extracted.quoteAmount!.toLocaleString()} was saved to the record; confirm it on the call.`
+        : quoteSkippedExisting
+          ? ` Their email quotes $${extracted.quoteAmount!.toLocaleString()}, but a quote already exists for this sub on this job — review and update it manually if needed.`
+          : mentionedPrice != null
+            ? ` Their email mentions $${mentionedPrice.toLocaleString()}, confirm it on the call.`
+            : "";
       await logAgent({
         agent: "reply-poll",
         action: "reply-received",
         opportunityId: comm.opportunity_id,
-        subcontractorId: comm.subcontractor_id,
+        subcontractorId: subId ?? undefined,
         level: "success",
-        message: `${comm.company_name} replied about "${comm.opportunity_title ?? "an opportunity"}". Marked responsive; their reply is saved on the record and a call card is being prepared for Today.${priceNote}`,
-        reasoning: `Reply snippet: ${r.snippet.slice(0, 300)}`,
+        message: `${companyName ?? fromEmail} replied about "${comm.opportunity_title ?? "an opportunity"}". Marked responsive; their reply is saved on the record and a call card is being prepared for Today.${priceNote}`,
+        reasoning: `Reply excerpt: ${replyText.slice(0, 300)}`,
       });
       notifyLines.push(
-        `<li><strong>${comm.company_name}</strong> replied about &ldquo;${comm.opportunity_title ?? "an opportunity"}&rdquo;.` +
-          `${mentionedPrice != null ? ` Mentions <strong>$${mentionedPrice.toLocaleString()}</strong>.` : ""}` +
+        `<li><strong>${companyName ?? fromEmail}</strong> replied about &ldquo;${comm.opportunity_title ?? "an opportunity"}&rdquo;.` +
+          `${
+            quoteSaved
+              ? ` Quote <strong>$${extracted.quoteAmount!.toLocaleString()}</strong> saved automatically.`
+              : quoteSkippedExisting
+                ? ` Quotes <strong>$${extracted.quoteAmount!.toLocaleString()}</strong>, but an existing quote is on file — review manually.`
+                : mentionedPrice != null
+                  ? ` Mentions <strong>$${mentionedPrice.toLocaleString()}</strong>.`
+                  : ""
+          }` +
           ` Updated: marked responsive, reply saved, call card queued.` +
           `<br/><span style="color:#5D6561">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
       );

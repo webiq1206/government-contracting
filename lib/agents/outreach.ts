@@ -12,7 +12,8 @@ import { randomUUID } from "node:crypto";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
-import { gmail } from "../integrations/gmail";
+import { sendOutreachEmail } from "../integrations/email-transport";
+import { gatherOpportunityAttachments } from "../opportunity-attachments";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -89,28 +90,68 @@ export const outreach: AgentDefinition = {
       scope_summary: scopeSummary,
       questions,
       sender_name: profile.legal_name,
+      solicitation_number: opp.solicitation_number ?? "",
+      agency: opp.agency ?? "",
     };
 
     const subject = render(tmpl.subject ?? "Partnership opportunity", vars);
     const plainBody = render(tmpl.body, vars);
-    const html = plainBody.replace(/\n/g, "<br>");
+
+    // Solicitation/SOW documents so the sub has everything needed to price
+    // the work. Oversized/unfetchable docs become links instead.
+    const { files: attachments, links: attachmentLinks } = await gatherOpportunityAttachments(
+      opp
+    ).catch(() => ({ files: [], links: [] }));
+
+    // Pricing-relevant details block, appended regardless of template so every
+    // outreach email carries the reference info and a clear price ask.
+    const detailLines = [
+      opp.title ? `Project: ${opp.title}` : "",
+      opp.solicitation_number ? `Solicitation #: ${opp.solicitation_number}` : "",
+      opp.agency ? `Agency: ${opp.agency}` : "",
+      opp.deadline ? `Bid deadline: ${formatDeadline(opp.deadline)}` : "",
+      attachments.length
+        ? `Attached: ${attachments.map((a) => a.filename).join(", ")}`
+        : "",
+    ].filter(Boolean);
+    const detailsPlain =
+      (detailLines.length ? `\n\n---\n${detailLines.join("\n")}` : "") +
+      (attachmentLinks.length
+        ? `\nAdditional documents:\n${attachmentLinks.map((l) => `- ${l.name}: ${l.url}`).join("\n")}`
+        : "") +
+      `\n\nPlease reply to this email with your price for the ${trade || "described"} scope (include payment terms and any exclusions).`;
+    const detailsHtml =
+      (detailLines.length
+        ? `<hr/><p>${detailLines.map((l) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br/>")}</p>`
+        : "") +
+      (attachmentLinks.length
+        ? `<p>Additional documents:<br/>${attachmentLinks
+            .map((l) => `<a href="${l.url}">${l.name.replace(/</g, "&lt;")}</a>`)
+            .join("<br/>")}</p>`
+        : "") +
+      `<p><strong>Please reply to this email with your price</strong> for the ${trade || "described"} scope (include payment terms and any exclusions).</p>`;
+
+    const fullPlain = plainBody + detailsPlain;
+    const html = plainBody.replace(/\n/g, "<br>") + detailsHtml;
 
     const trackingId = randomUUID();
     const followUpAt = new Date(Date.now() + 48 * 3_600_000).toISOString();
 
     let messageId: string | null = null;
     let threadId: string | null = null;
+    let provider: string | null = null;
     let outreachState = "pending";
     let humanAction = false;
     let sent = false;
 
     if (sub.email && sub.email_verified) {
-      const res = await gmail.send({
+      const res = await sendOutreachEmail({
         to: sub.email,
         subject,
         html,
-        text: plainBody,
+        text: fullPlain,
         trackingId,
+        attachments,
       });
       if (res.disabled) {
         humanAction = true;
@@ -121,7 +162,8 @@ export const outreach: AgentDefinition = {
           status: "skipped",
           opportunityId,
           subcontractorId,
-          message: "Gmail not connected, outreach stored as draft for manual send.",
+          message:
+            "No email transport available (connect Gmail or configure Resend); outreach stored as draft for manual send.",
         });
       } else if (res.error) {
         humanAction = true;
@@ -132,11 +174,12 @@ export const outreach: AgentDefinition = {
           status: "error",
           opportunityId,
           subcontractorId,
-          message: `Gmail send failed: ${res.error}`,
+          message: `${res.provider === "resend" ? "Resend" : "Gmail"} send failed: ${res.error}`,
         });
       } else {
         sent = true;
         outreachState = "sent";
+        provider = res.provider;
         messageId = res.messageId ?? null;
         threadId = res.threadId ?? null;
       }
@@ -148,17 +191,18 @@ export const outreach: AgentDefinition = {
     await query(
       `insert into communications
          (subcontractor_id, opportunity_id, channel, direction, subject, body,
-          gmail_message_id, gmail_thread_id, tracking_id, follow_up_at)
-       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8)`,
+          gmail_message_id, gmail_thread_id, tracking_id, follow_up_at, provider)
+       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9)`,
       [
         subcontractorId,
         opportunityId,
         subject,
-        stripHtmlText(plainBody),
+        stripHtmlText(fullPlain),
         messageId,
         threadId,
         trackingId,
         followUpAt,
+        provider,
       ]
     );
 
@@ -192,7 +236,7 @@ export const outreach: AgentDefinition = {
     const summary = sent
       ? `Sent outreach to ${sub.company_name} <${sub.email}>; 48h follow-up scheduled, call card queued.`
       : `Outreach to ${sub.company_name} stored as draft (${
-          sub.email ? "Gmail unavailable" : "no verified email"
+          sub.email ? "no email transport available" : "no verified email"
         }); needs manual send.`;
 
     return {

@@ -149,9 +149,17 @@ export const config = {
   resend: {
     get apiKey() { return str("RESEND_API_KEY"); },
     get from() { return str("RESEND_FROM", "BROSTCO <alerts@brostco.com>"); },
+    /** From-address for subcontractor outreach sent via Resend. */
+    get outreachFrom() { return str("RESEND_OUTREACH_FROM", "BROSTCO <info@brostco.com>"); },
     get digestTo() { return str("DIGEST_EMAIL_TO"); },
+    /** Svix signing secret for the Resend inbound-email webhook (whsec_...). */
+    get webhookSecret() { return str("RESEND_WEBHOOK_SECRET"); },
     get enabled() {
       return Boolean(this.apiKey);
+    },
+    /** True when replies to Resend-sent outreach can be captured automatically. */
+    get inboundEnabled() {
+      return Boolean(this.apiKey && this.webhookSecret);
     },
   },
 
