@@ -12,6 +12,33 @@ import {
 import { timeAgo } from "@/lib/format";
 import type { OppSubCommRow, OppSubRow } from "@/lib/data";
 
+/** One-line next human/system action so each row answers "what now?" */
+function nextActionForSub(s: OppSubRow): string | null {
+  switch (s.outreach_state) {
+    case "pending":
+    case null:
+    case undefined:
+      return "Waiting for outreach to send";
+    case "no_email":
+    case "email_unverified":
+      return s.phone ? "Call — email is not usable yet" : "Find a working email or phone";
+    case "draft":
+    case "send_failed":
+      return "Fix email transport or retry outreach";
+    case "sent":
+      return "Awaiting reply — auto follow-up is scheduled";
+    case "followed_up":
+    case "unresponsive":
+      return s.phone ? "Call them about pricing" : "Try another contact method";
+    case "responsive":
+      return "Collect or confirm their quote";
+    case "declined":
+      return "Find another sub for this trade";
+    default:
+      return null;
+  }
+}
+
 /**
  * Opportunity-scoped subcontractors: who was found, how contactable they are,
  * outreach status for this bid, and a short expandable history drawn from
@@ -135,6 +162,14 @@ export function OpportunitySubsPanel({
                             </span>
                           )}
                         </div>
+                        {(() => {
+                          const next = nextActionForSub(s);
+                          return next ? (
+                            <p className="mt-2 text-xs font-medium text-slate-800">
+                              Next: {next}
+                            </p>
+                          ) : null;
+                        })()}
 
                         {history.length > 0 && (
                           <details className="mt-2">

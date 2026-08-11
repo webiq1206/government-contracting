@@ -17,7 +17,12 @@ import { CompetitiveLandscape } from "@/components/competitive-landscape";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
 import { ScoreBreakdownCard } from "@/components/score-breakdown-card";
 import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
+import { AttentionStrip } from "@/components/attention-strip";
+import { TradeCoverageStrip } from "@/components/trade-coverage-strip";
 import { InfoTip } from "@/components/info-tip";
+import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
+import { computeBidReadiness } from "@/lib/domain/bid-readiness";
+import { termTip } from "@/lib/domain/glossary";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
@@ -99,17 +104,83 @@ export default async function OpportunityPage({ params }: { params: { id: string
       QUOTE_STAGES.includes(opp.stage));
   const emphasizeQuotePanel = showQuotePanel && quotesEntered === 0;
 
+  const quoteRows = (quotes as Record<string, unknown>[]).map((q) => ({
+    trade: (q.trade as string) ?? null,
+    quote_amount: Number(q.quote_amount) || null,
+    is_out_of_range: Boolean(q.is_out_of_range),
+    subcontractor_id: (q.subcontractor_id as string) ?? null,
+  }));
+  const quotedSubIds = new Set(
+    quoteRows
+      .filter((q) => Number(q.quote_amount) > 0 && q.subcontractor_id)
+      .map((q) => q.subcontractor_id as string)
+  );
+  const coverage = summarizeTradeCoverage({
+    requiredTrades: analysis?.required_trades ?? [],
+    subs: subs.map((s) => ({
+      trade: s.trade,
+      outreach_state: s.outreach_state,
+      emails_sent: s.emails_sent,
+      calls_logged: s.calls_logged,
+      responded_at: s.responded_at,
+    })),
+    quotes: quoteRows,
+  });
+  const readiness = computeBidReadiness({
+    stage: opp.stage,
+    status: opp.status,
+    deadline: opp.deadline,
+    riskFlags: opp.risk_flags ?? [],
+    attentionFromBrief: analysis?.attention_items ?? [],
+    requiredTrades: analysis?.required_trades ?? [],
+    quotes: quoteRows,
+    tradeCoverageUncovered: coverage.totals.uncovered,
+    subsFound: subs.length,
+    hasBid,
+    packageReady: bid?.package_ready ?? null,
+    humanFlags: (bid?.human_flags as string[] | null) ?? null,
+    humanActionRequired: opp.human_action_required,
+  });
+
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
         help={PAGE_HELP["opportunity"]}
         title={opp.title ?? "Opportunity"}
         eyebrow={[opp.agency, opp.solicitation_number].filter(Boolean).join(" · ") || undefined}
-        subtitle={`${opp.naics_code ? "NAICS " + opp.naics_code + " · " : ""}${opp.set_aside_type ?? ""}`}
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+            {opp.naics_code && (
+              <span className="inline-flex items-center gap-1">
+                NAICS {opp.naics_code}
+                <InfoTip label="What is NAICS?">{termTip("naics")}</InfoTip>
+              </span>
+            )}
+            {opp.set_aside_type && (
+              <span className="inline-flex items-center gap-1">
+                {opp.set_aside_type}
+                <InfoTip label="What is a set-aside?">{termTip("set_aside")}</InfoTip>
+              </span>
+            )}
+          </span>
+        }
       >
-        <TierBadge tier={opp.tier} />
+        <span className="inline-flex items-center gap-1">
+          <TierBadge tier={opp.tier} />
+          <InfoTip label="What does this tier mean?">
+            {opp.tier === "pursue"
+              ? termTip("tier_pursue")
+              : opp.tier === "review"
+                ? termTip("tier_review")
+                : termTip("tier_ignore")}
+          </InfoTip>
+        </span>
         <span className="badge bg-surface text-slate-600">
           {opp.stage.replace(/_/g, " ")}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <ScoreBadge score={opp.score} />
+          <InfoTip label="What is the opportunity score?">{termTip("score")}</InfoTip>
         </span>
         <DeadlineBadge deadline={opp.deadline} rules={rules} showDate />
       </PageHeader>
@@ -124,6 +195,12 @@ export default async function OpportunityPage({ params }: { params: { id: string
             on every breakpoint so operators can scan without hunting. */}
         <div className="sticky top-0 z-20 mt-2 flex gap-1.5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2 backdrop-blur">
           {[
+            ...(readiness.attention.length > 0
+              ? [{ href: "#attention", label: "Attention" }]
+              : []),
+            ...(coverage.trades.length > 0
+              ? [{ href: "#coverage", label: "Coverage" }]
+              : []),
             { href: "#brief", label: "Brief" },
             ...(showQuotePanel ? [{ href: "#quotes", label: "Quotes" }] : []),
             { href: "#subs", label: `Subs${subs.length ? ` (${subs.length})` : ""}` },
@@ -158,6 +235,24 @@ export default async function OpportunityPage({ params }: { params: { id: string
             automationPaused={automation.paused}
             hoursSinceUpdate={hoursSinceUpdate}
             expired={opp.status === "archived" && (opp.risk_flags ?? []).includes("expired")}
+          />
+        </div>
+
+        {/* Attention first — only when human action or blockers exist. */}
+        <div className="px-5 pt-4">
+          <AttentionStrip readiness={readiness} />
+        </div>
+
+        {/* Trade coverage — who we found, who responded, what's still open. */}
+        <div className="px-5 pt-4">
+          <TradeCoverageStrip
+            coverage={coverage}
+            subs={subs.map((s) => ({
+              trade: s.trade,
+              company_name: s.company_name,
+              outreach_state: s.outreach_state,
+              has_quote: quotedSubIds.has(s.subcontractor_id),
+            }))}
           />
         </div>
 
@@ -340,17 +435,18 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 />
                 <Fact
                   label="NAICS"
-                  tip="Industry code used for set-asides and matching your profile."
+                  tip={termTip("naics")}
                   value={opp.naics_code ?? "-"}
                 />
-                <Fact label="PSC" value={opp.psc_code ?? "-"} />
+                <Fact label="PSC" tip={termTip("psc")} value={opp.psc_code ?? "-"} />
                 <Fact
                   label="Set-aside"
-                  tip="Who is eligible to bid (e.g. Small Business, 8(a), unrestricted)."
+                  tip={termTip("set_aside")}
                   value={opp.set_aside_type ?? "-"}
                 />
                 <Fact
                   label="Place of performance"
+                  tip={termTip("place_of_performance")}
                   value={
                     [opp.location_text, opp.location_state].filter(Boolean).join(", ") || "-"
                   }

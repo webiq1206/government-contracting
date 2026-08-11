@@ -799,6 +799,32 @@ export interface ActionCallRow {
   trade: string | null;
 }
 
+/** Subcontractor outreach that needs a human nudge (email follow-ups exhausted). */
+export interface ActionSubFollowUpRow {
+  opportunity_id: string;
+  opportunity_title: string | null;
+  deadline: string | null;
+  subcontractor_id: string;
+  company_name: string;
+  phone: string | null;
+  trade: string | null;
+  outreach_state: string | null;
+  last_contacted: string | null;
+  emails_sent: number;
+  calls_logged: number;
+}
+
+/** Quote that looks unusually high/low and needs a quick review. */
+export interface ActionQuoteReviewRow {
+  quote_id: string;
+  opportunity_id: string;
+  opportunity_title: string | null;
+  company_name: string | null;
+  trade: string | null;
+  quote_amount: number | null;
+  deadline: string | null;
+}
+
 export interface ComplianceAlertRow {
   id: string;
   category: string;
@@ -828,6 +854,10 @@ export interface ActionCenterData {
   urgent: ActionOppRow[];
   /** Flagged for attention outside the review queue (stalled, blocked, etc.). */
   flagged: ActionOppRow[];
+  /** Subs that need a human call/follow-up after automated outreach. */
+  subFollowUps: ActionSubFollowUpRow[];
+  /** Out-of-range quotes waiting for operator judgment. */
+  quoteReviews: ActionQuoteReviewRow[];
   /** Compliance renewals that are past "ok" (warning/critical/blocked). */
   complianceAlerts: ComplianceAlertRow[];
   /** Learning Loop scoring-weight proposals awaiting approve/reject. */
@@ -859,6 +889,8 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     awaitingOutcome,
     urgent,
     flagged,
+    subFollowUps,
+    quoteReviews,
     complianceAlerts,
     proposedWeights,
     backlinkRow,
@@ -921,6 +953,59 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
             and (o.snoozed_until is null or o.snoozed_until <= now())
           order by o.updated_at asc limit 10`
     ),
+    // After automated email + follow-up, surface human call/nudge work so
+    // operators do not have to open every opportunity to find stalled subs.
+    query<ActionSubFollowUpRow>(
+      `select o.id as opportunity_id, o.title as opportunity_title, o.deadline,
+              s.id as subcontractor_id, s.company_name, s.phone, os.trade,
+              os.outreach_state, s.last_contacted,
+              coalesce((
+                select count(*)::int from communications c
+                 where c.opportunity_id = os.opportunity_id
+                   and c.subcontractor_id = os.subcontractor_id
+                   and c.channel = 'email' and c.direction = 'outbound'
+              ), 0) as emails_sent,
+              coalesce((
+                select count(*)::int from communications c
+                 where c.opportunity_id = os.opportunity_id
+                   and c.subcontractor_id = os.subcontractor_id
+                   and c.channel = 'call'
+              ), 0) as calls_logged
+         from opportunity_subs os
+         join opportunities o on o.id = os.opportunity_id
+         join subcontractors s on s.id = os.subcontractor_id
+        where o.status = 'open'
+          and o.stage in ('outreach','call_queue','quote_entry','sub_research')
+          and (o.snoozed_until is null or o.snoozed_until <= now())
+          and os.outreach_state in ('followed_up','unresponsive')
+          and not exists (
+                select 1 from quotes q
+                 where q.opportunity_id = os.opportunity_id
+                   and q.subcontractor_id = os.subcontractor_id
+                   and q.quote_amount > 0
+              )
+          and not exists (
+                select 1 from call_cards cc
+                 where cc.opportunity_id = os.opportunity_id
+                   and cc.subcontractor_id = os.subcontractor_id
+                   and cc.status = 'pending'
+              )
+        order by (o.deadline is null), o.deadline asc, s.company_name asc
+        limit 12`
+    ),
+    query<ActionQuoteReviewRow>(
+      `select q.id as quote_id, o.id as opportunity_id, o.title as opportunity_title,
+              s.company_name, q.trade, q.quote_amount, o.deadline
+         from quotes q
+         join opportunities o on o.id = q.opportunity_id
+         left join subcontractors s on s.id = q.subcontractor_id
+        where o.status = 'open'
+          and q.is_out_of_range = true
+          and o.stage in ('quote_entry','bid_building','call_queue','outreach')
+          and (o.snoozed_until is null or o.snoozed_until <= now())
+        order by (o.deadline is null), o.deadline asc
+        limit 10`
+    ),
     query<ComplianceAlertRow>(
       `select id, category, label, due_at,
               coalesce(status_override, status) as status, days_remaining
@@ -962,6 +1047,8 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     awaitingOutcome,
     urgent,
     flagged,
+    subFollowUps,
+    quoteReviews,
     complianceAlerts,
     proposedWeights,
     backlinkApprovals: backlinkRow?.n ?? 0,

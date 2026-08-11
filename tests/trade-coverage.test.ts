@@ -1,0 +1,50 @@
+import { describe, it, expect } from "vitest";
+import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
+
+describe("summarizeTradeCoverage", () => {
+  it("flags empty required trades as action required", () => {
+    const result = summarizeTradeCoverage({
+      requiredTrades: ["Electrical", "Plumbing"],
+      subs: [
+        {
+          trade: "Electrical",
+          outreach_state: "sent",
+          emails_sent: 1,
+          calls_logged: 0,
+        },
+      ],
+      quotes: [],
+    });
+    const electrical = result.trades.find((t) => t.trade === "Electrical")!;
+    const plumbing = result.trades.find((t) => t.trade === "Plumbing")!;
+    expect(electrical.status).toBe("action_required");
+    expect(plumbing.status).toBe("empty");
+    expect(result.totals.uncovered).toBe(2);
+    expect(result.totals.found).toBe(1);
+    expect(result.totals.contacted).toBe(1);
+  });
+
+  it("marks a trade complete when a quote exists", () => {
+    const result = summarizeTradeCoverage({
+      requiredTrades: ["HVAC"],
+      subs: [{ trade: "HVAC", outreach_state: "responsive", responded_at: "2026-01-01" }],
+      quotes: [{ trade: "HVAC", quote_amount: 12000 }],
+    });
+    expect(result.trades[0].status).toBe("complete");
+    expect(result.totals.quotes).toBe(1);
+    expect(result.totals.uncovered).toBe(0);
+  });
+
+  it("counts follow-ups due from sent/followed_up states", () => {
+    const result = summarizeTradeCoverage({
+      requiredTrades: ["Roofing"],
+      subs: [
+        { trade: "Roofing", outreach_state: "followed_up" },
+        { trade: "Roofing", outreach_state: "declined" },
+      ],
+      quotes: [],
+    });
+    expect(result.trades[0].followUpDue).toBe(1);
+    expect(result.trades[0].declined).toBe(1);
+  });
+});
