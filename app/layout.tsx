@@ -22,11 +22,20 @@ export const metadata: Metadata = {
     title: "Brost Co | Government Contracting Software",
     description: DESCRIPTION,
     url: SITE_URL,
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Brost Co, procurement execution software for federal services contractors",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Brost Co | Government Contracting Software",
     description: DESCRIPTION,
+    images: ["/twitter-image"],
   },
 };
 

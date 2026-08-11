@@ -24,12 +24,21 @@ export const metadata: Metadata = {
     url: SITE_URL,
     type: "website",
     siteName: "Brost Co",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Brost Co, procurement execution software for federal services contractors",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Brost Co | Procurement Execution for Federal Contractors",
     description:
       "Win the right government contracts. Brost Co finds, scores, sources, and prepares opportunities so you stop managing the process by hand.",
+    images: ["/twitter-image"],
   },
   keywords: [
     "government contracting software",

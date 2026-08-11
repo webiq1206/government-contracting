@@ -18,6 +18,7 @@ export function JsonLd({
     legalName: "BROSTCO HOLDINGS LLC",
     url: SITE_URL,
     logo: `${SITE_URL}/brand/b-mark.png`,
+    image: `${SITE_URL}/opengraph-image`,
     email: "hello@brostco.com",
     description:
       "Brost Co is procurement execution software for federal services contractors. It finds, scores, sources, and prepares government contract opportunities.",
@@ -30,6 +31,12 @@ export function JsonLd({
     url: SITE_URL,
     description:
       "Win the right government contracts. Brost Co finds, scores, sources, and prepares opportunities so you stop managing the process by hand.",
+    primaryImageOfPage: {
+      "@type": "ImageObject",
+      url: `${SITE_URL}/opengraph-image`,
+      width: 1200,
+      height: 630,
+    },
     isPartOf: { "@type": "WebSite", name: "Brost Co", url: SITE_URL },
     about: { "@id": `${SITE_URL}/#organization` },
   };
