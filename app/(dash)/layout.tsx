@@ -6,12 +6,17 @@ import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ToastProvider } from "@/components/toaster";
 import { queueCounts, engineStatus } from "@/lib/data";
 import { timeAgo } from "@/lib/format";
+import { subscriptionAllowsAccess } from "@/lib/organizations";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashLayout({ children }: { children: React.ReactNode }) {
   const user = await currentUser().catch(() => null);
   if (!user) redirect("/login");
+  if (!user.organizationId) redirect("/signup");
+  if (!subscriptionAllowsAccess(user.subscriptionStatus)) {
+    redirect("/api/billing/checkout?plan=standard");
+  }
 
   const [counts, engine] = await Promise.all([
     queueCounts().catch(() => ({ review: 0, callQueue: 0 })),

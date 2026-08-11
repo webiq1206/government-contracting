@@ -55,6 +55,7 @@ const MORE: { section: string; items: Item[] }[] = [
     section: "Settings",
     items: [
       { href: "/settings/profile", label: "Company profile" },
+      { href: "/settings/billing", label: "Billing" },
       { href: "/settings/rules", label: "Automation rules" },
       { href: "/settings/content", label: "Content library" },
       { href: "/settings/integrations", label: "Connected services" },

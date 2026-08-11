@@ -12,6 +12,8 @@ import { sam, wantNoticeType, type SamOpportunity } from "../integrations/sam";
 import { runEnabledScrapers } from "../integrations/scrapers";
 import { enqueue } from "../queue";
 import { resolveEstimatedValue } from "../domain/value-extract";
+import { listActiveOrganizations } from "../organizations";
+import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -82,26 +84,29 @@ export function normalizeSamNotice(o: SamOpportunity) {
 }
 
 async function ingestOne(
-  n: ReturnType<typeof normalizeSamNotice>
+  n: ReturnType<typeof normalizeSamNotice>,
+  orgId: string
 ): Promise<{ inserted: boolean; id?: string; isSourcesSought: boolean }> {
   if (!n.source_id) return { inserted: false, isSourcesSought: n.is_sources_sought };
+  // Deduplicate per tenant: the same SAM notice may be relevant to multiple orgs.
   const existing = await queryOne<{ id: string }>(
-    `select id from opportunities where source_id = $1`,
-    [n.source_id]
+    `select id from opportunities where source_id = $1 and org_id = $2`,
+    [n.source_id, orgId]
   );
   if (existing) return { inserted: false, id: existing.id, isSourcesSought: n.is_sources_sought };
 
   const row = await queryOne<{ id: string }>(
     `insert into opportunities
-      (source, source_id, solicitation_number, title, description, naics_code, psc_code,
+      (org_id, source, source_id, solicitation_number, title, description, naics_code, psc_code,
        set_aside_type, value_estimated, value_estimated_source, deadline, posted_at,
        location_state, location_text,
        agency, sub_agency, contact_json, attachments_json, raw_json, is_sources_sought,
        stage, status)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
              'scoring','open')
      returning id`,
     [
+      orgId,
       n.source, n.source_id, n.solicitation_number, n.title, n.description, n.naics_code,
       n.psc_code, n.set_aside_type, n.value_estimated, n.value_estimated_source,
       n.deadline, n.posted_at,
@@ -115,14 +120,16 @@ async function ingestOne(
   return { inserted: true, id: row!.id, isSourcesSought: n.is_sources_sought };
 }
 
-export const opportunityMonitor: AgentDefinition = {
-  name: "opportunity-monitor",
-  label: "Opportunity Monitor",
-  description:
-    "Polls SAM.gov + state/local portals, dedupes, normalizes, stores, and triggers scoring.",
-  cron: "0 */2 * * *", // every 2 hours
-  worksWithoutClaude: true, // ingestion is rule-based; scoring needs Claude
-  async handler(): Promise<AgentResult> {
+async function monitorForOrg(orgId: string): Promise<{
+  ingested: number;
+  sourcesSought: number;
+  ingestErrors: number;
+  skippedDisabled: boolean;
+  enqueued: AgentResult["enqueued"];
+  naics: string[];
+  scanned: number;
+}> {
+  return runWithOrg(orgId, async () => {
     const profile = await getProfileJson();
     const naics = profile?.naics_codes ?? [];
     const enqueued: AgentResult["enqueued"] = [];
@@ -211,7 +218,7 @@ export const opportunityMonitor: AgentDefinition = {
         // already inserted in this batch. That is how hundreds of records
         // ended up sitting in Scoring forever.
         try {
-          const res = await ingestOne(normalizeSamNotice(o));
+          const res = await ingestOne(normalizeSamNotice(o), orgId);
           if (!res.inserted || !res.id) continue;
           ingested++;
           if (res.isSourcesSought) {
@@ -248,8 +255,8 @@ export const opportunityMonitor: AgentDefinition = {
     const scraped = await runEnabledScrapers(naics).catch(() => []);
     for (const s of scraped) {
       const existing = await queryOne<{ id: string }>(
-        `select id from opportunities where source_id = $1`,
-        [s.source_id]
+        `select id from opportunities where source_id = $1 and org_id = $2`,
+        [s.source_id, orgId]
       );
       if (existing) continue;
       const scraperValue = resolveEstimatedValue({
@@ -259,10 +266,11 @@ export const opportunityMonitor: AgentDefinition = {
       });
       const row = await queryOne<{ id: string }>(
         `insert into opportunities
-           (source, source_id, title, description, naics_code, set_aside_type,
+           (org_id, source, source_id, title, description, naics_code, set_aside_type,
             value_estimated, value_estimated_source, deadline, location_state, agency, raw_json, stage, status)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'scoring','open') returning id`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'scoring','open') returning id`,
         [
+          orgId,
           s.source, s.source_id, s.title, s.description ?? null, s.naics_code ?? null,
           s.set_aside_type ?? null, scraperValue?.amount ?? null, scraperValue?.source ?? null,
           s.deadline ?? null,
@@ -279,16 +287,59 @@ export const opportunityMonitor: AgentDefinition = {
       }
     }
 
+    return {
+      ingested,
+      sourcesSought,
+      ingestErrors,
+      skippedDisabled,
+      enqueued,
+      naics,
+      scanned: search.items?.length ?? 0,
+    };
+  });
+}
+
+export const opportunityMonitor: AgentDefinition = {
+  name: "opportunity-monitor",
+  label: "Opportunity Monitor",
+  description:
+    "Polls SAM.gov + state/local portals per subscribed organization, dedupes, stores, and triggers scoring.",
+  cron: "0 */2 * * *", // every 2 hours
+  worksWithoutClaude: true, // ingestion is rule-based; scoring needs Claude
+  async handler(): Promise<AgentResult> {
+    let orgs = await listActiveOrganizations().catch(() => []);
+    if (orgs.length === 0) {
+      // Pre-migration / single-tenant fallback.
+      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
+    }
+
+    let ingested = 0;
+    let sourcesSought = 0;
+    let ingestErrors = 0;
+    let skippedDisabled = false;
+    const enqueued: AgentResult["enqueued"] = [];
+    const naicsAll = new Set<string>();
+
+    for (const org of orgs) {
+      const result = await monitorForOrg(org.id);
+      ingested += result.ingested;
+      sourcesSought += result.sourcesSought;
+      ingestErrors += result.ingestErrors;
+      skippedDisabled = skippedDisabled || result.skippedDisabled;
+      enqueued.push(...(result.enqueued ?? []));
+      for (const n of result.naics) naicsAll.add(n);
+    }
+
     const summary = skippedDisabled
-      ? `Ingestion partial (SAM disabled). ${ingested} new from other sources.`
-      : `Ingested ${ingested} new opportunities (${sourcesSought} sources-sought), triggered scoring.${
+      ? `Ingestion partial (SAM disabled). ${ingested} new from other sources across ${orgs.length} org(s).`
+      : `Ingested ${ingested} new opportunities across ${orgs.length} org(s) (${sourcesSought} sources-sought), triggered scoring.${
           ingestErrors > 0 ? ` Skipped ${ingestErrors} malformed notice(s).` : ""
         }`;
     return {
       ok: true,
       summary,
-      reasoning: `Polled SAM for NAICS [${naics.join(", ")}]; deduped by source_id; routed sources-sought to high-priority queue.`,
-      data: { ingested, sourcesSought, scanned: search.items?.length ?? 0 },
+      reasoning: `Polled SAM per org for NAICS [${[...naicsAll].join(", ")}]; deduped by source_id+org_id.`,
+      data: { ingested, sourcesSought, orgs: orgs.length },
       enqueued,
     };
   },
