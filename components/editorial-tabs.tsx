@@ -130,7 +130,7 @@ export function EditorialTabs({
         role="tablist"
         aria-label={ariaLabel}
         onKeyDown={onKeyDown}
-        className={`sticky z-20 flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-5 py-3 backdrop-blur sm:px-6 ${stickyTopClass}`}
+        className={`flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2.5 backdrop-blur sm:px-6 sm:py-3 md:sticky md:z-20 ${stickyTopClass}`}
       >
         {tabs.map((t) => {
           const active = tab === t.id;

@@ -14,8 +14,9 @@ import { SearchButton } from "./command-palette";
  * secondary pages simply live behind "More" (which carries a dot when
  * anything inside it needs attention, so nothing can hide).
  *
- * On phones the menu is a slide-over drawer (not a push-down block) so the
- * page underneath stays put and the thumb reaches every destination.
+ * On phones the menu is a full-screen overlay (100vw × 100dvh) so the
+ * operator has enough room to read labels and the thumb reaches everywhere.
+ * The automation on/off toggle lives here so it's always one tap away.
  */
 
 interface Item {
@@ -90,7 +91,12 @@ export function Nav({
   const [open, setOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [localPaused, setLocalPaused] = useState(automationPaused);
+  const [togglingAutomation, setTogglingAutomation] = useState(false);
   const counts = { review: reviewCount, calls: callCount };
+
+  // Keep local state in sync when the server re-renders with a new prop value.
+  useEffect(() => { setLocalPaused(automationPaused); }, [automationPaused]);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
@@ -122,6 +128,25 @@ export function Nav({
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
     router.refresh();
+  }
+
+  async function handleToggleAutomation() {
+    if (togglingAutomation) return;
+    setTogglingAutomation(true);
+    const next = !localPaused;
+    setLocalPaused(next); // optimistic
+    try {
+      const res = await fetch("/api/automation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: next }),
+      });
+      if (!res.ok) setLocalPaused(!next); // revert on error
+    } catch {
+      setLocalPaused(!next); // revert on network failure
+    } finally {
+      setTogglingAutomation(false);
+    }
   }
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
@@ -189,61 +214,122 @@ export function Nav({
 
   return (
     <>
-      {/* Mobile top bar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-ink px-4 py-3 md:hidden">
-        <Link href="/today" className="inline-flex items-center" aria-label="Brost Co Today">
-          <Wordmark variant="light" className="h-5" />
+      {/* ── Mobile top bar ─────────────────────────────────────────────────
+          Compact: fixed 56px (h-14) so the logo and hamburger never eat
+          a third of the phone screen. The wordmark is constrained to h-6
+          (24px) with a fixed-height wrapper so the img scales correctly.
+          When automation is paused, a small "Paused" pill appears between
+          the logo and the hamburger so the operator sees it instantly.
+      ─────────────────────────────────────────────────────────────────── */}
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-white/10 bg-ink px-3 md:hidden">
+        <Link
+          href="/today"
+          className="inline-flex shrink-0 items-center"
+          style={{ height: "1.75rem" }}
+          aria-label="Brost Co Today"
+        >
+          <Wordmark variant="light" className="h-full w-auto" />
         </Link>
+
+        <div className="flex-1" />
+
+        {/* Automation paused pill — tapping it resumes immediately */}
+        {localPaused && (
+          <button
+            type="button"
+            onClick={handleToggleAutomation}
+            disabled={togglingAutomation}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-review/50 bg-review/10 px-2.5 py-1 text-[11px] text-white/75 transition-colors active:bg-review/25 disabled:opacity-50"
+            aria-label="Automation paused — tap to resume"
+          >
+            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-review" />
+            Paused
+          </button>
+        )}
+
+        {/* Hamburger — 44×44 tap target */}
         <button
           type="button"
-          className="shell-ghost inline-flex h-11 w-11 items-center justify-center px-0"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-white/70 hover:text-white"
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
         >
-          {open ? "✕" : "☰"}
+          <span aria-hidden className="text-xl leading-none">{open ? "✕" : "☰"}</span>
         </button>
       </div>
 
-      {open && (
-        <button
-          type="button"
-          aria-label="Close menu"
-          className="fixed inset-0 z-[70] bg-black/60 md:hidden"
-          onClick={() => setOpen(false)}
-        />
-      )}
-
+      {/* ── Full-screen mobile menu ─────────────────────────────────────────
+          100vw × 100dvh overlay — no partial-width ghost strip, enough room
+          to read every label, and the automation toggle is front-and-centre.
+      ─────────────────────────────────────────────────────────────────── */}
       <nav
         aria-label="Main"
         aria-hidden={isMobile && !open ? true : undefined}
-        className={`fixed inset-y-0 left-0 z-[71] flex w-[min(20rem,88vw)] max-w-full flex-col border-r border-white/10 bg-ink transition-transform duration-200 ease-out md:static md:z-auto md:h-full md:w-64 md:transition-none ${
+        className={`fixed inset-0 z-[71] flex flex-col bg-ink transition-transform duration-200 ease-out md:static md:inset-auto md:z-auto md:h-full md:w-64 md:translate-x-0 md:transition-none md:border-r md:border-white/10 ${
           open
             ? "translate-x-0"
-            : "pointer-events-none -translate-x-full md:pointer-events-auto md:translate-x-0"
+            : "pointer-events-none -translate-x-full md:pointer-events-auto"
         }`}
       >
+        {/* Desktop wordmark (hidden on mobile) */}
         <div className="hidden shrink-0 px-5 py-6 md:block">
           <Link href="/today" className="block" aria-label="Brost Co Today">
-            <Wordmark variant="light" className="h-7" />
+            <Wordmark variant="light" className="h-7 w-auto" />
             <p className="mt-2 text-[0.65rem] uppercase tracking-[0.16em] text-white/35">
               Workspace
             </p>
           </Link>
         </div>
 
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3 md:hidden">
-          <Wordmark variant="light" className="h-5" />
+        {/* Menu header — close button + wordmark (mobile overlay only) */}
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-white/10 px-4 md:hidden">
+          <div className="inline-flex items-center" style={{ height: "1.75rem" }}>
+            <Wordmark variant="light" className="h-full w-auto" />
+          </div>
           <button
             type="button"
-            className="shell-ghost inline-flex h-11 w-11 items-center justify-center px-0"
+            className="inline-flex h-11 w-11 items-center justify-center text-white/70 hover:text-white"
             onClick={() => setOpen(false)}
             aria-label="Close menu"
           >
-            ✕
+            <span aria-hidden className="text-xl leading-none">✕</span>
           </button>
         </div>
 
+        {/* ── Automation toggle — mobile only, always visible in menu ──── */}
+        <div className="shrink-0 border-b border-white/10 px-4 py-3 md:hidden">
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden
+              className={`h-2 w-2 shrink-0 rounded-full ${
+                localPaused ? "bg-review" : "animate-pulse bg-pursue"
+              }`}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-white">
+                {localPaused ? "Automation paused" : "Automation running"}
+              </p>
+              <p className="text-[11px] text-white/40">
+                {localPaused
+                  ? "No agents, emails, or jobs will run"
+                  : "Agents and scheduled jobs are live"}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleAutomation}
+              disabled={togglingAutomation}
+              className={`shrink-0 text-xs disabled:opacity-50 ${
+                localPaused ? "btn-primary" : "shell-ghost"
+              }`}
+            >
+              {togglingAutomation ? "…" : localPaused ? "Resume" : "Pause"}
+            </button>
+          </div>
+        </div>
+
+        {/* Search + Guide Me */}
         <div className="shrink-0 space-y-1.5 px-3 pb-2 pt-3 md:px-4 md:pt-0">
           <SearchButton className="flex min-h-11 w-full items-center gap-2 rounded-md border border-white/15 bg-shell px-3 py-2 text-sm text-white/45 transition-colors hover:border-white/25 hover:text-white/80 md:min-h-0 md:py-1.5" />
           <button
@@ -261,6 +347,7 @@ export function Nav({
           </button>
         </div>
 
+        {/* Nav links */}
         <div className="scroll-thin flex-1 space-y-0.5 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:px-4 md:pb-3">
           <p className="mb-2 px-3 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-white/30">
             Workspace
@@ -316,12 +403,13 @@ export function Nav({
           </div>
         </div>
 
+        {/* Engine status (desktop + mobile menu) */}
         {engineLabel && (
           <Link
             href="/agents"
             onClick={() => setOpen(false)}
             className={`mx-3 mb-2 shrink-0 rounded-md border px-3 py-3 text-xs transition-colors ${
-              automationPaused
+              localPaused
                 ? "border-review/40 bg-review/10 text-white/85"
                 : "border-white/10 bg-shell text-white/65 hover:border-white/20 hover:text-white"
             }`}
@@ -330,7 +418,7 @@ export function Nav({
               <span
                 aria-hidden
                 className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-                  automationPaused
+                  localPaused
                     ? "bg-review"
                     : engineHealthy
                       ? "animate-pulse bg-pursue"
@@ -342,6 +430,7 @@ export function Nav({
           </Link>
         )}
 
+        {/* Account footer */}
         <div className="shrink-0 border-t border-white/10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="flex items-center gap-3">
             <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-white/20 text-xs font-medium text-white">

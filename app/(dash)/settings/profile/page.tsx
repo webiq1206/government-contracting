@@ -110,7 +110,7 @@ export default async function ProfilePage() {
           <EditorialTabs
             ariaLabel="Company profile sections"
             defaultTab="company"
-            stickyTopClass="top-[3.25rem]"
+            stickyTopClass="md:top-[3.25rem]"
             hashAliases={{
               profile: "company",
               scoring: "scoring",
