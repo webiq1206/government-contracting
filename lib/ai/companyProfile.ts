@@ -6,25 +6,55 @@
  */
 import { queryOne, query } from "../db";
 import type { CompanyProfile, CompanyProfileJson } from "../types";
+import { currentOrgId, LEGACY_ORG_ID } from "../tenant-context";
 
 // Short TTL: invalidateProfileCache() busts this process's cache on write, but a
 // separate worker process only picks up a newly-published profile after the TTL,
 // so keep it small to minimize the cross-process window (agents scoring in the
 // gap would otherwise use the old rules/thresholds).
 const CACHE_TTL_MS = 5_000;
-let _cache: { profile: CompanyProfile; at: number } | null = null;
+let _cache: { orgId: string; profile: CompanyProfile; at: number } | null = null;
+
+async function resolveProfileOrgId(): Promise<string> {
+  const fromAls = currentOrgId();
+  if (fromAls) return fromAls;
+  // Lazy import avoids a circular auth ↔ profile dependency at module load.
+  try {
+    const { currentUser } = await import("../auth");
+    const user = await currentUser().catch(() => null);
+    if (user?.organizationId) return user.organizationId;
+  } catch {
+    /* worker / non-request context */
+  }
+  return LEGACY_ORG_ID;
+}
 
 export async function getActiveProfile(
   opts: { fresh?: boolean } = {}
 ): Promise<CompanyProfile | null> {
-  if (!opts.fresh && _cache && Date.now() - _cache.at < CACHE_TTL_MS) {
+  const orgId = await resolveProfileOrgId();
+  if (
+    !opts.fresh &&
+    _cache &&
+    _cache.orgId === orgId &&
+    Date.now() - _cache.at < CACHE_TTL_MS
+  ) {
     return _cache.profile;
   }
   const row = await queryOne<CompanyProfile>(
-    `select * from company_profile where is_active = true limit 1`
+    `select * from company_profile
+      where is_active = true and org_id = $1
+      limit 1`,
+    [orgId]
   );
-  if (row) _cache = { profile: row, at: Date.now() };
-  return row;
+  // Pre-migration fallback (org_id column absent or null legacy rows).
+  const profile =
+    row ??
+    (await queryOne<CompanyProfile>(
+      `select * from company_profile where is_active = true limit 1`
+    ).catch(() => null));
+  if (profile) _cache = { orgId, profile, at: Date.now() };
+  return profile;
 }
 
 export function invalidateProfileCache(): void {
@@ -54,16 +84,21 @@ export async function publishProfile(
   text: string,
   updatedBy: string
 ): Promise<CompanyProfile> {
+  const orgId = await resolveProfileOrgId();
   const current = await queryOne<{ max: number }>(
-    `select coalesce(max(version),0) as max from company_profile`
+    `select coalesce(max(version),0) as max from company_profile where org_id = $1`,
+    [orgId]
   );
   const nextVersion = (current?.max ?? 0) + 1;
-  await query(`update company_profile set is_active = false where is_active = true`);
+  await query(
+    `update company_profile set is_active = false where is_active = true and org_id = $1`,
+    [orgId]
+  );
   const inserted = await queryOne<CompanyProfile>(
-    `insert into company_profile (version, is_active, profile_json, profile_text, updated_by)
-     values ($1, true, $2, $3, $4)
+    `insert into company_profile (org_id, version, is_active, profile_json, profile_text, updated_by)
+     values ($1, $2, true, $3, $4, $5)
      returning *`,
-    [nextVersion, JSON.stringify(json), text, updatedBy]
+    [orgId, nextVersion, JSON.stringify(json), text, updatedBy]
   );
   invalidateProfileCache();
   return inserted!;

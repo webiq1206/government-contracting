@@ -3,11 +3,14 @@ import "./globals.css";
 
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
 const DESCRIPTION =
-  "Autonomous federal-services contracting: monitor, score, brief, source, and bid in a few minutes a day.";
+  "Brost Co is government contracting software that helps businesses find, score, pursue, and manage federal opportunities, source subcontractors, and know what needs attention each day.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "BROST CO | Autonomous Procurement Execution",
+  title: {
+    default: "Brost Co | Government Contracting Software",
+    template: "%s | Brost Co",
+  },
   description: DESCRIPTION,
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
@@ -15,14 +18,14 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    siteName: "BROST CO",
-    title: "BROST CO | Autonomous Procurement Execution",
+    siteName: "Brost Co",
+    title: "Brost Co | Government Contracting Software",
     description: DESCRIPTION,
     url: SITE_URL,
   },
   twitter: {
     card: "summary_large_image",
-    title: "BROST CO | Autonomous Procurement Execution",
+    title: "Brost Co | Government Contracting Software",
     description: DESCRIPTION,
   },
 };

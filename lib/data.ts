@@ -9,13 +9,21 @@ import { resolveSubWork } from "./domain/sub-work";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 
 export async function queueCounts(): Promise<{ review: number; callQueue: number }> {
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  if (!/^[0-9a-f-]{36}$/i.test(orgId)) {
+    return { review: 0, callQueue: 0 };
+  }
   const row = await queryOne<{ review: string; call: string }>(
     `select
-       (select count(*) from opportunities where tier='review' and human_action_required=true and status='open') as review,
+       (select count(*) from opportunities
+         where org_id='${orgId}' and tier='review' and human_action_required=true and status='open') as review,
        (select count(*) from call_cards cc
-          join subcontractors s on s.id = cc.subcontractor_id
-         where cc.status='pending'
-           and nullif(btrim(coalesce(s.phone, '')), '') is not null) as call`
+         join opportunities o on o.id = cc.opportunity_id
+         join subcontractors s on s.id = cc.subcontractor_id
+        where o.org_id='${orgId}' and cc.status='pending'
+          and nullif(btrim(coalesce(s.phone, '')), '') is not null) as call`
   );
   return { review: Number(row?.review ?? 0), callQueue: Number(row?.call ?? 0) };
 }
@@ -35,19 +43,29 @@ export const PIPELINE_STAGES: { key: string; label: string }[] = [
 ];
 
 export async function pipelineOpportunities(): Promise<Opportunity[]> {
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
   return query<Opportunity>(
     `select * from opportunities
-      where stage <> 'dismissed' and status <> 'archived'
+      where org_id = $1 and stage <> 'dismissed' and status <> 'archived'
       order by (deadline is null), deadline asc
-      limit 500`
+      limit 500`,
+    [orgId]
   );
 }
 
 export async function reviewQueue(): Promise<Opportunity[]> {
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
   return query<Opportunity>(
     `select * from opportunities
-      where tier='review' and human_action_required=true and status='open'
-      order by (review_expires_at is null), review_expires_at asc`
+      where org_id = $1 and tier='review' and human_action_required=true and status='open'
+      order by (review_expires_at is null), review_expires_at asc`,
+    [orgId]
   );
 }
 
@@ -304,7 +322,19 @@ export interface SubPairingRow {
 }
 
 export async function subDetail(id: string) {
-  const sub = await queryOne<Subcontractor>(`select * from subcontractors where id=$1`, [id]);
+  let orgId: string | null = null;
+  try {
+    const { tryResolveTenantOrgId } = await import("./tenant");
+    orgId = await tryResolveTenantOrgId();
+  } catch {
+    orgId = null;
+  }
+  const sub = orgId
+    ? await queryOne<Subcontractor>(
+        `select * from subcontractors where id=$1 and org_id=$2`,
+        [id, orgId]
+      )
+    : await queryOne<Subcontractor>(`select * from subcontractors where id=$1`, [id]);
   if (!sub) return null;
   const [communications, quotes, stats, pairings] = await Promise.all([
     query<SubCommRow>(
@@ -736,7 +766,20 @@ export interface OppSubCommRow {
 }
 
 export async function opportunityDetail(id: string) {
-  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [id]);
+  // Tenant check: never return another org's opportunity by UUID guess.
+  let orgId: string | null = null;
+  try {
+    const { tryResolveTenantOrgId } = await import("./tenant");
+    orgId = await tryResolveTenantOrgId();
+  } catch {
+    orgId = null;
+  }
+  const opp = orgId
+    ? await queryOne<Opportunity>(
+        `select * from opportunities where id=$1 and org_id=$2`,
+        [id, orgId]
+      )
+    : await queryOne<Opportunity>(`select * from opportunities where id=$1`, [id]);
   if (!opp) return null;
   // Independent lookups run in parallel; every list is bounded so an aged
   // opportunity can't balloon the page render.
@@ -918,17 +961,26 @@ export interface ActionCenterData {
   stageCounts: { stage: string; count: number }[];
 }
 
-const ACTION_OPP_SELECT = `
+function actionOppSelect(orgId: string): string {
+  // orgId is always a UUID from our session/membership tables.
+  if (!/^[0-9a-f-]{36}$/i.test(orgId)) throw new Error("Invalid organization id.");
+  return `
   select o.id, o.title, o.agency, o.stage, o.deadline, o.value_estimated, o.risk_flags,
          (select count(*)::int from quotes q where q.opportunity_id = o.id) as quote_count,
          exists(select 1 from bids b where b.opportunity_id = o.id) as has_bid,
          exists(select 1 from bids b where b.opportunity_id = o.id and b.submitted_at is not null) as bid_submitted
-    from opportunities o`;
+    from opportunities o
+   where o.org_id = '${orgId}'`;
+}
 
 export async function actionCenter(opts?: { urgentDays?: number }): Promise<ActionCenterData> {
   // The "do this first" window matches the configurable red deadline badge, so
   // "urgent" means the same thing everywhere (Settings → Automation rules).
   const urgentDays = Math.max(1, opts?.urgentDays ?? 3);
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const ACTION_OPP_SELECT = actionOppSelect(orgId);
   const [
     triage,
     callRow,
@@ -947,7 +999,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
   ] = await Promise.all([
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
-          where o.status='open' and o.tier='review' and o.human_action_required=true
+            and o.status='open' and o.tier='review' and o.human_action_required=true
             and (o.snoozed_until is null or o.snoozed_until <= now())
           order by (o.deadline is null), o.deadline asc limit 10`
     ),
@@ -957,6 +1009,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
            join opportunities o on o.id = cc.opportunity_id
            join subcontractors s on s.id = cc.subcontractor_id
           where cc.status='pending'
+            and o.org_id = '${orgId}'
             and (cc.snoozed_until is null or cc.snoozed_until <= now())
             and nullif(btrim(coalesce(s.phone, '')), '') is not null`
     ),
@@ -974,6 +1027,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          join subcontractors s on s.id = cc.subcontractor_id
          join opportunities o on o.id = cc.opportunity_id
         where cc.status='pending'
+          and o.org_id = '${orgId}'
           and (cc.snoozed_until is null or cc.snoozed_until <= now())
           and nullif(btrim(coalesce(s.phone, '')), '') is not null
         order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc
@@ -981,19 +1035,19 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     ),
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
-          where o.status='open' and o.stage in ('quote_entry','bid_building')
+            and o.status='open' and o.stage in ('quote_entry','bid_building')
             and (o.snoozed_until is null or o.snoozed_until <= now())
           order by (o.deadline is null), o.deadline asc limit 10`
     ),
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
-          where o.status='open' and o.stage='submitted'
+            and o.status='open' and o.stage='submitted'
             and (o.snoozed_until is null or o.snoozed_until <= now())
           order by o.updated_at asc limit 10`
     ),
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
-          where o.status='open'
+            and o.status='open'
             and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
             and o.deadline is not null and o.deadline > now()
             and o.deadline <= now() + make_interval(days => $1)
@@ -1005,7 +1059,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     // sources-sought notice racing its first scoring run) still surface.
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
-          where o.status='open' and o.human_action_required=true
+            and o.status='open' and o.human_action_required=true
             and o.tier is distinct from 'review'
             and (o.snoozed_until is null or o.snoozed_until <= now())
           order by o.updated_at asc limit 10`
@@ -1037,7 +1091,8 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          from opportunity_subs os
          join opportunities o on o.id = os.opportunity_id
          join subcontractors s on s.id = os.subcontractor_id
-        where o.status = 'open'
+        where o.org_id = '${orgId}'
+          and o.status = 'open'
           and o.stage in ('outreach','call_queue','quote_entry','sub_research')
           and (o.snoozed_until is null or o.snoozed_until <= now())
           and os.outreach_state in ('followed_up','unresponsive')
@@ -1090,13 +1145,14 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     ),
     queryOne<{ n: number }>(
       `select (select count(*) from opportunities
-                where status='open' and snoozed_until > now())::int
-           + (select count(*) from call_cards
-                where status='pending' and snoozed_until > now())::int as n`
+                where status='open' and org_id='${orgId}' and snoozed_until > now())::int
+           + (select count(*) from call_cards cc
+                join opportunities o on o.id = cc.opportunity_id
+                where cc.status='pending' and o.org_id='${orgId}' and cc.snoozed_until > now())::int as n`
     ),
     query<{ stage: string; count: number }>(
       `select stage, count(*)::int as count from opportunities
-          where status='open' group by stage`
+          where status='open' and org_id='${orgId}' group by stage`
     ),
   ]);
 

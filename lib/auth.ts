@@ -1,7 +1,7 @@
 /**
  * Authentication: scrypt password hashing (no native bcrypt dependency) and
- * server-side sessions stored in the `sessions` table. Phase 1 is single
- * operator; the users table + role column make multi-user a later add.
+ * server-side sessions stored in the `sessions` table. Sessions resolve the
+ * user's organization for tenant isolation.
  */
 import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
 import { cookies } from "next/headers";
@@ -66,6 +66,11 @@ export interface SessionUser {
   email: string;
   name: string | null;
   role: string;
+  /** Active organization for this session (tenant boundary). */
+  organizationId: string | null;
+  /** Stripe subscription_status for the org (active, trialing, none, …). */
+  subscriptionStatus: string | null;
+  planKey: string | null;
 }
 
 /**
@@ -103,9 +108,16 @@ export async function authenticate(
   ]);
 
   if (user) {
-    return verifyPassword(password, user.password_hash)
-      ? { id: user.id, email: user.email, name: user.name, role: user.role }
-      : null;
+    if (!verifyPassword(password, user.password_hash)) return null;
+    return attachOrg({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      organizationId: null,
+      subscriptionStatus: null,
+      planKey: null,
+    });
   }
 
   // Env-operator fallback (disabled in prod when AUTH_SECRET is the default).
@@ -116,14 +128,32 @@ export async function authenticate(
     email.toLowerCase().trim() === config.auth.operatorEmail.toLowerCase() &&
     verifyPassword(password, config.auth.operatorPasswordHash)
   ) {
-    return {
+    return attachOrg({
       id: "env-operator",
       email: config.auth.operatorEmail,
       name: "Operator",
       role: "operator",
-    };
+      organizationId: null,
+      subscriptionStatus: null,
+      planKey: null,
+    });
   }
   return null;
+}
+
+async function attachOrg(user: SessionUser): Promise<SessionUser> {
+  try {
+    const { getOrgForUser } = await import("./organizations");
+    const org = await getOrgForUser(user.id);
+    return {
+      ...user,
+      organizationId: org?.id ?? null,
+      subscriptionStatus: org?.subscription_status ?? null,
+      planKey: org?.plan_key ?? null,
+    };
+  } catch {
+    return user;
+  }
 }
 
 export async function createSession(userId: string): Promise<string> {
@@ -144,12 +174,15 @@ export async function resolveSession(token: string | undefined): Promise<Session
   if (!token) return null;
   if (token.startsWith("env-operator.")) {
     if (envOperatorAllowed() && config.auth.operatorEmail && verifyEnvOperator(token)) {
-      return {
+      return attachOrg({
         id: "env-operator",
         email: config.auth.operatorEmail,
         name: "Operator",
         role: "operator",
-      };
+        organizationId: null,
+        subscriptionStatus: null,
+        planKey: null,
+      });
     }
     return null;
   }
@@ -165,7 +198,16 @@ export async function resolveSession(token: string | undefined): Promise<Session
       where s.id = $1 and s.expires_at > now()`,
     [token]
   );
-  return row ? { id: row.id, email: row.email, name: row.name, role: row.role } : null;
+  if (!row) return null;
+  return attachOrg({
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    organizationId: null,
+    subscriptionStatus: null,
+    planKey: null,
+  });
 }
 
 export async function destroySession(token: string | undefined): Promise<void> {

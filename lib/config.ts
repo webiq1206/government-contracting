@@ -163,6 +163,16 @@ export const config = {
     },
   },
 
+  stripe: {
+    get secretKey() { return str("STRIPE_SECRET_KEY"); },
+    get webhookSecret() { return str("STRIPE_WEBHOOK_SECRET"); },
+    get priceStandard() { return str("STRIPE_PRICE_STANDARD"); },
+    get priceFounding() { return str("STRIPE_PRICE_FOUNDING"); },
+    get enabled() {
+      return Boolean(this.secretKey);
+    },
+  },
+
   queue: {
     redisUrl: str("REDIS_URL"),
     get backend(): "bullmq" | "pgboss" {
