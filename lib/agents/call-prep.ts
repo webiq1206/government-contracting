@@ -12,6 +12,7 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
+import { isCallable } from "../domain/sub-contactability";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -45,6 +46,44 @@ export const callPrep: AgentDefinition = {
       [subcontractorId]
     );
     if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found` };
+
+    // Never put an uncallable card on Today / Call Queue — there is nothing
+    // the operator can do until a phone number exists. Re-run verify instead.
+    if (!isCallable(sub)) {
+      await query(
+        `update opportunity_subs
+            set outreach_state = coalesce(nullif(outreach_state, ''), 'no_email')
+          where opportunity_id = $1 and subcontractor_id = $2`,
+        [opportunityId, subcontractorId]
+      );
+      await query(
+        `update opportunities set human_action_required = true where id = $1`,
+        [opportunityId]
+      );
+      await logAgent({
+        agent: "call-prep",
+        action: "skip-no-phone",
+        level: "warn",
+        opportunityId,
+        subcontractorId,
+        message: `Skipped call card for ${sub.company_name}: no phone on file. Automation cannot dial them.`,
+      });
+      return {
+        ok: true,
+        summary: `No call card for ${sub.company_name}: missing phone number.`,
+        humanActionRequired: true,
+        enqueued: [
+          {
+            agent: "sub-verify",
+            payload: { opportunityId, subcontractorId },
+            opts: {
+              singletonKey: `verify-retry:${opportunityId}:${subcontractorId}`,
+              singletonSeconds: 3600,
+            },
+          },
+        ],
+      };
+    }
 
     const opp = await queryOne<Opportunity>(
       `select * from opportunities where id = $1`,

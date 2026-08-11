@@ -748,14 +748,26 @@ export const contactRecheckSweep: AgentDefinition = {
     "Re-runs Sub Verify for subcontractors with no email on file, so contacts are discovered once Hunter/Google Maps keys or websites become available.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    // Clear historical call cards that can never be dialed so Today / Call
+    // Queue stay actionable.
+    const cleared = await query<{ id: string }>(
+      `update call_cards cc
+          set status = 'skipped',
+              response_json = coalesce(cc.response_json, '{}'::jsonb)
+                || jsonb_build_object('skip_reason', 'no_phone')
+        from subcontractors s
+       where s.id = cc.subcontractor_id
+         and cc.status = 'pending'
+         and nullif(btrim(coalesce(s.phone, '')), '') is null
+       returning cc.id`
+    );
+
     // No gate on keys or an existing website: website discovery is now
     // key-free (web-search finder + own-site scrape), so every sub without an
     // email has a viable discovery path.
-    // Subs missing an email that are attached to an open opportunity. Bounded
-    // retry: never checked first, then rechecks no sooner than every 7 days
-    // (so earlier "no_email_found"/"no_website" outcomes are reconsidered once
-    // keys or manually-added websites appear, without hammering APIs). Small
-    // batch per run: full verify hits external APIs.
+    // Subs missing email OR phone that are attached to an open opportunity.
+    // Bounded retry: never checked first, then rechecks no sooner than every
+    // 7 days. Small batch per run: full verify hits external APIs.
     const rows = await query<{
       subcontractor_id: string;
       opportunity_id: string;
@@ -765,7 +777,11 @@ export const contactRecheckSweep: AgentDefinition = {
          from subcontractors s
          join opportunity_subs os on os.subcontractor_id = s.id
          join opportunities o on o.id = os.opportunity_id and o.status = 'open'
-        where s.email is null and s.blacklisted = false
+        where s.blacklisted = false
+          and (
+            nullif(btrim(coalesce(s.email, '')), '') is null
+            or nullif(btrim(coalesce(s.phone, '')), '') is null
+          )
           and (s.contact_checked_at is null or s.contact_checked_at < now() - interval '7 days')
         order by s.id, s.contact_checked_at asc nulls first
         limit 20`
@@ -773,7 +789,9 @@ export const contactRecheckSweep: AgentDefinition = {
     if (rows.length === 0) {
       return {
         ok: true,
-        summary: "Contact recheck: no subs due for email discovery.",
+        summary: `Contact recheck: no subs due for discovery.${
+          cleared.length ? ` Cleared ${cleared.length} uncallable call card(s).` : ""
+        }`,
       };
     }
     const enqueued: AgentResult["enqueued"] = rows.map((r) => ({
@@ -790,7 +808,9 @@ export const contactRecheckSweep: AgentDefinition = {
     }));
     return {
       ok: true,
-      summary: `Contact recheck: enqueued Sub Verify for ${rows.length} sub(s) with no email on file.`,
+      summary: `Contact recheck: enqueued Sub Verify for ${rows.length} sub(s) missing email/phone.${
+        cleared.length ? ` Cleared ${cleared.length} uncallable call card(s).` : ""
+      }`,
       enqueued,
     };
   },

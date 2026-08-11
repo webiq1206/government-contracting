@@ -14,6 +14,7 @@ import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
+import { isCallable, isEmailable } from "../domain/sub-contactability";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -57,6 +58,47 @@ export const outreach: AgentDefinition = {
       [subcontractorId]
     );
     if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found` };
+
+    // Do not create dead-end draft emails for unreachable subs. Phone-only
+    // firms go straight to Call Prep; zero-pathway firms are held for a human.
+    if (!isEmailable(sub)) {
+      if (isCallable(sub)) {
+        return {
+          ok: true,
+          summary: `No verified email for ${sub.company_name}; queued a call instead.`,
+          enqueued: [
+            {
+              agent: "call-prep",
+              payload: {
+                opportunityId,
+                subcontractorId,
+                trade,
+                source: "outreach",
+              },
+              opts: {
+                singletonKey: `callprep:${opportunityId}:${subcontractorId}`,
+                singletonSeconds: 3600,
+              },
+            },
+          ],
+        };
+      }
+      await query(
+        `update opportunity_subs
+            set outreach_state = 'no_email'
+          where opportunity_id = $1 and subcontractor_id = $2`,
+        [opportunityId, subcontractorId]
+      );
+      await query(
+        `update opportunities set human_action_required = true where id = $1`,
+        [opportunityId]
+      );
+      return {
+        ok: true,
+        summary: `Held ${sub.company_name}: no verified email and no phone — automation cannot reach them.`,
+        humanActionRequired: true,
+      };
+    }
 
     const opp = await queryOne<Opportunity>(
       `select * from opportunities where id = $1`,
