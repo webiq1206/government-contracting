@@ -2,11 +2,9 @@ import Link from "next/link";
 import { Wordmark } from "@/components/wordmark";
 
 const LINKS = [
-  { id: "platform", label: "Platform" },
-  { id: "pipeline", label: "Pipeline" },
-  { id: "scoring", label: "Scoring" },
+  { id: "platform", label: "Product" },
+  { id: "pipeline", label: "Guide Me" },
   { id: "pricing", label: "Pricing" },
-  { id: "faq", label: "FAQ" },
 ] as const;
 
 interface MarketingNavProps {
@@ -48,7 +46,7 @@ export function MarketingNav({
         </Link>
 
         <nav
-          className="hidden items-center gap-6 lg:flex"
+          className="hidden items-center gap-8 lg:flex"
           aria-label="Marketing sections"
         >
           {LINKS.map((link) => (
@@ -85,7 +83,7 @@ export function MarketingNav({
                 : "btn-primary"
             }`}
           >
-            Get started
+            Sign up
           </Link>
         </div>
       </div>

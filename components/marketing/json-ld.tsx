@@ -26,10 +26,10 @@ export function JsonLd({
   const webpage = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: "Brost Co | Run Your Entire Federal Bid Pipeline",
+    name: "Brost Co | Procurement Execution for Federal Contractors",
     url: SITE_URL,
     description:
-      "Stop chasing federal bids. Brost Co finds, scores, sources, and prepares federal opportunities so you focus on judgment, calls, and submission.",
+      "Win the right government contracts. Brost Co finds, scores, sources, and prepares opportunities so you stop managing the process by hand.",
     isPartOf: { "@type": "WebSite", name: "Brost Co", url: SITE_URL },
     about: { "@id": `${SITE_URL}/#organization` },
   };
@@ -90,7 +90,7 @@ export function JsonLd({
         name: "What is Brost Co?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Brost Co is procurement execution software for federal services contractors. It monitors SAM.gov, scores opportunities, writes plain-English briefs, sources subcontractors, assembles bid packages, and keeps one Today queue for everything that still needs a person.",
+          text: "Brost Co is procurement execution software for federal services contractors. It monitors SAM.gov, evaluates opportunities against your business, helps source subcontractors, prepares bid packages, and gives your team one prioritized list of work that needs attention.",
         },
       },
       {
@@ -98,7 +98,7 @@ export function JsonLd({
         name: "Does Brost Co replace SAM.gov?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "No. SAM.gov remains the official source for federal postings and your entity registration. Brost Co reads from SAM.gov and organizes the work after records arrive. You still renew registrations and submit through agency channels.",
+          text: "No. SAM.gov remains the official source for federal opportunities and entity registration. Brost Co organizes and advances the work after opportunities are published.",
         },
       },
       {
@@ -106,15 +106,7 @@ export function JsonLd({
         name: "Does Brost Co submit bids automatically?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "No. Brost Co assembles and validates bid packages, but submission requires your review and action. Signatures, attestations, and portal uploads stay with you.",
-        },
-      },
-      {
-        "@type": "Question",
-        name: "Who is Brost Co for?",
-        acceptedAnswer: {
-          "@type": "Answer",
-          text: "Small and mid-size federal services contractors who bid on construction, facilities, or professional services work and need a disciplined pipeline without hiring a full capture team.",
+          text: "No. Brost Co prepares and validates the bid package, but you retain final control. Signatures, attestations, and submission stay with your team.",
         },
       },
       {
@@ -127,18 +119,18 @@ export function JsonLd({
       },
       {
         "@type": "Question",
-        name: "Will Brost Co guarantee wins?",
+        name: "Who is Brost Co built for?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "No. Scoring and automation reduce wasted effort on poor fits and speed up good ones. Outcomes still depend on your pricing, past performance, and the competition.",
+          text: "Brost Co is designed for small and mid-size federal services contractors pursuing construction, facilities, and professional services work without a large in-house capture team.",
         },
       },
       {
         "@type": "Question",
-        name: "How is this different from a generic CRM?",
+        name: "How is this different from a CRM?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Brost Co is built around the federal bid lifecycle: NAICS fit, set-asides, subcontractor coverage, compliance gates, and SAM.gov intake. Stages, Today, and opportunity pages follow that journey instead of generic deal fields.",
+          text: "A general CRM tracks deals. Brost Co runs the federal bid lifecycle, including NAICS fit, set-asides, solicitation deadlines, subcontractor coverage, pricing, compliance gates, and submission readiness.",
         },
       },
     ],

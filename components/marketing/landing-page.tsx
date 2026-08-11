@@ -1,15 +1,10 @@
 import Link from "next/link";
 import { currency } from "@/lib/format";
 import { Wordmark } from "@/components/wordmark";
-import { MarketingNav } from "./marketing-nav";
-import { MarketingFooter } from "./marketing-footer";
+import { BrandMark } from "@/components/brand-mark";
 import { PromoCountdown } from "./promo-countdown";
-import {
-  AnalysisMock,
-  CoverageMock,
-  OpportunityMock,
-  PulseMock,
-} from "./landing-mocks";
+import { LandingFaq } from "./landing-faq";
+import "./landing.css";
 
 export interface LandingPageProps {
   promoActive: boolean;
@@ -20,88 +15,59 @@ export interface LandingPageProps {
   loginHref?: string;
 }
 
-const FAQ = [
+const FAQ_BASE = [
   {
     q: "What is Brost Co?",
-    a: "Brost Co is procurement execution software for federal services contractors. It monitors SAM.gov, scores opportunities, writes plain-English briefs, sources subcontractors, assembles bid packages, and keeps one Today queue for everything that still needs a person.",
+    a: "Brost Co is procurement execution software for federal services contractors. It monitors SAM.gov, evaluates opportunities against your business, helps source subcontractors, prepares bid packages, and gives your team one prioritized list of work that needs attention.",
   },
   {
     q: "Does Brost Co replace SAM.gov?",
-    a: "No. SAM.gov remains the official source for federal postings and your entity registration. Brost Co reads from SAM.gov and organizes the work after records arrive. You still renew registrations and submit through agency channels.",
+    a: "No. SAM.gov remains the official source for federal opportunities and entity registration. Brost Co organizes and advances the work after opportunities are published.",
   },
   {
     q: "Does Brost Co submit bids automatically?",
-    a: "No. Brost Co assembles and validates bid packages, but submission requires your review and action. Signatures, attestations, and portal uploads stay with you.",
+    a: "No. Brost Co prepares and validates the bid package, but you retain final control. Signatures, attestations, and submission stay with your team.",
   },
   {
-    q: "Who is Brost Co for?",
-    a: "Small and mid-size federal services contractors who bid on construction, facilities, or professional services work and need a disciplined pipeline without hiring a full capture team.",
+    q: "Who is Brost Co built for?",
+    a: "Brost Co is designed for small and mid-size federal services contractors pursuing construction, facilities, and professional services work without a large in-house capture team.",
   },
   {
-    q: "Will Brost Co guarantee wins?",
-    a: "No. Scoring and automation reduce wasted effort on poor fits and speed up good ones. Outcomes still depend on your pricing, past performance, and the competition.",
-  },
-  {
-    q: "How is this different from a generic CRM?",
-    a: "Brost Co is built around the federal bid lifecycle: NAICS fit, set-asides, subcontractor coverage, compliance gates, and SAM.gov intake. Stages, Today, and opportunity pages follow that journey instead of generic deal fields.",
+    q: "How is this different from a CRM?",
+    a: "A general CRM tracks deals. Brost Co runs the federal bid lifecycle, including NAICS fit, set-asides, solicitation deadlines, subcontractor coverage, pricing, compliance gates, and submission readiness.",
   },
 ] as const;
 
-const STAGES = [
+const WORKFLOW = [
   {
-    title: "Find",
-    body: "Matching SAM.gov postings land in your pipeline on a steady schedule.",
+    n: "01",
+    title: "Tell Brost Co what fits",
+    body: "Set your NAICS codes, services, set-asides, contract size, and service area once.",
   },
   {
-    title: "Triage",
-    body: "Each record is scored 0-100. Strong fits move. Borderline ones wait for you.",
+    n: "02",
+    title: "Let the right work surface",
+    body: "Matching SAM.gov opportunities enter your pipeline with deadlines and documents attached.",
   },
   {
-    title: "Capture",
-    body: "Subs are sourced, contacted, and followed up until pricing is in hand.",
+    n: "03",
+    title: "See the fit before you chase it",
+    body: "Every opportunity receives a score, risk flags, and a plain-English recommendation.",
   },
   {
-    title: "Bid",
-    body: "Packages assemble to your margin. You review, clear human items, and submit.",
-  },
-] as const;
-
-const VALUE_POINTS = [
-  {
-    title: "High-level visibility",
-    body: "Today shows every human action across the pipeline, ordered by urgency.",
+    n: "04",
+    title: "Build coverage and pricing",
+    body: "Source subcontractors, manage outreach, collect quotes, and spot missing trades early.",
   },
   {
-    title: "Capture intelligence",
-    body: "Plain-English briefs and score breakdowns explain fit before you spend an hour reading.",
+    n: "05",
+    title: "Review a complete bid package",
+    body: "Pricing, compliance checks, certifications, and final documents arrive ready for review.",
   },
   {
-    title: "Bid or no-bid clarity",
-    body: "Pursue and pass decisions happen in one place, with automation ready to continue.",
-  },
-] as const;
-
-const PREP_POINTS = [
-  "Monitors federal postings against your company profile",
-  "Scores fit and writes a plain-English opportunity brief",
-  "Sources and contacts subcontractors for required trades",
-  "Tracks quotes, coverage gaps, and follow-ups automatically",
-  "Assembles bid packages with compliance checks before you sign",
-  "Keeps one Guide Me layer so you always know what to do next",
-] as const;
-
-const PROCESS = [
-  {
-    title: "The opportunity lifecycle",
-    body: "From SAM.gov intake through submission and award, every stage has an owner: Brost Co, you, a sub, or the agency.",
-  },
-  {
-    title: "The technical screening",
-    body: "NAICS, geography, set-aside, size, deadline, and risk flags decide pursue, review, or ignore before you invest time.",
-  },
-  {
-    title: "The pursuit rhythm",
-    body: "Calls, quotes, and package review show up on Today when they need a person. Empty Today means automation is working.",
+    n: "06",
+    title: "Submit with control",
+    body: "You approve the final package and submit through the required agency channel.",
   },
 ] as const;
 
@@ -115,416 +81,580 @@ export function LandingPage({
 }: LandingPageProps) {
   const foundingLabel = currency(foundingMonthly);
   const standardLabel = currency(standardMonthly);
+  const monthlySavings = currency(standardMonthly - foundingMonthly);
   const showCountdown = promoActive && promoEndsAt;
-  const primaryCta = promoActive ? `Lock in ${foundingLabel}/month` : "Get started";
+  const primaryCta = promoActive
+    ? "Start with founding access"
+    : "Get started";
+  const priceCta = promoActive
+    ? `Lock in ${foundingLabel} per month`
+    : `Subscribe at ${standardLabel} per month`;
   const pricingFaq = promoActive
     ? `Standard pricing is ${standardLabel} per month. Founding customers who join during the launch window lock in ${foundingLabel} per month for as long as they remain subscribed.`
     : `Brost Co is ${standardLabel} per month.`;
   const faqItems = [
-    ...FAQ.slice(0, 4),
+    ...FAQ_BASE.slice(0, 3),
     { q: "How much does Brost Co cost?", a: pricingFaq },
-    ...FAQ.slice(4),
+    ...FAQ_BASE.slice(3),
   ];
+  const year = new Date().getFullYear();
 
   return (
-    <>
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-            @keyframes mkt-fade-up {
-              from { opacity: 0; transform: translateY(18px); }
-              to { opacity: 1; transform: translateY(0); }
-            }
-            @keyframes mkt-rise {
-              from { opacity: 0; transform: translateY(28px) scale(0.985); }
-              to { opacity: 1; transform: translateY(0) scale(1); }
-            }
-            @keyframes mkt-glow {
-              0%, 100% { opacity: 0.35; }
-              50% { opacity: 0.7; }
-            }
-            .mkt-hero-brand { animation: mkt-fade-up 0.65s ease-out both; }
-            .mkt-hero-title { animation: mkt-fade-up 0.7s ease-out 0.08s both; }
-            .mkt-hero-lead { animation: mkt-fade-up 0.7s ease-out 0.16s both; }
-            .mkt-hero-cta { animation: mkt-fade-up 0.7s ease-out 0.24s both; }
-            .mkt-hero-mock { animation: mkt-rise 0.9s ease-out 0.32s both; }
-            .mkt-glow {
-              animation: mkt-glow 6s ease-in-out infinite;
-            }
-            @media (prefers-reduced-motion: reduce) {
-              .mkt-hero-brand, .mkt-hero-title, .mkt-hero-lead, .mkt-hero-cta, .mkt-hero-mock, .mkt-glow {
-                animation: none;
-              }
-            }
-          `,
-        }}
-      />
+    <div className="mkt-lp">
+      <main>
+        <header className="nav-shell">
+          <Link className="type-logo" href="#top" aria-label="Brost Co home">
+            <Wordmark variant="light" priority className="h-7" />
+          </Link>
+          <nav className="desktop-nav" aria-label="Primary navigation">
+            <a href="#platform">Platform</a>
+            <a href="#workflow">How it works</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#faq">FAQ</a>
+          </nav>
+          <div className="nav-actions">
+            <Link href={loginHref}>Log in</Link>
+            <Link className="btn btn-small" href={signupHref}>
+              Get started <span aria-hidden="true">↗</span>
+            </Link>
+          </div>
+          <details className="mobile-nav">
+            <summary aria-label="Open navigation">
+              <i />
+              <i />
+            </summary>
+            <nav aria-label="Mobile navigation">
+              <a href="#platform">Platform</a>
+              <a href="#workflow">How it works</a>
+              <a href="#pricing">Pricing</a>
+              <a href="#faq">FAQ</a>
+              <Link href={loginHref}>Log in</Link>
+              <Link href={signupHref}>Get started</Link>
+            </nav>
+          </details>
+        </header>
 
-      <div className="bg-[#0a0a0a]">
-        <MarketingNav
-          loginHref={loginHref}
-          signupHref={signupHref}
-          onLanding
-          variant="dark"
-        />
-
-        <main>
-          {/* Hero */}
-          <section className="relative overflow-hidden bg-[#0a0a0a] text-white">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 opacity-[0.08]"
-              style={{
-                backgroundImage:
-                  "linear-gradient(rgba(178,143,93,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(178,143,93,0.35) 1px, transparent 1px)",
-                backgroundSize: "72px 72px",
-              }}
-            />
-            <div
-              aria-hidden
-              className="mkt-glow pointer-events-none absolute -right-24 -top-24 h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle,rgba(178,143,93,0.28),transparent_65%)]"
-            />
-
-            <div className="relative mx-auto max-w-6xl px-4 pb-16 pt-14 sm:px-6 sm:pb-24 sm:pt-20">
-              <div className="mkt-hero-brand">
-                <Wordmark
-                  variant="light"
-                  priority
-                  className="h-10 sm:h-14 lg:h-16"
-                />
+        <section className="hero" id="top">
+          <div className="grid-bg" aria-hidden />
+          <div className="gold-glow" aria-hidden />
+          <div className="hero-inner">
+            <div className="hero-copy">
+              <div className="hero-wordmark">
+                <Wordmark variant="light" priority className="h-12 sm:h-14" />
               </div>
-
-              <h1 className="mkt-hero-title mt-8 max-w-4xl font-display text-3xl leading-[1.12] sm:text-5xl lg:text-[3.5rem]">
-                Stop chasing federal bids. Start running the{" "}
-                <span className="text-gold">entire pipeline</span>.
-              </h1>
-
-              <p className="mkt-hero-lead mt-5 max-w-xl text-base leading-relaxed text-white/65 sm:text-lg">
-                Brost Co is procurement execution software for federal services contractors.
-                It finds, scores, sources, and prepares opportunities so you only step in for
-                judgment, calls, and submission.
+              <p className="eyebrow light">
+                <i />
+                Procurement execution
               </p>
-
-              <div className="mkt-hero-cta mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Link
-                  href={signupHref}
-                  className="inline-flex min-h-11 items-center justify-center rounded-md bg-gold px-5 py-2.5 text-sm font-semibold text-[#0a0a0a] transition-colors hover:bg-[#c4a06e]"
-                >
-                  {primaryCta}
+              <h1>Win the right government contracts. Stop managing the process by hand.</h1>
+              <p className="lead">
+                Brost Co finds the right opportunities, scores the fit, builds subcontractor
+                coverage, and prepares your bids. You stay focused on the decisions only you can
+                make.
+              </p>
+              <div className="hero-actions">
+                <Link className="btn" href={signupHref}>
+                  {primaryCta} <span aria-hidden="true">↗</span>
                 </Link>
-                <a
-                  href="#platform"
-                  className="inline-flex min-h-11 items-center justify-center rounded-md border border-white/25 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/5"
-                >
-                  See the platform
+                <a className="under-link" href="#platform">
+                  Explore the platform <span aria-hidden="true">↓</span>
                 </a>
               </div>
-
-              <div className="mkt-hero-mock mt-14 sm:mt-16">
-                <PulseMock />
+              <div className="proof">
+                <div>
+                  <b>One</b>
+                  <span>daily priority queue</span>
+                </div>
+                <div>
+                  <b>0 to 100</b>
+                  <span>opportunity fit scoring</span>
+                </div>
+                <div>
+                  <b>Human</b>
+                  <span>approval stays required</span>
+                </div>
               </div>
             </div>
-          </section>
 
-          {/* 01 Problem / value */}
-          <section className="bg-[#F7F4EE] px-4 py-20 sm:px-6 sm:py-28">
-            <div className="mx-auto max-w-6xl">
-              <p className="font-display text-7xl leading-none text-black/[0.06] sm:text-8xl">
-                01
-              </p>
-              <h2 className="-mt-6 max-w-3xl font-display text-3xl leading-tight text-foreground sm:text-4xl lg:text-5xl">
-                Good opportunities do not disappear all at once.
-              </h2>
-              <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                They leak through missed follow-ups, thin sub coverage, unread amendments, and
-                deadlines that sneak up while work sits in inboxes. Brost Co keeps the full
-                pursuit visible so leakage is obvious before it costs the bid.
-              </p>
-
-              <ul className="mt-14 grid gap-8 sm:grid-cols-3">
-                {VALUE_POINTS.map((item) => (
-                  <li key={item.title}>
-                    <div className="mb-4 h-px w-10 bg-gold" />
-                    <h3 className="font-display text-xl text-foreground">{item.title}</h3>
-                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      {item.body}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-
-          {/* Pipeline stages */}
-          <section
-            id="pipeline"
-            className="scroll-mt-24 bg-[#0a0a0a] px-4 py-20 text-white sm:px-6 sm:py-28"
-          >
-            <div className="mx-auto max-w-6xl">
-              <h2 className="max-w-3xl font-display text-3xl leading-tight sm:text-4xl lg:text-5xl">
-                Everything between SAM.gov and submitted.
-              </h2>
-              <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/60 sm:text-lg">
-                Brost Co runs the stretch most teams cobble together from spreadsheets, shared
-                inboxes, and memory.
-              </p>
-
-              <ol className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {STAGES.map((stage, i) => (
-                  <li
-                    key={stage.title}
-                    className="border-t border-white/15 pt-5"
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gold">
-                      0{i + 1} · {stage.title}
-                    </p>
-                    <p className="mt-3 text-sm leading-relaxed text-white/65">{stage.body}</p>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </section>
-
-          {/* Platform */}
-          <section
-            id="platform"
-            className="scroll-mt-24 bg-[#F7F4EE] px-4 py-20 sm:px-6 sm:py-28"
-          >
-            <div className="mx-auto max-w-6xl">
-              <h2 className="max-w-3xl font-display text-3xl leading-tight text-foreground sm:text-4xl lg:text-5xl">
-                Open the platform. Focus only on what deserves you.
-              </h2>
-              <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                Today, opportunity pages, and Guide Me share one source of truth. When something
-                needs a person, it is obvious. When Brost Co is handling it, you can wait.
-              </p>
-              <div className="mt-12">
-                <OpportunityMock />
-              </div>
-            </div>
-          </section>
-
-          {/* Scoring */}
-          <section
-            id="scoring"
-            className="scroll-mt-24 bg-[#0a0a0a] px-4 py-20 text-white sm:px-6 sm:py-28"
-          >
-            <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-16">
-              <div>
-                <h2 className="font-display text-3xl leading-tight sm:text-4xl lg:text-5xl">
-                  Know why an opportunity is a go long before you spend an hour on it.
-                </h2>
-                <p className="mt-5 text-base leading-relaxed text-white/60 sm:text-lg">
-                  Every posting gets a 0-100 fit score against your company profile, plus a
-                  plain-English brief. Pursue-tier work moves automatically. Review-tier work
-                  waits for your call.
-                </p>
-              </div>
-              <AnalysisMock />
-            </div>
-          </section>
-
-          {/* Coverage */}
-          <section className="bg-[#F7F4EE] px-4 py-20 sm:px-6 sm:py-28">
-            <div className="mx-auto max-w-6xl">
-              <h2 className="max-w-3xl font-display text-3xl leading-tight text-foreground sm:text-4xl lg:text-5xl">
-                Trust your coverage. Nothing falls out of the pursuit.
-              </h2>
-              <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-                Per-trade visibility shows who was found, contacted, quoted, and which scopes
-                still block the bid. Follow-ups and call cards appear on Today before the
-                deadline owns the day.
-              </p>
-              <div className="mt-12">
-                <CoverageMock />
-              </div>
-            </div>
-          </section>
-
-          {/* Prep list */}
-          <section className="bg-[#0a0a0a] px-4 py-20 text-white sm:px-6 sm:py-28">
-            <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1fr_1.1fr] lg:gap-20">
-              <h2 className="font-display text-3xl leading-tight sm:text-4xl lg:text-5xl">
-                Brost Co does the preparation. You keep the outcome.
-              </h2>
-              <ul className="space-y-0">
-                {PREP_POINTS.map((point) => (
-                  <li
-                    key={point}
-                    className="border-t border-white/12 py-4 text-base text-white/70 first:border-t-0"
-                  >
-                    <span className="mr-3 text-gold">+</span>
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-
-          {/* Process grid */}
-          <section className="bg-[#F7F4EE] px-4 py-20 sm:px-6 sm:py-28">
-            <div className="mx-auto max-w-6xl">
-              <h2 className="max-w-3xl font-display text-3xl leading-tight text-foreground sm:text-4xl lg:text-5xl">
-                A disciplined process without building a larger capture team.
-              </h2>
-              <ul className="mt-14 grid gap-10 sm:grid-cols-3">
-                {PROCESS.map((item) => (
-                  <li key={item.title}>
-                    <div className="mb-4 h-px w-10 bg-gold" />
-                    <h3 className="font-display text-xl text-foreground">{item.title}</h3>
-                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-                      {item.body}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-
-          {/* Pricing */}
-          <section
-            id="pricing"
-            className="scroll-mt-24 bg-[#0a0a0a] px-4 py-20 text-white sm:px-6 sm:py-28"
-          >
-            <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-16">
-              <div>
-                <h2 className="font-display text-3xl leading-tight sm:text-4xl lg:text-5xl">
-                  Run a stronger federal pipeline for a fraction of the usual cost.
-                </h2>
-                <p className="mt-5 text-base leading-relaxed text-white/60 sm:text-lg">
-                  One subscription covers monitoring, scoring, sourcing, bid assembly, Today,
-                  and Guide Me. No per-seat surprise fees on the base plan.
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-white/12 bg-[#141414] p-6 sm:p-8">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gold">
-                  Monthly subscription
-                </p>
-                {promoActive ? (
-                  <>
-                    <p className="mt-4 text-sm text-white/45">
-                      <span className="num line-through">{standardLabel}</span>
-                      <span className="ml-2">standard</span>
-                    </p>
-                    <p className="mt-1 font-display text-5xl text-white">
-                      <span className="num text-gold">{foundingLabel}</span>
-                      <span className="text-lg text-white/45">/mo</span>
-                    </p>
-                    <p className="mt-2 text-sm text-gold/90">
-                      Founding rate, locked in while subscribed
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="mt-4 font-display text-5xl text-white">
-                      <span className="num text-gold">{standardLabel}</span>
-                      <span className="text-lg text-white/45">/mo</span>
-                    </p>
-                    <p className="mt-2 text-sm text-white/45">Standard rate, billed monthly</p>
-                  </>
-                )}
-
-                {showCountdown && (
-                  <div className="mt-6 rounded-md border border-white/10 bg-black/30 p-3">
-                    <PromoCountdown endsAtIso={promoEndsAt} variant="dark" />
+            <div className="hero-product" aria-hidden>
+              <aside className="orbit top">
+                SAM.GOV INTAKE <b>Complete</b>
+              </aside>
+              <div className="app-window">
+                <div className="app-bar">
+                  <span className="app-brand">
+                    <BrandMark size="sm" />
+                  </span>
+                  <b>Today</b>
+                  <em>AUG 11</em>
+                </div>
+                <div className="app-body">
+                  <div className="queue-title">
+                    <div>
+                      <label>Needs your attention</label>
+                      <h3>3 decisions. 18 minutes.</h3>
+                    </div>
+                    <span>LIVE</span>
                   </div>
-                )}
-
-                <ul className="mt-6 space-y-2 text-sm text-white/60">
-                  <li>SAM.gov intake and opportunity scoring</li>
-                  <li>Subcontractor sourcing and outreach</li>
-                  <li>Bid package assembly and compliance checks</li>
-                  <li>Today queue plus Guide Me on every page</li>
-                </ul>
-
-                <Link
-                  href={signupHref}
-                  className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-gold px-5 py-2.5 text-sm font-semibold text-[#0a0a0a] transition-colors hover:bg-[#c4a06e]"
-                >
-                  {promoActive
-                    ? `Lock in ${foundingLabel}/month`
-                    : `Subscribe at ${standardLabel}/month`}
-                </Link>
+                  <div className="task priority">
+                    <i>01</i>
+                    <div>
+                      <label>Decision needed</label>
+                      <b>HVAC maintenance, Boise VA</b>
+                      <span>Score 84 · Due in 12 days · $1.2M estimate</span>
+                    </div>
+                    <button type="button">Review</button>
+                  </div>
+                  <div className="task">
+                    <i>02</i>
+                    <div>
+                      <label>Subcontractor follow-up</label>
+                      <b>Electrical quote still outstanding</b>
+                      <span>Last contact 3 days ago · Follow-up ready</span>
+                    </div>
+                    <button type="button">Open</button>
+                  </div>
+                  <div className="task">
+                    <i>03</i>
+                    <div>
+                      <label>Final review</label>
+                      <b>Grounds maintenance IDIQ</b>
+                      <span>Package complete · Submission due tomorrow</span>
+                    </div>
+                    <button type="button">Review</button>
+                  </div>
+                  <div className="app-summary">
+                    <span>12 tasks handled automatically today</span>
+                    <b>View activity ↗</b>
+                  </div>
+                </div>
               </div>
+              <aside className="orbit bottom">
+                AUTOMATION ACTIVITY <b>12 actions today</b>
+              </aside>
             </div>
-          </section>
+          </div>
+          <div className="hero-strip">
+            <strong>BUILT FOR FEDERAL SERVICES CONTRACTORS</strong>
+            <span>CONSTRUCTION</span>
+            <span>FACILITIES</span>
+            <span>PROFESSIONAL SERVICES</span>
+          </div>
+        </section>
 
-          {/* FAQ */}
-          <section
-            id="faq"
-            className="scroll-mt-24 bg-[#F7F4EE] px-4 py-20 sm:px-6 sm:py-28"
-          >
-            <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-16">
-              <div>
-                <h2 className="font-display text-3xl leading-tight text-foreground sm:text-4xl lg:text-5xl">
-                  Understand the system before you trust it with your pipeline.
-                </h2>
-                <p className="mt-5 text-base leading-relaxed text-muted-foreground">
-                  Straight answers. No hype about automatic wins or replacing your judgment.
-                </p>
-              </div>
-
-              <div className="divide-y divide-border border-y border-border">
-                {faqItems.map((item) => (
-                  <details key={item.q} className="group py-5">
-                    <summary className="flex cursor-pointer list-none items-start justify-between gap-4 font-display text-lg text-foreground [&::-webkit-details-marker]:hidden">
-                      <span>{item.q}</span>
-                      <span
-                        aria-hidden
-                        className="mt-1 shrink-0 text-gold transition-transform group-open:rotate-45"
-                      >
-                        +
-                      </span>
-                    </summary>
-                    <p className="mt-3 pr-8 text-sm leading-relaxed text-muted-foreground sm:text-base">
-                      {item.a}
-                    </p>
-                  </details>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Final CTA */}
-          <section className="bg-[#0a0a0a] px-4 py-20 text-center text-white sm:px-6 sm:py-28">
-            <div className="mx-auto max-w-3xl">
-              <h2 className="font-display text-3xl leading-tight sm:text-4xl lg:text-5xl">
-                Stop managing the process. Start running the pipeline.
-              </h2>
-              <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-white/60">
-                {promoActive ? (
-                  <>
-                    Join founding members at {foundingLabel}/month. Setup takes an afternoon.
-                    Today tells you what to do every morning after that.
-                  </>
-                ) : (
-                  <>
-                    Subscribe at {standardLabel}/month. Setup takes an afternoon. Today tells
-                    you what to do every morning after that.
-                  </>
-                )}
+        <section className="problem section">
+          <div className="shell problem-layout">
+            <div className="sticky">
+              <p className="eyebrow">
+                <i />
+                The real problem
               </p>
-              <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <Link
-                  href={signupHref}
-                  className="inline-flex min-h-11 items-center justify-center rounded-md bg-gold px-6 py-2.5 text-sm font-semibold text-[#0a0a0a] transition-colors hover:bg-[#c4a06e]"
-                >
-                  {primaryCta}
-                </Link>
-                <Link
-                  href={loginHref}
-                  className="inline-flex min-h-11 items-center justify-center rounded-md border border-white/25 px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/5"
-                >
-                  Login to existing account
-                </Link>
+              <h2>Your pipeline is not short on opportunities. It is short on clarity.</h2>
+            </div>
+            <div>
+              <p className="editorial">
+                Federal contracting creates work at every turn. When research, outreach, pricing,
+                and review live across portals, inboxes, spreadsheets, and memory, good
+                opportunities quietly lose momentum.
+              </p>
+              <div className="problem-grid">
+                <article>
+                  <small>01</small>
+                  <h3>Too much noise</h3>
+                  <p>
+                    Every posting looks urgent when there is no consistent way to compare fit,
+                    risk, and timing.
+                  </p>
+                </article>
+                <article>
+                  <small>02</small>
+                  <h3>Too many handoffs</h3>
+                  <p>
+                    Details disappear between opportunity research, subcontractor outreach,
+                    pricing, and final review.
+                  </p>
+                </article>
+                <article>
+                  <small>03</small>
+                  <h3>Too little visibility</h3>
+                  <p>
+                    Your team cannot act quickly when nobody can see the next decision, missing
+                    quote, or deadline.
+                  </p>
+                </article>
+                <article className="answer">
+                  <small>THE SHIFT</small>
+                  <h3>One system that moves the work forward.</h3>
+                  <p>Brost Co brings people in at the exact moment judgment is required.</p>
+                </article>
               </div>
             </div>
-          </section>
-        </main>
+          </div>
+        </section>
 
-        <MarketingFooter loginHref={loginHref} variant="dark" />
-      </div>
-    </>
+        <section className="platform section" id="platform">
+          <div className="shell">
+            <header className="center-head">
+              <p className="eyebrow">
+                <i />
+                The platform
+              </p>
+              <h2>One operating system for the work between opportunity and submission.</h2>
+              <p>Every screen answers one question: what should happen now?</p>
+            </header>
+            <div className="bento">
+              <article className="panel dark today-panel">
+                <header>
+                  <div>
+                    <small>01</small>
+                    <h3>Today</h3>
+                  </div>
+                  <p>Work ordered by consequence, not by the time it entered the system.</p>
+                </header>
+                <div className="today-mini" aria-hidden>
+                  <div className="mini-head">
+                    <span>NEEDS YOUR ATTENTION</span>
+                    <b>Tuesday · Aug 11</b>
+                  </div>
+                  <div className="mini-row selected">
+                    <i>01</i>
+                    <div>
+                      <b>Review opportunity recommendation</b>
+                      <span>HVAC maintenance · Score 84</span>
+                    </div>
+                    <em>9 min</em>
+                  </div>
+                  <div className="mini-row">
+                    <i>02</i>
+                    <div>
+                      <b>Call subcontractor</b>
+                      <span>Electrical pricing · Due today</span>
+                    </div>
+                    <em>6 min</em>
+                  </div>
+                  <div className="mini-row">
+                    <i>03</i>
+                    <div>
+                      <b>Approve bid package</b>
+                      <span>All compliance checks passed</span>
+                    </div>
+                    <em>3 min</em>
+                  </div>
+                </div>
+              </article>
+              <article className="panel score-panel">
+                <header>
+                  <div>
+                    <small>02</small>
+                    <h3>Opportunity scoring</h3>
+                  </div>
+                  <p>See the number. Understand the reason.</p>
+                </header>
+                <div className="score-ui" aria-hidden>
+                  <div className="score-ring">
+                    <b>84</b>
+                    <span>PURSUE</span>
+                  </div>
+                  <div className="score-lines">
+                    <p>
+                      <span>Trade fit</span>
+                      <b>+24</b>
+                    </p>
+                    <p>
+                      <span>Set-aside match</span>
+                      <b>+18</b>
+                    </p>
+                    <p>
+                      <span>Service area</span>
+                      <b>+16</b>
+                    </p>
+                    <p>
+                      <span>Risk flags</span>
+                      <b>-4</b>
+                    </p>
+                  </div>
+                </div>
+              </article>
+              <article className="panel">
+                <header>
+                  <div>
+                    <small>03</small>
+                    <h3>Subcontractor coverage</h3>
+                  </div>
+                  <p>Know which trades are covered before pricing slips.</p>
+                </header>
+                <div className="coverage" aria-hidden>
+                  <p>
+                    <span>HVAC</span>
+                    <b className="green">Quote received</b>
+                    <i>3 subs</i>
+                  </p>
+                  <p>
+                    <span>Electrical</span>
+                    <b className="gold">Awaiting reply</b>
+                    <i>4 subs</i>
+                  </p>
+                  <p>
+                    <span>Plumbing</span>
+                    <b className="green">Covered</b>
+                    <i>2 subs</i>
+                  </p>
+                  <p>
+                    <span>Controls</span>
+                    <b className="red">Needs attention</b>
+                    <i>1 sub</i>
+                  </p>
+                </div>
+              </article>
+              <article className="panel dark package">
+                <header>
+                  <div>
+                    <small>04</small>
+                    <h3>Bid package</h3>
+                  </div>
+                  <p>A complete review surface before anything leaves your hands.</p>
+                </header>
+                <div className="package-ui" aria-hidden>
+                  <div className="papers">
+                    <i />
+                    <i />
+                    <i />
+                    <b>IFB 36C</b>
+                  </div>
+                  <ul>
+                    <li>✓ Pricing rollup complete</li>
+                    <li>✓ Certifications attached</li>
+                    <li>✓ Compliance review passed</li>
+                    <li>✓ Ready for final approval</li>
+                  </ul>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section className="workflow section" id="workflow">
+          <div className="lines" aria-hidden />
+          <div className="shell workflow-layout">
+            <div className="workflow-copy sticky">
+              <p className="eyebrow light">
+                <i />
+                How it works
+              </p>
+              <h2>From federal posting to submission, without losing the thread.</h2>
+              <p>
+                Automation handles repeatable work. Your team handles judgment, relationships,
+                approval, and submission.
+              </p>
+              <Link className="under-link" href={signupHref}>
+                Set up your company profile <span aria-hidden="true">↗</span>
+              </Link>
+            </div>
+            <ol>
+              {WORKFLOW.map((step) => (
+                <li key={step.n}>
+                  <span>{step.n}</span>
+                  <div>
+                    <h3>{step.title}</h3>
+                    <p>{step.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
+        <section className="comparison section">
+          <div className="shell">
+            <header className="split-head">
+              <div>
+                <p className="eyebrow">
+                  <i />
+                  Built for judgment
+                </p>
+                <h2>Automated where it should be. Human where it matters.</h2>
+              </div>
+              <p>
+                Brost Co prepares the context, recommends the next move, and keeps approval in
+                your hands.
+              </p>
+            </header>
+            <div className="compare-grid">
+              <article>
+                <small>WITHOUT BROST CO</small>
+                <h3>Your team reconstructs the process every time.</h3>
+                <ul>
+                  <li>
+                    <span>01</span>Refresh SAM.gov and manually qualify postings
+                  </li>
+                  <li>
+                    <span>02</span>Copy deadlines and details into spreadsheets
+                  </li>
+                  <li>
+                    <span>03</span>Search inboxes for subcontractor responses
+                  </li>
+                  <li>
+                    <span>04</span>Assemble bid documents from scattered files
+                  </li>
+                </ul>
+              </article>
+              <article className="dark">
+                <small>WITH BROST CO</small>
+                <h3>Your team opens one queue and moves the work forward.</h3>
+                <ul>
+                  <li>
+                    <span>✓</span>Qualified opportunities appear with clear reasoning
+                  </li>
+                  <li>
+                    <span>✓</span>Deadlines and next actions stay attached
+                  </li>
+                  <li>
+                    <span>✓</span>Coverage and quote status stay visible
+                  </li>
+                  <li>
+                    <span>✓</span>Complete packages arrive ready for review
+                  </li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section className="statement">
+          <span aria-hidden>“</span>
+          <h2>Stop asking your team where the bid stands. Open Brost Co and know.</h2>
+          <p>THE OPERATING PRINCIPLE</p>
+        </section>
+
+        <section className="pricing section" id="pricing">
+          <div className="shell pricing-layout">
+            <div className="sticky">
+              <p className="eyebrow light">
+                <i />
+                {promoActive ? "Founding access" : "Pricing"}
+              </p>
+              <h2>Build a disciplined federal pipeline before you build a larger team.</h2>
+              <p>
+                One subscription includes opportunity monitoring, scoring, subcontractor
+                sourcing, bid preparation, and your daily priority queue.
+              </p>
+              {promoActive && (
+                <aside>
+                  <b>FOUNDING RATE</b>
+                  <span>Locked for the life of your active subscription.</span>
+                </aside>
+              )}
+            </div>
+            <div className="price-card">
+              <header>
+                <span>MONTHLY SUBSCRIPTION</span>
+                <b>{promoActive ? "FOUNDING MEMBER" : "STANDARD"}</b>
+              </header>
+              {promoActive ? (
+                <>
+                  <del>{standardLabel} standard</del>
+                  <div className="price">
+                    <strong>{foundingLabel}</strong>
+                    <span>/month</span>
+                  </div>
+                  <p>
+                    Save {monthlySavings} each month while founding enrollment remains open.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="price" style={{ marginTop: 28 }}>
+                    <strong>{standardLabel}</strong>
+                    <span>/month</span>
+                  </div>
+                  <p>Standard rate, billed monthly.</p>
+                </>
+              )}
+              {showCountdown && (
+                <div style={{ marginBottom: 20 }}>
+                  <PromoCountdown endsAtIso={promoEndsAt} variant="dark" />
+                </div>
+              )}
+              <ul>
+                <li>✓ SAM.gov opportunity intake</li>
+                <li>✓ Fit scoring and pursuit recommendations</li>
+                <li>✓ Subcontractor sourcing and quote tracking</li>
+                <li>✓ Bid package assembly and compliance checks</li>
+                <li>✓ Today queue and complete pipeline visibility</li>
+              </ul>
+              <Link className="btn" href={signupHref}>
+                {priceCta} <span aria-hidden="true">↗</span>
+              </Link>
+              <small>Final submission always requires your review and action.</small>
+            </div>
+          </div>
+        </section>
+
+        <section className="faq section" id="faq">
+          <div className="shell faq-layout">
+            <div className="sticky">
+              <p className="eyebrow">
+                <i />
+                Clear answers
+              </p>
+              <h2>Know exactly what Brost Co does before you start.</h2>
+              <p>Still have a question?</p>
+              <a href="mailto:hello@brostco.com">
+                hello@brostco.com <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+            <LandingFaq items={faqItems} />
+          </div>
+        </section>
+
+        <section className="final-cta">
+          <div className="grid-bg" aria-hidden />
+          <div className="final-inner">
+            <div className="final-wordmark">
+              <Wordmark variant="light" className="h-14 sm:h-16" />
+            </div>
+            <p className="eyebrow light">
+              <i />
+              Start now
+            </p>
+            <h2>Put your federal pipeline on a schedule you can keep.</h2>
+            <p>
+              Set up your profile once. Open Today every morning. Give the right opportunities
+              the attention they deserve.
+            </p>
+            <Link className="btn" href={signupHref}>
+              {primaryCta} <span aria-hidden="true">↗</span>
+            </Link>
+          </div>
+        </section>
+
+        <footer>
+          <div className="footer-top">
+            <div>
+              <Link className="type-logo footer-logo" href="#top" aria-label="Brost Co home">
+                <Wordmark variant="dark" className="h-7" />
+              </Link>
+              <p>Procurement execution for federal services contractors.</p>
+            </div>
+            <nav aria-label="Footer navigation">
+              <a href="#platform">Platform</a>
+              <a href="#workflow">How it works</a>
+              <a href="#pricing">Pricing</a>
+              <a href="#faq">FAQ</a>
+            </nav>
+            <nav aria-label="Legal navigation">
+              <Link href="/privacy">Privacy</Link>
+              <Link href="/terms">Terms</Link>
+              <Link href={loginHref}>Log in</Link>
+              <a href="mailto:hello@brostco.com">Contact</a>
+            </nav>
+          </div>
+          <div className="footer-bottom">
+            <span>© {year} Brost Co.</span>
+            <span>Brost Co does not replace SAM.gov or submit bids without your review.</span>
+          </div>
+        </footer>
+      </main>
+    </div>
   );
 }
