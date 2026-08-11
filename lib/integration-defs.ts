@@ -151,8 +151,8 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
   {
     id: "gmail",
     name: "Gmail",
-    what: "Sends subcontractor outreach from your address, sends the 48-hour follow-ups, and detects replies to queue calls automatically. Reply detection and automatic price capture require Gmail (Resend can send, but cannot read your inbox).",
-    without: "No automated outreach emails; you contact subs manually.",
+    what: "Sends subcontractor outreach from your address, sends the 48-hour follow-ups, and detects replies to queue calls automatically. Optional if Resend is configured for outreach (add Resend's inbound webhook secret for reply detection without Google OAuth).",
+    without: "No automated outreach emails unless Resend is configured; you contact subs manually.",
     where: "console.cloud.google.com → OAuth client (Web) → paste ID + secret here, then click Connect Gmail.",
     fields: [
       { env: "GMAIL_CLIENT_ID", label: "OAuth client ID", secret: false },
