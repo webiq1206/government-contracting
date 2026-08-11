@@ -38,6 +38,7 @@ export const PAGE_HELP: Record<string, HelpContent> = {
       "Subs who replied are marked 'interested' and sorted to the top.",
       "Each card opens a workspace with a script and everything about the job.",
       "Fill in answers during the call; one save updates every record.",
+      "Skip records that you chose not to call and removes the card from the queue.",
       "A captured price automatically moves the bid forward.",
     ],
   },
@@ -136,10 +137,18 @@ export const PAGE_HELP: Record<string, HelpContent> = {
   opportunity: {
     title: "The complete record for one bid",
     points: [
-      "The banner up top always shows the recommended next step.",
-      "The Submission package panel assembles every required file, validates it, and runs an independent compliance audit.",
-      "Your job is to clear the items marked for you (signatures, provided docs) and submit, it's blocked until compliance passes.",
-      "Attachments and the plain-English brief live together below.",
+      "Jump links hop to Attention, Coverage, Brief, Quotes, Subs, Score, and Activity.",
+      "What needs attention and trade coverage sit near the top so you can scan blockers first.",
+      "The Subs panel shows who was found, contact status, emails/calls, next action, and history for this bid.",
+      "The banner always shows the recommended next step; submission stays blocked until compliance passes.",
+    ],
+  },
+  "how-it-works": {
+    title: "The full Brost Co sequence",
+    points: [
+      "Every step from setup through win/loss is listed here in order.",
+      "Green steps need you; gray steps run automatically; others wait on subs or the agency.",
+      "Day to day, use Today — this page is the map, not the to-do list.",
     ],
   },
 };

@@ -3,7 +3,7 @@ import { computeSetupChecklist, type SetupInputs } from "@/lib/domain/setup";
 
 const allOff: SetupInputs = {
   profile: null,
-  integrations: { sam: false, claude: false, googleMaps: false, gmail: false },
+  integrations: { sam: false, claude: false, googleMaps: false, gmail: false, resend: false },
 };
 
 const allOn: SetupInputs = {
@@ -14,7 +14,7 @@ const allOn: SetupInputs = {
     service_areas: ["Idaho"],
     certifications: ["Small Business"],
   },
-  integrations: { sam: true, claude: true, googleMaps: true, gmail: true },
+  integrations: { sam: true, claude: true, googleMaps: true, gmail: true, resend: false },
 };
 
 describe("computeSetupChecklist", () => {
@@ -82,15 +82,32 @@ describe("computeSetupChecklist", () => {
   it("reflects partial integration state", () => {
     const c = computeSetupChecklist({
       profile: allOn.profile,
-      integrations: { sam: true, claude: true, googleMaps: false, gmail: false },
+      integrations: { sam: true, claude: true, googleMaps: false, gmail: false, resend: false },
     });
     expect(c.done).toBe(6); // 4 profile + sam + claude
-    expect(c.items.find((i) => i.key === "gmail")!.done).toBe(false);
+    expect(c.items.find((i) => i.key === "email")!.done).toBe(false);
+  });
+
+  it("treats Resend alone as completing the email step (no Gmail OAuth)", () => {
+    const c = computeSetupChecklist({
+      profile: allOn.profile,
+      integrations: {
+        sam: true,
+        claude: true,
+        googleMaps: true,
+        gmail: false,
+        resend: true,
+      },
+    });
+    expect(c.items.find((i) => i.key === "email")!.done).toBe(true);
+    expect(c.done).toBe(8);
+    expect(c.complete).toBe(true);
   });
 
   it("points profile steps and integration steps at the right pages", () => {
     const c = computeSetupChecklist(allOff);
     expect(c.items.find((i) => i.key === "naics")!.href).toBe("/settings/profile");
     expect(c.items.find((i) => i.key === "sam")!.href).toBe("/settings/integrations");
+    expect(c.items.find((i) => i.key === "email")!.href).toBe("/settings/integrations");
   });
 });

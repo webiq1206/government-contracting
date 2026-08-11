@@ -64,6 +64,18 @@ export const outreachFollowup: AgentDefinition = {
            values ($1,$2,'email','outbound',$3,$4,$5,$6)`,
           [row.subcontractor_id, row.opportunity_id, subject, html, res.messageId ?? null, res.provider]
         );
+        // Reflect the follow-up on the pairing + roster so Today / opp / sub
+        // UIs show "Followed up" instead of permanently "Email sent".
+        await query(
+          `update opportunity_subs
+              set outreach_state = 'followed_up'
+            where opportunity_id = $1 and subcontractor_id = $2
+              and outreach_state in ('sent', 'draft', 'email_unverified')`,
+          [row.opportunity_id, row.subcontractor_id]
+        );
+        await query(`update subcontractors set last_contacted = now() where id = $1`, [
+          row.subcontractor_id,
+        ]);
         sent++;
       }
     }

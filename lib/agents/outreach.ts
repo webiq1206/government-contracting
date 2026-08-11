@@ -14,6 +14,7 @@ import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
+import { resolveSubWork } from "../domain/sub-work";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -75,11 +76,17 @@ export const outreach: AgentDefinition = {
     if (!tmpl) return { ok: false, summary: "no active template_1_outreach template" };
 
     const analysis = opp.solicitation_analysis;
+    // Prefer a trade-specific plain-English work description so the sub sees
+    // exactly what we need them to perform — not only a truncated whole-job SOW.
+    const subWork = resolveSubWork({
+      trade,
+      analysis,
+      description: opp.description,
+      maxChars: 700,
+    });
     // Rewrite raw api.sam.gov notice URLs to the public sam.gov/opp/{id}/view
     // equivalent before any further processing so they're clickable for subs.
-    const rawScopeSummary = rewriteSamUrls(
-      (analysis?.scope_plain_language ?? opp.description ?? "").slice(0, 400)
-    );
+    const rawScopeSummary = rewriteSamUrls(subWork.work || "");
 
     // Scrub government contact info (CO phone numbers and email addresses) from
     // every solicitation-derived string before it reaches the sub. This prevents

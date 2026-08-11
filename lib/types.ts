@@ -353,6 +353,12 @@ export interface SolicitationAnalysis {
 
   // --- Downstream-agent fields (retained) ---
   required_trades: string[];
+  /**
+   * Per-trade, layperson description of the work each sub must perform.
+   * Used on calls, outreach emails, and coverage so operators can speak
+   * to the scope without re-reading the full solicitation.
+   */
+  trade_scopes?: { trade: string; work: string }[];
   geographic_area: string;
   risk_flags: string[];
   past_perf_classification: PastPerfClassification;

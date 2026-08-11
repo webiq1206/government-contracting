@@ -20,7 +20,8 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
 
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 ${
+      id="next-step"
+      className={`scroll-mt-12 flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 ${
         step.tone === "action"
           ? "border-pursue/40 bg-pursue-soft"
           : step.tone === "warn"

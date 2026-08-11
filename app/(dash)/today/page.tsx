@@ -12,6 +12,7 @@ import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
 import { stageParty, PARTY_LABEL } from "@/lib/domain/journey";
+import { outreachLabel } from "@/lib/domain/sub-contact";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { ActionButton } from "@/components/action-button";
 import { SnoozeButton } from "@/components/snooze-button";
@@ -97,7 +98,9 @@ function OppActionRow({
               endpoint={`/api/opportunities/${o.id}/action`}
               body={{ action: "pursue" }}
               className="btn-success min-h-11 flex-1 text-xs sm:min-h-0 sm:flex-none"
-              successText="Pursued. Analysis and pricing are running."
+              toast={{
+                message: "Pursued. Analysis and pricing are running.",
+              }}
             >
               Pursue
             </ActionButton>
@@ -215,6 +218,8 @@ export default async function TodayPage() {
     data.urgent.length +
     data.triage.length +
     data.calls.count +
+    data.subFollowUps.length +
+    data.quoteReviews.length +
     bidWork.length +
     data.awaitingOutcome.length +
     flagged.length +
@@ -260,6 +265,10 @@ export default async function TodayPage() {
           </div>
         )}
 
+        {/* Pipeline overview first — scan where everything stands before the
+            action list. Setup (when incomplete) still sits above the work. */}
+        <PipelineStrip counts={data.stageCounts} />
+
         {/* What the machine did while you were away. */}
         {digestParts.length > 0 && (
           <Link
@@ -272,8 +281,8 @@ export default async function TodayPage() {
           </Link>
         )}
 
-        {/* Setup stays on top ONLY while the platform can't run on its own,
-            it is blocking work. Once complete it disappears entirely. */}
+        {/* Setup stays near the top ONLY while the platform can't run on its
+            own — it is blocking work. Once complete it disappears entirely. */}
         {!setup.complete && <SetupChecklist checklist={setup} />}
 
         {totalActions === 0 && setup.complete && (
@@ -331,7 +340,8 @@ export default async function TodayPage() {
             <p className="-mt-1 text-sm text-slate-500">
               Each row opens that call&rsquo;s guided workspace: the script,
               project details, and a form that saves the quote and every answer
-              in one step.
+              in one step. Skip removes it from the queue and records that you
+              chose not to call; Snooze just hides it for a bit.
             </p>
             {data.calls.rows.map((c) => (
               <Link
@@ -349,14 +359,33 @@ export default async function TodayPage() {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
+                  {c.work_summary && (
+                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">
+                      <span className="font-medium text-slate-800">Work: </span>
+                      {c.work_summary}
+                    </p>
+                  )}
                 </div>
                 <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:gap-3">
                   {c.source === "reply" && (
                     <span className="badge bg-pursue/15 text-pursue">Replied, interested</span>
                   )}
                   <DeadlineBadge deadline={c.deadline} rules={rules} />
-                  <StopClickPropagation className="inline-flex">
+                  <StopClickPropagation className="flex items-center gap-2">
                     <SnoozeButton kind="call_card" id={c.id} />
+                    <ActionButton
+                      endpoint={`/api/call-cards/${c.id}/skip`}
+                      className="btn-ghost text-xs"
+                      toast={{
+                        message: `Skipped calling ${c.company_name}. Recorded on their history.`,
+                        undo: {
+                          endpoint: `/api/call-cards/${c.id}/skip`,
+                          body: { undo: true },
+                        },
+                      }}
+                    >
+                      Skip
+                    </ActionButton>
                   </StopClickPropagation>
                   <span className="btn-primary pointer-events-none ml-auto text-xs sm:ml-0">
                     Start call →
@@ -373,6 +402,91 @@ export default async function TodayPage() {
                 {data.calls.count - data.calls.rows.length === 1 ? "" : "s"} in the queue →
               </Link>
             )}
+          </Section>
+        )}
+
+        {data.subFollowUps.length > 0 && (
+          <Section
+            eyebrow="Subcontractor outreach"
+            title="Follow up with subcontractors"
+            count={data.subFollowUps.length}
+          >
+            <p className="-mt-1 text-sm text-slate-500">
+              Automated email and follow-up already went out. These still need a
+              person — usually a quick call — before pricing can land.
+            </p>
+            {data.subFollowUps.map((s) => (
+              <Link
+                key={`${s.opportunity_id}-${s.subcontractor_id}`}
+                href={`/opportunity/${s.opportunity_id}#subs`}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    Call {s.company_name}
+                    {s.trade ? ` about ${s.trade.toLowerCase()} pricing` : ""}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {[
+                      s.opportunity_title,
+                      outreachLabel(s.outreach_state),
+                      s.last_contacted ? `last touch ${timeAgo(s.last_contacted)}` : null,
+                      `${s.emails_sent} email${s.emails_sent === 1 ? "" : "s"}`,
+                      s.calls_logged > 0
+                        ? `${s.calls_logged} call${s.calls_logged === 1 ? "" : "s"}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  {s.work_summary && (
+                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">
+                      <span className="font-medium text-slate-800">Work: </span>
+                      {s.work_summary}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <DeadlineBadge deadline={s.deadline} rules={rules} />
+                  <span className="btn-ghost pointer-events-none text-xs">Open opportunity →</span>
+                </div>
+              </Link>
+            ))}
+          </Section>
+        )}
+
+        {data.quoteReviews.length > 0 && (
+          <Section
+            eyebrow="Pricing check"
+            title="Quotes that need a look"
+            count={data.quoteReviews.length}
+          >
+            <p className="-mt-1 text-sm text-slate-500">
+              These prices look unusually high or low versus comps. Confirm or
+              replace them before the bid package is finalized.
+            </p>
+            {data.quoteReviews.map((q) => (
+              <Link
+                key={q.quote_id}
+                href={`/opportunity/${q.opportunity_id}#quotes`}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    Review {q.quote_amount != null ? currency(q.quote_amount) : "a quote"}
+                    {q.trade ? ` for ${q.trade}` : ""}
+                    {q.company_name ? ` from ${q.company_name}` : ""}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {q.opportunity_title ?? "Opportunity"} · outside expected range
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <DeadlineBadge deadline={q.deadline} rules={rules} />
+                  <span className="btn-ghost pointer-events-none text-xs">Review quote →</span>
+                </div>
+              </Link>
+            ))}
           </Section>
         )}
 
@@ -543,12 +657,13 @@ export default async function TodayPage() {
           </div>
         )}
 
-        {/* Context, below the work. What the machine is carrying for you, and
-            the setup list once it is no longer blocking anything. */}
-        <div className="space-y-6 border-t border-border pt-6">
-          <PipelineStrip counts={data.stageCounts} />
-          {setup.complete && <SetupChecklist checklist={setup} />}
-        </div>
+        {/* Completed setup checklist stays available below the work so it
+            doesn't compete with actions once the platform is fully wired. */}
+        {setup.complete && (
+          <div className="border-t border-border pt-6">
+            <SetupChecklist checklist={setup} />
+          </div>
+        )}
 
        </div>
       </div>

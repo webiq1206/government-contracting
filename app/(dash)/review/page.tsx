@@ -3,9 +3,11 @@ import { reviewQueue } from "@/lib/data";
 import { PageHeader, ScoreBadge, TierBadge } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
-import { currency, countdown } from "@/lib/format";
+import { countdown } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
+import { InfoTip } from "@/components/info-tip";
+import { termTip } from "@/lib/domain/glossary";
 import type { Opportunity } from "@/lib/types";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
 
@@ -17,43 +19,23 @@ const PAST_PERF_LABEL: Record<string, string> = {
   prime_only: "Must be our own (blocked)",
 };
 
-function DimensionBar({
-  label,
-  points,
-  max,
-}: {
-  label: string;
-  points: number;
-  max: number;
-}) {
-  const ratio = max > 0 ? Math.min(1, Math.max(0, points / max)) : 0;
-  const color =
-    ratio >= 0.75 ? "bg-pursue" : ratio >= 0.4 ? "bg-review" : "bg-risk";
-  return (
-    <div>
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-600">{label}</span>
-        <span className="num text-slate-700">
-          {points}/{max}
-        </span>
-      </div>
-      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-        <div
-          className={`h-full rounded-full ${color}`}
-          style={{ width: `${ratio * 100}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
+/**
+ * Scan-first review card: score, deadline, value, top risks, Pursue/Dismiss.
+ * Full score bars stay one click away so the queue isn't a metadata wall.
+ */
 function ReviewCard({ o }: { o: Opportunity }) {
   const dims = o.score_breakdown?.dimensions ?? [];
   const expiry = countdown(o.review_expires_at);
+  const topRisks = (o.risk_flags ?? []).slice(0, 3);
+  const moreRisks = (o.risk_flags?.length ?? 0) - topRisks.length;
+  const weakDims = dims
+    .filter((d) => d.max_points > 0 && d.points / d.max_points < 0.5)
+    .slice(0, 2);
+
   return (
     <Link
       href={`/opportunity/${o.id}`}
-      className="card block space-y-4 border-border hover:border-accent/60 hover:shadow-md transition-all"
+      className="card block space-y-3 border-border transition-all hover:border-accent/60 hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -61,41 +43,60 @@ function ReviewCard({ o }: { o: Opportunity }) {
             {o.title ?? "Untitled"}
           </p>
           <p className="mt-0.5 truncate text-xs text-slate-500">
-            {o.agency ?? "-"}
-            {o.location_state ? ` · ${o.location_state}` : ""}
-            {o.naics_code ? ` · industry code (NAICS) ${o.naics_code}` : ""}
-            {o.set_aside_type ? ` · ${o.set_aside_type}` : ""}
+            {[
+              o.agency,
+              o.location_state,
+              o.set_aside_type,
+              o.naics_code ? `NAICS ${o.naics_code}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </p>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <ScoreBadge score={o.score} />
-          <TierBadge tier={o.tier} />
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className="inline-flex items-center gap-1">
+            <ScoreBadge score={o.score} />
+            <StopClickPropagation className="inline-flex">
+              <InfoTip label="What is the opportunity score?">{termTip("score")}</InfoTip>
+            </StopClickPropagation>
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <TierBadge tier={o.tier} />
+            <StopClickPropagation className="inline-flex">
+              <InfoTip label="What does Review tier mean?">{termTip("tier_review")}</InfoTip>
+            </StopClickPropagation>
+          </span>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
         <div>
           <p className="label">Est. value</p>
           <p className="mt-0.5 text-sm font-medium text-slate-900">
-            <EstimatedValue value={o.value_estimated} source={o.value_estimated_source} />
+            <EstimatedValue
+              value={o.value_estimated}
+              source={o.value_estimated_source}
+            />
           </p>
         </div>
         <div>
           <p className="label">Deadline</p>
           <p
             className={`mt-0.5 text-sm font-medium ${
-              expiry === "overdue" ? "text-risk" : "text-slate-900"
+              countdown(o.deadline) === "overdue" ? "text-risk" : "text-slate-900"
             }`}
           >
-            ⏱ {countdown(o.deadline)}
+            {countdown(o.deadline)}
           </p>
         </div>
         <div>
-          <p
-            className="label"
-            title="Past performance: proof of similar completed work. Some agencies accept your subs' experience; some require your company's own."
-          >
+          <p className="label inline-flex items-center gap-1">
             Past performance
+            <StopClickPropagation className="inline-flex">
+              <InfoTip label="What is past performance?">
+                {termTip("past_performance")}
+              </InfoTip>
+            </StopClickPropagation>
           </p>
           <p className="mt-0.5 text-sm text-slate-900">
             {o.past_perf_classification
@@ -105,56 +106,66 @@ function ReviewCard({ o }: { o: Opportunity }) {
           </p>
         </div>
         <div>
-          <p className="label">Auto-dismiss</p>
+          <p className="label">Decide by</p>
           <p
             className={`mt-0.5 text-sm font-medium ${
               o.review_expires_at ? "text-review" : "text-slate-500"
             }`}
           >
-            {o.review_expires_at ? `in ${expiry}` : "-"}
+            {o.review_expires_at ? `auto-dismiss in ${expiry}` : "-"}
           </p>
         </div>
       </div>
 
-      {dims.length > 0 && (
-        <div className="space-y-2">
-          <p className="label">Score breakdown</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {dims.map((d) => (
-              <DimensionBar
-                key={d.key}
-                label={d.label}
-                points={d.points}
-                max={d.max_points}
-              />
-            ))}
-          </div>
-          {o.score_breakdown?.summary && (
-            <p className="text-xs text-slate-600">{o.score_breakdown.summary}</p>
+      {(topRisks.length > 0 || weakDims.length > 0) && (
+        <div className="flex flex-wrap gap-1.5">
+          {topRisks.map((f, i) => (
+            <span key={i} className="badge bg-risk/15 text-risk">
+              {flagLabel(f)}
+            </span>
+          ))}
+          {moreRisks > 0 && (
+            <span className="badge bg-slate-200 text-slate-600">+{moreRisks} more</span>
           )}
+          {weakDims.map((d) => (
+            <span key={d.key} className="badge bg-review/15 text-review">
+              Weak: {d.label} ({d.points}/{d.max_points})
+            </span>
+          ))}
         </div>
       )}
 
-      {o.risk_flags && o.risk_flags.length > 0 && (
-        <div>
-          <p className="label">Key risk factors</p>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Reasons this needs your judgment. Open the card to decide whether
-            your team can work around them.
-          </p>
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {o.risk_flags.map((f, i) => (
-              <span key={i} className="badge bg-risk/15 text-risk">
-                ⚠ {flagLabel(f)}
-              </span>
-            ))}
-          </div>
-        </div>
+      {dims.length > 0 && (
+        <StopClickPropagation>
+          <details className="rounded-md border border-border bg-surface/60 px-3 py-2">
+            <summary className="cursor-pointer text-xs font-medium text-slate-600 hover:text-accent">
+              Score factors ({dims.length}) — open for full breakdown
+            </summary>
+            <ul className="mt-2 space-y-1.5 border-t border-border pt-2">
+              {dims.map((d) => (
+                <li
+                  key={d.key}
+                  className="flex items-baseline justify-between gap-2 text-xs"
+                >
+                  <span className="text-slate-700">{d.label}</span>
+                  <span className="num text-slate-500">
+                    {d.points}/{d.max_points}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {o.score_breakdown?.summary && (
+              <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                {o.score_breakdown.summary}
+              </p>
+            )}
+          </details>
+        </StopClickPropagation>
       )}
 
       <StopClickPropagation className="flex items-center justify-between gap-2 border-t border-border pt-3">
         <span className="text-xs text-slate-500">
-          Click the card to open the full record →
+          Open the brief for full context, or decide here →
         </span>
         <div className="flex gap-2">
           <ActionButton

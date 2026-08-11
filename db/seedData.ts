@@ -171,7 +171,7 @@ export const DEFAULT_TEMPLATES: SeedTemplate[] = [
       "",
       "I'm {{sender_name}} with {{company_name}}. We have a {{trade}} job in {{location_state}} — deadline {{deadline}} — and need a qualified local partner to price the scope.",
       "",
-      "Scope: {{scope_summary}}",
+      "What we need you to do: {{scope_summary}}",
       "",
       "{{questions}}",
       "",

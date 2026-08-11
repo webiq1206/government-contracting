@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { tierColor } from "@/lib/format";
 import { HelpPopover, type HelpContent } from "./help-popover";
 
@@ -21,10 +22,10 @@ export function PageHeader({
   children,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   eyebrow?: string;
   help?: HelpContent;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-4 sm:px-6 sm:py-5">
@@ -37,7 +38,9 @@ export function PageHeader({
           {help && <HelpPopover help={help} />}
         </div>
         <div className="mt-2 h-[3px] w-11 rounded-full bg-accent" />
-        {subtitle && <p className="mt-2 text-sm text-slate-500">{subtitle}</p>}
+        {subtitle != null && subtitle !== "" && (
+          <div className="mt-2 text-sm text-slate-500">{subtitle}</div>
+        )}
       </div>
       {children && (
         <div className="flex max-w-full flex-wrap items-center gap-2">{children}</div>

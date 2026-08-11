@@ -1,8 +1,11 @@
 "use client";
 
 import type { CallCardRow } from "@/lib/data";
+import { ActionButton } from "@/components/action-button";
 import { CallWorkspaceLauncher } from "@/components/call-workspace-launcher";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
+import { SubWorkNeeded } from "@/components/sub-work-needed";
+import { resolveSubWork } from "@/lib/domain/sub-work";
 import { countdown, currency, shortDate } from "@/lib/format";
 
 /**
@@ -22,6 +25,12 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
     !!c.deadline &&
     (new Date(c.deadline).getTime() - Date.now()) / 86_400_000 < 7 &&
     !overdue;
+  const subWork = resolveSubWork({
+    trade: c.trade,
+    analysis: c.solicitation_analysis,
+    description: c.description,
+    maxChars: 280,
+  });
 
   return (
     <CallWorkspaceLauncher
@@ -81,6 +90,8 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
           </p>
         </div>
 
+        {subWork.work && <SubWorkNeeded work={subWork} variant="compact" />}
+
         {/* Signals */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {c.phone ? (
@@ -129,12 +140,27 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
         {/* Primary action */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="flex items-center justify-between gap-2"
+          className="flex flex-wrap items-center justify-between gap-2"
         >
           <p className="text-xs text-slate-500">
             Opens a full call workspace with script, attachments, and capture form.
           </p>
-          <span className="btn-primary pointer-events-none">Start call →</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <ActionButton
+              endpoint={`/api/call-cards/${c.id}/skip`}
+              className="btn-ghost text-xs"
+              toast={{
+                message: `Skipped calling ${c.company_name}. Recorded on their history.`,
+                undo: {
+                  endpoint: `/api/call-cards/${c.id}/skip`,
+                  body: { undo: true },
+                },
+              }}
+            >
+              Skip
+            </ActionButton>
+            <span className="btn-primary pointer-events-none text-xs">Start call →</span>
+          </div>
         </div>
       </div>
     </CallWorkspaceLauncher>

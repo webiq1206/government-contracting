@@ -116,22 +116,37 @@ export async function POST(
         [params.id, JSON.stringify(response), quoteAmountNum, cardStatus]
       );
 
-      // 3) Update the sub row (last_contacted; append notes).
+      // 3) Update the sub row. A real call stamps last_contacted; skipping does
+      // not (we never reached them). Notes still append when provided.
       const appendedNote =
         response.notes && response.notes.trim().length > 0
           ? `[${new Date().toISOString().slice(0, 10)}] ${response.notes.trim()}`
           : null;
-      await c.query(
-        `update subcontractors
-            set last_contacted = now(),
-                notes = case
-                  when $2::text is null then notes
+      if (cardStatus === "skipped") {
+        if (appendedNote) {
+          await c.query(
+            `update subcontractors
+                set notes = case
                   when notes is null or notes = '' then $2
                   else notes || E'\n\n' || $2
                 end
-          where id=$1`,
-        [subcontractor_id, appendedNote]
-      );
+              where id=$1`,
+            [subcontractor_id, appendedNote]
+          );
+        }
+      } else {
+        await c.query(
+          `update subcontractors
+              set last_contacted = now(),
+                  notes = case
+                    when $2::text is null then notes
+                    when notes is null or notes = '' then $2
+                    else notes || E'\n\n' || $2
+                  end
+            where id=$1`,
+          [subcontractor_id, appendedNote]
+        );
+      }
 
       // 4) Upsert a quote if a price was captured, Bid Builder reads from here.
       let quoteRowId: string | null = null;
@@ -185,7 +200,8 @@ export async function POST(
         }
       }
 
-      // 5) Append a communication record so Sub Detail history reflects the call.
+      // 5) Append a communication record so Sub Detail history reflects the call
+      // (or the decision to skip calling).
       if (closeCard && cardStatus === "called") {
         await c.query(
           `insert into communications
@@ -221,6 +237,17 @@ export async function POST(
             [opportunity_id]
           );
         }
+      } else if (closeCard && cardStatus === "skipped") {
+        await c.query(
+          `insert into communications
+              (subcontractor_id, opportunity_id, channel, direction, subject, body)
+            values ($1, $2, 'note', 'outbound', 'Skipped call', $3)`,
+          [
+            subcontractor_id,
+            opportunity_id,
+            response.notes?.trim() || "Operator chose not to call.",
+          ]
+        );
       }
 
       return { opportunity_id, subcontractor_id, quoteRowId };
@@ -234,13 +261,15 @@ export async function POST(
 
     await logAgent({
       agent: "operator",
-      action: "call-logged",
+      action: closeCard && cardStatus === "skipped" ? "call-skipped" : "call-logged",
       opportunityId: result.opportunity_id,
       subcontractorId: result.subcontractor_id,
       level: "info",
-      message: closeCard
-        ? `Call ${response.outcome ?? "completed"}${quoteAmountNum != null ? `, quote $${quoteAmountNum.toLocaleString()}` : ""}.`
-        : "Call draft saved.",
+      message: !closeCard
+        ? "Call draft saved."
+        : cardStatus === "skipped"
+          ? "Skipped calling (chose not to call)."
+          : `Call ${response.outcome ?? "completed"}${quoteAmountNum != null ? `, quote $${quoteAmountNum.toLocaleString()}` : ""}.`,
     });
 
     // Dialer mode: after completing a call, offer the next one in the queue
