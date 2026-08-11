@@ -215,16 +215,33 @@ export async function POST(
           ]
         );
 
-        // Mark the sub as responsive on the pairing (drives sub reliability scoring).
-        // Scoped to the trade this call was about so a multi-trade sub's other
-        // pairings keep their own outreach state.
-        await c.query(
-          `update opportunity_subs
-              set outreach_state='responsive', responded_at=now()
-            where opportunity_id=$1 and subcontractor_id=$2
-              and ($3::text is null or trade = $3)`,
-          [opportunity_id, subcontractor_id, trade]
-        );
+        // Map call outcome onto the pairing so Coverage / Today stay accurate.
+        // Declined / not interested must never look like a warm response.
+        // No-answer leaves prior outreach_state alone (still awaiting follow-up).
+        const outcome = (response.outcome ?? "").toLowerCase();
+        const declined =
+          outcome === "declined" ||
+          outcome === "not_interested" ||
+          response.interested === "no" ||
+          response.can_perform === "no";
+        const noAnswer = outcome === "no_answer";
+        if (declined) {
+          await c.query(
+            `update opportunity_subs
+                set outreach_state='declined', responded_at=now()
+              where opportunity_id=$1 and subcontractor_id=$2
+                and ($3::text is null or trade = $3)`,
+            [opportunity_id, subcontractor_id, trade]
+          );
+        } else if (!noAnswer) {
+          await c.query(
+            `update opportunity_subs
+                set outreach_state='responsive', responded_at=now()
+              where opportunity_id=$1 and subcontractor_id=$2
+                and ($3::text is null or trade = $3)`,
+            [opportunity_id, subcontractor_id, trade]
+          );
+        }
 
         // A completed call that captured a price advances the opportunity to
         // quote entry, exactly like the Quote Entry form does, so no path

@@ -52,7 +52,13 @@ const CONTACTED = new Set([
   "send_failed",
 ]);
 
-const FOLLOW_UP_DUE = new Set(["sent", "followed_up", "unresponsive", "draft", "send_failed"]);
+/**
+ * Human follow-up due: automation already sent the initial email (and usually
+ * the 48h follow-up). Fresh "sent" is still owned by the auto follow-up sweep.
+ * Draft/send_failed need operator attention via Integrations / retry, not a
+ * polite nudge call.
+ */
+const FOLLOW_UP_DUE = new Set(["followed_up", "unresponsive"]);
 
 function normalizeTrade(t: string | null | undefined): string {
   const s = (t ?? "").trim();

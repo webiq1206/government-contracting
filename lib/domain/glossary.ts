@@ -5,31 +5,30 @@
  */
 
 export const GLOSSARY: Record<string, string> = {
-  uei: "Unique Entity ID — your company’s official ID in SAM.gov. It goes on every federal bid and form.",
-  cage: "Commercial and Government Entity code — a five-character ID used on DoD and many federal forms alongside your UEI.",
+  uei: "Unique Entity ID: your company’s official ID in SAM.gov. It goes on every federal bid and form.",
+  cage: "Commercial and Government Entity code: a five-character ID used on DoD and many federal forms alongside your UEI.",
   naics:
-    "North American Industry Classification System code — the industry code that decides which opportunities fit your company and which set-asides apply.",
-  psc: "Product or Service Code — the government’s category for what is being bought (e.g. facilities support).",
+    "North American Industry Classification System code: the industry code that decides which opportunities fit your company and which set-asides apply.",
+  psc: "Product or Service Code: the government’s category for what is being bought (e.g. facilities support).",
   set_aside:
-    "Who is allowed to bid — for example Small Business, 8(a), or unrestricted (anyone).",
+    "Who is allowed to bid, for example Small Business, 8(a), or unrestricted (anyone).",
   sources_sought:
     "Market research, not a live bid. Agencies ask who can do the work; responding builds relationships for later solicitations.",
   solicitation:
     "A live request for bids. If you win and sign, it becomes a contract.",
   score:
-    "How well this opportunity fits your profile (0–100). Higher is better. Open the score breakdown for each factor.",
+    "How well this opportunity fits your profile (0-100). Higher is better. Open the score breakdown for each factor.",
   tier_pursue:
-    "High fit — the system auto-pursues these when automation is running.",
+    "High fit: the system auto-pursues these when automation is running.",
   tier_review:
-    "Borderline fit — needs your judgment to pursue or pass.",
-  tier_ignore:
-    "Low fit — usually skipped unless you override.",
+    "Borderline fit: needs your judgment to pursue or pass.",
+  tier_ignore: "Low fit: usually skipped unless you override.",
   place_of_performance:
     "Where the work must be done. Used to judge geographic fit and find local subcontractors.",
   past_performance:
     "Whether the agency wants proof that your company (not just your subcontractors) has done similar work before.",
   outreach_state:
-    "Where outreach stands with this sub on this opportunity — emailed, followed up, replied, declined, etc.",
+    "Where outreach stands with this sub on this opportunity: emailed, followed up, replied, declined, etc.",
   contact_status:
     "How contactable this company is on your roster (verified email, no email found, etc.).",
   quote_entry:
@@ -40,6 +39,18 @@ export const GLOSSARY: Record<string, string> = {
     "Whether every required submission file is present and the independent compliance check has passed.",
   follow_up_due:
     "A sub was contacted and has not replied within the follow-up window. They need another nudge or a call.",
+  stage:
+    "Where this opportunity sits in Brost Co’s pipeline, from discovery through submission and award.",
+  overview:
+    "The essentials: what the job is, when it is due, how it scored, and whether you should pursue it.",
+  workflow:
+    "Completed steps, the current step, who owns it (system vs you vs subs vs agency), and what happens next.",
+  documents:
+    "Solicitation files, generated bid package pieces, and anything still missing for submission.",
+  activity:
+    "One timeline of automation, emails, calls, and your decisions for this opportunity.",
+  sub_coverage:
+    "Per-trade view of who was found, contacted, quoted, and which scopes still block the bid.",
   pricing_comps:
     "Comparable past federal awards for this industry (and state when known). Brost Co inflation-adjusts them so you can see what similar jobs have typically paid.",
   cpi_adjusted:

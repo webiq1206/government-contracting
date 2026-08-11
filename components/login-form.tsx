@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export function LoginForm() {
   const router = useRouter();
@@ -43,7 +44,15 @@ export function LoginForm() {
         />
       </div>
       <div>
-        <label className="label">Password</label>
+        <div className="flex items-center justify-between gap-2">
+          <label className="label">Password</label>
+          <Link
+            href="/forgot-password"
+            className="text-xs text-accent hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <input
           type="password"
           className="input mt-1"
@@ -57,6 +66,12 @@ export function LoginForm() {
       <button type="submit" className="btn-primary w-full" disabled={loading}>
         {loading ? "Signing in..." : "Sign in"}
       </button>
+      <p className="text-center text-xs text-slate-500">
+        New here?{" "}
+        <Link href="/signup" className="text-accent hover:underline">
+          Start a subscription
+        </Link>
+      </p>
     </form>
   );
 }

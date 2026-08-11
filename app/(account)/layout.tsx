@@ -1,0 +1,48 @@
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { currentUser } from "@/lib/auth";
+import { ToastProvider } from "@/components/toaster";
+import { subscriptionAllowsAccess } from "@/lib/organizations";
+
+/**
+ * Authenticated but not necessarily subscribed. Used for Billing so checkout
+ * failures cannot loop through the dash subscription gate.
+ */
+export const dynamic = "force-dynamic";
+
+export default async function AccountLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const user = await currentUser().catch(() => null);
+  if (!user) redirect("/login");
+  if (!user.organizationId) redirect("/signup");
+
+  const subscribed = subscriptionAllowsAccess(user.subscriptionStatus);
+
+  return (
+    <ToastProvider>
+      <div className="min-h-screen bg-surface">
+        <header className="flex items-center justify-between border-b border-border bg-background px-5 py-3">
+          <Link href={subscribed ? "/today" : "/"} className="font-display text-lg">
+            BROST <span className="font-accent">CO</span>
+          </Link>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-slate-500">{user.email}</span>
+            {subscribed ? (
+              <Link href="/today" className="btn-ghost">
+                Back to Today
+              </Link>
+            ) : (
+              <Link href="/api/billing/checkout?plan=standard" className="btn-primary">
+                Complete checkout
+              </Link>
+            )}
+          </div>
+        </header>
+        <main>{children}</main>
+      </div>
+    </ToastProvider>
+  );
+}
