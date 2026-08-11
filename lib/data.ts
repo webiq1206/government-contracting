@@ -260,12 +260,40 @@ export async function emailLogPaged(opts: {
   return { rows, total: parseInt(totals[0]?.count ?? "0", 10) };
 }
 
+export interface SubCommRow {
+  id: string;
+  channel: string;
+  direction: string | null;
+  subject: string | null;
+  body: string | null;
+  created_at: string;
+  replied_at: string | null;
+  opportunity_id: string | null;
+  opportunity_title: string | null;
+  provider: string | null;
+  recipient_email: string | null;
+}
+
+export interface SubContactStats {
+  emails_sent: number;
+  emails_in: number;
+  calls_logged: number;
+  notes_count: number;
+  touches: number;
+}
+
 export async function subDetail(id: string) {
   const sub = await queryOne<Subcontractor>(`select * from subcontractors where id=$1`, [id]);
   if (!sub) return null;
-  const [communications, quotes] = await Promise.all([
-    query(
-      `select * from communications where subcontractor_id=$1 order by created_at desc limit 50`,
+  const [communications, quotes, stats] = await Promise.all([
+    query<SubCommRow>(
+      `select c.id, c.channel, c.direction, c.subject, c.body, c.created_at, c.replied_at,
+              c.opportunity_id, o.title as opportunity_title, c.provider, c.recipient_email
+         from communications c
+         left join opportunities o on o.id = c.opportunity_id
+        where c.subcontractor_id = $1
+        order by c.created_at desc
+        limit 100`,
       [id]
     ),
     query(
@@ -274,8 +302,30 @@ export async function subDetail(id: string) {
         where q.subcontractor_id=$1 order by q.created_at desc limit 100`,
       [id]
     ),
+    queryOne<SubContactStats>(
+      `select
+         count(*) filter (where channel = 'email' and direction = 'outbound')::int as emails_sent,
+         count(*) filter (where channel = 'email' and direction = 'inbound')::int as emails_in,
+         count(*) filter (where channel = 'call')::int as calls_logged,
+         count(*) filter (where channel = 'note')::int as notes_count,
+         count(*)::int as touches
+       from communications
+       where subcontractor_id = $1`,
+      [id]
+    ),
   ]);
-  return { sub, communications, quotes };
+  return {
+    sub,
+    communications,
+    quotes,
+    stats: stats ?? {
+      emails_sent: 0,
+      emails_in: 0,
+      calls_logged: 0,
+      notes_count: 0,
+      touches: 0,
+    },
+  };
 }
 
 export async function complianceBoard() {
@@ -603,22 +653,82 @@ export async function opportunityCompetitors(id: string): Promise<CompetitorRow[
   );
 }
 
+/** Sub paired to an opportunity, with contactability + this-bid touch counts. */
+export interface OppSubRow {
+  id: string;
+  opportunity_id: string;
+  subcontractor_id: string;
+  trade: string | null;
+  candidate_rank: number | null;
+  outreach_state: string | null;
+  responded_at: string | null;
+  verified: boolean | null;
+  company_name: string;
+  phone: string | null;
+  email: string | null;
+  email_verified: boolean | null;
+  google_rating: number | null;
+  contact_status: string | null;
+  last_contacted: string | null;
+  emails_sent: number;
+  calls_logged: number;
+  notes_count: number;
+  touches: number;
+  last_touch_at: string | null;
+  last_inbound_at: string | null;
+}
+
+/** Opportunity-scoped communication row for the Subs panel history. */
+export interface OppSubCommRow {
+  id: string;
+  subcontractor_id: string;
+  channel: string;
+  direction: string | null;
+  subject: string | null;
+  body: string | null;
+  created_at: string;
+  replied_at: string | null;
+}
+
 export async function opportunityDetail(id: string) {
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [id]);
   if (!opp) return null;
   // Independent lookups run in parallel; every list is bounded so an aged
   // opportunity can't balloon the page render.
-  const [bid, quotes, subs, documents, logs, competitors] = await Promise.all([
+  const [bid, quotes, subs, documents, logs, competitors, subComms] = await Promise.all([
     queryOne(`select * from bids where opportunity_id=$1 order by created_at desc limit 1`, [id]),
     query(
       `select q.*, s.company_name from quotes q left join subcontractors s on s.id=q.subcontractor_id
         where q.opportunity_id=$1 order by q.created_at desc limit 200`,
       [id]
     ),
-    query(
-      `select os.*, s.company_name, s.phone, s.email, s.email_verified, s.google_rating
-         from opportunity_subs os join subcontractors s on s.id=os.subcontractor_id
-        where os.opportunity_id=$1 order by os.trade, os.candidate_rank limit 300`,
+    query<OppSubRow>(
+      `select os.id, os.opportunity_id, os.subcontractor_id, os.trade, os.candidate_rank,
+              os.outreach_state, os.responded_at, os.verified,
+              s.company_name, s.phone, s.email, s.email_verified, s.google_rating,
+              s.contact_status, s.last_contacted,
+              coalesce(stats.emails_sent, 0)::int as emails_sent,
+              coalesce(stats.calls_logged, 0)::int as calls_logged,
+              coalesce(stats.notes_count, 0)::int as notes_count,
+              coalesce(stats.touches, 0)::int as touches,
+              stats.last_touch_at, stats.last_inbound_at
+         from opportunity_subs os
+         join subcontractors s on s.id = os.subcontractor_id
+         left join lateral (
+           select
+             count(*) filter (where channel = 'email' and direction = 'outbound') as emails_sent,
+             count(*) filter (where channel = 'call') as calls_logged,
+             count(*) filter (where channel = 'note') as notes_count,
+             count(*) as touches,
+             max(created_at) as last_touch_at,
+             max(created_at) filter (where direction = 'inbound') as last_inbound_at
+           from communications c
+           where c.subcontractor_id = os.subcontractor_id
+             and c.opportunity_id = os.opportunity_id
+         ) stats on true
+        where os.opportunity_id = $1
+        order by os.trade nulls last, os.candidate_rank nulls last, s.company_name
+        limit 300`,
       [id]
     ),
     query(`select * from documents where opportunity_id=$1 order by created_at desc limit 100`, [id]),
@@ -628,8 +738,16 @@ export async function opportunityDetail(id: string) {
       [id]
     ),
     opportunityCompetitors(id),
+    query<OppSubCommRow>(
+      `select id, subcontractor_id, channel, direction, subject, body, created_at, replied_at
+         from communications
+        where opportunity_id = $1
+        order by created_at desc
+        limit 400`,
+      [id]
+    ),
   ]);
-  return { opp, bid, quotes, subs, documents, logs, competitors };
+  return { opp, bid, quotes, subs, documents, logs, competitors, subComms };
 }
 
 export async function pricingSummaryFor(opp: Opportunity): Promise<Record<string, unknown> | null> {

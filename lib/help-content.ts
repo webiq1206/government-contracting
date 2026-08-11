@@ -137,10 +137,10 @@ export const PAGE_HELP: Record<string, HelpContent> = {
   opportunity: {
     title: "The complete record for one bid",
     points: [
-      "The banner up top always shows the recommended next step.",
-      "The Submission package panel assembles every required file, validates it, and runs an independent compliance audit.",
-      "Your job is to clear the items marked for you (signatures, provided docs) and submit, it's blocked until compliance passes.",
-      "Attachments and the plain-English brief live together below.",
+      "Jump links under the journey hop to Brief, Subs, Score, and Activity.",
+      "The Subs panel shows who was found, contact status, emails/calls, and expandable history for this bid.",
+      "Tap ? on score rows and key facts for plain-English explanations.",
+      "The banner up top always shows the recommended next step; the Submission package is blocked until compliance passes.",
     ],
   },
 };
