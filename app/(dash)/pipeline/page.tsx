@@ -123,7 +123,7 @@ export default async function PipelinePage({
 
       {/* Simple view: four owner lanes, no horizontal scrolling on desktop. */}
       {view === "lanes" && opps.length > 0 && (
-        <div className="scroll-thin flex-1 overflow-y-auto p-4">
+        <div className="scroll-thin mobile-dark flex-1 overflow-y-auto p-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {LANES.map((lane) => {
               const cards = byLane.get(lane.key) ?? [];
@@ -190,7 +190,7 @@ export default async function PipelinePage({
 
       {/* Mobile: one simple vertical list, grouped by stage, empty stages hidden.
           No sideways scrolling, tap a card to open it, tap its menu to move it. */}
-      <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-4 lg:hidden">
+      <div className="scroll-thin mobile-dark flex-1 space-y-5 overflow-y-auto p-4 lg:hidden">
         {PIPELINE_STAGES.filter((s) => (byStage.get(s.key)?.length ?? 0) > 0).map((stage) => {
           const cards = byStage.get(stage.key) ?? [];
           return (
@@ -204,7 +204,7 @@ export default async function PipelinePage({
                   <span className="badge bg-slate-100 text-slate-500">Automatic</span>
                 )}
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {cards.map((o) => (
                   <PipelineCard key={o.id} o={o} rules={rules} />
                 ))}
@@ -233,6 +233,8 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
         o.human_action_required ? "focus-rail border-gold/40 bg-gold/[0.04]" : ""
       }`}
     >
+      {/* Gold eyebrow label — visible only on mobile inside .mobile-dark context */}
+      <p className="eyebrow mb-2 md:hidden">{NEXT_ACTION[o.stage] ?? o.stage}</p>
       <div className="flex items-start justify-between gap-2">
         <p className="line-clamp-2 text-sm font-medium text-slate-900">
           {o.title ?? "Untitled"}

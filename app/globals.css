@@ -361,3 +361,83 @@ body {
   outline: 2px solid #7E5E33; /* accessible gold-brown (3:1+ vs background) */
   outline-offset: 2px;
 }
+
+/* ==========================================================================
+   Mobile dark card context (.mobile-dark)
+   Placed OUTSIDE @layer so these rules win the CSS cascade over Tailwind's
+   layered utilities without needing !important.  Only activates at <768 px;
+   desktop layouts inside the same element are completely unaffected.
+   ========================================================================== */
+@media (max-width: 767px) {
+  .mobile-dark {
+    background-color: #090a09; /* ink */
+  }
+
+  /* Cards take the dark editorial shell fill */
+  .mobile-dark .card {
+    background-color: #171813; /* shell */
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+  .mobile-dark .card-hover:hover,
+  .mobile-dark a.card:hover {
+    background-color: #1e1f1c;
+    border-color: rgba(195, 160, 107, 0.45); /* gold hint on hover */
+  }
+  /* Focus-rail human-action highlight stays gold but adapts to dark fill */
+  .mobile-dark .focus-rail {
+    background: linear-gradient(90deg, rgba(195, 160, 107, 0.18), transparent);
+  }
+
+  /* Primary text (headings, company names) */
+  .mobile-dark .card .text-slate-900,
+  .mobile-dark .card .text-slate-800 {
+    color: #f6f2eb;
+  }
+  /* Secondary/meta text */
+  .mobile-dark .card .text-slate-700,
+  .mobile-dark .card .text-slate-600 {
+    color: rgba(246, 242, 235, 0.6);
+  }
+  /* Tertiary / muted text */
+  .mobile-dark .card .text-slate-500 {
+    color: rgba(246, 242, 235, 0.45);
+  }
+  /* Accent-strong (pipeline next-action label) */
+  .mobile-dark .card .text-accent-strong {
+    color: #c3a06b; /* gold on dark */
+  }
+
+  /* Section group headers (stage labels, etc. — outside .card) */
+  .mobile-dark .text-slate-800 {
+    color: rgba(255, 255, 255, 0.88);
+  }
+  .mobile-dark .text-slate-500 {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  /* Neutral badges (slate fill) go translucent white on dark */
+  .mobile-dark .badge.bg-slate-200,
+  .mobile-dark .badge.bg-slate-100 {
+    background-color: rgba(255, 255, 255, 0.10);
+    color: rgba(255, 255, 255, 0.60);
+  }
+
+  /* ── Card action menu popup exclusion ──────────────────────────────────
+     The pipeline card menu popup is absolutely positioned inside .card but
+     renders on a light bg-background surface. These rules have higher
+     specificity (4 class/attr selectors vs 3) so they win over the general
+     card overrides above, restoring natural light-surface text colours. */
+  .mobile-dark .card [role="menu"],
+  .mobile-dark .card [role="menu"] * {
+    color: revert;
+  }
+  .mobile-dark .card [role="menu"] .text-pursue-strong {
+    color: #4A5943;
+  }
+  .mobile-dark .card [role="menu"] .text-risk {
+    color: #A2453C;
+  }
+  .mobile-dark .card [role="menu"] .text-pursue {
+    color: #5A6B52;
+  }
+}
