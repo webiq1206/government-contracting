@@ -27,6 +27,11 @@ export const email = {
     replyTo?: string;
     attachments?: { filename: string; content: Buffer }[];
   }): Promise<EmailResult> {
+    const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
+    if (await isAutomationPaused()) {
+      console.warn("[resend] Automation paused, skipping send");
+      return { disabled: true, error: AUTOMATION_PAUSED_ERROR };
+    }
     if (!config.resend.enabled) {
       console.warn("[resend] Email not configured, skipping send");
       return { disabled: true };

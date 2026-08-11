@@ -163,7 +163,7 @@ export interface StepInput {
   bidSubmitted: boolean;
   outcome: string | null;
   pastPerfBlocked: boolean;
-  /** Operator paused automation (Agents page master switch). */
+  /** Operator flipped the master pause switch (Agents page). */
   automationPaused?: boolean;
   /** Hours since the record last changed; feeds stall detection. */
   hoursSinceUpdate?: number | null;

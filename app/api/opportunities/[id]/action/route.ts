@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
+import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
@@ -51,6 +52,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     [params.id]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  if (action === "pursue" || action === "rerun" || action === "send_back") {
+    if (await isAutomationPaused()) {
+      return NextResponse.json({ error: AUTOMATION_PAUSED_ERROR }, { status: 409 });
+    }
+  }
 
   if (action === "pursue") {
     await query(

@@ -46,6 +46,11 @@ export async function enqueue(
   payload: JobPayload = {},
   opts?: EnqueueOptions
 ): Promise<string | null> {
+  const { isAutomationPaused } = await import("../app-settings");
+  if (await isAutomationPaused()) {
+    console.warn(`[queue] enqueue skipped (automation paused): ${name}`);
+    return null;
+  }
   const q = await getQueue();
   return q.enqueue(name, payload, opts);
 }
