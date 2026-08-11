@@ -142,11 +142,21 @@ export default async function OpportunityPage({ params }: { params: { id: string
     requiredTrades: analysis?.required_trades ?? [],
     quotes: quoteRows,
     tradeCoverageUncovered: coverage.totals.uncovered,
+    uncoveredTrades: coverage.trades.filter((t) => t.quotes === 0).map((t) => t.trade),
+    tradeStatuses: coverage.trades.map((t) => ({
+      trade: t.trade,
+      status: t.status,
+      quotes: t.quotes,
+      contacted: t.contacted,
+      found: t.found,
+    })),
     subsFound: subs.length,
     hasBid,
     packageReady: bid?.package_ready ?? null,
     humanFlags: (bid?.human_flags as string[] | null) ?? null,
     humanActionRequired: opp.human_action_required,
+    completenessMissing: analysis?.completeness?.missing ?? null,
+    packageBlockers: (bid?.validation_json as { blockers?: string[] } | null)?.blockers ?? null,
   });
   const activity = buildActivityTimeline({
     logs,
@@ -247,7 +257,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
             stage={opp.stage}
             tier={opp.tier}
             humanActionRequired={opp.human_action_required}
-            quoteCount={(quotes as unknown[]).length}
+            quoteCount={readiness.tradesWithQuotes}
+            tradesWithQuotes={readiness.tradesWithQuotes}
+            tradeCoverageUncovered={coverage.totals.uncovered}
             requiredTradeCount={analysis?.required_trades?.length ?? 0}
             hasBid={Boolean(bid)}
             bidSubmitted={Boolean(bid?.submitted_at)}
@@ -261,7 +273,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
         {/* Attention first — only when human action or blockers exist. */}
         <div className="px-5 pt-4">
-          <AttentionStrip readiness={readiness} />
+          <AttentionStrip readiness={readiness} opportunityId={opp.id} />
         </div>
 
         {/* Overview — scannable essentials before denser panels. */}
@@ -391,9 +403,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 <p className="label mb-2">Flags needing attention</p>
                 <div className="flex flex-wrap gap-1">
                   {opp.risk_flags.map((f) => (
-                    <span key={f} className="badge bg-risk/15 text-risk">
+                    <a
+                      key={f}
+                      href="#attention"
+                      className="badge bg-risk/15 text-risk hover:bg-risk/25"
+                      title="Open attention items for what to do next"
+                    >
                       ⚠ {flagLabel(f)}
-                    </span>
+                    </a>
                   ))}
                 </div>
               </div>
@@ -626,7 +643,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
             {/* After a bid exists, revisions live here in a compact form; before a
                 bid, the full-width panel above owns quote entry (no duplication). */}
             {hasBid && !bidSubmitted && (
-              <div className="card">
+              <div className="card scroll-mt-12" id="quotes">
                 <p className="eyebrow mb-3">Revise quotes</p>
                 <p className="mb-3 text-xs leading-relaxed text-slate-500">
                   Saving a new quote re-prices and rebuilds the bid.

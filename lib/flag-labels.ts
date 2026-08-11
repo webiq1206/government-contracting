@@ -33,6 +33,12 @@ const OVERRIDES: Record<string, string> = {
   stalled_sub_research: "Stuck finding subs",
   stalled_outreach: "Stalled: no sub replies",
   stalled_bid_building: "Stuck pricing the bid",
+  missing_attachments: "Missing attachments",
+  unverified_scope: "Unverified scope",
+  unverified_value: "Unverified value",
+  unverified_set_aside: "Unverified set aside",
+  incomplete_solicitation: "Solicitation incomplete",
+  outreach_scope_too_thin: "Scope too thin to email subs",
 };
 
 /** One flag key → a short, plain-English label. */

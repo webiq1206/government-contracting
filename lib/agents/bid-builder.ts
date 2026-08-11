@@ -338,10 +338,32 @@ export const bidBuilder: AgentDefinition = {
       presentDocKinds: new Set([...documentsJson, ...packageDocs].map((d) => d.kind)),
     });
 
+    // Hard gate: every required trade must have a positive quote before the
+    // package can be considered ready for submission.
+    const requiredTradeList = requiredTrades(opp);
+    const quotedTradeSet = new Set(
+      quotes
+        .filter((q) => Number(q.quote_amount) > 0)
+        .map((q) => (q.trade ?? "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const missingTrades = requiredTradeList.filter(
+      (t) => !quotedTradeSet.has(t.trim().toLowerCase())
+    );
+    if (missingTrades.length > 0) {
+      for (const t of missingTrades) {
+        validation.blockers.push(
+          `${t} pricing has not been received. Enter a quote for this required trade before submission.`
+        );
+      }
+      validation.passed = false;
+    }
+
     // Deterministic eligibility findings (set-aside, NAICS, bonding, SAM). These
     // are preserved by the AI auditor and gate submission immediately.
     const eligibilityFindings = checkEligibility({ profile, opp, analysis });
-    const packageReady = computeReady(validation, eligibilityFindings);
+    const packageReady =
+      computeReady(validation, eligibilityFindings) && missingTrades.length === 0;
 
     // Merge generated package docs into documents_json (dedupe by kind).
     for (const d of packageDocs) {

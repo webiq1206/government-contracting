@@ -68,6 +68,10 @@ export function SubmissionPackage({
   const auditStatus = bid.audit_status;
   const ready = bid.package_ready;
   const submitted = Boolean(bid.submitted_at);
+  const blockers = validation?.blockers ?? [];
+  const tradeBlockers = blockers.filter((b) => /pricing has not been received/i.test(b));
+  const otherBlockers = blockers.filter((b) => !/pricing has not been received/i.test(b));
+  const canForceOverride = !ready && tradeBlockers.length === 0;
 
   async function post(payload: Record<string, unknown>, busyKey: string) {
     setBusyId(busyKey);
@@ -407,6 +411,28 @@ export function SubmissionPackage({
       {/* Submit / submitted state */}
       {!submitted && (
         <div className="space-y-2 border-t border-border pt-3">
+          {!ready && blockers.length > 0 && (
+            <div className="rounded-md border border-risk/40 bg-risk/5 px-3 py-3 text-sm">
+              <p className="font-semibold text-slate-900">Bid cannot be submitted</p>
+              <p className="mt-1 text-xs text-slate-600">
+                Resolve every item below. Missing trade pricing cannot be overridden.
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {blockers.map((b) => (
+                  <li key={b} className="flex flex-wrap items-start justify-between gap-2">
+                    <span className="text-slate-800">• {b}</span>
+                    {/pricing has not been received/i.test(b) ? (
+                      <a href="#coverage" className="text-xs font-medium text-accent hover:underline">
+                        Open required pricing
+                      </a>
+                    ) : (
+                      <span className="text-xs text-slate-500">Clear in checklist above</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <button
             onClick={() => submit(false)}
             disabled={submitting || !ready}
@@ -414,12 +440,12 @@ export function SubmissionPackage({
           >
             {submitting ? "Submitting…" : "Submit bid package"}
           </button>
-          {!ready && (
+          {canForceOverride && (
             <button
               onClick={() => {
                 if (
                   window.confirm(
-                    "This package hasn't passed all compliance checks. Submit anyway?"
+                    "This package has outstanding compliance checks (not trade pricing). Submit anyway?"
                   )
                 )
                   submit(true);
@@ -427,8 +453,13 @@ export function SubmissionPackage({
               disabled={submitting}
               className="w-full text-xs text-slate-500 hover:text-slate-700"
             >
-              Submit anyway (override checks)
+              Submit anyway (override non-trade checks)
             </button>
+          )}
+          {tradeBlockers.length > 0 && otherBlockers.length === 0 && (
+            <p className="text-center text-xs text-slate-500">
+              Override is disabled until every required trade has pricing.
+            </p>
           )}
         </div>
       )}

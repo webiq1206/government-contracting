@@ -12,8 +12,7 @@ export interface TradeCoverageSubLine {
 }
 
 /**
- * Per-trade coverage summary so the Admin sees which scopes are covered,
- * awaiting response, or still empty — without reading every sub row.
+ * Required Pricing board: per-trade status with direct next actions.
  */
 export function TradeCoverageStrip({
   coverage,
@@ -34,14 +33,14 @@ export function TradeCoverageStrip({
     <div id="coverage" className="scroll-mt-12 rounded-md border border-border bg-background px-4 py-4">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <p className="eyebrow">Subcontractor coverage</p>
+          <p className="eyebrow">Required pricing</p>
           <p className="mt-1 text-sm text-slate-600">
-            Who we found, who we contacted, and which trades still need a quote.
+            Every required trade must reach &quot;Quote received&quot; before submission.
           </p>
         </div>
-        <InfoTip label="About coverage">
-          Coverage is complete for a trade when at least one quote is on file.
-          Follow-ups and calls keep moving until pricing lands or the sub declines.
+        <InfoTip label="About required pricing">
+          Coverage is complete for a trade when at least one positive quote is on
+          file. Draft or failed emails do not count as contacted.
         </InfoTip>
       </div>
 
@@ -75,20 +74,38 @@ export function TradeCoverageStrip({
             description,
             maxChars: 320,
           });
+          const cta =
+            t.status === "complete"
+              ? null
+              : t.found === 0 || t.contacted === 0
+                ? {
+                    href: "#subs",
+                    label: `Find and contact ${t.trade} subcontractors`,
+                  }
+                : {
+                    href: "#quotes",
+                    label: `Enter ${t.trade} quote`,
+                  };
           return (
             <li key={t.trade} className="px-3 py-2.5">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-slate-900">{t.trade}</p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    {t.found} found
+                    {t.status === "complete"
+                      ? "Quote received"
+                      : t.found === 0
+                        ? "No subcontractors found"
+                        : t.contacted === 0
+                          ? "No subcontractors contacted"
+                          : t.responded > 0
+                            ? "Awaiting quote after response"
+                            : "Awaiting response"}
                     {t.found > 0 && (
                       <>
                         {" "}
-                        · {t.contacted} contacted · {t.responded} responded ·{" "}
-                        {t.quotes} quote{t.quotes === 1 ? "" : "s"}
-                        {t.followUpDue > 0 ? ` · ${t.followUpDue} follow-up due` : ""}
-                        {t.declined > 0 ? ` · ${t.declined} declined` : ""}
+                        · {t.found} found · {t.contacted} contacted · {t.responded}{" "}
+                        responded · {t.quotes} quote{t.quotes === 1 ? "" : "s"}
                       </>
                     )}
                   </p>
@@ -96,6 +113,14 @@ export function TradeCoverageStrip({
                     <div className="mt-2">
                       <SubWorkNeeded work={tradeWork} variant="inline" />
                     </div>
+                  )}
+                  {cta && (
+                    <a
+                      href={cta.href}
+                      className="btn-primary mt-2 inline-flex text-xs"
+                    >
+                      {cta.label}
+                    </a>
                   )}
                 </div>
                 <span
@@ -127,7 +152,7 @@ export function TradeCoverageStrip({
                   ))}
                   {lines.length > 6 && (
                     <li className="text-xs text-slate-500">
-                      +{lines.length - 6} more — see Subs below
+                      +{lines.length - 6} more. See Subs below.
                     </li>
                   )}
                 </ul>

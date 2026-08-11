@@ -42,14 +42,13 @@ export interface TradeCoverageSummary {
   };
 }
 
+/** Successfully contacted: draft/send_failed are NOT contacted. */
 const CONTACTED = new Set([
   "sent",
   "followed_up",
   "responsive",
   "unresponsive",
   "declined",
-  "draft",
-  "send_failed",
 ]);
 
 /**
@@ -103,19 +102,19 @@ export function summarizeTradeCoverage(input: {
     let statusLabel: string;
     if (found === 0) {
       status = "empty";
-      statusLabel = "Action required — no subs found";
+      statusLabel = "Action required: no subs found";
     } else if (quoteCount > 0) {
       status = "complete";
-      statusLabel = "Complete — quote on file";
+      statusLabel = "Complete: quote on file";
     } else if (contacted === 0) {
       status = "action_required";
-      statusLabel = "Action required — not contacted yet";
+      statusLabel = "Action required: not contacted yet";
     } else if (followUpDue > 0 && responded === 0) {
       status = "action_required";
-      statusLabel = "Action required — awaiting response";
+      statusLabel = "Action required: awaiting response";
     } else {
       status = "in_progress";
-      statusLabel = "In progress";
+      statusLabel = "In progress: awaiting pricing";
     }
 
     trades.push({
