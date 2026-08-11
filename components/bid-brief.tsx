@@ -1,5 +1,4 @@
 import type { SolicitationAnalysis } from "@/lib/types";
-import { shortDate } from "@/lib/format";
 
 interface DocRow {
   id: string;
@@ -30,8 +29,8 @@ function fmtDate(v?: string): string | undefined {
 /**
  * The Bid Brief, a complete, plain-English summary of a solicitation so the
  * operator can decide to pursue in a couple of minutes, with the full original
- * documents one click away. Renders defensively: sections with no content are
- * skipped, and anything the analyst couldn't find shows "Not specified".
+ * documents one click away. Default view answers: what is this, is it worth
+ * pursuing, when is it due. Secondary detail is progressive (collapsed).
  */
 export function BidBrief({
   analysis,
@@ -41,6 +40,17 @@ export function BidBrief({
   documents: DocRow[];
 }) {
   const q = analysis.qualifications ?? {};
+  const hasSecondary =
+    has(analysis.scope_plain_language) ||
+    Object.values(q).some((v) => Array.isArray(v) && v.length > 0) ||
+    Boolean(analysis.prebid_meeting || analysis.site_visit) ||
+    (analysis.submission_requirements?.length ?? 0) > 0 ||
+    (analysis.evaluation_criteria?.length ?? 0) > 0 ||
+    (analysis.required_forms?.length ?? 0) > 0 ||
+    (analysis.key_dates?.length ?? 0) > 0 ||
+    (analysis.qa_addenda?.length ?? 0) > 0 ||
+    (analysis.special_requirements?.length ?? 0) > 0 ||
+    (analysis.contacts?.length ?? 0) > 0;
 
   return (
     <div className="card p-0">
@@ -57,7 +67,7 @@ export function BidBrief({
       </div>
 
       <div className="space-y-7 px-6 py-6">
-        {/* Recommendation */}
+        {/* Recommendation — always visible */}
         {has(analysis.pursue_recommendation) && (
           <div className="callout-panel">
             <p className="eyebrow text-accent">Recommendation</p>
@@ -67,7 +77,7 @@ export function BidBrief({
           </div>
         )}
 
-        {/* Key facts */}
+        {/* Key facts — always visible */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
           <Fact label="Bid due" value={fmtDate(analysis.due_date)} strong />
           <Fact label="Estimated value" value={analysis.estimated_value} />
@@ -81,140 +91,169 @@ export function BidBrief({
           </Section>
         )}
 
-        {has(analysis.scope_plain_language) && (
-          <Section title="Scope of work">
-            <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">
-              {analysis.scope_plain_language}
-            </p>
-          </Section>
-        )}
-
-        {/* Qualifications */}
-        {Object.values(q).some((v) => Array.isArray(v) && v.length > 0) && (
-          <Section title="Required qualifications">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <List label="Certifications" items={q.certifications} />
-              <List label="Licenses" items={q.licenses} />
-              <List label="Insurance" items={q.insurance} />
-              <List label="Bonding" items={q.bonding} />
-              <List label="Experience" items={q.experience} />
-              <List label="Other" items={q.other} />
-            </div>
-          </Section>
-        )}
-
-        {/* Meetings / site visits */}
-        {(analysis.prebid_meeting || analysis.site_visit) && (
-          <Section title="Pre-bid meeting & site visit">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Meeting label="Pre-bid meeting" info={analysis.prebid_meeting} />
-              <Meeting label="Site visit" info={analysis.site_visit} />
-            </div>
-          </Section>
-        )}
-
-        {/* Submission + evaluation */}
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {analysis.submission_requirements?.length > 0 && (
-            <Section title="Submission requirements">
-              <Bullets items={analysis.submission_requirements} />
-            </Section>
-          )}
-          {analysis.evaluation_criteria?.length > 0 && (
-            <Section title="Evaluation criteria">
-              <Bullets items={analysis.evaluation_criteria} />
-            </Section>
-          )}
-        </div>
-
-        {/* Required forms */}
-        {analysis.required_forms?.length > 0 && (
-          <Section title="Required forms & documents">
-            <ul className="space-y-1.5 text-sm">
-              {analysis.required_forms.map((f, i) => (
-                <li key={i} className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="font-medium text-slate-900">{f.name}</span>
-                  {f.note && <span className="text-slate-500">· {f.note}</span>}
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
-        {/* Key dates */}
-        {analysis.key_dates?.length > 0 && (
-          <Section title="Key dates & milestones">
-            <ul className="divide-y divide-border">
-              {analysis.key_dates.map((d, i) => (
-                <li key={i} className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
-                  <span className="text-slate-700">{d.label}</span>
-                  <span className="num text-slate-900">{fmtDate(d.date)}</span>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
-        {/* Q&A / addenda */}
-        {analysis.qa_addenda?.length > 0 && (
-          <Section title="Amendments & Q&A">
-            <ul className="space-y-2 text-sm">
-              {analysis.qa_addenda.map((a, i) => (
-                <li key={i} className="accent-left">
-                  <span className="font-medium text-slate-900">{a.label}</span>
-                  {a.date && <span className="ml-2 text-xs text-slate-500">{fmtDate(a.date)}</span>}
-                  <p className="mt-0.5 text-slate-700">{a.summary}</p>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
-        {/* Special requirements */}
-        {analysis.special_requirements?.length > 0 && (
-          <Section title="Special requirements">
-            <Bullets items={analysis.special_requirements} />
-          </Section>
-        )}
-
-        {/* Attention items */}
+        {/* Attention items are also hoisted to AttentionStrip; keep a compact
+            pointer here so the brief still answers "what's risky?" when scanned. */}
         {analysis.attention_items?.length > 0 && (
-          <Section title="Risks & items needing attention">
-            <div className="space-y-2">
-              {analysis.attention_items.map((a, i) => (
-                <p key={i} className="warning-strip">
+          <div className="rounded-md border border-review/30 bg-review/5 px-3 py-2.5">
+            <p className="eyebrow text-review">Risks flagged in this brief</p>
+            <ul className="mt-2 space-y-1">
+              {analysis.attention_items.slice(0, 4).map((a, i) => (
+                <li key={i} className="text-sm text-slate-800">
                   {a}
-                </p>
+                </li>
               ))}
-            </div>
-          </Section>
+            </ul>
+            {analysis.attention_items.length > 4 && (
+              <a href="#attention" className="mt-2 inline-block text-xs text-accent hover:underline">
+                See all attention items ↑
+              </a>
+            )}
+          </div>
         )}
 
-        {/* Contacts */}
-        {analysis.contacts?.length > 0 && (
-          <Section title="Contacts">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {analysis.contacts.map((c, i) => (
-                <div key={i} className="rounded-md border border-border p-3 text-sm">
-                  <p className="font-medium text-slate-900">{c.name ?? "Contact"}</p>
-                  {c.role && <p className="text-xs text-slate-500">{c.role}</p>}
-                  {c.email && (
-                    <a className="mt-1 block text-accent hover:underline" href={`mailto:${c.email}`}>
-                      {c.email}
-                    </a>
-                  )}
-                  {c.phone && (
-                    <a
-                      className="mt-0.5 block text-accent hover:underline"
-                      href={`tel:${c.phone.replace(/[^\d+]/g, "")}`}
-                    >
-                      {c.phone}
-                    </a>
-                  )}
+        {hasSecondary && (
+          <details className="group rounded-md border border-border">
+            <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="eyebrow">More from the solicitation</p>
+                  <p className="mt-0.5 text-sm text-slate-600">
+                    Scope, qualifications, meetings, forms, and contacts
+                  </p>
                 </div>
-              ))}
+                <span
+                  aria-hidden
+                  className="text-slate-500 transition-transform group-open:rotate-180"
+                >
+                  ▾
+                </span>
+              </div>
+            </summary>
+            <div className="space-y-7 border-t border-border px-4 py-5">
+              {has(analysis.scope_plain_language) && (
+                <Section title="Scope of work">
+                  <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">
+                    {analysis.scope_plain_language}
+                  </p>
+                </Section>
+              )}
+
+              {Object.values(q).some((v) => Array.isArray(v) && v.length > 0) && (
+                <Section title="Required qualifications">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <List label="Certifications" items={q.certifications} />
+                    <List label="Licenses" items={q.licenses} />
+                    <List label="Insurance" items={q.insurance} />
+                    <List label="Bonding" items={q.bonding} />
+                    <List label="Experience" items={q.experience} />
+                    <List label="Other" items={q.other} />
+                  </div>
+                </Section>
+              )}
+
+              {(analysis.prebid_meeting || analysis.site_visit) && (
+                <Section title="Pre-bid meeting & site visit">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Meeting label="Pre-bid meeting" info={analysis.prebid_meeting} />
+                    <Meeting label="Site visit" info={analysis.site_visit} />
+                  </div>
+                </Section>
+              )}
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                {analysis.submission_requirements?.length > 0 && (
+                  <Section title="Submission requirements">
+                    <Bullets items={analysis.submission_requirements} />
+                  </Section>
+                )}
+                {analysis.evaluation_criteria?.length > 0 && (
+                  <Section title="Evaluation criteria">
+                    <Bullets items={analysis.evaluation_criteria} />
+                  </Section>
+                )}
+              </div>
+
+              {analysis.required_forms?.length > 0 && (
+                <Section title="Required forms & documents">
+                  <ul className="space-y-1.5 text-sm">
+                    {analysis.required_forms.map((f, i) => (
+                      <li key={i} className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="font-medium text-slate-900">{f.name}</span>
+                        {f.note && <span className="text-slate-500">· {f.note}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {analysis.key_dates?.length > 0 && (
+                <Section title="Key dates & milestones">
+                  <ul className="divide-y divide-border">
+                    {analysis.key_dates.map((d, i) => (
+                      <li
+                        key={i}
+                        className="flex items-baseline justify-between gap-4 py-1.5 text-sm"
+                      >
+                        <span className="text-slate-700">{d.label}</span>
+                        <span className="num text-slate-900">{fmtDate(d.date)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {analysis.qa_addenda?.length > 0 && (
+                <Section title="Amendments & Q&A">
+                  <ul className="space-y-2 text-sm">
+                    {analysis.qa_addenda.map((a, i) => (
+                      <li key={i} className="accent-left">
+                        <span className="font-medium text-slate-900">{a.label}</span>
+                        {a.date && (
+                          <span className="ml-2 text-xs text-slate-500">{fmtDate(a.date)}</span>
+                        )}
+                        <p className="mt-0.5 text-slate-700">{a.summary}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {analysis.special_requirements?.length > 0 && (
+                <Section title="Special requirements">
+                  <Bullets items={analysis.special_requirements} />
+                </Section>
+              )}
+
+              {analysis.contacts?.length > 0 && (
+                <Section title="Contacts">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {analysis.contacts.map((c, i) => (
+                      <div key={i} className="rounded-md border border-border p-3 text-sm">
+                        <p className="font-medium text-slate-900">{c.name ?? "Contact"}</p>
+                        {c.role && <p className="text-xs text-slate-500">{c.role}</p>}
+                        {c.email && (
+                          <a
+                            className="mt-1 block text-accent hover:underline"
+                            href={`mailto:${c.email}`}
+                          >
+                            {c.email}
+                          </a>
+                        )}
+                        {c.phone && (
+                          <a
+                            className="mt-0.5 block text-accent hover:underline"
+                            href={`tel:${c.phone.replace(/[^\d+]/g, "")}`}
+                          >
+                            {c.phone}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
             </div>
-          </Section>
+          </details>
         )}
 
         {/* Attachments */}
@@ -331,7 +370,11 @@ function Meeting({
     <div className="rounded-md border border-border p-3 text-sm">
       <div className="flex items-center justify-between">
         <p className="font-medium text-slate-900">{label}</p>
-        <span className={`badge ${info.required ? "bg-review/15 text-review" : "bg-surface-raised text-slate-600"}`}>
+        <span
+          className={`badge ${
+            info.required ? "bg-review/15 text-review" : "bg-surface-raised text-slate-600"
+          }`}
+        >
           {info.required ? "Required" : "Optional"}
         </span>
       </div>

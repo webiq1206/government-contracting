@@ -12,6 +12,7 @@ import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
 import { stageParty, PARTY_LABEL } from "@/lib/domain/journey";
+import { outreachLabel } from "@/lib/domain/sub-contact";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { ActionButton } from "@/components/action-button";
 import { SnoozeButton } from "@/components/snooze-button";
@@ -215,6 +216,8 @@ export default async function TodayPage() {
     data.urgent.length +
     data.triage.length +
     data.calls.count +
+    data.subFollowUps.length +
+    data.quoteReviews.length +
     bidWork.length +
     data.awaitingOutcome.length +
     flagged.length +
@@ -385,6 +388,85 @@ export default async function TodayPage() {
                 {data.calls.count - data.calls.rows.length === 1 ? "" : "s"} in the queue →
               </Link>
             )}
+          </Section>
+        )}
+
+        {data.subFollowUps.length > 0 && (
+          <Section
+            eyebrow="Subcontractor outreach"
+            title="Follow up with subcontractors"
+            count={data.subFollowUps.length}
+          >
+            <p className="-mt-1 text-sm text-slate-500">
+              Automated email and follow-up already went out. These still need a
+              person — usually a quick call — before pricing can land.
+            </p>
+            {data.subFollowUps.map((s) => (
+              <Link
+                key={`${s.opportunity_id}-${s.subcontractor_id}`}
+                href={`/opportunity/${s.opportunity_id}#subs`}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    Call {s.company_name}
+                    {s.trade ? ` about ${s.trade.toLowerCase()} pricing` : ""}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {[
+                      s.opportunity_title,
+                      outreachLabel(s.outreach_state),
+                      s.last_contacted ? `last touch ${timeAgo(s.last_contacted)}` : null,
+                      `${s.emails_sent} email${s.emails_sent === 1 ? "" : "s"}`,
+                      s.calls_logged > 0
+                        ? `${s.calls_logged} call${s.calls_logged === 1 ? "" : "s"}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <DeadlineBadge deadline={s.deadline} rules={rules} />
+                  <span className="btn-ghost pointer-events-none text-xs">Open opportunity →</span>
+                </div>
+              </Link>
+            ))}
+          </Section>
+        )}
+
+        {data.quoteReviews.length > 0 && (
+          <Section
+            eyebrow="Pricing check"
+            title="Quotes that need a look"
+            count={data.quoteReviews.length}
+          >
+            <p className="-mt-1 text-sm text-slate-500">
+              These prices look unusually high or low versus comps. Confirm or
+              replace them before the bid package is finalized.
+            </p>
+            {data.quoteReviews.map((q) => (
+              <Link
+                key={q.quote_id}
+                href={`/opportunity/${q.opportunity_id}#quotes`}
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    Review {q.quote_amount != null ? currency(q.quote_amount) : "a quote"}
+                    {q.trade ? ` for ${q.trade}` : ""}
+                    {q.company_name ? ` from ${q.company_name}` : ""}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {q.opportunity_title ?? "Opportunity"} · outside expected range
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <DeadlineBadge deadline={q.deadline} rules={rules} />
+                  <span className="btn-ghost pointer-events-none text-xs">Review quote →</span>
+                </div>
+              </Link>
+            ))}
           </Section>
         )}
 
