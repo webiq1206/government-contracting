@@ -13,7 +13,7 @@ interface DocRow {
  */
 export function AttachmentsPanel({ documents }: { documents: DocRow[] }) {
   return (
-    <div className="card scroll-mt-12" id="attachments">
+    <div className="card scroll-mt-12" id="attachments" data-guide-target="attachments">
       <p className="eyebrow mb-3">
         Attachments · <span className="num">{documents.length}</span>
       </p>

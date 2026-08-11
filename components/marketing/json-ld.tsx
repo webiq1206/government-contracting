@@ -20,7 +20,18 @@ export function JsonLd({
     logo: `${SITE_URL}/brand/b-mark.png`,
     email: "hello@brostco.com",
     description:
-      "Brost Co is government contracting software that helps businesses find, evaluate, pursue, and manage federal opportunities.",
+      "Brost Co is procurement execution software for federal services contractors. It finds, scores, sources, and prepares government contract opportunities.",
+  };
+
+  const webpage = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: "Brost Co | Run Your Entire Federal Bid Pipeline",
+    url: SITE_URL,
+    description:
+      "Stop chasing federal bids. Brost Co finds, scores, sources, and prepares federal opportunities so you focus on judgment, calls, and submission.",
+    isPartOf: { "@type": "WebSite", name: "Brost Co", url: SITE_URL },
+    about: { "@id": `${SITE_URL}/#organization` },
   };
 
   const app = {
@@ -66,6 +77,10 @@ export function JsonLd({
         ],
   };
 
+  const pricingAnswer = promoActive
+    ? `Standard pricing is $${standardMonthly} per month. Founding customers who join during the launch window lock in $${foundingMonthly} per month for as long as they remain subscribed.`
+    : `Brost Co is $${standardMonthly} per month.`;
+
   const faq = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -75,7 +90,7 @@ export function JsonLd({
         name: "What is Brost Co?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Brost Co is procurement execution software for federal services contractors. It monitors opportunities, scores fit, sources subcontractors, tracks pricing, and keeps a Today queue of work that needs a person.",
+          text: "Brost Co is procurement execution software for federal services contractors. It monitors SAM.gov, scores opportunities, writes plain-English briefs, sources subcontractors, assembles bid packages, and keeps one Today queue for everything that still needs a person.",
         },
       },
       {
@@ -83,7 +98,7 @@ export function JsonLd({
         name: "Does Brost Co replace SAM.gov?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "No. SAM.gov remains the official source for federal postings and entity registration. Brost Co organizes work after records arrive.",
+          text: "No. SAM.gov remains the official source for federal postings and your entity registration. Brost Co reads from SAM.gov and organizes the work after records arrive. You still renew registrations and submit through agency channels.",
         },
       },
       {
@@ -91,7 +106,15 @@ export function JsonLd({
         name: "Does Brost Co submit bids automatically?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "No. Brost Co assembles and validates bid packages, but submission requires your review and action.",
+          text: "No. Brost Co assembles and validates bid packages, but submission requires your review and action. Signatures, attestations, and portal uploads stay with you.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Who is Brost Co for?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Small and mid-size federal services contractors who bid on construction, facilities, or professional services work and need a disciplined pipeline without hiring a full capture team.",
         },
       },
       {
@@ -99,9 +122,23 @@ export function JsonLd({
         name: "How much does Brost Co cost?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: promoActive
-            ? `Standard pricing is $${standardMonthly} per month. Founding customers who join during the launch window lock in $${foundingMonthly} per month for as long as they remain subscribed.`
-            : `Brost Co is $${standardMonthly} per month.`,
+          text: pricingAnswer,
+        },
+      },
+      {
+        "@type": "Question",
+        name: "Will Brost Co guarantee wins?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "No. Scoring and automation reduce wasted effort on poor fits and speed up good ones. Outcomes still depend on your pricing, past performance, and the competition.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "How is this different from a generic CRM?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Brost Co is built around the federal bid lifecycle: NAICS fit, set-asides, subcontractor coverage, compliance gates, and SAM.gov intake. Stages, Today, and opportunity pages follow that journey instead of generic deal fields.",
         },
       },
     ],
@@ -119,6 +156,10 @@ export function JsonLd({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(org) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(webpage) }}
       />
       <script
         type="application/ld+json"

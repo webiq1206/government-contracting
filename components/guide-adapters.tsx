@@ -5,13 +5,28 @@
  * the operator on a scavenger hunt through Settings / Call Queue / etc.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { CallWorkspace, type CallWorkspaceData } from "@/components/call-workspace";
+import { TokenMultiSelect } from "@/components/token-multi-select";
+import { NAICS_CODES } from "@/lib/naics";
+import { US_SERVICE_AREAS } from "@/lib/us-states";
+import { trackClientEvent } from "@/lib/client-analytics";
+import { currency } from "@/lib/format";
 import type { GuideAdapters, GuideStep } from "@/lib/domain/page-guide";
 import type { CompanyProfileJson } from "@/lib/types";
+
+function toCsv(arr?: string[] | null) {
+  return (arr ?? []).join(", ");
+}
+function fromCsv(s: string) {
+  return s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
 
 export function GuideStepActions({
   step,
@@ -105,6 +120,44 @@ export function GuideStepActions({
 
   if (step.kind === "setup-identity") {
     return <IdentityFields onSaved={onDone} />;
+  }
+
+  if (step.kind === "setup-naics") {
+    return <ProfileArrayFields field="naics" onSaved={onDone} />;
+  }
+
+  if (step.kind === "setup-areas") {
+    return <ProfileArrayFields field="areas" onSaved={onDone} />;
+  }
+
+  if (step.kind === "review-quote" && adapters.quoteReview) {
+    return <QuoteReviewAdapter item={adapters.quoteReview} onDone={onDone} onClose={onClose} />;
+  }
+
+  if (step.kind === "upload-document" && (adapters.upload || step.opportunityId)) {
+    return (
+      <DocumentUploadAdapter
+        opportunityId={adapters.upload?.opportunityId || step.opportunityId!}
+        onDone={onDone}
+      />
+    );
+  }
+
+  if (step.kind === "submit-package" && (adapters.package || step.opportunityId)) {
+    return (
+      <SubmitPackageAdapter
+        pack={
+          adapters.package ?? {
+            opportunityId: step.opportunityId!,
+            packageReady: null,
+            blockers: [],
+            submitted: false,
+          }
+        }
+        onDone={onDone}
+        onClose={onClose}
+      />
+    );
   }
 
   if (step.kind === "enter-quote") {
@@ -488,6 +541,272 @@ function SubContactAdapter({
         onClick={() => void save()}
       >
         {saving ? "Saving…" : "Save contact"}
+      </button>
+    </div>
+  );
+}
+
+function QuoteReviewAdapter({
+  item,
+  onDone,
+  onClose,
+}: {
+  item: NonNullable<GuideAdapters["quoteReview"]>;
+  onDone: () => Promise<void>;
+  onClose: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-slate-700">
+        <span className="font-medium">{item.companyName ?? "Subcontractor"}</span>
+        {item.trade ? ` · ${item.trade}` : ""}
+        {item.quoteAmount != null ? ` · ${currency(item.quoteAmount)}` : ""}
+      </p>
+      <p className="text-xs text-slate-500">
+        This price looks unusual versus comps. Accept it as usable, or open the opportunity to
+        re-enter a corrected quote.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <ActionButton
+          endpoint={`/api/quotes/${item.quoteId}/review`}
+          body={{ action: "accept" }}
+          className="btn-success text-xs"
+          onDone={() => {
+            trackClientEvent("guide_action_complete", {
+              kind: "review-quote",
+              action: "accept",
+            });
+            void onDone();
+          }}
+          toast={{ message: "Quote accepted. It will no longer flag as out of range." }}
+        >
+          Accept as-is
+        </ActionButton>
+        <Link
+          href={`/opportunity/${item.opportunityId}?guide=1&guideStep=today-quotes#quotes`}
+          className="btn-secondary text-xs"
+          onClick={onClose}
+        >
+          Re-enter quote
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function DocumentUploadAdapter({
+  opportunityId,
+  onDone,
+}: {
+  opportunityId: string;
+  onDone: () => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload() {
+    if (!file) {
+      setError("Choose a file first.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      if (name.trim()) fd.set("name", name.trim());
+      const res = await fetch(`/api/opportunities/${opportunityId}/documents`, {
+        method: "POST",
+        body: fd,
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Upload failed.");
+        return;
+      }
+      trackClientEvent("guide_action_complete", { kind: "upload-document" });
+      await onDone();
+    } catch {
+      setError("Upload failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-xs text-slate-600">
+        Label (optional)
+        <input className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label className="block text-xs text-slate-600">
+        File
+        <input
+          type="file"
+          className="mt-1 block w-full text-xs"
+          accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,application/pdf"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+      </label>
+      {error && <p className="text-xs text-risk">{error}</p>}
+      <button
+        type="button"
+        className="btn-primary text-xs"
+        disabled={saving}
+        onClick={() => void upload()}
+      >
+        {saving ? "Uploading…" : "Upload document"}
+      </button>
+    </div>
+  );
+}
+
+function SubmitPackageAdapter({
+  pack,
+  onDone,
+  onClose,
+}: {
+  pack: NonNullable<GuideAdapters["package"]>;
+  onDone: () => Promise<void>;
+  onClose: () => void;
+}) {
+  if (pack.submitted) {
+    return <p className="text-sm text-slate-600">This package is already submitted.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {pack.blockers.length > 0 && (
+        <ul className="list-disc space-y-1 pl-5 text-xs text-slate-600">
+          {pack.blockers.slice(0, 4).map((b) => (
+            <li key={b}>{b}</li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <ActionButton
+          endpoint={`/api/opportunities/${pack.opportunityId}/submit`}
+          body={{ force: false }}
+          className="btn-primary text-xs"
+          confirm="Submit this bid package?"
+          onDone={() => {
+            trackClientEvent("guide_action_complete", { kind: "submit-package" });
+            void onDone();
+          }}
+          toast={{ message: "Submitted. Outcome tracking is now active." }}
+        >
+          {pack.packageReady ? "Submit package" : "Try submit"}
+        </ActionButton>
+        <button
+          type="button"
+          className="btn-ghost text-xs"
+          onClick={() => {
+            onClose();
+            document.getElementById("submission")?.scrollIntoView({ behavior: "smooth" });
+          }}
+        >
+          Open full checklist
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProfileArrayFields({
+  field,
+  onSaved,
+}: {
+  field: "naics" | "areas";
+  onSaved: () => Promise<void>;
+}) {
+  const [csv, setCsv] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const profileRef = useRef<CompanyProfileJson | null>(null);
+
+  const options = useMemo(
+    () =>
+      field === "naics"
+        ? NAICS_CODES.map((n) => ({ value: n.code, label: `${n.code} · ${n.title}` }))
+        : US_SERVICE_AREAS.map((s) => ({ value: s, label: s })),
+    [field]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/profile");
+        const data = (await res.json()) as { profile?: { profile_json?: CompanyProfileJson } };
+        const json = data.profile?.profile_json ?? null;
+        if (cancelled) return;
+        profileRef.current = json;
+        setCsv(toCsv(field === "naics" ? json?.naics_codes : json?.service_areas));
+      } catch {
+        if (!cancelled) setError("Could not load profile.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [field]);
+
+  async function save() {
+    if (!profileRef.current) {
+      setError("Open Company profile if this save fails.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const body: CompanyProfileJson = {
+        ...profileRef.current,
+        ...(field === "naics"
+          ? { naics_codes: fromCsv(csv) }
+          : { service_areas: fromCsv(csv) }),
+      };
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Save failed.");
+        return;
+      }
+      trackClientEvent("guide_action_complete", { kind: `setup-${field}` });
+      await onSaved();
+    } catch {
+      setError("Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <p className="text-xs text-slate-500">Loading fields…</p>;
+
+  return (
+    <div className="space-y-2">
+      <TokenMultiSelect
+        value={csv}
+        onChange={setCsv}
+        options={options}
+        allowCustom={field === "areas"}
+        placeholder={field === "naics" ? "Search NAICS…" : "Search states…"}
+      />
+      {error && <p className="text-xs text-risk">{error}</p>}
+      <button
+        type="button"
+        className="btn-primary text-xs"
+        disabled={saving}
+        onClick={() => void save()}
+      >
+        {saving ? "Saving…" : field === "naics" ? "Save NAICS" : "Save service areas"}
       </button>
     </div>
   );

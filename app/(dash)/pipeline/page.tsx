@@ -230,7 +230,7 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
     <Link
       href={`/opportunity/${o.id}`}
       className={`card card-hover block ${
-        o.human_action_required ? "border-review/60 bg-review/5" : ""
+        o.human_action_required ? "focus-rail border-gold/40 bg-gold/[0.04]" : ""
       }`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -251,7 +251,7 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
       {o.agency && <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>}
       <p className="mt-2 text-xs font-semibold text-accent-strong">
         {NEXT_ACTION[o.stage] ?? o.stage}
-        <span className="ml-1 font-medium text-slate-500">Open</span>
+        <span className="ml-1 font-medium text-gold">Open ↗</span>
       </p>
     </Link>
   );
@@ -270,7 +270,7 @@ async function PipelineOnboarding() {
   if (!st.claude) missing.push("Anthropic (scoring + bid briefs)");
   if (!st.googleMaps) missing.push("Google Maps (subcontractor discovery)");
   if (!st.gmail && !st.resend) {
-    missing.push("Email — Gmail or Resend (outreach + reply tracking)");
+    missing.push("Email: Gmail or Resend (outreach + reply tracking)");
   }
 
   return (

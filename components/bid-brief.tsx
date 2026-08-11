@@ -56,8 +56,8 @@ export function BidBrief({
     <div className="card p-0">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-6 py-4">
         <div>
-          <p className="eyebrow">Plain-English summary</p>
-          <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">Bid Brief</h2>
+          <p className="eyebrow-gold">Why this fits</p>
+          <h2 className="mt-1 font-display text-2xl font-normal text-foreground">Bid Brief</h2>
         </div>
         {documents.length > 0 && (
           <a href="#attachments" className="btn-ghost text-xs">
@@ -69,9 +69,9 @@ export function BidBrief({
       <div className="space-y-7 px-6 py-6">
         {/* Recommendation — always visible */}
         {has(analysis.pursue_recommendation) && (
-          <div className="callout-panel">
-            <p className="eyebrow text-accent">Recommendation</p>
-            <p className="mt-1.5 text-sm leading-relaxed text-slate-800">
+          <div className="border-l-2 border-gold pl-4">
+            <p className="eyebrow-gold">Recommendation</p>
+            <p className="mt-2 font-display text-xl leading-snug text-foreground sm:text-2xl">
               {analysis.pursue_recommendation}
             </p>
           </div>
@@ -94,7 +94,7 @@ export function BidBrief({
         {(analysis.trade_scopes?.length ?? 0) > 0 && (
           <Section title="What each trade needs to do">
             <p className="mb-3 text-xs text-slate-500">
-              Plain-English work descriptions for calls and outreach — one per
+              Plain-English work descriptions for calls and outreach: one per
               required trade.
             </p>
             <ul className="space-y-3">

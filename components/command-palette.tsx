@@ -96,12 +96,12 @@ export function CommandPalette() {
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-start justify-center bg-black/40 p-4 pt-[12vh]"
+      className="fixed inset-0 z-[90] flex items-start justify-center bg-black/55 p-4 pt-[12vh]"
       onClick={() => setOpen(false)}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-lg border border-border bg-background shadow-2xl"
+        className="w-full max-w-lg overflow-hidden rounded-md border border-white/10 bg-background shadow-2xl"
       >
         <input
           ref={inputRef}
@@ -140,7 +140,7 @@ export function CommandPalette() {
               onClick={() => go(r)}
               onMouseEnter={() => setActive(i)}
               className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left ${
-                i === active ? "bg-accent-soft" : ""
+                i === active ? "bg-gold/10" : ""
               }`}
             >
               <span className="min-w-0">
@@ -149,7 +149,7 @@ export function CommandPalette() {
                   <span className="block truncate text-xs text-slate-500">{r.subtitle}</span>
                 )}
               </span>
-              <span className="badge shrink-0 bg-slate-200 text-slate-600">
+              <span className="badge shrink-0 border border-border bg-surface text-slate-600">
                 {KIND_LABEL[r.kind]}
               </span>
             </button>
@@ -170,7 +170,7 @@ export function SearchButton({ className = "" }: { className?: string }) {
       title="Search everything (⌘K)"
     >
       <span aria-hidden>⌕</span> Search
-      <kbd className="ml-auto hidden rounded border border-border px-1 text-[10px] text-slate-500 md:inline">
+      <kbd className="ml-auto hidden rounded border border-current/25 px-1 text-[10px] opacity-60 md:inline">
         ⌘K
       </kbd>
     </button>

@@ -19,6 +19,7 @@ import type {
   AuditFinding,
 } from "@/lib/types";
 import { currency, pct, timeAgo } from "@/lib/format";
+import { Wordmark } from "@/components/wordmark";
 
 const STATUS_META: Record<
   ResolvedRequirement["status"],
@@ -123,13 +124,145 @@ export function SubmissionPackage({
     }
   }
 
+  const readyPct =
+    validation && validation.total_mandatory > 0
+      ? Math.round(
+          (validation.satisfied_count / validation.total_mandatory) * 100
+        )
+      : ready
+        ? 100
+        : 0;
+  const readinessRows = [
+    {
+      title: "Pricing rollup",
+      detail:
+        bid.bid_amount != null
+          ? `Bid ${currency(bid.bid_amount)} · margin ${pct(bid.margin_pct)}`
+          : "Margin and quote checks",
+      ok: bid.bid_amount != null && bid.bid_amount > 0,
+    },
+    {
+      title: "Required forms",
+      detail:
+        validation != null
+          ? `${validation.satisfied_count}/${validation.total_mandatory} required items done`
+          : "Compliance matrix",
+      ok: Boolean(ready || (validation && validation.blockers.length === 0)),
+    },
+    {
+      title: "Certifications",
+      detail:
+        findings.filter((f) => f.severity === "blocker" && !f.acknowledged).length === 0
+          ? "No open blocker findings"
+          : "Open audit blockers remain",
+      ok: findings.filter((f) => f.severity === "blocker" && !f.acknowledged).length === 0,
+    },
+    {
+      title: "Compliance review",
+      detail: ready
+        ? "No open exceptions"
+        : blockers.length > 0
+          ? `${blockers.length} item${blockers.length === 1 ? "" : "s"} to finish`
+          : "In progress",
+      ok: Boolean(ready),
+    },
+  ];
+
   return (
-    <div className="card space-y-4">
+    <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-md border border-border bg-[#F2EFE9] px-6 py-7 shadow-sm">
+          <p className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Bid package · {submitted ? "Submitted" : "Final review"}
+          </p>
+          <div className="mt-5 h-px w-full bg-border" />
+          <div className="mt-5">
+            <Wordmark variant="dark" className="h-6" />
+          </div>
+          <h3 className="mt-6 font-display text-2xl leading-snug text-foreground sm:text-3xl">
+            {opportunityTitle ?? "Bid proposal"}
+          </h3>
+          {solicitationNumber && (
+            <p className="mt-2 text-sm text-muted-foreground">{solicitationNumber}</p>
+          )}
+          <div className="mt-8 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <p className="text-xs text-muted-foreground">Solicitation</p>
+              <p className="mt-0.5 text-foreground">
+                {solicitationNumber ?? "See bid brief"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Priced amount</p>
+              <p className="num mt-0.5 text-foreground">{currency(bid.bid_amount)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Margin</p>
+              <p className="num mt-0.5 text-foreground">{pct(bid.margin_pct)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Status</p>
+              <p className="mt-0.5 text-foreground">
+                {submitted
+                  ? `Submitted ${timeAgo(bid.submitted_at)}`
+                  : ready
+                    ? "Ready for approval"
+                    : "In assembly"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-white/10 bg-ink px-6 py-7 text-white">
+          <p className="eyebrow-gold">Submission readiness</p>
+          <p className="mt-3 font-display text-4xl text-gold">
+            <span className="num">{readyPct}%</span>
+          </p>
+          <p className="mt-1 text-[0.65rem] uppercase tracking-[0.14em] text-white/45">
+            {ready
+              ? "Ready for your approval"
+              : submitted
+                ? "Submitted"
+                : "Finish items below"}
+          </p>
+          <ul className="mt-6 divide-y divide-white/10">
+            {readinessRows.map((row) => (
+              <li key={row.title} className="flex items-start gap-3 py-3">
+                <span
+                  className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.65rem] ${
+                    row.ok
+                      ? "border-pursue/50 text-pursue"
+                      : "border-white/20 text-white/35"
+                  }`}
+                  aria-hidden
+                >
+                  {row.ok ? "✓" : "·"}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm text-white">{row.title}</p>
+                  <p className="mt-0.5 text-xs text-white/45">{row.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {manifest.length > 0 && (
+            <a
+              href={`/api/opportunities/${opportunityId}/package`}
+              className="btn-primary mt-6 flex w-full items-center justify-center gap-2 uppercase tracking-[0.08em]"
+            >
+              Open final package
+              <span aria-hidden>↗</span>
+            </a>
+          )}
+        </div>
+      </div>
+
+      <div className="card space-y-4">
       <div className="flex items-baseline justify-between">
-        <p className="eyebrow">Submission package</p>
+        <p className="eyebrow-gold">Submission package details</p>
         <span className="text-sm text-slate-500">margin {pct(bid.margin_pct)}</span>
       </div>
-      <div className="num font-display text-3xl font-semibold text-foreground">
+      <div className="num font-display text-3xl font-normal text-foreground">
         {currency(bid.bid_amount)}
       </div>
 
@@ -463,6 +596,7 @@ export function SubmissionPackage({
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

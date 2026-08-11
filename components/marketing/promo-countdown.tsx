@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 interface PromoCountdownProps {
   endsAtIso: string;
+  variant?: "light" | "dark";
 }
 
 interface Remaining {
@@ -29,20 +30,35 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-function CountdownUnit({ value, label }: { value: string; label: string }) {
+function CountdownUnit({
+  value,
+  label,
+  dark,
+}: {
+  value: string;
+  label: string;
+  dark: boolean;
+}) {
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="num flex h-12 w-12 items-center justify-center border border-border-strong bg-background text-lg font-semibold text-foreground sm:h-14 sm:w-14 sm:text-xl">
+      <span
+        className={`num flex h-12 w-12 items-center justify-center border text-lg font-semibold sm:h-14 sm:w-14 sm:text-xl ${
+          dark
+            ? "border-white/20 bg-black/40 text-white"
+            : "border-border-strong bg-background text-foreground"
+        }`}
+      >
         {value}
       </span>
-      <span className="label text-[0.6rem]">{label}</span>
+      <span className={`label text-[0.6rem] ${dark ? "text-white/45" : ""}`}>{label}</span>
     </div>
   );
 }
 
-export function PromoCountdown({ endsAtIso }: PromoCountdownProps) {
+export function PromoCountdown({ endsAtIso, variant = "light" }: PromoCountdownProps) {
+  const dark = variant === "dark";
   const [remaining, setRemaining] = useState<Remaining | null>(() =>
-    computeRemaining(endsAtIso),
+    computeRemaining(endsAtIso)
   );
 
   useEffect(() => {
@@ -55,12 +71,18 @@ export function PromoCountdown({ endsAtIso }: PromoCountdownProps) {
   if (!remaining) {
     return (
       <div
-        className="border border-border-strong bg-surface px-4 py-3 text-center"
+        className={`px-4 py-3 text-center ${
+          dark
+            ? "border border-white/15 bg-black/30"
+            : "border border-border-strong bg-surface"
+        }`}
         role="status"
         aria-live="polite"
       >
-        <p className="text-sm font-medium text-muted-foreground">Offer ended</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
+        <p className={`text-sm font-medium ${dark ? "text-white/70" : "text-muted-foreground"}`}>
+          Offer ended
+        </p>
+        <p className={`mt-0.5 text-xs ${dark ? "text-white/45" : "text-muted-foreground"}`}>
           Founding rate is no longer available. Standard pricing applies.
         </p>
       </div>
@@ -69,12 +91,14 @@ export function PromoCountdown({ endsAtIso }: PromoCountdownProps) {
 
   return (
     <div role="timer" aria-live="polite" aria-label="Founding offer time remaining">
-      <p className="label mb-3 text-center">Founding rate closes in</p>
+      <p className={`label mb-3 text-center ${dark ? "text-white/55" : ""}`}>
+        Founding rate closes in
+      </p>
       <div className="flex justify-center gap-3 sm:gap-4">
-        <CountdownUnit value={pad(remaining.days)} label="Days" />
-        <CountdownUnit value={pad(remaining.hours)} label="Hours" />
-        <CountdownUnit value={pad(remaining.minutes)} label="Mins" />
-        <CountdownUnit value={pad(remaining.seconds)} label="Secs" />
+        <CountdownUnit value={pad(remaining.days)} label="Days" dark={dark} />
+        <CountdownUnit value={pad(remaining.hours)} label="Hours" dark={dark} />
+        <CountdownUnit value={pad(remaining.minutes)} label="Mins" dark={dark} />
+        <CountdownUnit value={pad(remaining.seconds)} label="Secs" dark={dark} />
       </div>
     </div>
   );

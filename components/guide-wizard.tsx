@@ -1,19 +1,19 @@
 "use client";
 
 /**
- * Persistent Guide Me panel. Loads structured guidance + in-panel adapters,
- * stays live via Today's pulse fingerprint, and can optionally ask Claude to
- * narrate the same facts in plain English.
+ * Persistent Guide Me panel: structured guidance, in-panel adapters, live
+ * pulse sync, optional Claude narration/Q&A, and deep-link arrival context.
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { highlightGuideTarget } from "@/lib/guide-highlight";
 import { GuideStepActions } from "@/components/guide-adapters";
+import { trackClientEvent } from "@/lib/client-analytics";
 import type { GuideAdapters, GuideStep, PageGuide } from "@/lib/domain/page-guide";
 
-type Mode = "guide" | "explain" | "score" | "terms";
+type Mode = "guide" | "ask" | "explain" | "score" | "terms";
 
 export function openGuideWizard() {
   if (typeof window !== "undefined") {
@@ -24,11 +24,13 @@ export function openGuideWizard() {
 export function GuideWizard() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("guide");
   const [guide, setGuide] = useState<PageGuide | null>(null);
   const [adapters, setAdapters] = useState<GuideAdapters>({});
+  const [badge, setBadge] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -36,9 +38,30 @@ export function GuideWizard() {
   const [narration, setNarration] = useState<string | null>(null);
   const [narrating, setNarrating] = useState(false);
   const [narrateError, setNarrateError] = useState<string | null>(null);
+  const [askInput, setAskInput] = useState("");
+  const [askBusy, setAskBusy] = useState(false);
+  const [askError, setAskError] = useState<string | null>(null);
+  const [askThread, setAskThread] = useState<{ role: "user" | "assistant"; content: string }[]>(
+    []
+  );
   const panelRef = useRef<HTMLDivElement>(null);
   const fingerprintRef = useRef<string | null>(null);
   const keepStepRef = useRef(false);
+  const pendingStepRef = useRef<string | null>(null);
+  const openedFromUrl = useRef(false);
+
+  const applyStepFocus = useCallback((g: PageGuide, stepId: string | null) => {
+    if (!stepId) {
+      setStepIndex(0);
+      return;
+    }
+    const idx = g.steps.findIndex((s) => s.id === stepId);
+    setStepIndex(idx >= 0 ? idx : 0);
+    const step = idx >= 0 ? g.steps[idx] : null;
+    if (step?.target) {
+      window.setTimeout(() => highlightGuideTarget(step.target), 200);
+    }
+  }, []);
 
   const load = useCallback(
     async (opts?: { silent?: boolean; keepStep?: boolean }) => {
@@ -62,12 +85,17 @@ export function GuideWizard() {
           }
           return;
         }
-        setGuide(data.guide ?? null);
+        const g = data.guide ?? null;
+        setGuide(g);
         setAdapters(data.adapters ?? {});
+        if (g) setBadge(g.badgeCount);
         if (typeof data.fingerprint === "string") {
           fingerprintRef.current = data.fingerprint;
         }
-        if (!opts?.keepStep && !keepStepRef.current) setStepIndex(0);
+        if (!opts?.keepStep && !keepStepRef.current) {
+          if (g) applyStepFocus(g, pendingStepRef.current);
+          pendingStepRef.current = null;
+        }
         keepStepRef.current = false;
         setLiveNote(null);
         setNarration(null);
@@ -82,8 +110,31 @@ export function GuideWizard() {
         if (!opts?.silent) setLoading(false);
       }
     },
-    [pathname]
+    [pathname, applyStepFocus]
   );
+
+  // Slim badge while closed.
+  useEffect(() => {
+    if (open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/guide/pulse?path=${encodeURIComponent(pathname)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { badgeCount?: number; fingerprint?: string };
+        if (cancelled) return;
+        setBadge(Number(data.badgeCount ?? 0));
+        if (typeof data.fingerprint === "string") fingerprintRef.current = data.fingerprint;
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, open]);
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
@@ -91,23 +142,46 @@ export function GuideWizard() {
     return () => window.removeEventListener("open-guide-wizard", onOpen);
   }, []);
 
+  // Arrival context: ?guide=1&guideStep=&guideFocus=
+  useEffect(() => {
+    const guideParam = searchParams.get("guide");
+    if (guideParam !== "1" && guideParam !== "true") {
+      openedFromUrl.current = false;
+      return;
+    }
+    if (openedFromUrl.current) return;
+    openedFromUrl.current = true;
+    pendingStepRef.current = searchParams.get("guideStep");
+    const focus = searchParams.get("guideFocus");
+    setOpen(true);
+    if (focus) window.setTimeout(() => highlightGuideTarget(focus), 350);
+    // Strip query so refresh doesn't reopen forever.
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("guide");
+    params.delete("guideStep");
+    params.delete("guideFocus");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [searchParams, pathname, router]);
+
   useEffect(() => {
     if (!open) return;
     void load();
     setMode("guide");
-  }, [open, load]);
+    trackClientEvent("guide_open", { path: pathname });
+  }, [open, load, pathname]);
 
   useEffect(() => {
     if (!open) {
       setGuide(null);
       setAdapters({});
-      fingerprintRef.current = null;
-      setNarration(null);
+      setAskThread([]);
+      setAskInput("");
       setLiveNote(null);
+      fingerprintRef.current = null;
     }
   }, [pathname, open]);
 
-  // Live sync with Today pulse while the panel is open.
   useEffect(() => {
     if (!open) return;
     let stopped = false;
@@ -135,23 +209,22 @@ export function GuideWizard() {
         keepStepRef.current = true;
         await load({ silent: true, keepStep: true });
         router.refresh();
+        trackClientEvent("guide_live_refresh", { path: pathname });
       }
     }
 
     void tick();
     const timer = window.setInterval(() => void tick(), 30_000);
-
     const onVisible = () => {
       if (document.visibilityState === "visible") void tick();
     };
     document.addEventListener("visibilitychange", onVisible);
-
     return () => {
       stopped = true;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [open, load, router]);
+  }, [open, load, router, pathname]);
 
   useEffect(() => {
     if (!open) return;
@@ -170,6 +243,10 @@ export function GuideWizard() {
   }, [open]);
 
   async function afterAction() {
+    trackClientEvent("guide_action_complete", {
+      stepId: guide?.steps[stepIndex]?.id,
+      kind: guide?.steps[stepIndex]?.kind,
+    });
     router.refresh();
     keepStepRef.current = true;
     await load({ keepStep: true });
@@ -194,6 +271,7 @@ export function GuideWizard() {
         return;
       }
       setNarration(data.narration ?? null);
+      trackClientEvent("guide_narrate", { pageKey: guide.pageKey });
     } catch {
       setNarrateError("Could not generate narration.");
     } finally {
@@ -201,25 +279,57 @@ export function GuideWizard() {
     }
   }
 
+  async function askQuestion(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!guide || !askInput.trim() || askBusy) return;
+    const question = askInput.trim();
+    setAskInput("");
+    setAskBusy(true);
+    setAskError(null);
+    const nextThread = [...askThread, { role: "user" as const, content: question }];
+    setAskThread(nextThread);
+    try {
+      const res = await fetch("/api/guide/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guide,
+          question,
+          history: askThread,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { answer?: string; error?: string };
+      if (!res.ok) {
+        setAskError(data.error ?? "Could not answer.");
+        return;
+      }
+      setAskThread([...nextThread, { role: "assistant", content: data.answer ?? "" }]);
+      trackClientEvent("guide_ask", { pageKey: guide.pageKey });
+    } catch {
+      setAskError("Could not answer.");
+    } finally {
+      setAskBusy(false);
+    }
+  }
+
   const steps = guide?.steps ?? [];
   const active = steps[stepIndex] ?? null;
-  const badge = guide?.badgeCount ?? 0;
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed z-[65] flex items-center gap-2 rounded-full border border-border-strong bg-foreground px-4 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-4 md:bottom-6 md:right-6"
+        className="fixed z-[65] flex items-center gap-2 rounded-md border border-gold/40 bg-ink px-4 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-shell focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-4 md:bottom-6 md:right-6"
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <span aria-hidden className="text-accent">
+        <span aria-hidden className="text-gold">
           ?
         </span>
         Guide Me
         {badge > 0 && (
-          <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-accent px-1.5 text-[11px] font-semibold text-foreground">
+          <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-[11px] font-semibold text-ink">
             {badge > 9 ? "9+" : badge}
           </span>
         )}
@@ -239,17 +349,15 @@ export function GuideWizard() {
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-xl border border-border bg-background shadow-2xl outline-none md:inset-y-0 md:bottom-auto md:left-auto md:right-0 md:h-full md:max-h-none md:w-full md:max-w-md md:rounded-none md:border-l md:border-t-0 md:border-b-0"
+            className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-xl border border-white/10 bg-background shadow-2xl outline-none md:inset-y-0 md:bottom-auto md:left-auto md:right-0 md:h-full md:max-h-none md:w-full md:max-w-md md:rounded-none md:border-l md:border-t-0 md:border-b-0"
           >
             <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 md:px-5">
               <div className="min-w-0">
-                <p className="label text-accent-strong">Guide Me</p>
+                <p className="eyebrow-gold">Guide Me</p>
                 <h2 id={titleId} className="font-display text-lg text-foreground">
                   {guide?.headline ?? (loading ? "Loading…" : "Page guidance")}
                 </h2>
-                {liveNote && (
-                  <p className="mt-1 text-xs text-pursue">{liveNote}</p>
-                )}
+                {liveNote && <p className="mt-1 text-xs text-pursue">{liveNote}</p>}
               </div>
               <button
                 type="button"
@@ -264,6 +372,7 @@ export function GuideWizard() {
               {(
                 [
                   ["guide", "What to do"],
+                  ["ask", "Ask"],
                   ["explain", "Explain page"],
                   ...(guide?.scoreExplain ? ([["score", "Why this score"]] as const) : []),
                   ["terms", "Terms"],
@@ -301,6 +410,7 @@ export function GuideWizard() {
                   narrating={narrating}
                   narrateError={narrateError}
                   onNarrate={() => void requestNarration()}
+                  onAskTab={() => setMode("ask")}
                   onStep={setStepIndex}
                   onHighlight={(target) => highlightGuideTarget(target)}
                   onDone={async () => {
@@ -308,6 +418,62 @@ export function GuideWizard() {
                   }}
                   onClose={() => setOpen(false)}
                 />
+              )}
+
+              {guide && mode === "ask" && (
+                <div className="flex h-full min-h-[16rem] flex-col gap-3">
+                  <p className="text-xs text-slate-500">
+                    Ask about this page, blockers, scores, or terms. Answers stay grounded in your
+                    live account facts.
+                  </p>
+                  <div className="scroll-thin flex-1 space-y-2 overflow-y-auto">
+                    {askThread.length === 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          "What should I do next?",
+                          "Why is this blocked?",
+                          "What is Brost Co handling?",
+                        ].map((q) => (
+                          <button
+                            key={q}
+                            type="button"
+                            className="btn-ghost text-xs"
+                            onClick={() => {
+                              setAskInput(q);
+                            }}
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {askThread.map((m, i) => (
+                      <div
+                        key={`${m.role}-${i}`}
+                        className={`rounded-md px-3 py-2 text-sm ${
+                          m.role === "user"
+                            ? "ml-6 bg-foreground text-white"
+                            : "mr-4 border border-border bg-surface text-slate-800"
+                        }`}
+                      >
+                        {m.content}
+                      </div>
+                    ))}
+                  </div>
+                  {askError && <p className="text-xs text-risk">{askError}</p>}
+                  <form onSubmit={(e) => void askQuestion(e)} className="flex gap-2">
+                    <input
+                      className="input flex-1"
+                      value={askInput}
+                      onChange={(e) => setAskInput(e.target.value)}
+                      placeholder="Ask a question…"
+                      disabled={askBusy}
+                    />
+                    <button type="submit" className="btn-primary text-xs" disabled={askBusy}>
+                      {askBusy ? "…" : "Ask"}
+                    </button>
+                  </form>
+                </div>
               )}
 
               {guide && mode === "explain" && (
@@ -324,12 +490,6 @@ export function GuideWizard() {
                       <li key={p}>{p}</li>
                     ))}
                   </ul>
-                  {guide.experience === "new" && (
-                    <p className="rounded-md border border-border bg-surface px-3 py-2 text-xs text-slate-600">
-                      New here? Brost Co automates most government-contracting steps. You only act
-                      when this guide (or Today) says the ball is with you.
-                    </p>
-                  )}
                   <Link
                     href="/how-it-works"
                     className="btn-secondary text-xs"
@@ -364,16 +524,6 @@ export function GuideWizard() {
                       </li>
                     ))}
                   </ul>
-                  <button
-                    type="button"
-                    className="btn-ghost text-xs"
-                    onClick={() => {
-                      highlightGuideTarget("score");
-                      setOpen(false);
-                    }}
-                  >
-                    Show score on page
-                  </button>
                 </div>
               )}
 
@@ -381,8 +531,7 @@ export function GuideWizard() {
                 <div className="space-y-2">
                   {guide.terms.length === 0 ? (
                     <p className="text-sm text-slate-500">
-                      No special terms for this page. Open an opportunity or company profile for
-                      UEI, NAICS, scoring, and set-aside explanations.
+                      No special terms for this page. Try Ask for UEI, NAICS, set-asides, or scores.
                     </p>
                   ) : (
                     guide.terms.map((t) => (
@@ -417,6 +566,7 @@ function GuideBody({
   narrating,
   narrateError,
   onNarrate,
+  onAskTab,
   onStep,
   onHighlight,
   onDone,
@@ -431,6 +581,7 @@ function GuideBody({
   narrating: boolean;
   narrateError: string | null;
   onNarrate: () => void;
+  onAskTab: () => void;
   onStep: (i: number) => void;
   onHighlight: (target?: string) => void;
   onDone: () => Promise<void>;
@@ -447,7 +598,14 @@ function GuideBody({
           disabled={narrating}
           onClick={onNarrate}
         >
-          {narrating ? "Writing…" : narration ? "Refresh plain-English summary" : "Explain in plain English"}
+          {narrating
+            ? "Writing…"
+            : narration
+              ? "Refresh plain-English summary"
+              : "Explain in plain English"}
+        </button>
+        <button type="button" className="btn-ghost text-xs" onClick={onAskTab}>
+          Ask a question
         </button>
       </div>
       {narrateError && <p className="text-xs text-risk">{narrateError}</p>}
@@ -516,30 +674,6 @@ function GuideBody({
             <Link href="/today" className="btn-secondary text-xs" onClick={onClose}>
               Back to Today
             </Link>
-            {guide.opportunityId && (
-              <>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs"
-                  onClick={() => {
-                    onHighlight("workflow");
-                    onClose();
-                  }}
-                >
-                  View workflow
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs"
-                  onClick={() => {
-                    onHighlight("brief");
-                    onClose();
-                  }}
-                >
-                  Review solicitation
-                </button>
-              </>
-            )}
           </div>
         </div>
       ) : active ? (

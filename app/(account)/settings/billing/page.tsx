@@ -79,13 +79,13 @@ export default async function BillingSettingsPage({
   ) : null;
 
   return (
-    <div className="flex h-screen flex-col">
+    <>
       <PageHeader
         title="Billing"
         status={statusLabel}
         subtitle="Subscription, invoices, and cancellation for your organization."
       />
-      <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
+      <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {searchParams?.error && (
           <div className="rounded-md border border-risk/40 bg-risk/5 px-4 py-3 text-sm text-risk">
             Billing action failed ({searchParams.error}). Try again or contact
@@ -150,6 +150,6 @@ export default async function BillingSettingsPage({
           </p>
         </div>
       </div>
-    </div>
+    </>
   );
 }

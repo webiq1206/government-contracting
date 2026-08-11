@@ -186,7 +186,15 @@ export interface NextStep {
   waitingOn: Party;
 }
 
-export function deriveStep(s: StepInput): NextStep | null {
+/**
+ * True when the next step includes a concrete operator action: decision
+ * buttons, a route, or an in-page anchor. Every opportunity should expose one.
+ */
+export function stepHasAction(step: NextStep): boolean {
+  return Boolean(step.decision || (step.cta && (step.href || step.anchor)));
+}
+
+export function deriveStep(s: StepInput): NextStep {
   if (s.stage === "won")
     return {
       title: "Nothing, this one is won 🎉",
@@ -196,14 +204,34 @@ export function deriveStep(s: StepInput): NextStep | null {
       tone: "info",
       waitingOn: "system",
     };
-  if (s.stage === "lost" || s.stage === "dismissed") return null;
+  if (s.stage === "lost")
+    return {
+      title: "This bid was marked lost",
+      why: "The outcome is recorded. History, documents, and communications stay here for reference.",
+      after: "Use Today or Pipeline to pick up the next open opportunity.",
+      cta: "Back to Today",
+      href: "/today",
+      tone: "info",
+      waitingOn: "system",
+    };
+  if (s.stage === "dismissed")
+    return {
+      title: "This opportunity was dismissed",
+      why: "It is archived, not deleted. You can restore it from the activity history if you change your mind.",
+      after: "Use Today or Pipeline to pick up the next open opportunity.",
+      cta: "Back to Today",
+      href: "/today",
+      tone: "info",
+      waitingOn: "system",
+    };
 
   if (s.expired)
     return {
       title: "Nothing, this one expired",
       why: "The submission deadline passed before a bid went out, so the record was archived automatically. All documents, communications, and history are preserved here for reference.",
       after: "Nothing further happens; archived records are kept per your retention settings.",
-      cta: "",
+      cta: "Browse pipeline",
+      href: "/pipeline",
       tone: "info",
       waitingOn: "system",
     };
@@ -233,7 +261,6 @@ export function deriveStep(s: StepInput): NextStep | null {
     };
 
   const step = deriveStageStep(s);
-  if (!step) return null;
 
   // Truth-in-advertising overrides: "the system is working on it" copy is a
   // lie when the operator paused automation or the stage has visibly stalled.
@@ -273,7 +300,7 @@ export const STAGE_AGENT: Partial<Record<string, string>> = {
   bid_building: "bid-builder",
 };
 
-function deriveStageStep(s: StepInput): NextStep | null {
+function deriveStageStep(s: StepInput): NextStep {
   switch (s.stage) {
     case "monitoring":
     case "scoring":
@@ -281,7 +308,8 @@ function deriveStageStep(s: StepInput): NextStep | null {
         title: "Nothing yet, scoring is running",
         why: "The system is scoring this against your company profile. It becomes actionable within a few minutes.",
         after: "High scores start analysis automatically; borderline ones come back to you for a decision.",
-        cta: "",
+        cta: "View brief",
+        anchor: "#brief",
         tone: "info",
         waitingOn: "system",
       };
@@ -290,7 +318,8 @@ function deriveStageStep(s: StepInput): NextStep | null {
         title: "Nothing yet, the plain-English brief is being written",
         why: "The analyst is reading the solicitation and attachments. When it's done, sub research starts automatically.",
         after: "Sub research finds and verifies local subs for each required trade, then emails them.",
-        cta: "",
+        cta: "View brief",
+        anchor: "#brief",
         tone: "info",
         waitingOn: "system",
       };
@@ -299,7 +328,8 @@ function deriveStageStep(s: StepInput): NextStep | null {
         title: "Nothing yet, finding subcontractors",
         why: "The system is finding and verifying local subs for each required trade. They'll be emailed automatically.",
         after: "Replies create call cards for you; a 48-hour follow-up goes out on its own.",
-        cta: "",
+        cta: "View trade coverage",
+        anchor: "#coverage",
         tone: "info",
         waitingOn: "system",
       };
@@ -358,8 +388,8 @@ function deriveStageStep(s: StepInput): NextStep | null {
             : "Enter subcontractor quotes",
         why: "Type each sub's price into Quote Entry. The bid is priced automatically when quotes are saved.",
         after: "The Bid Builder assembles the full package (pricing, narrative, QA checklist) for your review.",
-        cta: missing > 0 ? "Open quotes" : "",
-        anchor: missing > 0 ? "#quotes" : undefined,
+        cta: "Open quotes",
+        anchor: "#quotes",
         tone: "action",
         waitingOn: "you",
       };
@@ -390,7 +420,8 @@ function deriveStageStep(s: StepInput): NextStep | null {
             title: "Nothing yet, pricing the bid",
             why: "The Bid Builder is aggregating quotes and pricing to your target margin. Refresh in a minute.",
             after: "You'll review the finished package and submit it.",
-            cta: "",
+            cta: "View pricing",
+            anchor: "#quotes",
             tone: "info",
             waitingOn: "system",
           };
@@ -399,13 +430,22 @@ function deriveStageStep(s: StepInput): NextStep | null {
         title: "Record the result when the agency announces",
         why: "A win sets up the contract automatically; a loss teaches the scoring system.",
         after: "Won creates the contract record with milestones; lost feeds the weekly Learning Loop.",
-        cta: "",
+        cta: "Review package",
+        anchor: "#submission",
         tone: "action",
         decision: "outcome",
         waitingOn: "agency",
       };
     default:
-      return null;
+      return {
+        title: "Review this opportunity",
+        why: "Open the brief and decide the next move from the workspace below.",
+        after: "Each stage surfaces a single recommended action at the top of this page.",
+        cta: "View brief",
+        anchor: "#brief",
+        tone: "info",
+        waitingOn: "you",
+      };
   }
 }
 

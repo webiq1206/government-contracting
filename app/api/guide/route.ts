@@ -215,6 +215,10 @@ export async function GET(req: Request) {
           blocked: readiness.blocked,
         },
         scoreExplain,
+        packageReady: bid?.package_ready ?? null,
+        packageBlockers:
+          (bid?.validation_json as { blockers?: string[] } | null)?.blockers ?? [],
+        bidSubmitted: Boolean(bid?.submitted_at),
       };
     }
   }

@@ -5,7 +5,7 @@
 /* ==========================================================================
    BROST CO brand design system (2026 brand guide)
    Charcoal #242424 · Gold #B28F5D · Ivory #F7F4EE · Stone #D8D2C7 · White
-   Background stays #F7F5F3 by explicit user preference.
+   Shell/ink #0a0a0a / #141414 for dark dash chrome and Today.
    Inter is the UI/body voice; GFS Didot is display (.font-display).
    Gold signals importance only — never a large background field.
    Sage green (`pursue` #5A6B52 family) is the positive/"go" accent: success,
@@ -18,7 +18,7 @@
 
 html,
 body {
-  background: #F7F5F3; /* kept per user preference */
+  background: #F7F4EE;
   color: #242424; /* Charcoal */
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
@@ -99,7 +99,7 @@ body {
     }
   }
   .btn-primary {
-    @apply bg-foreground text-white hover:bg-black;
+    @apply bg-gold text-ink hover:bg-[#c4a06e];
   }
   .btn-ghost {
     @apply border border-border-strong text-foreground hover:bg-surface;
@@ -122,10 +122,55 @@ body {
 
   /* Surfaces */
   .card {
-    @apply rounded-md border border-border bg-background p-4 sm:p-5;
+    @apply rounded-md border border-border bg-background p-4 sm:p-5 shadow-none;
   }
   .card-hover {
-    @apply transition-colors hover:border-border-strong hover:bg-surface;
+    @apply transition-colors hover:border-border-strong hover:bg-surface-raised;
+  }
+
+  /* Dark editorial surfaces (nav, Today, readiness panels) */
+  .shell-panel {
+    @apply rounded-md border border-white/10 bg-shell;
+  }
+  .shell-ghost {
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-white/25 bg-transparent px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  @media (min-width: 768px) {
+    .shell-ghost {
+      min-height: 0;
+    }
+  }
+  .focus-rail {
+    border-left: 2px solid #B28F5D;
+  }
+  .fit-score-box {
+    @apply flex h-[4.5rem] w-[4.5rem] shrink-0 flex-col items-center justify-center border border-gold sm:h-[5.25rem] sm:w-[5.25rem];
+  }
+  .fit-score-box .num {
+    @apply font-display text-2xl leading-none text-foreground sm:text-3xl;
+  }
+  .fit-score-box .label {
+    @apply mt-1 text-[0.55rem] tracking-[0.14em] text-muted-foreground;
+  }
+  .dash-tab {
+    @apply relative pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground;
+  }
+  .dash-tab--active {
+    @apply text-foreground;
+  }
+  .dash-tab--active::after {
+    content: "";
+    @apply absolute bottom-0 left-0 right-0 h-0.5 bg-gold;
+  }
+  .action-row {
+    @apply relative border-b border-border px-1 py-4 transition-colors;
+  }
+  .action-row--shell {
+    @apply border-white/10;
+  }
+  .eyebrow-gold {
+    @apply text-[0.7rem] font-medium uppercase text-gold;
+    letter-spacing: 0.16em;
   }
 
   /* Status strips: attention / risk / calm success. */
@@ -155,10 +200,10 @@ body {
 
   /* Sticky jump nav chips */
   .jump-chip {
-    @apply badge shrink-0 border border-border bg-surface text-slate-600 transition-colors hover:border-accent/50 hover:bg-accent/10 hover:text-accent-strong;
+    @apply badge shrink-0 border border-border bg-surface text-slate-600 transition-colors hover:border-gold/50 hover:bg-gold/10 hover:text-foreground;
   }
   .jump-chip--primary {
-    @apply border-accent/40 bg-accent-soft text-accent-strong;
+    @apply border-gold/40 bg-gold/10 text-accent-strong;
   }
 
   /* Section rhythm on long dash pages */

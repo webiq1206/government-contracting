@@ -2,8 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   journeySteps,
   deriveStep,
-  isStalled,
+  stepHasAction,
   JOURNEY_STAGES,
+  isStalled,
   STAGE_AGENT,
   type StepInput,
 } from "@/lib/domain/journey";
@@ -155,15 +156,23 @@ describe("deriveStep", () => {
     expect(step.decision).toBe("outcome");
   });
 
-  it("returns null for lost and dismissed, and a celebration for won", () => {
-    expect(deriveStep(input({ stage: "lost" }))).toBeNull();
-    expect(deriveStep(input({ stage: "dismissed" }))).toBeNull();
-    expect(deriveStep(input({ stage: "won" }))!.title).toMatch(/won/i);
+  it("keeps lost and dismissed actionable with a path out, and celebrates won", () => {
+    expect(stepHasAction(deriveStep(input({ stage: "lost" })))).toBe(true);
+    expect(stepHasAction(deriveStep(input({ stage: "dismissed" })))).toBe(true);
+    expect(deriveStep(input({ stage: "won" })).title).toMatch(/won/i);
+    expect(stepHasAction(deriveStep(input({ stage: "won" })))).toBe(true);
   });
 
   it("always explains what happens after an operator action", () => {
     for (const stage of ["call_queue", "quote_entry", "submitted"]) {
-      expect(deriveStep(input({ stage }))!.after).toBeTruthy();
+      expect(deriveStep(input({ stage })).after).toBeTruthy();
     }
+  });
+
+  it("always exposes a concrete action for every journey stage", () => {
+    for (const stage of JOURNEY_STAGES) {
+      expect(stepHasAction(deriveStep(input({ stage })))).toBe(true);
+    }
+    expect(stepHasAction(deriveStep(input({ expired: true })))).toBe(true);
   });
 });

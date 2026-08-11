@@ -1,8 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentUser } from "@/lib/auth";
+import { Suspense } from "react";
 import { ToastProvider } from "@/components/toaster";
 import { GuideWizard } from "@/components/guide-wizard";
+import { Wordmark } from "@/components/wordmark";
 import { subscriptionAllowsAccess } from "@/lib/organizations";
 
 /**
@@ -24,10 +26,14 @@ export default async function AccountLayout({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-surface">
-        <header className="flex items-center justify-between border-b border-border bg-background px-5 py-3">
-          <Link href={subscribed ? "/today" : "/"} className="font-display text-lg">
-            BROST <span className="font-accent">CO</span>
+      <div className="flex min-h-dvh flex-col bg-background">
+        <header className="flex shrink-0 items-center justify-between border-b border-border bg-background px-5 py-3">
+          <Link
+            href={subscribed ? "/today" : "/"}
+            className="inline-flex items-center"
+            aria-label="Brost Co"
+          >
+            <Wordmark variant="dark" className="h-6" />
           </Link>
           <div className="flex items-center gap-3 text-sm">
             <span className="text-slate-500">{user.email}</span>
@@ -42,9 +48,11 @@ export default async function AccountLayout({
             )}
           </div>
         </header>
-        <main>{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
       </div>
-      <GuideWizard />
+      <Suspense fallback={null}>
+        <GuideWizard />
+      </Suspense>
     </ToastProvider>
   );
 }

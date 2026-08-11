@@ -36,14 +36,17 @@ export function buildGuideAdapters(opts: {
   const needs = new Set(
     guide.steps.map((s) => s.adapter).filter((a): a is NonNullable<typeof a> => Boolean(a))
   );
-  // Opportunity quote entry even when adapter tag came from journey stage.
-  if (guide.steps.some((s) => s.kind === "enter-quote") && opportunity) {
-    needs.add("quote");
+  if (guide.steps.some((s) => s.kind === "enter-quote")) needs.add("quote");
+  if (guide.steps.some((s) => s.kind === "open-call")) {
+    needs.add("call");
+    needs.add("followUp");
   }
-  if (guide.steps.some((s) => s.kind === "open-call")) needs.add("call");
   if (guide.steps.some((s) => s.kind === "edit-sub-contact")) needs.add("subContact");
   if (guide.steps.some((s) => s.kind === "compliance-update")) needs.add("compliance");
   if (guide.steps.some((s) => s.kind === "approve-weights")) needs.add("weights");
+  if (guide.steps.some((s) => s.kind === "review-quote")) needs.add("quoteReview");
+  if (guide.steps.some((s) => s.kind === "submit-package")) needs.add("package");
+  if (guide.steps.some((s) => s.kind === "upload-document")) needs.add("upload");
 
   if (needs.has("quote")) {
     const oppId =
@@ -53,12 +56,7 @@ export function buildGuideAdapters(opts: {
     if (oppId) {
       adapters.quote = {
         opportunityId: oppId,
-        subs:
-          opportunity?.id === oppId
-            ? opportunitySubs ?? []
-            : opportunitySubs?.length
-              ? opportunitySubs
-              : [],
+        subs: opportunitySubs ?? [],
       };
     }
   }
@@ -117,6 +115,40 @@ export function buildGuideAdapters(opts: {
       website: subRow?.website ?? null,
       ownerName: subRow?.owner_name ?? null,
     };
+  }
+
+  if (needs.has("quoteReview")) {
+    const q = actions?.quoteReviews[0];
+    if (q) {
+      adapters.quoteReview = {
+        quoteId: q.quote_id,
+        opportunityId: q.opportunity_id,
+        opportunityTitle: q.opportunity_title,
+        companyName: q.company_name,
+        trade: q.trade,
+        quoteAmount: q.quote_amount,
+      };
+    }
+  }
+
+  if (needs.has("package") || needs.has("upload")) {
+    const oppId =
+      opportunity?.id ||
+      guide.steps.find((s) => s.opportunityId)?.opportunityId ||
+      null;
+    if (oppId) {
+      if (needs.has("package")) {
+        adapters.package = {
+          opportunityId: oppId,
+          packageReady: opportunity?.packageReady ?? null,
+          blockers: opportunity?.packageBlockers ?? [],
+          submitted: Boolean(opportunity?.bidSubmitted),
+        };
+      }
+      if (needs.has("upload")) {
+        adapters.upload = { opportunityId: oppId };
+      }
+    }
   }
 
   return adapters;

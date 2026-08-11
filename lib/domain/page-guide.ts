@@ -49,12 +49,17 @@ export type GuideActionKind =
   | "triage"
   | "outcome"
   | "setup-identity"
+  | "setup-naics"
+  | "setup-areas"
   | "enter-quote"
   | "open-call"
   | "edit-sub-contact"
   | "compliance-update"
   | "resume-automation"
   | "approve-weights"
+  | "review-quote"
+  | "upload-document"
+  | "submit-package"
   | "none";
 
 export interface GuideStep {
@@ -80,7 +85,10 @@ export interface GuideStep {
     | "followUp"
     | "compliance"
     | "weights"
-    | "subContact";
+    | "subContact"
+    | "quoteReview"
+    | "package"
+    | "upload";
 }
 
 /** Live payloads so the wizard can complete work without scavenger hunts. */
@@ -112,6 +120,23 @@ export interface GuideAdapters {
     phone: string | null;
     website: string | null;
     ownerName: string | null;
+  };
+  quoteReview?: {
+    quoteId: string;
+    opportunityId: string;
+    opportunityTitle: string | null;
+    companyName: string | null;
+    trade: string | null;
+    quoteAmount: number | null;
+  };
+  package?: {
+    opportunityId: string;
+    packageReady: boolean | null;
+    blockers: string[];
+    submitted: boolean;
+  };
+  upload?: {
+    opportunityId: string;
   };
 }
 
@@ -157,6 +182,9 @@ export interface OpportunityGuideFacts {
     "percent" | "summary" | "attention" | "complete" | "actionRequired" | "blocked"
   >;
   scoreExplain?: GuideScoreExplain | null;
+  packageReady?: boolean | null;
+  packageBlockers?: string[];
+  bidSubmitted?: boolean;
 }
 
 export interface SubGuideFacts {
@@ -390,17 +418,28 @@ function ownerFromParty(waitingOn: NextStep["waitingOn"]): GuideOwner {
 }
 
 function setupStep(item: SetupItem): GuideStep {
-  const identity = item.key === "identity";
+  let kind: GuideActionKind = "link";
+  let cta = "Open settings";
+  if (item.key === "identity") {
+    kind = "setup-identity";
+    cta = "Complete identifiers";
+  } else if (item.key === "naics") {
+    kind = "setup-naics";
+    cta = "Pick NAICS codes";
+  } else if (item.key === "service_areas") {
+    kind = "setup-areas";
+    cta = "Set service areas";
+  }
   return {
     id: `setup-${item.key}`,
     title: item.label,
     why: item.hint,
-    cta: identity ? "Complete identifiers" : "Open settings",
+    cta,
     href: item.href,
-    target: identity ? "identity" : item.key,
+    target: item.key === "identity" ? "identity" : item.key,
     tone: "action",
     owner: "you",
-    kind: identity ? "setup-identity" : "link",
+    kind,
     source: "setup",
     setupKey: item.key,
   };
@@ -414,6 +453,12 @@ function stepFromNext(ns: NextStep, opportunityId: string, stage: string): Guide
   else if (ns.decision === "outcome") kind = "outcome";
   else if (ns.cta === "Resume automation" || ns.href === "/agents") {
     kind = "resume-automation";
+  } else if (
+    target === "submission" ||
+    /submit|submission package/i.test(ns.title)
+  ) {
+    kind = "submit-package";
+    adapter = "package";
   } else if (
     stage === "quote_entry" ||
     target === "quotes" ||
@@ -461,6 +506,9 @@ function stepFromAttention(item: AttentionItem, opportunityId: string): GuideSte
   if (owner === "you" && (modal === "enter-quote" || modal === "contact-trade")) {
     kind = "enter-quote";
     adapter = "quote";
+  } else if (owner === "you" && (modal === "upload" || modal === "review-missing")) {
+    kind = "upload-document";
+    adapter = "upload";
   }
   return {
     id: `attn-${item.key}`,
@@ -601,7 +649,8 @@ function pageScopedTodaySteps(
       "today-quotes",
       "Review unusual quotes",
       "Some prices look high or low versus comps and need a quick check.",
-      "/today#quotes"
+      "/today#quotes",
+      { kind: "review-quote", adapter: "quoteReview", cta: "Review quote" }
     );
     pushBucket(
       actions.bidWork,
@@ -749,6 +798,52 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
     for (const item of readiness.complete.slice(0, 6)) {
       if (!completed.includes(item.label)) completed.push(item.label);
     }
+  }
+
+  if (
+    opp.stepInput.hasBid &&
+    !opp.bidSubmitted &&
+    !steps.some((s) => s.kind === "submit-package")
+  ) {
+    steps.push({
+      id: "submit-package",
+      title: opp.packageReady
+        ? "Review and submit the package"
+        : "Clear blockers, then submit the package",
+      why: opp.packageReady
+        ? "The package is marked ready. Confirm and submit when you are satisfied."
+        : (opp.packageBlockers?.slice(0, 2).join(" ") ||
+          "Submission stays locked until required items are cleared."),
+      cta: "Submit package",
+      href: `/opportunity/${opp.id}#submission`,
+      target: "submission",
+      tone: opp.packageReady ? "action" : "warn",
+      owner: "you",
+      kind: "submit-package",
+      adapter: "package",
+      source: "page",
+      opportunityId: opp.id,
+    });
+  }
+
+  if (
+    readiness?.actionRequired.some((a) => a.action?.modal === "upload") &&
+    !steps.some((s) => s.kind === "upload-document")
+  ) {
+    steps.push({
+      id: "upload-doc",
+      title: "Upload a required document",
+      why: "Some submission items only you can supply. Upload the file here.",
+      cta: "Upload document",
+      href: `/opportunity/${opp.id}#attachments`,
+      target: "attachments",
+      tone: "action",
+      owner: "you",
+      kind: "upload-document",
+      adapter: "upload",
+      source: "page",
+      opportunityId: opp.id,
+    });
   }
 
   const prioritized = prioritizeSteps(dedupeSteps(steps)).filter((s) => s.owner === "you");

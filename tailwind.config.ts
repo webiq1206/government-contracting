@@ -3,10 +3,10 @@ import type { Config } from "tailwindcss";
 /**
  * BROST CO brand theme (per the 2026 brand guide):
  *   Charcoal #242424, Gold #B28F5D, Ivory #F7F4EE, Stone #D8D2C7, White #FFFFFF.
- * The page background stays the existing warm off-white (#F7F5F3) by explicit
- * user preference. Charcoal carries text; gold signals importance and brand
- * emphasis only (never a large background field); stone carries borders and
- * quiet accents. GFS Didot is display; Inter is UI/body. Flat, border-driven.
+ * Shell/ink (#0a0a0a / #141414) power the dark dash chrome and Today.
+ * Ivory #F7F4EE is the primary work surface. Gold is decorative emphasis;
+ * accent (#7E5E33) is WCAG-safe gold-brown for text. GFS Didot is display;
+ * Inter is UI/body. Flat, border-driven.
  *
  * The slate ramp is a WARM gray ramp aligned to the palette, in standard
  * Tailwind orientation (100 = light, 900 = dark). Do not invert it.
@@ -20,14 +20,18 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#F7F5F3", // existing background, kept per user preference
+        background: "#F7F4EE", // Ivory work surface
         foreground: "#242424", // Charcoal
-        surface: "#F7F4EE", // Ivory (subtle raised / hover)
+        surface: "#F7F4EE", // Ivory
         "surface-raised": "#F0EBE2", // deeper ivory
         muted: "#F7F4EE",
         "muted-foreground": "#6B6560", // warm gray for secondary type
         border: "#E6E1D8", // light stone (hairlines)
         "border-strong": "#D8D2C7", // Stone
+        // Dark editorial shell (nav, Today, overlays)
+        ink: "#0a0a0a",
+        shell: "#141414",
+        "shell-border": "rgba(255,255,255,0.12)",
         // Semantic accent: a deepened, WCAG-AA gold-brown (4.5:1+ as text on the
         // page ground and with white text on filled controls). The pure brand
         // gold is exposed separately as `gold` for decorative, non-text emphasis

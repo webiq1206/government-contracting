@@ -14,9 +14,16 @@ export interface HelpContent {
   points: string[];
 }
 
-export function HelpPopover({ help }: { help: HelpContent }) {
+export function HelpPopover({
+  help,
+  variant = "light",
+}: {
+  help: HelpContent;
+  variant?: "light" | "dark";
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const dark = variant === "dark";
 
   useEffect(() => {
     if (!open) return;
@@ -44,8 +51,12 @@ export function HelpPopover({ help }: { help: HelpContent }) {
         onClick={() => setOpen((o) => !o)}
         className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors sm:h-6 sm:w-6 ${
           open
-            ? "border-accent bg-accent text-white"
-            : "border-border-strong text-slate-500 hover:border-accent hover:text-accent"
+            ? dark
+              ? "border-gold bg-gold text-ink"
+              : "border-accent bg-accent text-white"
+            : dark
+              ? "border-white/25 text-white/55 hover:border-gold hover:text-gold"
+              : "border-border-strong text-slate-500 hover:border-accent hover:text-accent"
         }`}
       >
         ?

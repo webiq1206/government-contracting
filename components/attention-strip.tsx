@@ -20,17 +20,22 @@ export function AttentionStrip({
 
   return (
     <div id="attention" className="scroll-mt-12 space-y-3">
-      <div className="rounded-md border border-border bg-background px-4 py-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="rounded-md border border-border bg-background px-4 py-4 sm:px-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
-            <p className="eyebrow">Submission readiness</p>
-            <p className="mt-1 font-display text-2xl font-semibold text-foreground">
-              {readiness.percent}%
+            <p className="eyebrow-gold">Submission readiness</p>
+            <p className="mt-1 font-display text-3xl text-foreground">
+              <span className="num text-gold">{readiness.percent}%</span>
+            </p>
+            <p className="mt-1 text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground">
+              {readiness.percent >= 100 ? "Ready for your approval" : "In progress"}
             </p>
           </div>
-          <p className="max-w-xl text-sm text-slate-700">{readiness.summary}</p>
+          <p className="max-w-xl text-sm leading-relaxed text-slate-700">
+            {readiness.summary}
+          </p>
         </div>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <Bucket title="Complete" items={readiness.complete} tone="pursue" />
           <Bucket title="Action required" items={readiness.actionRequired} tone="review" />
           <Bucket title="Blocked" items={readiness.blocked} tone="risk" />
@@ -40,7 +45,7 @@ export function AttentionStrip({
       {items.length > 0 && (
         <div className="rounded-md border border-review/40 bg-review/5 px-4 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="eyebrow text-review">What needs your attention</p>
+            <p className="eyebrow-gold text-review">What needs your attention</p>
             <InfoTip label="About attention items">
               Every item lists what is wrong, why it matters, who acts, and a
               direct next step. Prefer the button over hunting through tabs.

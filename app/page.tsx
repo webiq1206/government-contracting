@@ -13,22 +13,30 @@ export const dynamic = "force-dynamic";
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
 
 export const metadata: Metadata = {
-  title: "Brost Co | Government Contracting Software That Runs Your Pipeline",
+  title: "Brost Co | Run Your Entire Federal Bid Pipeline",
   description:
-    "Brost Co helps federal services contractors find, score, pursue, and manage government contract opportunities. Source subcontractors, collect pricing, prepare bids, and know what needs attention each day.",
+    "Stop chasing federal bids. Brost Co finds, scores, sources, and prepares government contract opportunities so you focus on judgment, calls, and submission.",
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: "Brost Co | Government Contracting Software",
+    title: "Brost Co | Run Your Entire Federal Bid Pipeline",
     description:
-      "Find, evaluate, pursue, and manage federal opportunities in one automated platform. Founding pricing available for a limited time.",
+      "Procurement execution software for federal services contractors. One pipeline from SAM.gov to submitted bid, with Today and Guide Me when a person is needed.",
     url: SITE_URL,
     type: "website",
+    siteName: "Brost Co",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Brost Co | Run Your Entire Federal Bid Pipeline",
+    description:
+      "Stop chasing federal bids. Brost Co finds, scores, sources, and prepares opportunities so you focus on judgment, calls, and submission.",
   },
   keywords: [
     "government contracting software",
     "government bid software",
     "SAM.gov opportunity software",
     "federal contracting software",
+    "federal bid pipeline",
     "government subcontractor sourcing",
     "government bid management",
     "government contracting automation",

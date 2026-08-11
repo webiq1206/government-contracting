@@ -13,10 +13,12 @@ export function SnoozeButton({
   kind,
   id,
   label = "Snooze",
+  className = "btn-ghost min-h-11 text-xs md:min-h-0",
 }: {
   kind: "opportunity" | "call_card";
   id: string;
   label?: string;
+  className?: string;
 }) {
   const router = useRouter();
   const { push } = useToast();
@@ -52,7 +54,7 @@ export function SnoozeButton({
     <span ref={wrapRef} className="relative inline-flex">
       <button
         type="button"
-        className="btn-ghost min-h-11 text-xs md:min-h-0"
+        className={className}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={busy}
