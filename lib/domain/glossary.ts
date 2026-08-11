@@ -39,7 +39,17 @@ export const GLOSSARY: Record<string, string> = {
   package_ready:
     "Whether every required submission file is present and the independent compliance check has passed.",
   follow_up_due:
-    "A sub was contacted and has not replied within the follow-up window — they need another nudge or a call.",
+    "A sub was contacted and has not replied within the follow-up window. They need another nudge or a call.",
+  pricing_comps:
+    "Comparable past federal awards for this industry (and state when known). Brost Co inflation-adjusts them so you can see what similar jobs have typically paid.",
+  cpi_adjusted:
+    "Older award amounts are scaled to today’s dollars using the Consumer Price Index, so a 2022 win is not compared as if prices never changed.",
+  comp_median:
+    "The middle historical award after inflation adjustment. Half of comps were lower, half higher. Best single benchmark for a typical job.",
+  comp_p25:
+    "Low end of the typical band: 25% of comparable awards were at or below this amount.",
+  comp_p75:
+    "High end of the typical band: 75% of comparable awards were at or below this amount.",
 };
 
 export function termTip(key: string): string | undefined {

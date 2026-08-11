@@ -16,6 +16,7 @@ import { Collapsible } from "@/components/collapsible";
 import { CompetitiveLandscape } from "@/components/competitive-landscape";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
 import { ScoreBreakdownCard } from "@/components/score-breakdown-card";
+import { PricingCompsCard } from "@/components/pricing-comps-card";
 import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
 import { AttentionStrip } from "@/components/attention-strip";
 import { TradeCoverageStrip } from "@/components/trade-coverage-strip";
@@ -560,50 +561,27 @@ export default async function OpportunityPage({ params }: { params: { id: string
           <div className="space-y-4">
             {breakdown && <ScoreBreakdownCard breakdown={breakdown} />}
 
-            {pricing && (() => {
-              // Stats live under `comp_stats` (count/median/average/p25/p75), not at
-              // the top of pricing_summary; read the correct path (fall back to the
-              // flat shape defensively) so the card isn't silently empty.
-              const stats =
-                (pricing.comp_stats as Record<string, unknown> | undefined) ?? pricing;
-              const LABELS: Record<string, string> = {
-                count: "comps",
-                median: "median",
-                average: "average",
-                p25: "25th pct",
-                p75: "75th pct",
-              };
-              const rows = ["count", "median", "average", "p25", "p75"].filter(
-                (k) => stats[k] != null
-              );
-              if (rows.length === 0) return null;
-              // When there are no real comps (count/median both 0), a grid of "$0"
-              // is misleading, show a plain note instead.
-              const hasComps =
-                Number(stats.count) > 0 && Number(stats.median) > 0;
-              return (
-                <Collapsible title="Pricing comps · CPI-adjusted">
-                  {hasComps ? (
-                    <div className="grid grid-cols-2 gap-2 text-sm text-slate-700">
-                      {rows.map((k) => (
-                        <div key={k} className="flex justify-between">
-                          <span className="text-slate-500">{LABELS[k]}</span>
-                          <span className="num">
-                            {k === "count"
-                              ? String(stats[k])
-                              : currency(Number(stats[k]))}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">
-                      No comparable awards found for this NAICS and area yet.
-                    </p>
-                  )}
-                </Collapsible>
-              );
-            })()}
+            <PricingCompsCard
+              pricing={pricing}
+              compareAmount={
+                bid?.bid_amount != null && bid.bid_amount > 0
+                  ? Number(bid.bid_amount)
+                  : bestQuote != null && bestQuote > 0
+                    ? bestQuote
+                    : opp.value_estimated != null && opp.value_estimated > 0
+                      ? Number(opp.value_estimated)
+                      : null
+              }
+              compareLabel={
+                bid?.bid_amount != null && bid.bid_amount > 0
+                  ? "Your priced bid"
+                  : bestQuote != null && bestQuote > 0
+                    ? "Lowest sub quote"
+                    : opp.value_estimated != null && opp.value_estimated > 0
+                      ? "Estimated value"
+                      : null
+              }
+            />
 
             <CompetitiveLandscape competitors={competitors} pricing={pricing} />
           </div>
