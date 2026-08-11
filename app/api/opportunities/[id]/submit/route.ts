@@ -39,8 +39,39 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
+  // Hard gate: every required trade must have a positive quote. Force override
+  // cannot bypass missing trade pricing.
+  const required = (opp.solicitation_analysis?.required_trades ?? [])
+    .map((t) => String(t).trim())
+    .filter(Boolean);
+  if (required.length > 0) {
+    const quoteRows = await query<{ trade: string | null; quote_amount: number | null }>(
+      `select trade, quote_amount from quotes where opportunity_id = $1`,
+      [params.id]
+    ).catch(() => []);
+    const quoted = new Set(
+      quoteRows
+        .filter((q) => Number(q.quote_amount) > 0)
+        .map((q) => (q.trade ?? "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const missingTrades = required.filter((t) => !quoted.has(t.toLowerCase()));
+    if (missingTrades.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Bid cannot be submitted. Missing pricing for: ${missingTrades.join(", ")}.`,
+          needsForce: false,
+          blockers: missingTrades.map(
+            (t) => `${t} pricing has not been received`
+          ),
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   // Block until the compliance package passes validation + the independent
-  // audit has no open blockers, unless forced.
+  // audit has no open blockers, unless forced (non-trade items only).
   if (!bid.package_ready && !force) {
     const validationBlockers = bid.validation_json?.blockers ?? [];
     const auditBlockers = (bid.audit_findings ?? [])

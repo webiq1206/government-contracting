@@ -152,13 +152,18 @@ export interface StepInput {
   stage: string;
   tier: string | null;
   humanActionRequired: boolean;
+  /** @deprecated Prefer tradesWithQuotes. Kept for older call sites. */
   quoteCount: number;
   requiredTradeCount: number;
+  /** Distinct required trades that already have a positive quote. */
+  tradesWithQuotes?: number;
+  /** Required trades still missing a quote. */
+  tradeCoverageUncovered?: number;
   hasBid: boolean;
   bidSubmitted: boolean;
   outcome: string | null;
   pastPerfBlocked: boolean;
-  /** Operator paused the cron loop (Agents page master switch). */
+  /** Operator paused automation (Agents page master switch). */
   automationPaused?: boolean;
   /** Hours since the record last changed; feeds stall detection. */
   hoursSinceUpdate?: number | null;
@@ -319,8 +324,13 @@ function deriveStageStep(s: StepInput): NextStep | null {
         waitingOn: "you",
       };
     case "quote_entry": {
-      const missing = Math.max(0, s.requiredTradeCount - s.quoteCount);
-      if (s.hasBid && !s.bidSubmitted)
+      const tradesQuoted = s.tradesWithQuotes ?? s.quoteCount;
+      const missing = Math.max(
+        0,
+        s.tradeCoverageUncovered ??
+          (s.requiredTradeCount > 0 ? s.requiredTradeCount - tradesQuoted : 0)
+      );
+      if (s.hasBid && !s.bidSubmitted && missing === 0)
         return {
           title: "Finish and submit the package",
           why: "The bid is priced and the submission package is assembled. Clear any remaining items (signatures, provided documents), then submit.",
@@ -330,19 +340,42 @@ function deriveStageStep(s: StepInput): NextStep | null {
           tone: "action",
           waitingOn: "you",
         };
+      if (s.hasBid && missing > 0) {
+        return {
+          title: `Obtain pricing for ${missing} remaining trade${missing === 1 ? "" : "s"}`,
+          why: "A bid draft exists, but submission stays locked until every required trade has a quote.",
+          after: "When all trades are priced, Bid Builder refreshes the package for final review.",
+          cta: "Open required pricing",
+          anchor: "#coverage",
+          tone: "action",
+          waitingOn: "you",
+        };
+      }
       return {
         title:
           missing > 0 && s.requiredTradeCount > 0
-            ? `Enter the remaining quote${missing === 1 ? "" : "s"} (${s.quoteCount} of ${s.requiredTradeCount} trades quoted)`
+            ? `Enter the remaining quote${missing === 1 ? "" : "s"} (${tradesQuoted} of ${s.requiredTradeCount} trades quoted)`
             : "Enter subcontractor quotes",
-        why: "Type each sub's price into the Quote Entry card. The bid is priced automatically the moment quotes are saved.",
+        why: "Type each sub's price into Quote Entry. The bid is priced automatically when quotes are saved.",
         after: "The Bid Builder assembles the full package (pricing, narrative, QA checklist) for your review.",
-        cta: "",
+        cta: missing > 0 ? "Open quotes" : "",
+        anchor: missing > 0 ? "#quotes" : undefined,
         tone: "action",
         waitingOn: "you",
       };
     }
     case "bid_building":
+      if (s.hasBid && (s.tradeCoverageUncovered ?? 0) > 0) {
+        return {
+          title: "Finish required trade pricing before submit",
+          why: "The package cannot be submitted while required trades are still missing quotes.",
+          after: "Once every trade is priced, clear remaining compliance items and submit.",
+          cta: "Open required pricing",
+          anchor: "#coverage",
+          tone: "action",
+          waitingOn: "you",
+        };
+      }
       return s.hasBid
         ? {
             title: "Review the package and submit",

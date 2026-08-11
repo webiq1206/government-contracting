@@ -58,14 +58,24 @@ describe("scrubGovtContacts", () => {
   });
 
   // ── Mixed content ────────────────────────────────────────────────────────
-  it("strips both phone and email from a realistic SOW snippet", () => {
+  it("strips phone, email, and contracting officer name patterns", () => {
     const input =
       "For technical questions, contact John Smith at john.smith@usace.army.mil " +
       "or call (910) 451-7000. Contracting Officer: Jane Doe, (910) 451-7001.";
     const { sanitised, count } = scrubGovtContacts(input);
     expect(sanitised).not.toContain("@");
     expect(sanitised).not.toMatch(/\(\d{3}\)/);
-    expect(count).toBe(3); // 1 email + 2 phones
+    expect(sanitised).not.toContain("Jane Doe");
+    expect(count).toBeGreaterThanOrEqual(3); // email + phones + CO name pattern
+  });
+
+  it("redacts Contracting Officer name introductions", () => {
+    const { sanitised, count } = scrubGovtContacts(
+      "Contracting Officer: Alice Example will answer questions."
+    );
+    expect(sanitised).toContain("[CONTACT REDACTED]");
+    expect(sanitised).not.toContain("Alice Example");
+    expect(count).toBeGreaterThanOrEqual(1);
   });
 
   // ── Clean text passthrough ───────────────────────────────────────────────

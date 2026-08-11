@@ -189,6 +189,12 @@ export const callPrep: AgentDefinition = {
       questionList.push(PROJECT_HISTORY_QUESTION);
     }
 
+    // Scrub solicitor contacts from scripts/questions so they are never read
+    // aloud or copied into outbound notes.
+    const { scrubGovtContacts } = await import("../integrations/scrub-contacts");
+    callScript = scrubGovtContacts(callScript).sanitised;
+    questionList = questionList.map((q) => scrubGovtContacts(String(q)).sanitised);
+
     await query(
       `insert into call_cards
          (opportunity_id, subcontractor_id, card_json, call_script, question_list,

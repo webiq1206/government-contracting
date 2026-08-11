@@ -1,10 +1,9 @@
 /**
- * Scrub government contact information from text before it leaves the system
- * toward a subcontractor. Strips US phone numbers and email addresses so subs
- * cannot contact the contracting officer directly or look up the contract ceiling.
+ * Scrub government / solicitor contact information from text before it leaves
+ * the system toward a subcontractor. Strips phones, emails, and common
+ * contracting-officer name patterns so subs cannot bypass Brost Co.
  *
- * Replacements use [CONTACT REDACTED] so the surrounding sentence stays readable
- * rather than collapsing into a grammatical mess.
+ * Replacements use [CONTACT REDACTED] so the surrounding sentence stays readable.
  */
 
 /**
@@ -20,6 +19,13 @@ const PHONE_RE =
  * .mil, .edu) that appear in government solicitations.
  */
 const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+
+/**
+ * Contracting officer / specialist introductions that often precede a name.
+ * We redact the title + following 1-3 capitalized name tokens.
+ */
+const CO_NAME_RE =
+  /\b(?:Contracting\s+Officer|Contract\s+Specialist|Contracting\s+Specialist|Point\s+of\s+Contact|POC|KO|COR|COTR)(?:'s)?\s*[:\-]?\s+[A-Z][a-zA-Z.'\-]+(?:\s+[A-Z][a-zA-Z.'\-]+){0,2}/g;
 
 const REDACTED = "[CONTACT REDACTED]";
 
@@ -42,7 +48,7 @@ export function rewriteSamUrls(text: string): string {
 }
 
 /**
- * Remove phone numbers and email addresses from `text`.
+ * Remove phones, emails, and common solicitor name patterns from `text`.
  * Returns the sanitised string and a count of how many matches were removed.
  */
 export function scrubGovtContacts(text: string): {
@@ -56,10 +62,11 @@ export function scrubGovtContacts(text: string): {
       return REDACTED;
     })
     .replace(PHONE_RE, (m) => {
-      // Skip if already replaced as part of an email (shouldn't happen, but
-      // be defensive — an email address can contain digits that look phone-like
-      // after the @ is already stripped).
       if (m.trim() === REDACTED) return m;
+      count++;
+      return REDACTED;
+    })
+    .replace(CO_NAME_RE, () => {
       count++;
       return REDACTED;
     });

@@ -22,6 +22,7 @@ export const DEFAULT_PROFILE: CompanyProfileJson = {
   email: "brostcoholdings@gmail.com",
   outreach_email: "brostcoholdings@gmail.com", // all sub outreach must originate here
   owner_name: "Todd Brost",
+  outreach_display_name: "Todd",
   owner_title: "Sole Member",
   small_business: true,
   business_model: "brokerage",
@@ -169,7 +170,7 @@ export const DEFAULT_TEMPLATES: SeedTemplate[] = [
     body: [
       "Hi {{owner_name}},",
       "",
-      "I'm {{sender_name}} with {{company_name}}. We have a {{trade}} job in {{location_state}} — deadline {{deadline}} — and need a qualified local partner to price the scope.",
+      "I'm {{sender_name}} with {{company_name}}. We have a {{trade}} job in {{location_state}} (deadline {{deadline}}) and need a qualified local partner to price the scope.",
       "",
       "What we need you to do: {{scope_summary}}",
       "",

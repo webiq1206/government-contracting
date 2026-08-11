@@ -50,4 +50,17 @@ describe("summarizeTradeCoverage", () => {
     expect(result.trades[0].declined).toBe(1);
     expect(result.trades[0].contacted).toBe(3);
   });
+
+  it("does not count draft or send_failed as contacted", () => {
+    const result = summarizeTradeCoverage({
+      requiredTrades: ["Electrical"],
+      subs: [
+        { trade: "Electrical", outreach_state: "draft" },
+        { trade: "Electrical", outreach_state: "send_failed" },
+      ],
+      quotes: [],
+    });
+    expect(result.trades[0].contacted).toBe(0);
+    expect(result.trades[0].status).toBe("action_required");
+  });
 });

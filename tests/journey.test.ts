@@ -122,9 +122,32 @@ describe("deriveStep", () => {
     expect(step.title).toContain("1 of 3");
   });
 
-  it("moves to submission review once a bid exists", () => {
-    const step = deriveStep(input({ stage: "quote_entry", quoteCount: 2, hasBid: true }))!;
+  it("moves to submission review once a bid exists and trades are covered", () => {
+    const step = deriveStep(
+      input({
+        stage: "quote_entry",
+        quoteCount: 2,
+        tradesWithQuotes: 2,
+        requiredTradeCount: 2,
+        tradeCoverageUncovered: 0,
+        hasBid: true,
+      })
+    )!;
     expect(step.anchor).toBe("#submission");
+  });
+
+  it("keeps focus on required pricing when a bid exists but trades are uncovered", () => {
+    const step = deriveStep(
+      input({
+        stage: "quote_entry",
+        quoteCount: 1,
+        tradesWithQuotes: 1,
+        requiredTradeCount: 2,
+        tradeCoverageUncovered: 1,
+        hasBid: true,
+      })
+    )!;
+    expect(step.anchor).toBe("#coverage");
   });
 
   it("offers the outcome decision after submission", () => {

@@ -45,6 +45,11 @@ export interface CompanyProfileJson {
   email?: string;
   outreach_email?: string; // all sub outreach must originate here
   owner_name?: string;
+  /**
+   * First name (or preferred public name) used in subcontractor-facing copy.
+   * Defaults to the first token of owner_name. Never put a last name here.
+   */
+  outreach_display_name?: string;
   owner_title?: string;
   small_business: boolean;
   certifications: string[]; // e.g. ["SDVOSB", "HUBZone", "8(a)"]
@@ -368,6 +373,41 @@ export interface SolicitationAnalysis {
 
   // --- Submission compliance matrix (every required deliverable) ---
   compliance_matrix: ComplianceRequirement[];
+
+  /**
+   * Snapshot from evaluateSolicitationCompleteness. When ok is false the
+   * opportunity must not advance into subcontractor sourcing.
+   */
+  completeness?: {
+    ok: boolean;
+    missing: Array<{
+      key: string;
+      what: string;
+      why: string;
+      retrievable: "auto" | "admin" | "either";
+      resolution: string;
+      critical: boolean;
+      action?: {
+        label: string;
+        href?: string;
+        modal?:
+          | "upload"
+          | "review-missing"
+          | "retry-agent"
+          | "enter-quote"
+          | "contact-trade";
+        agent?: string;
+        trade?: string;
+      };
+    }>;
+    attachment_outcomes?: Array<{
+      name: string;
+      url?: string | null;
+      status: string;
+      detail?: string;
+    }>;
+    evaluated_at?: string;
+  };
 }
 
 export interface Subcontractor {

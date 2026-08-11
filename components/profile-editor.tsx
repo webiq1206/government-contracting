@@ -71,6 +71,9 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
   const [outreachEmail, setOutreachEmail] = useState(json.outreach_email ?? "");
   const [address, setAddress] = useState(json.physical_address ?? "");
   const [ownerName, setOwnerName] = useState(json.owner_name ?? "");
+  const [outreachDisplayName, setOutreachDisplayName] = useState(
+    json.outreach_display_name ?? (json.owner_name ?? "").trim().split(/\s+/)[0] ?? ""
+  );
   const [ownerTitle, setOwnerTitle] = useState(json.owner_title ?? "");
 
   // Pricing
@@ -196,6 +199,10 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
       outreach_email: outreachEmail || undefined,
       physical_address: address || undefined,
       owner_name: ownerName || undefined,
+      outreach_display_name:
+        outreachDisplayName.trim() ||
+        (ownerName || "").trim().split(/\s+/)[0] ||
+        undefined,
       owner_title: ownerTitle || undefined,
       target_margin_pct: num(targetMargin),
       min_margin_pct: num(minMargin),
@@ -270,6 +277,13 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
       <Section title="Contact" hint="Where the government and your subs reach you.">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Owner name" value={ownerName} onChange={setOwnerName} />
+          <Field
+            label="Outreach display name"
+            value={outreachDisplayName}
+            onChange={setOutreachDisplayName}
+            placeholder="First name only"
+            hint="Shown to subcontractors in emails (first name only; never a last name)."
+          />
           <Field label="Owner title" value={ownerTitle} onChange={setOwnerTitle} placeholder="Owner" />
           <Field label="Phone" value={phone} onChange={setPhone} type="tel" placeholder="(208) 555-0100" />
           <Field label="Email" value={email} onChange={setEmail} type="email" />

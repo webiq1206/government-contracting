@@ -19,6 +19,10 @@ import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
 import { extractValueFromText } from "../domain/value-extract";
+import {
+  evaluateSolicitationCompleteness,
+  type AttachmentFetchOutcome,
+} from "../domain/solicitation-completeness";
 import { storage } from "../integrations/storage";
 import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
 import type { AgentDefinition } from "./types";
@@ -28,6 +32,9 @@ import type {
   SolicitationAnalysis,
   Attachment,
 } from "../types";
+
+/** Soft cap: prefer collecting the full linked packet when SAM provides many URLs. */
+const MAX_ATTACHMENT_URLS = 40;
 
 const NA = "Not specified in the provided documents";
 
@@ -132,23 +139,48 @@ async function processAttachment(
   opportunityId: string,
   att: Attachment,
   index: number
-): Promise<{ context: string; parsedChars: number }> {
+): Promise<{ context: string; parsedChars: number; outcome: AttachmentFetchOutcome }> {
   const label = att.name || `attachment-${index + 1}`;
-  if (!att.url) return { context: `- ${label} (no url)`, parsedChars: 0 };
+  if (!att.url) {
+    return {
+      context: `- ${label} (no url)`,
+      parsedChars: 0,
+      outcome: { name: label, url: null, status: "no_url", detail: "No download URL on the notice" },
+    };
+  }
   try {
     const res = await fetch(att.url, { method: "GET" });
     if (!res.ok) {
-      return { context: `- ${label} (${att.url}), could not fetch (HTTP ${res.status})`, parsedChars: 0 };
+      return {
+        context: `- ${label} (${att.url}), could not fetch (HTTP ${res.status})`,
+        parsedChars: 0,
+        outcome: {
+          name: label,
+          url: att.url,
+          status: "failed",
+          detail: `HTTP ${res.status}`,
+        },
+      };
     }
     const ct = (res.headers.get("content-type") ?? "").toLowerCase();
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.byteLength > MAX_ATTACH_BYTES) {
-      return { context: `- ${label}, too large to parse (${Math.round(buf.byteLength / 1e6)}MB)`, parsedChars: 0 };
+      return {
+        context: `- ${label}, too large to parse (${Math.round(buf.byteLength / 1e6)}MB)`,
+        parsedChars: 0,
+        outcome: {
+          name: label,
+          url: att.url,
+          status: "too_large",
+          detail: `${Math.round(buf.byteLength / 1e6)}MB`,
+        },
+      };
     }
 
     // Persist the raw file + a documents row (best-effort).
     const safeName = label.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
     const key = `solicitations/${opportunityId}/${index + 1}_${safeName}`;
+    let stored = false;
     try {
       const up = await storage.upload(key, buf, ct || "application/octet-stream");
       // Upsert-by-path so re-running the analyst does not duplicate document rows.
@@ -163,6 +195,7 @@ async function processAttachment(
           [opportunityId, label, up.path, up.backend, ct || null, JSON.stringify({ source_url: att.url })]
         );
       }
+      stored = true;
     } catch {
       /* storage/documents are best-effort; continue with extraction */
     }
@@ -174,17 +207,54 @@ async function processAttachment(
         return {
           context: `- ${label} (${pages} pp, extracted):\n${text}`,
           parsedChars: text.length,
+          outcome: {
+            name: label,
+            url: att.url,
+            status: stored ? "fetched" : "fetched",
+            detail: `${pages} pages`,
+          },
         };
       }
-      return { context: `- ${label}, PDF stored but no extractable text (likely scanned/image-only).`, parsedChars: 0 };
+      return {
+        context: `- ${label}, PDF stored but no extractable text (likely scanned/image-only).`,
+        parsedChars: 0,
+        outcome: {
+          name: label,
+          url: att.url,
+          status: stored ? "no_text" : "failed",
+          detail: "PDF had no extractable text",
+        },
+      };
     }
     if (ct.includes("text") || ct.includes("html") || ct.includes("json")) {
       const text = buf.toString("utf8").slice(0, 6000);
-      return { context: `- ${label}:\n${text}`, parsedChars: text.length };
+      return {
+        context: `- ${label}:\n${text}`,
+        parsedChars: text.length,
+        outcome: { name: label, url: att.url, status: "fetched" },
+      };
     }
-    return { context: `- ${label} (${att.url}), ${ct || "binary"} stored (not text-parseable)`, parsedChars: 0 };
+    return {
+      context: `- ${label} (${att.url}), ${ct || "binary"} stored (not text-parseable)`,
+      parsedChars: 0,
+      outcome: {
+        name: label,
+        url: att.url,
+        status: stored ? "unsupported" : "failed",
+        detail: ct || "binary",
+      },
+    };
   } catch (err) {
-    return { context: `- ${label} (${att.url}), processing failed (${(err as Error).message})`, parsedChars: 0 };
+    return {
+      context: `- ${label} (${att.url}), processing failed (${(err as Error).message})`,
+      parsedChars: 0,
+      outcome: {
+        name: label,
+        url: att.url,
+        status: "failed",
+        detail: (err as Error).message,
+      },
+    };
   }
 }
 
@@ -313,16 +383,19 @@ export const solicitationAnalyst: AgentDefinition = {
       ? opp.attachments_json
       : [];
     const processed = await Promise.all(
-      attachments.slice(0, 8).map((att, i) => processAttachment(opportunityId, att, i))
+      attachments
+        .slice(0, MAX_ATTACHMENT_URLS)
+        .map((att, i) => processAttachment(opportunityId, att, i))
     );
     const attachmentContext = processed.map((p) => p.context).join("\n\n");
     const parsedChars = processed.reduce((a, p) => a + p.parsedChars, 0);
+    const attachmentOutcomes = processed.map((p) => p.outcome);
     await logAgent({
       agent: "solicitation-analyst",
       action: "attachments",
       opportunityId,
       level: "info",
-      message: `processed ${attachments.length} attachment(s), extracted ${parsedChars} chars of text`,
+      message: `processed ${attachments.length} attachment(s) (cap ${MAX_ATTACHMENT_URLS}), extracted ${parsedChars} chars of text; outcomes: ${attachmentOutcomes.map((o) => `${o.name}:${o.status}`).join(", ") || "none"}`,
     });
 
     let analysis: SolicitationAnalysis;
@@ -376,24 +449,80 @@ export const solicitationAnalyst: AgentDefinition = {
     // performance, auto-pursue proceeds and a human still reviews before submit.
     // Set decision_thresholds.block_prime_only = true to restore the hard block.
     const blockPrimeOnly = profile.decision_thresholds.block_prime_only === true;
-    const blocked = isPrimeOnly && blockPrimeOnly;
+    const blockedPrime = isPrimeOnly && blockPrimeOnly;
 
-    const mergedRiskFlags = [...new Set([...(opp.risk_flags ?? []), ...analysis.risk_flags])];
+    const storedDocs = await queryOne<{ n: string }>(
+      `select count(*)::text as n from documents
+        where opportunity_id = $1 and kind in ('solicitation','sow')`,
+      [opportunityId]
+    ).catch(() => ({ n: "0" }));
+
+    const completeness = evaluateSolicitationCompleteness({
+      solicitationNumber: opp.solicitation_number,
+      agency: opp.agency,
+      deadline: opp.deadline,
+      locationState: opp.location_state,
+      locationText: opp.location_text,
+      naicsCode: opp.naics_code,
+      setAsideType: opp.set_aside_type,
+      valueEstimated: opp.value_estimated,
+      description: opp.description,
+      storedDocumentCount: Number(storedDocs?.n ?? 0),
+      attachmentOutcomes,
+      analysis,
+    });
+    analysis.completeness = {
+      ok: completeness.ok,
+      missing: completeness.missing.map((m) => ({
+        key: m.key,
+        what: m.what,
+        why: m.why,
+        retrievable: m.retrievable,
+        resolution: m.resolution,
+        critical: m.critical,
+        action: m.action,
+      })),
+      attachment_outcomes: completeness.attachmentOutcomes,
+      evaluated_at: new Date().toISOString(),
+    };
+
+    const mergedRiskFlags = [
+      ...new Set([
+        ...(opp.risk_flags ?? []),
+        ...analysis.risk_flags,
+        ...completeness.riskFlags,
+      ]),
+    ];
     if (isPrimeOnly && !mergedRiskFlags.includes("prime_only")) mergedRiskFlags.push("prime_only");
-    if (blocked && !mergedRiskFlags.includes("prime_only_blocked")) {
+    if (blockedPrime && !mergedRiskFlags.includes("prime_only_blocked")) {
       mergedRiskFlags.push("prime_only_blocked");
+    }
+    if (!completeness.ok && !mergedRiskFlags.includes("incomplete_solicitation")) {
+      mergedRiskFlags.push("incomplete_solicitation");
     }
 
     const enqueued: AgentResult["enqueued"] = [];
     let stage = opp.stage;
     let humanAction = opp.human_action_required;
+    const blockedIncomplete = !completeness.ok;
 
-    if (blocked) {
-      // Hard block (only when the operator has opted in): stay in analysis, flag for human.
+    if (blockedPrime || blockedIncomplete) {
+      // Stay in analysis until prime-only (opt-in) or completeness is resolved.
       stage = "analysis";
       humanAction = true;
+      await logAgent({
+        agent: "solicitation-analyst",
+        action: "gate",
+        opportunityId,
+        level: "warn",
+        message: blockedPrime
+          ? "Prime-only past performance blocked progression (operator preference)."
+          : `Solicitation incomplete (${completeness.missing
+              .filter((m) => m.critical)
+              .map((m) => m.key)
+              .join(", ")}); held in analysis until resolved.`,
+      });
     } else {
-      // Auto-pursue proceeds, prime-only is flagged for visibility but not stopped.
       stage = "sub_research";
       enqueued.push({ agent: "sub-finder", payload: { opportunityId } });
     }
@@ -451,7 +580,7 @@ export const solicitationAnalyst: AgentDefinition = {
       ]
     );
 
-    if (blocked) {
+    if (blockedPrime) {
       return {
         ok: true,
         summary:
@@ -461,6 +590,23 @@ export const solicitationAnalyst: AgentDefinition = {
           past_perf_classification: analysis.past_perf_classification,
           required_trades: analysis.required_trades,
           risk_flags: mergedRiskFlags,
+          completeness: analysis.completeness,
+        },
+        humanActionRequired: true,
+      };
+    }
+
+    if (blockedIncomplete) {
+      const critical = completeness.missing.filter((m) => m.critical).map((m) => m.what);
+      return {
+        ok: true,
+        summary: `Solicitation analyzed but held in analysis: missing ${critical.join(", ") || "required information"}. Resolve the gaps, then re-run Solicitation Analyst.`,
+        reasoning: analysis.scope_plain_language,
+        data: {
+          past_perf_classification: analysis.past_perf_classification,
+          required_trades: analysis.required_trades,
+          risk_flags: mergedRiskFlags,
+          completeness: analysis.completeness,
         },
         humanActionRequired: true,
       };
@@ -476,6 +622,7 @@ export const solicitationAnalyst: AgentDefinition = {
         past_perf_classification: analysis.past_perf_classification,
         required_trades: analysis.required_trades,
         submission_requirements: analysis.submission_requirements,
+        completeness: analysis.completeness,
       },
       enqueued,
     };
