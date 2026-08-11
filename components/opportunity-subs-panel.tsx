@@ -10,7 +10,9 @@ import {
   outreachLabel,
 } from "@/lib/domain/sub-contact";
 import { timeAgo } from "@/lib/format";
+import { resolveSubWork } from "@/lib/domain/sub-work";
 import type { OppSubCommRow, OppSubRow } from "@/lib/data";
+import { SubWorkNeeded } from "@/components/sub-work-needed";
 
 /** One-line next human/system action so each row answers "what now?" */
 function nextActionForSub(s: OppSubRow): string | null {
@@ -47,9 +49,14 @@ function nextActionForSub(s: OppSubRow): string | null {
 export function OpportunitySubsPanel({
   subs,
   communications,
+  analysis = null,
+  description = null,
 }: {
   subs: OppSubRow[];
   communications: OppSubCommRow[];
+  /** Solicitation analysis — used for per-trade "what we need them to do". */
+  analysis?: Record<string, unknown> | null;
+  description?: string | null;
 }) {
   const bySub = new Map<string, OppSubCommRow[]>();
   for (const c of communications) {
@@ -87,12 +94,24 @@ export function OpportunitySubsPanel({
               logged, or a call is skipped — the same record you see on each
               sub&rsquo;s full profile.
             </p>
-            {[...trades.entries()].map(([trade, rows]) => (
+            {[...trades.entries()].map(([trade, rows]) => {
+              const tradeWork = resolveSubWork({
+                trade,
+                analysis,
+                description,
+                maxChars: 420,
+              });
+              return (
               <div key={trade}>
                 <div className="mb-2 flex items-baseline justify-between gap-2">
                   <p className="label">{trade}</p>
                   <span className="num text-xs text-slate-500">{rows.length}</span>
                 </div>
+                {tradeWork.work && (
+                  <div className="mb-2">
+                    <SubWorkNeeded work={tradeWork} variant="compact" />
+                  </div>
+                )}
                 <ul className="divide-y divide-border rounded-md border border-border">
                   {rows.map((s) => {
                     const history = bySub.get(s.subcontractor_id) ?? [];
@@ -216,7 +235,8 @@ export function OpportunitySubsPanel({
                   })}
                 </ul>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Collapsible>

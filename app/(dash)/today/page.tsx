@@ -353,6 +353,12 @@ export default async function TodayPage() {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
+                  {c.work_summary && (
+                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">
+                      <span className="font-medium text-slate-800">Work: </span>
+                      {c.work_summary}
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   {c.source === "reply" && (
@@ -425,6 +431,12 @@ export default async function TodayPage() {
                       .filter(Boolean)
                       .join(" · ")}
                   </p>
+                  {s.work_summary && (
+                    <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">
+                      <span className="font-medium text-slate-800">Work: </span>
+                      {s.work_summary}
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <DeadlineBadge deadline={s.deadline} rules={rules} />
