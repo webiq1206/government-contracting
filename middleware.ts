@@ -1,12 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Lightweight edge guard: send anonymous users away from the app shell, and
- * send signed-in users visiting marketing home toward Today. Subscription
- * entitlement is enforced in the dash layout (needs DB).
+ * Lightweight edge guard: keep marketing and auth routes public, and send
+ * anonymous users away from the app shell. Subscription entitlement is
+ * enforced in the dash layout (needs DB).
+ *
+ * Important: `/` must stay public for everyone, including visitors with a
+ * stale session cookie. Do not bounce `/` into the dash here; a bad cookie
+ * would then hit the dash auth gate and look like "the landing page always
+ * redirects to /login".
  */
 const PUBLIC_PREFIXES = [
-  "/",
   "/login",
   "/signup",
   "/setup",
@@ -39,19 +43,19 @@ function isPublic(pathname: string): boolean {
     return true;
   }
   return PUBLIC_PREFIXES.some(
-    (p) => p !== "/" && (pathname === p || pathname.startsWith(p + "/"))
+    (p) => pathname === p || pathname.startsWith(p + "/")
   );
 }
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const session = req.cookies.get("brostco_session")?.value;
 
-  if (pathname === "/" && session) {
-    return NextResponse.redirect(new URL("/today", req.url));
+  if (isPublic(pathname)) {
+    return NextResponse.next();
   }
 
-  if (!isPublic(pathname) && !session) {
+  const session = req.cookies.get("brostco_session")?.value;
+  if (!session) {
     const login = new URL("/login", req.url);
     login.searchParams.set("next", pathname);
     return NextResponse.redirect(login);
@@ -61,5 +65,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  // Explicitly include `/` so the marketing home is never skipped by the
+  // catch-all pattern on some Next.js matcher implementations.
+  matcher: ["/", "/((?!_next/static|_next/image).*)"],
 };
