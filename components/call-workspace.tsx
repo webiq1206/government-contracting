@@ -13,8 +13,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CallCardRow } from "@/lib/data";
 import { currency, shortDate } from "@/lib/format";
+import { resolveSubWork, subWorkTalkingPoint } from "@/lib/domain/sub-work";
 import { useToast } from "@/components/toaster";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
+import { SubWorkNeeded } from "@/components/sub-work-needed";
 
 type Attachment = { name?: string; url?: string; storage_path?: string } & Record<
   string,
@@ -198,11 +200,11 @@ export function CallWorkspace({
     ? (card.attachments_json as Attachment[])
     : [];
   const analysis = (card.solicitation_analysis ?? {}) as Record<string, unknown>;
-  const plainScope =
-    (analysis.scope_plain_language as string | undefined) ??
-    (analysis.project_overview as string | undefined) ??
-    card.description?.slice(0, 800) ??
-    null;
+  const subWork = resolveSubWork({
+    trade: card.trade,
+    analysis,
+    description: card.description,
+  });
   const quals = (analysis.qualifications ?? {}) as Record<string, unknown>;
   const requiredCerts = Array.isArray(quals.certifications)
     ? (quals.certifications as string[])
@@ -349,6 +351,22 @@ export function CallWorkspace({
         </header>
 
         <div className="space-y-6 p-6">
+          {/* First thing to see before dialing: exactly what to ask them for. */}
+          {subWork.work && (
+            <div>
+              <SubWorkNeeded work={subWork} />
+              {(() => {
+                const say = subWorkTalkingPoint(subWork);
+                return say ? (
+                  <p className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-slate-700">
+                    <span className="font-medium text-slate-900">Say on the call: </span>
+                    &ldquo;{say}&rdquo;
+                  </p>
+                ) : null;
+              })()}
+            </div>
+          )}
+
           {/* CONTEXT, everything the operator needs to know before dialing */}
           <Section title="Project context">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
@@ -380,15 +398,6 @@ export function CallWorkspace({
               />
             </dl>
           </Section>
-
-          {/* PLAIN-ENGLISH SCOPE */}
-          {plainScope && (
-            <Section title="Scope of work (plain English)">
-              <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">
-                {plainScope}
-              </p>
-            </Section>
-          )}
 
           {/* REQUIRED QUALIFICATIONS */}
           {(requiredCerts.length ||

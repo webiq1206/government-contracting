@@ -91,6 +91,28 @@ export function BidBrief({
           </Section>
         )}
 
+        {(analysis.trade_scopes?.length ?? 0) > 0 && (
+          <Section title="What each trade needs to do">
+            <p className="mb-3 text-xs text-slate-500">
+              Plain-English work descriptions for calls and outreach — one per
+              required trade.
+            </p>
+            <ul className="space-y-3">
+              {analysis.trade_scopes!.map((ts) => (
+                <li
+                  key={ts.trade}
+                  className="rounded-md border border-border px-3 py-2.5"
+                >
+                  <p className="text-sm font-medium text-slate-900">{ts.trade}</p>
+                  <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-700">
+                    {ts.work}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
         {/* Attention items are also hoisted to AttentionStrip; keep a compact
             pointer here so the brief still answers "what's risky?" when scanned. */}
         {analysis.attention_items?.length > 0 && (
