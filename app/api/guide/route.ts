@@ -1,0 +1,299 @@
+import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/api-auth";
+import { actionCenter, opportunityDetail, subDetail } from "@/lib/data";
+import { getActiveProfile } from "@/lib/ai/companyProfile";
+import { hydrateIntegrationEnv } from "@/lib/integration-settings";
+import { integrationStatus } from "@/lib/config";
+import { computeSetupChecklist } from "@/lib/domain/setup";
+import { getAutomationState } from "@/lib/app-settings";
+import { computeBidReadiness } from "@/lib/domain/bid-readiness";
+import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
+import {
+  buildPageGuide,
+  opportunityIdFromPath,
+  pageKeyFromPath,
+  subIdFromPath,
+  summarizeActions,
+  type GuideScoreExplain,
+  type OpportunityGuideFacts,
+  type SubGuideFacts,
+} from "@/lib/domain/page-guide";
+import { buildGuideAdapters } from "@/lib/guide/build-adapters";
+import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
+import { query, queryOne } from "@/lib/db";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * Context-aware guidance for the Guide Me panel. Loads the same facts Today
+ * and opportunity pages use, then returns buildPageGuide() plus in-panel
+ * adapters and a Today-compatible fingerprint for live refresh.
+ */
+export async function GET(req: Request) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+
+  const url = new URL(req.url);
+  const pathname = url.searchParams.get("path") || "/today";
+  const pageKey = pageKeyFromPath(pathname);
+
+  await hydrateIntegrationEnv().catch(() => undefined);
+
+  const [profile, automation, actionsRaw, experienceRow, pulseRow] = await Promise.all([
+    getActiveProfile().catch(() => null),
+    getAutomationState().catch(() => ({
+      paused: false,
+      changed_at: null,
+      changed_by: null,
+    })),
+    actionCenter().catch(() => null),
+    queryOne<{ submitted: number; open: number }>(
+      `select
+         (select count(*)::int from opportunities where status <> 'open' or stage in ('submitted','won','lost')) as submitted,
+         (select count(*)::int from opportunities where status = 'open') as open`
+    ).catch(() => null),
+    queryOne<Record<string, unknown>>(
+      `select
+         (select count(*) from opportunities
+           where status='open' and human_action_required=true)::int as needs_you,
+         (select count(*) from opportunities where status='open')::int as open_count,
+         (select coalesce(max(extract(epoch from updated_at))::bigint, 0)
+            from opportunities) as opp_stamp,
+         (select count(*) from call_cards
+           where status='pending'
+             and (snoozed_until is null or snoozed_until <= now()))::int as calls,
+         (select count(*) from compliance_items
+           where coalesce(status_override, status) in ('warning','critical','blocked'))::int as compliance,
+         (select count(*) from scoring_weights
+           where approved_at is null and proposed_by='learning-loop')::int as weights,
+         (select count(*) from backlink_outreach where approval_status='pending')::int as backlinks`
+    ).catch(() => null),
+  ]);
+
+  const integrations = integrationStatus();
+  const setup = computeSetupChecklist({
+    profile: profile?.profile_json ?? null,
+    integrations,
+  });
+
+  const actions = actionsRaw
+    ? summarizeActions(actionsRaw)
+    : {
+        urgent: 0,
+        triage: 0,
+        calls: 0,
+        bidWork: 0,
+        subFollowUps: 0,
+        quoteReviews: 0,
+        compliance: 0,
+        approvals: 0,
+        totalActions: 0,
+      };
+
+  const experience: "new" | "familiar" =
+    !setup.complete || (experienceRow?.submitted ?? 0) < 1 ? "new" : "familiar";
+
+  let opportunity: OpportunityGuideFacts | null = null;
+  let opportunitySubs: {
+    subcontractor_id: string;
+    company_name: string;
+    trade: string | null;
+  }[] = [];
+  let sub: SubGuideFacts | null = null;
+  let subRow: {
+    id: string;
+    company_name: string;
+    email: string | null;
+    phone: string | null;
+    website: string | null;
+    owner_name: string | null;
+  } | null = null;
+
+  const oppId = opportunityIdFromPath(pathname);
+  if (pageKey === "opportunity" && oppId) {
+    const detail = await opportunityDetail(oppId).catch(() => null);
+    if (detail) {
+      const { opp, quotes, subs } = detail;
+      const bid = detail.bid as Bid | null;
+      const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
+      const breakdown = opp.score_breakdown as ScoreBreakdown | null;
+      opportunitySubs = subs.map((s) => ({
+        subcontractor_id: s.subcontractor_id,
+        company_name: s.company_name,
+        trade: s.trade,
+      }));
+      const quoteRows = (quotes as Record<string, unknown>[]).map((q) => ({
+        trade: (q.trade as string) ?? null,
+        quote_amount: Number(q.quote_amount) || null,
+        is_out_of_range: Boolean(q.is_out_of_range),
+      }));
+      const coverage = summarizeTradeCoverage({
+        requiredTrades: analysis?.required_trades ?? [],
+        subs: subs.map((s) => ({
+          trade: s.trade,
+          outreach_state: s.outreach_state,
+          emails_sent: s.emails_sent,
+          calls_logged: s.calls_logged,
+          responded_at: s.responded_at,
+        })),
+        quotes: quoteRows,
+      });
+      const readiness = computeBidReadiness({
+        stage: opp.stage,
+        status: opp.status,
+        deadline: opp.deadline,
+        riskFlags: opp.risk_flags ?? [],
+        attentionFromBrief: analysis?.attention_items ?? [],
+        requiredTrades: analysis?.required_trades ?? [],
+        quotes: quoteRows,
+        tradeCoverageUncovered: coverage.totals.uncovered,
+        uncoveredTrades: coverage.trades.filter((t) => t.quotes === 0).map((t) => t.trade),
+        tradeStatuses: coverage.trades.map((t) => ({
+          trade: t.trade,
+          status: t.status,
+          quotes: t.quotes,
+          contacted: t.contacted,
+          found: t.found,
+        })),
+        subsFound: subs.length,
+        hasBid: Boolean(bid),
+        packageReady: bid?.package_ready ?? null,
+        humanFlags: (bid?.human_flags as string[] | null) ?? null,
+        humanActionRequired: opp.human_action_required,
+        completenessMissing: analysis?.completeness?.missing ?? null,
+        packageBlockers: (bid?.validation_json as { blockers?: string[] } | null)?.blockers ?? null,
+      });
+
+      const hoursSinceUpdate = opp.updated_at
+        ? (Date.now() - new Date(opp.updated_at).getTime()) / 3_600_000
+        : null;
+
+      let scoreExplain: GuideScoreExplain | null = null;
+      if (breakdown) {
+        scoreExplain = {
+          total: breakdown.total,
+          summary: breakdown.summary,
+          factors: breakdown.dimensions.map((d) => ({
+            label: d.label,
+            points: d.points,
+            max: d.max_points,
+            reasoning: d.reasoning,
+          })),
+        };
+      }
+
+      opportunity = {
+        id: opp.id,
+        title: opp.title,
+        stage: opp.stage,
+        score: opp.score,
+        deadline: opp.deadline,
+        stepInput: {
+          stage: opp.stage,
+          tier: opp.tier,
+          humanActionRequired: opp.human_action_required,
+          quoteCount: readiness.tradesWithQuotes,
+          requiredTradeCount: analysis?.required_trades?.length ?? 0,
+          tradesWithQuotes: readiness.tradesWithQuotes,
+          tradeCoverageUncovered: coverage.totals.uncovered,
+          hasBid: Boolean(bid),
+          bidSubmitted: Boolean(bid?.submitted_at),
+          outcome: bid?.outcome ?? null,
+          pastPerfBlocked: opp.past_perf_classification === "prime_only",
+          automationPaused: automation.paused,
+          hoursSinceUpdate,
+          expired:
+            opp.status === "archived" && (opp.risk_flags ?? []).includes("expired"),
+        },
+        readiness: {
+          percent: readiness.percent,
+          summary: readiness.summary,
+          attention: readiness.attention,
+          complete: readiness.complete,
+          actionRequired: readiness.actionRequired,
+          blocked: readiness.blocked,
+        },
+        scoreExplain,
+      };
+    }
+  }
+
+  const sid = subIdFromPath(pathname);
+  if (pageKey === "sub" && sid) {
+    const detail = await subDetail(sid).catch(() => null);
+    if (detail) {
+      const { sub: row, pairings } = detail;
+      const openPairings = pairings.filter((p) => p.status === "open");
+      subRow = {
+        id: row.id,
+        company_name: row.company_name,
+        email: row.email,
+        phone: row.phone,
+        website: row.website ?? null,
+        owner_name: row.owner_name ?? null,
+      };
+      sub = {
+        id: row.id,
+        companyName: row.company_name,
+        contactStatus: row.contact_status,
+        email: row.email,
+        phone: row.phone,
+        openJobs: openPairings.length,
+        lastTouchAt: null,
+        pendingOutreach: openPairings.slice(0, 5).map((p) => ({
+          opportunityId: p.opportunity_id,
+          title: p.opportunity_title ?? null,
+          state: p.outreach_state ?? null,
+        })),
+        missingContact: !row.email && !row.phone,
+      };
+    }
+  }
+
+  const guide = buildPageGuide({
+    pathname,
+    setup,
+    actions,
+    automationPaused: automation.paused,
+    experience,
+    opportunity,
+    sub,
+  });
+
+  // Load quote subs for bid-work adapters when not already on that opportunity.
+  const quoteOppId =
+    guide.steps.find((s) => s.kind === "enter-quote")?.opportunityId ||
+    actionsRaw?.bidWork[0]?.id;
+  if (quoteOppId && opportunitySubs.length === 0) {
+    const rows = await query<{
+      subcontractor_id: string;
+      company_name: string;
+      trade: string | null;
+    }>(
+      `select os.subcontractor_id, s.company_name, os.trade
+         from opportunity_subs os
+         join subcontractors s on s.id = os.subcontractor_id
+        where os.opportunity_id = $1
+        order by os.trade nulls last, s.company_name
+        limit 100`,
+      [quoteOppId]
+    ).catch(() => []);
+    opportunitySubs = rows;
+  }
+
+  const adapters = buildGuideAdapters({
+    guide,
+    actions: actionsRaw,
+    opportunity,
+    opportunitySubs,
+    sub,
+    subRow,
+  });
+
+  return NextResponse.json({
+    guide,
+    adapters,
+    fingerprint: JSON.stringify(pulseRow ?? {}),
+  });
+}

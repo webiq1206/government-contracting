@@ -26,10 +26,13 @@ export function QuoteEntryForm({
   opportunityId,
   subs,
   layout = "wide",
+  onSaved,
 }: {
   opportunityId: string;
   subs: SubOption[];
   layout?: "wide" | "stacked";
+  /** Called after a successful save (Guide Me uses this to reevaluate). */
+  onSaved?: () => void;
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>([
@@ -88,6 +91,7 @@ export function QuoteEntryForm({
           : `Saved ${data.saved ?? "your"} quote(s). Bid Builder is pricing the bid now.`
       );
       router.refresh();
+      onSaved?.();
     } else {
       setError(data.error ?? "Failed to save quotes.");
     }

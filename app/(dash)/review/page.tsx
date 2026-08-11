@@ -199,7 +199,7 @@ export default async function ReviewPage() {
         }
         subtitle="Borderline scores (50-69). Pursue or pass here, or open the brief for full context."
       />
-      <div className="scroll-thin flex-1 overflow-y-auto p-4">
+      <div className="scroll-thin flex-1 overflow-y-auto p-4" data-guide-target="review-list">
         {opps.length === 0 ? (
           <EmptyState
             tone="success"

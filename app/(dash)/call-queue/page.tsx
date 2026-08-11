@@ -29,7 +29,7 @@ export default async function CallQueuePage({
         }
         subtitle="Soonest deadline first. Open a card to start the guided call workspace."
       />
-      <div className="scroll-thin flex-1 overflow-y-auto p-5">
+      <div className="scroll-thin flex-1 overflow-y-auto p-5" data-guide-target="call-queue">
         {cards.length === 0 ? (
           <EmptyState
             title="No calls in the queue"

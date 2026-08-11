@@ -30,7 +30,11 @@ export function TradeCoverageStrip({
   if (trades.length === 0) return null;
 
   return (
-    <div id="coverage" className="scroll-mt-12 rounded-md border border-border bg-background px-4 py-4">
+    <div
+      id="coverage"
+      data-guide-target="coverage"
+      className="scroll-mt-12 rounded-md border border-border bg-background px-4 py-4"
+    >
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <p className="eyebrow">Required pricing</p>

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { Nav } from "@/components/nav";
 import { CommandPalette } from "@/components/command-palette";
+import { GuideWizard } from "@/components/guide-wizard";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ToastProvider } from "@/components/toaster";
 import { getAutomationState } from "@/lib/app-settings";
@@ -58,6 +59,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
         </main>
       </div>
       <CommandPalette />
+      <GuideWizard />
       <MobileTabBar reviewCount={counts.review} callCount={counts.callQueue} />
     </ToastProvider>
   );

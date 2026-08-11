@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentUser } from "@/lib/auth";
 import { ToastProvider } from "@/components/toaster";
+import { GuideWizard } from "@/components/guide-wizard";
 import { subscriptionAllowsAccess } from "@/lib/organizations";
 
 /**
@@ -43,6 +44,7 @@ export default async function AccountLayout({
         </header>
         <main>{children}</main>
       </div>
+      <GuideWizard />
     </ToastProvider>
   );
 }

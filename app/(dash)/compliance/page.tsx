@@ -246,7 +246,7 @@ export default async function CompliancePage() {
         </div>
 
         {urgent.length > 0 && (
-          <section>
+          <section data-guide-target="compliance-attention">
             <h2 className="label mb-2 text-risk">Needs attention now</h2>
             <p className="mb-2 text-xs text-slate-500">
               These are overdue or blocking. Handle each one today: renew it, then

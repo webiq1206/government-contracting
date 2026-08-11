@@ -1,0 +1,123 @@
+/**
+ * Server-only: attach live action payloads to a PageGuide so the wizard can
+ * complete work in-panel (quotes, calls, compliance, weights, sub contact).
+ */
+
+import type { ActionCenterData } from "@/lib/data";
+import type {
+  GuideAdapters,
+  OpportunityGuideFacts,
+  PageGuide,
+  SubGuideFacts,
+} from "@/lib/domain/page-guide";
+
+export function buildGuideAdapters(opts: {
+  guide: PageGuide;
+  actions: ActionCenterData | null;
+  opportunity: OpportunityGuideFacts | null;
+  opportunitySubs?: {
+    subcontractor_id: string;
+    company_name: string;
+    trade: string | null;
+  }[];
+  sub: SubGuideFacts | null;
+  subRow?: {
+    id: string;
+    company_name: string;
+    email: string | null;
+    phone: string | null;
+    website: string | null;
+    owner_name: string | null;
+  } | null;
+}): GuideAdapters {
+  const adapters: GuideAdapters = {};
+  const { guide, actions, opportunity, opportunitySubs, sub, subRow } = opts;
+
+  const needs = new Set(
+    guide.steps.map((s) => s.adapter).filter((a): a is NonNullable<typeof a> => Boolean(a))
+  );
+  // Opportunity quote entry even when adapter tag came from journey stage.
+  if (guide.steps.some((s) => s.kind === "enter-quote") && opportunity) {
+    needs.add("quote");
+  }
+  if (guide.steps.some((s) => s.kind === "open-call")) needs.add("call");
+  if (guide.steps.some((s) => s.kind === "edit-sub-contact")) needs.add("subContact");
+  if (guide.steps.some((s) => s.kind === "compliance-update")) needs.add("compliance");
+  if (guide.steps.some((s) => s.kind === "approve-weights")) needs.add("weights");
+
+  if (needs.has("quote")) {
+    const oppId =
+      opportunity?.id ||
+      guide.steps.find((s) => s.kind === "enter-quote")?.opportunityId ||
+      actions?.bidWork[0]?.id;
+    if (oppId) {
+      adapters.quote = {
+        opportunityId: oppId,
+        subs:
+          opportunity?.id === oppId
+            ? opportunitySubs ?? []
+            : opportunitySubs?.length
+              ? opportunitySubs
+              : [],
+      };
+    }
+  }
+
+  if (needs.has("call") || needs.has("followUp")) {
+    const card = actions?.calls.rows[0];
+    if (card) {
+      adapters.call = {
+        cardId: card.id,
+        companyName: card.company_name,
+        opportunityTitle: card.opportunity_title,
+      };
+    }
+    const fu = actions?.subFollowUps[0];
+    if (fu) {
+      adapters.followUp = {
+        opportunityId: fu.opportunity_id,
+        subcontractorId: fu.subcontractor_id,
+        companyName: fu.company_name,
+        phone: fu.phone,
+        trade: fu.trade,
+        opportunityTitle: fu.opportunity_title,
+      };
+    }
+  }
+
+  if (needs.has("compliance")) {
+    const item = actions?.complianceAlerts[0];
+    if (item) {
+      adapters.compliance = {
+        id: item.id,
+        label: item.label,
+        status: item.status,
+        dueAt: item.due_at,
+      };
+    }
+  }
+
+  if (needs.has("weights")) {
+    const w = actions?.proposedWeights[0];
+    if (w) {
+      adapters.weights = {
+        id: w.id,
+        version: w.version,
+        rationale: w.rationale,
+      };
+    }
+  }
+
+  if (needs.has("subContact") && (subRow || sub)) {
+    adapters.subContact = {
+      id: subRow?.id ?? sub!.id,
+      companyName: subRow?.company_name ?? sub!.companyName,
+      email: subRow?.email ?? sub?.email ?? null,
+      phone: subRow?.phone ?? sub?.phone ?? null,
+      website: subRow?.website ?? null,
+      ownerName: subRow?.owner_name ?? null,
+    };
+  }
+
+  return adapters;
+}

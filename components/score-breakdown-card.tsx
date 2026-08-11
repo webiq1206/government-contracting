@@ -8,7 +8,7 @@ import { InfoTip } from "@/components/info-tip";
  */
 export function ScoreBreakdownCard({ breakdown }: { breakdown: ScoreBreakdown }) {
   return (
-    <div id="score" className="scroll-mt-12">
+    <div id="score" className="scroll-mt-12" data-guide-target="score">
       <Collapsible
         title="Score breakdown"
         meta={<span className="num">{breakdown.total}/100</span>}

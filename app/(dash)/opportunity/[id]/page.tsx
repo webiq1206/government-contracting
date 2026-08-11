@@ -188,10 +188,10 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
       <div className="scroll-thin flex-1 overflow-y-auto">
         {/* Attention + next action before jump nav so blockers win the fold. */}
-        <div className="space-y-3 px-5 pt-4" id="attention">
+        <div className="space-y-3 px-5 pt-4" id="attention" data-guide-target="attention">
           <AttentionStrip readiness={readiness} opportunityId={opp.id} />
         </div>
-        <div className="px-5 pt-2" id="next">
+        <div className="px-5 pt-2" id="next" data-guide-target="next-step">
           <NextStepBanner
             opportunityId={opp.id}
             stage={opp.stage}
@@ -252,7 +252,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
         </div>
 
         {/* Workflow — completed / current / next, whose turn. */}
-        <div className="space-y-2 px-5 pt-4" id="workflow">
+        <div className="space-y-2 px-5 pt-4" id="workflow" data-guide-target="workflow">
           <SectionHeading
             eyebrow="Current workflow"
             title="Where this bid stands"
@@ -264,7 +264,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
         </div>
 
         {/* Overview, compact facts (status already in header). */}
-        <div className="scroll-mt-12 space-y-3 px-5 pt-5" id="overview">
+        <div className="scroll-mt-12 space-y-3 px-5 pt-5" id="overview" data-guide-target="overview">
           <SectionHeading eyebrow="Opportunity overview" title="Key facts">
             Deadline countdown, value, and identity details.
           </SectionHeading>
@@ -454,7 +454,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
         {/* Quote entry, promoted full-width and up front while quotes are the job. */}
         {showQuotePanel && (
-          <div className="scroll-mt-12 px-5 pt-5" id="quotes">
+          <div className="scroll-mt-12 px-5 pt-5" id="quotes" data-guide-target="quotes">
             <div
               className={`card ${
                 emphasizeQuotePanel ? "border-pursue bg-pursue-soft" : ""
@@ -546,7 +546,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
         )}
 
         {/* Bid Brief, always shown; falls back to lightweight header when no analysis yet */}
-        <div className="scroll-mt-12 px-5 pt-5" id="brief">
+        <div className="scroll-mt-12 px-5 pt-5" id="brief" data-guide-target="brief">
           {analysis ? (
             <BidBrief analysis={analysis} documents={briefDocs} />
           ) : (
@@ -666,7 +666,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
             {bid && (
               <>
-                <div id="submission" className="scroll-mt-4">
+                <div id="submission" className="scroll-mt-4" data-guide-target="submission">
                   <SubmissionPackage
                     opportunityId={opp.id}
                     bid={bid}

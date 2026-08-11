@@ -194,8 +194,21 @@ export function Nav({
           </button>
         </div>
 
-        <div className="shrink-0 px-3 pb-2 pt-3 md:px-4 md:pt-0">
+        <div className="shrink-0 space-y-1.5 px-3 pb-2 pt-3 md:px-4 md:pt-0">
           <SearchButton className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-slate-500 transition-colors hover:border-border-strong hover:text-foreground md:min-h-0 md:py-1.5" />
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              window.dispatchEvent(new Event("open-guide-wizard"));
+            }}
+            className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-slate-500 transition-colors hover:border-accent/50 hover:bg-accent/10 hover:text-accent-strong md:min-h-0 md:py-1.5"
+          >
+            <span aria-hidden className="text-accent">
+              ?
+            </span>
+            Guide Me
+          </button>
         </div>
 
         <div className="scroll-thin flex-1 space-y-1 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:px-4 md:pb-3">

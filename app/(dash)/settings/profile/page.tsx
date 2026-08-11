@@ -42,7 +42,11 @@ export default async function ProfilePage() {
         subtitle="Legal identity, trades, certifications, and scoring thresholds. Scoring and eligibility checks use this as the source of truth."
       />
 
-      <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
+      <div
+        className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5"
+        data-guide-target="profile"
+        id="profile"
+      >
         {!json ? (
           <EmptyState
             title="No active company profile"

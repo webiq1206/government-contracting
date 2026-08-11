@@ -82,7 +82,11 @@ export default async function AgentsPage({
         subtitle={`${ROSTER.length} agents run this platform. See what each one did, filter the feed, or run one manually.`}
       />
 
-      <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
+      <div
+        className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5"
+        data-guide-target="agent-log"
+        id="agent-log"
+      >
         {/* Master switch: pause/resume all automation side effects. */}
         <AutomationControl state={automation} />
 
