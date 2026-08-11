@@ -263,6 +263,10 @@ export default async function TodayPage() {
           </div>
         )}
 
+        {/* Pipeline overview first — scan where everything stands before the
+            action list. Setup (when incomplete) still sits above the work. */}
+        <PipelineStrip counts={data.stageCounts} />
+
         {/* What the machine did while you were away. */}
         {digestParts.length > 0 && (
           <Link
@@ -275,8 +279,8 @@ export default async function TodayPage() {
           </Link>
         )}
 
-        {/* Setup stays on top ONLY while the platform can't run on its own,
-            it is blocking work. Once complete it disappears entirely. */}
+        {/* Setup stays near the top ONLY while the platform can't run on its
+            own — it is blocking work. Once complete it disappears entirely. */}
         {!setup.complete && <SetupChecklist checklist={setup} />}
 
         {totalActions === 0 && setup.complete && (
@@ -637,12 +641,13 @@ export default async function TodayPage() {
           </div>
         )}
 
-        {/* Context, below the work. What the machine is carrying for you, and
-            the setup list once it is no longer blocking anything. */}
-        <div className="space-y-6 border-t border-border pt-6">
-          <PipelineStrip counts={data.stageCounts} />
-          {setup.complete && <SetupChecklist checklist={setup} />}
-        </div>
+        {/* Completed setup checklist stays available below the work so it
+            doesn't compete with actions once the platform is fully wired. */}
+        {setup.complete && (
+          <div className="border-t border-border pt-6">
+            <SetupChecklist checklist={setup} />
+          </div>
+        )}
 
        </div>
       </div>
