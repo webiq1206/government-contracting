@@ -139,9 +139,6 @@ export function LandingPage({
           <div className="gold-glow" aria-hidden />
           <div className="hero-inner">
             <div className="hero-copy">
-              <div className="hero-wordmark">
-                <Wordmark variant="light" priority className="h-12 sm:h-14" />
-              </div>
               <p className="eyebrow light">
                 <i />
                 Procurement execution

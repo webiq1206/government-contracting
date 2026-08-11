@@ -43,8 +43,6 @@
 .mkt-lp .nav-shell { position: absolute; inset: 0 0 auto; z-index: 20; height: 86px; padding: 0 clamp(24px,4vw,70px); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; color: #f7f3eb; border-bottom: 1px solid rgba(255,255,255,.13); }
 .mkt-lp .type-logo { display: inline-flex; align-items: center; }
 .mkt-lp .type-logo img { height: 28px; width: auto; }
-.mkt-lp .hero-wordmark { display: block; margin: 0 0 31px; width: max-content; }
-.mkt-lp .hero-wordmark img { height: clamp(38px, 3.4vw, 54px); width: auto; opacity: 0.92; }
 .mkt-lp .final-wordmark { display: block; margin-bottom: 24px; }
 .mkt-lp .final-wordmark img { height: clamp(44px, 4.5vw, 68px); width: auto; filter: drop-shadow(0 0 30px rgba(255,255,255,.35)); }
 .mkt-lp .footer-logo img { height: 28px; width: auto; }
