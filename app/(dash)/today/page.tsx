@@ -226,7 +226,7 @@ export default async function TodayPage() {
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
        <div className="mx-auto w-full max-w-5xl space-y-8">
-        {/* Site-wide warning while the operator has paused the cron loop. */}
+        {/* Site-wide warning while the master pause switch is on. */}
         <AutomationPausedBanner state={automation} />
 
         {/* The one failure that strands everything: the background engine

@@ -20,6 +20,14 @@ export async function runAgent(
     return { ok: true, summary: `${def.name} is disabled via DISABLED_AGENTS` };
   }
 
+  const { isAutomationPaused } = await import("../app-settings");
+  if (await isAutomationPaused()) {
+    return {
+      ok: true,
+      summary: `${def.name} skipped: automation is fully paused`,
+    };
+  }
+
   const runId = randomUUID();
   const started = Date.now();
   const jobRun = await queryOne<{ id: string }>(

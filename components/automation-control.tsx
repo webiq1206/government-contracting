@@ -3,9 +3,9 @@ import { ActionButton } from "@/components/action-button";
 import { timeAgo } from "@/lib/format";
 
 /**
- * The automation master switch. Pausing stops the cron scheduler from starting
- * new runs; manual "Run now" and jobs already in the queue still process, so
- * pausing is always safe and instantly reversible.
+ * Master kill switch. Pausing stops scheduled runs, queue enqueue, agent
+ * execution, and outbound email/SMS. Operator login, password reset, and
+ * billing stay available.
  */
 export function AutomationControl({ state }: { state: AutomationState }) {
   const { paused, changed_at, changed_by } = state;
@@ -24,12 +24,12 @@ export function AutomationControl({ state }: { state: AutomationState }) {
         />
         <div>
           <p className="text-sm font-semibold text-slate-900">
-            {paused ? "Automation is paused" : "Automation is running"}
+            {paused ? "Everything is paused" : "Automation is running"}
           </p>
           <p className="text-xs text-slate-500">
             {paused
-              ? "No new scheduled runs will start. Manual runs and already-queued jobs still process."
-              : "Agents run on their schedules and move opportunities forward automatically."}
+              ? "No agents, scheduled jobs, pipeline moves, outreach email, digests, or SMS will run until you resume."
+              : "Agents run on schedule, move opportunities forward, and can send outreach and alerts."}
             {changed_at && changed_by
               ? ` Last changed ${timeAgo(changed_at)} by ${changed_by}.`
               : ""}
@@ -43,10 +43,10 @@ export function AutomationControl({ state }: { state: AutomationState }) {
         confirm={
           paused
             ? undefined
-            : "Pause all scheduled automation? Nothing new will run until you resume. Manual runs stay available."
+            : "Pause absolutely everything? No agents, emails, SMS, SAM pulls, or queued jobs will run until you resume."
         }
       >
-        {paused ? "Resume automation" : "Pause automation"}
+        {paused ? "Resume everything" : "Pause everything"}
       </ActionButton>
     </div>
   );
@@ -58,11 +58,11 @@ export function AutomationPausedBanner({ state }: { state: AutomationState }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-review/40 bg-review/10 px-4 py-3">
       <p className="text-sm text-slate-800">
-        <span className="font-semibold">Automation is paused.</span> Opportunities are not being
-        monitored or moved forward. Nothing new will happen until you resume.
+        <span className="font-semibold">Everything is paused.</span> No monitoring, pipeline
+        work, outreach email, digests, or SMS will happen until you resume.
       </p>
       <ActionButton endpoint="/api/automation" body={{ paused: false }} className="btn-primary text-xs">
-        Resume automation
+        Resume everything
       </ActionButton>
     </div>
   );

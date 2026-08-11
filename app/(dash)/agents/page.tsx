@@ -75,7 +75,7 @@ export default async function AgentsPage({
       />
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
-        {/* Master switch: pause/resume the entire cron loop. */}
+        {/* Master switch: pause/resume all automation side effects. */}
         <AutomationControl state={automation} />
 
         {/* One-look health: is the machine OK? */}

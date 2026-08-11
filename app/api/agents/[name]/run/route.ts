@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
+import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
 import { enqueue } from "@/lib/queue";
 import { getAgent } from "@/lib/agents/registry";
 
@@ -10,6 +11,10 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request, { params }: { params: { name: string } }) {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
+
+  if (await isAutomationPaused()) {
+    return NextResponse.json({ error: AUTOMATION_PAUSED_ERROR }, { status: 409 });
+  }
 
   const def = getAgent(params.name);
   if (!def) return NextResponse.json({ error: `Unknown agent "${params.name}"` }, { status: 404 });

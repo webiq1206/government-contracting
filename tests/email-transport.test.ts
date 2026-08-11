@@ -22,10 +22,16 @@ vi.mock("../lib/integrations/resend", () => ({
   },
 }));
 
+vi.mock("../lib/app-settings", () => ({
+  isAutomationPaused: vi.fn(async () => false),
+  AUTOMATION_PAUSED_ERROR: "Automation is fully paused.",
+}));
+
 // ─── Import after mocks ────────────────────────────────────────────────────
 
 import { gmail } from "../lib/integrations/gmail";
 import { email as resend } from "../lib/integrations/resend";
+import { config } from "../lib/config";
 import {
   sendOutreachEmail,
   OUTREACH_SENDER,
@@ -123,6 +129,8 @@ describe("sendOutreachEmail — Resend path", () => {
   beforeEach(() => {
     mockGmailConnected.mockResolvedValue(false);
     mockResendSend.mockResolvedValue({ id: "resend-msg-1" });
+    // Hermetic: do not depend on RESEND_API_KEY being present in the test env.
+    vi.spyOn(config.resend, "enabled", "get").mockReturnValue(true);
   });
 
   it("sets From to the literal BROSTCO <info@brostco.com>", async () => {

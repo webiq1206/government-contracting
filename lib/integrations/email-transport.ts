@@ -79,6 +79,11 @@ export async function outreachTransport(): Promise<OutreachProvider | null> {
 export async function sendOutreachEmail(
   params: OutreachSendParams
 ): Promise<OutreachSendResult> {
+  const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
+  if (await isAutomationPaused()) {
+    return { provider: null, disabled: true, error: AUTOMATION_PAUSED_ERROR };
+  }
+
   const provider = await outreachTransport();
   if (!provider) {
     return {
