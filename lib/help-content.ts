@@ -38,6 +38,7 @@ export const PAGE_HELP: Record<string, HelpContent> = {
       "Subs who replied are marked 'interested' and sorted to the top.",
       "Each card opens a workspace with a script and everything about the job.",
       "Fill in answers during the call; one save updates every record.",
+      "Skip records that you chose not to call and removes the card from the queue.",
       "A captured price automatically moves the bid forward.",
     ],
   },
