@@ -5,6 +5,7 @@
  */
 import { query, queryOne } from "./db";
 import type { KpiParams } from "./domain/kpi";
+import { resolveSubWork } from "./domain/sub-work";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 
 export async function queueCounts(): Promise<{ review: number; callQueue: number }> {
@@ -803,6 +804,8 @@ export interface ActionCallRow {
   deadline: string | null;
   source: string;
   trade: string | null;
+  /** Plain-English work this sub would perform (for calls / Today). */
+  work_summary: string | null;
 }
 
 /** Subcontractor outreach that needs a human nudge (email follow-ups exhausted). */
@@ -818,6 +821,7 @@ export interface ActionSubFollowUpRow {
   last_contacted: string | null;
   emails_sent: number;
   calls_logged: number;
+  work_summary: string | null;
 }
 
 /** Quote that looks unusually high/low and needs a quick review. */
@@ -918,9 +922,14 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
             and (cc.snoozed_until is null or cc.snoozed_until <= now())
             and nullif(btrim(coalesce(s.phone, '')), '') is not null`
     ),
-    query<ActionCallRow>(
+    query<
+      Omit<ActionCallRow, "work_summary"> & {
+        solicitation_analysis: Record<string, unknown> | null;
+        description: string | null;
+      }
+    >(
       `select cc.id, s.company_name, s.phone, o.title as opportunity_title,
-              o.deadline, cc.source,
+              o.deadline, cc.source, o.solicitation_analysis, o.description,
               (select trade from opportunity_subs os
                 where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
          from call_cards cc
@@ -965,10 +974,16 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     ),
     // After automated email + follow-up, surface human call/nudge work so
     // operators do not have to open every opportunity to find stalled subs.
-    query<ActionSubFollowUpRow>(
+    query<
+      Omit<ActionSubFollowUpRow, "work_summary"> & {
+        solicitation_analysis: Record<string, unknown> | null;
+        description: string | null;
+      }
+    >(
       `select o.id as opportunity_id, o.title as opportunity_title, o.deadline,
               s.id as subcontractor_id, s.company_name, s.phone, os.trade,
               os.outreach_state, s.last_contacted,
+              o.solicitation_analysis, o.description,
               coalesce((
                 select count(*)::int from communications c
                  where c.opportunity_id = os.opportunity_id
@@ -1046,18 +1061,44 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
           where status='open' group by stage`
     ),
   ]);
+
+  const callsWithWork: ActionCallRow[] = callRows.map(
+    ({ solicitation_analysis, description, ...row }) => ({
+      ...row,
+      work_summary:
+        resolveSubWork({
+          trade: row.trade,
+          analysis: solicitation_analysis,
+          description,
+          maxChars: 180,
+        }).work || null,
+    })
+  );
+  const followUpsWithWork: ActionSubFollowUpRow[] = subFollowUps.map(
+    ({ solicitation_analysis, description, ...row }) => ({
+      ...row,
+      work_summary:
+        resolveSubWork({
+          trade: row.trade,
+          analysis: solicitation_analysis,
+          description,
+          maxChars: 180,
+        }).work || null,
+    })
+  );
+
   return {
     triage,
     calls: {
       count: callRow?.count ?? 0,
       soonest_deadline: callRow?.soonest_deadline ?? null,
-      rows: callRows,
+      rows: callsWithWork,
     },
     bidWork,
     awaitingOutcome,
     urgent,
     flagged,
-    subFollowUps,
+    subFollowUps: followUpsWithWork,
     quoteReviews,
     complianceAlerts,
     proposedWeights,

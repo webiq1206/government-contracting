@@ -79,6 +79,9 @@ const AnalysisSchema = z.object({
   attention_items: z.array(z.string()).default([]),
   pursue_recommendation: z.string().default(NA),
   required_trades: z.array(z.string()).default([]),
+  trade_scopes: z
+    .array(z.object({ trade: z.string(), work: z.string() }))
+    .default([]),
   geographic_area: z.string().default(NA),
   risk_flags: z.array(z.string()).default([]),
   past_perf_classification: z.enum(["not_required", "team_accepted", "prime_only"]),
@@ -239,11 +242,12 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '  "attention_items": string[],              // risks / unusual clauses (liquidated damages, tight timeline, high bonding, prime-only past perf) a human should note',
     '  "pursue_recommendation": string,          // 1-3 sentences: should we pursue, and the single biggest reason for/against',
     '  "required_trades": string[],              // trades we would need subcontractors for',
+    '  "trade_scopes": [{ "trade": string, "work": string }],  // REQUIRED for each required_trades entry: 2-5 plain-English sentences a non-expert can read aloud on a phone call — exactly what THAT trade must do on this job (tasks, locations, materials, frequency). No jargon, no government form numbers, no contracting-officer contact info.',
     '  "geographic_area": string,                // area to source subs from',
     '  "risk_flags": string[],                   // short machine-ish flags, e.g. "liquidated_damages", "high_bonding"',
     '  "past_perf_classification": "not_required"|"team_accepted"|"prime_only",',
     '  "questions_for_subs": string[],           // specific questions to ask each subcontractor',
-    '  "draft_sow": string,                      // concise scope we can hand to a subcontractor',
+    '  "draft_sow": string,                      // concise overall scope we can hand to a subcontractor when trade_scopes is thin',
     '  "set_aside": string | null,',
     '  "compliance_matrix": [                     // EVERY item the bid package must include to be responsive',
     '     {',

@@ -37,17 +37,17 @@ export function MobileTabBar({
           <Link
             key={tab.href}
             href={tab.href}
-            className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] ${
+            className={`relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2.5 text-[11px] ${
               active ? "font-semibold text-accent-strong" : "text-slate-500"
             }`}
           >
-            <span aria-hidden className="text-base leading-none">
+            <span aria-hidden className="text-lg leading-none">
               {tab.icon}
             </span>
             {tab.label}
             {count > 0 && (
-              <span className="absolute right-[22%] top-1 min-w-[1.1rem] rounded-full bg-accent px-1 text-center text-[10px] font-semibold leading-4 text-white">
-                {count}
+              <span className="absolute right-[18%] top-1.5 min-w-[1.15rem] rounded-full bg-accent px-1 text-center text-[10px] font-semibold leading-4 text-white">
+                {count > 99 ? "99+" : count}
               </span>
             )}
             {active && (

@@ -200,7 +200,7 @@ export default async function ReviewPage() {
   const opps = await reviewQueue();
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["review"]}
         title="Review Queue"

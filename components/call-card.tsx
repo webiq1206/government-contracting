@@ -4,6 +4,8 @@ import type { CallCardRow } from "@/lib/data";
 import { ActionButton } from "@/components/action-button";
 import { CallWorkspaceLauncher } from "@/components/call-workspace-launcher";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
+import { SubWorkNeeded } from "@/components/sub-work-needed";
+import { resolveSubWork } from "@/lib/domain/sub-work";
 import { countdown, currency, shortDate } from "@/lib/format";
 
 /**
@@ -23,6 +25,12 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
     !!c.deadline &&
     (new Date(c.deadline).getTime() - Date.now()) / 86_400_000 < 7 &&
     !overdue;
+  const subWork = resolveSubWork({
+    trade: c.trade,
+    analysis: c.solicitation_analysis,
+    description: c.description,
+    maxChars: 280,
+  });
 
   return (
     <CallWorkspaceLauncher
@@ -81,6 +89,8 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
             </span>
           </p>
         </div>
+
+        {subWork.work && <SubWorkNeeded work={subWork} variant="compact" />}
 
         {/* Signals */}
         <div className="flex flex-wrap items-center gap-2 text-xs">

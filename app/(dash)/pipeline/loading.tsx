@@ -3,7 +3,7 @@ import { SkeletonBar, SkeletonCard, SkeletonHeader } from "@/components/skeleton
 /** Sketch of the pipeline's four-lane layout while data loads. */
 export default function PipelineLoading() {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <SkeletonHeader />
       <div className="flex-1 overflow-hidden p-4">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

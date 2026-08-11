@@ -34,8 +34,8 @@ export function SubFilters({ trade, state, minReliability, q }: SubFiltersProps)
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-3 border-b border-border bg-surface/40 px-5 py-3">
-      <div className="min-w-[200px] flex-1">
+    <div className="flex flex-col gap-3 border-b border-border bg-surface/40 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-end sm:px-5">
+      <div className="min-w-0 flex-1 sm:min-w-[200px]">
         <label className="label mb-1 block" htmlFor="sub-q">
           Search
         </label>
@@ -48,33 +48,35 @@ export function SubFilters({ trade, state, minReliability, q }: SubFiltersProps)
           onKeyDown={onKeyDown}
         />
       </div>
-      <div className="w-40">
-        <label className="label mb-1 block" htmlFor="sub-trade">
-          Trade
-        </label>
-        <input
-          id="sub-trade"
-          className="input"
-          placeholder="e.g. Electrical"
-          value={tradeVal}
-          onChange={(e) => setTradeVal(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:contents">
+        <div className="min-w-0 sm:w-40">
+          <label className="label mb-1 block" htmlFor="sub-trade">
+            Trade
+          </label>
+          <input
+            id="sub-trade"
+            className="input"
+            placeholder="e.g. Electrical"
+            value={tradeVal}
+            onChange={(e) => setTradeVal(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+        </div>
+        <div className="min-w-0 sm:w-24">
+          <label className="label mb-1 block" htmlFor="sub-state">
+            State
+          </label>
+          <input
+            id="sub-state"
+            className="input"
+            placeholder="TX"
+            value={stateVal}
+            onChange={(e) => setStateVal(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+        </div>
       </div>
-      <div className="w-24">
-        <label className="label mb-1 block" htmlFor="sub-state">
-          State
-        </label>
-        <input
-          id="sub-state"
-          className="input"
-          placeholder="TX"
-          value={stateVal}
-          onChange={(e) => setStateVal(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
-      </div>
-      <div className="w-32">
+      <div className="w-full sm:w-32">
         <label
           className="label mb-1 block"
           htmlFor="sub-minrel"
@@ -94,11 +96,11 @@ export function SubFilters({ trade, state, minReliability, q }: SubFiltersProps)
           onKeyDown={onKeyDown}
         />
       </div>
-      <div className="flex items-center gap-2">
-        <button className="btn-primary" onClick={apply}>
+      <div className="flex w-full items-center gap-2 sm:w-auto">
+        <button className="btn-primary flex-1 sm:flex-none" onClick={apply}>
           Apply
         </button>
-        <Link href="/subs" className="btn-ghost">
+        <Link href="/subs" className="btn-ghost flex-1 sm:flex-none">
           Clear
         </Link>
       </div>

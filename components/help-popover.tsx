@@ -42,7 +42,7 @@ export function HelpPopover({ help }: { help: HelpContent }) {
         aria-expanded={open}
         title="What is this page?"
         onClick={() => setOpen((o) => !o)}
-        className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-semibold transition-colors ${
+        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors sm:h-6 sm:w-6 ${
           open
             ? "border-accent bg-accent text-white"
             : "border-border-strong text-slate-500 hover:border-accent hover:text-accent"
@@ -52,7 +52,7 @@ export function HelpPopover({ help }: { help: HelpContent }) {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-8 z-40 w-80 rounded-md border border-border bg-background p-4 shadow-xl">
+        <div className="absolute left-0 top-10 z-40 w-[min(20rem,calc(100vw-2rem))] rounded-md border border-border bg-background p-4 shadow-xl sm:top-8">
           <p className="text-sm font-semibold text-foreground">{help.title}</p>
           <ul className="mt-2 space-y-1.5">
             {help.points.map((p, i) => (

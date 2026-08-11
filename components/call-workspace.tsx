@@ -13,8 +13,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CallCardRow } from "@/lib/data";
 import { currency, shortDate } from "@/lib/format";
+import { resolveSubWork, subWorkTalkingPoint } from "@/lib/domain/sub-work";
 import { useToast } from "@/components/toaster";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
+import { SubWorkNeeded } from "@/components/sub-work-needed";
 
 type Attachment = { name?: string; url?: string; storage_path?: string } & Record<
   string,
@@ -198,11 +200,11 @@ export function CallWorkspace({
     ? (card.attachments_json as Attachment[])
     : [];
   const analysis = (card.solicitation_analysis ?? {}) as Record<string, unknown>;
-  const plainScope =
-    (analysis.scope_plain_language as string | undefined) ??
-    (analysis.project_overview as string | undefined) ??
-    card.description?.slice(0, 800) ??
-    null;
+  const subWork = resolveSubWork({
+    trade: card.trade,
+    analysis,
+    description: card.description,
+  });
   const quals = (analysis.qualifications ?? {}) as Record<string, unknown>;
   const requiredCerts = Array.isArray(quals.certifications)
     ? (quals.certifications as string[])
@@ -264,19 +266,23 @@ export function CallWorkspace({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/40"
+      className="fixed inset-0 z-[80] flex justify-end bg-black/40"
       onClick={onClose}
+      role="presentation"
     >
       <aside
         onClick={(e) => e.stopPropagation()}
         className="scroll-thin flex h-full w-full max-w-3xl flex-col overflow-y-auto bg-background shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Call workspace for ${card.company_name}`}
       >
         {/* Sticky header */}
-        <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
-          <div className="flex items-start justify-between gap-4">
+        <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-4 backdrop-blur sm:px-6">
+          <div className="flex items-start justify-between gap-3 sm:gap-4">
             <div className="min-w-0 flex-1">
               <p className="eyebrow">{card.trade ?? "General"} · Call Card</p>
-              <h2 className="mt-1 truncate font-display text-2xl font-semibold text-foreground">
+              <h2 className="mt-1 font-display text-xl font-semibold text-foreground sm:truncate sm:text-2xl">
                 {card.company_name}
               </h2>
               <p className="mt-0.5 truncate text-sm text-slate-500">
@@ -349,6 +355,22 @@ export function CallWorkspace({
         </header>
 
         <div className="space-y-6 p-6">
+          {/* First thing to see before dialing: exactly what to ask them for. */}
+          {subWork.work && (
+            <div>
+              <SubWorkNeeded work={subWork} />
+              {(() => {
+                const say = subWorkTalkingPoint(subWork);
+                return say ? (
+                  <p className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-slate-700">
+                    <span className="font-medium text-slate-900">Say on the call: </span>
+                    &ldquo;{say}&rdquo;
+                  </p>
+                ) : null;
+              })()}
+            </div>
+          )}
+
           {/* CONTEXT, everything the operator needs to know before dialing */}
           <Section title="Project context">
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
@@ -380,15 +402,6 @@ export function CallWorkspace({
               />
             </dl>
           </Section>
-
-          {/* PLAIN-ENGLISH SCOPE */}
-          {plainScope && (
-            <Section title="Scope of work (plain English)">
-              <p className="whitespace-pre-line text-sm leading-relaxed text-slate-700">
-                {plainScope}
-              </p>
-            </Section>
-          )}
 
           {/* REQUIRED QUALIFICATIONS */}
           {(requiredCerts.length ||
@@ -845,7 +858,7 @@ export function CallWorkspace({
 
         {/* Sticky footer: normal actions, or the dialer's "next call" bar
             after this one is saved. */}
-        <footer className="sticky bottom-0 z-10 border-t border-border bg-background/95 px-6 py-4 backdrop-blur">
+        <footer className="sticky bottom-0 z-10 border-t border-border bg-background/95 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6">
           {completed && nextCall ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-pursue">
@@ -874,21 +887,25 @@ export function CallWorkspace({
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-3">
-              <button onClick={onClose} className="btn-ghost" disabled={saving}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <button
+                onClick={onClose}
+                className="btn-ghost order-3 w-full sm:order-1 sm:w-auto"
+                disabled={saving}
+              >
                 Cancel
               </button>
-              <div className="flex gap-2">
+              <div className="order-1 flex flex-col gap-2 sm:order-2 sm:flex-row">
                 <button
                   onClick={() => save(false)}
-                  className="btn-ghost"
+                  className="btn-ghost w-full sm:w-auto"
                   disabled={saving}
                 >
                   {saving ? "Saving…" : "Save draft"}
                 </button>
                 <button
                   onClick={() => save(true)}
-                  className="btn-primary"
+                  className="btn-primary w-full sm:w-auto"
                   disabled={saving}
                 >
                   {saving ? "Saving…" : "Save & complete call"}

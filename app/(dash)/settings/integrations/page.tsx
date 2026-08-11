@@ -57,7 +57,7 @@ export default async function IntegrationsPage({
   });
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["integrations"]}
         title="Integrations"

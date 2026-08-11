@@ -13,6 +13,7 @@ import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
 import { isCallable } from "../domain/sub-contactability";
+import { resolveSubWork } from "../domain/sub-work";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -135,17 +136,27 @@ export const callPrep: AgentDefinition = {
       opportunity_title: opp.title,
     };
 
+    const subWork = resolveSubWork({
+      trade: oppSub?.trade,
+      analysis,
+      description: opp.description,
+      maxChars: 500,
+    });
+
     // Claude-generated script + questions tailored to the SOW.
     let callScript =
       `Hi, this is a call about ${opp.title ?? "an upcoming opportunity"} on behalf of ${
         profile?.legal_name ?? "our team"
       }. We'd like to gauge your interest and availability for the ${
         oppSub?.trade ?? "scope"
-      } work and get a rough quote.`;
+      } work and get a rough quote.` +
+      (subWork.work
+        ? ` In plain terms, we need you to: ${subWork.work.replace(/\s+/g, " ").slice(0, 280)}`
+        : "");
     let questionList: string[] = analysis?.questions_for_subs?.slice() ?? [];
 
     try {
-      const prompt = buildCallPrompt(opp, sub, oppSub?.trade ?? null, replied);
+      const prompt = buildCallPrompt(opp, sub, oppSub?.trade ?? null, replied, subWork.work);
       const { data, usage } = await completeJson(prompt, {
         schema: CallPlanSchema,
         maxTokens: 900,
@@ -256,7 +267,8 @@ function buildCallPrompt(
   opp: Opportunity,
   sub: Subcontractor,
   trade: string | null,
-  replied: boolean
+  replied: boolean,
+  tradeWork: string
 ): string {
   const analysis = opp.solicitation_analysis;
   const intro = replied
@@ -269,12 +281,19 @@ function buildCallPrompt(
     `TRADE: ${trade ?? "(scope work)"}`,
     `OPPORTUNITY: ${opp.title ?? "(untitled)"}`,
     "",
-    "DRAFT SCOPE OF WORK:",
-    (analysis?.draft_sow ?? opp.description ?? "(no SOW available)").slice(0, 2000),
+    "WHAT WE NEED THIS SUBCONTRACTOR TO DO (plain English — weave this into the script so the estimator can explain the work clearly):",
+    tradeWork ||
+      (analysis?.draft_sow ?? opp.description ?? "(no SOW available)").slice(0, 2000),
+    "",
+    "FULLER DRAFT SCOPE (background only):",
+    (analysis?.draft_sow ?? analysis?.scope_plain_language ?? opp.description ?? "(none)").slice(
+      0,
+      1500
+    ),
     "",
     "PRE-DRAFTED QUESTIONS FOR SUBS (incorporate the relevant ones):",
     (analysis?.questions_for_subs ?? []).map((q) => `- ${q}`).join("\n") || "(none)",
     "",
-    "Return JSON: { call_script: string, question_list: string[] }. The call_script is a natural 4-6 sentence opener the estimator can read. The question_list is the specific things to confirm on this call (availability, pricing basis, scope clarifications). Do not include a project-history question, that is appended separately.",
+    "Return JSON: { call_script: string, question_list: string[] }. The call_script is a natural 4-6 sentence opener the estimator can read aloud, including a one-sentence plain-English description of the work. The question_list is the specific things to confirm on this call (availability, pricing basis, scope clarifications). Do not include a project-history question, that is appended separately.",
   ].join("\n");
 }

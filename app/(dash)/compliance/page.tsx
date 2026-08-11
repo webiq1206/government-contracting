@@ -165,7 +165,7 @@ export default async function CompliancePage() {
 
   if (rows.length === 0) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex page-shell">
         <PageHeader
         help={PAGE_HELP["compliance"]} title="Compliance Board" />
         <div className="space-y-4 p-6">
@@ -203,7 +203,7 @@ export default async function CompliancePage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["compliance"]}
         title="Compliance Board"

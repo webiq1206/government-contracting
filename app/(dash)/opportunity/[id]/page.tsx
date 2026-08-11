@@ -19,10 +19,12 @@ import { ScoreBreakdownCard } from "@/components/score-breakdown-card";
 import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
 import { AttentionStrip } from "@/components/attention-strip";
 import { TradeCoverageStrip } from "@/components/trade-coverage-strip";
+import { SubWorkNeeded } from "@/components/sub-work-needed";
 import { InfoTip } from "@/components/info-tip";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
 import { termTip } from "@/lib/domain/glossary";
+import { resolveSubWork } from "@/lib/domain/sub-work";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
@@ -143,7 +145,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
   });
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["opportunity"]}
         title={opp.title ?? "Opportunity"}
@@ -247,6 +249,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
         <div className="px-5 pt-4">
           <TradeCoverageStrip
             coverage={coverage}
+            analysis={analysis as unknown as Record<string, unknown> | null}
+            description={opp.description}
             subs={subs.map((s) => ({
               trade: s.trade,
               company_name: s.company_name,
@@ -292,6 +296,25 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 is the company giving you that price, pick one you&rsquo;ve
                 already found or leave it blank if they&rsquo;re not on file yet.
               </p>
+
+              {(analysis?.required_trades?.length ?? 0) > 0 && (
+                <ul className="mt-3 space-y-2">
+                  {(analysis?.required_trades ?? []).map((trade) => {
+                    const work = resolveSubWork({
+                      trade,
+                      analysis,
+                      description: opp.description,
+                      maxChars: 280,
+                    });
+                    if (!work.work) return null;
+                    return (
+                      <li key={trade}>
+                        <SubWorkNeeded work={work} variant="compact" />
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
 
               <div className="mt-4">
                 <QuoteEntryForm opportunityId={opp.id} subs={subOptions} />
@@ -349,7 +372,12 @@ export default async function OpportunityPage({ params }: { params: { id: string
         {/* Subs are the heart of execution after pursue — full width so contact
             status and history are easy to scan before the denser side panels. */}
         <div className="px-5 pt-5">
-          <OpportunitySubsPanel subs={subs} communications={subComms} />
+          <OpportunitySubsPanel
+            subs={subs}
+            communications={subComms}
+            analysis={analysis as unknown as Record<string, unknown> | null}
+            description={opp.description}
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-3">

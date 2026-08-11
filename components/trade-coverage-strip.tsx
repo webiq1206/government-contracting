@@ -1,5 +1,7 @@
 import { InfoTip } from "@/components/info-tip";
+import { SubWorkNeeded } from "@/components/sub-work-needed";
 import { outreachLabel } from "@/lib/domain/sub-contact";
+import { resolveSubWork } from "@/lib/domain/sub-work";
 import type { TradeCoverageSummary } from "@/lib/domain/trade-coverage";
 
 export interface TradeCoverageSubLine {
@@ -16,10 +18,14 @@ export interface TradeCoverageSubLine {
 export function TradeCoverageStrip({
   coverage,
   subs = [],
+  analysis = null,
+  description = null,
 }: {
   coverage: TradeCoverageSummary;
   /** Optional named lines under each trade (company + status). */
   subs?: TradeCoverageSubLine[];
+  analysis?: Record<string, unknown> | null;
+  description?: string | null;
 }) {
   const { trades, totals } = coverage;
   if (trades.length === 0) return null;
@@ -63,6 +69,12 @@ export function TradeCoverageStrip({
           const lines = subs.filter(
             (s) => (s.trade?.trim() || "General") === t.trade
           );
+          const tradeWork = resolveSubWork({
+            trade: t.trade,
+            analysis,
+            description,
+            maxChars: 320,
+          });
           return (
             <li key={t.trade} className="px-3 py-2.5">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -80,6 +92,11 @@ export function TradeCoverageStrip({
                       </>
                     )}
                   </p>
+                  {tradeWork.work && (
+                    <div className="mt-2">
+                      <SubWorkNeeded work={tradeWork} variant="inline" />
+                    </div>
+                  )}
                 </div>
                 <span
                   className={`badge shrink-0 ${

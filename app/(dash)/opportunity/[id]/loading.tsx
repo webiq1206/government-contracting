@@ -3,7 +3,7 @@ import { SkeletonBar, SkeletonCard, SkeletonHeader } from "@/components/skeleton
 /** Sketch of the opportunity record while it loads. */
 export default function OpportunityLoading() {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <SkeletonHeader />
       <div className="flex-1 overflow-hidden">
         <div className="px-5 pt-4">

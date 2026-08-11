@@ -31,7 +31,10 @@ export default async function DashLayout({ children }: { children: React.ReactNo
 
   return (
     <ToastProvider>
-      <div className="flex min-h-screen flex-col md:flex-row">
+      {/* h-dvh + overflow-hidden: pages fill the visible viewport (not 100vh
+          under mobile browser chrome) and scroll inside main, clear of the
+          fixed bottom tab bar. */}
+      <div className="flex h-dvh flex-col overflow-hidden md:flex-row">
         <Nav
           email={user.email}
           reviewCount={counts.review}
@@ -39,8 +42,9 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           engineHealthy={engineHealthy}
           engineLabel={engineLabel}
         />
-        {/* pb-16 keeps content clear of the mobile bottom tab bar. */}
-        <main className="min-w-0 flex-1 bg-surface pb-16 md:pb-0">{children}</main>
+        <main className="page-main min-h-0 min-w-0 flex-1 bg-surface">
+          {children}
+        </main>
       </div>
       <CommandPalette />
       <MobileTabBar reviewCount={counts.review} callCount={counts.callQueue} />
