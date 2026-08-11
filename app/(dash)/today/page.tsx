@@ -97,7 +97,9 @@ function OppActionRow({
               endpoint={`/api/opportunities/${o.id}/action`}
               body={{ action: "pursue" }}
               className="btn-success text-xs"
-              successText="Pursued. Analysis and pricing are running."
+              toast={{
+                message: "Pursued. Analysis and pricing are running.",
+              }}
             >
               Pursue
             </ActionButton>
