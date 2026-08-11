@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { complianceBoard } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { AddComplianceItem } from "@/components/add-compliance-item";
 import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate, complianceColorClass } from "@/lib/format";
@@ -167,15 +169,21 @@ export default async function CompliancePage() {
     return (
       <div className="flex page-shell">
         <PageHeader
-        help={PAGE_HELP["compliance"]} title="Compliance Board" />
-        <div className="space-y-4 p-6">
-          <div className="card text-sm text-slate-600">
-            Compliance Monitor has not run yet. Trigger it from{" "}
-            <a href="/agents" className="text-accent hover:underline">
-              Agents
-            </a>
-            . You can also add your own items to track in the meantime.
-          </div>
+          help={PAGE_HELP["compliance"]}
+          title="Compliance Board"
+          status="Not set up yet"
+          subtitle="Renewals, registrations, and contract deadlines in one place. Brost Co watches dates; renewing is your job."
+        />
+        <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
+          <EmptyState
+            title="Compliance Monitor has not run yet"
+            description="Trigger Compliance Monitor from Automation Log, or add your own renewal items below to start tracking dates."
+            action={
+              <Link href="/agents" className="btn-ghost text-sm">
+                Open Automation Log
+              </Link>
+            }
+          />
           <AddComplianceItem />
         </div>
       </div>
@@ -193,8 +201,6 @@ export default async function CompliancePage() {
 
   // Highlight overdue/blocking items up top.
   const urgent = deadlineRows.filter((r) => cardById.get(str(r.id))?.color === "red");
-
-  // Group deadline items by category (input is already sorted).
   const groups = new Map<string, Row[]>();
   for (const r of deadlineRows) {
     const cat = str(r.category) || "other";
@@ -202,14 +208,21 @@ export default async function CompliancePage() {
     groups.get(cat)!.push(r);
   }
 
+  const urgentCount = urgent.length;
+
   return (
     <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["compliance"]}
         title="Compliance Board"
-        subtitle={`${deadlineRows.length} tracked item${deadlineRows.length === 1 ? "" : "s"}${
-          capRows.length ? ` · ${capRows.length} contract cap gauge${capRows.length === 1 ? "" : "s"}` : ""
-        }`}
+        status={
+          urgentCount > 0
+            ? `${urgentCount} need${urgentCount === 1 ? "s" : ""} attention now · ${deadlineRows.length} tracked`
+            : `${deadlineRows.length} tracked item${deadlineRows.length === 1 ? "" : "s"}${
+                capRows.length ? ` · ${capRows.length} cap gauge${capRows.length === 1 ? "" : "s"}` : ""
+              }`
+        }
+        subtitle="Brost Co checks these daily and warns before anything lapses. Set renewal dates and links so countdowns work."
       >
         <Legend />
       </PageHeader>

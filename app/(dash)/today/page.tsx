@@ -18,6 +18,7 @@ import { ActionButton } from "@/components/action-button";
 import { SnoozeButton } from "@/components/snooze-button";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
 import { TodayLive } from "@/components/today-live";
+import { EmptyState } from "@/components/empty-state";
 import type { AutomationRules } from "@/lib/domain/intake";
 import { currency, shortDate, timeAgo } from "@/lib/format";
 
@@ -87,7 +88,7 @@ function OppActionRow({
                 message: "Pursued. Analysis and pricing are running.",
               }}
             >
-              Pursue
+              Pursue opportunity
             </ActionButton>
             <ActionButton
               endpoint={`/api/opportunities/${o.id}/action`}
@@ -101,14 +102,14 @@ function OppActionRow({
                 },
               }}
             >
-              Dismiss
+              Pass on this
             </ActionButton>
-            <span className="btn-ghost pointer-events-none hidden text-xs sm:inline-flex">
-              Read brief →
+            <span className="text-xs font-medium text-accent-strong sm:ml-1">
+              Open brief
             </span>
           </StopClickPropagation>
         ) : (
-          <span className="btn-ghost pointer-events-none text-xs">{action} →</span>
+          <span className="text-xs font-semibold text-accent-strong">{action}</span>
         )}
       </div>
     </Link>
@@ -124,14 +125,17 @@ function Section({
   title,
   count,
   children,
+  defaultOpen = false,
 }: {
   eyebrow: string;
   title: string;
   count?: number;
   children: React.ReactNode;
+  /** Only the top-priority section should start open. */
+  defaultOpen?: boolean;
 }) {
   return (
-    <details open className="group">
+    <details open={defaultOpen} className="group">
       <summary className="flex cursor-pointer list-none items-end justify-between gap-3 border-b-2 border-accent/80 pb-2 [&::-webkit-details-marker]:hidden">
         <div>
           <p className="eyebrow">{eyebrow}</p>
@@ -210,33 +214,49 @@ export default async function TodayPage() {
     flagged.length +
     approvalCount;
 
+  const firstOpen =
+    data.urgent.length > 0
+      ? "urgent"
+      : data.triage.length > 0
+        ? "triage"
+        : data.calls.count > 0
+          ? "calls"
+          : "other";
+
   return (
     <div className="flex page-shell">
       <TodayLive />
       <PageHeader
         help={PAGE_HELP["today"]}
         title="Today"
+        status={
+          !setup.complete
+            ? `Setup incomplete (${setup.done}/${setup.total})`
+            : totalActions === 0
+              ? "Clear"
+              : `${totalActions} need${totalActions === 1 ? "s" : ""} you`
+        }
         subtitle={
           !setup.complete
-            ? `Finish setup first (${setup.done}/${setup.total} complete), then Today will only show work that needs you.`
+            ? "Finish setup first, then Today will only show work that needs you."
             : totalActions === 0
-              ? "Nothing needs you right now."
-              : `${totalActions} thing${totalActions === 1 ? "" : "s"} need${totalActions === 1 ? "s" : ""} your attention, most urgent first.`
+              ? "Nothing needs you right now. Automation keeps working in the background."
+              : "Most urgent first. Open a row to do the work, or decide right here when you can."
         }
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
-       <div className="mx-auto w-full max-w-5xl space-y-8">
+       <div className="page-stack">
         {/* Site-wide warning while the master pause switch is on. */}
         <AutomationPausedBanner state={automation} />
 
         {/* The one failure that strands everything: the background engine
             isn't running. Say so in plain language, with the fix. */}
         {engineDown && (
-          <div className="rounded-md border border-risk/50 bg-risk/5 px-4 py-3">
-            <p className="text-sm font-semibold text-risk">
+          <div className="status-strip status-strip--risk">
+            <p className="font-semibold text-risk">
               The automation engine is not running.
             </p>
-            <p className="mt-1 text-sm text-slate-700">
+            <p className="mt-1 text-slate-700">
               {engine.lastRunAt
                 ? `Nothing has run since ${timeAgo(engine.lastRunAt)}. `
                 : "No automated work has ever run, though opportunities are waiting. "}
@@ -252,38 +272,21 @@ export default async function TodayPage() {
           </div>
         )}
 
-        {/* Pipeline overview first — scan where everything stands before the
-            action list. Setup (when incomplete) still sits above the work. */}
-        <PipelineStrip counts={data.stageCounts} />
-
-        {/* What the machine did while you were away. */}
-        {digestParts.length > 0 && (
-          <Link
-            href="/agents"
-            className="block rounded-md border border-accent/30 bg-accent-soft/50 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:border-accent/60"
-          >
-            <span className="font-semibold text-accent-strong">Last 24 hours:</span>{" "}
-            {digestParts.join(" · ")}
-            <span className="text-slate-500"> · details in the Automation Log →</span>
-          </Link>
-        )}
-
         {/* Setup stays near the top ONLY while the platform can't run on its
             own — it is blocking work. Once complete it disappears entirely. */}
         {!setup.complete && <SetupChecklist checklist={setup} />}
 
         {totalActions === 0 && setup.complete && (
-          <div className="card mx-auto max-w-lg text-center">
-            <p className="text-3xl">✅</p>
-            <p className="mt-3 text-base font-semibold text-foreground">
-              You&rsquo;re done for today.
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
-              {data.stageCounts.reduce((n, s) => n + s.count, 0).toLocaleString()} opportunities
-              are being worked automatically. Anything that needs a person will show up here,
-              and you&rsquo;ll be warned before any deadline gets close.
-            </p>
-          </div>
+          <EmptyState
+            tone="success"
+            title="You are clear for now"
+            description={`${data.stageCounts.reduce((n, s) => n + s.count, 0).toLocaleString()} opportunities are being worked automatically. Anything that needs a person will show up here.`}
+            action={
+              <Link href="/pipeline" className="btn-ghost text-sm">
+                Browse pipeline
+              </Link>
+            }
+          />
         )}
 
         {data.urgent.length > 0 && (
@@ -291,6 +294,7 @@ export default async function TodayPage() {
             eyebrow="Do this first"
             title={`Deadlines in the next ${rules.urgent_days} day${rules.urgent_days === 1 ? "" : "s"}`}
             count={data.urgent.length}
+            defaultOpen={firstOpen === "urgent"}
           >
             {data.urgent.map((o) => (
               <OppActionRow
@@ -309,6 +313,7 @@ export default async function TodayPage() {
             eyebrow="Needs your decision"
             title="Decide: pursue or pass"
             count={data.triage.length}
+            defaultOpen={firstOpen === "triage"}
           >
             <p className="-mt-1 text-sm text-slate-500">
               These scored in the borderline band, so the system wants your
@@ -323,7 +328,12 @@ export default async function TodayPage() {
         )}
 
         {data.calls.count > 0 && (
-          <Section eyebrow="Keep things moving" title="Calls to make" count={data.calls.count}>
+          <Section
+            eyebrow="Keep things moving"
+            title="Calls to make"
+            count={data.calls.count}
+            defaultOpen={firstOpen === "calls"}
+          >
             <p className="-mt-1 text-sm text-slate-500">
               Each row opens that call&rsquo;s guided workspace: the script,
               project details, and a form that saves the quote and every answer
@@ -374,8 +384,8 @@ export default async function TodayPage() {
                       Skip
                     </ActionButton>
                   </StopClickPropagation>
-                  <span className="btn-primary pointer-events-none ml-auto text-xs sm:ml-0">
-                    Start call →
+                  <span className="ml-auto text-xs font-semibold text-accent-strong sm:ml-0">
+                    Start call
                   </span>
                 </div>
               </Link>
@@ -397,6 +407,7 @@ export default async function TodayPage() {
             eyebrow="Subcontractor outreach"
             title="Follow up with subcontractors"
             count={data.subFollowUps.length}
+            defaultOpen={firstOpen === "other"}
           >
             <p className="-mt-1 text-sm text-slate-500">
               Automated email and follow-up already went out. These still need a
@@ -435,7 +446,7 @@ export default async function TodayPage() {
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <DeadlineBadge deadline={s.deadline} rules={rules} />
-                  <span className="btn-ghost pointer-events-none text-xs">Open opportunity →</span>
+                  <span className="text-xs font-semibold text-accent-strong">Open opportunity</span>
                 </div>
               </Link>
             ))}
@@ -470,7 +481,7 @@ export default async function TodayPage() {
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <DeadlineBadge deadline={q.deadline} rules={rules} />
-                  <span className="btn-ghost pointer-events-none text-xs">Review quote →</span>
+                  <span className="text-xs font-semibold text-accent-strong">Review quote</span>
                 </div>
               </Link>
             ))}
@@ -562,7 +573,7 @@ export default async function TodayPage() {
                   >
                     {c.status}
                   </span>
-                  <span className="btn-ghost pointer-events-none text-xs">Open compliance →</span>
+                  <span className="text-xs font-semibold text-accent-strong">Open compliance</span>
                 </div>
               </Link>
             ))}
@@ -617,8 +628,8 @@ export default async function TodayPage() {
                     without your approval.
                   </p>
                 </div>
-                <span className="btn-ghost pointer-events-none shrink-0 text-xs">
-                  Review drafts →
+                <span className="shrink-0 text-xs font-semibold text-accent-strong">
+                  Review drafts
                 </span>
               </Link>
             )}
@@ -643,6 +654,30 @@ export default async function TodayPage() {
             </ActionButton>
           </div>
         )}
+
+        {/* Orientation chrome below the action list so the first viewport
+            stays about what to do next. */}
+        <details className="group rounded-md border border-border bg-surface/40 px-4 py-3">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-slate-700 [&::-webkit-details-marker]:hidden">
+            Pipeline overview and last 24 hours
+            <span aria-hidden className="text-slate-400 transition-transform group-open:rotate-180">
+              ▾
+            </span>
+          </summary>
+          <div className="mt-4 space-y-4">
+            <PipelineStrip counts={data.stageCounts} />
+            {digestParts.length > 0 && (
+              <Link
+                href="/agents"
+                className="block rounded-md border border-accent/30 bg-accent-soft/50 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:border-accent/60"
+              >
+                <span className="font-semibold text-accent-strong">Last 24 hours:</span>{" "}
+                {digestParts.join(" · ")}
+                <span className="text-slate-500"> · open Automation Log</span>
+              </Link>
+            )}
+          </div>
+        </details>
 
         {/* Completed setup checklist stays available below the work so it
             doesn't compete with actions once the platform is fully wired. */}

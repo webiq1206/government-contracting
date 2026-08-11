@@ -100,7 +100,7 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
               onClick={(e) => e.stopPropagation()}
               className="text-accent hover:underline"
             >
-              📞 {c.phone}
+              {c.phone}
             </a>
           ) : (
             <span className="text-risk">⚠ No phone on file</span>
@@ -157,9 +157,9 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
                 },
               }}
             >
-              Skip
+              Skip this call
             </ActionButton>
-            <span className="btn-primary pointer-events-none text-xs">Start call →</span>
+            <span className="btn-primary text-xs">Start call</span>
           </div>
         </div>
       </div>

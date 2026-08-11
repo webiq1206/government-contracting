@@ -23,12 +23,12 @@ function nextActionForSub(s: OppSubRow): string | null {
       return "Waiting for outreach to send";
     case "no_email":
     case "email_unverified":
-      return s.phone ? "Call — email is not usable yet" : "Find a working email or phone";
+      return s.phone ? "Call (email is not usable yet)" : "Find a working email or phone";
     case "draft":
     case "send_failed":
       return "Fix email transport or retry outreach";
     case "sent":
-      return "Awaiting reply — auto follow-up is scheduled";
+      return "Awaiting reply; auto follow-up is scheduled";
     case "followed_up":
     case "unresponsive":
       return s.phone ? "Call them about pricing" : "Try another contact method";

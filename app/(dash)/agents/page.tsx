@@ -2,6 +2,7 @@ import Link from "next/link";
 import { agentHealth, agentLogsPaged, jobRunsSummary, LOG_PAGE_SIZE } from "@/lib/data";
 import { ROSTER } from "@/lib/agents/registry";
 import { PageHeader } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { AutomationControl } from "@/components/automation-control";
@@ -71,7 +72,14 @@ export default async function AgentsPage({
       <PageHeader
         help={PAGE_HELP["agents"]}
         title="Automation Log"
-        subtitle={`${ROSTER.length} agents run this platform. See what each one did and why, or run one manually.`}
+        status={
+          health.errors24h > 0
+            ? `${health.errors24h} error${health.errors24h === 1 ? "" : "s"} in the last 24 hours`
+            : health.runs24h > 0
+              ? "All agents healthy"
+              : "No runs in the last 24 hours"
+        }
+        subtitle={`${ROSTER.length} agents run this platform. See what each one did, filter the feed, or run one manually.`}
       />
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
@@ -136,7 +144,7 @@ export default async function AgentsPage({
                     href={`/agents?agent=${a.name}`}
                     className="text-xs text-slate-600 hover:text-accent"
                   >
-                    View logs
+                    Filter to this agent
                   </Link>
                   <ActionButton endpoint={`/api/agents/${a.name}/run`} className="btn-ghost">
                     Run now
@@ -163,8 +171,8 @@ export default async function AgentsPage({
               <tbody>
                 {runs.length === 0 && (
                   <tr>
-                    <td className="td text-slate-500" colSpan={4}>
-                      No job runs recorded yet.
+                    <td className="td text-slate-600" colSpan={4}>
+                      No job runs recorded yet. Press Run now on any agent below.
                     </td>
                   </tr>
                 )}
@@ -241,11 +249,30 @@ export default async function AgentsPage({
 
           <div className="space-y-2">
             {logs.length === 0 && (
-              <div className="card text-sm text-slate-500">
-                {q || levelFilter
-                  ? "No log entries match these filters."
-                  : `No log entries${agentFilter ? ` for ${agentFilter}` : ""} yet.`}
-              </div>
+              <EmptyState
+                title={
+                  q || levelFilter
+                    ? "No log entries match these filters"
+                    : agentFilter
+                      ? `No log entries for ${agentFilter} yet`
+                      : "No log entries yet"
+                }
+                description={
+                  q || levelFilter
+                    ? "Try a different search term or clear filters."
+                    : "Press Run now on any agent in the roster, or wait for the next scheduled job."
+                }
+                action={
+                  q || levelFilter ? (
+                    <Link
+                      href={link({ q: undefined, level: undefined, page: undefined })}
+                      className="btn-ghost text-sm"
+                    >
+                      Clear filters
+                    </Link>
+                  ) : undefined
+                }
+              />
             )}
             {logs.map((log) => {
               const level = str(log.level) || "info";

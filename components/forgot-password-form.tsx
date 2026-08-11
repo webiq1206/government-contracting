@@ -21,10 +21,14 @@ export function ForgotPasswordForm() {
 
   if (done) {
     return (
-      <p className="text-sm text-slate-700">
-        If that email is on file, a reset link is on its way. Check your inbox
-        and spam folder.
-      </p>
+      <div className="space-y-3">
+        <p className="text-sm font-medium text-foreground">Check your email</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          If that email is on file, a reset link is on its way. Open the link to
+          choose a new password, then sign in. Check spam if nothing arrives within
+          a few minutes.
+        </p>
+      </div>
     );
   }
 
@@ -39,12 +43,12 @@ export function ForgotPasswordForm() {
           name="email"
           type="email"
           required
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="input mt-1"
           autoComplete="email"
         />
       </div>
       <button type="submit" className="btn-primary w-full" disabled={pending}>
-        {pending ? "Sending…" : "Send reset link"}
+        {pending ? "Sending..." : "Send reset link"}
       </button>
     </form>
   );

@@ -93,10 +93,15 @@ export default async function PipelinePage({
       <PageHeader
         help={PAGE_HELP["pipeline"]}
         title="Pipeline"
+        status={
+          opps.length === 0
+            ? "Empty"
+            : `${opps.length} active · ${(byLane.get("you") ?? []).length} need you`
+        }
         subtitle={
           view === "lanes"
-            ? `${opps.length} active opportunities, grouped by whose turn it is.`
-            : `${opps.length} active opportunities. Columns marked "Automatic" run on their own; "Needs you" columns wait for you (amber cards).`
+            ? "Grouped by whose turn it is. Start with Needs you."
+            : "Full stage board. Amber cards wait on you; the rest run automatically."
         }
       >
         <div className="flex gap-1 rounded-md border border-border p-0.5">
@@ -244,8 +249,9 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
         <DeadlineBadge deadline={o.deadline} rules={rules} />
       </div>
       {o.agency && <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>}
-      <p className="mt-2 text-xs font-medium text-accent">
+      <p className="mt-2 text-xs font-semibold text-accent-strong">
         {NEXT_ACTION[o.stage] ?? o.stage}
+        <span className="ml-1 font-medium text-slate-500">Open</span>
       </p>
     </Link>
   );
@@ -282,7 +288,7 @@ async function PipelineOnboarding() {
       {missing.length > 0 && (
         <ul className="mt-4 space-y-1 text-sm">
           {missing.map((m) => (
-            <li key={m} className="flex items-start gap-2 text-slate-300">
+            <li key={m} className="flex items-start gap-2 text-slate-700">
               <span className="mt-0.5 text-accent">•</span>
               <span>{m}</span>
             </li>

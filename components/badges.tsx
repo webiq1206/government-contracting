@@ -14,16 +14,24 @@ export function ScoreBadge({ score }: { score: number | null }) {
   return <span className={`num text-base font-semibold ${color}`}>{score}</span>;
 }
 
+/**
+ * Page chrome: purpose (title) + optional status line + primary actions.
+ * Children sit in the action slot (right on desktop, below on narrow screens).
+ */
 export function PageHeader({
   title,
   subtitle,
   eyebrow,
+  status,
   help,
   children,
 }: {
   title: string;
+  /** Supporting sentence: what this page is for / how many items. */
   subtitle?: ReactNode;
   eyebrow?: string;
+  /** Optional live status chip/line shown above the subtitle. */
+  status?: ReactNode;
   help?: HelpContent;
   children?: ReactNode;
 }) {
@@ -38,8 +46,11 @@ export function PageHeader({
           {help && <HelpPopover help={help} />}
         </div>
         <div className="mt-2 h-[3px] w-11 rounded-full bg-accent" />
+        {status != null && status !== "" && (
+          <div className="mt-2 text-sm font-medium text-slate-700">{status}</div>
+        )}
         {subtitle != null && subtitle !== "" && (
-          <div className="mt-2 text-sm text-slate-500">{subtitle}</div>
+          <div className="mt-1.5 text-sm leading-relaxed text-slate-500">{subtitle}</div>
         )}
       </div>
       {children && (

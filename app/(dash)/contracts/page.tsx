@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { activeContracts, completedContracts } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { ActionButton } from "@/components/action-button";
 import { PAGE_HELP } from "@/lib/help-content";
 import { currency, shortDate, pct } from "@/lib/format";
@@ -141,7 +143,11 @@ function ContractCard({ c, completed = false }: { c: Record<string, unknown>; co
               c.backup_sub_name ? "text-slate-900" : "text-risk"
             }`}
           >
-            {(c.backup_sub_name as string | null) ?? "⚠ None assigned. Line up a backup from the Subcontractors page in case the primary falls through."}
+            {(c.backup_sub_name as string | null) ?? (
+              <span className="text-risk">
+                None assigned. Line up a backup from the Sub Database in case the primary falls through.
+              </span>
+            )}
           </p>
         </div>
         <div>
@@ -245,24 +251,26 @@ export default async function ContractsPage() {
       <PageHeader
         help={PAGE_HELP["contracts"]}
         title="Contracts"
-        subtitle={`${contracts.length} active${
-          past.length ? ` · ${past.length} completed` : ""
-        } under performance & compliance tracking.`}
+        status={
+          contracts.length === 0
+            ? "No active contracts"
+            : `${contracts.length} active${past.length ? ` · ${past.length} completed` : ""}`
+        }
+        subtitle="Awarded work under performance tracking: milestones, coordination proof, and non-small-business sub spend caps."
       />
       <div className="scroll-thin flex-1 space-y-8 overflow-y-auto p-4">
         <section className="mx-auto max-w-4xl">
           <h2 className="label mb-3">Active ({contracts.length})</h2>
           {contracts.length === 0 ? (
-            <div className="card mx-auto max-w-md text-center">
-              <p className="text-2xl">📁</p>
-              <p className="mt-2 text-sm font-medium text-slate-800">
-                No active contracts.
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Awarded opportunities will appear here for milestone and compliance
-                tracking.
-              </p>
-            </div>
+            <EmptyState
+              title="No active contracts"
+              description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
+              action={
+                <Link href="/pipeline" className="btn-ghost text-sm">
+                  Open pipeline
+                </Link>
+              }
+            />
           ) : (
             <div className="grid grid-cols-1 gap-4">
               {contracts.map((c) => (

@@ -56,12 +56,15 @@ export default async function IntegrationsPage({
     };
   });
 
+  const configuredCount = initial.filter((i) => i.configured).length;
+
   return (
     <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["integrations"]}
         title="Integrations"
-        subtitle="Connect the services that power the automation. Paste a key, press Test to verify it live, then Save. Everything is managed right here."
+        status={`${configuredCount} of ${initial.length} connected`}
+        subtitle="Connect the services that power automation. Paste a key, press Test to verify live, then Save."
       />
 
       <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">

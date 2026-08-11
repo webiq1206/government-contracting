@@ -251,13 +251,13 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
             label="UEI"
             value={uei}
             onChange={setUei}
-            hint="Unique Entity ID — your company’s official ID in SAM.gov. It goes on every federal bid and form."
+            hint="Unique Entity ID: your company's official ID in SAM.gov. It goes on every federal bid and form."
           />
           <Field
             label="CAGE code"
             value={cage}
             onChange={setCage}
-            hint="Commercial and Government Entity code — a five-character ID used on DoD and many federal forms alongside your UEI."
+            hint="Commercial and Government Entity code: a five-character ID used on DoD and many federal forms alongside your UEI."
           />
           <Field label="Home state" value={entityState} onChange={setEntityState} placeholder="ID" />
           <Field label="Business structure" value={structure} onChange={setStructure} placeholder="LLC" />

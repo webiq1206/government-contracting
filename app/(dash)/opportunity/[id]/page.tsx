@@ -29,7 +29,7 @@ import { computeBidReadiness } from "@/lib/domain/bid-readiness";
 import { termTip } from "@/lib/domain/glossary";
 import { resolveSubWork } from "@/lib/domain/sub-work";
 import { buildActivityTimeline } from "@/lib/domain/activity-timeline";
-import { stageLabel, stageTip } from "@/lib/domain/journey";
+import { stageLabel } from "@/lib/domain/journey";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
@@ -170,88 +170,28 @@ export default async function OpportunityPage({ params }: { params: { id: string
         help={PAGE_HELP["opportunity"]}
         title={opp.title ?? "Opportunity"}
         eyebrow={[opp.agency, opp.solicitation_number].filter(Boolean).join(" · ") || undefined}
-        subtitle={
-          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-            {opp.naics_code && (
-              <span className="inline-flex items-center gap-1">
-                NAICS {opp.naics_code}
-                <InfoTip label="What is NAICS?">{termTip("naics")}</InfoTip>
-              </span>
-            )}
-            {opp.set_aside_type && (
-              <span className="inline-flex items-center gap-1">
-                {opp.set_aside_type}
-                <InfoTip label="What is a set-aside?">{termTip("set_aside")}</InfoTip>
-              </span>
-            )}
+        status={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <TierBadge tier={opp.tier} />
+            <span className="badge bg-surface text-slate-600">{stageLabel(opp.stage)}</span>
+            <ScoreBadge score={opp.score} />
+            <DeadlineBadge deadline={opp.deadline} rules={rules} showDate />
           </span>
         }
-      >
-        <span className="inline-flex items-center gap-1">
-          <TierBadge tier={opp.tier} />
-          <InfoTip label="What does this tier mean?">
-            {opp.tier === "pursue"
-              ? termTip("tier_pursue")
-              : opp.tier === "review"
-                ? termTip("tier_review")
-                : termTip("tier_ignore")}
-          </InfoTip>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="badge bg-surface text-slate-600">{stageLabel(opp.stage)}</span>
-          <InfoTip label="What stage is this?">{stageTip(opp.stage)}</InfoTip>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <ScoreBadge score={opp.score} />
-          <InfoTip label="What is the opportunity score?">{termTip("score")}</InfoTip>
-        </span>
-        <DeadlineBadge deadline={opp.deadline} rules={rules} showDate />
-      </PageHeader>
+        subtitle={
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-500">
+            {opp.naics_code ? <span>NAICS {opp.naics_code}</span> : null}
+            {opp.set_aside_type ? <span>{opp.set_aside_type}</span> : null}
+          </span>
+        }
+      />
 
       <div className="scroll-thin flex-1 overflow-y-auto">
-        {/* Workflow — completed / current / next, whose turn. */}
-        <div className="space-y-2 px-5 pt-4" id="workflow">
-          <SectionHeading
-            eyebrow="Current workflow"
-            title="Where this bid stands"
-            tip={termTip("workflow")}
-          >
-            Completed steps, the active step, and who owns the next move.
-          </SectionHeading>
-          <OpportunityJourney stage={opp.stage} />
+        {/* Attention + next action before jump nav so blockers win the fold. */}
+        <div className="space-y-3 px-5 pt-4" id="attention">
+          <AttentionStrip readiness={readiness} opportunityId={opp.id} />
         </div>
-
-        {/* Jump links — named to match the page sections operators scan for. */}
-        <div className="sticky top-0 z-20 mt-2 flex gap-1.5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2 backdrop-blur">
-          {[
-            { href: "#workflow", label: "Workflow" },
-            ...(readiness.attention.length > 0
-              ? [{ href: "#attention", label: "Attention" }]
-              : []),
-            { href: "#overview", label: "Overview" },
-            ...(coverage.trades.length > 0
-              ? [{ href: "#coverage", label: "Coverage" }]
-              : []),
-            { href: "#brief", label: "Brief" },
-            ...(showQuotePanel ? [{ href: "#quotes", label: "Quotes" }] : []),
-            { href: "#subs", label: `Subs${subs.length ? ` (${subs.length})` : ""}` },
-            ...(breakdown ? [{ href: "#score", label: "Score" }] : []),
-            ...(bid ? [{ href: "#submission", label: "Bid" }] : []),
-            { href: "#docs", label: "Documents" },
-            { href: "#activity", label: "Activity" },
-          ].map((s) => (
-            <a
-              key={s.href}
-              href={s.href}
-              className="badge shrink-0 bg-slate-200 text-slate-600 hover:bg-accent/15 hover:text-accent-strong"
-            >
-              {s.label}
-            </a>
-          ))}
-        </div>
-
-        {/* Stage-aware guidance: the single recommended next action. */}
-        <div className="px-5 pt-4">
+        <div className="px-5 pt-2" id="next">
           <NextStepBanner
             opportunityId={opp.id}
             stage={opp.stage}
@@ -271,20 +211,62 @@ export default async function OpportunityPage({ params }: { params: { id: string
           />
         </div>
 
-        {/* Attention first — only when human action or blockers exist. */}
-        <div className="px-5 pt-4">
-          <AttentionStrip readiness={readiness} opportunityId={opp.id} />
+        {/* Jump links named to match the page sections operators scan for. */}
+        <div className="sticky top-0 z-20 mt-3 flex gap-1.5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2 backdrop-blur">
+          {[
+            ...(readiness.attention.length > 0
+              ? [{ href: "#attention", label: "Attention", primary: true as boolean }]
+              : []),
+            {
+              href: "#next",
+              label: "Next step",
+              primary: readiness.attention.length === 0,
+            },
+            { href: "#workflow", label: "Workflow", primary: false },
+            { href: "#overview", label: "Overview", primary: false },
+            ...(coverage.trades.length > 0
+              ? [{ href: "#coverage", label: "Coverage", primary: false }]
+              : []),
+            { href: "#brief", label: "Brief", primary: false },
+            ...(showQuotePanel
+              ? [{ href: "#quotes", label: "Quotes", primary: false }]
+              : []),
+            {
+              href: "#subs",
+              label: `Subs${subs.length ? ` (${subs.length})` : ""}`,
+              primary: false,
+            },
+            ...(breakdown ? [{ href: "#score", label: "Score", primary: false }] : []),
+            ...(bid ? [{ href: "#submission", label: "Bid", primary: false }] : []),
+            { href: "#docs", label: "Documents", primary: false },
+            { href: "#activity", label: "Activity", primary: false },
+          ].map((s) => (
+            <a
+              key={s.href}
+              href={s.href}
+              className={s.primary ? "jump-chip jump-chip--primary" : "jump-chip"}
+            >
+              {s.label}
+            </a>
+          ))}
         </div>
 
-        {/* Overview — scannable essentials before denser panels. */}
-        <div className="scroll-mt-12 space-y-3 px-5 pt-5" id="overview">
+        {/* Workflow — completed / current / next, whose turn. */}
+        <div className="space-y-2 px-5 pt-4" id="workflow">
           <SectionHeading
-            eyebrow="Opportunity overview"
-            title="Essentials"
-            tip={termTip("overview")}
+            eyebrow="Current workflow"
+            title="Where this bid stands"
+            tip={termTip("workflow")}
           >
-            Title-level facts an operator should see in seconds: deadline, score,
-            value, and identity.
+            Completed steps, the active step, and who owns the next move.
+          </SectionHeading>
+          <OpportunityJourney stage={opp.stage} />
+        </div>
+
+        {/* Overview, compact facts (status already in header). */}
+        <div className="scroll-mt-12 space-y-3 px-5 pt-5" id="overview">
+          <SectionHeading eyebrow="Opportunity overview" title="Key facts">
+            Deadline countdown, value, and identity details.
           </SectionHeading>
           <div className="card">
             <div className="mb-4 rounded-md border border-border bg-surface px-3 py-2.5">
@@ -643,7 +625,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
             {/* After a bid exists, revisions live here in a compact form; before a
                 bid, the full-width panel above owns quote entry (no duplication). */}
             {hasBid && !bidSubmitted && (
-              <div className="card scroll-mt-12" id="quotes">
+              <div className="card scroll-mt-12" id="revise-quotes">
                 <p className="eyebrow mb-3">Revise quotes</p>
                 <p className="mb-3 text-xs leading-relaxed text-slate-500">
                   Saving a new quote re-prices and rebuilds the bid.

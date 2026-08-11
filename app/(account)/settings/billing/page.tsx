@@ -11,6 +11,40 @@ import { stripeEnabled } from "@/lib/billing/stripe";
 
 export const dynamic = "force-dynamic";
 
+const SUBSCRIPTION_STATUS_LABEL: Record<string, string> = {
+  active: "Active",
+  trialing: "Trial",
+  canceled: "Canceled",
+  past_due: "Past due",
+  unpaid: "Unpaid",
+  incomplete: "Incomplete",
+  incomplete_expired: "Expired",
+  none: "No subscription",
+  paused: "Paused",
+};
+
+function subscriptionStatusLabel(status: string | null | undefined): string {
+  if (!status) return "No subscription";
+  return SUBSCRIPTION_STATUS_LABEL[status] ?? status.replace(/_/g, " ");
+}
+
+function subscriptionStatusClass(status: string | null | undefined): string {
+  switch (status) {
+    case "active":
+    case "trialing":
+      return "text-pursue";
+    case "past_due":
+    case "unpaid":
+    case "incomplete":
+      return "text-risk";
+    case "canceled":
+    case "incomplete_expired":
+      return "text-slate-600";
+    default:
+      return "text-slate-800";
+  }
+}
+
 export default async function BillingSettingsPage({
   searchParams,
 }: {
@@ -21,17 +55,34 @@ export default async function BillingSettingsPage({
     ? await getOrganization(user.organizationId)
     : null;
 
+  const status = org?.subscription_status ?? "none";
+  const statusLabel = subscriptionStatusLabel(status);
+  const isActive = status === "active" || status === "trialing";
+  const hasStripeCustomer = Boolean(org?.stripe_customer_id);
+  const canCheckout = stripeEnabled() && !hasStripeCustomer;
+
   const planLabel =
     org?.plan_key === "founding"
       ? `Founding · $${FOUNDING_MONTHLY_USD.toLocaleString()}/mo`
       : org?.plan_key === "standard"
         ? `Standard · $${STANDARD_MONTHLY_USD.toLocaleString()}/mo`
-        : "No active plan";
+        : "No plan selected";
+
+  const primaryCta = hasStripeCustomer ? (
+    <Link href="/api/billing/portal" className="btn-primary">
+      Open billing portal
+    </Link>
+  ) : canCheckout ? (
+    <Link href="/api/billing/checkout?plan=standard" className="btn-primary">
+      Start subscription
+    </Link>
+  ) : null;
 
   return (
     <div className="flex h-screen flex-col">
       <PageHeader
         title="Billing"
+        status={statusLabel}
         subtitle="Subscription, invoices, and cancellation for your organization."
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
@@ -53,8 +104,13 @@ export default async function BillingSettingsPage({
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <dt className="label">Status</dt>
-              <dd className="mt-0.5 text-slate-800">
-                {org?.subscription_status ?? "none"}
+              <dd className={`mt-0.5 font-medium ${subscriptionStatusClass(status)}`}>
+                {statusLabel}
+                {org?.cancel_at_period_end && isActive ? (
+                  <span className="mt-0.5 block text-xs font-normal text-slate-600">
+                    Cancels at period end
+                  </span>
+                ) : null}
               </dd>
             </div>
             <div>
@@ -66,7 +122,7 @@ export default async function BillingSettingsPage({
               </dd>
             </div>
             <div>
-              <dt className="label">Renews / ends</dt>
+              <dt className="label">{org?.cancel_at_period_end ? "Access until" : "Renews on"}</dt>
               <dd className="mt-0.5 text-slate-800">
                 {org?.current_period_end
                   ? shortDate(org.current_period_end)
@@ -74,34 +130,23 @@ export default async function BillingSettingsPage({
               </dd>
             </div>
             <div>
-              <dt className="label">Cancel at period end</dt>
+              <dt className="label">Billing portal</dt>
               <dd className="mt-0.5 text-slate-800">
-                {org?.cancel_at_period_end ? "Yes" : "No"}
+                {hasStripeCustomer ? "Available" : "Set up after checkout"}
               </dd>
             </div>
           </dl>
 
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            {stripeEnabled() && org?.stripe_customer_id ? (
-              <Link href="/api/billing/portal" className="btn-primary">
-                Manage billing in Stripe
-              </Link>
-            ) : (
-              <Link
-                href="/api/billing/checkout?plan=standard"
-                className="btn-primary"
-              >
-                Start subscription
-              </Link>
-            )}
+            {primaryCta}
             <Link href="/settings/profile" className="btn-ghost">
               Company profile
             </Link>
           </div>
           <p className="text-xs leading-relaxed text-slate-500">
-            Cancel anytime in the Stripe customer portal. Founding rates stay in
-            effect for the life of an active subscription and do not transfer to a
-            new organization after cancellation.
+            {hasStripeCustomer
+              ? "Update payment method, view invoices, or cancel anytime in the Stripe customer portal. Founding rates stay in effect for the life of an active subscription and do not transfer to a new organization after cancellation."
+              : "Start a subscription to unlock the full platform. Founding rates stay in effect for the life of an active subscription."}
           </p>
         </div>
       </div>

@@ -110,6 +110,15 @@ body {
   .btn-success {
     @apply bg-pursue text-white hover:bg-pursue-strong;
   }
+  /* Secondary action: quieter than primary, stronger than ghost. */
+  .btn-secondary {
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-foreground/20 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/40 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  @media (min-width: 768px) {
+    .btn-secondary {
+      min-height: 0;
+    }
+  }
 
   /* Surfaces */
   .card {
@@ -117,6 +126,47 @@ body {
   }
   .card-hover {
     @apply transition-colors hover:border-border-strong hover:bg-surface;
+  }
+
+  /* Status strips: attention / risk / calm success. */
+  .status-strip {
+    @apply rounded-md border px-4 py-3 text-sm;
+  }
+  .status-strip--risk {
+    @apply border-risk/40 bg-risk/5 text-slate-800;
+    border-left-width: 3px;
+    border-left-color: #A2453C;
+  }
+  .status-strip--review {
+    @apply border-review/40 bg-review/5 text-slate-800;
+    border-left-width: 3px;
+    border-left-color: #855C2C;
+  }
+  .status-strip--ok {
+    @apply border-pursue/35 bg-pursue/5 text-slate-800;
+    border-left-width: 3px;
+    border-left-color: #5A6B52;
+  }
+
+  /* Empty / calm states */
+  .empty-state {
+    @apply card mx-auto max-w-lg text-center;
+  }
+
+  /* Sticky jump nav chips */
+  .jump-chip {
+    @apply badge shrink-0 border border-border bg-surface text-slate-600 transition-colors hover:border-accent/50 hover:bg-accent/10 hover:text-accent-strong;
+  }
+  .jump-chip--primary {
+    @apply border-accent/40 bg-accent-soft text-accent-strong;
+  }
+
+  /* Section rhythm on long dash pages */
+  .page-stack {
+    @apply mx-auto w-full max-w-5xl space-y-8;
+  }
+  .page-stack-tight {
+    @apply mx-auto w-full max-w-5xl space-y-5;
   }
 
   /* Badges / labels */

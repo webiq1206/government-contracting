@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { ActionButton } from "@/components/action-button";
 import { OutreachApprovalCard } from "@/components/outreach-approval";
 import {
@@ -79,7 +81,14 @@ export default async function AuthorityPage() {
       <PageHeader
         title="Site Authority"
         help={PAGE_HELP["authority"]}
-        subtitle="Autonomous backlink discovery + qualification. Outreach is drafted for you, then you approve before anything is sent."
+        status={
+          connected
+            ? dr != null
+              ? `DR ${dr} · ${pending.length} draft${pending.length === 1 ? "" : "s"} awaiting approval`
+              : `${prospects.length} prospect${prospects.length === 1 ? "" : "s"} qualified`
+            : "Ahrefs not connected"
+        }
+        subtitle="Autonomous backlink discovery and qualification. Outreach is drafted for you; you approve before anything sends."
       >
         {connected && (
           <ActionButton
@@ -145,10 +154,10 @@ export default async function AuthorityPage() {
         <section>
           <h2 className="label mb-2">Outreach awaiting your approval</h2>
           {pending.length === 0 ? (
-            <div className="card text-sm text-slate-600">
-              Nothing waiting. Draft outreach from a qualified prospect below, review the message,
-              then approve it here. Drafts are never sent automatically.
-            </div>
+            <EmptyState
+              title="Nothing waiting for approval"
+              description="Draft outreach from a qualified prospect below, review the message, then approve it here. Drafts are never sent automatically."
+            />
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               {pending.map((o) => (
@@ -192,12 +201,28 @@ export default async function AuthorityPage() {
             </span>
           </h2>
           {prospects.length === 0 ? (
-            <div className="card text-sm text-slate-600">
-              No prospects yet.{" "}
-              {connected
-                ? "Run a scan to discover competitor backlink opportunities."
-                : "Connect Ahrefs to start discovering opportunities."}
-            </div>
+            <EmptyState
+              title="No prospects yet"
+              description={
+                connected
+                  ? "Run a scan to discover competitor backlink opportunities."
+                  : "Connect Ahrefs on Integrations to start discovering opportunities."
+              }
+              action={
+                connected ? (
+                  <ActionButton
+                    endpoint="/api/agents/backlink-scout/run"
+                    className="btn-primary text-sm"
+                  >
+                    Run scan now
+                  </ActionButton>
+                ) : (
+                  <Link href="/settings/integrations" className="btn-primary text-sm">
+                    Connect Ahrefs
+                  </Link>
+                )
+              }
+            />
           ) : (
             <div className="space-y-2">
               {[...highTier, ...otherTier].map((p) => (
@@ -212,7 +237,7 @@ export default async function AuthorityPage() {
           <div>
             <h2 className="label mb-2">Recently earned links</h2>
             {changes.recent.length === 0 ? (
-              <div className="card text-sm text-slate-600">No backlinks recorded yet.</div>
+              <EmptyState title="No backlinks recorded yet" />
             ) : (
               <div className="card divide-y divide-border p-0">
                 {changes.recent.map((b) => (
@@ -229,7 +254,7 @@ export default async function AuthorityPage() {
           <div>
             <h2 className="label mb-2 text-risk">Lost links</h2>
             {changes.lost.length === 0 ? (
-              <div className="card text-sm text-slate-600">No lost links. 🎉</div>
+              <EmptyState title="No lost links" tone="success" />
             ) : (
               <div className="card divide-y divide-border p-0">
                 {changes.lost.map((b) => (

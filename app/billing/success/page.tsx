@@ -27,25 +27,25 @@ export default async function BillingSuccessPage({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <main className="flex min-h-screen items-center justify-center bg-surface px-4">
       <div className="card max-w-lg text-center">
         <p className="eyebrow text-pursue">Subscription active</p>
         <h1 className="mt-2 font-display text-3xl text-foreground">
           Welcome to Brost Co
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-slate-600">
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           Your account is ready. Next, finish company setup so Brost Co can find
           matching opportunities and build your Today queue.
         </p>
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-          <Link href="/today" className="btn-primary">
-            Go to Today
-          </Link>
-          <Link href="/settings/profile" className="btn-ghost">
+          <Link href="/settings/profile" className="btn-primary">
             Complete company profile
+          </Link>
+          <Link href="/today" className="btn-ghost">
+            Go to Today
           </Link>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

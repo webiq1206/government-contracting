@@ -27,15 +27,15 @@ interface Item {
 
 const PRIMARY: Item[] = [
   { href: "/today", label: "Today", hint: "Everything that needs you" },
-  { href: "/call-queue", label: "Calls to make", hint: "Work them one after another", badge: "calls" },
-  { href: "/pipeline", label: "All opportunities", hint: "Every record, by whose turn it is" },
+  { href: "/call-queue", label: "Call Queue", hint: "Work calls one after another", badge: "calls" },
+  { href: "/pipeline", label: "Pipeline", hint: "Every record, by whose turn it is" },
+  { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass", badge: "review" },
 ];
 
 const MORE: { section: string; items: Item[] }[] = [
   {
     section: "Records",
     items: [
-      { href: "/review", label: "Decisions waiting", badge: "review" },
       { href: "/subs", label: "Subcontractors" },
       { href: "/contracts", label: "Contracts" },
       { href: "/compliance", label: "Renewals & compliance" },

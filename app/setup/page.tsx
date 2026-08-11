@@ -24,15 +24,15 @@ export default async function SetupPage() {
             <Wordmark className="h-12" />
           </h1>
           <div className="mx-auto mt-4 h-px w-12 bg-accent" />
-          <p className="mt-6 text-sm text-slate-500">
+          <p className="mt-6 text-sm text-muted-foreground">
             First-run setup. Create the operator account that will sign in to review
             today&rsquo;s pipeline.
           </p>
         </div>
         <SetupForm />
-        <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
+        <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
           You&rsquo;ll see this screen only once. After setup, sign in at{" "}
-          <span className="font-mono text-slate-500">/login</span>.
+          <span className="font-mono text-muted-foreground">/login</span>.
         </p>
       </div>
     </main>

@@ -66,7 +66,7 @@ export function SignupForm({
           id="name"
           name="name"
           required
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="input mt-1"
           autoComplete="name"
         />
       </div>
@@ -78,7 +78,7 @@ export function SignupForm({
           id="companyName"
           name="companyName"
           required
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="input mt-1"
           autoComplete="organization"
         />
       </div>
@@ -91,7 +91,7 @@ export function SignupForm({
           name="email"
           type="email"
           required
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="input mt-1"
           autoComplete="email"
         />
       </div>
@@ -105,21 +105,21 @@ export function SignupForm({
           type="password"
           required
           minLength={10}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="input mt-1"
           autoComplete="new-password"
         />
-        <p className="mt-1 text-xs text-slate-500">At least 10 characters.</p>
+        <p className="mt-1 text-xs text-muted-foreground">At least 10 characters.</p>
       </div>
       <input type="hidden" name="plan" value={plan} />
       {error && <p className="text-sm text-risk">{error}</p>}
       <button type="submit" className="btn-primary w-full" disabled={pending}>
         {pending
-          ? "Creating account…"
+          ? "Creating account..."
           : plan === "founding"
             ? "Continue to founding checkout"
             : "Continue to checkout"}
       </button>
-      <p className="text-center text-xs text-slate-500">
+      <p className="text-center text-xs text-muted-foreground">
         Already have an account?{" "}
         <Link href="/login" className="text-accent hover:underline">
           Log in

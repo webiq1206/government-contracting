@@ -74,7 +74,7 @@ export function SetupForm() {
           minLength={12}
           required
         />
-        <p className="mt-1 text-xs text-slate-500">At least 12 characters.</p>
+        <p className="mt-1 text-xs text-muted-foreground">At least 12 characters.</p>
       </div>
       <div>
         <label className="label">Confirm password</label>

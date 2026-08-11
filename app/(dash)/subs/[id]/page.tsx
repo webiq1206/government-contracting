@@ -4,7 +4,6 @@ import { subDetail } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { SubNotes } from "@/components/sub-notes";
 import { SubEditor } from "@/components/sub-editor";
-import { InfoTip } from "@/components/info-tip";
 import {
   contactBadgeClass,
   contactStatusHint,
@@ -26,18 +25,15 @@ function s(v: unknown): string | null {
 function Stat({
   label,
   value,
-  tip,
+  hint,
 }: {
   label: string;
   value: React.ReactNode;
-  tip?: string;
+  hint?: string;
 }) {
   return (
-    <div className="card">
-      <div className="label flex items-center gap-1">
-        {label}
-        {tip ? <InfoTip label={`About ${label}`}>{tip}</InfoTip> : null}
-      </div>
+    <div className="card" title={hint}>
+      <div className="label">{label}</div>
       <div className="mt-1 text-lg font-semibold text-slate-900">{value}</div>
     </div>
   );
@@ -62,23 +58,26 @@ export default async function SubDetailPage({
     <div className="flex page-shell">
       <PageHeader
         title={sub.company_name}
+        status={
+          openPairings > 0
+            ? `${openPairings} open job${openPairings === 1 ? "" : "s"} · ${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`
+            : `${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`
+        }
         subtitle={
           [sub.owner_name, [sub.city, sub.state].filter(Boolean).join(", ")]
             .filter(Boolean)
-            .join(" · ") || undefined
+            .join(" · ") || "Location not on file"
         }
       >
         {sub.is_preferred && (
-          <span className="badge bg-review/15 text-review">★ Preferred</span>
+          <span className="badge bg-review/15 text-review">Preferred</span>
         )}
         {contactLabel && (
           <span
-            className={`badge inline-flex items-center gap-1 ${contactBadgeClass(sub.contact_status)}`}
+            className={`badge ${contactBadgeClass(sub.contact_status)}`}
+            title={contactStatusHint(sub.contact_status)}
           >
             {contactLabel}
-            <InfoTip label={`Contactability: ${contactLabel}`}>
-              {contactStatusHint(sub.contact_status)}
-            </InfoTip>
           </span>
         )}
         <Link href="/subs" className="btn-ghost">
@@ -91,32 +90,32 @@ export default async function SubDetailPage({
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
           <Stat
             label="Emails sent"
-            tip="Outbound emails saved on this sub’s record across every opportunity."
+            hint="Outbound emails saved on this sub's record across every opportunity."
             value={<span className="num">{stats.emails_sent}</span>}
           />
           <Stat
             label="Replies"
-            tip="Inbound emails captured for this sub."
+            hint="Inbound emails captured for this sub."
             value={<span className="num">{stats.emails_in}</span>}
           />
           <Stat
             label="Calls logged"
-            tip="Completed call workspace saves recorded as call history."
+            hint="Completed call workspace saves recorded as call history."
             value={<span className="num">{stats.calls_logged}</span>}
           />
           <Stat
             label="Skipped calls"
-            tip="Times an operator chose not to call from Today or the Call Queue."
+            hint="Times an operator chose not to call from Today or the Call Queue."
             value={<span className="num">{stats.skips_logged}</span>}
           />
           <Stat
             label="Touches"
-            tip="All communications: emails, calls, notes, and skips."
+            hint="All communications: emails, calls, notes, and skips."
             value={<span className="num">{stats.touches}</span>}
           />
           <Stat
             label="Last contacted"
-            tip="Updated automatically when outreach or a completed call is recorded."
+            hint="Updated automatically when outreach or a completed call is recorded."
             value={
               <span className="text-sm">
                 {sub.last_contacted ? timeAgo(sub.last_contacted) : "-"}
@@ -125,7 +124,7 @@ export default async function SubDetailPage({
           />
           <Stat
             label="Open jobs"
-            tip="Active opportunities this sub is currently paired to."
+            hint="Active opportunities this sub is currently paired to."
             value={<span className="num">{openPairings}</span>}
           />
         </div>
@@ -140,7 +139,10 @@ export default async function SubDetailPage({
             and quote status. Reuse this relationship instead of treating them as new.
           </p>
           {pairings.length === 0 ? (
-            <p className="text-sm text-slate-500">Not paired to any opportunities yet.</p>
+            <p className="rounded-md border border-dashed border-border bg-surface/60 px-4 py-5 text-center text-sm text-slate-600">
+              Not paired to any opportunities yet. When Brost Co pairs this company to a
+              pursued job, the opportunity, outreach status, and quotes show here.
+            </p>
           ) : (
             <ul className="divide-y divide-border text-sm">
               {pairings.map((p) => {
@@ -251,7 +253,10 @@ export default async function SubDetailPage({
                 as work happens across opportunities.
               </p>
               {communications.length === 0 ? (
-                <p className="text-sm text-slate-500">No communications logged yet.</p>
+                <p className="rounded-md border border-dashed border-border bg-surface/60 px-4 py-5 text-center text-sm text-slate-600">
+                  No communications logged yet. Emails, replies, calls, skips, and notes
+                  appear here automatically as outreach runs.
+                </p>
               ) : (
                 <div className="space-y-3">
                   {communications.map((c, i) => {

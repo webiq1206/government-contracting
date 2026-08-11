@@ -10,8 +10,8 @@ import { usePathname } from "next/navigation";
  */
 const TABS: { href: string; label: string; icon: string; countKey?: "review" | "calls" }[] = [
   { href: "/today", label: "Today", icon: "☀︎" },
-  { href: "/pipeline", label: "Pipeline", icon: "▤" },
   { href: "/call-queue", label: "Calls", icon: "☏", countKey: "calls" },
+  { href: "/pipeline", label: "Pipeline", icon: "▤" },
   { href: "/review", label: "Review", icon: "✓", countKey: "review" },
 ];
 

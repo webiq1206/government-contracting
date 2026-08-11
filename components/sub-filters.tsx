@@ -42,7 +42,7 @@ export function SubFilters({ trade, state, minReliability, q }: SubFiltersProps)
         <input
           id="sub-q"
           className="input"
-          placeholder="Company or owner…"
+          placeholder="Company or owner name"
           value={qVal}
           onChange={(e) => setQVal(e.target.value)}
           onKeyDown={onKeyDown}

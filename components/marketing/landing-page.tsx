@@ -148,7 +148,7 @@ export function LandingPage({
         }}
       />
 
-      <MarketingNav loginHref={loginHref} signupHref={signupHref} />
+      <MarketingNav loginHref={loginHref} signupHref={signupHref} onLanding />
 
       <main>
         {/* Hero - full bleed, no cards */}
@@ -182,7 +182,7 @@ export function LandingPage({
 
             <div className="mkt-hero-cta mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link href={signupHref} className="btn-primary bg-gold text-foreground hover:bg-gold/90">
-                Lock in {foundingLabel}/month
+                {promoActive ? `Lock in ${foundingLabel}/month` : "Get started"}
               </Link>
               <a href="#how-it-works" className="btn-ghost border-stone-600 text-background hover:bg-white/5">
                 See how it works
@@ -512,21 +512,39 @@ export function LandingPage({
           <div className="mx-auto max-w-6xl">
             <SectionHeading
               eyebrow="Pricing"
-              title="Founding members lock in a lower monthly rate."
+              title={
+                promoActive
+                  ? "Founding members lock in a lower monthly rate."
+                  : "One subscription, full pipeline coverage."
+              }
               lead="One subscription covers monitoring, scoring, sourcing, bid assembly, and Today. No per-seat surprise fees on the base plan."
             />
 
             <div className="mt-10 max-w-lg border border-border-strong bg-surface p-6 sm:p-8">
               <p className="label">Monthly subscription</p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                <span className="num line-through">{standardLabel}</span>
-                <span className="ml-2">standard</span>
-              </p>
-              <p className="mt-1 font-display text-4xl font-semibold text-foreground">
-                <span className="num">{foundingLabel}</span>
-                <span className="text-lg font-normal text-muted-foreground">/mo</span>
-              </p>
-              <p className="mt-1 text-sm text-accent-strong">Founding rate, locked in while subscribed</p>
+              {promoActive ? (
+                <>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    <span className="num line-through">{standardLabel}</span>
+                    <span className="ml-2">standard</span>
+                  </p>
+                  <p className="mt-1 font-display text-4xl font-semibold text-foreground">
+                    <span className="num">{foundingLabel}</span>
+                    <span className="text-lg font-normal text-muted-foreground">/mo</span>
+                  </p>
+                  <p className="mt-1 text-sm text-accent-strong">
+                    Founding rate, locked in while subscribed
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 font-display text-4xl font-semibold text-foreground">
+                    <span className="num">{standardLabel}</span>
+                    <span className="text-lg font-normal text-muted-foreground">/mo</span>
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">Standard rate, billed monthly</p>
+                </>
+              )}
 
               {showCountdown && (
                 <div className="mt-6">
@@ -542,7 +560,9 @@ export function LandingPage({
               </ul>
 
               <Link href={signupHref} className="btn-primary mt-8 w-full">
-                Lock in {foundingLabel}/month
+                {promoActive
+                  ? `Lock in ${foundingLabel}/month`
+                  : `Subscribe at ${standardLabel}/month`}
               </Link>
             </div>
           </div>
@@ -583,15 +603,24 @@ export function LandingPage({
               Put federal contracting on a schedule you can keep.
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-stone-300">
-              Join founding members at {foundingLabel}/month. Setup takes an
-              afternoon. Today tells you what to do every morning after that.
+              {promoActive ? (
+                <>
+                  Join founding members at {foundingLabel}/month. Setup takes an
+                  afternoon. Today tells you what to do every morning after that.
+                </>
+              ) : (
+                <>
+                  Subscribe at {standardLabel}/month. Setup takes an afternoon.
+                  Today tells you what to do every morning after that.
+                </>
+              )}
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link
                 href={signupHref}
                 className="btn-primary bg-gold text-foreground hover:bg-gold/90"
               >
-                Lock in {foundingLabel}/month
+                {promoActive ? `Lock in ${foundingLabel}/month` : "Get started"}
               </Link>
               <Link href={loginHref} className="btn-ghost border-stone-600 text-background hover:bg-white/5">
                 Login to existing account

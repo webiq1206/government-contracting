@@ -18,7 +18,8 @@ export default async function RulesPage() {
       <PageHeader
         help={PAGE_HELP["rules"]}
         title="Automation Rules"
-        subtitle="Guardrails that keep the pipeline clean: deadline warnings, lead-time limits, and cleanup. Changes apply everywhere the moment you save."
+        status="Pipeline guardrails"
+        subtitle="Deadline warnings, minimum lead-time intake, and archive retention. Changes apply everywhere the moment you save."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <div className="mx-auto w-full max-w-4xl">

@@ -1,6 +1,7 @@
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { query } from "@/lib/db";
 import { PageHeader } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { shortDate } from "@/lib/format";
@@ -33,22 +34,20 @@ export default async function ProfilePage() {
       <PageHeader
         help={PAGE_HELP["profile"]}
         title="Company Profile"
-        subtitle={
+        status={
           profile
             ? `Version ${profile.version} · updated ${shortDate(profile.updated_at)}`
             : "No active profile"
         }
+        subtitle="Legal identity, trades, certifications, and scoring thresholds. Scoring and eligibility checks use this as the source of truth."
       />
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {!json ? (
-          <div className="card text-sm text-slate-600">
-            No active company profile found. Run{" "}
-            <code className="rounded bg-slate-200 px-1.5 py-0.5 font-mono text-xs text-slate-800">
-              npm run db:seed
-            </code>{" "}
-            to create the default profile.
-          </div>
+          <EmptyState
+            title="No active company profile"
+            description="Run npm run db:seed to create the default profile, or save a new profile below once the editor loads."
+          />
         ) : (
           <>
             <AutomationSettings

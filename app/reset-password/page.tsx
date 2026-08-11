@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ResetPasswordForm } from "@/components/reset-password-form";
+import { Wordmark } from "@/components/wordmark";
 
 export const metadata: Metadata = {
   title: "Choose a new password | Brost Co",
@@ -14,12 +15,22 @@ export default function ResetPasswordPage({
 }) {
   const token = searchParams?.token ?? "";
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <main className="flex min-h-screen items-center justify-center bg-surface px-4 py-12">
       <div className="w-full max-w-md">
-        <Link href="/" className="font-display text-xl">
-          BROST <span className="font-accent">CO</span>
-        </Link>
-        <h1 className="mt-6 font-display text-3xl">Choose a new password</h1>
+        <div className="mb-8 text-center">
+          <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
+          <h1 className="flex justify-center">
+            <Link href="/">
+              <Wordmark className="h-12" />
+            </Link>
+          </h1>
+          <div className="mx-auto mt-4 h-px w-12 bg-accent" />
+        </div>
+
+        <h2 className="font-display text-2xl text-foreground">Choose a new password</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Enter a new password for your account. You will sign in on the next screen.
+        </p>
         <div className="card mt-6">
           {token ? (
             <ResetPasswordForm token={token} />
@@ -34,6 +45,6 @@ export default function ResetPasswordPage({
           )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

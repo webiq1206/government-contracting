@@ -22,7 +22,7 @@ export default async function LoginPage() {
           <div className="mx-auto mt-4 h-px w-12 bg-accent" />
         </div>
         <LoginForm />
-        <p className="mt-6 text-center text-xs leading-relaxed text-slate-500">
+        <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
           Federal opportunities, scored and briefed automatically. Sign in to review
           today&rsquo;s pipeline.
         </p>

@@ -46,7 +46,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           type="password"
           required
           minLength={10}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="input mt-1"
           autoComplete="new-password"
         />
       </div>
@@ -60,13 +60,13 @@ export function ResetPasswordForm({ token }: { token: string }) {
           type="password"
           required
           minLength={10}
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="input mt-1"
           autoComplete="new-password"
         />
       </div>
       {error && <p className="text-sm text-risk">{error}</p>}
       <button type="submit" className="btn-primary w-full" disabled={pending}>
-        {pending ? "Saving…" : "Update password"}
+        {pending ? "Saving..." : "Update password"}
       </button>
     </form>
   );

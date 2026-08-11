@@ -7,9 +7,9 @@ import { countdown } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
 import { InfoTip } from "@/components/info-tip";
-import { termTip } from "@/lib/domain/glossary";
 import type { Opportunity } from "@/lib/types";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
+import { EmptyState } from "@/components/empty-state";
 
 export const dynamic = "force-dynamic";
 
@@ -54,18 +54,8 @@ function ReviewCard({ o }: { o: Opportunity }) {
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className="inline-flex items-center gap-1">
-            <ScoreBadge score={o.score} />
-            <StopClickPropagation className="inline-flex">
-              <InfoTip label="What is the opportunity score?">{termTip("score")}</InfoTip>
-            </StopClickPropagation>
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <TierBadge tier={o.tier} />
-            <StopClickPropagation className="inline-flex">
-              <InfoTip label="What does Review tier mean?">{termTip("tier_review")}</InfoTip>
-            </StopClickPropagation>
-          </span>
+          <ScoreBadge score={o.score} />
+          <TierBadge tier={o.tier} />
         </div>
       </div>
 
@@ -90,14 +80,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
           </p>
         </div>
         <div>
-          <p className="label inline-flex items-center gap-1">
-            Past performance
-            <StopClickPropagation className="inline-flex">
-              <InfoTip label="What is past performance?">
-                {termTip("past_performance")}
-              </InfoTip>
-            </StopClickPropagation>
-          </p>
+          <p className="label">Past performance</p>
           <p className="mt-0.5 text-sm text-slate-900">
             {o.past_perf_classification
               ? (PAST_PERF_LABEL[o.past_perf_classification] ??
@@ -170,10 +153,8 @@ function ReviewCard({ o }: { o: Opportunity }) {
         </StopClickPropagation>
       )}
 
-      <StopClickPropagation className="flex items-center justify-between gap-2 border-t border-border pt-3">
-        <span className="text-xs text-slate-500">
-          Open the brief for full context, or decide here →
-        </span>
+      <StopClickPropagation className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        <span className="text-xs font-medium text-accent-strong">Open brief</span>
         <div className="flex gap-2">
           <ActionButton
             endpoint={`/api/opportunities/${o.id}/action`}
@@ -181,7 +162,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
             className="btn-success"
             toast={{ message: "Pursued. Analysis and pricing are running." }}
           >
-            Pursue
+            Pursue opportunity
           </ActionButton>
           <ActionButton
             endpoint={`/api/opportunities/${o.id}/action`}
@@ -195,7 +176,7 @@ function ReviewCard({ o }: { o: Opportunity }) {
               },
             }}
           >
-            Dismiss
+            Pass on this
           </ActionButton>
         </div>
       </StopClickPropagation>
@@ -210,21 +191,26 @@ export default async function ReviewPage() {
     <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["review"]}
-        title="Review Queue"
-        subtitle={`${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} awaiting triage (scored 50-69).`}
+        title="Review"
+        status={
+          opps.length === 0
+            ? "Nothing waiting"
+            : `${opps.length} opportunit${opps.length === 1 ? "y" : "ies"} need a decision`
+        }
+        subtitle="Borderline scores (50-69). Pursue or pass here, or open the brief for full context."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-4">
         {opps.length === 0 ? (
-          <div className="card mx-auto mt-8 max-w-md text-center">
-            <p className="text-2xl">✅</p>
-            <p className="mt-2 text-sm font-medium text-slate-800">
-              No items awaiting review.
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Borderline opportunities will appear here for a quick pursue or
-              dismiss decision.
-            </p>
-          </div>
+          <EmptyState
+            tone="success"
+            title="No decisions waiting"
+            description="Borderline opportunities will appear here for a quick pursue or pass decision."
+            action={
+              <Link href="/today" className="btn-ghost text-sm">
+                Back to Today
+              </Link>
+            }
+          />
         ) : (
           <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4">
             {opps.map((o) => (

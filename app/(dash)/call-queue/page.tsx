@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { callQueue } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { CallCard } from "@/components/call-card";
+import { EmptyState } from "@/components/empty-state";
 
 export const dynamic = "force-dynamic";
 
@@ -20,20 +22,24 @@ export default async function CallQueuePage({
       <PageHeader
         help={PAGE_HELP["call-queue"]}
         title="Call Queue"
-        subtitle={`${cards.length} call${cards.length === 1 ? "" : "s"} to make · soonest deadline first`}
+        status={
+          cards.length === 0
+            ? "No calls waiting"
+            : `${cards.length} call${cards.length === 1 ? "" : "s"} ready`
+        }
+        subtitle="Soonest deadline first. Open a card to start the guided call workspace."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         {cards.length === 0 ? (
-          <div className="card mx-auto mt-8 max-w-md text-center">
-            <p className="text-3xl">📞</p>
-            <p className="mt-3 text-base font-semibold text-foreground">
-              No calls in the queue.
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
-              A call card appears here for every sub we email, so you can follow
-              up by phone. Subs who reply are marked and sorted to the top.
-            </p>
-          </div>
+          <EmptyState
+            title="No calls in the queue"
+            description="A call card appears here for every sub we email, so you can follow up by phone. Subs who reply are marked and sorted to the top."
+            action={
+              <Link href="/today" className="btn-ghost text-sm">
+                Back to Today
+              </Link>
+            }
+          />
         ) : (
           <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4 lg:grid-cols-2">
             {cards.map((c) => (

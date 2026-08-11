@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { subDatabase } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { SubFilters } from "@/components/sub-filters";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
@@ -28,17 +29,23 @@ export default async function SubsPage({
 
   const subs = await subDatabase(filters);
   const contactable = subs.filter((s) => s.email && s.email_verified).length;
+  const hasFilters = Boolean(
+    filters.trade || filters.state || filters.q || minReliability != null
+  );
 
   return (
     <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["subs"]}
         title="Sub Database"
-        subtitle={`${subs.length} subcontractor${subs.length === 1 ? "" : "s"}${
-          filters.trade || filters.state || filters.q || minReliability != null
-            ? " matching filters"
-            : ""
-        } · ${contactable} contactable by email`}
+        status={
+          subs.length === 0 && !hasFilters
+            ? "Empty"
+            : `${subs.length} subcontractor${subs.length === 1 ? "" : "s"}${
+                hasFilters ? " matching filters" : ""
+              } · ${contactable} contactable by email`
+        }
+        subtitle="Verified subcontractors Brost Co finds and reuses across bids. Preferred subs are contacted first on new work."
       />
       <SubFilters
         trade={searchParams.trade}
@@ -47,26 +54,22 @@ export default async function SubsPage({
         q={searchParams.q}
       />
       <div className="scroll-thin flex-1 overflow-auto p-4">
-        {subs.length === 0 && !(filters.trade || filters.state || filters.q || minReliability != null) && (
-          <div className="card mx-auto mt-8 max-w-md text-center">
-            <p className="text-3xl">🏗️</p>
-            <p className="mt-3 text-base font-semibold text-foreground">
-              Your sub database is empty.
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
-              Sub Finder fills this automatically when an opportunity is pursued:
-              it searches for local contractors in each required trade, verifies
-              them, and saves them here for future bids.
-            </p>
-          </div>
+        {subs.length === 0 && !hasFilters && (
+          <EmptyState
+            title="Your sub database is empty"
+            description="Sub Finder fills this when you pursue an opportunity: it searches for local contractors in each required trade, verifies contact info, and saves them here for future bids."
+            action={
+              <Link href="/pipeline" className="btn-ghost text-sm">
+                Open pipeline
+              </Link>
+            }
+          />
         )}
 
         {/* Mobile: stacked cards — the 9-column table is unusable on a phone. */}
         <ul
           className={`space-y-3 lg:hidden ${
-            subs.length === 0 && !(filters.trade || filters.state || filters.q || minReliability != null)
-              ? "hidden"
-              : ""
+            subs.length === 0 && !hasFilters ? "hidden" : ""
           }`}
         >
           {subs.map((s: Subcontractor) => (
@@ -118,18 +121,24 @@ export default async function SubsPage({
               </Link>
             </li>
           ))}
-          {subs.length === 0 && (
-            <li className="card py-8 text-center text-sm text-slate-500">
-              No subcontractors match these filters.
+          {subs.length === 0 && hasFilters && (
+            <li>
+              <EmptyState
+                title="No subcontractors match these filters"
+                description="Try a broader trade, remove the reliability minimum, or clear filters to see the full roster."
+                action={
+                  <Link href="/subs" className="btn-ghost text-sm">
+                    Clear filters
+                  </Link>
+                }
+              />
             </li>
           )}
         </ul>
 
         <div
           className={`card scroll-thin hidden overflow-x-auto p-0 lg:block ${
-            subs.length === 0 && !(filters.trade || filters.state || filters.q || minReliability != null)
-              ? "!hidden"
-              : ""
+            subs.length === 0 && !hasFilters ? "!hidden" : ""
           }`}
         >
           <table className="w-full border-collapse">
@@ -283,10 +292,13 @@ export default async function SubsPage({
                   </td>
                 </tr>
               ))}
-              {subs.length === 0 && (
+              {subs.length === 0 && hasFilters && (
                 <tr>
-                  <td className="td py-8 text-center text-slate-500" colSpan={9}>
-                    No subcontractors match these filters.
+                  <td className="td py-8 text-center text-slate-600" colSpan={9}>
+                    No subcontractors match these filters.{" "}
+                    <Link href="/subs" className="text-accent hover:underline">
+                      Clear filters
+                    </Link>
                   </td>
                 </tr>
               )}

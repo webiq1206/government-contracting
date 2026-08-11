@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { SignupForm } from "@/components/signup-form";
+import { Wordmark } from "@/components/wordmark";
 import { getFoundingPromo } from "@/lib/billing/promo";
 import {
   FOUNDING_MONTHLY_USD,
@@ -30,7 +31,6 @@ export default async function SignupPage({
     redirect("/today");
   }
   if (user && !subscriptionAllowsAccess(user.subscriptionStatus)) {
-    // Avoid a redirect loop if Checkout is misconfigured: send them to Billing.
     redirect("/settings/billing");
   }
 
@@ -45,15 +45,20 @@ export default async function SignupPage({
   });
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
+    <main className="flex min-h-screen items-center justify-center bg-surface px-4 py-12">
       <div className="w-full max-w-md">
-        <Link href="/" className="font-display text-xl text-foreground">
-          BROST <span className="font-accent">CO</span>
-        </Link>
-        <h1 className="mt-6 font-display text-3xl text-foreground">
-          Create your account
-        </h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <div className="mb-8 text-center">
+          <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
+          <h1 className="flex justify-center">
+            <Link href="/">
+              <Wordmark className="h-12" />
+            </Link>
+          </h1>
+          <div className="mx-auto mt-4 h-px w-12 bg-accent" />
+        </div>
+
+        <h2 className="font-display text-2xl text-foreground">Create your account</h2>
+        <p className="mt-2 text-sm text-muted-foreground">
           {plan === "founding" ? (
             <>
               Founding rate:{" "}
@@ -76,7 +81,7 @@ export default async function SignupPage({
         <div className="card mt-6">
           <SignupForm initialPlan={plan} promoActive={promo.active} />
         </div>
-        <p className="mt-4 text-center text-xs text-slate-500">
+        <p className="mt-4 text-center text-xs text-muted-foreground">
           By continuing you agree to the{" "}
           <Link href="/terms" className="text-accent hover:underline">
             Terms
@@ -88,6 +93,6 @@ export default async function SignupPage({
           .
         </p>
       </div>
-    </div>
+    </main>
   );
 }

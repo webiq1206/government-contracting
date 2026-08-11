@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { emailLogPaged, EMAIL_LOG_PAGE_SIZE } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { EmailLogRow } from "@/components/email-log-row";
 
@@ -31,11 +32,12 @@ export default async function EmailLogPage({
       <PageHeader
         help={PAGE_HELP["email-log"]}
         title="Email Log"
-        subtitle={
+        status={
           total === 0
-            ? "No outreach emails sent yet"
+            ? "No outreach sent yet"
             : `${total.toLocaleString()} outbound email${total === 1 ? "" : "s"}${q ? " matching search" : ""}`
         }
+        subtitle="Every subcontractor outreach email Brost Co sends, with delivery status and links back to the sub."
       />
 
       {/* Search */}
@@ -61,17 +63,25 @@ export default async function EmailLogPage({
 
       <div className="scroll-thin flex-1 overflow-auto">
         {rows.length === 0 ? (
-          <div className="card mx-auto mt-8 max-w-md text-center">
-            <p className="text-3xl">✉️</p>
-            <p className="mt-3 text-base font-semibold text-foreground">
-              {q ? "No emails match that search." : "No outreach emails sent yet."}
-            </p>
-            <p className="mt-1 text-sm text-slate-500">
-              {q
-                ? "Try a different sub name or subject."
-                : "Emails will appear here once the outreach agent starts sending."}
-            </p>
-          </div>
+          <EmptyState
+            title={q ? "No emails match that search" : "No outreach emails sent yet"}
+            description={
+              q
+                ? "Try a different sub name or subject keyword."
+                : "Emails appear here once outreach runs on pursued opportunities."
+            }
+            action={
+              q ? (
+                <Link href="/email-log" className="btn-ghost text-sm">
+                  Clear search
+                </Link>
+              ) : (
+                <Link href="/pipeline" className="btn-ghost text-sm">
+                  Open pipeline
+                </Link>
+              )
+            }
+          />
         ) : (
           <>
             {/* Column headers */}

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   latestKpiSnapshot,
   computeKpisFallback,
@@ -6,6 +7,7 @@ import {
   computeCustomKpi,
 } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
+import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { KpiManager, KpiDeleteButton } from "@/components/kpi-manager";
 import { getMetric, formatKpiValue, describeKpiParams } from "@/lib/domain/kpi";
@@ -160,18 +162,26 @@ export default async function AnalyticsPage() {
       <PageHeader
         help={PAGE_HELP["analytics"]}
         title="Analytics"
+        status={
+          winRate != null
+            ? `${winRate}% win rate · ${currency(pipelineValue)} in pipeline`
+            : `${extras.counts.open_opps} open opportunit${extras.counts.open_opps === 1 ? "y" : "ies"}`
+        }
         subtitle={
           snap
-            ? "Headline numbers are live; breakdowns are from the latest Analytics Engine run."
-            : "Live-computed. Deeper breakdowns appear once the Analytics Engine runs."
+            ? "Headline numbers are live. Breakdowns below are from the latest Analytics Engine run."
+            : "Headline numbers are live. Deeper breakdowns appear after Analytics Engine runs."
         }
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
         {!snap && (
-          <div className="card border-review/40 bg-review/5 text-sm text-slate-700">
-            The headline numbers below are always live. The deeper breakdowns (win rate
-            by NAICS/agency/geography, cash flow, sub rankings, velocity) appear once the
-            Analytics Engine runs, trigger it from Agents.
+          <div className="callout-panel text-sm text-slate-700">
+            Deeper breakdowns (win rate by NAICS, agency, geography, cash flow, sub
+            rankings, velocity) appear after Analytics Engine runs.{" "}
+            <Link href="/agents" className="font-medium text-accent hover:underline">
+              Run it from Automation Log
+            </Link>
+            .
           </div>
         )}
 
@@ -217,10 +227,11 @@ export default async function AnalyticsPage() {
             <KpiManager />
           </div>
           {kpiValues.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Pin the numbers you care about. Add a KPI, pick a metric, and it
-              shows here every time you open Analytics.
-            </p>
+            <EmptyState
+              title="No custom KPIs yet"
+              description="Pin the numbers you care about. Add a KPI, pick a metric, and it shows here every time you open Analytics."
+              action={<KpiManager />}
+            />
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {kpiValues.map((k) => {

@@ -102,7 +102,7 @@ const PHASES: Phase[] = [
         who: "you",
         href: "/today",
         hrefLabel: "Open Today",
-        what: "Borderline opportunities need your judgment. Decide from Today or the Review Queue — or open the opportunity to read the Bid Brief first. If you do nothing before the timer ends, Brost Co auto-dismisses it so the queue stays clean.",
+        what: "Borderline opportunities need your judgment. Decide from Today or the Review Queue, or open the opportunity to read the Bid Brief first. If you do nothing before the timer ends, Brost Co auto-dismisses it so the queue stays clean.",
         next: "Pursue starts analysis, pricing research, and subcontractor sourcing automatically.",
       },
     ],
@@ -111,7 +111,7 @@ const PHASES: Phase[] = [
     eyebrow: "Phase two",
     title: "Understand the job and get pricing",
     blurb:
-      "After pursue, Brost Co reads the solicitation, finds subcontractors (including ones you already know), and chases quotes — escalating to you only when a person is needed.",
+      "After pursue, Brost Co reads the solicitation, finds subcontractors (including ones you already know), and chases quotes, escalating to you only when a person is needed.",
     steps: [
       {
         n: 6,
@@ -192,7 +192,7 @@ const PHASES: Phase[] = [
         n: 15,
         name: "Wait for the agency",
         who: "agency",
-        what: "The opportunity sits in Submitted while the government evaluates bids. Nothing else is required from you until a decision is announced — Brost Co keeps it on Today under awaiting a decision.",
+        what: "The opportunity sits in Submitted while the government evaluates bids. Nothing else is required from you until a decision is announced. Brost Co keeps it on Today under awaiting a decision.",
         next: "When you hear the result, record it in one step.",
       },
       {
@@ -257,7 +257,8 @@ export default function HowItWorksPage() {
       <PageHeader
         help={PAGE_HELP["how-it-works"]}
         title="How it works"
-        subtitle={`Every step from setup to a won contract — ${totalSteps} steps, most automatic. You only act when Brost Co cannot.`}
+        status={`${totalSteps} steps · 4 phases`}
+        subtitle="Read top to bottom once. Day to day, start on Today for only what needs you."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <div className="mx-auto max-w-2xl">
@@ -268,7 +269,7 @@ export default function HowItWorksPage() {
               <Link href="/today" className="font-medium text-accent hover:underline">
                 Today
               </Link>
-              — it lists only what needs you (decisions, calls, quote reviews,
+              . It lists only what needs you (decisions, calls, quote reviews,
               deadlines, renewals). Each opportunity also shows its own journey
               bar, what needs attention, subcontractor coverage, and the single
               recommended next step.
@@ -336,7 +337,7 @@ export default function HowItWorksPage() {
                 Work that keeps running in the background
               </h2>
               <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
-                These are not stages on a single bid — they keep the whole
+                These are not stages on a single bid. They keep the whole
                 operation healthy while opportunities move through the pipeline.
               </p>
             </div>
