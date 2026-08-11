@@ -17,7 +17,7 @@ export function MarketingFooter({
     <footer
       className={
         dark
-          ? "border-t border-white/10 bg-[#0a0a0a] text-white"
+          ? "border-t border-white/10 bg-ink text-white"
           : "border-t border-border bg-surface"
       }
     >

@@ -55,6 +55,7 @@ function OppActionRow({
   guideStep,
   category,
   focused = false,
+  index,
 }: {
   o: ActionOppRow;
   action: string;
@@ -66,6 +67,8 @@ function OppActionRow({
   guideStep?: string;
   category: string;
   focused?: boolean;
+  /** 1-based index for editorial task numbering. */
+  index?: number;
 }) {
   const party = stageParty(o.stage, { hasBid: o.has_bid });
   const meta = [
@@ -75,6 +78,7 @@ function OppActionRow({
   ]
     .filter(Boolean)
     .join(" · ");
+  const n = index != null ? String(index).padStart(2, "0") : null;
 
   return (
     <Link
@@ -84,8 +88,15 @@ function OppActionRow({
       })}
       className={`${ROW} ${focused ? "focus-rail pl-3" : ""}`}
     >
+      {n && (
+        <span className="font-mono text-[9px] tracking-[0.08em] text-white/30 sm:w-8">
+          {n}
+        </span>
+      )}
       <div className="min-w-0 flex-1">
-        <p className="eyebrow-gold">{category}</p>
+        <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-gold">
+          {category}
+        </p>
         <p className="mt-1 text-sm font-medium text-white sm:truncate">
           {o.title ?? "Untitled opportunity"}
         </p>
@@ -186,9 +197,9 @@ function Section({
         </div>
         <span
           aria-hidden
-          className="mb-1 select-none text-white/40 transition-transform group-open:rotate-180"
+          className="mb-1 select-none text-lg text-gold transition-transform group-open:rotate-45"
         >
-          ▾
+          +
         </span>
       </summary>
       <div className="mt-1">{children}</div>
@@ -229,7 +240,9 @@ function PipelineHealthRail({
         <div className="shell-panel p-5">
           <div className="flex items-center justify-between">
             <p className="eyebrow-gold">Pipeline health</p>
-            <span className="badge bg-pursue/20 text-pursue">Live</span>
+            <span className="border border-pursue/45 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-pursue">
+              Live
+            </span>
           </div>
           <p className="mt-4 font-display text-5xl text-white">
             <span className="num">{active}</span>
@@ -265,6 +278,17 @@ function PipelineHealthRail({
               <span className="num text-white">{packagesReady}</span>
             </li>
           </ul>
+        </div>
+
+        <div className="border border-gold/28 bg-[#11120f] px-4 py-3">
+          <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-white/40">
+            Automation activity
+          </p>
+          <p className="mt-1 text-sm font-medium text-gold">
+            {totalActions > 0
+              ? `${totalActions} action${totalActions === 1 ? "" : "s"} waiting`
+              : "Queue clear"}
+          </p>
         </div>
 
         {digestParts.length > 0 && (
@@ -409,6 +433,7 @@ export default async function TodayPage() {
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      index={i + 1}
                       category="Deadline"
                       focused={i === 0}
                       action={o.has_bid ? "Review & submit" : "Open"}
@@ -436,6 +461,7 @@ export default async function TodayPage() {
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      index={i + 1}
                       category="Pursuit decision"
                       focused={firstOpen === "triage" && i === 0}
                       action="Decide"
@@ -635,10 +661,11 @@ export default async function TodayPage() {
                   title="Quotes & bids in progress"
                   count={bidWork.length}
                 >
-                  {bidWork.map((o) => (
+                  {bidWork.map((o, i) => (
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      index={i + 1}
                       category={
                         o.has_bid && !o.bid_submitted ? "Final approval" : "Bid work"
                       }
@@ -670,10 +697,11 @@ export default async function TodayPage() {
                     When the agency announces, record the result so the platform can set up
                     the contract (win) or learn from the loss.
                   </p>
-                  {data.awaitingOutcome.map((o) => (
+                  {data.awaitingOutcome.map((o, i) => (
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      index={i + 1}
                       category="Outcome"
                       action="Record result"
                       rules={rules}
@@ -688,10 +716,11 @@ export default async function TodayPage() {
                   title="Flagged by the system"
                   count={flagged.length}
                 >
-                  {flagged.map((o) => (
+                  {flagged.map((o, i) => (
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      index={i + 1}
                       category="Flagged"
                       action="Open"
                       detail={flagSummary(o.risk_flags ?? []) || undefined}

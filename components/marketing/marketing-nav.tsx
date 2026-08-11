@@ -32,7 +32,7 @@ export function MarketingNav({
     <header
       className={`sticky top-0 z-50 backdrop-blur-md ${
         dark
-          ? "border-b border-white/10 bg-[#0a0a0a]/85"
+          ? "border-b border-white/10 bg-ink/85"
           : "border-b border-border bg-background/95"
       }`}
     >
@@ -79,7 +79,7 @@ export function MarketingNav({
             href={signupHref}
             className={`inline-flex min-h-10 items-center justify-center rounded-md px-3.5 py-2 text-sm font-medium transition-colors ${
               dark
-                ? "bg-gold text-[#0a0a0a] hover:bg-[#c4a06e]"
+                ? "bg-gold text-ink hover:bg-[#d6b986]"
                 : "btn-primary"
             }`}
           >

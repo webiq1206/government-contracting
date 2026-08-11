@@ -3,13 +3,12 @@
 @tailwind utilities;
 
 /* ==========================================================================
-   BROST CO brand design system (2026 brand guide)
-   Charcoal #242424 · Gold #B28F5D · Ivory #F7F4EE · Stone #D8D2C7 · White
-   Shell/ink #0a0a0a / #141414 for dark dash chrome and Today.
-   Inter is the UI/body voice; GFS Didot is display (.font-display).
-   Gold signals importance only — never a large background field.
-   Sage green (`pursue` #5A6B52 family) is the positive/"go" accent: success,
-   matches, progress, and "your turn" cues. Gold stays brand emphasis.
+   BROST CO brand design system (aligned to marketing landing)
+   Ink #171713 · Night #090a09 / #171813 · Paper #f1ece3 · Gold #c3a06b
+   Dark shell powers nav + Today. Paper is the work surface.
+   DM Sans is UI/body; GFS Didot is display (.font-display); JetBrains Mono
+   is micro labels. Gold signals importance only, never a large field.
+   Sage green (`pursue` #5A6B52 family) is the positive/"go" accent.
    ========================================================================== */
 
 :root {
@@ -18,8 +17,8 @@
 
 html,
 body {
-  background: #F7F4EE;
-  color: #242424; /* Charcoal */
+  background: #f1ece3;
+  color: #171713;
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -29,12 +28,12 @@ body {
 *,
 ::before,
 ::after {
-  border-color: #E6E1D8; /* light stone hairlines */
+  border-color: #cdc3b5;
 }
 
 ::selection {
-  background-color: rgba(178, 143, 93, 0.20); /* Gold tint */
-  color: #242424;
+  background-color: rgba(195, 160, 107, 0.22);
+  color: #171713;
 }
 
 @layer components {
@@ -43,7 +42,7 @@ body {
   .font-display {
     font-family: theme("fontFamily.serif");
     font-weight: 400;
-    letter-spacing: 0.01em;
+    letter-spacing: -0.025em;
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
@@ -51,14 +50,11 @@ body {
      Applied via class, never as a default. */
   .font-accent {
     font-family: theme("fontFamily.serif");
-    color: #B28F5D; /* Gold */
+    color: #c3a06b;
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
-  /* Numeric data. Inter with lining, tabular figures so digits stay aligned and
-     legible — used everywhere a number is displayed (scores, currency, metrics,
-     dates, percentages). Monospace stays reserved for code, identifiers, cron,
-     and the JSON editor. */
+  /* Numeric data with lining, tabular figures so digits stay aligned. */
   .num {
     font-family: theme("fontFamily.sans");
     font-variant-numeric: tabular-nums lining-nums;
@@ -66,13 +62,13 @@ body {
     letter-spacing: -0.005em;
   }
 
-  /* Buttons — min height keeps taps comfortable on phones without bloating desktop. */
+  /* Buttons: sharper corners to match landing CTAs; min height for phones. */
   .btn,
   .btn-primary,
   .btn-ghost,
   .btn-danger,
   .btn-success {
-    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
   @media (min-width: 768px) {
     .btn,
@@ -99,7 +95,7 @@ body {
     }
   }
   .btn-primary {
-    @apply bg-gold text-ink hover:bg-[#c4a06e];
+    @apply bg-gold text-ink hover:bg-[#d6b986];
   }
   .btn-ghost {
     @apply border border-border-strong text-foreground hover:bg-surface;
@@ -112,7 +108,7 @@ body {
   }
   /* Secondary action: quieter than primary, stronger than ghost. */
   .btn-secondary {
-    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-foreground/20 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/40 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm border border-foreground/20 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/40 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
   }
   @media (min-width: 768px) {
     .btn-secondary {
@@ -122,7 +118,7 @@ body {
 
   /* Surfaces */
   .card {
-    @apply rounded-md border border-border bg-background p-4 sm:p-5 shadow-none;
+    @apply rounded-sm border border-border bg-background p-4 sm:p-5 shadow-none;
   }
   .card-hover {
     @apply transition-colors hover:border-border-strong hover:bg-surface-raised;
@@ -130,10 +126,10 @@ body {
 
   /* Dark editorial surfaces (nav, Today, readiness panels) */
   .shell-panel {
-    @apply rounded-md border border-white/10 bg-shell;
+    @apply rounded-sm border border-white/10 bg-shell;
   }
   .shell-ghost {
-    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md border border-white/25 bg-transparent px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm border border-white/25 bg-transparent px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50;
   }
   @media (min-width: 768px) {
     .shell-ghost {
@@ -141,7 +137,8 @@ body {
     }
   }
   .focus-rail {
-    border-left: 2px solid #B28F5D;
+    border-left: 2px solid #c3a06b;
+    background: linear-gradient(90deg, rgba(195, 160, 107, 0.1), transparent);
   }
   .fit-score-box {
     @apply flex h-[4.5rem] w-[4.5rem] shrink-0 flex-col items-center justify-center border border-gold sm:h-[5.25rem] sm:w-[5.25rem];
@@ -168,9 +165,20 @@ body {
   .action-row--shell {
     @apply border-white/10;
   }
+  /* Landing-matched eyebrow: mono label with gold hairline rule. */
   .eyebrow-gold {
-    @apply text-[0.7rem] font-medium uppercase text-gold;
+    @apply inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase text-gold;
     letter-spacing: 0.16em;
+  }
+  .eyebrow-gold::before {
+    content: "";
+    display: block;
+    width: 22px;
+    height: 1px;
+    background: #a68250;
+  }
+  .eyebrow-gold--plain::before {
+    display: none;
   }
 
   /* Status strips: attention / risk / calm success. */
@@ -218,18 +226,25 @@ body {
   .badge {
     @apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.6875rem] font-semibold;
   }
-  .label,
-  .eyebrow {
+  .label {
     @apply text-[0.7rem] font-medium uppercase text-muted-foreground;
     letter-spacing: 0.14em;
   }
   .eyebrow {
-    letter-spacing: 0.18em;
+    @apply inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase text-muted-foreground;
+    letter-spacing: 0.16em;
+  }
+  .eyebrow::before {
+    content: "";
+    display: block;
+    width: 22px;
+    height: 1px;
+    background: #a68250;
   }
 
-  /* Inputs — taller on phones for fat-finger accuracy. */
+  /* Inputs: taller on phones for fat-finger accuracy. */
   .input {
-    @apply w-full rounded-md border border-border-strong bg-background px-3 py-2.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent sm:min-h-0 sm:py-2 sm:text-sm;
+    @apply w-full rounded-sm border border-border-strong bg-background px-3 py-2.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent sm:min-h-0 sm:py-2 sm:text-sm;
     min-height: 2.75rem;
   }
   @media (min-width: 640px) {
@@ -255,16 +270,16 @@ body {
     @apply h-px w-full bg-border;
   }
   .callout-panel {
-    @apply rounded-md border border-border bg-accent-soft p-5;
-    border-left: 3px solid #B28F5D; /* Gold */
+    @apply rounded-sm border border-border bg-accent-soft p-5;
+    border-left: 3px solid #c3a06b;
   }
   .accent-left {
     @apply pl-4;
-    border-left: 3px solid #B28F5D; /* Gold */
+    border-left: 3px solid #c3a06b;
   }
   .section-prominent {
     @apply pt-5;
-    border-top: 2px solid #242424; /* Charcoal */
+    border-top: 2px solid #171713;
   }
 
   /* Collapsible section: a tap-to-expand accordion on mobile, an always-open
@@ -313,7 +328,7 @@ body {
     @apply bg-accent text-white;
   }
   .chip {
-    @apply cursor-pointer rounded-md border border-border px-3.5 py-2.5 text-left transition-colors hover:border-muted-foreground hover:bg-surface;
+    @apply cursor-pointer rounded-sm border border-border px-3.5 py-2.5 text-left transition-colors hover:border-muted-foreground hover:bg-surface;
   }
   .chip--active {
     @apply border-accent bg-accent-soft text-accent-strong;
@@ -338,7 +353,7 @@ body {
   width: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #D8D2C7; /* Stone */
+  background: #cdc3b5;
   border-radius: 4px;
 }
 

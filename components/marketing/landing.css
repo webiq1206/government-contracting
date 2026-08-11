@@ -1,5 +1,5 @@
-/* Ported from brostco-landing-page.html inspiration. Scoped to .mkt-lp. */
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap');
+/* Ported from brostco-landing-page.html inspiration. Scoped to .mkt-lp.
+   DM Sans / Didot / JetBrains Mono load from the root layout. */
 .mkt-lp {
   --ink: #171713;
   --night: #090a09;

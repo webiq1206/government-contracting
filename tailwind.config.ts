@@ -1,12 +1,11 @@
 import type { Config } from "tailwindcss";
 
 /**
- * BROST CO brand theme (per the 2026 brand guide):
- *   Charcoal #242424, Gold #B28F5D, Ivory #F7F4EE, Stone #D8D2C7, White #FFFFFF.
- * Shell/ink (#0a0a0a / #141414) power the dark dash chrome and Today.
- * Ivory #F7F4EE is the primary work surface. Gold is decorative emphasis;
- * accent (#7E5E33) is WCAG-safe gold-brown for text. GFS Didot is display;
- * Inter is UI/body. Flat, border-driven.
+ * BROST CO brand theme, aligned to the marketing landing system:
+ *   Ink #171713, Night #090a09 / #171813, Paper #f1ece3, Gold #c3a06b.
+ * Dark shell powers nav + Today. Paper is the primary work surface.
+ * Gold is decorative emphasis; accent (#7E5E33) is WCAG-safe gold-brown for text.
+ * DM Sans is UI/body; GFS Didot is display; JetBrains Mono is micro labels.
  *
  * The slate ramp is a WARM gray ramp aligned to the palette, in standard
  * Tailwind orientation (100 = light, 900 = dark). Do not invert it.
@@ -20,26 +19,27 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#F7F4EE", // Ivory work surface
-        foreground: "#242424", // Charcoal
-        surface: "#F7F4EE", // Ivory
-        "surface-raised": "#F0EBE2", // deeper ivory
-        muted: "#F7F4EE",
-        "muted-foreground": "#6B6560", // warm gray for secondary type
-        border: "#E6E1D8", // light stone (hairlines)
-        "border-strong": "#D8D2C7", // Stone
+        background: "#f1ece3", // Paper work surface (landing)
+        foreground: "#171713", // Ink
+        surface: "#f1ece3",
+        "surface-raised": "#e9e3d8",
+        muted: "#f1ece3",
+        "muted-foreground": "#776f64",
+        border: "#cdc3b5",
+        "border-strong": "#c0b6a6",
         // Dark editorial shell (nav, Today, overlays)
-        ink: "#0a0a0a",
-        shell: "#141414",
+        ink: "#090a09",
+        shell: "#171813",
         "shell-border": "rgba(255,255,255,0.12)",
         // Semantic accent: a deepened, WCAG-AA gold-brown (4.5:1+ as text on the
         // page ground and with white text on filled controls). The pure brand
         // gold is exposed separately as `gold` for decorative, non-text emphasis
-        // only (rules, borders, dots) — never large fields, never body text.
+        // only (rules, borders, dots) - never large fields, never body text.
         accent: "#7E5E33",
-        "accent-soft": "#F3ECE0", // pale gold/ivory tint
-        "accent-strong": "#6F5228", // deeper (hover)
-        gold: "#B28F5D", // brand gold — decorative emphasis only
+        "accent-soft": "#F3ECE0",
+        "accent-strong": "#6F5228",
+        gold: "#c3a06b",
+        "gold-deep": "#a68250",
 
         // Functional status tones, muted to sit in the warm palette while staying
         // clearly distinguishable (go / caution / danger).
@@ -62,22 +62,21 @@ const config: Config = {
 
         // Warm gray ramp aligned to the palette (100 light -> 900 dark).
         slate: {
-          50: "#F7F5F3",
-          100: "#F7F4EE", // Ivory
-          200: "#E6E1D8",
-          300: "#D8D2C7", // Stone
+          50: "#fbfaf7",
+          100: "#f1ece3", // Paper
+          200: "#cdc3b5",
+          300: "#c0b6a6",
           400: "#A39C90",
-          500: "#6B6560",
+          500: "#776f64",
           600: "#57524D",
           700: "#403C38",
-          800: "#242424", // Charcoal
-          900: "#1C1C1C",
-          950: "#141414",
+          800: "#171713", // Ink
+          900: "#11120f",
+          950: "#090a09",
         },
       },
       fontFamily: {
-        sans: ['"Inter"', "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
-        // GFS Didot: display serif for premium headlines and brand moments.
+        sans: ['"DM Sans"', "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
         serif: ['"GFS Didot"', "Didot", "Georgia", '"Times New Roman"', "serif"],
         mono: ['"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },

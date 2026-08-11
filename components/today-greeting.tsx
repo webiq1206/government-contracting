@@ -35,20 +35,37 @@ export function TodayGreeting({
     <div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-8">
       <div className="min-w-0">
         <p className="eyebrow-gold">{parts.date}</p>
-        <h1 className="mt-3 font-display text-3xl leading-tight text-white sm:text-4xl lg:text-[2.75rem]">
-          {parts.greeting}.{" "}
+        <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
+          Needs your attention
+        </p>
+        <h1 className="mt-2 font-display text-3xl leading-tight text-white sm:text-4xl lg:text-[2.75rem]">
           {clear ? (
-            <span className="text-white/70">You are clear for now.</span>
+            <>
+              {parts.greeting}.{" "}
+              <span className="text-white/70">You are clear for now.</span>
+            </>
           ) : (
-            <span>Here is what needs you.</span>
+            <>
+              <span className="num">{actionCount}</span>{" "}
+              {actionCount === 1 ? "decision" : "decisions"}.{" "}
+              <span className="num">{estimated}</span> minutes.
+            </>
           )}
         </h1>
+        {!clear && (
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/50">
+            {parts.greeting}. Work the queue in order. Each row opens the exact place to finish
+            the task.
+          </p>
+        )}
       </div>
       {!clear && (
-        <div className="border border-white/15 px-3 py-2 text-right">
-          <p className="num text-lg text-gold">{estimated}</p>
-          <p className="text-[0.65rem] uppercase tracking-[0.14em] text-white/40">
-            minutes estimated
+        <div className="border border-gold/35 bg-[#11120f] px-4 py-3 text-right">
+          <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-white/40">
+            Live queue
+          </p>
+          <p className="mt-1 font-display text-2xl text-gold">
+            <span className="num">{actionCount}</span>
           </p>
         </div>
       )}
