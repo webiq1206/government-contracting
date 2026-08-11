@@ -12,7 +12,10 @@ export async function queueCounts(): Promise<{ review: number; callQueue: number
   const row = await queryOne<{ review: string; call: string }>(
     `select
        (select count(*) from opportunities where tier='review' and human_action_required=true and status='open') as review,
-       (select count(*) from call_cards where status='pending') as call`
+       (select count(*) from call_cards cc
+          join subcontractors s on s.id = cc.subcontractor_id
+         where cc.status='pending'
+           and nullif(btrim(coalesce(s.phone, '')), '') is not null) as call`
   );
   return { review: Number(row?.review ?? 0), callQueue: Number(row?.call ?? 0) };
 }
@@ -120,6 +123,9 @@ export async function callQueue(): Promise<CallCardRow[]> {
        join opportunities o on o.id = cc.opportunity_id
       where cc.status='pending'
         and (cc.snoozed_until is null or cc.snoozed_until <= now())
+        -- Uncallable cards (no phone) are never shown; Call Prep refuses to
+        -- create them going forward, and this keeps historical empties off Today.
+        and nullif(btrim(coalesce(s.phone, '')), '') is not null
       order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc`
   );
 }
@@ -909,9 +915,12 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     ),
     queryOne<{ count: number; soonest_deadline: string | null }>(
       `select count(*)::int as count, min(o.deadline) as soonest_deadline
-           from call_cards cc join opportunities o on o.id = cc.opportunity_id
+           from call_cards cc
+           join opportunities o on o.id = cc.opportunity_id
+           join subcontractors s on s.id = cc.subcontractor_id
           where cc.status='pending'
-            and (cc.snoozed_until is null or cc.snoozed_until <= now())`
+            and (cc.snoozed_until is null or cc.snoozed_until <= now())
+            and nullif(btrim(coalesce(s.phone, '')), '') is not null`
     ),
     query<
       Omit<ActionCallRow, "work_summary"> & {
@@ -928,6 +937,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          join opportunities o on o.id = cc.opportunity_id
         where cc.status='pending'
           and (cc.snoozed_until is null or cc.snoozed_until <= now())
+          and nullif(btrim(coalesce(s.phone, '')), '') is not null
         order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc
         limit 6`
     ),

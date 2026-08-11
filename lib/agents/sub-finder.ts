@@ -2,37 +2,42 @@
  * SUB FINDER, triggered when an opportunity advances to sub_research.
  * For each required trade (from the Solicitation Analyst, falling back to the
  * profile's primary trades) it:
- *   1. Reuses known subcontractors already on the roster (same trade + state,
- *      preferred / reliable first) so relationships are not rediscovered as new.
- *   2. Searches Google Places for additional candidates in the opportunity area,
- *      scores each 0-100 from Google signals, ranks them, and upserts with
- *      dedupe by google_place_id then company_name + state.
+ *   1. Reuses known subcontractors already on the roster that have a contact
+ *      pathway (email, phone, or website) — empty shells are never reused.
+ *   2. Searches Google Places, enriches top results with Place Details
+ *      (phone/website), scores contactable candidates higher, and skips any
+ *      candidate with no phone and no website (automation cannot reach them).
  * Records the candidate set in opportunity_subs and enqueues Sub Verify for the
- * top N per trade. Trades that turn up fewer than two candidates flag the
- * opportunity for human review.
+ * top N per trade. Trades that turn up fewer than two contactable candidates
+ * flag the opportunity for human review.
  */
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
+import {
+  contactabilityBonus,
+  hasContactPathway,
+} from "../domain/sub-contactability";
 import { googleMaps, type Contractor } from "../integrations/googleMaps";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
 
 /** Score a Google Places candidate 0-100 from available signals. */
-function scoreCandidate(c: Contractor): number {
+export function scoreCandidate(c: Contractor): number {
   const rating = c.rating ?? 0;
   const reviews = c.review_count ?? 0;
-  const ratingPts = (rating / 5) * 40;
-  const reviewPts = Math.min(reviews / 50, 1) * 20;
-  const basePts = 40; // license/age/SB confirmed later by Sub Verify
-  return Math.round(ratingPts + reviewPts + basePts);
+  const ratingPts = (rating / 5) * 35;
+  const reviewPts = Math.min(reviews / 50, 1) * 15;
+  const basePts = 25; // license/age/SB confirmed later by Sub Verify
+  const contactPts = Math.min(contactabilityBonus(c), 25);
+  return Math.round(ratingPts + reviewPts + basePts + contactPts);
 }
 
 export const subFinder: AgentDefinition = {
   name: "sub-finder",
   label: "Sub Finder",
   description:
-    "Sources candidate subcontractors per required trade via known roster + Google Places, scores + ranks them, records candidates, and triggers verification.",
+    "Sources contactable subcontractors per required trade via known roster + Google Places (enriched), ranks them, records candidates, and triggers verification.",
   worksWithoutClaude: true, // sourcing + scoring is rule-based
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string;
@@ -74,11 +79,12 @@ export const subFinder: AgentDefinition = {
     const thinTrades: string[] = [];
     let totalCandidates = 0;
     let reusedFromRoster = 0;
+    let skippedNoContact = 0;
     let skippedDisabled = false;
     let humanAction = false;
 
     for (const trade of trades) {
-      // 1) Prefer known relationships before cold Places search.
+      // 1) Prefer known relationships that we can actually reach.
       const known = await query<{ id: string; company_name: string }>(
         `select id, company_name from subcontractors
           where coalesce(blacklisted, false) = false
@@ -94,7 +100,20 @@ export const subFinder: AgentDefinition = {
               or $2 is null
               or $2 = ''
             )
-          order by is_preferred desc nulls last,
+            and (
+              nullif(btrim(coalesce(email, '')), '') is not null
+              or nullif(btrim(coalesce(phone, '')), '') is not null
+              or nullif(btrim(coalesce(website, '')), '') is not null
+            )
+          order by
+                   case
+                     when nullif(btrim(coalesce(email, '')), '') is not null
+                          and email_verified then 0
+                     when nullif(btrim(coalesce(email, '')), '') is not null then 1
+                     when nullif(btrim(coalesce(phone, '')), '') is not null then 2
+                     else 3
+                   end,
+                   is_preferred desc nulls last,
                    coalesce(reliability_score, 0) desc,
                    coalesce(responsiveness_score, 0) desc,
                    company_name asc
@@ -103,16 +122,21 @@ export const subFinder: AgentDefinition = {
       );
 
       let rank = 0;
+      let contactableForTrade = 0;
       for (const row of known) {
         rank++;
         reusedFromRoster++;
         totalCandidates++;
+        contactableForTrade++;
         await query(
           `insert into opportunity_subs
              (opportunity_id, subcontractor_id, trade, candidate_rank, verified)
            values ($1,$2,$3,$4,false)
            on conflict (opportunity_id, subcontractor_id, trade)
-           do update set candidate_rank = least(opportunity_subs.candidate_rank, excluded.candidate_rank)`,
+           do update set candidate_rank = least(
+             coalesce(opportunity_subs.candidate_rank, excluded.candidate_rank),
+             excluded.candidate_rank
+           )`,
           [opportunityId, row.id, trade, rank]
         );
         if (rank <= verifyTopN) {
@@ -132,7 +156,7 @@ export const subFinder: AgentDefinition = {
           agent: "sub-finder",
           action: "reuse-roster",
           opportunityId,
-          message: `Trade "${trade}": reused ${known.length} known sub(s) from the roster before Places search.`,
+          message: `Trade "${trade}": reused ${known.length} contactable sub(s) from the roster before Places search.`,
         });
       }
 
@@ -140,7 +164,7 @@ export const subFinder: AgentDefinition = {
       const search = await googleMaps.findContractors({
         trade,
         location,
-        limit: placesLimit,
+        limit: Math.max(placesLimit * 2, 12), // over-fetch; many lack contact after enrich
       });
 
       if (search.disabled) {
@@ -153,15 +177,13 @@ export const subFinder: AgentDefinition = {
           opportunityId,
           message: `Google Places disabled, skipping Places for trade "${trade}".`,
         });
-        if (known.length < 2) {
+        if (contactableForTrade < 2) {
           thinTrades.push(trade);
           humanAction = true;
         }
         continue;
       }
 
-      // Defensive: if the Places client ever returns an unexpected shape,
-      // skip the trade with a log instead of crashing the whole run.
       if (!Array.isArray(search.results)) {
         await logAgent({
           agent: "sub-finder",
@@ -171,28 +193,40 @@ export const subFinder: AgentDefinition = {
           opportunityId,
           message: `Google Places returned an unexpected response for trade "${trade}"; skipping this trade.`,
         });
-        if (known.length < 2) {
+        if (contactableForTrade < 2) {
           thinTrades.push(trade);
           humanAction = true;
         }
         continue;
       }
 
-      // Score + rank the candidates for this trade.
-      const ranked = search.results
-        .map((c) => ({ candidate: c, score: scoreCandidate(c) }))
-        .sort((a, b) => b.score - a.score);
+      // Place Details recovers phone/website — Text Search never returns them.
+      // Enrich before scoring so contactable firms rank first and empty shells
+      // never enter the roster.
+      const enriched = await googleMaps.enrichTopN(
+        search.results,
+        search.results.length
+      );
 
-      if (known.length + ranked.length < 2) {
-        thinTrades.push(trade);
-        humanAction = true;
-      }
+      const ranked = enriched
+        .map((c) => ({ candidate: c, score: scoreCandidate(c) }))
+        .filter(({ candidate }) => {
+          if (hasContactPathway(candidate)) return true;
+          skippedNoContact++;
+          return false;
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, placesLimit);
 
       for (const { candidate } of ranked) {
-        rank++;
         const subId = await upsertSubcontractor(candidate, trade, opp);
-        if (!subId) continue;
+        if (!subId) {
+          skippedNoContact++;
+          continue;
+        }
+        rank++;
         totalCandidates++;
+        contactableForTrade++;
 
         await query(
           `insert into opportunity_subs
@@ -218,14 +252,19 @@ export const subFinder: AgentDefinition = {
         }
       }
 
+      if (contactableForTrade < 2) {
+        thinTrades.push(trade);
+        humanAction = true;
+      }
+
       await logAgent({
         agent: "sub-finder",
         action: "rank-trade",
         opportunityId,
-        message: `Trade "${trade}": ${known.length} known + ${ranked.length} Places candidates (top Places score ${
+        message: `Trade "${trade}": ${known.length} known + ${ranked.length} contactable Places candidates (skipped empty-contact shells). Top score ${
           ranked[0]?.score ?? 0
-        }).`,
-        reasoning: `Roster-first, then Google Places; top ${verifyTopN} sent to Sub Verify.`,
+        }.`,
+        reasoning: `Roster-first (contactable only), then Places + Details enrichment; top ${verifyTopN} sent to Sub Verify.`,
       });
     }
 
@@ -235,10 +274,12 @@ export const subFinder: AgentDefinition = {
     );
 
     const summaryParts = [
-      `Found ${totalCandidates} candidate subs across ${trades.length} trade(s)`,
+      `Found ${totalCandidates} contactable candidate sub(s) across ${trades.length} trade(s)`,
     ];
     if (reusedFromRoster > 0)
       summaryParts.push(`${reusedFromRoster} reused from existing relationships`);
+    if (skippedNoContact > 0)
+      summaryParts.push(`skipped ${skippedNoContact} with no phone/website/email`);
     if (thinTrades.length)
       summaryParts.push(`thin coverage on: ${thinTrades.join(", ")}`);
     if (skippedDisabled) summaryParts.push("Google Places disabled for some trades");
@@ -246,13 +287,14 @@ export const subFinder: AgentDefinition = {
     return {
       ok: true,
       summary: summaryParts.join("; ") + ".",
-      reasoning: `Sourced from roster + Google Places for [${trades.join(
+      reasoning: `Sourced contactable subs from roster + enriched Google Places for [${trades.join(
         ", "
-      )}] in "${location}"; deduped subs and enqueued verification for the top ${verifyTopN} per trade.`,
+      )}] in "${location}"; empty-contact shells are never paired.`,
       data: {
         trades: trades.length,
         candidates: totalCandidates,
         reusedFromRoster,
+        skippedNoContact,
         thinTrades,
         verifyEnqueued: enqueued.length,
       },
@@ -265,7 +307,7 @@ export const subFinder: AgentDefinition = {
 /**
  * Upsert a Google Places candidate into subcontractors.
  * Dedupe order: google_place_id → lower(company_name) + state.
- * Refreshes stale contact fields and merges the trade into trade_categories.
+ * Refuses to create or return a row with zero contact pathways.
  */
 async function upsertSubcontractor(
   c: Contractor,
@@ -277,16 +319,21 @@ async function upsertSubcontractor(
   const state = opp.location_state ?? null;
   const placeId = c.place_id?.trim() || null;
 
-  let existing: { id: string } | null = null;
+  let existing: {
+    id: string;
+    email: string | null;
+    phone: string | null;
+    website: string | null;
+  } | null = null;
   if (placeId) {
-    existing = await queryOne<{ id: string }>(
-      `select id from subcontractors where google_place_id = $1`,
+    existing = await queryOne(
+      `select id, email, phone, website from subcontractors where google_place_id = $1`,
       [placeId]
     );
   }
   if (!existing) {
-    existing = await queryOne<{ id: string }>(
-      `select id from subcontractors
+    existing = await queryOne(
+      `select id, email, phone, website from subcontractors
        where lower(company_name) = lower($1)
          and coalesce(state,'') = coalesce($2,'')`,
       [name, state]
@@ -319,7 +366,18 @@ async function upsertSubcontractor(
         trade,
       ]
     );
+    const merged = {
+      email: existing.email,
+      phone: c.phone || existing.phone,
+      website: c.website || existing.website,
+    };
+    if (!hasContactPathway(merged)) return null;
     return existing.id;
+  }
+
+  // Never insert a brand-new shell with no way to reach them.
+  if (!hasContactPathway({ phone: c.phone, website: c.website })) {
+    return null;
   }
 
   const inserted = await queryOne<{ id: string }>(
