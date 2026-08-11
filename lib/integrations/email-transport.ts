@@ -10,7 +10,15 @@
 import { gmail } from "./gmail";
 import { email as resend } from "./resend";
 import { config } from "../config";
-import { replyCorrelationAddress } from "../reply-capture";
+
+/**
+ * Canonical sub-facing sender identity — hardcoded so outreach is always
+ * consistent regardless of RESEND_OUTREACH_FROM or the connected Gmail account.
+ * Every email a subcontractor receives must come from (and be replyable to)
+ * this address.
+ */
+export const OUTREACH_SENDER = "BROSTCO <info@brostco.com>";
+export const OUTREACH_EMAIL  = "info@brostco.com";
 
 export interface OutreachAttachment {
   filename: string;
@@ -25,7 +33,10 @@ export interface OutreachSendParams {
   text?: string;
   /** Our tracking id; injects the open pixel + wraps links for either provider. */
   trackingId?: string;
-  replyTo?: string;
+  // NOTE: From and Reply-To are intentionally absent from this interface.
+  // The transport layer always locks them to the configured outreach sender
+  // (RESEND_OUTREACH_FROM, default "BROSTCO <info@brostco.com>") so every
+  // sub-facing email is consistent and callers cannot accidentally override them.
   attachments?: OutreachAttachment[];
 }
 
@@ -79,13 +90,17 @@ export async function sendOutreachEmail(
   }
 
   if (provider === "gmail") {
+    // OUTREACH_SENDER / OUTREACH_EMAIL are module-level constants — they do not
+    // read from config so From and Reply-To are the same regardless of which
+    // Gmail account is OAuth-connected or what RESEND_OUTREACH_FROM is set to.
     const res = await gmail.send({
       to: params.to,
       subject: params.subject,
       html: params.html,
       text: params.text,
       trackingId: params.trackingId,
-      replyTo: params.replyTo,
+      from: OUTREACH_SENDER,
+      replyTo: OUTREACH_EMAIL,
       attachments: params.attachments,
     });
     if (res.disabled) return { provider: null, disabled: true, error: "Gmail became unavailable." };
@@ -98,20 +113,17 @@ export async function sendOutreachEmail(
   }
 
   const html = params.trackingId ? injectTracking(params.html, params.trackingId) : params.html;
-  // Plus-addressed reply-to (info+t<trackingId>@domain) lets the inbound
-  // webhook correlate replies exactly with this outbound communication.
-  const correlatedReplyTo =
-    params.replyTo ??
-    (params.trackingId
-      ? replyCorrelationAddress(config.resend.outreachFrom, params.trackingId) ?? undefined
-      : undefined);
+  // From is locked to OUTREACH_SENDER. Reply-To is OUTREACH_EMAIL so subs see
+  // and reply to info@brostco.com. Inbound replies arriving at info@brostco.com
+  // are correlated by sender email (weak match); Gmail threading is the strong
+  // match path when Gmail is the active transport.
   const res = await resend.send({
     to: params.to,
     subject: params.subject,
     html,
     text: params.text,
-    from: config.resend.outreachFrom,
-    replyTo: correlatedReplyTo,
+    from: OUTREACH_SENDER,
+    replyTo: OUTREACH_EMAIL,
     attachments: params.attachments?.map((a) => ({
       filename: a.filename,
       content: a.content,

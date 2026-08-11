@@ -82,6 +82,13 @@ export interface SendEmailParams {
   text?: string;
   /** Our tracking id; used to inject the open pixel + wrap links. */
   trackingId?: string;
+  /**
+   * Explicit From address (display name + bare address, e.g.
+   * "BROSTCO <info@brostco.com>"). Overrides the ambient GMAIL_SENDER env
+   * var. Use this when the outreach transport needs a canonical sender
+   * regardless of which Gmail account is authenticated.
+   */
+  from?: string;
   replyTo?: string;
   attachments?: { filename: string; content: Buffer; mime?: string }[];
 }
@@ -224,7 +231,9 @@ export const gmail = {
     const client = await gmailClient();
     if (!client) return { disabled: true };
     try {
-      const from = config.gmail.sender || "me";
+      // params.from overrides GMAIL_SENDER so the outreach transport can lock
+      // the sender to info@brostco.com regardless of which account is OAuth'd.
+      const from = params.from ?? config.gmail.sender ?? "me";
       const raw = buildRaw(params, from);
       const res = await client.users.messages.send({
         userId: "me",

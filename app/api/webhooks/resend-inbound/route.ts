@@ -91,6 +91,9 @@ export async function POST(req: Request) {
     .trim();
   if (!fromEmail || !replyText) return NextResponse.json({ ok: true, ignored: "empty" });
 
+  // Attempt tracking-token correlation (plus-address in To field from legacy
+  // outreach sends). Falls back to sender-email weak match for replies to the
+  // plain info@brostco.com Reply-To used by current outreach sends.
   const trackingToken = parseCorrelationToken(toList);
   const { comm, strongMatch } = await matchInboundReply({ trackingToken, fromEmail });
   if (!comm) return NextResponse.json({ ok: true, matched: false });

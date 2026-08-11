@@ -69,7 +69,9 @@ export function parseCorrelationToken(recipients: string[]): string | null {
 
 /** Find the outbound communication a reply belongs to (strong then weak match). */
 export async function matchInboundReply(opts: {
+  /** Plus-address tracking token extracted from the To/recipient list. Strong match. */
   trackingToken?: string | null;
+  /** Gmail thread ID. Strong match (Gmail transport only). */
   threadId?: string | null;
   fromEmail: string;
 }): Promise<{ comm: MatchedComm | null; strongMatch: boolean }> {
