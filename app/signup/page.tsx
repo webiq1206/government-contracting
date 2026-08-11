@@ -30,7 +30,8 @@ export default async function SignupPage({
     redirect("/today");
   }
   if (user && !subscriptionAllowsAccess(user.subscriptionStatus)) {
-    redirect("/api/billing/checkout?plan=" + (searchParams?.plan || "standard"));
+    // Avoid a redirect loop if Checkout is misconfigured: send them to Billing.
+    redirect("/settings/billing");
   }
 
   const promo = await getFoundingPromo({ startIfMissing: true });

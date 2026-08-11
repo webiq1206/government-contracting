@@ -15,7 +15,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/signup");
   if (!subscriptionAllowsAccess(user.subscriptionStatus)) {
-    redirect("/api/billing/checkout?plan=standard");
+    redirect("/settings/billing");
   }
 
   const [counts, engine] = await Promise.all([
