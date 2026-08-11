@@ -17,6 +17,14 @@ import { STALL_HOURS, STAGE_AGENT } from "../domain/journey";
 import { getAutomationRules } from "../app-settings";
 import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
+import { getProfileJson } from "../ai/companyProfile";
+import { outreachDisplayName } from "../domain/solicitation-completeness";
+import { scrubGovtContacts } from "../integrations/scrub-contacts";
+import {
+  renderTemplate,
+  formatDeadlineLabel,
+  plainToHtml,
+} from "../domain/template-render";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -26,32 +34,97 @@ export const outreachFollowup: AgentDefinition = {
   description: "Sends the automated 48-hour follow-up to non-responsive subcontractors.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    // Load the active follow-up template and company profile once per run.
+    const [tmpl, profile] = await Promise.all([
+      queryOne<{ subject: string | null; body: string }>(
+        `select subject, body from templates
+          where slug = 'template_2_followup' and is_active = true
+          order by version desc limit 1`
+      ),
+      getProfileJson(),
+    ]);
+
     const due = await query<{
       id: string;
       subcontractor_id: string;
       opportunity_id: string;
-      subject: string | null;
-      body: string | null;
       tracking_id: string | null;
       email: string | null;
       email_verified: boolean;
+      sub_owner_name: string | null;
+      // trade comes from opportunity_subs (not opportunities); LATERAL picks the
+      // most-recently-added trade for this sub/opp pair when multiple exist.
+      trade: string | null;
+      location_state: string | null;
+      deadline: string | null;
     }>(
-      `select c.id, c.subcontractor_id, c.opportunity_id, c.subject, c.body, c.tracking_id,
-              s.email, s.email_verified
+      `select c.id, c.subcontractor_id, c.opportunity_id, c.tracking_id,
+              s.email, s.email_verified, s.owner_name as sub_owner_name,
+              os.trade, o.location_state, o.deadline
          from communications c
          join subcontractors s on s.id = c.subcontractor_id
+         left join opportunities o on o.id = c.opportunity_id
+         left join lateral (
+           select trade from opportunity_subs
+           where opportunity_id = c.opportunity_id
+             and subcontractor_id = c.subcontractor_id
+           order by created_at desc
+           limit 1
+         ) os on true
         where c.channel='email' and c.direction='outbound'
           and c.follow_up_at is not null and c.follow_up_at <= now()
           and c.replied_at is null
         limit 50`
     );
+
+    const senderName = profile ? outreachDisplayName(profile) : "your contact";
+    const companyName = profile?.legal_name ?? "";
+    const phone = profile?.phone ?? "";
+
     let sent = 0;
     for (const row of due) {
-      // Consume the follow-up marker regardless, so we don't loop.
+      // Consume the follow-up marker regardless, so we don't loop on errors.
       await query(`update communications set follow_up_at = null where id = $1`, [row.id]);
       if (!row.email || !row.email_verified) continue;
-      const subject = `Following up: ${row.subject ?? "our request"}`;
-      const html = `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424"><p>Just following up on my note below, happy to answer any questions or set up a quick call.</p><div style="border-top:2px solid #B28F5D;margin-top:16px;padding-top:12px">${(row.body ?? "").replace(/\n/g, "<br/>")}</div></div>`;
+
+      // Build the sub greeting the same way the initial outreach agent does.
+      const ownerFirst = (() => {
+        const raw = (row.sub_owner_name ?? "").trim();
+        if (!raw) return "there";
+        return raw.split(/\s+/)[0] || "there";
+      })();
+
+      let subject: string;
+      let html: string;
+
+      if (tmpl) {
+        const vars: Record<string, string> = {
+          owner_name: ownerFirst,
+          sender_name: senderName,
+          company_name: companyName,
+          phone,
+          trade: row.trade ?? "",
+          location_state: row.location_state ?? "",
+          deadline: formatDeadlineLabel(row.deadline),
+          // Tokens rarely used in the follow-up but available for custom templates.
+          opportunity_title: "",
+          solicitation_number: "",
+          agency: "",
+          scope_summary: "",
+          questions: "",
+        };
+        const rawSubject = scrubGovtContacts(
+          renderTemplate(tmpl.subject ?? "Re: our quote request", vars)
+        ).sanitised;
+        const rawBody = scrubGovtContacts(renderTemplate(tmpl.body, vars)).sanitised;
+        subject = rawSubject || "Re: our quote request";
+        html = plainToHtml(rawBody);
+      } else {
+        // Fallback: template not found — use a minimal safe copy.
+        subject = "Following up on our quote request";
+        html = `<p>Hi ${ownerFirst},</p><p>Just following up on my previous email. Happy to answer any questions or set up a quick call.</p><p>${senderName}</p>`;
+      }
+
       const res = await sendOutreachEmail({
         to: row.email,
         subject,

@@ -18,26 +18,13 @@ import { gatherTradeAttachments } from "../opportunity-attachments";
 import { isCallable, isEmailable } from "../domain/sub-contactability";
 import { buildOutreachPacket } from "../domain/outreach-packet";
 import { outreachDisplayName } from "../domain/solicitation-completeness";
+import {
+  renderTemplate,
+  formatDeadlineLabel,
+  plainToHtml,
+} from "../domain/template-render";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
-
-/** Simple {{var}} replacement. Unknown vars are left blank. */
-function render(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key: string) =>
-    key in vars ? vars[key] : ""
-  );
-}
-
-/** Format an ISO/date string for humans; falls back to the raw value. */
-function formatDeadline(deadline: string | null): string {
-  if (!deadline) return "the stated deadline";
-  const d = new Date(deadline);
-  if (Number.isNaN(d.getTime())) return deadline;
-  return d.toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
 
 function stripHtmlText(html: string): string {
   return html.replace(/<[^>]+>/g, "").trim();
@@ -120,7 +107,7 @@ export const outreach: AgentDefinition = {
     if (!tmpl) return { ok: false, summary: "no active template_1_outreach template" };
 
     const analysis = opp.solicitation_analysis;
-    const deadlineLabel = formatDeadline(opp.deadline);
+    const deadlineLabel = formatDeadlineLabel(opp.deadline);
     const packet = buildOutreachPacket({
       trade,
       analysis,
@@ -195,8 +182,8 @@ export const outreach: AgentDefinition = {
       agency: opp.agency ?? "",
     };
 
-    const subject = scrubGovtContacts(render(tmpl.subject ?? "Partnership opportunity", vars)).sanitised;
-    const plainBody = scrubGovtContacts(render(tmpl.body, vars)).sanitised;
+    const subject = scrubGovtContacts(renderTemplate(tmpl.subject ?? "Partnership opportunity", vars)).sanitised;
+    const plainBody = scrubGovtContacts(renderTemplate(tmpl.body, vars)).sanitised;
 
     // Trade-filtered official docs (unaltered PDFs). Generated copy is scrubbed;
     // source PDFs are not rewritten.
@@ -240,7 +227,7 @@ export const outreach: AgentDefinition = {
       `<p><strong>Please reply to this email with your price</strong> for the ${trade || "described"} scope (include payment terms and any exclusions).</p>`;
 
     const fullPlain = plainBody + detailsPlain;
-    const html = plainBody.replace(/\n/g, "<br>") + detailsHtml;
+    const html = plainToHtml(plainBody) + detailsHtml;
 
     const trackingId = randomUUID();
     const followUpAt = new Date(Date.now() + 48 * 3_600_000).toISOString();
