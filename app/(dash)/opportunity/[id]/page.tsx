@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { opportunityDetail } from "@/lib/data";
 import { PageHeader, ScoreBadge, TierBadge } from "@/components/badges";
@@ -16,6 +15,9 @@ import { OpportunityNotes } from "@/components/opportunity-notes";
 import { Collapsible } from "@/components/collapsible";
 import { CompetitiveLandscape } from "@/components/competitive-landscape";
 import { DeadlineCountdown } from "@/components/deadline-countdown";
+import { ScoreBreakdownCard } from "@/components/score-breakdown-card";
+import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
+import { InfoTip } from "@/components/info-tip";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
@@ -32,19 +34,6 @@ const PAST_PERF_LABEL: Record<string, string> = {
   prime_only: "Prime-only (blocked)",
 };
 
-const OUTREACH_LABEL: Record<string, string> = {
-  pending: "Not contacted yet",
-  sent: "Email sent",
-  draft: "Draft (no email transport)",
-  send_failed: "Send failed",
-  no_email: "No email on file",
-  email_unverified: "Email unverified",
-  followed_up: "Followed up",
-  responsive: "Responded",
-  unresponsive: "No response",
-  declined: "Declined",
-};
-
 /**
  * The Opportunity Detail page is the single source of truth for one bid.
  * Every card and list here is the authoritative view; changes made in Call
@@ -58,7 +47,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
     getAutomationRules(),
   ]);
   if (!detail) notFound();
-  const { opp, quotes, subs, documents, logs, competitors } = detail;
+  const { opp, quotes, subs, documents, logs, competitors, subComms } = detail;
   // Hours since the record last changed, feeds the banner's stall detection.
   const hoursSinceUpdate = opp.updated_at
     ? (Date.now() - new Date(opp.updated_at).getTime()) / 3_600_000
@@ -67,10 +56,10 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const breakdown = opp.score_breakdown as ScoreBreakdown | null;
   const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
   const pricing = (opp.raw_json as { pricing_summary?: Record<string, unknown> } | null)?.pricing_summary;
-  const subOptions = (subs as Record<string, unknown>[]).map((s) => ({
-    subcontractor_id: String(s.subcontractor_id),
-    company_name: String(s.company_name),
-    trade: (s.trade as string) ?? null,
+  const subOptions = subs.map((s) => ({
+    subcontractor_id: s.subcontractor_id,
+    company_name: s.company_name,
+    trade: s.trade,
   }));
   const briefDocs = (documents as Record<string, unknown>[]).map((d) => ({
     id: String(d.id),
@@ -131,21 +120,24 @@ export default async function OpportunityPage({ params }: { params: { id: string
           <OpportunityJourney stage={opp.stage} />
         </div>
 
-        {/* Mobile: one-tap jumps to the page's key sections, this page is a
-            long scroll on a phone. Hidden on desktop where columns fit. */}
-        <div className="sticky top-0 z-20 mt-2 flex gap-1.5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2 backdrop-blur lg:hidden">
+        {/* Jump links — this page is a long scroll; keep section hops visible
+            on every breakpoint so operators can scan without hunting. */}
+        <div className="sticky top-0 z-20 mt-2 flex gap-1.5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2 backdrop-blur">
           {[
-            ...(bid ? [{ href: "#submission", label: "Bid package" }] : []),
+            { href: "#brief", label: "Brief" },
             ...(showQuotePanel ? [{ href: "#quotes", label: "Quotes" }] : []),
-            { href: "#attachments", label: "Attachments" },
+            { href: "#subs", label: `Subs${subs.length ? ` (${subs.length})` : ""}` },
+            ...(breakdown ? [{ href: "#score", label: "Score" }] : []),
+            ...(bid ? [{ href: "#submission", label: "Bid package" }] : []),
+            { href: "#glance", label: "Facts" },
             { href: "#activity", label: "Activity" },
           ].map((s) => (
             <a
               key={s.href}
               href={s.href}
-              className="badge shrink-0 bg-slate-200 text-slate-600"
+              className="badge shrink-0 bg-slate-200 text-slate-600 hover:bg-accent/15 hover:text-accent-strong"
             >
-              {s.label} ↓
+              {s.label}
             </a>
           ))}
         </div>
@@ -244,7 +236,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
         )}
 
         {/* Bid Brief, always shown; falls back to lightweight header when no analysis yet */}
-        <div className="px-5 pt-5">
+        <div className="scroll-mt-12 px-5 pt-5" id="brief">
           {analysis ? (
             <BidBrief analysis={analysis} documents={briefDocs} />
           ) : (
@@ -259,24 +251,39 @@ export default async function OpportunityPage({ params }: { params: { id: string
           )}
         </div>
 
+        {/* Subs are the heart of execution after pursue — full width so contact
+            status and history are easy to scan before the denser side panels. */}
+        <div className="px-5 pt-5">
+          <OpportunitySubsPanel subs={subs} communications={subComms} />
+        </div>
+
         <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-3">
-          {/* Column 1, facts + triage */}
+          {/* Column 1, facts + docs */}
           <div className="space-y-4">
-            <div className="card">
+            <div className="card scroll-mt-12" id="glance">
               <p className="eyebrow mb-3">At a glance</p>
 
-              {/* Deadline, the single most time-critical fact, live-ticking. */}
-              <div className="mb-3 rounded-md border border-border bg-surface px-3 py-2.5">
+              <div className="mb-4 rounded-md border border-border bg-surface px-3 py-2.5">
                 <p className="label">Time to submit</p>
                 <div className="mt-0.5">
                   <DeadlineCountdown deadline={opp.deadline} />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <Fact label="Score" value={<ScoreBadge score={opp.score} />} />
+              <p className="label mb-2">Score & money</p>
+              <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
+                <Fact
+                  label="Score"
+                  tip="How well this opportunity fits your profile. Open Score for the full breakdown."
+                  value={
+                    <a href="#score" className="inline-flex hover:opacity-80">
+                      <ScoreBadge score={opp.score} />
+                    </a>
+                  }
+                />
                 <Fact
                   label="Est. value"
+                  tip="Published contract value when available; otherwise an estimate from the listing or attachments."
                   value={
                     opp.value_estimated != null ? (
                       <EstimatedValue
@@ -291,26 +298,57 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 {bestQuote != null && (
                   <Fact
                     label="Lowest sub quote"
+                    tip="Lowest price entered from a subcontractor so far on this bid."
                     value={<span className="num">{currency(bestQuote)}</span>}
                   />
                 )}
                 {bid?.bid_amount != null && (
                   <Fact
                     label="Priced bid"
+                    tip="Your assembled bid amount after Bid Builder ran."
                     value={<span className="num text-accent">{currency(bid.bid_amount)}</span>}
                   />
                 )}
+                {requiredTradeCount > 0 && (
+                  <Fact
+                    label="Trades needed"
+                    tip="Distinct trades the solicitation appears to require."
+                    value={<span className="num">{requiredTradeCount}</span>}
+                  />
+                )}
+                <Fact
+                  label="Subs paired"
+                  tip="Subcontractors Sub Finder (or you) linked to this opportunity."
+                  value={
+                    <a href="#subs" className="num text-accent hover:underline">
+                      {subs.length}
+                    </a>
+                  }
+                />
+              </div>
+
+              <p className="label mb-2">Identity & place</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
                 <Fact
                   label="Agency"
                   value={[opp.agency, opp.sub_agency].filter(Boolean).join(" · ") || "-"}
                 />
                 <Fact
                   label="Type"
+                  tip="Sources sought are market research; solicitations are live bids."
                   value={opp.is_sources_sought ? "Sources sought" : "Solicitation"}
                 />
-                <Fact label="NAICS" value={opp.naics_code ?? "-"} />
+                <Fact
+                  label="NAICS"
+                  tip="Industry code used for set-asides and matching your profile."
+                  value={opp.naics_code ?? "-"}
+                />
                 <Fact label="PSC" value={opp.psc_code ?? "-"} />
-                <Fact label="Set-aside" value={opp.set_aside_type ?? "-"} />
+                <Fact
+                  label="Set-aside"
+                  tip="Who is eligible to bid (e.g. Small Business, 8(a), unrestricted)."
+                  value={opp.set_aside_type ?? "-"}
+                />
                 <Fact
                   label="Place of performance"
                   value={
@@ -321,6 +359,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 <Fact label="Solicitation #" value={opp.solicitation_number ?? "-"} />
                 <Fact
                   label="Past performance"
+                  tip="Whether the agency requires your company (not just subs) to prove similar prior work."
                   value={
                     opp.past_perf_classification
                       ? (PAST_PERF_LABEL[opp.past_perf_classification] ??
@@ -328,24 +367,21 @@ export default async function OpportunityPage({ params }: { params: { id: string
                       : "-"
                   }
                 />
-                {requiredTradeCount > 0 && (
-                  <Fact
-                    label="Trades needed"
-                    value={<span className="num">{requiredTradeCount}</span>}
-                  />
-                )}
                 {analysis?.submission_method &&
                   analysis.submission_method !== NA_TEXT && (
                     <Fact label="How to submit" value={analysis.submission_method} />
                   )}
               </div>
               {opp.risk_flags.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {opp.risk_flags.map((f) => (
-                    <span key={f} className="badge bg-risk/15 text-risk">
-                      ⚠ {flagLabel(f)}
-                    </span>
-                  ))}
+                <div className="mt-4 border-t border-border pt-3">
+                  <p className="label mb-2">Flags needing attention</p>
+                  <div className="flex flex-wrap gap-1">
+                    {opp.risk_flags.map((f) => (
+                      <span key={f} className="badge bg-risk/15 text-risk">
+                        ⚠ {flagLabel(f)}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -396,38 +432,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
             <AttachmentsPanel documents={briefDocs} />
           </div>
 
-          {/* Column 2, analysis + pricing + subs */}
+          {/* Column 2, analysis + pricing */}
           <div className="space-y-4">
-            {breakdown && (
-              <Collapsible
-                title="Score breakdown"
-                meta={<span className="num">{breakdown.total}/100</span>}
-              >
-                <div className="space-y-2">
-                  {breakdown.dimensions.map((d) => (
-                    <div key={d.key} className="text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-slate-700">{d.label}</span>
-                        <span className="num text-slate-500">
-                          {d.points}/{d.max_points}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 h-1 rounded-full bg-surface">
-                        <div
-                          className="h-1 rounded-full bg-accent"
-                          style={{
-                            width: `${(d.points / Math.max(d.max_points, 1)) * 100}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {breakdown.summary && (
-                  <p className="mt-3 text-xs text-slate-500">{breakdown.summary}</p>
-                )}
-              </Collapsible>
-            )}
+            {breakdown && <ScoreBreakdownCard breakdown={breakdown} />}
 
             {pricing && (() => {
               // Stats live under `comp_stats` (count/median/average/p25/p75), not at
@@ -475,45 +482,6 @@ export default async function OpportunityPage({ params }: { params: { id: string
             })()}
 
             <CompetitiveLandscape competitors={competitors} pricing={pricing} />
-
-            <Collapsible
-              title="Subcontractors"
-              meta={<span className="num">{subOptions.length}</span>}
-            >
-              {subOptions.length === 0 ? (
-                <p className="text-sm text-slate-500">
-                  No subs paired yet. Sub Finder will run once this opportunity
-                  is pursued.
-                </p>
-              ) : (
-                <ul className="divide-y divide-border text-sm">
-                  {(subs as Record<string, unknown>[]).slice(0, 12).map((s) => (
-                    <li key={String(s.id)}>
-                      <Link
-                        href={`/subs/${String(s.subcontractor_id)}`}
-                        className="flex items-center justify-between py-2 hover:text-accent"
-                      >
-                        <span className="min-w-0 truncate text-slate-700">
-                          {String(s.company_name)}
-                          {s.trade ? (
-                            <span className="text-slate-500">
-                              {" "}
-                              · {String(s.trade)}
-                            </span>
-                          ) : null}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          {s.outreach_state
-                            ? (OUTREACH_LABEL[String(s.outreach_state)] ??
-                              String(s.outreach_state).replace(/_/g, " "))
-                            : ""}
-                        </span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Collapsible>
           </div>
 
           {/* Column 3, quotes + bid + activity */}
@@ -653,10 +621,21 @@ export default async function OpportunityPage({ params }: { params: { id: string
   );
 }
 
-function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+function Fact({
+  label,
+  value,
+  tip,
+}: {
+  label: string;
+  value: React.ReactNode;
+  tip?: string;
+}) {
   return (
     <div>
-      <p className="label">{label}</p>
+      <p className="label flex items-center gap-1">
+        {label}
+        {tip ? <InfoTip label={`About ${label}`}>{tip}</InfoTip> : null}
+      </p>
       <p className="mt-0.5 text-sm text-slate-800">{value}</p>
     </div>
   );
