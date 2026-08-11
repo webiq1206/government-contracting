@@ -137,10 +137,18 @@ export const PAGE_HELP: Record<string, HelpContent> = {
   opportunity: {
     title: "The complete record for one bid",
     points: [
-      "Jump links under the journey hop to Brief, Subs, Score, and Activity.",
-      "The Subs panel shows who was found, contact status, emails/calls, and expandable history for this bid.",
-      "Tap ? on score rows and key facts for plain-English explanations.",
-      "The banner up top always shows the recommended next step; the Submission package is blocked until compliance passes.",
+      "Jump links hop to Attention, Coverage, Brief, Quotes, Subs, Score, and Activity.",
+      "What needs attention and trade coverage sit near the top so you can scan blockers first.",
+      "The Subs panel shows who was found, contact status, emails/calls, next action, and history for this bid.",
+      "The banner always shows the recommended next step; submission stays blocked until compliance passes.",
+    ],
+  },
+  "how-it-works": {
+    title: "The full Brost Co sequence",
+    points: [
+      "Every step from setup through win/loss is listed here in order.",
+      "Green steps need you; gray steps run automatically; others wait on subs or the agency.",
+      "Day to day, use Today — this page is the map, not the to-do list.",
     ],
   },
 };
