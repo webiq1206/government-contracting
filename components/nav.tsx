@@ -69,6 +69,7 @@ export function Nav({
   callCount,
   engineHealthy,
   engineLabel,
+  automationPaused = false,
 }: {
   email: string;
   reviewCount: number;
@@ -77,6 +78,8 @@ export function Nav({
   engineHealthy?: boolean;
   /** e.g. "last activity 2m ago" */
   engineLabel?: string;
+  /** Master kill switch is on; nothing automated will run. */
+  automationPaused?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -251,13 +254,21 @@ export function Nav({
           <Link
             href="/agents"
             onClick={() => setOpen(false)}
-            className="shrink-0 border-t border-border px-4 py-3 text-xs text-slate-600 transition-colors hover:text-foreground"
+            className={`shrink-0 border-t px-4 py-3 text-xs transition-colors hover:text-foreground ${
+              automationPaused
+                ? "border-review/40 bg-review/10 text-slate-800"
+                : "border-border text-slate-600"
+            }`}
           >
             <span className="flex items-center gap-2">
               <span
                 aria-hidden
                 className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-                  engineHealthy ? "animate-pulse bg-pursue" : "bg-risk"
+                  automationPaused
+                    ? "bg-review"
+                    : engineHealthy
+                      ? "animate-pulse bg-pursue"
+                      : "bg-risk"
                 }`}
               />
               <span className="min-w-0 truncate">{engineLabel}</span>

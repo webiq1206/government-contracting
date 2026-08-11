@@ -30,8 +30,8 @@ export async function POST(req: Request) {
     action: body.paused ? "automation_paused" : "automation_resumed",
     level: body.paused ? "warn" : "success",
     message: body.paused
-      ? `Automation paused by ${auth.email}. No new scheduled runs will start; manual runs and queued jobs still process.`
-      : `Automation resumed by ${auth.email}. Scheduled runs are active again.`,
+      ? `Master pause ON by ${auth.email}. Agents, queue jobs, outreach email, digests, and SMS are stopped.`
+      : `Master pause OFF by ${auth.email}. Automation is active again.`,
   });
   return NextResponse.json(state);
 }

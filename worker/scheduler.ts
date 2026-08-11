@@ -35,7 +35,7 @@ export function startScheduler(): () => void {
 
   async function tick() {
     // Operator-controlled pause switch (Agents page). While paused no new
-    // scheduled runs start; manual "Run now" and already-queued jobs still
+    // scheduled runs start. The master pause also gates enqueue/runAgent/sends;
     // process because only the cron enqueue is gated here.
     const { paused } = await getAutomationState();
     if (paused !== wasPaused) {

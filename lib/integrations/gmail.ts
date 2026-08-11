@@ -228,6 +228,10 @@ export const gmail = {
   async send(
     params: SendEmailParams
   ): Promise<{ disabled?: boolean; messageId?: string; threadId?: string; error?: string }> {
+    const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
+    if (await isAutomationPaused()) {
+      return { disabled: true, error: AUTOMATION_PAUSED_ERROR };
+    }
     const client = await gmailClient();
     if (!client) return { disabled: true };
     try {

@@ -1,8 +1,8 @@
 /**
  * Generic app-level settings (app_settings table), non-secret platform state
- * managed from the UI. First consumer: the automation pause switch, which the
- * worker's scheduler consults every tick so the operator can stop/start the
- * cron loop without touching the process.
+ * managed from the UI. First consumer: the automation master pause switch.
+ * When paused, cron, queue enqueue, agent runs, and outbound email/SMS all
+ * stop. Operator auth, password reset, and billing stay available.
  *
  * Every read degrades gracefully (returns the default) if the table doesn't
  * exist yet or the DB hiccups, so a pending migration can never wedge the
@@ -34,7 +34,7 @@ async function setSetting(key: string, value: unknown, updatedBy?: string): Prom
 }
 
 // ---------------------------------------------------------------------------
-// Automation pause switch
+// Automation master pause switch
 // ---------------------------------------------------------------------------
 
 export interface AutomationState {
@@ -45,17 +45,34 @@ export interface AutomationState {
   changed_by: string | null;
 }
 
+export const AUTOMATION_PAUSED_ERROR =
+  "Automation is fully paused. Nothing will run, send, or enqueue until you resume the master switch.";
+
 const AUTOMATION_KEY = "automation";
 const AUTOMATION_DEFAULT: AutomationState = { paused: false, changed_at: null, changed_by: null };
 
+/** Short in-memory cache so burst enqueue/send paths do not hammer the DB. */
+const STATE_CACHE_MS = 2_000;
+let stateCache: { at: number; state: AutomationState } | null = null;
+
 /** Current automation state. Default (and failure mode) is RUNNING. */
 export async function getAutomationState(): Promise<AutomationState> {
+  if (stateCache && Date.now() - stateCache.at < STATE_CACHE_MS) {
+    return stateCache.state;
+  }
   const v = await getSetting<Partial<AutomationState>>(AUTOMATION_KEY, AUTOMATION_DEFAULT);
-  return {
+  const state: AutomationState = {
     paused: v.paused === true,
     changed_at: v.changed_at ?? null,
     changed_by: v.changed_by ?? null,
   };
+  stateCache = { at: Date.now(), state };
+  return state;
+}
+
+/** True when the master switch has stopped all automation side effects. */
+export async function isAutomationPaused(): Promise<boolean> {
+  return (await getAutomationState()).paused;
 }
 
 export async function setAutomationPaused(paused: boolean, by: string): Promise<AutomationState> {
@@ -65,7 +82,13 @@ export async function setAutomationPaused(paused: boolean, by: string): Promise<
     changed_by: by,
   };
   await setSetting(AUTOMATION_KEY, state, by);
+  stateCache = { at: Date.now(), state };
   return state;
+}
+
+/** Test helper: clear the in-memory pause cache between cases. */
+export function clearAutomationStateCache(): void {
+  stateCache = null;
 }
 
 // ---------------------------------------------------------------------------

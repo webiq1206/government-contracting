@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
+import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 import { sendApprovedOutreach } from "@/lib/backlink-send";
@@ -38,6 +39,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   );
 
   if (body.action === "approve") {
+    if (await isAutomationPaused()) {
+      return NextResponse.json({ error: AUTOMATION_PAUSED_ERROR }, { status: 409 });
+    }
     // Allow a last-minute edit of the copy on approval.
     await query(
       `update backlink_outreach
