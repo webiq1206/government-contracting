@@ -67,7 +67,7 @@ export default async function AgentsPage({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["agents"]}
         title="Automation Log"

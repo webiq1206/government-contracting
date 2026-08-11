@@ -156,7 +156,7 @@ export default async function AnalyticsPage() {
     : null;
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["analytics"]}
         title="Analytics"

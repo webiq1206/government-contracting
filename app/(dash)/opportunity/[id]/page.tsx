@@ -145,7 +145,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
   });
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["opportunity"]}
         title={opp.title ?? "Opportunity"}

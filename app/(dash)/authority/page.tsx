@@ -75,7 +75,7 @@ export default async function AuthorityPage() {
   const otherTier = prospects.filter((p) => p.tier !== "high");
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex page-shell">
       <PageHeader
         title="Site Authority"
         help={PAGE_HELP["authority"]}

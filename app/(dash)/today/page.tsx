@@ -62,20 +62,20 @@ function OppActionRow({
   return (
     <Link
       href={`/opportunity/${o.id}`}
-      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+      className="flex flex-col gap-3 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-1.5"
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-slate-900">
+        <p className="text-sm font-medium text-slate-900 sm:truncate">
           {o.title ?? "Untitled opportunity"}
         </p>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
+        <p className="mt-0.5 text-xs text-slate-500 sm:truncate">
           {[o.agency, o.value_estimated != null ? currency(o.value_estimated) : null]
             .filter(Boolean)
             .join(" · ")}
           {detail ? ` · ${detail}` : ""}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end sm:gap-3">
         {party && !inlineTriage && (
           <span
             className={`badge ${
@@ -92,12 +92,12 @@ function OppActionRow({
           </StopClickPropagation>
         )}
         {inlineTriage ? (
-          <StopClickPropagation className="flex items-center gap-2">
+          <StopClickPropagation className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <SnoozeButton kind="opportunity" id={o.id} />
             <ActionButton
               endpoint={`/api/opportunities/${o.id}/action`}
               body={{ action: "pursue" }}
-              className="btn-success text-xs"
+              className="btn-success min-h-11 flex-1 text-xs sm:min-h-0 sm:flex-none"
               toast={{
                 message: "Pursued. Analysis and pricing are running.",
               }}
@@ -107,7 +107,7 @@ function OppActionRow({
             <ActionButton
               endpoint={`/api/opportunities/${o.id}/action`}
               body={{ action: "dismiss" }}
-              className="btn-danger text-xs"
+              className="btn-danger min-h-11 flex-1 text-xs sm:min-h-0 sm:flex-none"
               toast={{
                 message: `Dismissed "${o.title ?? "opportunity"}". It's archived, not deleted.`,
                 undo: {
@@ -118,7 +118,9 @@ function OppActionRow({
             >
               Dismiss
             </ActionButton>
-            <span className="btn-ghost pointer-events-none text-xs">Read brief →</span>
+            <span className="btn-ghost pointer-events-none hidden text-xs sm:inline-flex">
+              Read brief →
+            </span>
           </StopClickPropagation>
         ) : (
           <span className="btn-ghost pointer-events-none text-xs">{action} →</span>
@@ -224,7 +226,7 @@ export default async function TodayPage() {
     approvalCount;
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <TodayLive />
       <PageHeader
         help={PAGE_HELP["today"]}
@@ -345,14 +347,14 @@ export default async function TodayPage() {
               <Link
                 key={c.id}
                 href={`/call-queue?open=${c.id}`}
-                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
+                className="flex flex-col gap-3 rounded-md border border-border bg-background px-4 py-3 transition-colors hover:border-accent/60 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-1.5"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">
+                  <p className="text-sm font-medium text-slate-900 sm:truncate">
                     Call {c.company_name}
                     {c.trade ? ` about ${c.trade.toLowerCase()} pricing` : " for their quote"}
                   </p>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                  <p className="mt-0.5 text-xs text-slate-500 sm:truncate">
                     {[c.opportunity_title, c.phone ?? "no phone on file"]
                       .filter(Boolean)
                       .join(" · ")}
@@ -364,7 +366,7 @@ export default async function TodayPage() {
                     </p>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-3">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:gap-3">
                   {c.source === "reply" && (
                     <span className="badge bg-pursue/15 text-pursue">Replied, interested</span>
                   )}
@@ -385,7 +387,9 @@ export default async function TodayPage() {
                       Skip
                     </ActionButton>
                   </StopClickPropagation>
-                  <span className="btn-primary pointer-events-none text-xs">Start call →</span>
+                  <span className="btn-primary pointer-events-none ml-auto text-xs sm:ml-0">
+                    Start call →
+                  </span>
                 </div>
               </Link>
             ))}

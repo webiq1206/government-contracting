@@ -253,7 +253,7 @@ export default function HowItWorksPage() {
   const totalSteps = PHASES.reduce((n, p) => n + p.steps.length, 0);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["how-it-works"]}
         title="How it works"

@@ -54,7 +54,7 @@ export default async function SubDetailPage({
   const contactLabel = contactStatusLabel(sub.contact_status);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         title={sub.company_name}
         subtitle={

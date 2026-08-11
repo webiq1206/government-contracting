@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function RulesPage() {
   const rules = await getAutomationRules();
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["rules"]}
         title="Automation Rules"

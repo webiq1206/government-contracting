@@ -89,7 +89,7 @@ export default async function PipelinePage({
   for (const o of opps) byLane.get(laneFor(o))!.push(o);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["pipeline"]}
         title="Pipeline"
@@ -102,13 +102,13 @@ export default async function PipelinePage({
         <div className="flex gap-1 rounded-md border border-border p-0.5">
           <Link
             href="/pipeline"
-            className={`rounded px-2.5 py-1 text-xs ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+            className={`inline-flex min-h-10 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             Simple
           </Link>
           <Link
             href="/pipeline?view=stages"
-            className={`rounded px-2.5 py-1 text-xs ${view === "stages" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+            className={`inline-flex min-h-10 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "stages" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             All stages
           </Link>

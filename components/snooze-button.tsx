@@ -52,7 +52,7 @@ export function SnoozeButton({
     <span ref={wrapRef} className="relative inline-flex">
       <button
         type="button"
-        className="btn-ghost text-xs"
+        className="btn-ghost min-h-11 text-xs md:min-h-0"
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={busy}

@@ -19,7 +19,7 @@ export default function DashboardError({
   }, [error]);
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center gap-3 p-6 text-center">
+    <div className="flex page-shell items-center justify-center gap-3 p-6 text-center">
       <p className="text-3xl">⚠️</p>
       <h1 className="font-display text-2xl font-semibold text-foreground">
         Something went wrong loading this page.

@@ -241,7 +241,7 @@ export default async function ContractsPage() {
   ]);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["contracts"]}
         title="Contracts"

@@ -27,7 +27,7 @@ export default async function EmailLogPage({
   }
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["email-log"]}
         title="Email Log"
