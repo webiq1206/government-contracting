@@ -320,7 +320,7 @@ export function GuideWizard() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed z-[65] flex items-center gap-2 rounded-md border border-gold/40 bg-ink px-4 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-shell focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] right-4 md:bottom-6 md:right-6"
+        className="fixed z-[65] hidden md:flex items-center gap-2 rounded-md border border-gold/40 bg-ink px-4 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-shell focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold md:bottom-6 md:right-6"
         aria-haspopup="dialog"
         aria-expanded={open}
       >

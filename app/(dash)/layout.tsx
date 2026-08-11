@@ -56,7 +56,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           engineLabel={engineLabel}
           automationPaused={automation.paused}
         />
-        <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
+        <main className="page-main min-h-0 min-w-0 flex-1 text-foreground">
           {children}
         </main>
       </div>
