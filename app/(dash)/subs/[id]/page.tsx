@@ -9,7 +9,11 @@ import {
   contactBadgeClass,
   contactStatusHint,
   contactStatusLabel,
+  outreachBadgeClass,
+  outreachHint,
+  outreachLabel,
 } from "@/lib/domain/sub-contact";
+import { stageLabel } from "@/lib/domain/journey";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import type { ProjectHistoryItem } from "@/lib/types";
 
@@ -47,11 +51,12 @@ export default async function SubDetailPage({
   const detail = await subDetail(params.id);
   if (!detail) notFound();
 
-  const { sub, communications, quotes, stats } = detail;
+  const { sub, communications, quotes, stats, pairings } = detail;
   const projects: ProjectHistoryItem[] = Array.isArray(sub.project_history)
     ? sub.project_history
     : [];
   const contactLabel = contactStatusLabel(sub.contact_status);
+  const openPairings = pairings.filter((p) => p.status === "open").length;
 
   return (
     <div className="flex h-screen flex-col">
@@ -82,8 +87,8 @@ export default async function SubDetailPage({
       </PageHeader>
 
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
-        {/* Contact + scores — live totals from saved communications */}
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {/* Contact metrics — live totals from saved communications */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
           <Stat
             label="Emails sent"
             tip="Outbound emails saved on this sub’s record across every opportunity."
@@ -100,6 +105,11 @@ export default async function SubDetailPage({
             value={<span className="num">{stats.calls_logged}</span>}
           />
           <Stat
+            label="Skipped calls"
+            tip="Times an operator chose not to call from Today or the Call Queue."
+            value={<span className="num">{stats.skips_logged}</span>}
+          />
+          <Stat
             label="Touches"
             tip="All communications: emails, calls, notes, and skips."
             value={<span className="num">{stats.touches}</span>}
@@ -114,10 +124,67 @@ export default async function SubDetailPage({
             }
           />
           <Stat
-            label="Reliability"
-            tip="How consistently this sub responds and delivers over time."
-            value={sub.reliability_score != null ? sub.reliability_score : "-"}
+            label="Open jobs"
+            tip="Active opportunities this sub is currently paired to."
+            value={<span className="num">{openPairings}</span>}
           />
+        </div>
+
+        <div className="card" id="pairings">
+          <h2 className="mb-1 text-sm font-semibold text-slate-900">
+            Opportunities paired{" "}
+            <span className="font-normal text-slate-500">({pairings.length})</span>
+          </h2>
+          <p className="mb-3 text-xs text-slate-500">
+            Every job Brost Co has associated this company with, including outreach
+            and quote status. Reuse this relationship instead of treating them as new.
+          </p>
+          {pairings.length === 0 ? (
+            <p className="text-sm text-slate-500">Not paired to any opportunities yet.</p>
+          ) : (
+            <ul className="divide-y divide-border text-sm">
+              {pairings.map((p) => {
+                const label = outreachLabel(p.outreach_state);
+                return (
+                  <li
+                    key={`${p.opportunity_id}-${p.trade ?? "t"}`}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <Link
+                        href={`/opportunity/${p.opportunity_id}`}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        {p.opportunity_title ?? "Opportunity"}
+                      </Link>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        {[
+                          p.trade,
+                          stageLabel(p.stage),
+                          p.deadline ? `Due ${shortDate(p.deadline)}` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <span
+                        className={`badge inline-flex items-center gap-1 ${outreachBadgeClass(p.outreach_state)}`}
+                        title={outreachHint(p.outreach_state)}
+                      >
+                        {label}
+                      </span>
+                      {p.quote_amount != null && (
+                        <span className="num text-sm text-slate-700">
+                          {currency(Number(p.quote_amount))}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
@@ -252,9 +319,22 @@ export default async function SubDetailPage({
                   <tbody>
                     {quotes.map((q, i) => {
                       const amt = q.quote_amount;
+                      const oppId = s(q.opportunity_id);
+                      const title = s(q.opportunity_title) ?? "-";
                       return (
                         <tr key={s(q.id) ?? i} className="border-t border-border">
-                          <td className="td">{s(q.opportunity_title) ?? "-"}</td>
+                          <td className="td">
+                            {oppId ? (
+                              <Link
+                                href={`/opportunity/${oppId}`}
+                                className="text-accent hover:underline"
+                              >
+                                {title}
+                              </Link>
+                            ) : (
+                              title
+                            )}
+                          </td>
                           <td className="td num">
                             {typeof amt === "number" ? currency(amt) : currency(Number(amt) || null)}
                           </td>

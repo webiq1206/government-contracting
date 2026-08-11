@@ -11,7 +11,7 @@ import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
-import { stageParty, PARTY_LABEL } from "@/lib/domain/journey";
+import { stageParty, PARTY_LABEL, STAGE_LABEL } from "@/lib/domain/journey";
 import { outreachLabel } from "@/lib/domain/sub-contact";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { ActionButton } from "@/components/action-button";
@@ -28,21 +28,6 @@ export const dynamic = "force-dynamic";
  * operator logs in: what should I do next, and why? Everything here is a
  * deep link into the exact place the work happens, ordered by urgency.
  */
-
-const STAGE_LABEL: Record<string, string> = {
-  monitoring: "Watching",
-  scoring: "Being scored",
-  analysis: "Being analyzed",
-  sub_research: "Finding subs",
-  outreach: "Contacting subs",
-  call_queue: "Calls to make",
-  quote_entry: "Collecting quotes",
-  bid_building: "Building the bid",
-  submitted: "Submitted",
-  won: "Won",
-  lost: "Lost",
-  dismissed: "Dismissed",
-};
 
 function OppActionRow({
   o,
@@ -230,9 +215,11 @@ export default async function TodayPage() {
         help={PAGE_HELP["today"]}
         title="Today"
         subtitle={
-          totalActions === 0
-            ? "Nothing needs you right now."
-            : `${totalActions} thing${totalActions === 1 ? "" : "s"} need${totalActions === 1 ? "s" : ""} your attention, most urgent first.`
+          !setup.complete
+            ? `Finish setup first (${setup.done}/${setup.total} complete), then Today will only show work that needs you.`
+            : totalActions === 0
+              ? "Nothing needs you right now."
+              : `${totalActions} thing${totalActions === 1 ? "" : "s"} need${totalActions === 1 ? "s" : ""} your attention, most urgent first.`
         }
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
