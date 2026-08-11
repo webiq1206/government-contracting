@@ -17,6 +17,7 @@ import { hunter } from "../integrations/hunter";
 import { scrapeWebsiteEmail, domainHasMx } from "../integrations/email-scrape";
 import { findWebsiteBysearch } from "../integrations/website-finder";
 import { sam } from "../integrations/sam";
+import { hasContactPathway, isEmailable } from "../domain/sub-contactability";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Subcontractor } from "../types";
 
@@ -285,36 +286,88 @@ export const subVerify: AgentDefinition = {
       [opportunityId, subcontractorId, JSON.stringify(verification), trade ?? null]
     );
 
-    // --- Standards gate + route to Outreach ---
+    // --- Standards gate + contact pathway + route ---
+    // Automation cannot run without a way to reach the sub. SAM/rating pass
+    // alone is not enough — empty-contact shells stay paired for history but
+    // do not enter Outreach or the Call Queue.
     const minRating = std?.min_google_rating;
     const ratingOk =
       minRating == null ||
       sub.google_rating == null ||
       sub.google_rating >= minRating;
-    const passes = !samExcluded && samConfirmed && ratingOk;
+    const contactOk = hasContactPathway({ email, phone, website });
+    const standardsOk = !samExcluded && samConfirmed && ratingOk;
+    const passes = standardsOk && contactOk;
 
     const enqueued: AgentResult["enqueued"] = [];
-    if (passes) {
+    let route = "held";
+    if (passes && isEmailable({ email, email_verified: emailVerified })) {
       enqueued.push({
         agent: "outreach",
         payload: { opportunityId, subcontractorId, trade },
       });
+      route = "outreach queued";
+    } else if (passes && phone) {
+      // Phone but no verified email: skip dead-end draft emails; queue a call.
+      enqueued.push({
+        agent: "call-prep",
+        payload: { opportunityId, subcontractorId, trade, source: "outreach" },
+        opts: {
+          singletonKey: `callprep:${opportunityId}:${subcontractorId}`,
+          singletonSeconds: 3600,
+        },
+      });
+      route = "call queued (phone only, no verified email)";
+      await query(
+        `update opportunity_subs
+            set outreach_state = 'no_email'
+          where opportunity_id = $1 and subcontractor_id = $2
+            and coalesce(trade,'') = coalesce($3,'')`,
+        [opportunityId, subcontractorId, trade ?? null]
+      );
+    } else if (standardsOk && !contactOk) {
+      route = "held (no email, phone, or website)";
+      await query(
+        `update opportunity_subs
+            set outreach_state = 'no_email'
+          where opportunity_id = $1 and subcontractor_id = $2
+            and coalesce(trade,'') = coalesce($3,'')`,
+        [opportunityId, subcontractorId, trade ?? null]
+      );
+      await query(
+        `update opportunities set human_action_required = true where id = $1`,
+        [opportunityId]
+      );
+    } else {
+      route = "held (failed standards)";
     }
 
     const summary = `Verified ${sub.company_name}: email ${
       emailVerified ? `verified (${emailSource ?? "existing"})` : email ? "unverified" : website ? "not found" : "not found (no website)"
-    }, SAM ${samExcluded ? "EXCLUDED" : samConfirmed ? "clear" : "UNVERIFIED"}, license ${licenseStatus}${
-      passes ? " → outreach queued" : " → held (failed standards)"
-    }.`;
+    }, phone ${phone ? "on file" : "missing"}, SAM ${samExcluded ? "EXCLUDED" : samConfirmed ? "clear" : "UNVERIFIED"}, license ${licenseStatus} → ${route}.`;
 
     return {
       ok: true,
       summary,
-      reasoning: `Standards gate: sam_excluded=${samExcluded}, rating_ok=${ratingOk}. Notes: ${
+      reasoning: `Standards gate: sam_excluded=${samExcluded}, rating_ok=${ratingOk}, contact_ok=${contactOk}. Notes: ${
         notes.join(" ") || "none"
       }`,
-      data: { email, emailVerified, emailSource, contactStatus, website, phone, samExcluded, licenseStatus, needsProjectHistory, passes },
+      data: {
+        email,
+        emailVerified,
+        emailSource,
+        contactStatus,
+        website,
+        phone,
+        samExcluded,
+        licenseStatus,
+        needsProjectHistory,
+        passes,
+        contactOk,
+        route,
+      },
       enqueued,
+      humanActionRequired: standardsOk && !contactOk,
     };
   },
 };

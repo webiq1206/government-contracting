@@ -17,7 +17,8 @@ describe("summarizeTradeCoverage", () => {
     });
     const electrical = result.trades.find((t) => t.trade === "Electrical")!;
     const plumbing = result.trades.find((t) => t.trade === "Plumbing")!;
-    expect(electrical.status).toBe("action_required");
+    // Fresh "sent" is still owned by auto follow-up; human action comes after.
+    expect(electrical.status).toBe("in_progress");
     expect(plumbing.status).toBe("empty");
     expect(result.totals.uncovered).toBe(2);
     expect(result.totals.found).toBe(1);
@@ -35,10 +36,11 @@ describe("summarizeTradeCoverage", () => {
     expect(result.totals.uncovered).toBe(0);
   });
 
-  it("counts follow-ups due from sent/followed_up states", () => {
+  it("counts human follow-ups due only after auto follow-up (not fresh sent)", () => {
     const result = summarizeTradeCoverage({
       requiredTrades: ["Roofing"],
       subs: [
+        { trade: "Roofing", outreach_state: "sent" },
         { trade: "Roofing", outreach_state: "followed_up" },
         { trade: "Roofing", outreach_state: "declined" },
       ],
@@ -46,5 +48,6 @@ describe("summarizeTradeCoverage", () => {
     });
     expect(result.trades[0].followUpDue).toBe(1);
     expect(result.trades[0].declined).toBe(1);
+    expect(result.trades[0].contacted).toBe(3);
   });
 });

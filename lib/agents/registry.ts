@@ -35,6 +35,7 @@ import {
   logRetentionSweep,
   backlinkOutreachSweep,
   contactRecheckSweep,
+  unresponsiveSweep,
 } from "./maintenance";
 
 export const ROSTER: AgentDefinition[] = [
@@ -67,6 +68,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   logRetentionSweep,
   backlinkOutreachSweep,
   contactRecheckSweep,
+  unresponsiveSweep,
 ];
 
 export const ALL_AGENTS: AgentDefinition[] = [...ROSTER, ...MAINTENANCE];
@@ -95,7 +97,8 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     { agent: retentionSweep, cron: "45 3 * * *" }, // daily at 03:45
     { agent: logRetentionSweep, cron: "30 3 * * *" }, // daily at 03:30
     { agent: backlinkOutreachSweep, cron: "*/20 * * * *" }, // every 20 min
-    { agent: contactRecheckSweep, cron: "5 * * * *" } // hourly at :05, small batch per run
+    { agent: contactRecheckSweep, cron: "5 * * * *" }, // hourly at :05, small batch per run
+    { agent: unresponsiveSweep, cron: "20 * * * *" } // hourly at :20
   );
   return scheduled;
 }

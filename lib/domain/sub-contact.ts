@@ -24,7 +24,7 @@ export const OUTREACH_HINT: Record<string, string> = {
   no_email: "No email address is on file for this sub.",
   email_unverified: "An email is on file but has not been verified yet.",
   followed_up: "A follow-up email was sent after the initial outreach.",
-  responsive: "They replied or were reached — warm lead for this opportunity.",
+  responsive: "They replied or were reached: warm lead for this opportunity.",
   unresponsive: "No reply after outreach and follow-up.",
   declined: "They declined to bid on this opportunity.",
 };

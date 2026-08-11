@@ -21,7 +21,9 @@ export async function queueCounts(): Promise<{ review: number; callQueue: number
          where org_id='${orgId}' and tier='review' and human_action_required=true and status='open') as review,
        (select count(*) from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
-        where o.org_id='${orgId}' and cc.status='pending') as call`
+         join subcontractors s on s.id = cc.subcontractor_id
+        where o.org_id='${orgId}' and cc.status='pending'
+          and nullif(btrim(coalesce(s.phone, '')), '') is not null) as call`
   );
   return { review: Number(row?.review ?? 0), callQueue: Number(row?.call ?? 0) };
 }
@@ -139,6 +141,9 @@ export async function callQueue(): Promise<CallCardRow[]> {
        join opportunities o on o.id = cc.opportunity_id
       where cc.status='pending'
         and (cc.snoozed_until is null or cc.snoozed_until <= now())
+        -- Uncallable cards (no phone) are never shown; Call Prep refuses to
+        -- create them going forward, and this keeps historical empties off Today.
+        and nullif(btrim(coalesce(s.phone, '')), '') is not null
       order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc`
   );
 }
@@ -299,7 +304,21 @@ export interface SubContactStats {
   emails_in: number;
   calls_logged: number;
   notes_count: number;
+  skips_logged: number;
   touches: number;
+}
+
+/** Opportunity pairings for the persistent sub record. */
+export interface SubPairingRow {
+  opportunity_id: string;
+  opportunity_title: string | null;
+  stage: string;
+  deadline: string | null;
+  trade: string | null;
+  outreach_state: string | null;
+  responded_at: string | null;
+  quote_amount: number | null;
+  status: string;
 }
 
 export async function subDetail(id: string) {
@@ -317,7 +336,7 @@ export async function subDetail(id: string) {
       )
     : await queryOne<Subcontractor>(`select * from subcontractors where id=$1`, [id]);
   if (!sub) return null;
-  const [communications, quotes, stats] = await Promise.all([
+  const [communications, quotes, stats, pairings] = await Promise.all([
     query<SubCommRow>(
       `select c.id, c.channel, c.direction, c.subject, c.body, c.created_at, c.replied_at,
               c.opportunity_id, o.title as opportunity_title, c.provider, c.recipient_email
@@ -329,7 +348,7 @@ export async function subDetail(id: string) {
       [id]
     ),
     query(
-      `select q.*, o.title as opportunity_title from quotes q
+      `select q.*, o.title as opportunity_title, o.id as opportunity_id from quotes q
          join opportunities o on o.id=q.opportunity_id
         where q.subcontractor_id=$1 order by q.created_at desc limit 100`,
       [id]
@@ -340,9 +359,31 @@ export async function subDetail(id: string) {
          count(*) filter (where channel = 'email' and direction = 'inbound')::int as emails_in,
          count(*) filter (where channel = 'call')::int as calls_logged,
          count(*) filter (where channel = 'note')::int as notes_count,
+         count(*) filter (
+           where channel = 'note' and subject ilike 'Skipped%'
+         )::int as skips_logged,
          count(*)::int as touches
        from communications
        where subcontractor_id = $1`,
+      [id]
+    ),
+    query<SubPairingRow>(
+      `select os.opportunity_id, o.title as opportunity_title, o.stage, o.deadline, o.status,
+              os.trade, os.outreach_state, os.responded_at,
+              q.quote_amount
+         from opportunity_subs os
+         join opportunities o on o.id = os.opportunity_id
+         left join lateral (
+           select quote_amount
+             from quotes
+            where opportunity_id = os.opportunity_id
+              and subcontractor_id = os.subcontractor_id
+            order by created_at desc
+            limit 1
+         ) q on true
+        where os.subcontractor_id = $1
+        order by o.deadline asc nulls last, o.updated_at desc
+        limit 50`,
       [id]
     ),
   ]);
@@ -350,11 +391,13 @@ export async function subDetail(id: string) {
     sub,
     communications,
     quotes,
+    pairings,
     stats: stats ?? {
       emails_sent: 0,
       emails_in: 0,
       calls_logged: 0,
       notes_count: 0,
+      skips_logged: 0,
       touches: 0,
     },
   };
@@ -962,10 +1005,13 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     ),
     queryOne<{ count: number; soonest_deadline: string | null }>(
       `select count(*)::int as count, min(o.deadline) as soonest_deadline
-           from call_cards cc join opportunities o on o.id = cc.opportunity_id
+           from call_cards cc
+           join opportunities o on o.id = cc.opportunity_id
+           join subcontractors s on s.id = cc.subcontractor_id
           where cc.status='pending'
             and o.org_id = '${orgId}'
-            and (cc.snoozed_until is null or cc.snoozed_until <= now())`
+            and (cc.snoozed_until is null or cc.snoozed_until <= now())
+            and nullif(btrim(coalesce(s.phone, '')), '') is not null`
     ),
     query<
       Omit<ActionCallRow, "work_summary"> & {
@@ -983,6 +1029,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
         where cc.status='pending'
           and o.org_id = '${orgId}'
           and (cc.snoozed_until is null or cc.snoozed_until <= now())
+          and nullif(btrim(coalesce(s.phone, '')), '') is not null
         order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc
         limit 6`
     ),
