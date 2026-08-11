@@ -97,6 +97,8 @@ export function EmailTemplateEditor({ template }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [savedVersion, setSavedVersion] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; email?: string; error?: string } | null>(null);
 
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
@@ -145,6 +147,37 @@ export function EmailTemplateEditor({ template }: Props) {
     e.preventDefault();
     lastFocused.current = "body";
     insertToken(match[1]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Send test email
+  // -------------------------------------------------------------------------
+
+  async function sendTestEmail() {
+    setTestResult(null);
+    setTestBusy(true);
+    try {
+      const res = await fetch(`/api/templates/${template.slug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, body }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        sentTo?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setTestResult({ ok: false, error: data.error ?? "Send failed" });
+      } else {
+        setTestResult({ ok: true, email: data.sentTo });
+        setTimeout(() => setTestResult(null), 8000);
+      }
+    } catch (e) {
+      setTestResult({ ok: false, error: (e as Error).message });
+    } finally {
+      setTestBusy(false);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -251,10 +284,26 @@ export function EmailTemplateEditor({ template }: Props) {
         >
           Preview email
         </button>
+        <button
+          className="btn-ghost"
+          type="button"
+          onClick={sendTestEmail}
+          disabled={testBusy}
+        >
+          {testBusy ? "Sending…" : "Send test email"}
+        </button>
         {savedVersion !== null && (
           <span className="text-xs font-medium text-emerald-700">
             ✓ Saved as version {savedVersion}
           </span>
+        )}
+        {testResult?.ok && (
+          <span className="text-xs font-medium text-emerald-700">
+            ✓ Test email sent to {testResult.email}
+          </span>
+        )}
+        {testResult?.ok === false && (
+          <span className="text-xs text-risk">{testResult.error}</span>
         )}
         {error && <span className="text-xs text-risk">{error}</span>}
       </div>
