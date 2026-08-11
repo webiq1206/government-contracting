@@ -427,6 +427,22 @@ body {
      renders on a light bg-background surface. These rules have higher
      specificity (4 class/attr selectors vs 3) so they win over the general
      card overrides above, restoring natural light-surface text colours. */
+  /* Score-breakdown <details> panel: override the light bg-surface/60 slab and
+     its inner divider so the panel reads on the dark card shell. Text colours
+     (text-slate-600/700/500) are already remapped by the rules above. */
+  .mobile-dark .card details {
+    background-color: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+  .mobile-dark .card details ul {
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  /* ── Card action menu popup exclusion ──────────────────────────────────
+     The pipeline card menu popup is absolutely positioned inside .card but
+     renders on a light bg-background surface. These rules have higher
+     specificity (4 class/attr selectors vs 3) so they win over the general
+     card overrides above, restoring natural light-surface text colours. */
   .mobile-dark .card [role="menu"],
   .mobile-dark .card [role="menu"] * {
     color: revert;
