@@ -94,10 +94,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ push }}>
       {children}
-      {/* Bottom-center stack; safe-area aware for mobile. */}
+      {/* Sit above the mobile tab bar; desktop keeps a simple bottom offset. */}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 bottom-4 z-[80] flex flex-col items-center gap-2 px-4"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[80] flex flex-col items-center gap-2 px-4 md:bottom-4"
       >
         {toasts.map((t) => (
           <div

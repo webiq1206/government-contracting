@@ -36,7 +36,7 @@ export default async function SubDetailPage({
     : [];
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         title={sub.company_name}
         subtitle={

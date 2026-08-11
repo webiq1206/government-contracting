@@ -29,7 +29,7 @@ export default async function ProfilePage() {
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["profile"]}
         title="Company Profile"

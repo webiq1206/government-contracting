@@ -9,7 +9,7 @@ export default async function ContentLibraryPage() {
   const items = await contentLibrary();
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["content"]}
         title="Content Library"

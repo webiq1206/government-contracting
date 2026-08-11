@@ -154,7 +154,7 @@ function StepRow({ step, last }: { step: Step; last: boolean }) {
 
 export default function HowItWorksPage() {
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         title="How it works"
         subtitle="From a government posting to a won contract. Most steps run on their own; a few need you."

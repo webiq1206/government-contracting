@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Wordmark } from "./wordmark";
 import { SearchButton } from "./command-palette";
 
@@ -13,6 +13,9 @@ import { SearchButton } from "./command-palette";
  * at equal weight implied fourteen responsibilities. Nothing was removed,
  * secondary pages simply live behind "More" (which carries a dot when
  * anything inside it needs attention, so nothing can hide).
+ *
+ * On phones the menu is a slide-over drawer (not a push-down block) so the
+ * page underneath stays put and the thumb reaches every destination.
  */
 
 interface Item {
@@ -80,6 +83,25 @@ export function Nav({
   const [moreOpen, setMoreOpen] = useState(false);
   const counts = { review: reviewCount, calls: callCount };
 
+  // Close the drawer on navigation and unlock body scroll.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/login");
@@ -97,8 +119,8 @@ export function Nav({
       <Link
         href={item.href}
         onClick={() => setOpen(false)}
-        className={`flex items-center justify-between gap-2 border-l-2 pr-2 transition-colors ${
-          compact ? "py-1.5 pl-3 text-sm" : "py-2 pl-3"
+        className={`flex min-h-11 items-center justify-between gap-2 border-l-2 pr-2 transition-colors md:min-h-0 ${
+          compact ? "py-2.5 pl-3 text-sm md:py-1.5" : "py-3 pl-3 md:py-2"
         } ${
           active
             ? "border-accent bg-accent-soft font-medium text-accent-strong"
@@ -118,39 +140,71 @@ export function Nav({
 
   return (
     <>
-      {/* mobile top bar */}
-      <div className="flex items-center justify-between border-b border-border bg-background px-4 py-3 md:hidden">
+      {/* Mobile top bar */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border bg-background px-4 py-3 md:hidden">
         <Wordmark className="h-5" />
-        <button className="btn-ghost" onClick={() => setOpen((o) => !o)} aria-label="menu">
-          ☰
+        <button
+          type="button"
+          className="btn-ghost inline-flex h-11 w-11 items-center justify-center px-0"
+          onClick={() => setOpen((o) => !o)}
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+        >
+          {open ? "✕" : "☰"}
         </button>
       </div>
 
+      {/* Backdrop — phones only */}
+      {open && (
+        <button
+          type="button"
+          aria-label="Close menu"
+          className="fixed inset-0 z-[70] bg-black/40 md:hidden"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
       <nav
-        className={`${
-          open ? "block" : "hidden"
-        } w-full shrink-0 border-b border-border bg-background md:sticky md:top-0 md:flex md:h-screen md:w-64 md:flex-col md:border-b-0 md:border-r`}
+        aria-label="Main"
+        aria-hidden={!open ? true : undefined}
+        className={`fixed inset-y-0 left-0 z-[71] flex w-[min(20rem,88vw)] max-w-full flex-col border-r border-border bg-background shadow-xl transition-transform duration-200 ease-out md:static md:z-auto md:h-full md:w-64 md:shadow-none md:transition-none md:aria-[hidden]:aria-hidden ${
+          open
+            ? "translate-x-0"
+            : "pointer-events-none -translate-x-full md:pointer-events-auto md:translate-x-0"
+        }`}
       >
         <div className="hidden shrink-0 px-6 py-6 md:block">
           <Wordmark className="h-7" />
           <p className="eyebrow mt-1">Procurement Execution</p>
         </div>
 
-        <div className="shrink-0 px-3 pb-2 md:px-4">
-          <SearchButton className="flex w-full items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm text-slate-500 transition-colors hover:border-border-strong hover:text-foreground" />
+        <div className="flex items-center justify-between border-b border-border px-4 py-3 md:hidden">
+          <Wordmark className="h-5" />
+          <button
+            type="button"
+            className="btn-ghost inline-flex h-11 w-11 items-center justify-center px-0"
+            onClick={() => setOpen(false)}
+            aria-label="Close menu"
+          >
+            ✕
+          </button>
         </div>
 
-        <div className="scroll-thin flex-1 space-y-1 p-3 md:overflow-y-auto md:px-4">
+        <div className="shrink-0 px-3 pb-2 pt-3 md:px-4 md:pt-0">
+          <SearchButton className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-slate-500 transition-colors hover:border-border-strong hover:text-foreground md:min-h-0 md:py-1.5" />
+        </div>
+
+        <div className="scroll-thin flex-1 space-y-1 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:px-4 md:pb-3">
           {PRIMARY.map((item) => (
             <Row key={item.href} item={item} />
           ))}
 
-          {/* Everything else, one click away. */}
           <div className="pt-2">
             <button
+              type="button"
               onClick={() => setMoreOpen((o) => !o)}
               aria-expanded={moreOpen || moreHasActive}
-              className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm text-slate-600 transition-colors hover:text-foreground"
+              className="flex min-h-11 w-full items-center justify-between rounded-md px-3 py-2 text-sm text-slate-600 transition-colors hover:text-foreground md:min-h-0 md:py-1.5"
             >
               <span className="flex items-center gap-2">
                 More
@@ -192,12 +246,11 @@ export function Nav({
           </div>
         </div>
 
-        {/* One line that answers "is the machine OK?", so the log is never a
-            page you have to remember to check. */}
         {engineLabel && (
           <Link
             href="/agents"
-            className="shrink-0 border-t border-border px-4 py-2.5 text-xs text-slate-600 transition-colors hover:text-foreground"
+            onClick={() => setOpen(false)}
+            className="shrink-0 border-t border-border px-4 py-3 text-xs text-slate-600 transition-colors hover:text-foreground"
           >
             <span className="flex items-center gap-2">
               <span
@@ -211,7 +264,7 @@ export function Nav({
           </Link>
         )}
 
-        <div className="shrink-0 border-t border-border p-4">
+        <div className="shrink-0 border-t border-border p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <p className="truncate text-xs text-slate-500">{email}</p>
           <button onClick={logout} className="btn-ghost mt-2 w-full text-xs">
             Sign out

@@ -30,7 +30,7 @@ export default async function SubsPage({
   const contactable = subs.filter((s) => s.email && s.email_verified).length;
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["subs"]}
         title="Sub Database"
@@ -60,10 +60,75 @@ export default async function SubsPage({
             </p>
           </div>
         )}
-        <div
-          className={`card scroll-thin overflow-x-auto p-0 ${
+
+        {/* Mobile: stacked cards — the 9-column table is unusable on a phone. */}
+        <ul
+          className={`space-y-3 lg:hidden ${
             subs.length === 0 && !(filters.trade || filters.state || filters.q || minReliability != null)
               ? "hidden"
+              : ""
+          }`}
+        >
+          {subs.map((s: Subcontractor) => (
+            <li key={s.id}>
+              <Link
+                href={`/subs/${s.id}`}
+                className="card block transition-colors hover:border-accent/60"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {s.is_preferred ? "★ " : ""}
+                      {s.company_name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {[s.owner_name, [s.city, s.state].filter(Boolean).join(", ")]
+                        .filter(Boolean)
+                        .join(" · ") || "No location on file"}
+                    </p>
+                  </div>
+                  {s.reliability_score != null && (
+                    <span className="num shrink-0 text-sm font-semibold text-slate-800">
+                      {s.reliability_score}
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {(s.trade_categories ?? []).slice(0, 4).map((t) => (
+                    <span key={t} className="badge bg-slate-200 text-slate-700">
+                      {t}
+                    </span>
+                  ))}
+                  {s.email && s.email_verified ? (
+                    <span className="badge bg-pursue/15 text-pursue">Email verified</span>
+                  ) : s.email ? (
+                    <span className="badge bg-review/15 text-review">Email unverified</span>
+                  ) : (
+                    <span className="badge bg-slate-200 text-slate-500">No email</span>
+                  )}
+                  {s.sam_excluded && (
+                    <span className="badge bg-risk/15 text-risk">SAM excluded</span>
+                  )}
+                </div>
+                {(s.phone || s.email) && (
+                  <p className="mt-2 truncate text-xs text-slate-500">
+                    {[s.phone, s.email].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </Link>
+            </li>
+          ))}
+          {subs.length === 0 && (
+            <li className="card py-8 text-center text-sm text-slate-500">
+              No subcontractors match these filters.
+            </li>
+          )}
+        </ul>
+
+        <div
+          className={`card scroll-thin hidden overflow-x-auto p-0 lg:block ${
+            subs.length === 0 && !(filters.trade || filters.state || filters.q || minReliability != null)
+              ? "!hidden"
               : ""
           }`}
         >

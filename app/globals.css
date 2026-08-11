@@ -66,13 +66,37 @@ body {
     letter-spacing: -0.005em;
   }
 
-  /* Buttons */
+  /* Buttons — min height keeps taps comfortable on phones without bloating desktop. */
   .btn,
   .btn-primary,
   .btn-ghost,
   .btn-danger,
   .btn-success {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  @media (min-width: 768px) {
+    .btn,
+    .btn-primary,
+    .btn-ghost,
+    .btn-danger,
+    .btn-success {
+      min-height: 0;
+    }
+  }
+
+  /* Dash page shell: fill the remaining column under the sticky header and
+     scroll inside, instead of h-screen fighting the mobile tab bar / dvh. */
+  .page-shell {
+    @apply flex min-h-0 flex-1 flex-col;
+  }
+  .page-main {
+    @apply flex min-h-0 flex-col overflow-hidden;
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 768px) {
+    .page-main {
+      padding-bottom: 0;
+    }
   }
   .btn-primary {
     @apply bg-foreground text-white hover:bg-black;
@@ -89,7 +113,7 @@ body {
 
   /* Surfaces */
   .card {
-    @apply rounded-md border border-border bg-background p-5;
+    @apply rounded-md border border-border bg-background p-4 sm:p-5;
   }
   .card-hover {
     @apply transition-colors hover:border-border-strong hover:bg-surface;
@@ -108,9 +132,15 @@ body {
     letter-spacing: 0.18em;
   }
 
-  /* Inputs */
+  /* Inputs — taller on phones for fat-finger accuracy. */
   .input {
-    @apply w-full rounded-md border border-border-strong bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent;
+    @apply w-full rounded-md border border-border-strong bg-background px-3 py-2.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent sm:min-h-0 sm:py-2 sm:text-sm;
+    min-height: 2.75rem;
+  }
+  @media (min-width: 640px) {
+    .input {
+      min-height: 0;
+    }
   }
   .select {
     @apply input appearance-none;

@@ -529,7 +529,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
       </p>
 
       <div
-        className={`sticky bottom-0 flex items-center gap-3 border-t py-3 backdrop-blur ${
+        className={`sticky bottom-16 z-10 flex flex-wrap items-center gap-3 border-t py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:bottom-0 ${
           dirty ? "border-review/50 bg-review/5" : "border-border bg-background/95"
         }`}
       >

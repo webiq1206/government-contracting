@@ -27,11 +27,11 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-6 py-5">
-      <div>
+    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-4 py-4 sm:px-6 sm:py-5">
+      <div className="min-w-0 flex-1">
         {eyebrow && <p className="eyebrow mb-1.5">{eyebrow}</p>}
-        <div className="flex items-center gap-2.5">
-          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
+        <div className="flex items-start gap-2.5">
+          <h1 className="min-w-0 font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
             {title}
           </h1>
           {help && <HelpPopover help={help} />}
@@ -39,7 +39,9 @@ export function PageHeader({
         <div className="mt-2 h-[3px] w-11 rounded-full bg-accent" />
         {subtitle && <p className="mt-2 text-sm text-slate-500">{subtitle}</p>}
       </div>
-      {children && <div className="flex items-center gap-2">{children}</div>}
+      {children && (
+        <div className="flex max-w-full flex-wrap items-center gap-2">{children}</div>
+      )}
     </div>
   );
 }
