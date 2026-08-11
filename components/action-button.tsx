@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/toaster";
 
@@ -50,6 +50,26 @@ export function ActionButton({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearDoneTimer() {
+    if (doneTimer.current) {
+      clearTimeout(doneTimer.current);
+      doneTimer.current = null;
+    }
+  }
+
+  // After router.refresh() removes a list row, Next can reuse this client
+  // instance for the next row by tree position. Reset so the next opportunity
+  // never inherits "done" / loading UI (which also stretched the button).
+  const bodyKey = body ? JSON.stringify(body) : "";
+  useEffect(() => {
+    clearDoneTimer();
+    setLoading(false);
+    setError(null);
+    setDone(false);
+    return clearDoneTimer;
+  }, [endpoint, method, bodyKey]);
 
   async function go() {
     if (loading) return; // double-click guard
@@ -71,7 +91,11 @@ export function ActionButton({
       if (toast) push(toast);
       if (successText) {
         setDone(true);
-        setTimeout(() => setDone(false), 6000);
+        clearDoneTimer();
+        doneTimer.current = setTimeout(() => {
+          setDone(false);
+          doneTimer.current = null;
+        }, 6000);
       }
       if (refresh) router.refresh();
     } catch (e) {
@@ -82,7 +106,9 @@ export function ActionButton({
   }
 
   return (
-    <span className="inline-flex flex-col">
+    // items-start: success/error copy must not stretch the button to its width
+    // (flex-col defaults to stretch on the cross axis).
+    <span className="inline-flex flex-col items-start">
       <button className={className} onClick={go} disabled={loading} aria-busy={loading}>
         {loading ? (
           <span className="inline-flex items-center gap-1.5">
@@ -93,9 +119,9 @@ export function ActionButton({
           children
         )}
       </button>
-      {error && <span className="mt-1 text-xs text-risk">{error}</span>}
+      {error && <span className="mt-1 max-w-[16rem] text-xs text-risk">{error}</span>}
       {done && !error && (
-        <span aria-live="polite" className="mt-1 text-xs text-pursue">
+        <span aria-live="polite" className="mt-1 max-w-[16rem] text-xs text-pursue">
           ✓ {successText}
         </span>
       )}
