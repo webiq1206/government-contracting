@@ -4,12 +4,58 @@ import { saveTemplateVersion } from "@/lib/domain/template-versions";
 import { logAgent } from "@/lib/logger";
 import { sendOutreachEmail } from "@/lib/integrations/email-transport";
 import { renderTemplate, plainToHtml } from "@/lib/domain/template-render";
+import { query } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Editable outreach template slugs (operators cannot create new slugs). */
 const EDITABLE_SLUGS = ["template_1_outreach", "template_2_followup"];
+
+/**
+ * Return version history for a template slug.
+ *
+ * GET /api/templates/[slug]?history=true
+ *
+ * Returns the last 5 saved versions (newest first) with id, version, subject,
+ * body, is_active, and created_at. The active version is flagged so the UI can
+ * label it as "current".
+ */
+export async function GET(
+  req: Request,
+  { params }: { params: { slug: string } }
+) {
+  const auth = await requireUser();
+  if (auth instanceof NextResponse) return auth;
+
+  const { slug } = params;
+  if (!EDITABLE_SLUGS.includes(slug)) {
+    return NextResponse.json({ error: "Template not found" }, { status: 404 });
+  }
+
+  const url = new URL(req.url);
+  if (url.searchParams.get("history") !== "true") {
+    return NextResponse.json({ error: "Use ?history=true" }, { status: 400 });
+  }
+
+  const rows = await query<{
+    id: string;
+    version: number;
+    subject: string | null;
+    body: string;
+    is_active: boolean;
+    created_at: string;
+  }>(
+    `SELECT id, version, subject, body, is_active, created_at
+       FROM templates
+      WHERE slug = $1
+      ORDER BY version DESC
+      LIMIT 5`,
+    [slug]
+  );
+
+  return NextResponse.json({ versions: rows });
+}
 
 /** Sample values used in the preview modal — kept in sync with the editor UI. */
 const SAMPLE: Record<string, string> = {

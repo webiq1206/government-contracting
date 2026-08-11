@@ -16,6 +16,15 @@ export interface EmailTemplate {
   description: string | null;
 }
 
+interface TemplateVersion {
+  id: string;
+  version: number;
+  subject: string | null;
+  body: string;
+  is_active: boolean;
+  created_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // Preview sample values (one realistic example per token)
 // ---------------------------------------------------------------------------
@@ -54,6 +63,20 @@ function humanSlug(slug: string): string {
   return slug.replace(/_/g, " ");
 }
 
+function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 /** Insert text at the cursor position of a textarea. */
 function spliceIntoTextarea(
   el: HTMLTextAreaElement,
@@ -79,6 +102,198 @@ function spliceIntoInput(
 }
 
 // ---------------------------------------------------------------------------
+// Version History section
+// ---------------------------------------------------------------------------
+
+interface VersionHistoryProps {
+  slug: string;
+  currentVersion: number;
+  onRestored: (newVersion: number, subject: string | null, body: string) => void;
+}
+
+function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProps) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [versions, setVersions] = useState<TemplateVersion[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
+
+  async function load() {
+    if (versions !== null) return; // already loaded
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/templates/${slug}?history=true`);
+      const data = (await res.json().catch(() => ({}))) as {
+        versions?: TemplateVersion[];
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(data.error ?? "Failed to load history");
+      } else {
+        setVersions(data.versions ?? []);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next) load();
+  }
+
+  async function restore(v: TemplateVersion) {
+    setRestoringId(v.id);
+    setRestoreMsg(null);
+    try {
+      const res = await fetch(`/api/templates/${slug}/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: v.version }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        version?: number;
+        subject?: string | null;
+        body?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setRestoreMsg(`Error: ${data.error ?? "Restore failed"}`);
+      } else {
+        const newVer = data.version ?? currentVersion + 1;
+        setRestoreMsg(`Restored as version ${newVer}.`);
+        onRestored(newVer, data.subject ?? null, data.body ?? v.body);
+        // Invalidate cache so next open re-fetches
+        setVersions(null);
+        setTimeout(() => setRestoreMsg(null), 6000);
+      }
+    } catch (e) {
+      setRestoreMsg(`Error: ${(e as Error).message}`);
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  return (
+    <div className="border-t border-border pt-4">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between text-left"
+        onClick={toggle}
+        aria-expanded={open}
+      >
+        <span className="text-sm font-medium text-slate-700">
+          Version history
+        </span>
+        <span className="text-slate-400 text-xs select-none">
+          {open ? "▲ collapse" : "▼ expand"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-2">
+          {loading && (
+            <p className="text-xs text-slate-500">Loading versions…</p>
+          )}
+          {error && <p className="text-xs text-risk">{error}</p>}
+          {restoreMsg && (
+            <p
+              className={`text-xs font-medium ${
+                restoreMsg.startsWith("Error:")
+                  ? "text-risk"
+                  : "text-emerald-700"
+              }`}
+            >
+              {restoreMsg.startsWith("Error:") ? "" : "✓ "}{restoreMsg}
+            </p>
+          )}
+          {versions !== null && versions.length === 0 && (
+            <p className="text-xs text-slate-500">No saved versions yet.</p>
+          )}
+          {versions !== null &&
+            versions.map((v) => {
+              const isExpanded = expandedId === v.id;
+              const isRestoring = restoringId === v.id;
+              const isCurrent = v.is_active;
+
+              return (
+                <div
+                  key={v.id}
+                  className="rounded-lg border border-border bg-surface"
+                >
+                  {/* Version row header */}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left"
+                    onClick={() =>
+                      setExpandedId(isExpanded ? null : v.id)
+                    }
+                  >
+                    <span className="text-xs font-mono font-semibold text-slate-700 shrink-0">
+                      v{v.version}
+                    </span>
+                    {isCurrent && (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 shrink-0">
+                        current
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+                      {v.subject
+                        ? v.subject
+                        : <em className="text-slate-400">(no subject)</em>}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-slate-400">
+                      {formatDate(v.created_at)}
+                    </span>
+                    <span className="shrink-0 text-slate-400 text-xs select-none">
+                      {isExpanded ? "▲" : "▼"}
+                    </span>
+                  </button>
+
+                  {/* Expanded read-only view */}
+                  {isExpanded && (
+                    <div className="border-t border-border px-4 py-3 space-y-3">
+                      <div>
+                        <p className="label mb-1 text-xs">Subject</p>
+                        <p className="rounded bg-white border border-border px-3 py-2 font-mono text-xs text-slate-700 whitespace-pre-wrap">
+                          {v.subject || <em className="text-slate-400">(no subject)</em>}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="label mb-1 text-xs">Body</p>
+                        <p className="max-h-48 overflow-y-auto rounded bg-white border border-border px-3 py-2 font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed scroll-thin">
+                          {v.body}
+                        </p>
+                      </div>
+                      {!isCurrent && (
+                        <button
+                          type="button"
+                          className="btn-ghost text-xs"
+                          onClick={() => restore(v)}
+                          disabled={isRestoring}
+                        >
+                          {isRestoring ? "Restoring…" : "Restore this version"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -93,6 +308,7 @@ interface Props {
 export function EmailTemplateEditor({ template }: Props) {
   const [subject, setSubject] = useState(template.subject ?? "");
   const [body, setBody] = useState(template.body);
+  const [currentVersion, setCurrentVersion] = useState(template.version);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedVersion, setSavedVersion] = useState<number | null>(null);
@@ -202,13 +418,26 @@ export function EmailTemplateEditor({ template }: Props) {
         setError(data.error ?? "Save failed");
         return;
       }
-      setSavedVersion(data.version ?? null);
+      const newVer = data.version ?? currentVersion + 1;
+      setCurrentVersion(newVer);
+      setSavedVersion(newVer);
       setTimeout(() => setSavedVersion(null), 5000);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // Restore callback (from VersionHistory child)
+  // -------------------------------------------------------------------------
+
+  function handleRestored(newVersion: number, restoredSubject: string | null, restoredBody: string) {
+    // Update the active version counter shown in the header.
+    // The editor fields are NOT overwritten — the operator must explicitly
+    // decide whether to adopt the restored content.
+    setCurrentVersion(newVersion);
   }
 
   // -------------------------------------------------------------------------
@@ -227,7 +456,7 @@ export function EmailTemplateEditor({ template }: Props) {
           <p className="mt-0.5 text-sm text-slate-500">{template.description}</p>
         )}
         <p className="mt-1 text-xs text-slate-400">
-          Currently on version {template.version}
+          Currently on version {currentVersion}
         </p>
       </div>
 
@@ -307,6 +536,13 @@ export function EmailTemplateEditor({ template }: Props) {
         )}
         {error && <span className="text-xs text-risk">{error}</span>}
       </div>
+
+      {/* Version history */}
+      <VersionHistory
+        slug={template.slug}
+        currentVersion={currentVersion}
+        onRestored={handleRestored}
+      />
 
       {/* Preview overlay */}
       {showPreview && (
