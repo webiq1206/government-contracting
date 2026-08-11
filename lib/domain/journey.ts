@@ -56,6 +56,27 @@ const STEP_META: Record<(typeof JOURNEY_STAGES)[number], { label: string; owner:
   submitted: { label: "Submitted", owner: "agency" },
 };
 
+/** Plain-English stage label for badges and lists (never raw snake_case). */
+export const STAGE_LABEL: Record<string, string> = {
+  monitoring: "Watching",
+  scoring: "Being scored",
+  analysis: "Being analyzed",
+  sub_research: "Finding subs",
+  outreach: "Contacting subs",
+  call_queue: "Calls to make",
+  quote_entry: "Collecting quotes",
+  bid_building: "Building the bid",
+  submitted: "Submitted",
+  won: "Won",
+  lost: "Lost",
+  dismissed: "Dismissed",
+};
+
+export function stageLabel(stage: string | null | undefined): string {
+  if (!stage) return "Unknown";
+  return STAGE_LABEL[stage] ?? stage.replace(/_/g, " ");
+}
+
 /**
  * The step-tracker model for one opportunity. Terminal stages (won/lost/
  * dismissed) return the full path marked done up to where the record exited.
@@ -89,6 +110,14 @@ export function stageParty(stage: string, opts?: { hasBid?: boolean }): Party | 
   if (stage === "bid_building" && opts?.hasBid === false) return "system";
   const meta = STEP_META[stage as (typeof JOURNEY_STAGES)[number]];
   return meta ? meta.owner : null;
+}
+
+export function stageTip(stage: string | null | undefined): string {
+  if (!stage) return "Pipeline stage is not set yet.";
+  const owner = stageParty(stage);
+  const label = stageLabel(stage);
+  if (!owner) return `${label}. This opportunity is out of the active pipeline.`;
+  return `${label}. Ball is with ${PARTY_LABEL[owner]} right now.`;
 }
 
 // ---------------------------------------------------------------------------

@@ -741,6 +741,47 @@ export const replyPoll: AgentDefinition = {
  * Batched small to respect Hunter/Maps API quotas; skips entirely when no
  * discovery path is configured (nothing would change).
  */
+/**
+ * After the automated follow-up email, if a sub still has not replied (and has
+ * no quote) for 72 hours, mark the pairing unresponsive so Today / Coverage
+ * show "No response" instead of forever "Followed up".
+ */
+export const unresponsiveSweep: AgentDefinition = {
+  name: "unresponsive-sweep",
+  label: "Unresponsive Sweep",
+  description:
+    "Marks opportunity×sub pairings as unresponsive when follow-up email got no reply within 72 hours and no quote was entered.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    const rows = await query<{ id: string }>(
+      `update opportunity_subs os
+          set outreach_state = 'unresponsive'
+        where os.outreach_state = 'followed_up'
+          and os.responded_at is null
+          and not exists (
+                select 1 from quotes q
+                 where q.opportunity_id = os.opportunity_id
+                   and q.subcontractor_id = os.subcontractor_id
+                   and q.quote_amount is not null
+                   and q.quote_amount > 0
+              )
+          and exists (
+                select 1 from communications c
+                 where c.opportunity_id = os.opportunity_id
+                   and c.subcontractor_id = os.subcontractor_id
+                   and c.channel = 'email'
+                   and c.direction = 'outbound'
+                   and c.created_at <= now() - interval '72 hours'
+              )
+        returning os.id`
+    );
+    return {
+      ok: true,
+      summary: `Marked ${rows.length} pairing(s) unresponsive after follow-up with no reply.`,
+    };
+  },
+};
+
 export const contactRecheckSweep: AgentDefinition = {
   name: "contact-recheck-sweep",
   label: "Contact Recheck Sweep",

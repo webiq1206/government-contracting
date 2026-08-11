@@ -21,10 +21,14 @@ import { AttentionStrip } from "@/components/attention-strip";
 import { TradeCoverageStrip } from "@/components/trade-coverage-strip";
 import { SubWorkNeeded } from "@/components/sub-work-needed";
 import { InfoTip } from "@/components/info-tip";
+import { SectionHeading } from "@/components/section-heading";
+import { ActivityTimeline } from "@/components/activity-timeline";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
 import { termTip } from "@/lib/domain/glossary";
 import { resolveSubWork } from "@/lib/domain/sub-work";
+import { buildActivityTimeline } from "@/lib/domain/activity-timeline";
+import { stageLabel, stageTip } from "@/lib/domain/journey";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
@@ -143,6 +147,11 @@ export default async function OpportunityPage({ params }: { params: { id: string
     humanFlags: (bid?.human_flags as string[] | null) ?? null,
     humanActionRequired: opp.human_action_required,
   });
+  const activity = buildActivityTimeline({
+    logs,
+    communications: subComms,
+    limit: 40,
+  });
 
   return (
     <div className="flex page-shell">
@@ -177,8 +186,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 : termTip("tier_ignore")}
           </InfoTip>
         </span>
-        <span className="badge bg-surface text-slate-600">
-          {opp.stage.replace(/_/g, " ")}
+        <span className="inline-flex items-center gap-1">
+          <span className="badge bg-surface text-slate-600">{stageLabel(opp.stage)}</span>
+          <InfoTip label="What stage is this?">{stageTip(opp.stage)}</InfoTip>
         </span>
         <span className="inline-flex items-center gap-1">
           <ScoreBadge score={opp.score} />
@@ -188,18 +198,26 @@ export default async function OpportunityPage({ params }: { params: { id: string
       </PageHeader>
 
       <div className="scroll-thin flex-1 overflow-y-auto">
-        {/* Where this opportunity is on the path, and whose turn it is. */}
-        <div className="px-5 pt-4">
+        {/* Workflow — completed / current / next, whose turn. */}
+        <div className="space-y-2 px-5 pt-4" id="workflow">
+          <SectionHeading
+            eyebrow="Current workflow"
+            title="Where this bid stands"
+            tip={termTip("workflow")}
+          >
+            Completed steps, the active step, and who owns the next move.
+          </SectionHeading>
           <OpportunityJourney stage={opp.stage} />
         </div>
 
-        {/* Jump links — this page is a long scroll; keep section hops visible
-            on every breakpoint so operators can scan without hunting. */}
+        {/* Jump links — named to match the page sections operators scan for. */}
         <div className="sticky top-0 z-20 mt-2 flex gap-1.5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2 backdrop-blur">
           {[
+            { href: "#workflow", label: "Workflow" },
             ...(readiness.attention.length > 0
               ? [{ href: "#attention", label: "Attention" }]
               : []),
+            { href: "#overview", label: "Overview" },
             ...(coverage.trades.length > 0
               ? [{ href: "#coverage", label: "Coverage" }]
               : []),
@@ -207,8 +225,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
             ...(showQuotePanel ? [{ href: "#quotes", label: "Quotes" }] : []),
             { href: "#subs", label: `Subs${subs.length ? ` (${subs.length})` : ""}` },
             ...(breakdown ? [{ href: "#score", label: "Score" }] : []),
-            ...(bid ? [{ href: "#submission", label: "Bid package" }] : []),
-            { href: "#glance", label: "Facts" },
+            ...(bid ? [{ href: "#submission", label: "Bid" }] : []),
+            { href: "#docs", label: "Documents" },
             { href: "#activity", label: "Activity" },
           ].map((s) => (
             <a
@@ -243,6 +261,180 @@ export default async function OpportunityPage({ params }: { params: { id: string
         {/* Attention first — only when human action or blockers exist. */}
         <div className="px-5 pt-4">
           <AttentionStrip readiness={readiness} />
+        </div>
+
+        {/* Overview — scannable essentials before denser panels. */}
+        <div className="scroll-mt-12 space-y-3 px-5 pt-5" id="overview">
+          <SectionHeading
+            eyebrow="Opportunity overview"
+            title="Essentials"
+            tip={termTip("overview")}
+          >
+            Title-level facts an operator should see in seconds: deadline, score,
+            value, and identity.
+          </SectionHeading>
+          <div className="card">
+            <div className="mb-4 rounded-md border border-border bg-surface px-3 py-2.5">
+              <p className="label">Time to submit</p>
+              <div className="mt-0.5">
+                <DeadlineCountdown deadline={opp.deadline} />
+              </div>
+            </div>
+
+            <p className="label mb-2">Score & money</p>
+            <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              <Fact
+                label="Score"
+                tip="How well this opportunity fits your profile. Open Score for the full breakdown."
+                value={
+                  <a href="#score" className="inline-flex hover:opacity-80">
+                    <ScoreBadge score={opp.score} />
+                  </a>
+                }
+              />
+              <Fact
+                label="Recommendation"
+                tip="Pursue / Review / No bid from the scoring tier."
+                value={<TierBadge tier={opp.tier} />}
+              />
+              <Fact
+                label="Est. value"
+                tip="Published contract value when available; otherwise an estimate from the listing or attachments."
+                value={
+                  opp.value_estimated != null ? (
+                    <EstimatedValue
+                      value={opp.value_estimated}
+                      source={opp.value_estimated_source}
+                    />
+                  ) : (
+                    (analysis?.estimated_value ?? "-")
+                  )
+                }
+              />
+              {bestQuote != null && (
+                <Fact
+                  label="Lowest sub quote"
+                  tip="Lowest price entered from a subcontractor so far on this bid."
+                  value={<span className="num">{currency(bestQuote)}</span>}
+                />
+              )}
+              {bid?.bid_amount != null && (
+                <Fact
+                  label="Priced bid"
+                  tip="Your assembled bid amount after Bid Builder ran."
+                  value={<span className="num text-accent">{currency(bid.bid_amount)}</span>}
+                />
+              )}
+              {requiredTradeCount > 0 && (
+                <Fact
+                  label="Trades needed"
+                  tip="Distinct trades the solicitation appears to require."
+                  value={<span className="num">{requiredTradeCount}</span>}
+                />
+              )}
+              <Fact
+                label="Subs paired"
+                tip="Subcontractors Sub Finder (or you) linked to this opportunity."
+                value={
+                  <a href="#subs" className="num text-accent hover:underline">
+                    {subs.length}
+                  </a>
+                }
+              />
+            </div>
+
+            <p className="label mb-2">Identity & place</p>
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              <Fact
+                label="Agency"
+                value={[opp.agency, opp.sub_agency].filter(Boolean).join(" · ") || "-"}
+              />
+              <Fact
+                label="Type"
+                tip="Sources sought are market research; solicitations are live bids."
+                value={opp.is_sources_sought ? "Sources sought" : "Solicitation"}
+              />
+              <Fact label="NAICS" tip={termTip("naics")} value={opp.naics_code ?? "-"} />
+              <Fact label="PSC" tip={termTip("psc")} value={opp.psc_code ?? "-"} />
+              <Fact
+                label="Set-aside"
+                tip={termTip("set_aside")}
+                value={opp.set_aside_type ?? "-"}
+              />
+              <Fact
+                label="Place of performance"
+                tip={termTip("place_of_performance")}
+                value={
+                  [opp.location_text, opp.location_state].filter(Boolean).join(", ") || "-"
+                }
+              />
+              <Fact label="Posted" value={shortDate(opp.posted_at)} />
+              <Fact label="Solicitation #" value={opp.solicitation_number ?? "-"} />
+              <Fact
+                label="Past performance"
+                tip="Whether the agency requires your company (not just subs) to prove similar prior work."
+                value={
+                  opp.past_perf_classification
+                    ? (PAST_PERF_LABEL[opp.past_perf_classification] ??
+                      opp.past_perf_classification.replace(/_/g, " "))
+                    : "-"
+                }
+              />
+              {analysis?.submission_method &&
+                analysis.submission_method !== NA_TEXT && (
+                  <Fact label="How to submit" value={analysis.submission_method} />
+                )}
+            </div>
+            {opp.risk_flags.length > 0 && (
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="label mb-2">Flags needing attention</p>
+                <div className="flex flex-wrap gap-1">
+                  {opp.risk_flags.map((f) => (
+                    <span key={f} className="badge bg-risk/15 text-risk">
+                      ⚠ {flagLabel(f)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {opp.tier === "review" && opp.human_action_required && (
+            <div className="card space-y-2">
+              <p className="eyebrow">Triage</p>
+              <div className="flex gap-2">
+                <ActionButton
+                  endpoint={`/api/opportunities/${opp.id}/action`}
+                  body={{ action: "pursue" }}
+                  className="btn-success"
+                >
+                  Pursue
+                </ActionButton>
+                <ActionButton
+                  endpoint={`/api/opportunities/${opp.id}/action`}
+                  body={{ action: "dismiss" }}
+                  className="btn-danger"
+                  confirm="Dismiss this opportunity?"
+                >
+                  Dismiss
+                </ActionButton>
+              </div>
+            </div>
+          )}
+
+          {opp.past_perf_classification === "prime_only" && (
+            <div className="card border-risk/50 bg-risk/5">
+              <p className="text-sm font-medium text-risk">
+                Blocked: prime-only past performance required
+              </p>
+              <p className="mt-1 text-sm text-slate-700">
+                This agency wants proof that your company itself (not your
+                subcontractors) has done similar work before. BROST CO does not
+                have that track record yet, so automation stopped here. You can
+                pursue it anyway as an exception, or dismiss it.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Trade coverage — who we found, who responded, what's still open. */}
@@ -381,179 +573,22 @@ export default async function OpportunityPage({ params }: { params: { id: string
         </div>
 
         <div className="grid grid-cols-1 gap-4 p-5 lg:grid-cols-3">
-          {/* Column 1, facts + docs */}
+          {/* Column 1 — documents, notes */}
           <div className="space-y-4">
-            <div className="card scroll-mt-12" id="glance">
-              <p className="eyebrow mb-3">At a glance</p>
-
-              <div className="mb-4 rounded-md border border-border bg-surface px-3 py-2.5">
-                <p className="label">Time to submit</p>
-                <div className="mt-0.5">
-                  <DeadlineCountdown deadline={opp.deadline} />
-                </div>
-              </div>
-
-              <p className="label mb-2">Score & money</p>
-              <div className="mb-4 grid grid-cols-2 gap-3 text-sm">
-                <Fact
-                  label="Score"
-                  tip="How well this opportunity fits your profile. Open Score for the full breakdown."
-                  value={
-                    <a href="#score" className="inline-flex hover:opacity-80">
-                      <ScoreBadge score={opp.score} />
-                    </a>
-                  }
-                />
-                <Fact
-                  label="Est. value"
-                  tip="Published contract value when available; otherwise an estimate from the listing or attachments."
-                  value={
-                    opp.value_estimated != null ? (
-                      <EstimatedValue
-                        value={opp.value_estimated}
-                        source={opp.value_estimated_source}
-                      />
-                    ) : (
-                      (analysis?.estimated_value ?? "-")
-                    )
-                  }
-                />
-                {bestQuote != null && (
-                  <Fact
-                    label="Lowest sub quote"
-                    tip="Lowest price entered from a subcontractor so far on this bid."
-                    value={<span className="num">{currency(bestQuote)}</span>}
-                  />
-                )}
-                {bid?.bid_amount != null && (
-                  <Fact
-                    label="Priced bid"
-                    tip="Your assembled bid amount after Bid Builder ran."
-                    value={<span className="num text-accent">{currency(bid.bid_amount)}</span>}
-                  />
-                )}
-                {requiredTradeCount > 0 && (
-                  <Fact
-                    label="Trades needed"
-                    tip="Distinct trades the solicitation appears to require."
-                    value={<span className="num">{requiredTradeCount}</span>}
-                  />
-                )}
-                <Fact
-                  label="Subs paired"
-                  tip="Subcontractors Sub Finder (or you) linked to this opportunity."
-                  value={
-                    <a href="#subs" className="num text-accent hover:underline">
-                      {subs.length}
-                    </a>
-                  }
-                />
-              </div>
-
-              <p className="label mb-2">Identity & place</p>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <Fact
-                  label="Agency"
-                  value={[opp.agency, opp.sub_agency].filter(Boolean).join(" · ") || "-"}
-                />
-                <Fact
-                  label="Type"
-                  tip="Sources sought are market research; solicitations are live bids."
-                  value={opp.is_sources_sought ? "Sources sought" : "Solicitation"}
-                />
-                <Fact
-                  label="NAICS"
-                  tip={termTip("naics")}
-                  value={opp.naics_code ?? "-"}
-                />
-                <Fact label="PSC" tip={termTip("psc")} value={opp.psc_code ?? "-"} />
-                <Fact
-                  label="Set-aside"
-                  tip={termTip("set_aside")}
-                  value={opp.set_aside_type ?? "-"}
-                />
-                <Fact
-                  label="Place of performance"
-                  tip={termTip("place_of_performance")}
-                  value={
-                    [opp.location_text, opp.location_state].filter(Boolean).join(", ") || "-"
-                  }
-                />
-                <Fact label="Posted" value={shortDate(opp.posted_at)} />
-                <Fact label="Solicitation #" value={opp.solicitation_number ?? "-"} />
-                <Fact
-                  label="Past performance"
-                  tip="Whether the agency requires your company (not just subs) to prove similar prior work."
-                  value={
-                    opp.past_perf_classification
-                      ? (PAST_PERF_LABEL[opp.past_perf_classification] ??
-                        opp.past_perf_classification.replace(/_/g, " "))
-                      : "-"
-                  }
-                />
-                {analysis?.submission_method &&
-                  analysis.submission_method !== NA_TEXT && (
-                    <Fact label="How to submit" value={analysis.submission_method} />
-                  )}
-              </div>
-              {opp.risk_flags.length > 0 && (
-                <div className="mt-4 border-t border-border pt-3">
-                  <p className="label mb-2">Flags needing attention</p>
-                  <div className="flex flex-wrap gap-1">
-                    {opp.risk_flags.map((f) => (
-                      <span key={f} className="badge bg-risk/15 text-risk">
-                        ⚠ {flagLabel(f)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div id="docs" className="scroll-mt-12 space-y-2">
+              <SectionHeading
+                eyebrow="Documents"
+                title="Files for this bid"
+                tip={termTip("documents")}
+              >
+                Solicitation attachments, generated package pieces, and downloads.
+              </SectionHeading>
+              <AttachmentsPanel documents={briefDocs} />
             </div>
-
-            {opp.tier === "review" && opp.human_action_required && (
-              <div className="card space-y-2">
-                <p className="eyebrow">Triage</p>
-                <div className="flex gap-2">
-                  <ActionButton
-                    endpoint={`/api/opportunities/${opp.id}/action`}
-                    body={{ action: "pursue" }}
-                    className="btn-success"
-                  >
-                    Pursue
-                  </ActionButton>
-                  <ActionButton
-                    endpoint={`/api/opportunities/${opp.id}/action`}
-                    body={{ action: "dismiss" }}
-                    className="btn-danger"
-                    confirm="Dismiss this opportunity?"
-                  >
-                    Dismiss
-                  </ActionButton>
-                </div>
-              </div>
-            )}
-
-            {opp.past_perf_classification === "prime_only" && (
-              <div className="card border-risk/50 bg-risk/5">
-                <p className="text-sm font-medium text-risk">
-                  Blocked: prime-only past performance required
-                </p>
-                <p className="mt-1 text-sm text-slate-700">
-                  This agency wants proof that your company itself (not your
-                  subcontractors) has done similar work before. BROST CO does not
-                  have that track record yet, so automation stopped here. You can
-                  pursue it anyway as an exception, or dismiss it.
-                </p>
-              </div>
-            )}
 
             <Collapsible title="Notes" defaultOpen={Boolean(opp.notes)}>
               <OpportunityNotes opportunityId={opp.id} initialNotes={opp.notes} />
             </Collapsible>
-
-            {/* Always-visible attachments panel, so the record is complete even
-                if the AI analysis has not run yet. */}
-            <AttachmentsPanel documents={briefDocs} />
           </div>
 
           {/* Column 2, analysis + pricing */}
@@ -704,35 +739,17 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </>
             )}
 
-            <div id="activity" className="scroll-mt-12">
-            <Collapsible title="Agent activity">
-              <ul className="space-y-2 text-xs">
-                {(logs as Record<string, unknown>[]).slice(0, 20).map((l, i) => (
-                  <li
-                    key={i}
-                    className="border-l-2 border-border pl-2"
-                  >
-                    <div className="flex justify-between">
-                      <span className="font-medium text-slate-700">
-                        {String(l.agent)}
-                      </span>
-                      <span className="text-slate-500">
-                        {timeAgo(String(l.created_at))}
-                      </span>
-                    </div>
-                    <p className="text-slate-500">
-                      {String(l.message ?? l.action)}
-                    </p>
-                    {l.created_at ? (
-                      <p className="text-slate-500">{shortDate(String(l.created_at))}</p>
-                    ) : null}
-                  </li>
-                ))}
-                {(logs as Record<string, unknown>[]).length === 0 && (
-                  <li className="text-slate-500">No activity yet.</li>
-                )}
-              </ul>
-            </Collapsible>
+            <div id="activity" className="scroll-mt-12 space-y-2">
+              <SectionHeading
+                eyebrow="Activity"
+                title="What happened"
+                tip={termTip("activity")}
+              >
+                Automation, emails, calls, and your decisions in one timeline.
+              </SectionHeading>
+              <div className="card">
+                <ActivityTimeline events={activity} />
+              </div>
             </div>
           </div>
         </div>
