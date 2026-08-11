@@ -148,7 +148,12 @@ export const callPrep: AgentDefinition = {
        do update set card_json=excluded.card_json, call_script=excluded.call_script,
                      question_list=excluded.question_list,
                      needs_project_history=excluded.needs_project_history,
-                     status='pending',
+                     -- Keep completed / operator-skipped cards out of the queue.
+                     -- Blindly resetting to pending put skipped calls back on Today.
+                     status=case
+                       when call_cards.status in ('called','skipped') then call_cards.status
+                       else 'pending'
+                     end,
                      -- a reply upgrades a cold card, but never the reverse.
                      source=case when call_cards.source='reply' then 'reply'
                                  else excluded.source end`,

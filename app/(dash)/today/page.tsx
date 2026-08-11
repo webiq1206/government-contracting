@@ -331,7 +331,8 @@ export default async function TodayPage() {
             <p className="-mt-1 text-sm text-slate-500">
               Each row opens that call&rsquo;s guided workspace: the script,
               project details, and a form that saves the quote and every answer
-              in one step.
+              in one step. Skip removes it from the queue and records that you
+              chose not to call; Snooze just hides it for a bit.
             </p>
             {data.calls.rows.map((c) => (
               <Link
@@ -355,8 +356,21 @@ export default async function TodayPage() {
                     <span className="badge bg-pursue/15 text-pursue">Replied, interested</span>
                   )}
                   <DeadlineBadge deadline={c.deadline} rules={rules} />
-                  <StopClickPropagation className="inline-flex">
+                  <StopClickPropagation className="flex items-center gap-2">
                     <SnoozeButton kind="call_card" id={c.id} />
+                    <ActionButton
+                      endpoint={`/api/call-cards/${c.id}/skip`}
+                      className="btn-ghost text-xs"
+                      toast={{
+                        message: `Skipped calling ${c.company_name}. Recorded on their history.`,
+                        undo: {
+                          endpoint: `/api/call-cards/${c.id}/skip`,
+                          body: { undo: true },
+                        },
+                      }}
+                    >
+                      Skip
+                    </ActionButton>
                   </StopClickPropagation>
                   <span className="btn-primary pointer-events-none text-xs">Start call →</span>
                 </div>

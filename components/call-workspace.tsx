@@ -781,7 +781,7 @@ export function CallWorkspace({
                     <option value="no_answer">No answer / voicemail</option>
                     <option value="not_interested">Not interested</option>
                     <option value="declined">Declined to bid</option>
-                    <option value="skipped">Skip / try later</option>
+                    <option value="skipped">Chose not to call</option>
                   </select>
                 </div>
                 <div>
