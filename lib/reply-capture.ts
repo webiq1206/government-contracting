@@ -3,12 +3,21 @@
  * (lib/agents/maintenance.ts) and the Resend inbound webhook
  * (app/api/webhooks/resend-inbound). Given an already-matched outbound
  * communication, it resolves/creates the subcontractor, records the inbound
- * communication, marks responsiveness, and auto-saves the quote only under
- * the safety rules in lib/reply-matching.ts.
+ * communication, then either soft-closes on decline or marks responsive and
+ * auto-saves the quote under the safety rules in lib/reply-matching.ts.
  */
 import { query, queryOne } from "./db";
-import { extractQuoteFromReply, type ExtractedQuote } from "./ai/quote-extract";
-import { senderMatchesSub, shouldAutoSaveQuote, normalizeEmail } from "./reply-matching";
+import {
+  extractReplyFromReply,
+  type ExtractedReply,
+} from "./ai/reply-extract";
+import {
+  senderMatchesSub,
+  shouldAutoSaveQuote,
+  shouldAutoDecline,
+  normalizeEmail,
+} from "./reply-matching";
+import { closeOutDeclinedSub } from "./domain/decline-closeout";
 
 export interface MatchedComm {
   id: string;
@@ -28,19 +37,39 @@ export interface CaptureReplyInput {
   threadId?: string | null;
   messageId?: string | null;
   /** Injectable for tests; defaults to the Claude extractor. */
-  extract?: typeof extractQuoteFromReply;
+  extract?: typeof extractReplyFromReply;
+  /** Injectable for tests; defaults to closeOutDeclinedSub. */
+  closeOut?: typeof closeOutDeclinedSub;
 }
 
 export interface CaptureReplyResult {
   subId: string | null;
   companyName: string | null;
-  extracted: ExtractedQuote;
+  extracted: ExtractedReply;
   quoteSaved: boolean;
   quoteSkippedExisting: boolean;
   senderVerified: boolean;
   trade: string | null;
   /** True when this provider message id was already captured (webhook retry / re-poll); no side effects were repeated. */
   duplicate: boolean;
+  /** True when decline / can't-fulfill was applied (callers must skip call-prep). */
+  declined: boolean;
+  thankYouSent: boolean;
+}
+
+function emptyExtracted(): ExtractedReply {
+  return {
+    intent: "other",
+    isQuote: false,
+    quoteAmount: null,
+    paymentTerms: null,
+    notes: null,
+    companyName: null,
+    canPerform: null,
+    capabilityNotes: null,
+    tradesMentioned: [],
+    method: "regex",
+  };
 }
 
 /**
@@ -109,7 +138,8 @@ export async function matchInboundReply(opts: {
 
 export async function captureReply(input: CaptureReplyInput): Promise<CaptureReplyResult> {
   const { comm, strongMatch, fromEmail, replyText } = input;
-  const extract = input.extract ?? extractQuoteFromReply;
+  const extract = input.extract ?? extractReplyFromReply;
+  const closeOut = input.closeOut ?? closeOutDeclinedSub;
 
   // Idempotency: webhook providers retry deliveries and the Gmail poller
   // re-scans a sliding window. If this provider message id was already
@@ -125,19 +155,14 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       return {
         subId: existing.subcontractor_id ?? comm.subcontractor_id,
         companyName: comm.company_name,
-        extracted: {
-          isQuote: false,
-          quoteAmount: null,
-          paymentTerms: null,
-          notes: null,
-          companyName: null,
-          method: "regex",
-        } as ExtractedQuote,
+        extracted: emptyExtracted(),
         quoteSaved: false,
         quoteSkippedExisting: false,
         senderVerified: false,
         trade: null,
         duplicate: true,
+        declined: false,
+        thankYouSent: false,
       };
     }
   }
@@ -200,12 +225,22 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     }
   }
 
+  const meta = {
+    intent: extracted.intent,
+    method: extracted.method,
+    canPerform: extracted.canPerform,
+    capabilityNotes: extracted.capabilityNotes,
+    tradesMentioned: extracted.tradesMentioned,
+    isQuote: extracted.isQuote,
+    quoteAmount: extracted.quoteAmount,
+  };
+
   // Record the inbound reply and mark the outbound as replied. The partial
   // unique index (migration 022) makes this race-safe under concurrent
   // webhook retries.
   await query(
-    `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, replied_at)
-     values ($1,$2,'email','inbound',$3,$4,$5,$6, now())
+    `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, replied_at, meta)
+     values ($1,$2,'email','inbound',$3,$4,$5,$6, now(), $7::jsonb)
      on conflict do nothing`,
     [
       subId,
@@ -214,9 +249,52 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       replyText.slice(0, 20_000),
       input.threadId ?? null,
       input.messageId ?? null,
+      JSON.stringify(meta),
     ]
   );
   await query(`update communications set replied_at = now() where id = $1`, [comm.id]);
+
+  const autoDecline =
+    !!subId &&
+    shouldAutoDecline({
+      senderVerified,
+      intent: extracted.intent,
+    });
+
+  if (autoDecline && subId) {
+    const capabilityNotes = [
+      extracted.capabilityNotes,
+      extracted.notes,
+      extracted.tradesMentioned.length
+        ? `Trades mentioned: ${extracted.tradesMentioned.join(", ")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const close = await closeOut({
+      opportunityId: comm.opportunity_id,
+      subcontractorId: subId,
+      trade: osRow?.trade ?? null,
+      source: "email_reply",
+      capabilityNotes: capabilityNotes || null,
+      sendThankYou: true,
+    });
+
+    return {
+      subId,
+      companyName,
+      extracted,
+      quoteSaved: false,
+      quoteSkippedExisting: false,
+      senderVerified,
+      trade: osRow?.trade ?? null,
+      duplicate: false,
+      declined: true,
+      thankYouSent: close.thankYouSent,
+    };
+  }
+
   if (subId) {
     await query(
       `update opportunity_subs set outreach_state='responsive', responded_at=now()
@@ -262,5 +340,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     senderVerified,
     trade: osRow?.trade ?? null,
     duplicate: false,
+    declined: false,
+    thankYouSent: false,
   };
 }

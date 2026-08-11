@@ -163,7 +163,7 @@ export function intakeChecks(i: IntakeInput): IntakeFinding[] {
       explanation:
         `Another open opportunity already has this solicitation number (${i.duplicateSolicitationCount} match${
           i.duplicateSolicitationCount === 1 ? "" : "es"
-        }). It may be an amendment, a repost, or a cross-portal duplicate. A human should decide which record to keep before both run through the pipeline and double the outreach.`,
+        }). Ingest normally blocks this; if you still see it, a human should decide which record to keep before both run through the pipeline.`,
     });
   }
 

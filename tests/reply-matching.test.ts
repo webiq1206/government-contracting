@@ -3,6 +3,8 @@ import {
   normalizeEmail,
   senderMatchesSub,
   shouldAutoSaveQuote,
+  isDeclineIntent,
+  shouldAutoDecline,
 } from "../lib/reply-matching";
 import { regexPrice } from "../lib/ai/quote-extract";
 
@@ -50,5 +52,17 @@ describe("regexPrice fallback", () => {
   });
   it("returns null when no price is present", () => {
     expect(regexPrice("thanks, we'll review and get back to you")).toBeNull();
+  });
+});
+
+describe("shouldAutoDecline", () => {
+  it("requires sender ownership and a decline intent", () => {
+    expect(isDeclineIntent("cant_fulfill")).toBe(true);
+    expect(
+      shouldAutoDecline({ senderVerified: true, intent: "cant_fulfill" })
+    ).toBe(true);
+    expect(
+      shouldAutoDecline({ senderVerified: false, intent: "decline" })
+    ).toBe(false);
   });
 });

@@ -128,12 +128,25 @@ d("resend inbound webhook handler", () => {
     captureReplyMock.mockImplementation(async () => ({
       subId: "s1",
       companyName: "Sub",
-      extracted: { isQuote: false, quoteAmount: null, paymentTerms: null, notes: null, companyName: null, method: "regex" },
+      extracted: {
+        intent: "other",
+        isQuote: false,
+        quoteAmount: null,
+        paymentTerms: null,
+        notes: null,
+        companyName: null,
+        canPerform: null,
+        capabilityNotes: null,
+        tradesMentioned: [],
+        method: "regex",
+      },
       quoteSaved: false,
       quoteSkippedExisting: false,
       senderVerified: false,
       trade: null,
       duplicate: true,
+      declined: false,
+      thankYouSent: false,
     }));
     const res = await POST(
       signedRequest({
@@ -144,6 +157,65 @@ d("resend inbound webhook handler", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, matched: true, duplicate: true });
     expect(enqueueMock).toHaveBeenCalled(); // retry heals a previously failed enqueue
+    matchInboundReplyMock.mockReset();
+    captureReplyMock.mockReset();
+  });
+
+  it("skips call-prep enqueue when capture marks the reply as declined", async () => {
+    matchInboundReplyMock.mockImplementation(async () => ({
+      comm: {
+        id: "c1",
+        subcontractor_id: "s1",
+        opportunity_id: "o1",
+        company_name: "Sub",
+        sub_email: "sub@x.test",
+        opportunity_title: "Job",
+      },
+      strongMatch: true,
+    }));
+    captureReplyMock.mockImplementation(async () => ({
+      subId: "s1",
+      companyName: "Sub",
+      extracted: {
+        intent: "cant_fulfill",
+        isQuote: false,
+        quoteAmount: null,
+        paymentTerms: null,
+        notes: null,
+        companyName: null,
+        canPerform: false,
+        capabilityNotes: "Wrong trade",
+        tradesMentioned: [],
+        method: "ai",
+      },
+      quoteSaved: false,
+      quoteSkippedExisting: false,
+      senderVerified: true,
+      trade: "electrical",
+      duplicate: false,
+      declined: true,
+      thankYouSent: true,
+    }));
+    enqueueMock.mockClear();
+    const res = await POST(
+      signedRequest({
+        type: "email.received",
+        data: {
+          email_id: "rcv_decline",
+          from: "sub@x.test",
+          to: ["info@brostco.com"],
+          text: "We cannot do electrical work.",
+        },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      matched: true,
+      declined: true,
+      thankYouSent: true,
+    });
+    expect(enqueueMock).not.toHaveBeenCalled();
     matchInboundReplyMock.mockReset();
     captureReplyMock.mockReset();
   });
@@ -163,12 +235,25 @@ d("resend inbound webhook handler", () => {
     captureReplyMock.mockImplementation(async () => ({
       subId: "s1",
       companyName: "Sub",
-      extracted: { isQuote: true, quoteAmount: 1000, paymentTerms: null, notes: null, companyName: null, method: "ai" },
+      extracted: {
+        intent: "quote",
+        isQuote: true,
+        quoteAmount: 1000,
+        paymentTerms: null,
+        notes: null,
+        companyName: null,
+        canPerform: true,
+        capabilityNotes: null,
+        tradesMentioned: [],
+        method: "ai",
+      },
       quoteSaved: true,
       quoteSkippedExisting: false,
       senderVerified: true,
       trade: null,
       duplicate: false,
+      declined: false,
+      thankYouSent: false,
     }));
     enqueueMock.mockRejectedValueOnce(new Error("queue down"));
     const res = await POST(

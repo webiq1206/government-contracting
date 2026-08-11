@@ -24,11 +24,28 @@ d("reply capture pipeline (Resend inbound path)", () => {
   };
 
   const fakeExtract = async () => ({
+    intent: "quote" as const,
     isQuote: true,
     quoteAmount: 98765,
     paymentTerms: "net 30",
     notes: "test extraction",
     companyName: "Test Sub LLC",
+    canPerform: true,
+    capabilityNotes: null,
+    tradesMentioned: [] as string[],
+    method: "ai" as const,
+  });
+
+  const fakeDeclineExtract = async () => ({
+    intent: "cant_fulfill" as const,
+    isQuote: false,
+    quoteAmount: null,
+    paymentTerms: null,
+    notes: null,
+    companyName: "Test Sub LLC",
+    canPerform: false,
+    capabilityNotes: "We do not perform electrical work",
+    tradesMentioned: ["plumbing"],
     method: "ai" as const,
   });
 
@@ -61,6 +78,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
   });
 
   afterAll(async () => {
+    await query(`delete from call_cards where opportunity_id=$1`, [ids.opp]);
     await query(`delete from quotes where opportunity_id=$1`, [ids.opp]);
     await query(`delete from communications where opportunity_id=$1`, [ids.opp]);
     await query(`delete from opportunity_subs where opportunity_id=$1`, [ids.opp]);
@@ -140,11 +158,15 @@ d("reply capture pipeline (Resend inbound path)", () => {
       replyText: "Correction: $50,000.",
       messageId: "resend-msg-2",
       extract: async () => ({
+        intent: "quote" as const,
         isQuote: true,
         quoteAmount: 50000,
         paymentTerms: null,
         notes: null,
         companyName: null,
+        canPerform: true,
+        capabilityNotes: null,
+        tradesMentioned: [] as string[],
         method: "ai" as const,
       }),
     });
@@ -214,5 +236,89 @@ d("reply capture pipeline (Resend inbound path)", () => {
       `delete from communications where subcontractor_id in (select id from subcontractors where email='someone-else@another-company.test')`
     );
     await query(`delete from subcontractors where email='someone-else@another-company.test'`);
+  });
+
+  it("soft-closes on cant_fulfill, skips quote save, and records thank-you outbound", async () => {
+    // Fresh outbound so matchInboundReply can find an unreplied send.
+    const outbound = await queryOne<{ id: string }>(
+      `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, tracking_id, provider)
+       values ($1,$2,'email','outbound','TEST decline outreach','body',$3,'resend') returning id`,
+      [ids.sub, ids.opp, randomUUID()]
+    );
+    await query(
+      `update opportunity_subs set outreach_state='sent', responded_at=null
+        where opportunity_id=$1 and subcontractor_id=$2`,
+      [ids.opp, ids.sub]
+    );
+    await query(
+      `insert into call_cards (opportunity_id, subcontractor_id, card_json, status)
+       values ($1,$2,'{}'::jsonb,'pending')
+       on conflict (opportunity_id, subcontractor_id) do update
+         set status='pending', response_json=null`,
+      [ids.opp, ids.sub]
+    );
+
+    const { comm, strongMatch } = await cap.matchInboundReply({
+      trackingToken: null,
+      fromEmail: ids.subEmail,
+    });
+    expect(comm?.id).toBe(outbound!.id);
+
+    const closeOutCalls: unknown[] = [];
+    const result = await cap.captureReply({
+      comm: comm!,
+      strongMatch,
+      fromEmail: ids.subEmail,
+      replyText: "Sorry, we cannot fulfill electrical requests.",
+      messageId: "resend-msg-decline-1",
+      extract: fakeDeclineExtract,
+      closeOut: async (opts) => {
+        closeOutCalls.push(opts);
+        // Run the real close-out but stub the email send so CI needs no transport.
+        const { closeOutDeclinedSub } = await import("../lib/domain/decline-closeout");
+        return closeOutDeclinedSub({
+          ...opts,
+          sendEmail: async () => ({
+            provider: "resend",
+            messageId: "thank-you-msg-1",
+            threadId: null,
+          }),
+        });
+      },
+    });
+
+    expect(result.declined).toBe(true);
+    expect(result.quoteSaved).toBe(false);
+    expect(result.thankYouSent).toBe(true);
+    expect(closeOutCalls).toHaveLength(1);
+
+    const os = await queryOne<{ outreach_state: string }>(
+      `select outreach_state from opportunity_subs where opportunity_id=$1 and subcontractor_id=$2`,
+      [ids.opp, ids.sub]
+    );
+    expect(os?.outreach_state).toBe("declined");
+
+    const card = await queryOne<{ status: string; response_json: { skip_reason?: string } }>(
+      `select status, response_json from call_cards where opportunity_id=$1 and subcontractor_id=$2`,
+      [ids.opp, ids.sub]
+    );
+    expect(card?.status).toBe("skipped");
+    expect(card?.response_json?.skip_reason).toBe("email_declined");
+
+    const thankYou = await queryOne<{ subject: string; meta: { kind?: string } }>(
+      `select subject, meta from communications
+        where opportunity_id=$1 and subcontractor_id=$2
+          and direction='outbound' and meta->>'kind'='decline_thank_you'
+        order by created_at desc limit 1`,
+      [ids.opp, ids.sub]
+    );
+    expect(thankYou?.meta?.kind).toBe("decline_thank_you");
+    expect(thankYou?.subject).toMatch(/Thank you/i);
+
+    const notes = await queryOne<{ notes: string | null }>(
+      `select notes from subcontractors where id=$1`,
+      [ids.sub]
+    );
+    expect(notes?.notes ?? "").toMatch(/cannot fulfill|electrical|plumbing/i);
   });
 });

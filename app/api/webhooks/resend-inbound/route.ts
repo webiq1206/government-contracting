@@ -106,12 +106,14 @@ export async function POST(req: Request) {
     messageId: emailId,
   });
 
-  // Enqueue call-prep. On a duplicate delivery (webhook retry) we still
-  // attempt the enqueue: the retry may exist precisely because a previous
-  // attempt captured the reply but failed to enqueue. An enqueue failure is
-  // returned as retriable (500) — capture itself is committed and idempotent,
-  // so the provider's retry re-attempts only the enqueue.
-  if (result.subId) {
+  // Declines are closed out inside captureReply (thank-you + soft close). Do not
+  // enqueue call-prep. For warm replies, enqueue call-prep. On a duplicate
+  // delivery (webhook retry) we still attempt the enqueue when not declined:
+  // the retry may exist precisely because a previous attempt captured the reply
+  // but failed to enqueue. An enqueue failure is returned as retriable (500) —
+  // capture itself is committed and idempotent, so the provider's retry
+  // re-attempts only the enqueue.
+  if (result.subId && !result.declined) {
     try {
       await enqueue("call-prep", {
         opportunityId: comm.opportunity_id,
@@ -136,6 +138,16 @@ export async function POST(req: Request) {
 
   if (result.duplicate) {
     return NextResponse.json({ ok: true, matched: true, duplicate: true });
+  }
+
+  if (result.declined) {
+    // closeOutDeclinedSub already wrote the reply-declined agent log.
+    return NextResponse.json({
+      ok: true,
+      matched: true,
+      declined: true,
+      thankYouSent: result.thankYouSent,
+    });
   }
 
   const priceNote = result.quoteSaved

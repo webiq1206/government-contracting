@@ -1,17 +1,18 @@
 /**
  * OPPORTUNITY MONITOR, cron every 2 hours.
  * Polls SAM.gov (and optional state/local scrapers), deduplicates against
- * existing records by source_id, normalizes to the opportunities schema, stores
- * new rows, triggers the Scoring Engine for each, and routes Sources Sought
- * notices to the high-priority sub-queue (Sources Sought Responder).
+ * existing records by (org_id, source_id) and open solicitation_number,
+ * normalizes to the opportunities schema, stores new rows, triggers the
+ * Scoring Engine for each, and routes Sources Sought notices to the
+ * high-priority sub-queue (Sources Sought Responder).
  */
-import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { sam, wantNoticeType, type SamOpportunity } from "../integrations/sam";
 import { runEnabledScrapers } from "../integrations/scrapers";
 import { enqueue } from "../queue";
 import { resolveEstimatedValue } from "../domain/value-extract";
+import { ingestOpportunity } from "../domain/opportunity-ingest";
 import { listActiveOrganizations } from "../organizations";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
@@ -87,37 +88,12 @@ async function ingestOne(
   n: ReturnType<typeof normalizeSamNotice>,
   orgId: string
 ): Promise<{ inserted: boolean; id?: string; isSourcesSought: boolean }> {
-  if (!n.source_id) return { inserted: false, isSourcesSought: n.is_sources_sought };
-  // Deduplicate per tenant: the same SAM notice may be relevant to multiple orgs.
-  const existing = await queryOne<{ id: string }>(
-    `select id from opportunities where source_id = $1 and org_id = $2`,
-    [n.source_id, orgId]
-  );
-  if (existing) return { inserted: false, id: existing.id, isSourcesSought: n.is_sources_sought };
-
-  const row = await queryOne<{ id: string }>(
-    `insert into opportunities
-      (org_id, source, source_id, solicitation_number, title, description, naics_code, psc_code,
-       set_aside_type, value_estimated, value_estimated_source, deadline, posted_at,
-       location_state, location_text,
-       agency, sub_agency, contact_json, attachments_json, raw_json, is_sources_sought,
-       stage, status)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-             'scoring','open')
-     returning id`,
-    [
-      orgId,
-      n.source, n.source_id, n.solicitation_number, n.title, n.description, n.naics_code,
-      n.psc_code, n.set_aside_type, n.value_estimated, n.value_estimated_source,
-      n.deadline, n.posted_at,
-      n.location_state, n.location_text, n.agency, n.sub_agency,
-      n.contact_json ? JSON.stringify(n.contact_json) : null,
-      JSON.stringify(n.attachments_json),
-      JSON.stringify(n.raw_json),
-      n.is_sources_sought,
-    ]
-  );
-  return { inserted: true, id: row!.id, isSourcesSought: n.is_sources_sought };
+  const res = await ingestOpportunity({ orgId, ...n });
+  return {
+    inserted: res.inserted,
+    id: res.id ?? undefined,
+    isSourcesSought: res.isSourcesSought,
+  };
 }
 
 async function monitorForOrg(orgId: string): Promise<{
@@ -254,37 +230,34 @@ async function monitorForOrg(orgId: string): Promise<{
     // --- State / local portals (Playwright scrapers; opt-in) ---
     const scraped = await runEnabledScrapers(naics).catch(() => []);
     for (const s of scraped) {
-      const existing = await queryOne<{ id: string }>(
-        `select id from opportunities where source_id = $1 and org_id = $2`,
-        [s.source_id, orgId]
-      );
-      if (existing) continue;
       const scraperValue = resolveEstimatedValue({
         listedAmount: s.value_estimated ?? null, // scrapers that already parsed a value pass it directly
         title: s.title,
         description: s.description,
       });
-      const row = await queryOne<{ id: string }>(
-        `insert into opportunities
-           (org_id, source, source_id, title, description, naics_code, set_aside_type,
-            value_estimated, value_estimated_source, deadline, location_state, agency, raw_json, stage, status)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'scoring','open') returning id`,
-        [
-          orgId,
-          s.source, s.source_id, s.title, s.description ?? null, s.naics_code ?? null,
-          s.set_aside_type ?? null, scraperValue?.amount ?? null, scraperValue?.source ?? null,
-          s.deadline ?? null,
-          s.location_state ?? null, s.agency ?? null, JSON.stringify(s.raw ?? {}),
-        ]
-      );
-      if (row) {
-        ingested++;
-        enqueued.push({
-          agent: "scoring-engine",
-          payload: { opportunityId: row.id },
-          opts: { singletonKey: `score:${row.id}`, singletonSeconds: 3600 },
-        });
-      }
+      const res = await ingestOpportunity({
+        orgId,
+        source: s.source,
+        source_id: s.source_id,
+        title: s.title,
+        description: s.description ?? null,
+        naics_code: s.naics_code ?? null,
+        set_aside_type: s.set_aside_type ?? null,
+        value_estimated: scraperValue?.amount ?? null,
+        value_estimated_source: scraperValue?.source ?? null,
+        deadline: s.deadline ?? null,
+        location_state: s.location_state ?? null,
+        agency: s.agency ?? null,
+        raw_json: s.raw ?? {},
+        attachments_json: [],
+      });
+      if (!res.inserted || !res.id) continue;
+      ingested++;
+      enqueued.push({
+        agent: "scoring-engine",
+        payload: { opportunityId: res.id },
+        opts: { singletonKey: `score:${res.id}`, singletonSeconds: 3600 },
+      });
     }
 
     return {
@@ -338,7 +311,7 @@ export const opportunityMonitor: AgentDefinition = {
     return {
       ok: true,
       summary,
-      reasoning: `Polled SAM per org for NAICS [${[...naicsAll].join(", ")}]; deduped by source_id+org_id.`,
+      reasoning: `Polled SAM per org for NAICS [${[...naicsAll].join(", ")}]; deduped by org+source_id and open solicitation_number.`,
       data: { ingested, sourcesSought, orgs: orgs.length },
       enqueued,
     };

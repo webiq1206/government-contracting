@@ -92,13 +92,18 @@ export const scoringEngine: AgentDefinition = {
     // silently: every finding is logged with a full explanation and lands on
     // the record's risk flags.
     const rules = await getAutomationRules();
-    const dupRow = opp.solicitation_number
-      ? await queryOne<{ n: number }>(
-          `select count(*)::int as n from opportunities
-            where solicitation_number = $1 and id <> $2 and status = 'open'`,
-          [opp.solicitation_number, opportunityId]
-        )
-      : null;
+    const dupRow =
+      opp.solicitation_number && opp.org_id
+        ? await queryOne<{ n: number }>(
+            `select count(*)::int as n from opportunities
+            where org_id = $3
+              and id <> $2
+              and status = 'open'
+              and solicitation_number is not null
+              and lower(btrim(solicitation_number)) = lower(btrim($1))`,
+            [opp.solicitation_number, opportunityId, opp.org_id]
+          )
+        : null;
     const findings = intakeChecks({
       deadline: opp.deadline,
       duplicateSolicitationCount: dupRow?.n ?? 0,

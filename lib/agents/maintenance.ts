@@ -667,10 +667,18 @@ export const replyPoll: AgentDefinition = {
       // Already captured (e.g. by the Resend inbound webhook or a previous
       // poll of the sliding window): skip notifications and re-enqueues.
       if (result.duplicate) continue;
-      const { subId, companyName, extracted, quoteSaved, quoteSkippedExisting } = result;
+      const {
+        subId,
+        companyName,
+        extracted,
+        quoteSaved,
+        quoteSkippedExisting,
+        declined,
+        thankYouSent,
+      } = result;
       const mentionedPrice = extracted.quoteAmount ?? extractMentionedPrice(replyText);
 
-      if (subId) {
+      if (subId && !declined) {
         enqueued.push({
           agent: "call-prep",
           payload: {
@@ -679,6 +687,16 @@ export const replyPoll: AgentDefinition = {
             ...(mentionedPrice != null ? { emailMentionedPrice: mentionedPrice } : {}),
           },
         });
+      }
+
+      if (declined) {
+        // closeOutDeclinedSub already wrote the reply-declined agent log.
+        notifyLines.push(
+          `<li><strong>${companyName ?? fromEmail}</strong> declined / cannot fulfill &ldquo;${comm.opportunity_title ?? "an opportunity"}&rdquo;.` +
+            ` Closed out on this solicitation${thankYouSent ? "; thank-you sent" : ""}.` +
+            `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
+        );
+        continue;
       }
 
       // Tell the operator exactly what happened and what changed.

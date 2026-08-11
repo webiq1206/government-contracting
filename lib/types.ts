@@ -146,6 +146,7 @@ export interface DecisionThresholds {
 
 export interface Opportunity {
   id: string;
+  org_id?: string | null;
   source: string;
   source_id: string | null;
   solicitation_number: string | null;

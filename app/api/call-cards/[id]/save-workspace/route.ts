@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/api-auth";
 import { transaction, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
+import { closeOutDeclinedSub } from "@/lib/domain/decline-closeout";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -218,6 +219,8 @@ export async function POST(
         // Map call outcome onto the pairing so Coverage / Today stay accurate.
         // Declined / not interested must never look like a warm response.
         // No-answer leaves prior outreach_state alone (still awaiting follow-up).
+        // Full decline close-out (thank-you + skip other pending cards) runs
+        // after the transaction via closeOutDeclinedSub.
         const outcome = (response.outcome ?? "").toLowerCase();
         const declined =
           outcome === "declined" ||
@@ -267,13 +270,41 @@ export async function POST(
         );
       }
 
-      return { opportunity_id, subcontractor_id, quoteRowId };
+      const outcome = (response.outcome ?? "").toLowerCase();
+      const declined =
+        closeCard &&
+        cardStatus === "called" &&
+        (outcome === "declined" ||
+          outcome === "not_interested" ||
+          response.interested === "no" ||
+          response.can_perform === "no");
+      return { opportunity_id, subcontractor_id, quoteRowId, trade, declined };
     });
 
     // Kick the Bid Builder whenever a completed call produced a price. It is
     // idempotent (one bid per opportunity) and re-prices with the latest quotes.
     if (closeCard && cardStatus === "called" && quoteAmountNum != null) {
       await enqueue("bid-builder", { opportunityId: result.opportunity_id });
+    }
+
+    if (result.declined) {
+      // Operator notes were already appended on the sub row inside the
+      // transaction; only pass structured decline flags here.
+      const capabilityNotes = [
+        response.can_perform === "no" ? "Operator logged: cannot perform." : null,
+        response.interested === "no" ? "Operator logged: not interested." : null,
+        response.outcome ? `Outcome: ${response.outcome}` : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      await closeOutDeclinedSub({
+        opportunityId: result.opportunity_id,
+        subcontractorId: result.subcontractor_id,
+        trade: result.trade,
+        source: "call_workspace",
+        capabilityNotes: capabilityNotes || null,
+        sendThankYou: true,
+      });
     }
 
     await logAgent({
