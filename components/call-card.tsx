@@ -1,6 +1,7 @@
 "use client";
 
 import type { CallCardRow } from "@/lib/data";
+import { ActionButton } from "@/components/action-button";
 import { CallWorkspaceLauncher } from "@/components/call-workspace-launcher";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import { countdown, currency, shortDate } from "@/lib/format";
@@ -129,12 +130,27 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
         {/* Primary action */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="flex items-center justify-between gap-2"
+          className="flex flex-wrap items-center justify-between gap-2"
         >
           <p className="text-xs text-slate-500">
             Opens a full call workspace with script, attachments, and capture form.
           </p>
-          <span className="btn-primary pointer-events-none">Start call →</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <ActionButton
+              endpoint={`/api/call-cards/${c.id}/skip`}
+              className="btn-ghost text-xs"
+              toast={{
+                message: `Skipped calling ${c.company_name}. Recorded on their history.`,
+                undo: {
+                  endpoint: `/api/call-cards/${c.id}/skip`,
+                  body: { undo: true },
+                },
+              }}
+            >
+              Skip
+            </ActionButton>
+            <span className="btn-primary pointer-events-none text-xs">Start call →</span>
+          </div>
         </div>
       </div>
     </CallWorkspaceLauncher>
