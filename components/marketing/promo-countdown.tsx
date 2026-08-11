@@ -50,7 +50,7 @@ function CountdownUnit({
       >
         {value}
       </span>
-      <span className={`label text-[0.6rem] ${dark ? "text-white/45" : ""}`}>{label}</span>
+      <span className={`label text-[0.6rem] ${dark ? "text-white/75" : ""}`}>{label}</span>
     </div>
   );
 }
@@ -79,10 +79,10 @@ export function PromoCountdown({ endsAtIso, variant = "light" }: PromoCountdownP
         role="status"
         aria-live="polite"
       >
-        <p className={`text-sm font-medium ${dark ? "text-white/70" : "text-muted-foreground"}`}>
+        <p className={`text-sm font-medium ${dark ? "text-white/90" : "text-muted-foreground"}`}>
           Offer ended
         </p>
-        <p className={`mt-0.5 text-xs ${dark ? "text-white/45" : "text-muted-foreground"}`}>
+        <p className={`mt-0.5 text-xs ${dark ? "text-white/75" : "text-muted-foreground"}`}>
           Founding rate is no longer available. Standard pricing applies.
         </p>
       </div>
@@ -91,7 +91,7 @@ export function PromoCountdown({ endsAtIso, variant = "light" }: PromoCountdownP
 
   return (
     <div role="timer" aria-live="polite" aria-label="Founding offer time remaining">
-      <p className={`label mb-3 text-center ${dark ? "text-white/55" : ""}`}>
+      <p className={`label mb-3 text-center ${dark ? "text-white/80" : ""}`}>
         Founding rate closes in
       </p>
       <div className="flex justify-center gap-3 sm:gap-4">
