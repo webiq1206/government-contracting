@@ -124,6 +124,8 @@
 .mkt-lp .panel > header { display: flex; justify-content: space-between; gap: 30px; }
 .mkt-lp .panel h3 { margin: 8px 0 0; font: 400 30px "GFS Didot", serif; color: var(--ink); }
 .mkt-lp .panel > header > p { max-width: 235px; margin: 0; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.mkt-lp .panel.dark { background: var(--night-soft); }
+.mkt-lp .panel.dark small { color: var(--gold-on-dark); }
 .mkt-lp .panel.dark > header > p { color: var(--on-dark-soft); }
 .mkt-lp .panel.dark h3 { color: #f6f2eb; }
 .mkt-lp .today-mini { margin-top: auto; border: 1px solid rgba(255,255,255,.18); }
