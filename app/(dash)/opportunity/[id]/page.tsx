@@ -285,19 +285,23 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   }
                 />
               </div>
-              <div id="attention" data-guide-target="attention">
-                <AttentionStrip readiness={readiness} opportunityId={opp.id} />
-              </div>
+              <AttentionStrip readiness={readiness} opportunityId={opp.id} />
             </div>
           }
           brief={
-            <div className="space-y-8 px-5 py-8 sm:px-6" id="brief" data-guide-target="brief">
+            <div
+              className="scroll-mt-editorial space-y-8 px-5 py-8 sm:px-6"
+              id="brief"
+              data-guide-target="brief"
+            >
               <div className="grid gap-10 lg:grid-cols-2 lg:gap-0">
                 <div className="lg:border-r lg:border-border lg:pr-10">
-                  <p className="eyebrow-gold">Why this fits</p>
-                  <h2 className="mt-3 font-display text-2xl leading-snug text-foreground sm:text-3xl">
-                    {whyHeadline}
+                  <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                    Why this fits
                   </h2>
+                  <p className="mt-2 font-display text-2xl font-semibold leading-snug text-foreground sm:text-3xl">
+                    {whyHeadline}
+                  </p>
                   <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
                     {whyBody}
                   </p>
@@ -324,7 +328,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     <ScoreBreakdownCard breakdown={breakdown} />
                   ) : (
                     <div className="rounded-md border border-border/55 bg-surface p-5 dark:border-white/10">
-                      <p className="eyebrow-gold">Score breakdown</p>
+                      <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                        Score breakdown
+                      </h2>
                       <p className="mt-3 text-sm text-muted-foreground">
                         Scoring has not finished yet. The fit score box updates when dimensions
                         land.
@@ -341,7 +347,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 <BidBrief analysis={analysis} documents={briefDocs} />
               ) : (
                 <div className="card">
-                  <p className="eyebrow-gold">Plain-English summary</p>
+                  <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                    Plain-English summary
+                  </h2>
                   <p className="mt-2 text-sm text-slate-500">
                     The plain-English analysis has not run yet. Everything you need is still
                     available in the other tabs: score, pricing, subcontractors, and original
@@ -353,7 +361,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
           }
           requirements={
             <div
-              className="scroll-mt-12 space-y-4 px-5 py-8 sm:px-6"
+              className="scroll-mt-editorial space-y-4 px-5 py-8 sm:px-6"
               id="overview"
               data-guide-target="overview"
             >
@@ -493,7 +501,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
               {opp.tier === "review" && opp.human_action_required && (
                 <div className="card space-y-2">
-                  <p className="eyebrow-gold">Triage</p>
+                  <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                    Triage
+                  </h2>
                   <div className="flex gap-2">
                     <ActionButton
                       endpoint={`/api/opportunities/${opp.id}/action`}
@@ -556,7 +566,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
             <div className="space-y-6 px-5 py-8 sm:px-6">
               {showQuotePanel && (
                 <div
-                  className="scroll-mt-12"
+                  className="scroll-mt-editorial"
                   id="quotes"
                   data-guide-target="quotes"
                 >
@@ -651,8 +661,10 @@ export default async function OpportunityPage({ params }: { params: { id: string
               )}
 
               {hasBid && !bidSubmitted && (
-                <div className="card scroll-mt-12" id="revise-quotes">
-                  <p className="eyebrow-gold mb-3">Revise quotes</p>
+                <div className="card scroll-mt-editorial" id="revise-quotes">
+                  <h2 className="mb-3 font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                    Revise quotes
+                  </h2>
                   <p className="mb-3 text-xs leading-relaxed text-slate-500">
                     Saving a new quote re-prices and rebuilds the bid.
                   </p>
@@ -700,7 +712,11 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
               {bid && (
                 <>
-                  <div id="submission" className="scroll-mt-4" data-guide-target="submission">
+                  <div
+                    id="submission"
+                    className="scroll-mt-editorial"
+                    data-guide-target="submission"
+                  >
                     <SubmissionPackage
                       opportunityId={opp.id}
                       bid={bid}
@@ -724,7 +740,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   </div>
                   {bid.submitted_at && (
                     <div className="card space-y-2">
-                      <p className="eyebrow-gold">Outcome</p>
+                      <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                        Outcome
+                      </h2>
                       <p className="text-xs text-pursue">
                         Submitted {timeAgo(bid.submitted_at)}
                       </p>
@@ -759,7 +777,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
               {!showQuotePanel && !hasBid && (
                 <div className="card">
-                  <p className="eyebrow-gold">Pricing</p>
+                  <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                    Pricing
+                  </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
                     Quote entry opens once this opportunity reaches capture. Pricing comps and
                     the bid package will appear here when available.
@@ -796,7 +816,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 <OpportunityJourney stage={opp.stage} />
               </div>
 
-              <div id="activity" className="scroll-mt-12 space-y-2">
+              <div id="activity" className="scroll-mt-editorial space-y-2">
                 <SectionHeading
                   eyebrow="Activity"
                   title="What happened"

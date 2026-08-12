@@ -33,7 +33,7 @@ export function TradeCoverageStrip({
     <div
       id="coverage"
       data-guide-target="coverage"
-      className="scroll-mt-12 rounded-md border border-border bg-background px-4 py-4"
+      className="scroll-mt-editorial rounded-md border border-border bg-background px-4 py-4"
     >
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>

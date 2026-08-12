@@ -122,6 +122,8 @@ body {
   text-rendering: optimizeLegibility;
   /* Stop rubber-band scroll past page ends (especially below mobile footers). */
   overscroll-behavior-y: none;
+  /* Opportunity EditorialTabs sticky row + breathing room for anchors. */
+  --editorial-sticky-offset: 3.5rem;
 }
 
 *,
@@ -257,6 +259,10 @@ body {
     .shell-ghost {
       min-height: 0;
     }
+  }
+  /* Sticky opportunity tab bar height + gap for scroll-margin anchors. */
+  .scroll-mt-editorial {
+    scroll-margin-top: var(--editorial-sticky-offset, 3.5rem);
   }
   .focus-rail {
     border-left: 2px solid #c3a06b;

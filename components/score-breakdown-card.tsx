@@ -12,10 +12,12 @@ export function ScoreBreakdownCard({ breakdown }: { breakdown: ScoreBreakdown })
   return (
     <div
       id="score"
-      className="scroll-mt-12"
+      className="scroll-mt-editorial"
       data-guide-target="score"
     >
-      <p className="eyebrow-gold">Score breakdown</p>
+      <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+        Score breakdown
+      </h2>
       <div className="mt-5 space-y-4">
         {positives.map((d) => {
           const pct = (d.points / Math.max(d.max_points, 1)) * 100;

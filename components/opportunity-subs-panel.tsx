@@ -75,7 +75,7 @@ export function OpportunitySubsPanel({
   }
 
   return (
-    <div id="subs" className="scroll-mt-12">
+    <div id="subs" className="scroll-mt-editorial">
       <Collapsible
         title="Subcontractors on this bid"
         meta={<span className="num">{subs.length}</span>}

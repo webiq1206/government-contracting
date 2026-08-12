@@ -19,17 +19,19 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
   return (
     <div
       id="next-step"
-      className={`scroll-mt-12 flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3.5 ${
+      className={`scroll-mt-editorial flex flex-wrap items-center justify-between gap-3 rounded-md border border-l-4 px-4 py-4 sm:px-5 ${
         step.tone === "action"
-          ? "focus-rail border-pursue/40 bg-pursue-soft"
+          ? "border-pursue/40 border-l-pursue bg-pursue-soft"
           : step.tone === "warn"
-            ? "focus-rail border-review/40 bg-review/5"
-            : "focus-rail border-border bg-surface"
+            ? "border-review/40 border-l-review bg-review/10"
+            : "border-border border-l-gold bg-surface"
       }`}
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="eyebrow-gold">Next step</p>
+          <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+            Next step
+          </h2>
           <span
             className={`badge ${
               step.waitingOn === "you"
@@ -40,7 +42,7 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
             waiting on {PARTY_LABEL[step.waitingOn]}
           </span>
         </div>
-        <p className="mt-1 text-base font-semibold text-foreground">{step.title}</p>
+        <p className="mt-1.5 text-base font-semibold text-foreground">{step.title}</p>
         <p className="mt-0.5 text-sm text-slate-600">{step.why}</p>
         {step.after && (
           <p className="mt-0.5 text-xs text-slate-500">Then: {step.after}</p>
@@ -123,10 +125,11 @@ function openInPageTarget(e: MouseEvent<HTMLAnchorElement>, anchor: string) {
   const url = new URL(window.location.href);
   url.hash = target;
   window.history.replaceState(null, "", url.toString());
-  window.requestAnimationFrame(() => {
+  // Wait for the tab panel to paint so scroll-margin clears the sticky tab bar.
+  window.setTimeout(() => {
     const el =
       document.querySelector<HTMLElement>(`[data-guide-target="${target}"]`) ||
       document.getElementById(target);
     el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
+  }, 50);
 }

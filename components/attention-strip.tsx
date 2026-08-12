@@ -2,11 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { InfoTip } from "@/components/info-tip";
 import type { AttentionItem, BidReadiness } from "@/lib/domain/bid-readiness";
 
 /**
  * Attention-first strip + Submission Readiness buckets for the opportunity page.
+ * Attention items stay collapsed by default with a count badge when action is needed.
  */
 export function AttentionStrip({
   readiness,
@@ -19,11 +19,13 @@ export function AttentionStrip({
   if (items.length === 0 && !readiness.summary) return null;
 
   return (
-    <div id="attention" className="scroll-mt-12 space-y-3">
+    <div className="scroll-mt-editorial space-y-3" data-guide-target="attention">
       <div className="rounded-md border border-border/55 bg-surface px-4 py-4 dark:border-white/10 sm:px-5">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
-            <p className="eyebrow-gold">Submission readiness</p>
+            <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+              Submission readiness
+            </h2>
             <p className="mt-1 font-display text-3xl text-foreground">
               <span className="num text-gold">{readiness.percent}%</span>
             </p>
@@ -43,15 +45,33 @@ export function AttentionStrip({
       </div>
 
       {items.length > 0 && (
-        <div className="rounded-md border border-review/40 bg-review/5 px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="eyebrow-gold text-review">What needs your attention</p>
-            <InfoTip label="About attention items">
-              Every item lists what is wrong, why it matters, who acts, and a
-              direct next step. Prefer the button over hunting through tabs.
-            </InfoTip>
-          </div>
-          <ul className="mt-3 space-y-2">
+        <details
+          id="attention"
+          className="group scroll-mt-editorial rounded-md border border-review/50 bg-review/10 dark:bg-review/15"
+        >
+          <summary
+            className="flex cursor-pointer list-none items-center gap-2 px-4 py-3.5 sm:px-5 [&::-webkit-details-marker]:hidden"
+            aria-label={`What needs your attention, ${items.length} item${
+              items.length === 1 ? "" : "s"
+            }. Expand for details.`}
+          >
+            <h2 className="min-w-0 flex-1 font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+              What needs your attention
+            </h2>
+            <span
+              className="badge shrink-0 bg-review/20 font-semibold text-review"
+              title={`${items.length} item${items.length === 1 ? "" : "s"} need attention`}
+            >
+              {items.length}
+            </span>
+            <span
+              aria-hidden
+              className="shrink-0 text-sm text-review transition-transform group-open:rotate-180"
+            >
+              ▾
+            </span>
+          </summary>
+          <ul className="space-y-2 border-t border-review/30 px-4 py-3 sm:px-5">
             {items.map((item) => (
               <AttentionRow
                 key={item.key}
@@ -60,7 +80,7 @@ export function AttentionStrip({
               />
             ))}
           </ul>
-        </div>
+        </details>
       )}
     </div>
   );

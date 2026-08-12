@@ -24,11 +24,13 @@ export function SectionHeading({
   return (
     <div
       id={id}
-      className={`flex flex-wrap items-end justify-between gap-3 ${id ? "scroll-mt-12" : ""}`}
+      className={`flex flex-wrap items-end justify-between gap-3 ${
+        id ? "scroll-mt-editorial" : ""
+      }`}
     >
       <div className="min-w-0 flex-1">
         {eyebrow ? <p className="eyebrow-gold">{eyebrow}</p> : null}
-        <h2 className="mt-0.5 flex flex-wrap items-center gap-1.5 font-display text-xl font-normal text-foreground sm:text-2xl">
+        <h2 className="mt-0.5 flex flex-wrap items-center gap-1.5 font-display text-2xl font-semibold leading-tight text-foreground sm:text-3xl">
           {title}
           {tip ? <InfoTip label={`About ${title}`}>{tip}</InfoTip> : null}
         </h2>

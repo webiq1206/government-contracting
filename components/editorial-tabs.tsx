@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
@@ -45,6 +46,7 @@ export function EditorialTabs({
   layout?: "sticky" | "fill";
 }) {
   const reactId = useId();
+  const tablistRef = useRef<HTMLDivElement>(null);
   const initial =
     defaultTab && tabs.some((t) => t.id === defaultTab)
       ? defaultTab
@@ -62,7 +64,7 @@ export function EditorialTabs({
   );
 
   const go = useCallback(
-    (id: string, syncHash = true) => {
+    (id: string, syncHash = true, alignTablist = false) => {
       if (!tabs.some((t) => t.id === id)) return;
       setTab(id);
       if (syncHash && typeof window !== "undefined") {
@@ -70,8 +72,13 @@ export function EditorialTabs({
         url.hash = id;
         window.history.replaceState(null, "", url.toString());
       }
+      if (alignTablist && layout === "sticky") {
+        window.requestAnimationFrame(() => {
+          tablistRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+        });
+      }
     },
-    [tabs]
+    [tabs, layout]
   );
 
   useEffect(() => {
@@ -89,7 +96,7 @@ export function EditorialTabs({
     function onOpen(e: Event) {
       const detail = (e as CustomEvent<{ tab?: string; target?: string }>).detail;
       if (detail?.tab) {
-        go(detail.tab, false);
+        go(detail.tab, false, true);
         return;
       }
       if (detail?.target) {
@@ -99,7 +106,7 @@ export function EditorialTabs({
           ) || document.getElementById(detail.target);
         const panel = el?.closest<HTMLElement>("[data-editorial-panel]");
         const id = panel?.dataset.editorialPanel;
-        if (id) go(id, false);
+        if (id) go(id, false, false);
       }
     }
     window.addEventListener("editorial-open-tab", onOpen);
@@ -115,29 +122,30 @@ export function EditorialTabs({
         e.key === "ArrowRight"
           ? tabs[(idx + 1) % tabs.length]
           : tabs[(idx - 1 + tabs.length) % tabs.length];
-      go(next.id);
+      go(next.id, true, true);
       document.getElementById(`${reactId}-tab-${next.id}`)?.focus();
     } else if (e.key === "Home") {
       e.preventDefault();
-      go(tabs[0].id);
+      go(tabs[0].id, true, true);
       document.getElementById(`${reactId}-tab-${tabs[0].id}`)?.focus();
     } else if (e.key === "End") {
       e.preventDefault();
       const last = tabs[tabs.length - 1];
-      go(last.id);
+      go(last.id, true, true);
       document.getElementById(`${reactId}-tab-${last.id}`)?.focus();
     }
   }
 
   const tablist = (
     <div
+      ref={tablistRef}
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
       className={
         layout === "fill"
           ? "flex shrink-0 gap-4 overflow-x-auto border-b border-border bg-background px-4 py-1.5 sm:gap-5 sm:px-6 sm:py-2"
-          : `flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2.5 backdrop-blur sm:px-6 sm:py-3 md:sticky md:z-20 ${stickyTopClass}`
+          : `sticky z-20 flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2.5 backdrop-blur sm:px-6 sm:py-3 ${stickyTopClass}`
       }
     >
       {tabs.map((t) => {
@@ -159,7 +167,7 @@ export function EditorialTabs({
             aria-selected={active}
             aria-controls={`${reactId}-panel-${t.id}`}
             tabIndex={active ? 0 : -1}
-            onClick={() => go(t.id)}
+            onClick={() => go(t.id, true, true)}
             className={tabClass}
           >
             {t.label}
@@ -179,7 +187,7 @@ export function EditorialTabs({
         aria-labelledby={`${reactId}-tab-${t.id}`}
         data-editorial-panel={t.id}
         hidden={!active}
-        className={active ? "block" : "hidden"}
+        className={active ? "block scroll-mt-editorial" : "hidden"}
       >
         {t.content}
       </div>
