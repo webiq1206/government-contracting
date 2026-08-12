@@ -6,6 +6,7 @@
 import { query } from "./db";
 import { storage } from "./integrations/storage";
 import type { OutreachAttachment } from "./integrations/email-transport";
+import { normalizeAttachmentMeta } from "./domain/attachment-meta";
 
 /** Keep total attachment payload comfortably under Gmail's 25MB raw limit. */
 const MAX_TOTAL_BYTES = 15 * 1024 * 1024;
@@ -95,20 +96,29 @@ async function materializeDocs(
         d.storage_path,
         d.storage_backend === "supabase" ? "supabase" : undefined
       );
+      if (!bytes.length) continue;
+      const meta = normalizeAttachmentMeta({
+        filename: d.name,
+        mime: d.mime,
+        content: bytes,
+      });
       if (total + bytes.length > MAX_TOTAL_BYTES) {
         const url = await storage.signedUrl(d.storage_path, 7 * 24 * 3600);
-        if (url) links.push({ name: d.name, url });
+        if (url) links.push({ name: meta.filename, url });
         continue;
       }
       total += bytes.length;
       files.push({
-        filename: d.name,
+        filename: meta.filename,
         content: bytes,
-        mime: d.mime ?? "application/octet-stream",
+        mime: meta.mime,
       });
     } catch {
       const url = await storage.signedUrl(d.storage_path, 7 * 24 * 3600).catch(() => null);
-      if (url) links.push({ name: d.name, url });
+      if (url) {
+        const meta = normalizeAttachmentMeta({ filename: d.name, mime: d.mime });
+        links.push({ name: meta.filename, url });
+      }
     }
   }
 
@@ -121,27 +131,35 @@ async function materializeDocs(
       seen.add(a.storage_path);
       try {
         const bytes = await storage.download(a.storage_path);
+        if (!bytes.length) continue;
+        const meta = normalizeAttachmentMeta({
+          filename: name,
+          mime: a.mime,
+          content: bytes,
+        });
         if (total + bytes.length <= MAX_TOTAL_BYTES) {
           total += bytes.length;
-          files.push({ filename: name, content: bytes, mime: a.mime });
+          files.push({ filename: meta.filename, content: bytes, mime: meta.mime });
           continue;
         }
         const url = await storage.signedUrl(a.storage_path, 7 * 24 * 3600).catch(() => null);
         if (url) {
-          links.push({ name, url });
+          links.push({ name: meta.filename, url });
           continue;
         }
       } catch {
         const url = await storage.signedUrl(a.storage_path, 7 * 24 * 3600).catch(() => null);
         if (url) {
-          links.push({ name, url });
+          const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
+          links.push({ name: meta.filename, url });
           continue;
         }
       }
     }
     if (a.url && !seen.has(a.url)) {
       seen.add(a.url);
-      links.push({ name, url: a.url });
+      const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
+      links.push({ name: meta.filename, url: a.url });
     }
   }
 

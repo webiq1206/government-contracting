@@ -25,6 +25,7 @@ import {
 } from "../domain/solicitation-completeness";
 import { storage } from "../integrations/storage";
 import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
+import { normalizeAttachmentMeta } from "../domain/attachment-meta";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -178,11 +179,21 @@ async function processAttachment(
     }
 
     // Persist the raw file + a documents row (best-effort).
-    const safeName = label.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120);
-    const key = `solicitations/${opportunityId}/${index + 1}_${safeName}`;
+    // Sniff bytes so SAM's generic "attachment" / octet-stream metadata does not
+    // break email openability later (clients and Resend key off name + MIME).
+    const meta = normalizeAttachmentMeta({
+      filename: label,
+      mime: ct || null,
+      content: buf,
+    });
+    // Keep the storage key stable across re-runs (do not bake corrected
+    // extensions into the path). Openability comes from documents.name/mime
+    // and send-time normalization, plus Content-Type on /api/files.
+    const safeKeyStem = label.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "attachment";
+    const key = `solicitations/${opportunityId}/${index + 1}_${safeKeyStem}`;
     let stored = false;
     try {
-      const up = await storage.upload(key, buf, ct || "application/octet-stream");
+      const up = await storage.upload(key, buf, meta.mime);
       // Upsert-by-path so re-running the analyst does not duplicate document rows.
       const existing = await queryOne<{ id: string }>(
         `select id from documents where opportunity_id=$1 and storage_path=$2`,
@@ -192,7 +203,19 @@ async function processAttachment(
         await query(
           `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, meta)
            values ($1,'solicitation',$2,$3,$4,$5,$6)`,
-          [opportunityId, label, up.path, up.backend, ct || null, JSON.stringify({ source_url: att.url })]
+          [
+            opportunityId,
+            meta.filename,
+            up.path,
+            up.backend,
+            meta.mime,
+            JSON.stringify({ source_url: att.url }),
+          ]
+        );
+      } else {
+        await query(
+          `update documents set name=$1, mime=$2, storage_backend=$3 where id=$4`,
+          [meta.filename, meta.mime, up.backend, existing.id]
         );
       }
       stored = true;

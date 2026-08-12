@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { storage, verifyFileToken } from "@/lib/integrations/storage";
+import { normalizeAttachmentMeta } from "@/lib/domain/attachment-meta";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MIME: Record<string, string> = {
-  pdf: "application/pdf",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-};
-
-/** Serve a stored document (local backend) or redirect to a Supabase signed URL. */
+/** Serve a stored document (local/db backend) or redirect to a Supabase signed URL. */
 export async function GET(req: Request, { params }: { params: { path: string[] } }) {
   const key = params.path.join("/");
   // Reject traversal.
@@ -33,11 +29,17 @@ export async function GET(req: Request, { params }: { params: { path: string[] }
       return NextResponse.redirect(signed);
     }
     const buf = await storage.download(key);
-    const ext = key.split(".").pop()?.toLowerCase() ?? "";
+    const storedMime = await storage.getMime(key);
+    const meta = normalizeAttachmentMeta({
+      filename: key.split("/").pop() || "attachment",
+      mime: storedMime,
+      content: buf,
+    });
     return new Response(new Uint8Array(buf), {
       headers: {
-        "Content-Type": MIME[ext] ?? "application/octet-stream",
-        "Content-Disposition": `inline; filename="${key.split("/").pop()}"`,
+        "Content-Type": meta.mime,
+        "Content-Disposition": `inline; filename="${meta.filename.replace(/"/g, "")}"`,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch {

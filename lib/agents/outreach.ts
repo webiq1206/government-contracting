@@ -199,6 +199,9 @@ export const outreach: AgentDefinition = {
       message:
         `[outreach] scope sanitised (${contactsRedacted} contact(s) redacted), ` +
         `${gathered.files.length} trade-relevant file(s) attached` +
+        (gathered.files.length
+          ? ` [${gathered.files.map((f) => `${f.filename}:${f.mime ?? "?"}`).join("; ")}]`
+          : "") +
         (linkLines.length ? `, ${linkLines.length} oversized as links` : "") +
         `. Subject: "${subject}" | Body preview: "${plainBody.slice(0, 120).replace(/\n/g, " ")}…"`,
     });

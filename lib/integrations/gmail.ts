@@ -94,7 +94,7 @@ export interface SendEmailParams {
 }
 
 /** Build a raw RFC 2822 message (base64url) with tracking baked in. */
-function buildRaw(params: SendEmailParams, from: string): string {
+export function buildGmailRawMessage(params: SendEmailParams, from: string): string {
   let html = params.html;
   if (params.trackingId) {
     const base = config.appUrl.replace(/\/$/, "");
@@ -238,7 +238,7 @@ export const gmail = {
       // params.from overrides GMAIL_SENDER so the outreach transport can lock
       // the sender to info@brostco.com regardless of which account is OAuth'd.
       const from = params.from ?? config.gmail.sender ?? "me";
-      const raw = buildRaw(params, from);
+      const raw = buildGmailRawMessage(params, from);
       const res = await client.users.messages.send({
         userId: "me",
         requestBody: { raw },

@@ -121,6 +121,25 @@ describe("sendOutreachEmail — Gmail path", () => {
     expect(result.provider).toBeNull();
     expect(result.disabled).toBe(true);
   });
+
+  it("normalizes SAM-style attachments before handing them to Gmail", async () => {
+    const pdf = Buffer.from("%PDF-1.4\n%%EOF\n");
+    await sendOutreachEmail({
+      ...BASE_PARAMS,
+      attachments: [
+        {
+          filename: "attachment",
+          content: pdf,
+          mime: "application/octet-stream",
+        },
+      ],
+    });
+    const sent = mockGmailSend.mock.calls[0][0].attachments;
+    expect(sent).toHaveLength(1);
+    expect(sent[0].filename).toBe("attachment.pdf");
+    expect(sent[0].mime).toBe("application/pdf");
+    expect(Buffer.from(sent[0].content).equals(pdf)).toBe(true);
+  });
 });
 
 // ─── Resend path ─────────────────────────────────────────────────────────────
@@ -176,6 +195,25 @@ describe("sendOutreachEmail — Resend path", () => {
     const result = await sendOutreachEmail(BASE_PARAMS);
     expect(result.provider).toBeNull();
     expect(result.disabled).toBe(true);
+  });
+
+  it("passes filename, PDF bytes, and contentType so recipients can open the file", async () => {
+    const pdf = Buffer.from("%PDF-1.4\n%%EOF\n");
+    await sendOutreachEmail({
+      ...BASE_PARAMS,
+      attachments: [
+        {
+          filename: "attachment",
+          content: pdf,
+          mime: "application/octet-stream",
+        },
+      ],
+    });
+    const sent = mockResendSend.mock.calls[0][0].attachments;
+    expect(sent).toHaveLength(1);
+    expect(sent[0].filename).toBe("attachment.pdf");
+    expect(sent[0].contentType).toBe("application/pdf");
+    expect(Buffer.from(sent[0].content).equals(pdf)).toBe(true);
   });
 });
 

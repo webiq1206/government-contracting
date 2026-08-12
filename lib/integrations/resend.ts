@@ -25,7 +25,7 @@ export const email = {
     /** Override the From address (e.g. the outreach sender). */
     from?: string;
     replyTo?: string;
-    attachments?: { filename: string; content: Buffer }[];
+    attachments?: { filename: string; content: Buffer; contentType?: string }[];
   }): Promise<EmailResult> {
     const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
     if (await isAutomationPaused()) {
@@ -50,6 +50,7 @@ export const email = {
               attachments: params.attachments.map((a) => ({
                 filename: a.filename,
                 content: a.content,
+                ...(a.contentType ? { contentType: a.contentType } : {}),
               })),
             }
           : {}),

@@ -166,6 +166,20 @@ export const storage = {
     return `${config.appUrl}/api/files/${encoded}?exp=${exp}&sig=${sig}`;
   },
 
+  /** Stored MIME for a path, if known (Postgres blob or documents row). */
+  async getMime(key: string): Promise<string | null> {
+    const blob = await queryOne<{ mime: string | null }>(
+      `select mime from file_blobs where path = $1`,
+      [key]
+    ).catch(() => null);
+    if (blob?.mime) return blob.mime;
+    const doc = await queryOne<{ mime: string | null }>(
+      `select mime from documents where storage_path = $1 and mime is not null limit 1`,
+      [key]
+    ).catch(() => null);
+    return doc?.mime ?? null;
+  },
+
   /** Best-effort private bucket creation. No-op when Supabase is unconfigured. */
   async ensureBucket(): Promise<void> {
     if (!config.supabase.enabled) {

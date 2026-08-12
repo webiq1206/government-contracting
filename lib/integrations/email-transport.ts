@@ -10,6 +10,7 @@
 import { gmail } from "./gmail";
 import { email as resend } from "./resend";
 import { config } from "../config";
+import { normalizeAttachmentMeta } from "../domain/attachment-meta";
 
 /**
  * Canonical sub-facing sender identity — hardcoded so outreach is always
@@ -94,6 +95,17 @@ export async function sendOutreachEmail(
     };
   }
 
+  const attachments = (params.attachments ?? [])
+    .filter((a) => a.content?.length)
+    .map((a) => {
+      const meta = normalizeAttachmentMeta({
+        filename: a.filename,
+        mime: a.mime,
+        content: a.content,
+      });
+      return { filename: meta.filename, content: a.content, mime: meta.mime };
+    });
+
   if (provider === "gmail") {
     // OUTREACH_SENDER / OUTREACH_EMAIL are module-level constants — they do not
     // read from config so From and Reply-To are the same regardless of which
@@ -106,7 +118,7 @@ export async function sendOutreachEmail(
       trackingId: params.trackingId,
       from: OUTREACH_SENDER,
       replyTo: OUTREACH_EMAIL,
-      attachments: params.attachments,
+      attachments,
     });
     if (res.disabled) return { provider: null, disabled: true, error: "Gmail became unavailable." };
     return {
@@ -129,9 +141,12 @@ export async function sendOutreachEmail(
     text: params.text,
     from: OUTREACH_SENDER,
     replyTo: OUTREACH_EMAIL,
-    attachments: params.attachments?.map((a) => ({
+    attachments: attachments.map((a) => ({
       filename: a.filename,
       content: a.content,
+      // Required for openability when the filename is ambiguous; Resend
+      // otherwise derives type only from the extension.
+      contentType: a.mime,
     })),
   });
   if (res.disabled) return { provider: null, disabled: true, error: "Resend became unavailable." };
