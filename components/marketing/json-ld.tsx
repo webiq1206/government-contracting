@@ -14,6 +14,7 @@ export function JsonLd({
   const org = {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${SITE_URL}/#organization`,
     name: "Brost Co",
     legalName: "BROSTCO HOLDINGS LLC",
     url: SITE_URL,
@@ -21,16 +22,17 @@ export function JsonLd({
     image: `${SITE_URL}/opengraph-image`,
     email: "hello@brostco.com",
     description:
-      "Brost Co is government contracting software for federal services contractors. It finds, scores, sources, and prepares government contract opportunities.",
+      "Brost Co is government contracting software for federal services contractors. It does the hard, slow parts of federal bidding: SAM.gov intake, fit scoring, subcontractor outreach, and bid package prep. You keep judgment and submission.",
   };
 
   const webpage = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: "Brost Co | Government Contracting Software",
+    "@id": `${SITE_URL}/#webpage`,
+    name: "Brost Co | Hard Parts of Government Contracting Done",
     url: SITE_URL,
     description:
-      "Brost Co finds federal work that fits you, scores each opportunity, sources subcontractors, and prepares bid packages. You approve every decision that matters.",
+      "Brost Co watches SAM.gov, scores opportunities, finds and emails subcontractors, and builds bid packages. You decide, call when needed, and submit.",
     primaryImageOfPage: {
       "@type": "ImageObject",
       url: `${SITE_URL}/opengraph-image`,
@@ -41,6 +43,58 @@ export function JsonLd({
     about: { "@id": `${SITE_URL}/#organization` },
   };
 
+  const breadcrumb = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: SITE_URL,
+      },
+    ],
+  };
+
+  const howTo = {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    name: "How Brost Co runs a federal bid",
+    description:
+      "Four phases from a SAM.gov posting to agency submission. Brost Co handles the automatic work. You handle judgment, calls, and the final send.",
+    totalTime: "P14D",
+    step: [
+      {
+        "@type": "HowToStep",
+        position: 1,
+        name: "Find the right work",
+        text: "Brost Co watches SAM.gov, pulls matching postings, and scores each one against your company. You only decide borderline fits. Strong matches move forward on their own.",
+        url: `${SITE_URL}/#workflow`,
+      },
+      {
+        "@type": "HowToStep",
+        position: 2,
+        name: "Get pricing",
+        text: "Brost Co reads the solicitation, finds local subcontractors, emails them, and follows up. You call when email is not enough, then enter the quote in one place.",
+        url: `${SITE_URL}/#workflow`,
+      },
+      {
+        "@type": "HowToStep",
+        position: 3,
+        name: "Build the package",
+        text: "Brost Co rolls up pricing, assembles the bid package, and runs compliance checks. You review the package and clear anything only a person can sign or attest.",
+        url: `${SITE_URL}/#workflow`,
+      },
+      {
+        "@type": "HowToStep",
+        position: 4,
+        name: "Submit",
+        text: "You submit through the required agency channel. Brost Co keeps the deadline visible and waits with you for the agency decision. Nothing leaves without your approval.",
+        url: `${SITE_URL}/#workflow`,
+      },
+    ],
+  };
+
   const app = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
@@ -49,7 +103,7 @@ export function JsonLd({
     operatingSystem: "Web",
     url: SITE_URL,
     description:
-      "Government contracting software for opportunity discovery, scoring, subcontractor sourcing, quote tracking, and bid preparation.",
+      "Government contracting software that takes the hard, slow parts of federal bidding off your plate: opportunity discovery, scoring, subcontractor sourcing, quote tracking, and bid preparation.",
     offers: promoActive
       ? [
           {
@@ -97,7 +151,15 @@ export function JsonLd({
         name: "What is Brost Co?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Brost Co is procurement execution software for federal services contractors. It monitors SAM.gov, evaluates opportunities against your business, helps source subcontractors, prepares bid packages, and gives your team one prioritized list of work that needs attention.",
+          text: "Brost Co is government contracting software for federal services contractors. It watches SAM.gov for matching work, scores each opportunity against your company, finds subcontractors, tracks quotes, builds the bid package, and shows you one daily list of decisions that need a person.",
+        },
+      },
+      {
+        "@type": "Question",
+        name: "What work does Brost Co take off my plate?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Brost Co handles SAM.gov intake, fit scoring, reading the solicitation, finding and emailing subcontractors, quote tracking, package assembly, and compliance checks. You keep pursue-or-pass decisions, calls when a person is needed, quote entry, and final submission.",
         },
       },
       {
@@ -113,7 +175,7 @@ export function JsonLd({
         name: "Does Brost Co submit bids automatically?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "No. Brost Co prepares and validates the bid package, but you retain final control. Signatures, attestations, and submission stay with your team.",
+          text: "No. Brost Co prepares and validates the bid package, but you keep final control. Signatures, attestations, and submission stay with your team.",
         },
       },
       {
@@ -129,7 +191,7 @@ export function JsonLd({
         name: "Who is Brost Co built for?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Brost Co is designed for small and mid-size federal services contractors pursuing construction, facilities, and professional services work without a large in-house capture team.",
+          text: "Brost Co is built for small and mid-size federal services contractors in construction, facilities, and professional services that do not have a large capture team.",
         },
       },
       {
@@ -137,7 +199,7 @@ export function JsonLd({
         name: "How is this different from a CRM?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "A general CRM tracks deals. Brost Co runs the federal bid lifecycle, including NAICS fit, set-asides, solicitation deadlines, subcontractor coverage, pricing, compliance gates, and submission readiness.",
+          text: "A general CRM tracks deals. Brost Co runs the federal bid lifecycle: NAICS fit, set-asides, deadlines, subcontractor coverage, pricing, compliance checks, and submission readiness.",
         },
       },
     ],
@@ -159,6 +221,14 @@ export function JsonLd({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(webpage) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(howTo) }}
       />
       <script
         type="application/ld+json"

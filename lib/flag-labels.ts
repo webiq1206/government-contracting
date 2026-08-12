@@ -39,6 +39,7 @@ const OVERRIDES: Record<string, string> = {
   unverified_set_aside: "Unverified set aside",
   incomplete_solicitation: "Solicitation incomplete",
   outreach_scope_too_thin: "Scope too thin to email subs",
+  outreach_docs_missing: "Documents missing, held outreach",
 };
 
 /** One flag key → a short, plain-English label. */

@@ -416,7 +416,7 @@ export default async function TodayPage() {
                   description={`${data.stageCounts.reduce((n, s) => n + s.count, 0).toLocaleString()} opportunities are being worked automatically. Anything that needs a person will show up here.`}
                   action={
                     <Link href="/pipeline" className="shell-ghost text-sm">
-                      Browse pipeline
+                      Browse opportunities
                     </Link>
                   }
                 />

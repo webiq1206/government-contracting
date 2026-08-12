@@ -33,7 +33,7 @@ export default function DashboardError({
           Try again
         </button>
         <a href="/pipeline" className="btn-ghost">
-          Back to Pipeline
+          Back to opportunities
         </a>
       </div>
     </div>

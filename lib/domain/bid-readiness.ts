@@ -266,6 +266,7 @@ export function computeBidReadiness(input: {
         "unverified_value",
         "unverified_set_aside",
         "outreach_scope_too_thin",
+        "outreach_docs_missing",
       ].includes(flag)
     ) {
       // Already represented via completeness / trade items when possible.

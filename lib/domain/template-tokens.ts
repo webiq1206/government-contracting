@@ -130,3 +130,9 @@ export const TEMPLATE_TOKENS: TemplateToken[] = [
 export const TEMPLATE_TOKEN_SAMPLES: Record<string, string> = Object.fromEntries(
   TEMPLATE_TOKENS.map((t) => [t.key, t.example])
 );
+
+/** Filenames shown in the editor preview details footer (not sent as bytes). */
+export const TEMPLATE_PREVIEW_ATTACHMENTS = [
+  "Statement of Work.pdf",
+  "Wage Determination.pdf",
+];

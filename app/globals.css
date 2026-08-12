@@ -120,6 +120,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* Stop rubber-band scroll past page ends (especially below mobile footers). */
+  overscroll-behavior-y: none;
 }
 
 *,
@@ -190,6 +192,7 @@ body {
   }
   .page-main {
     @apply flex min-h-0 flex-col overflow-hidden;
+    overscroll-behavior: none;
     padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
   }
   @media (min-width: 768px) {
@@ -491,7 +494,15 @@ body {
 .email-preview strong {
   font-weight: 600;
 }
+.email-preview span[style*="background-color"] {
+  border-radius: 2px;
+}
 
+/* Contain scroll chaining so inner lists do not rubber-band the document
+   past the mobile tab bar / footer. */
+.scroll-thin {
+  overscroll-behavior: contain;
+}
 .scroll-thin::-webkit-scrollbar {
   height: 8px;
   width: 8px;
@@ -502,6 +513,15 @@ body {
 }
 .dark .scroll-thin::-webkit-scrollbar-thumb {
   background: rgb(255 255 255 / 0.18);
+}
+
+/* When the dash (or account) app shell is mounted, lock the document so
+   mobile overscroll cannot continue past the fixed chrome / tab bar. */
+html:has([data-app-shell]),
+html:has([data-app-shell]) body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 :focus-visible {

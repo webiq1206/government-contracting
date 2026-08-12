@@ -3,7 +3,16 @@
 import { useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
 import { plainToHtml, renderTemplate } from "@/lib/domain/template-render";
-import { TEMPLATE_TOKEN_SAMPLES } from "@/lib/domain/template-tokens";
+import {
+  TEMPLATE_PREVIEW_ATTACHMENTS,
+  TEMPLATE_TOKEN_SAMPLES,
+} from "@/lib/domain/template-tokens";
+import {
+  toggleBulletLines,
+  wrapHighlightLines,
+  wrapSelection,
+} from "@/lib/domain/template-markup";
+import { buildOutreachDetailsBlock } from "@/lib/domain/outreach-email";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -79,51 +88,6 @@ function spliceIntoInput(
   return { next, cursor: start + token.length };
 }
 
-/** Wrap the current textarea selection (or insert a placeholder word). */
-function wrapSelection(
-  el: HTMLTextAreaElement,
-  current: string,
-  before: string,
-  after: string,
-  emptyPlaceholder = "text"
-): { next: string; selectStart: number; selectEnd: number } {
-  const start = el.selectionStart ?? current.length;
-  const end = el.selectionEnd ?? current.length;
-  const selected = current.slice(start, end);
-  const inner = selected.length > 0 ? selected : emptyPlaceholder;
-  const next = current.slice(0, start) + before + inner + after + current.slice(end);
-  const selectStart = start + before.length;
-  const selectEnd = selectStart + inner.length;
-  return { next, selectStart, selectEnd };
-}
-
-/** Prefix each selected line with "- ", or insert a bullet at the cursor. */
-function toggleBulletLines(
-  el: HTMLTextAreaElement,
-  current: string
-): { next: string; selectStart: number; selectEnd: number } {
-  const start = el.selectionStart ?? 0;
-  const end = el.selectionEnd ?? 0;
-  const lineStart = current.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
-  const lineEndIdx = current.indexOf("\n", end);
-  const lineEnd = lineEndIdx === -1 ? current.length : lineEndIdx;
-  const block = current.slice(lineStart, lineEnd);
-  const lines = block.split("\n");
-  const allBulleted = lines.every((l) => /^\s*[-*]\s+/.test(l) || l.trim() === "");
-  const nextLines = lines.map((l) => {
-    if (l.trim() === "") return l;
-    if (allBulleted) return l.replace(/^\s*[-*]\s+/, "");
-    if (/^\s*[-*]\s+/.test(l)) return l;
-    return `- ${l}`;
-  });
-  const replaced = nextLines.join("\n");
-  const next = current.slice(0, lineStart) + replaced + current.slice(lineEnd);
-  return {
-    next,
-    selectStart: lineStart,
-    selectEnd: lineStart + replaced.length,
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Version History section
@@ -409,18 +373,35 @@ export function EmailTemplateEditor({ template }: Props) {
 
   function formatBold() {
     applyBodyEdit((el, current) =>
-      wrapSelection(el, current, "**", "**", "bold text")
+      wrapSelection(
+        current,
+        el.selectionStart ?? current.length,
+        el.selectionEnd ?? current.length,
+        "**",
+        "**",
+        "bold text"
+      )
     );
   }
 
   function formatHighlight() {
     applyBodyEdit((el, current) =>
-      wrapSelection(el, current, "==", "==", "highlighted text")
+      wrapHighlightLines(
+        current,
+        el.selectionStart ?? current.length,
+        el.selectionEnd ?? current.length
+      )
     );
   }
 
   function formatBullets() {
-    applyBodyEdit((el, current) => toggleBulletLines(el, current));
+    applyBodyEdit((el, current) =>
+      toggleBulletLines(
+        current,
+        el.selectionStart ?? 0,
+        el.selectionEnd ?? 0
+      )
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -503,7 +484,17 @@ export function EmailTemplateEditor({ template }: Props) {
   // -------------------------------------------------------------------------
 
   const previewSubject = previewFilled(subject || "(no subject)");
-  const previewBodyHtml = plainToHtml(previewFilled(body));
+  const previewDetails = buildOutreachDetailsBlock({
+    title: TEMPLATE_TOKEN_SAMPLES.opportunity_title,
+    solicitationNumber: TEMPLATE_TOKEN_SAMPLES.solicitation_number,
+    agency: TEMPLATE_TOKEN_SAMPLES.agency,
+    deadlineLabel: TEMPLATE_TOKEN_SAMPLES.deadline,
+    trade: TEMPLATE_TOKEN_SAMPLES.trade,
+    attachedNames: TEMPLATE_PREVIEW_ATTACHMENTS,
+    links: [],
+  });
+  const previewBodyHtml =
+    plainToHtml(previewFilled(body)) + previewDetails.html;
 
   return (
     <div className="card space-y-5">
@@ -573,7 +564,9 @@ export function EmailTemplateEditor({ template }: Props) {
           placeholder="Write your email here. Select text, then use Bold, Highlight, or Bullets. Click or drag a fill-in field above to insert it."
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
-          Select text, then use Bold, Highlight, or Bullets. Fill-in fields look like{" "}
+          Highlight applies to each line (not a whole block). Leave{" "}
+          <span className="font-mono text-foreground">{"{{questions}}"}</span> on
+          its own line; it already becomes a bullet list. Fill-in fields look like{" "}
           <span className="font-mono text-foreground">{"{{trade}}"}</span> and are
           replaced when Brost Co sends the email.
         </p>
@@ -659,8 +652,9 @@ export function EmailTemplateEditor({ template }: Props) {
             <div className="shrink-0 border-t border-border bg-surface px-6 py-3">
               <p className="text-xs text-muted-foreground">
                 Fill-in fields shown with sample data. Actual emails use live
-                solicitation values. Bold, highlight, and bullets match what
-                recipients see.
+                solicitation values, and attach the real solicitation files listed
+                at the bottom. Bold, highlight, and bullets match what recipients
+                see.
               </p>
             </div>
           </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -27,8 +28,8 @@ export function SettingsNav() {
     <div
       role="navigation"
       aria-label="Settings sections"
-      className="flex shrink-0 gap-4 overflow-x-auto border-b border-border bg-surface px-4 py-2 sm:gap-5 sm:px-6 sm:py-2.5"
-      style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}
+      className="flex shrink-0 gap-3 overflow-x-auto border-b border-border bg-surface px-4 py-1.5 sm:gap-5 sm:px-6 sm:py-2"
+      style={{ WebkitOverflowScrolling: "touch" } as CSSProperties}
     >
       {TABS.map((t) => {
         const active =
@@ -39,8 +40,8 @@ export function SettingsNav() {
             href={t.href}
             className={
               active
-                ? "dash-tab dash-tab--active shrink-0 whitespace-nowrap uppercase tracking-[0.12em]"
-                : "dash-tab shrink-0 whitespace-nowrap uppercase tracking-[0.12em]"
+                ? "dash-tab dash-tab--active shrink-0 whitespace-nowrap text-xs uppercase tracking-[0.12em]"
+                : "dash-tab shrink-0 whitespace-nowrap text-xs uppercase tracking-[0.12em]"
             }
             aria-current={active ? "page" : undefined}
           >

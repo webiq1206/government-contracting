@@ -277,15 +277,15 @@ export function CallWorkspace({
         aria-modal="true"
         aria-label={`Call workspace for ${card.company_name}`}
       >
-        {/* Sticky header */}
-        <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-4 backdrop-blur sm:px-6">
+        {/* Sticky header: compact so the script stays above the fold. */}
+        <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur sm:px-6 sm:py-3">
           <div className="flex items-start justify-between gap-3 sm:gap-4">
             <div className="min-w-0 flex-1">
               <p className="eyebrow">{card.trade ?? "General"} · Call Card</p>
-              <h2 className="mt-1 font-display text-xl font-semibold text-foreground sm:truncate sm:text-2xl">
+              <h2 className="mt-0.5 font-display text-lg font-semibold text-foreground sm:truncate sm:text-xl">
                 {card.company_name}
               </h2>
-              <p className="mt-0.5 truncate text-sm text-slate-500">
+              <p className="mt-0.5 truncate text-xs text-slate-500 sm:text-sm">
                 {card.owner_name ? `${card.owner_name} · ` : ""}
                 {card.opportunity_title}
               </p>
@@ -299,7 +299,7 @@ export function CallWorkspace({
             </button>
           </div>
           {/* Action bar */}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {card.phone && (
               <a
                 href={`tel:${card.phone}`}
@@ -858,7 +858,7 @@ export function CallWorkspace({
 
         {/* Sticky footer: normal actions, or the dialer's "next call" bar
             after this one is saved. */}
-        <footer className="sticky bottom-0 z-10 border-t border-border bg-background/95 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6">
+        <footer className="sticky bottom-0 z-10 border-t border-border bg-background/95 px-4 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6 sm:py-3">
           {completed && nextCall ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-pursue">

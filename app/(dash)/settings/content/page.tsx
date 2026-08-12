@@ -53,8 +53,8 @@ export default async function ContentLibraryPage() {
                   <p className="text-sm leading-relaxed text-muted-foreground">
                     These are the outreach and follow-up emails Brost Co sends when it
                     contacts subcontractors. Use fill-in fields for names, trades, and
-                    deadlines (they update per bid). Select text in the body to bold,
-                    highlight, or turn lines into bullets.
+                    deadlines (they update per bid). Highlight applies to each line.
+                    Leave questions on their own line so they stay a clean bullet list.
                   </p>
                 </div>
                 {templates.length === 0 ? (

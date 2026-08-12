@@ -134,7 +134,7 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
               <section className="card">
                 <h2 className="font-display text-xl text-foreground">Deadline warning colors</h2>
                 <p className="mt-1 max-w-3xl text-sm text-slate-600">
-                  Every opportunity shows a deadline badge on Today, Pipeline, and its own
+                  Every opportunity shows a deadline badge on Today, Opportunities, and its own
                   record. These two numbers decide when that badge changes color. The badge
                   always spells out the status and days remaining in words, so nothing depends
                   on color alone.

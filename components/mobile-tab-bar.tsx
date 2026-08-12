@@ -5,13 +5,13 @@ import { usePathname } from "next/navigation";
 
 /**
  * Fixed bottom tabs on phones for the pages an operator lives in. One thumb
- * reach to Today / Pipeline / Calls / Review, with live counts, instead of
+ * reach to Today / Calls / Opportunities / Review, with live counts, instead of
  * opening the hamburger for every hop. Hidden on md+ where the sidebar rules.
  */
 const TABS: { href: string; label: string; icon: string; countKey?: "review" | "calls" }[] = [
   { href: "/today", label: "Today", icon: "☀︎" },
   { href: "/call-queue", label: "Calls", icon: "☏", countKey: "calls" },
-  { href: "/pipeline", label: "Pipeline", icon: "▤" },
+  { href: "/pipeline", label: "Opportunities", icon: "▤" },
   { href: "/review", label: "Review", icon: "✓", countKey: "review" },
 ];
 

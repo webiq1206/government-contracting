@@ -1,7 +1,7 @@
 /**
  * Gather an opportunity's solicitation/SOW documents for outreach emails.
- * Prefer trade-relevant files so subs get what they need without the full
- * government packet. Oversized files become signed links.
+ * Attach the full stored set. Trade scoring only ranks which files consume
+ * the MIME size budget first; oversized remainder become signed links.
  */
 import { query } from "./db";
 import { storage } from "./integrations/storage";
@@ -10,12 +10,13 @@ import { normalizeAttachmentMeta } from "./domain/attachment-meta";
 
 /** Keep total attachment payload comfortably under Gmail's 25MB raw limit. */
 const MAX_TOTAL_BYTES = 15 * 1024 * 1024;
-const MAX_TRADE_FILES = 6;
 
 export interface GatheredAttachments {
   files: OutreachAttachment[];
   /** Documents we couldn't (or shouldn't) attach; include as links. */
   links: { name: string; url: string }[];
+  /** True when stored docs or attachment URLs existed to try. */
+  expected: boolean;
 }
 
 type AttachmentJsonEntry = { name?: string; url?: string; storage_path?: string; mime?: string };
@@ -68,6 +69,16 @@ export function scoreDocForTrade(name: string, trade: string | null | undefined)
   // Generic notice PDFs still useful as a light fallback.
   if (/solicitation|rfq|rfp|notice/.test(n)) score += 1;
   return score;
+}
+
+/** Trade-relevant files first so they consume the MIME size budget. */
+export function prioritizeDocsForAttach<T extends { name: string }>(
+  docs: T[],
+  trade: string | null | undefined
+): T[] {
+  return [...docs].sort(
+    (a, b) => scoreDocForTrade(b.name, trade) - scoreDocForTrade(a.name, trade)
+  );
 }
 
 async function loadDocs(oppId: string): Promise<DocRow[]> {
@@ -163,7 +174,16 @@ async function materializeDocs(
     }
   }
 
-  return { files, links };
+  const json = Array.isArray(opp.attachments_json) ? opp.attachments_json : [];
+  const expected =
+    docs.length > 0 ||
+    json.some((a) => {
+      if (!a || typeof a !== "object") return false;
+      const row = a as AttachmentJsonEntry;
+      return Boolean(row.url || row.storage_path);
+    });
+
+  return { files, links, expected };
 }
 
 /** All solicitation/SOW docs (legacy helper). */
@@ -176,28 +196,13 @@ export async function gatherOpportunityAttachments(opp: {
 }
 
 /**
- * Trade-filtered docs for outreach. Prefer files whose names match the trade
- * or common scope/spec/exhibit keywords. Fall back to a small general set.
+ * All solicitation/SOW docs for outreach. Trade scoring only ranks which
+ * files consume the MIME size budget first; the rest become signed links.
  */
 export async function gatherTradeAttachments(
   opp: { id: string; attachments_json?: unknown },
   trade: string | null | undefined
 ): Promise<GatheredAttachments> {
   const docs = await loadDocs(opp.id);
-  if (docs.length === 0) {
-    return materializeDocs([], opp);
-  }
-
-  const ranked = [...docs]
-    .map((d) => ({ doc: d, score: scoreDocForTrade(d.name, trade) }))
-    .sort((a, b) => b.score - a.score);
-
-  const relevant = ranked.filter((r) => r.score >= 2).slice(0, MAX_TRADE_FILES);
-  const chosen =
-    relevant.length > 0
-      ? relevant.map((r) => r.doc)
-      : ranked.slice(0, Math.min(3, ranked.length)).map((r) => r.doc);
-
-  // Only materialize the chosen stored docs; still allow JSON link fallbacks.
-  return materializeDocs(chosen, { id: opp.id, attachments_json: opp.attachments_json });
+  return materializeDocs(prioritizeDocsForAttach(docs, trade), opp);
 }

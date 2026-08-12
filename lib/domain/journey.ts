@@ -208,7 +208,7 @@ export function deriveStep(s: StepInput): NextStep {
     return {
       title: "This bid was marked lost",
       why: "The outcome is recorded. History, documents, and communications stay here for reference.",
-      after: "Use Today or Pipeline to pick up the next open opportunity.",
+      after: "Use Today or Opportunities to pick up the next open opportunity.",
       cta: "Back to Today",
       href: "/today",
       tone: "info",
@@ -218,7 +218,7 @@ export function deriveStep(s: StepInput): NextStep {
     return {
       title: "This opportunity was dismissed",
       why: "It is archived, not deleted. You can restore it from the activity history if you change your mind.",
-      after: "Use Today or Pipeline to pick up the next open opportunity.",
+      after: "Use Today or Opportunities to pick up the next open opportunity.",
       cta: "Back to Today",
       href: "/today",
       tone: "info",
@@ -230,7 +230,7 @@ export function deriveStep(s: StepInput): NextStep {
       title: "Nothing, this one expired",
       why: "The submission deadline passed before a bid went out, so the record was archived automatically. All documents, communications, and history are preserved here for reference.",
       after: "Nothing further happens; archived records are kept per your retention settings.",
-      cta: "Browse pipeline",
+      cta: "Browse opportunities",
       href: "/pipeline",
       tone: "info",
       waitingOn: "system",

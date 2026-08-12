@@ -136,7 +136,7 @@ export function EditorialTabs({
       onKeyDown={onKeyDown}
       className={
         layout === "fill"
-          ? "flex shrink-0 gap-4 overflow-x-auto border-b border-border bg-background px-5 py-2 sm:gap-5 sm:px-6"
+          ? "flex shrink-0 gap-4 overflow-x-auto border-b border-border bg-background px-4 py-1.5 sm:gap-5 sm:px-6 sm:py-2"
           : `flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2.5 backdrop-blur sm:px-6 sm:py-3 md:sticky md:z-20 ${stickyTopClass}`
       }
     >

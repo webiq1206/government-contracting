@@ -5,6 +5,11 @@ import { logAgent } from "@/lib/logger";
 import { sendOutreachEmail } from "@/lib/integrations/email-transport";
 import { renderTemplate, plainToHtml } from "@/lib/domain/template-render";
 import { query } from "@/lib/db";
+import {
+  TEMPLATE_PREVIEW_ATTACHMENTS,
+  TEMPLATE_TOKEN_SAMPLES,
+} from "@/lib/domain/template-tokens";
+import { buildOutreachDetailsBlock } from "@/lib/domain/outreach-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,24 +62,6 @@ export async function GET(
   return NextResponse.json({ versions: rows });
 }
 
-/** Sample values used in the preview modal — kept in sync with the editor UI. */
-const SAMPLE: Record<string, string> = {
-  owner_name: "Marcus",
-  company_name: "BROSTCO Holdings LLC",
-  opportunity_title: "HVAC Maintenance Services, Building 36C",
-  location_state: "Virginia",
-  deadline: "Aug 25, 2026",
-  trade: "HVAC",
-  scope_summary:
-    "replace HVAC units in 4 buildings, approximately 120,000 sq ft total",
-  questions:
-    "- Do you have experience with federal facilities in Virginia?\n- Can you provide bonding and insurance certificates within 48 hours?",
-  sender_name: "Jared",
-  phone: "(800) 555-0199",
-  solicitation_number: "W912DR-26-R-0042",
-  agency: "US Army Corps of Engineers",
-};
-
 /**
  * Send a test copy of the current (unsaved) template to the logged-in
  * operator's email address.
@@ -109,15 +96,24 @@ export async function POST(
   const rawSubject = (typeof body.subject === "string" ? body.subject.trim() : "") || "(no subject)";
   const rawBody = body.body.trim();
 
-  const renderedSubject = renderTemplate(rawSubject, SAMPLE);
-  const renderedBodyPlain = renderTemplate(rawBody, SAMPLE);
-  const renderedBodyHtml = plainToHtml(renderedBodyPlain);
+  const renderedSubject = renderTemplate(rawSubject, TEMPLATE_TOKEN_SAMPLES);
+  const renderedBodyPlain = renderTemplate(rawBody, TEMPLATE_TOKEN_SAMPLES);
+  const details = buildOutreachDetailsBlock({
+    title: TEMPLATE_TOKEN_SAMPLES.opportunity_title,
+    solicitationNumber: TEMPLATE_TOKEN_SAMPLES.solicitation_number,
+    agency: TEMPLATE_TOKEN_SAMPLES.agency,
+    deadlineLabel: TEMPLATE_TOKEN_SAMPLES.deadline,
+    trade: TEMPLATE_TOKEN_SAMPLES.trade,
+    attachedNames: TEMPLATE_PREVIEW_ATTACHMENTS,
+    links: [],
+  });
+  const renderedBodyHtml = plainToHtml(renderedBodyPlain) + details.html;
 
   const result = await sendOutreachEmail({
     to: auth.email,
     subject: `[TEST] ${renderedSubject}`,
     html: renderedBodyHtml,
-    text: renderedBodyPlain,
+    text: renderedBodyPlain + details.plain,
   });
 
   if (result.disabled) {

@@ -60,7 +60,7 @@ export default async function SubsPage({
             description="Sub Finder fills this when you pursue an opportunity: it searches for local contractors in each required trade, verifies contact info, and saves them here for future bids."
             action={
               <Link href="/pipeline" className="btn-ghost text-sm">
-                Open pipeline
+                Open opportunities
               </Link>
             }
           />

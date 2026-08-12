@@ -13,14 +13,14 @@ export const dynamic = "force-dynamic";
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
 
 export const metadata: Metadata = {
-  title: "Brost Co | Government Contracting Software",
+  title: "Brost Co | Hard Parts of Government Contracting Done",
   description:
-    "Brost Co finds federal work that fits you, scores each opportunity, sources subcontractors, and prepares bid packages. You approve every decision that matters.",
+    "Brost Co watches SAM.gov, scores fit, emails subcontractors, and builds bid packages. You decide, call when needed, and submit. Start free of the busywork.",
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: "Brost Co | Government Contracting Software",
+    title: "Brost Co | Hard Parts of Government Contracting Done",
     description:
-      "Government contracting software for federal services contractors. Monitor SAM.gov, score fit, source subcontractors, track quotes, and prepare bids in one place.",
+      "Government contracting software that takes the slow work off your plate: SAM.gov intake, fit scoring, sub outreach, and bid package prep. You keep judgment and submission.",
     url: SITE_URL,
     type: "website",
     siteName: "Brost Co",
@@ -35,9 +35,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Brost Co | Government Contracting Software",
+    title: "Brost Co | Hard Parts of Government Contracting Done",
     description:
-      "Brost Co finds federal work that fits you, scores each opportunity, sources subcontractors, and prepares bid packages. You approve every decision that matters.",
+      "Brost Co watches SAM.gov, scores fit, emails subcontractors, and builds bid packages. You decide, call when needed, and submit.",
     images: ["/twitter-image"],
   },
   keywords: [

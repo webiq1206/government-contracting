@@ -20,6 +20,7 @@ import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import { getProfileJson } from "../ai/companyProfile";
 import { outreachDisplayName } from "../domain/solicitation-completeness";
 import { scrubGovtContacts } from "../integrations/scrub-contacts";
+import { scrubInternalFailureCopy } from "../domain/outreach-email";
 import {
   renderTemplate,
   formatDeadlineLabel,
@@ -116,7 +117,9 @@ export const outreachFollowup: AgentDefinition = {
         const rawSubject = scrubGovtContacts(
           renderTemplate(tmpl.subject ?? "Re: our quote request", vars)
         ).sanitised;
-        const rawBody = scrubGovtContacts(renderTemplate(tmpl.body, vars)).sanitised;
+        const rawBody = scrubInternalFailureCopy(
+          scrubGovtContacts(renderTemplate(tmpl.body, vars)).sanitised
+        );
         subject = rawSubject || "Re: our quote request";
         html = plainToHtml(rawBody);
       } else {

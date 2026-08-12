@@ -80,7 +80,7 @@ export function PipelineStrip({ counts }: { counts: { stage: string; count: numb
   return (
     <div className="card">
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-        <p className="eyebrow">Where your pipeline stands</p>
+        <p className="eyebrow">Where your opportunities stand</p>
         <div className="flex items-center gap-3 text-xs text-slate-500">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-full bg-pursue" /> automatic

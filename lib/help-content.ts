@@ -86,11 +86,11 @@ export const PAGE_HELP: Record<string, HelpContent> = {
     ],
   },
   "email-log": {
-    title: "Every outreach email, exactly as sent",
+    title: "Every outreach email, and every reply",
     points: [
-      "Shows every automated email sent to a subcontractor, newest first.",
-      "Click any row to read the full message body as it was delivered.",
-      "Open and click badges update when tracking pixels fire.",
+      "Shows emails Brost Co sent and replies that came back, newest first.",
+      "Filter by sent, opened, clicked, or responded. Click a row to read the full message.",
+      "Open and click badges update when tracking pixels fire. Responded means the sub wrote back.",
     ],
   },
   agents: {

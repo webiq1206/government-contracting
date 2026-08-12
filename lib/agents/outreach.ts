@@ -19,6 +19,13 @@ import { isCallable, isEmailable } from "../domain/sub-contactability";
 import { buildOutreachPacket } from "../domain/outreach-packet";
 import { outreachDisplayName } from "../domain/solicitation-completeness";
 import {
+  buildOutreachDetailsBlock,
+  scrubInternalFailureCopy,
+  shouldHoldMissingDocs,
+  scopeTooThinAfterScrub,
+  lineLooksLikeInternalFailure,
+} from "../domain/outreach-email";
+import {
   renderTemplate,
   formatDeadlineLabel,
   plainToHtml,
@@ -143,17 +150,45 @@ export const outreach: AgentDefinition = {
     }
 
     // Rewrite SAM API URLs, then scrub solicitor contacts from every outbound string.
-    const { sanitised: scopeSummary, count: scopeRedacted } = scrubGovtContacts(
+    const { sanitised: scopeRaw, count: scopeRedacted } = scrubGovtContacts(
       rewriteSamUrls(packet.scopeSummary)
     );
+    const scopeSummary = scrubInternalFailureCopy(scopeRaw);
+
+    if (scopeTooThinAfterScrub(scopeSummary)) {
+      await query(
+        `update opportunities
+            set human_action_required = true,
+                risk_flags = (
+                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_scope_too_thin']))
+                )
+          where id = $1`,
+        [opportunityId]
+      );
+      await logAgent({
+        agent: "outreach",
+        action: "blocked",
+        level: "warn",
+        opportunityId,
+        subcontractorId,
+        message: `Refused to email ${sub.company_name}: trade scope is too thin or unspecified. Enrich the solicitation package and re-run analysis before outreach.`,
+      });
+      return {
+        ok: true,
+        summary: `Held outreach to ${sub.company_name}: scope too thin to send a usable quote request.`,
+        humanActionRequired: true,
+      };
+    }
 
     let questionsRedacted = 0;
     const questions = (analysis?.questions_for_subs ?? [])
       .map((q) => {
         const { sanitised, count } = scrubGovtContacts(String(q));
         questionsRedacted += count;
-        return `- ${sanitised}`;
+        return sanitised;
       })
+      .filter((q) => q.trim() && !lineLooksLikeInternalFailure(q))
+      .map((q) => `- ${q}`)
       .join("\n");
 
     const contactsRedacted = scopeRedacted + questionsRedacted;
@@ -183,12 +218,37 @@ export const outreach: AgentDefinition = {
     };
 
     const subject = scrubGovtContacts(renderTemplate(tmpl.subject ?? "Partnership opportunity", vars)).sanitised;
-    const plainBody = scrubGovtContacts(renderTemplate(tmpl.body, vars)).sanitised;
+    const plainBody = scrubInternalFailureCopy(
+      scrubGovtContacts(renderTemplate(tmpl.body, vars)).sanitised
+    );
 
     // Trade-filtered official docs (unaltered PDFs). Generated copy is scrubbed;
     // source PDFs are not rewritten.
     const gathered = await gatherTradeAttachments(opp, trade);
-    const linkLines = gathered.links.map((l) => `${l.name}: ${l.url}`);
+    if (shouldHoldMissingDocs(gathered.expected, gathered.files.length, gathered.links.length)) {
+      await query(
+        `update opportunities
+            set human_action_required = true,
+                risk_flags = (
+                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_docs_missing']))
+                )
+          where id = $1`,
+        [opportunityId]
+      );
+      await logAgent({
+        agent: "outreach",
+        action: "blocked",
+        level: "warn",
+        opportunityId,
+        subcontractorId,
+        message: `Refused to email ${sub.company_name}: solicitation documents were expected but none could be attached or linked.`,
+      });
+      return {
+        ok: true,
+        summary: `Held outreach to ${sub.company_name}: documents were expected but none could be included.`,
+        humanActionRequired: true,
+      };
+    }
 
     await logAgent({
       agent: "outreach",
@@ -198,36 +258,25 @@ export const outreach: AgentDefinition = {
       subcontractorId,
       message:
         `[outreach] scope sanitised (${contactsRedacted} contact(s) redacted), ` +
-        `${gathered.files.length} trade-relevant file(s) attached` +
+        `${gathered.files.length} file(s) attached` +
         (gathered.files.length
           ? ` [${gathered.files.map((f) => `${f.filename}:${f.mime ?? "?"}`).join("; ")}]`
           : "") +
-        (linkLines.length ? `, ${linkLines.length} oversized as links` : "") +
+        (gathered.links.length ? `, ${gathered.links.length} as links` : "") +
         `. Subject: "${subject}" | Body preview: "${plainBody.slice(0, 120).replace(/\n/g, " ")}…"`,
     });
 
-    // Pricing-relevant details block. No solicitor contact fields.
-    const detailLines = scrubGovtContacts(
-      [
-        opp.title ? `Project: ${opp.title}` : "",
-        opp.solicitation_number ? `Solicitation #: ${opp.solicitation_number}` : "",
-        opp.agency ? `Agency: ${opp.agency}` : "",
-        opp.deadline ? `Bid deadline: ${deadlineLabel}` : "",
-        trade ? `Trade / scope: ${trade}` : "",
-        ...linkLines.map((l) => `Document: ${l}`),
-      ]
-        .filter(Boolean)
-        .join("\n")
-    ).sanitised.split("\n").filter(Boolean);
-
-    const detailsPlain =
-      (detailLines.length ? `\n\n---\n${detailLines.join("\n")}` : "") +
-      `\n\nPlease reply to this email with your price for the ${trade || "described"} scope (include payment terms and any exclusions).`;
-    const detailsHtml =
-      (detailLines.length
-        ? `<div style="border-top:2px solid #B28F5D;margin-top:16px;padding-top:12px"><p style="color:#242424">${detailLines.map((l) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br/>")}</p></div>`
-        : "") +
-      `<p><strong>Please reply to this email with your price</strong> for the ${trade || "described"} scope (include payment terms and any exclusions).</p>`;
+    const details = buildOutreachDetailsBlock({
+      title: scrubGovtContacts(opp.title ?? "").sanitised || null,
+      solicitationNumber: opp.solicitation_number,
+      agency: scrubGovtContacts(opp.agency ?? "").sanitised || null,
+      deadlineLabel,
+      trade,
+      attachedNames: gathered.files.map((f) => f.filename),
+      links: gathered.links,
+    });
+    const detailsPlain = details.plain;
+    const detailsHtml = details.html;
 
     const fullPlain = plainBody + detailsPlain;
     const html = plainToHtml(plainBody) + detailsHtml;

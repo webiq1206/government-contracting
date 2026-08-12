@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 /**
  * Development-only visual lab for Light / Dark product surfaces.
- * Mirrors dash chrome used on Today, Pipeline, Review, Call Queue, Settings.
+ * Mirrors dash chrome used on Today, Opportunities, Review, Call Queue, Settings.
  * Visit /theme-qa while `next dev` is running. Not available in production.
  */
 export default function ThemeQaPage() {
@@ -46,7 +46,7 @@ export default function ThemeQaPage() {
           </div>
         </div>
         <nav className="mt-4 flex-1 space-y-0.5 px-4 text-sm">
-          {["Today", "Call Queue", "Pipeline", "Review"].map((label, i) => (
+          {["Today", "Call Queue", "Opportunities", "Review"].map((label, i) => (
             <div
               key={label}
               className={`rounded-md px-3 py-2 ${
@@ -78,7 +78,7 @@ export default function ThemeQaPage() {
 
         <PageHeader
           title="Theme surface lab"
-          subtitle="Product chrome samples for Today, Pipeline, Review, Call Queue, Opportunity, Subs, Settings, and Billing."
+          subtitle="Product chrome samples for Today, Opportunities, Review, Call Queue, Opportunity, Subs, Settings, and Billing."
           help={{
             title: "What this page is for",
             points: [
@@ -132,7 +132,7 @@ export default function ThemeQaPage() {
             </section>
 
             <section className="space-y-3">
-              <p className="eyebrow-gold">Pipeline / Review cards</p>
+              <p className="eyebrow-gold">Opportunities / Review cards</p>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {[72, 58, 41].map((score) => (
                   <div key={score} className="card card-hover">
@@ -213,7 +213,7 @@ export default function ThemeQaPage() {
               description="Empty and calm states should never invert into cream or ink islands."
               action={
                 <button type="button" className="shell-ghost text-sm">
-                  Browse pipeline
+                  Browse opportunities
                 </button>
               }
             />
@@ -253,7 +253,7 @@ export default function ThemeQaPage() {
 
         {/* Mobile tab bar mock */}
         <nav className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 md:hidden">
-          {["Today", "Calls", "Pipeline", "Review"].map((label, i) => (
+          {["Today", "Calls", "Opportunities", "Review"].map((label, i) => (
             <div
               key={label}
               className={`relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] ${

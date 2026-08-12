@@ -39,14 +39,14 @@ const WHO_LABEL: Record<Step["who"], string> = {
 };
 
 const WHO_BADGE: Record<Step["who"], string> = {
-  auto: "bg-muted text-slate-600",
+  auto: "bg-foreground/10 text-foreground",
   you: "bg-pursue/10 text-pursue",
   subs: "bg-review/15 text-review",
   agency: "bg-accent/10 text-accent-strong",
 };
 
 const WHO_DOT: Record<Step["who"], string> = {
-  auto: "border-border bg-background text-slate-500",
+  auto: "border-foreground bg-foreground text-background",
   you: "border-pursue bg-pursue text-white",
   subs: "border-review bg-review/15 text-review",
   agency: "border-accent bg-accent/10 text-accent-strong",
@@ -232,10 +232,10 @@ function StepRow({ step, last }: { step: Step; last: boolean }) {
           </h3>
           <span className={`badge ${WHO_BADGE[step.who]}`}>{WHO_LABEL[step.who]}</span>
         </div>
-        <p className="mt-1 text-sm leading-relaxed text-slate-600">{step.what}</p>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.what}</p>
         {step.next && (
-          <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
-            <span className="font-medium text-slate-700">Then: </span>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground">Then: </span>
             {step.next}
           </p>
         )}
@@ -261,14 +261,14 @@ export default function HowItWorksPage() {
         help={PAGE_HELP["how-it-works"]}
         title="How it works"
         status={`${totalSteps} steps · 4 phases`}
-        subtitle="Read top to bottom once. Day to day, start on Today for only what needs you."
+        subtitle="Brost Co runs the automatic steps. Today lists only what needs you."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <div className="mx-auto max-w-2xl">
-          <div className="mb-6 rounded-md border border-border bg-surface px-4 py-3 text-sm text-slate-600">
+          <div className="mb-6 rounded-md border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
             <p className="font-medium text-foreground">How to use this page</p>
             <p className="mt-1 leading-relaxed">
-              Read top to bottom once. Day to day, start on{" "}
+              Brost Co runs the automatic steps. Day to day, start on{" "}
               <Link href="/today" className="font-medium text-accent hover:underline">
                 Today
               </Link>
@@ -280,9 +280,9 @@ export default function HowItWorksPage() {
           </div>
 
           {/* Legend */}
-          <div className="mb-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-600">
+          <div className="mb-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
             <span className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-border bg-background text-[0.6rem] font-semibold text-slate-500">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full border border-foreground bg-foreground text-[0.6rem] font-semibold text-background">
                 #
               </span>
               runs on its own
@@ -315,7 +315,7 @@ export default function HowItWorksPage() {
                   <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
                     {phase.title}
                   </h2>
-                  <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
                     {phase.blurb}
                   </p>
                 </div>
@@ -339,7 +339,7 @@ export default function HowItWorksPage() {
               <h2 className="mt-0.5 font-display text-2xl font-semibold text-foreground">
                 Work that keeps running in the background
               </h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+              <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
                 These are not stages on a single bid. They keep the whole
                 operation healthy while opportunities move through the pipeline.
               </p>
@@ -352,7 +352,7 @@ export default function HowItWorksPage() {
                   </h3>
                   <span className="badge bg-pursue/10 text-pursue">needs you when relevant</span>
                 </div>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   Deadlines, pursue/pass decisions, calls, subcontractor
                   follow-ups, out-of-range quotes, compliance renewals, and
                   scoring-weight approvals all land on{" "}
@@ -367,9 +367,9 @@ export default function HowItWorksPage() {
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Stay eligible to bid
                   </h3>
-                  <span className="badge bg-muted text-slate-600">automatic + your renewals</span>
+                  <span className="badge bg-foreground/10 text-foreground">automatic + your renewals</span>
                 </div>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   Registrations, certifications, and insurance are checked daily
                   on{" "}
                   <Link
@@ -386,9 +386,9 @@ export default function HowItWorksPage() {
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Learn from every outcome
                   </h3>
-                  <span className="badge bg-muted text-slate-600">automatic</span>
+                  <span className="badge bg-foreground/10 text-foreground">automatic</span>
                 </div>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   Wins and losses update subcontractor reliability and may propose
                   scoring-weight changes for your approval, so Pursue / Review
                   decisions improve over time.
@@ -399,9 +399,9 @@ export default function HowItWorksPage() {
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Watch the automation when something stalls
                   </h3>
-                  <span className="badge bg-muted text-slate-600">when needed</span>
+                  <span className="badge bg-foreground/10 text-foreground">when needed</span>
                 </div>
-                <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
                   Every agent action is logged on{" "}
                   <Link href="/agents" className="font-medium text-accent hover:underline">
                     Automation Log
@@ -417,7 +417,7 @@ export default function HowItWorksPage() {
             <p className="text-sm font-medium text-foreground">
               You never have to memorize this sequence.
             </p>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-muted-foreground">
               Open{" "}
               <Link href="/today" className="font-medium text-accent hover:underline">
                 Today
@@ -432,7 +432,7 @@ export default function HowItWorksPage() {
             <p className="text-sm font-medium text-foreground">
               One honest note on bid packages
             </p>
-            <p className="mt-1 text-sm text-slate-600">
+            <p className="mt-1 text-sm text-muted-foreground">
               Brost Co assembles, prefills, and validates the package, and runs
               an independent audit against the solicitation, so your job shrinks
               to reviewing and signing. It gets you very close, but it is not a

@@ -210,8 +210,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
   return (
     <div className="flex page-shell bg-background">
-      {/* Utility bar */}
-      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5 sm:px-6">
+      {/* Thin utility bar stays pinned; hero scrolls with content. */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2 sm:px-6">
         <div className="flex min-w-0 items-center gap-2">
           <p className="truncate text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             Opportunity
@@ -237,30 +237,30 @@ export default async function OpportunityPage({ params }: { params: { id: string
         </div>
       </div>
 
-      {/* Hero */}
-      <header className="border-b border-border px-4 py-8 sm:px-6 sm:py-10">
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="min-w-0 max-w-3xl flex-1">
-            {opp.agency && <p className="eyebrow-gold">{opp.agency}</p>}
-            <h1 className="mt-3 font-display text-3xl leading-[1.15] text-foreground sm:text-4xl lg:text-[2.75rem]">
-              {opp.title ?? "Opportunity"}
-            </h1>
-            <p className="mt-3 text-sm text-muted-foreground">{metaLine || "Details loading"}</p>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <TierBadge tier={opp.tier} />
-              <DeadlineBadge deadline={opp.deadline} rules={rules} showDate />
-              {opp.naics_code ? (
-                <span className="badge bg-surface-raised text-slate-600">
-                  NAICS {opp.naics_code}
-                </span>
-              ) : null}
-            </div>
-          </div>
-          <ScoreBadge score={opp.score} variant="box" />
-        </div>
-      </header>
-
       <div className="scroll-thin flex-1 overflow-y-auto">
+        <header className="border-b border-border px-4 py-4 sm:px-6 sm:py-8">
+          <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
+            <div className="min-w-0 max-w-3xl flex-1">
+              {opp.agency && <p className="eyebrow-gold">{opp.agency}</p>}
+              <h1 className="mt-2 font-display text-2xl leading-[1.15] text-foreground sm:mt-3 sm:text-4xl lg:text-[2.75rem]">
+                {opp.title ?? "Opportunity"}
+              </h1>
+              <p className="mt-2 text-sm text-muted-foreground sm:mt-3">
+                {metaLine || "Details loading"}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
+                <TierBadge tier={opp.tier} />
+                <DeadlineBadge deadline={opp.deadline} rules={rules} showDate />
+                {opp.naics_code ? (
+                  <span className="badge bg-surface-raised text-slate-600">
+                    NAICS {opp.naics_code}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <ScoreBadge score={opp.score} variant="box" />
+          </div>
+        </header>
         <OpportunityWorkspace
           banner={
             <div className="space-y-3 px-5 pt-4 sm:px-6">

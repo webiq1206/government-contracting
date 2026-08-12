@@ -43,10 +43,12 @@ export default async function DashLayout({ children }: { children: React.ReactNo
 
   return (
     <ToastProvider>
-      {/* h-dvh + overflow-hidden: pages fill the visible viewport (not 100vh
-          under mobile browser chrome) and scroll inside main, clear of the
-          fixed bottom tab bar. */}
-      <div className="flex h-dvh flex-col overflow-hidden bg-background md:flex-row">
+      {/* fixed inset-0: pin the shell to the visual viewport so the document
+          cannot rubber-band past the mobile tab bar. Pages scroll inside main. */}
+      <div
+        data-app-shell
+        className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background md:flex-row"
+      >
         <Nav
           email={user.email}
           reviewCount={counts.review}

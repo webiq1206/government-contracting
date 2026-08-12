@@ -7,6 +7,10 @@ import { query, queryOne } from "./db";
 import type { KpiParams } from "./domain/kpi";
 import { resolveSubWork } from "./domain/sub-work";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
+import {
+  emailLogStatusSql,
+  type EmailLogStatusFilter,
+} from "./domain/email-log";
 
 export async function queueCounts(): Promise<{ review: number; callQueue: number }> {
   const { tryResolveTenantOrgId } = await import("./tenant");
@@ -242,6 +246,7 @@ export interface EmailLogRow {
   clicked_at: string | null;
   replied_at: string | null;
   direction: string;
+  responded: boolean;
   // sub
   subcontractor_id: string;
   company_name: string | null;
@@ -250,39 +255,102 @@ export interface EmailLogRow {
   opportunity_title: string | null;
 }
 
+export interface EmailLogCounts {
+  all: number;
+  sent: number;
+  opened: number;
+  clicked: number;
+  responded: number;
+}
+
+const EMAIL_LOG_RESPONDED = `(c.direction = 'inbound' or c.replied_at is not null or replies.inbound_at is not null)`;
+
 export async function emailLogPaged(opts: {
   page: number;
   q?: string;
-}): Promise<{ rows: EmailLogRow[]; total: number }> {
+  status?: EmailLogStatusFilter;
+}): Promise<{ rows: EmailLogRow[]; total: number; counts: EmailLogCounts }> {
   const { page, q } = opts;
+  const status: EmailLogStatusFilter = opts.status ?? "all";
   const offset = (Math.max(1, page) - 1) * EMAIL_LOG_PAGE_SIZE;
 
-  const base = `
+  const searchNeedle = q ? `%${q}%` : null;
+  const searchSql = (paramIndex: number) =>
+    searchNeedle
+      ? `and (lower(s.company_name) like lower($${paramIndex}) or lower(coalesce(c.subject,'')) like lower($${paramIndex}))`
+      : "";
+  const statusSql = emailLogStatusSql(status, EMAIL_LOG_RESPONDED);
+
+  const from = (searchParamIndex: number) => `
     from communications c
     join subcontractors s on s.id = c.subcontractor_id
     left join opportunities o on o.id = c.opportunity_id
+    left join lateral (
+      select min(r.created_at) as inbound_at
+        from communications r
+       where r.channel = 'email'
+         and r.direction = 'inbound'
+         and r.subcontractor_id = c.subcontractor_id
+         and (
+           (c.opportunity_id is not null and r.opportunity_id = c.opportunity_id)
+           or (c.gmail_thread_id is not null and r.gmail_thread_id = c.gmail_thread_id)
+         )
+    ) replies on true
     where c.channel = 'email'
-      and c.direction = 'outbound'
-      ${q ? `and (lower(s.company_name) like lower($3) or lower(coalesce(c.subject,'')) like lower($3))` : ""}
+      ${searchSql(searchParamIndex)}
   `;
-  const params: unknown[] = [EMAIL_LOG_PAGE_SIZE, offset];
-  if (q) params.push(`%${q}%`);
 
-  const [rows, totals] = await Promise.all([
+  const listParams: unknown[] = [EMAIL_LOG_PAGE_SIZE, offset];
+  if (searchNeedle) listParams.push(searchNeedle);
+  const countParams: unknown[] = searchNeedle ? [searchNeedle] : [];
+
+  const [rows, totals, countRows] = await Promise.all([
     query<EmailLogRow>(
       `select c.id, c.created_at, c.subject, c.body, c.provider,
               c.recipient_email, c.opened_at, c.clicked_at, c.replied_at, c.direction,
+              ${EMAIL_LOG_RESPONDED} as responded,
               c.subcontractor_id, s.company_name,
               c.opportunity_id, o.title as opportunity_title
-       ${base}
+       ${from(3)}
+         and ${statusSql}
        order by c.created_at desc
        limit $1 offset $2`,
-      params
+      listParams
     ),
-    query<{ count: string }>(`select count(*)::text as count ${base}`, params.slice(2)),
+    query<{ count: string }>(
+      `select count(*)::text as count ${from(1)} and ${statusSql}`,
+      countParams
+    ),
+    query<{
+      all: string;
+      sent: string;
+      opened: string;
+      clicked: string;
+      responded: string;
+    }>(
+      `select
+         count(*)::text as all,
+         count(*) filter (where c.direction = 'outbound')::text as sent,
+         count(*) filter (where c.direction = 'outbound' and c.opened_at is not null)::text as opened,
+         count(*) filter (where c.direction = 'outbound' and c.clicked_at is not null)::text as clicked,
+         count(*) filter (where ${EMAIL_LOG_RESPONDED})::text as responded
+       ${from(1)}`,
+      countParams
+    ),
   ]);
 
-  return { rows, total: parseInt(totals[0]?.count ?? "0", 10) };
+  const c = countRows[0];
+  return {
+    rows,
+    total: parseInt(totals[0]?.count ?? "0", 10),
+    counts: {
+      all: parseInt(c?.all ?? "0", 10),
+      sent: parseInt(c?.sent ?? "0", 10),
+      opened: parseInt(c?.opened ?? "0", 10),
+      clicked: parseInt(c?.clicked ?? "0", 10),
+      responded: parseInt(c?.responded ?? "0", 10),
+    },
+  };
 }
 
 export interface SubCommRow {

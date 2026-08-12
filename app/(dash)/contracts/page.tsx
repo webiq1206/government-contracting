@@ -267,7 +267,7 @@ export default async function ContractsPage() {
               description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
               action={
                 <Link href="/pipeline" className="btn-ghost text-sm">
-                  Open pipeline
+                  Open opportunities
                 </Link>
               }
             />

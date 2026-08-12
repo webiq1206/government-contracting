@@ -43,18 +43,39 @@ function applyInlineMarkup(escaped: string): string {
   return escaped
     .replace(
       /==([^=\n]+)==/g,
-      '<span style="background-color:#FFF3CD;padding:0 2px">$1</span>'
+      '<span style="background-color:#FFF3CD;color:#242424;padding:0 2px">$1</span>'
     )
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
 }
+
+/**
+ * Recover from broken editor markup: keep complete ==phrase== pairs, strip
+ * leftover ==, drop a leading "-- " separator, and collapse doubled bullets
+ * from wrapping {{questions}} in "- ".
+ */
+export function normalizeEmailLine(line: string): string {
+  const pairs: string[] = [];
+  const withPlaceholders = line.replace(/==([^=\n]+)==/g, (_m, inner: string) => {
+    const i = pairs.length;
+    pairs.push(`==${inner}==`);
+    return `\u0000H${i}\u0000`;
+  });
+  let s = withPlaceholders.replace(/==/g, "");
+  s = s.replace(/\u0000H(\d+)\u0000/g, (_m, i: string) => pairs[Number(i)] ?? "");
+  s = s.replace(/^(\s*)--\s+/, "$1");
+  s = s.replace(/^(\s*)[-*•]\s+[-*•]\s+/, "$1- ");
+  return s;
+}
+
+const BULLET_RE = /^\s*[-*•]\s+(.*)$/;
 
 /**
  * Convert a plain-text template body to simple HTML for outbound email.
  *
  * Supports:
  * - `**bold**`
- * - `==highlight==` (yellow background span for email clients)
- * - consecutive lines starting with `- ` or `* ` as a bullet list
+ * - `==highlight==` (yellow background span for email clients, same line only)
+ * - consecutive lines starting with `- `, `* `, or `• ` as a bullet list
  * - remaining newlines as `<br>`
  *
  * Content is HTML-escaped first so operator-authored markup cannot inject tags.
@@ -73,8 +94,9 @@ export function plainToHtml(plain: string): string {
     listBuf = [];
   }
 
-  for (const line of lines) {
-    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+  for (const raw of lines) {
+    const line = normalizeEmailLine(raw);
+    const bullet = line.match(BULLET_RE);
     if (bullet) {
       listBuf.push(bullet[1]);
       continue;

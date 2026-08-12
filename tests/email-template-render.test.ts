@@ -157,6 +157,37 @@ describe("plainToHtml", () => {
     expect(result).toContain("Intro");
     expect(result).toContain("Thanks");
   });
+
+  it("renders unicode bullet lines as a list", () => {
+    const result = plainToHtml("Intro\n• First\n• Second");
+    expect(result).toContain("<li>First</li>");
+    expect(result).toContain("<li>Second</li>");
+  });
+
+  it("applies bold inside list items", () => {
+    const result = plainToHtml("- Please **reply** soon");
+    expect(result).toContain("<li>Please <strong>reply</strong> soon</li>");
+  });
+
+  it("recovers orphaned highlight markers around multiline questions", () => {
+    const questions =
+      "- Do you have experience with federal facilities in Virginia?\n- Can you provide bonding within 48 hours?";
+    const filled = renderTemplate("=={{questions}}==", { questions });
+    const html = plainToHtml(filled);
+    expect(html).not.toContain("==");
+    expect(html).toContain("<li>Do you have experience with federal facilities in Virginia?</li>");
+    expect(html).toContain("<li>Can you provide bonding within 48 hours?</li>");
+  });
+
+  it("recovers the ==-- leftover from wrapping questions in highlight plus a separator", () => {
+    const questions =
+      "- Do you have experience with federal facilities in Virginia?\n- Can you provide bonding within 48 hours?";
+    const filled = renderTemplate("==-- {{questions}}", { questions });
+    const html = plainToHtml(filled);
+    expect(html).not.toContain("==");
+    expect(html).toContain("<li>Do you have experience with federal facilities in Virginia?</li>");
+    expect(html).toContain("<li>Can you provide bonding within 48 hours?</li>");
+  });
 });
 
 // ---------------------------------------------------------------------------

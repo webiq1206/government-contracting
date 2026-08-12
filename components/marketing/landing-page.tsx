@@ -21,6 +21,10 @@ const FAQ_BASE = [
     a: "Brost Co is government contracting software for federal services contractors. It watches SAM.gov for matching work, scores each opportunity against your company, finds subcontractors, tracks quotes, builds the bid package, and shows you one daily list of decisions that need a person.",
   },
   {
+    q: "What work does Brost Co take off my plate?",
+    a: "Brost Co handles SAM.gov intake, fit scoring, reading the solicitation, finding and emailing subcontractors, quote tracking, package assembly, and compliance checks. You keep pursue-or-pass decisions, calls when a person is needed, quote entry, and final submission.",
+  },
+  {
     q: "Does Brost Co replace SAM.gov?",
     a: "No. SAM.gov remains the official source for federal opportunities and entity registration. Brost Co organizes and advances the work after opportunities are published.",
   },
@@ -41,34 +45,47 @@ const FAQ_BASE = [
 const WORKFLOW = [
   {
     n: "01",
-    title: "Tell Brost Co what fits",
-    body: "Set your NAICS codes, services, set-asides, contract size, and service area once.",
+    title: "Find the right work",
+    automatic:
+      "Brost Co watches SAM.gov, pulls matching postings, and scores each one against your company.",
+    you: "You only decide borderline fits. Strong matches move forward on their own.",
   },
   {
     n: "02",
-    title: "Let the right work surface",
-    body: "Matching SAM.gov opportunities enter your pipeline with deadlines and documents attached.",
+    title: "Get pricing",
+    automatic:
+      "Brost Co reads the solicitation, finds local subcontractors, emails them, and follows up.",
+    you: "You call when email is not enough, then enter the quote in one place.",
   },
   {
     n: "03",
-    title: "See the fit before you chase it",
-    body: "Every opportunity receives a score, risk flags, and a plain-English recommendation.",
+    title: "Build the package",
+    automatic:
+      "Brost Co rolls up pricing, assembles the bid package, and runs compliance checks.",
+    you: "You review the package and clear anything only a person can sign or attest.",
   },
   {
     n: "04",
-    title: "Build coverage and pricing",
-    body: "Source subcontractors, manage outreach, collect quotes, and spot missing trades early.",
+    title: "Submit",
+    automatic: "Brost Co keeps the deadline visible and waits with you for the agency decision.",
+    you: "You submit through the required agency channel. Nothing leaves without your approval.",
   },
-  {
-    n: "05",
-    title: "Review a complete bid package",
-    body: "Pricing, compliance checks, certifications, and final documents arrive ready for review.",
-  },
-  {
-    n: "06",
-    title: "Submit with control",
-    body: "You approve the final package and submit through the required agency channel.",
-  },
+] as const;
+
+const BROST_HANDLES = [
+  "SAM.gov intake and document gathering",
+  "Fit scoring and pursue recommendations",
+  "Plain-English solicitation brief",
+  "Finding and emailing subcontractors",
+  "Quote tracking and missing-trade alerts",
+  "Bid package assembly and compliance checks",
+] as const;
+
+const YOU_HANDLE = [
+  "Pursue or pass on borderline opportunities",
+  "Calls when a person is needed",
+  "Entering subcontractor quotes",
+  "Final review and submission",
 ] as const;
 
 export function LandingPage({
@@ -93,9 +110,9 @@ export function LandingPage({
     ? `Standard pricing is ${standardLabel} per month. Founding customers who join during the launch window lock in ${foundingLabel} per month for as long as they remain subscribed.`
     : `Brost Co is ${standardLabel} per month.`;
   const faqItems = [
-    ...FAQ_BASE.slice(0, 3),
+    ...FAQ_BASE.slice(0, 4),
     { q: "How much does Brost Co cost?", a: pricingFaq },
-    ...FAQ_BASE.slice(3),
+    ...FAQ_BASE.slice(4),
   ];
   const year = new Date().getFullYear();
 
@@ -143,36 +160,33 @@ export function LandingPage({
                 <i />
                 Government contracting software
               </p>
-              <h1>
-                Brost Co finds federal work that fits you, then prepares the bid
-              </h1>
+              <h1>Brost Co does the hard, slow parts of government contracting</h1>
               <p className="lead">
-                Brost Co is government contracting software for federal services contractors. It
-                monitors SAM.gov, scores each opportunity against your company, finds
-                subcontractors, tracks quotes, and builds the bid package. You open one daily
-                list for pursue or pass decisions, calls, and final approvals. Brost Co keeps
-                the rest of the pipeline moving.
+                Brost Co watches SAM.gov, scores each opportunity against your company, finds and
+                emails subcontractors, and builds the bid package. You open one daily list for
+                pursue-or-pass, a few calls, and final approval. Nothing goes to the agency until
+                you say so.
               </p>
               <div className="hero-actions">
                 <Link className="btn" href={signupHref}>
                   {primaryCta} <span aria-hidden="true">↗</span>
                 </Link>
-                <a className="under-link" href="#platform">
-                  See what is included <span aria-hidden="true">↓</span>
+                <a className="under-link" href="#split">
+                  See who does the work <span aria-hidden="true">↓</span>
                 </a>
               </div>
               <div className="proof">
                 <div>
-                  <b>One list</b>
-                  <span>of what needs you today</span>
+                  <b>Hours of SAM scanning</b>
+                  <span>off your plate</span>
                 </div>
                 <div>
-                  <b>Fit score</b>
-                  <span>on every opportunity</span>
+                  <b>Sub outreach and follow-up</b>
+                  <span>automatic</span>
                 </div>
                 <div>
                   <b>You approve</b>
-                  <span>before any bid goes out</span>
+                  <span>every bid before it goes out</span>
                 </div>
               </div>
             </div>
@@ -288,13 +302,56 @@ export function LandingPage({
                 </article>
                 <article className="answer">
                   <small>THE SHIFT</small>
-                  <h3>One system that moves each bid forward.</h3>
+                  <h3>Brost Co takes the hours. You keep the judgment.</h3>
                   <p>
                     Brost Co runs the repeatable work and brings you in only when judgment,
                     a call, or approval is required.
                   </p>
                 </article>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="split section" id="split">
+          <div className="shell">
+            <header className="center-head">
+              <p className="eyebrow">
+                <i />
+                Who does the work
+              </p>
+              <h2>Brost Co takes the hours. You keep the judgment.</h2>
+              <p>
+                Federal contracting gets hard when every bid means scanning notices, chasing
+                subcontractors, and rebuilding a package from scratch. Brost Co does that work.
+                You decide, call when needed, and submit.
+              </p>
+            </header>
+            <div className="split-grid">
+              <article>
+                <small>BROST CO HANDLES</small>
+                <h3>The slow, repeatable work</h3>
+                <ul>
+                  {BROST_HANDLES.map((item, i) => (
+                    <li key={item}>
+                      <span>{String(i + 1).padStart(2, "0")}</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </article>
+              <article className="dark">
+                <small>YOU HANDLE</small>
+                <h3>Judgment, relationships, and the final send</h3>
+                <ul>
+                  {YOU_HANDLE.map((item) => (
+                    <li key={item}>
+                      <span>✓</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </article>
             </div>
           </div>
         </section>
@@ -453,10 +510,10 @@ export function LandingPage({
                 <i />
                 How it works
               </p>
-              <h2>From a SAM.gov posting to a package you can submit</h2>
+              <h2>Four phases from SAM.gov posting to agency submission</h2>
               <p>
-                Brost Co handles intake, scoring, outreach, and package prep. Your team handles
-                judgment, relationships, approval, and the final submission.
+                Each phase has an automatic lane and a human lane. Brost Co moves the bid
+                forward. You step in for judgment, calls, and the final send.
               </p>
               <Link className="under-link" href={signupHref}>
                 Set up your company profile <span aria-hidden="true">↗</span>
@@ -468,7 +525,12 @@ export function LandingPage({
                   <span>{step.n}</span>
                   <div>
                     <h3>{step.title}</h3>
-                    <p>{step.body}</p>
+                    <p>
+                      <b>Automatic:</b> {step.automatic}
+                    </p>
+                    <p>
+                      <b>You:</b> {step.you}
+                    </p>
                   </div>
                 </li>
               ))}
@@ -482,7 +544,7 @@ export function LandingPage({
               <div>
                 <p className="eyebrow">
                   <i />
-                  Built for judgment
+                  What you stop doing
                 </p>
                 <h2>Automated where it should be. Human where it matters.</h2>
               </div>
@@ -631,8 +693,8 @@ export function LandingPage({
             </p>
             <h2>Start with the federal work that actually fits your company</h2>
             <p>
-              Set your company profile once. Brost Co watches for matching opportunities. You
-              open Today each morning and act on the decisions that need you.
+              Set your company profile once. Brost Co takes the hard, slow parts of each bid.
+              You open Today each morning and act on the decisions that need you.
             </p>
             <Link className="btn" href={signupHref}>
               {primaryCta} <span aria-hidden="true">↗</span>

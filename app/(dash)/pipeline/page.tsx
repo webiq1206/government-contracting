@@ -92,7 +92,7 @@ export default async function PipelinePage({
     <div className="flex page-shell">
       <PageHeader
         help={PAGE_HELP["pipeline"]}
-        title="Pipeline"
+        title="Opportunities"
         status={
           opps.length === 0
             ? "Empty"
@@ -279,7 +279,7 @@ async function PipelineOnboarding() {
     <div className="mx-6 mt-4 rounded-md border border-accent/40 bg-accent-soft p-5">
       <p className="eyebrow mb-1 text-accent-strong">Get started</p>
       <h2 className="font-display text-xl font-semibold text-foreground">
-        Your pipeline is empty. That&rsquo;s expected on a fresh setup.
+        No opportunities yet. That is expected on a fresh setup.
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">
         Opportunities flow in from the Opportunity Monitor (SAM.gov, every 2 hours) and are

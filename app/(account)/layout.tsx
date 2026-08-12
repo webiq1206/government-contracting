@@ -35,7 +35,14 @@ export default async function AccountLayout({
 
   return (
     <ToastProvider>
-      <div className="flex min-h-dvh flex-col bg-background text-foreground">
+      <div
+        {...(subscribed ? { "data-app-shell": true } : {})}
+        className={
+          subscribed
+            ? "fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background text-foreground"
+            : "flex min-h-dvh flex-col bg-background text-foreground"
+        }
+      >
         {subscribed ? (
           <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 bg-background px-3 dark:border-white/10">
             <Link
@@ -73,7 +80,11 @@ export default async function AccountLayout({
           </header>
         )}
 
-        <main className={`flex min-h-0 flex-1 flex-col ${subscribed ? "pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0" : ""}`}>
+        <main
+          className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
+            subscribed ? "pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0" : ""
+          }`}
+        >
           {children}
         </main>
       </div>
