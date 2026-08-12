@@ -5,6 +5,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { PromoCountdown } from "./promo-countdown";
 import { LandingFaq } from "./landing-faq";
 import { LandingMobileNav } from "./landing-mobile-nav";
+import { ProductFilm } from "./product-film";
 import "./landing.css";
 
 /** Thin horizontal arrow for primary CTAs (replaces diagonal ↗). */
@@ -49,6 +50,10 @@ const FAQ_BASE = [
   {
     q: "Does Brost Co submit bids automatically?",
     a: "No. Brost Co prepares and validates the bid package, but you keep final control. Signatures, attestations, and submission stay with your team.",
+  },
+  {
+    q: "Can I see how Brost Co works before I sign up?",
+    a: "Yes. The How it works section includes a one-minute product film of the Brost Co dashboard: opportunity scoring, attention, subcontractor outreach, quotes, bid prep, and the Today list. Captions are on the picture, so you do not need sound.",
   },
   {
     q: "Who is Brost Co built for?",
@@ -174,8 +179,8 @@ export function LandingPage({
                 <Link className="btn" href={signupHref}>
                   {primaryCta} <CtaArrow />
                 </Link>
-                <a className="under-link" href="#split">
-                  See who does the work <span aria-hidden="true">↓</span>
+                <a className="under-link" href="#see-it">
+                  Watch the workflow <span aria-hidden="true">↓</span>
                 </a>
               </div>
               <div className="proof">
@@ -507,7 +512,9 @@ export function LandingPage({
 
         <section className="workflow section" id="workflow">
           <div className="lines" aria-hidden />
-          <div className="shell workflow-layout">
+          <div className="workflow-shell">
+            <ProductFilm />
+            <div className="workflow-layout">
             <div className="workflow-copy sticky">
               <p className="eyebrow light">
                 <i />
@@ -538,6 +545,7 @@ export function LandingPage({
                 </li>
               ))}
             </ol>
+            </div>
           </div>
         </section>
 

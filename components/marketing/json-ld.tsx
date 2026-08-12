@@ -19,7 +19,7 @@ export function JsonLd({
     legalName: "BROSTCO HOLDINGS LLC",
     url: SITE_URL,
     logo: `${SITE_URL}/brand/b-mark.png`,
-    image: `${SITE_URL}/opengraph-image`,
+    image: `${SITE_URL}/og.png`,
     email: "hello@brostco.com",
     description:
       "Brost Co is government contracting software for federal services contractors. It does the hard, slow parts of federal bidding: SAM.gov intake, fit scoring, subcontractor outreach, and bid package prep. You keep judgment and submission.",
@@ -35,7 +35,7 @@ export function JsonLd({
       "Brost Co watches SAM.gov, scores opportunities, finds and emails subcontractors, and builds bid packages. You decide, call when needed, and submit.",
     primaryImageOfPage: {
       "@type": "ImageObject",
-      url: `${SITE_URL}/opengraph-image`,
+      url: `${SITE_URL}/og.png`,
       width: 1200,
       height: 630,
     },
@@ -61,7 +61,7 @@ export function JsonLd({
     "@type": "HowTo",
     name: "How Brost Co runs a federal bid",
     description:
-      "Four phases from a SAM.gov posting to agency submission. Brost Co handles the automatic work. You handle judgment, calls, and the final send.",
+      "Four phases from a SAM.gov posting to agency submission, shown in a one-minute product film of the Brost Co dashboard. Brost Co handles the automatic work. You handle judgment, calls, and the final send.",
     totalTime: "P14D",
     step: [
       {
@@ -192,6 +192,14 @@ export function JsonLd({
       },
       {
         "@type": "Question",
+        name: "Can I see how Brost Co works before I sign up?",
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: "Yes. The How it works section includes a one-minute product film of the Brost Co dashboard: opportunity scoring, attention, subcontractor outreach, quotes, bid prep, and the Today list. Captions are on the picture, so you do not need sound.",
+        },
+      },
+      {
+        "@type": "Question",
         name: "Who is Brost Co built for?",
         acceptedAnswer: {
           "@type": "Answer",
@@ -214,6 +222,20 @@ export function JsonLd({
     "@type": "WebSite",
     name: "Brost Co",
     url: SITE_URL,
+  };
+
+  const video = {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    name: "How Brost Co runs a federal bid",
+    description:
+      "A one-minute product film of the Brost Co dashboard: SAM.gov intake, scoring, attention, subcontractor outreach, quotes, bid prep, and Today. Captions are on the picture.",
+    thumbnailUrl: `${SITE_URL}/film/poster.jpg`,
+    contentUrl: `${SITE_URL}/film/workflow.mp4`,
+    embedUrl: `${SITE_URL}/#see-it`,
+    uploadDate: "2026-08-12",
+    duration: "PT56S",
+    inLanguage: "en",
   };
 
   return (
@@ -245,6 +267,10 @@ export function JsonLd({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(website) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(video) }}
       />
     </>
   );

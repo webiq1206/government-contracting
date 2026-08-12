@@ -38,6 +38,25 @@ Open the **Secrets** panel (lock icon) and add, at minimum:
 | `OPERATOR_PASSWORD_HASH` | run `npm run agent -- hash-password 'yourpassword'` in the Shell and paste the output |
 | `APP_URL` | your Repl's public URL, e.g. `https://brostco.username.repl.co` |
 
+### Stripe billing secrets (required to collect payments)
+
+Paid signup, the 7-day trial, and the customer portal need these Secrets.
+A paste-ready template lives at `scripts/replit-secrets-stripe.env`
+(Replit → Secrets → **Edit as .env**).
+
+| Secret | Value |
+|---|---|
+| `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_...` or `sk_live_...`) |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signing secret (`whsec_...`) for `https://YOUR_DOMAIN/api/billing/webhook` |
+| `STRIPE_PRICE_FOUNDING` | Monthly Price ID for **$497** founding plan (`price_...`) |
+| `STRIPE_PRICE_STANDARD` | Monthly Price ID for **$2,997** standard plan (`price_...`) |
+| `FOUNDING_PROMO_ENDS_AT` | Optional ISO end for the founding window (e.g. `2026-08-16T00:00:00.000Z`) |
+
+Create the webhook in Stripe for events `checkout.session.completed`,
+`customer.subscription.updated`, and `customer.subscription.deleted`.
+If you use Deployments, add the same Stripe keys under **Deployments → Secrets**
+(workspace Secrets do not always carry over).
+
 Add the rest from `.env.example` as you obtain each key (SAM, Google Maps,
 Hunter, Gmail OAuth, Twilio, Resend, Ahrefs). Every one is optional, the
 platform runs and is testable without them and lights each feature up when its
