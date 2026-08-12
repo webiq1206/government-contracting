@@ -23,6 +23,8 @@ import { EmptyState } from "@/components/empty-state";
 import type { AutomationRules } from "@/lib/domain/intake";
 import { currency, shortDate, timeAgo } from "@/lib/format";
 import { withGuideQuery } from "@/lib/guide-links";
+import { TodayBulkCalls } from "@/components/today-bulk-calls";
+import { TodayBulkTriage } from "@/components/today-bulk-triage";
 
 export const dynamic = "force-dynamic";
 
@@ -453,21 +455,15 @@ export default async function TodayPage() {
                 >
                   <p className="mb-2 text-sm text-foreground/45">
                     These scored in the borderline band, so the system wants your judgment.
-                    Decide right here, or click a row to read the full brief first. Unactioned
-                    items auto-dismiss when their timer runs out.
+                    Decide right here, select several to pursue or pass together, or click a
+                    row to read the full brief first. Unactioned items auto-dismiss when their
+                    timer runs out.
                   </p>
-                  {data.triage.map((o, i) => (
-                    <OppActionRow
-                      key={o.id}
-                      o={o}
-                      index={i + 1}
-                      category="Pursuit decision"
-                      focused={firstOpen === "triage" && i === 0}
-                      action="Decide"
-                      rules={rules}
-                      inlineTriage
-                    />
-                  ))}
+                  <TodayBulkTriage
+                    rows={data.triage}
+                    rules={rules}
+                    focusedFirst={firstOpen === "triage"}
+                  />
                 </Section>
               )}
 
@@ -480,81 +476,16 @@ export default async function TodayPage() {
                   defaultOpen={firstOpen === "calls"}
                 >
                   <p className="mb-2 text-sm text-foreground/45">
-                    Each row opens that call&rsquo;s guided workspace: the script, project
-                    details, and a form that saves the quote and every answer in one step.
-                    Skip removes it from the queue and records that you chose not to call;
-                    Snooze just hides it for a bit.
+                    Each row opens that call&rsquo;s guided workspace. Select several to skip
+                    or snooze together. Skip removes a call from the queue; Snooze hides it for
+                    a bit.
                   </p>
-                  {data.calls.rows.map((c, i) => (
-                    <Link
-                      key={c.id}
-                      href={withGuideQuery(`/call-queue?open=${c.id}`, {
-                        step: "today-calls",
-                        focus: "call-queue",
-                      })}
-                      className={`${ROW} ${firstOpen === "calls" && i === 0 ? "focus-rail pl-3" : ""}`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="eyebrow-gold">Quote follow-up</p>
-                        <p className="mt-1 text-sm font-medium text-foreground sm:truncate">
-                          Call {c.company_name}
-                          {c.trade
-                            ? ` about ${c.trade.toLowerCase()} pricing`
-                            : " for their quote"}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground sm:truncate">
-                          {[c.opportunity_title, c.phone ?? "no phone on file"]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </p>
-                        {c.work_summary && (
-                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                            <span className="font-medium text-muted-foreground">Work: </span>
-                            {c.work_summary}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:gap-3">
-                        {c.source === "reply" && (
-                          <span className="badge bg-pursue/20 text-pursue">
-                            Replied, interested
-                          </span>
-                        )}
-                        <DeadlineBadge deadline={c.deadline} rules={rules} />
-                        <StopClickPropagation className="flex items-center gap-2">
-                          <SnoozeButton
-                            kind="call_card"
-                            id={c.id}
-                            className="shell-ghost min-h-11 text-xs md:min-h-0"
-                          />
-                          <ActionButton
-                            endpoint={`/api/call-cards/${c.id}/skip`}
-                            className="shell-ghost text-xs"
-                            toast={{
-                              message: `Skipped calling ${c.company_name}. Recorded on their history.`,
-                              undo: {
-                                endpoint: `/api/call-cards/${c.id}/skip`,
-                                body: { undo: true },
-                              },
-                            }}
-                          >
-                            Skip
-                          </ActionButton>
-                        </StopClickPropagation>
-                        <CtaArrow label="Start call" />
-                      </div>
-                    </Link>
-                  ))}
-                  {data.calls.count > data.calls.rows.length && (
-                    <Link
-                      href="/call-queue"
-                      className="block border-b border-border/55 px-1 py-3 dark:border-white/10 text-center text-xs text-foreground/45 transition-colors hover:text-gold"
-                    >
-                      {data.calls.count - data.calls.rows.length} more call
-                      {data.calls.count - data.calls.rows.length === 1 ? "" : "s"} in the
-                      queue →
-                    </Link>
-                  )}
+                  <TodayBulkCalls
+                    calls={data.calls.rows}
+                    totalCount={data.calls.count}
+                    rules={rules}
+                    focusedFirst={firstOpen === "calls"}
+                  />
                 </Section>
               )}
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { callQueue } from "@/lib/data";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
-import { CallCard } from "@/components/call-card";
+import { BulkCallQueue } from "@/components/bulk-call-queue";
 import { EmptyState } from "@/components/empty-state";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export default async function CallQueuePage({
             ? "No calls waiting"
             : `${cards.length} call${cards.length === 1 ? "" : "s"} ready`
         }
-        subtitle="Soonest deadline first. Open a card to start the guided call workspace."
+        subtitle="Soonest deadline first. Select several to skip or snooze together, or open a card to start the guided call."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5" data-guide-target="call-queue">
         {cards.length === 0 ? (
@@ -41,11 +41,7 @@ export default async function CallQueuePage({
             }
           />
         ) : (
-          <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4 lg:grid-cols-2">
-            {cards.map((c) => (
-              <CallCard key={c.id} c={c} autoOpen={c.id === openId} />
-            ))}
-          </div>
+          <BulkCallQueue cards={cards} openId={openId} />
         )}
       </div>
     </div>

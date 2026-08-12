@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { CallCardRow } from "@/lib/data";
 import { ActionButton } from "@/components/action-button";
 import { CallWorkspaceLauncher } from "@/components/call-workspace-launcher";
@@ -18,7 +19,16 @@ import { countdown, currency, shortDate } from "@/lib/format";
  * on them dials/emails instead of opening the workspace, and event handlers
  * can't cross a server->client boundary.
  */
-export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: boolean }) {
+export function CallCard({
+  c,
+  autoOpen = false,
+  selectControl = null,
+}: {
+  c: CallCardRow;
+  autoOpen?: boolean;
+  /** Optional checkbox (or other control) that must not open the workspace. */
+  selectControl?: ReactNode;
+}) {
   const expiry = countdown(c.deadline);
   const overdue = expiry === "overdue";
   const soon =
@@ -36,11 +46,16 @@ export function CallCard({ c, autoOpen = false }: { c: CallCardRow; autoOpen?: b
     <CallWorkspaceLauncher
       cardId={c.id}
       autoOpen={autoOpen}
-      className="card group cursor-pointer border-border hover:border-accent/60 hover:shadow-md transition-all"
+      className="card group cursor-pointer border-border transition-all hover:border-accent/60 hover:shadow-md"
     >
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
+          {selectControl && (
+            <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+              {selectControl}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex flex-wrap items-center gap-2">
               <p className="eyebrow">{c.trade ?? "General"}</p>

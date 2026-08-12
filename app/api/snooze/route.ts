@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
+import { resolveSnoozeUntil } from "@/lib/domain/snooze";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,16 +40,13 @@ export async function POST(req: Request) {
   if (!body.id) return NextResponse.json({ error: "id is required." }, { status: 400 });
 
   let until: Date | null = null;
-  if (body.until === "tomorrow") {
-    // Tomorrow at 07:00 server time, back on the list before the workday.
-    until = new Date();
-    until.setDate(until.getDate() + 1);
-    until.setHours(7, 0, 0, 0);
-  } else if (body.until === "3d") {
-    until = new Date(Date.now() + 3 * 86_400_000);
-    until.setHours(7, 0, 0, 0);
+  if (body.until === "tomorrow" || body.until === "3d") {
+    until = resolveSnoozeUntil(body.until);
   } else if (body.until != null) {
-    return NextResponse.json({ error: 'until must be "tomorrow", "3d", or null.' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'until must be "tomorrow", "3d", or null.' },
+      { status: 400 }
+    );
   }
 
   if (body.kind === "opportunity") {
