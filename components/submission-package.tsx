@@ -214,7 +214,7 @@ export function SubmissionPackage({
         </div>
 
         <div className="rounded-md border border-border/55 bg-surface px-6 py-7 text-foreground dark:border-white/10 dark:bg-shell">
-          <p className="eyebrow-gold">Submission readiness</p>
+          <p className="eyebrow-gold">Package checklist</p>
           <p className="mt-3 font-display text-4xl text-gold">
             <span className="num">{readyPct}%</span>
           </p>

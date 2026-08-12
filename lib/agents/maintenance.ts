@@ -13,7 +13,7 @@ import { sms } from "../integrations/twilio";
 import { email } from "../integrations/resend";
 import { config } from "../config";
 import { logAgent } from "../logger";
-import { STALL_HOURS, STAGE_AGENT } from "../domain/journey";
+import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
 import { getAutomationRules } from "../app-settings";
 import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
@@ -184,20 +184,6 @@ export const reviewExpirySweep: AgentDefinition = {
     }
     return { ok: true, summary: `Auto-dismissed ${expired.length} expired review item(s).` };
   },
-};
-
-/** Why each auto stage stalls, and what the operator should do about it. */
-const STALL_REASONING: Record<string, string> = {
-  scoring:
-    "Scoring never completed. The Scoring Engine may have errored or the Claude key may be missing; check its log and re-run it.",
-  analysis:
-    "The solicitation analysis never completed. Check the Solicitation Analyst's log and re-run it.",
-  sub_research:
-    "No subcontractor cleared verification for this opportunity. Needs operator attention (add subs or dismiss).",
-  outreach:
-    "No subcontractor replied after outreach + follow-up. Needs operator attention (call subs directly or dismiss).",
-  bid_building:
-    "Quotes were entered but the Bid Builder never priced the bid. Check its log and re-run it.",
 };
 
 export const stalledPipelineSweep: AgentDefinition = {

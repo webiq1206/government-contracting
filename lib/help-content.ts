@@ -137,10 +137,10 @@ export const PAGE_HELP: Record<string, HelpContent> = {
   opportunity: {
     title: "The complete record for one bid",
     points: [
-      "Jump links hop to Attention, Coverage, Brief, Quotes, Subs, Score, and Activity.",
-      "What needs attention and trade coverage sit near the top so you can scan blockers first.",
-      "The Subs panel shows who was found, contact status, emails/calls, next action, and history for this bid.",
-      "The banner always shows the recommended next step; submission stays blocked until compliance passes.",
+      "The top banner shows where this stands, the next step, bid readiness, and what needs your attention.",
+      "Tabs organize Brief, Requirements, Coverage, Pricing, Files, and More without changing that guidance.",
+      "Coverage shows which trades still need quotes; Pricing holds quote entry and the package checklist.",
+      "Submission stays blocked until required pricing and package checks pass.",
     ],
   },
   "how-it-works": {

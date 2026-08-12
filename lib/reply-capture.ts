@@ -18,6 +18,7 @@ import {
   normalizeEmail,
 } from "./reply-matching";
 import { closeOutDeclinedSub } from "./domain/decline-closeout";
+import { enqueue } from "./queue";
 
 export interface MatchedComm {
   id: string;
@@ -329,6 +330,18 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     );
     quoteSaved = inserted != null;
     quoteSkippedExisting = inserted == null;
+    if (quoteSaved) {
+      // Keep detail / Coverage / Next Step in sync with manual quote entry.
+      await query(
+        `update opportunities
+           set stage='quote_entry', human_action_required=false, updated_at=now()
+         where id=$1 and stage in ('outreach','call_queue')`,
+        [comm.opportunity_id]
+      );
+      await enqueue("bid-builder", { opportunityId: comm.opportunity_id }).catch(
+        () => undefined
+      );
+    }
   }
 
   return {

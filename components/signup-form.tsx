@@ -116,8 +116,8 @@ export function SignupForm({
         {pending
           ? "Creating account..."
           : plan === "founding"
-            ? "Continue to founding checkout"
-            : "Continue to checkout"}
+            ? "Start founding 7-day free trial"
+            : "Start 7-day free trial"}
       </button>
       <p className="text-center text-xs text-muted-foreground">
         Already have an account?{" "}

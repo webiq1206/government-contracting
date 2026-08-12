@@ -15,7 +15,7 @@
 export type Party = "system" | "you" | "subs" | "agency";
 
 export const PARTY_LABEL: Record<Party, string> = {
-  system: "the system",
+  system: "Brost Co",
   you: "you",
   subs: "subcontractors",
   agency: "the agency",
@@ -44,16 +44,20 @@ export interface JourneyStep {
   status: "done" | "current" | "upcoming";
 }
 
-const STEP_META: Record<(typeof JOURNEY_STAGES)[number], { label: string; owner: Party }> = {
-  monitoring: { label: "Found", owner: "system" },
-  scoring: { label: "Scored", owner: "system" },
-  analysis: { label: "Analyzed", owner: "system" },
-  sub_research: { label: "Subs found", owner: "system" },
-  outreach: { label: "Subs contacted", owner: "subs" },
-  call_queue: { label: "Calls", owner: "you" },
-  quote_entry: { label: "Quotes", owner: "you" },
-  bid_building: { label: "Bid built", owner: "you" },
-  submitted: { label: "Submitted", owner: "agency" },
+/** done = past tense for completed chips; current = present tense while active. */
+const STEP_META: Record<
+  (typeof JOURNEY_STAGES)[number],
+  { done: string; current: string; owner: Party }
+> = {
+  monitoring: { done: "Found", current: "Watching", owner: "system" },
+  scoring: { done: "Scored", current: "Scoring", owner: "system" },
+  analysis: { done: "Analyzed", current: "Analyzing", owner: "system" },
+  sub_research: { done: "Subs found", current: "Finding subs", owner: "system" },
+  outreach: { done: "Subs contacted", current: "Contacting subs", owner: "subs" },
+  call_queue: { done: "Calls made", current: "Calls to make", owner: "you" },
+  quote_entry: { done: "Quotes in", current: "Collecting quotes", owner: "you" },
+  bid_building: { done: "Bid built", current: "Building the bid", owner: "you" },
+  submitted: { done: "Submitted", current: "Awaiting award", owner: "agency" },
 };
 
 /** Plain-English stage label for badges and lists (never raw snake_case). */
@@ -92,12 +96,16 @@ export function journeySteps(stage: string): JourneyStep[] {
       : JOURNEY_STAGES.length // won/lost: every step completed
     : (STAGE_INDEX.get(stage) ?? 0);
 
-  return JOURNEY_STAGES.map((s, i) => ({
-    stage: s,
-    label: STEP_META[s].label,
-    owner: STEP_META[s].owner,
-    status: i < idx ? "done" : i === idx ? "current" : "upcoming",
-  }));
+  return JOURNEY_STAGES.map((s, i) => {
+    const status: JourneyStep["status"] =
+      i < idx ? "done" : i === idx ? "current" : "upcoming";
+    return {
+      stage: s,
+      label: status === "current" ? STEP_META[s].current : STEP_META[s].done,
+      owner: STEP_META[s].owner,
+      status,
+    };
+  });
 }
 
 /**
@@ -137,6 +145,20 @@ export const STALL_HOURS: Partial<Record<string, number>> = {
   bid_building: 2, // pricing runs the moment quotes are saved
 };
 
+/** Shared with stalled-pipeline-sweep so the banner and agent log agree. */
+export const STALL_REASONING: Record<string, string> = {
+  scoring:
+    "Scoring never completed. The Scoring Engine may have errored or the Claude key may be missing; check its log and re-run it.",
+  analysis:
+    "The solicitation analysis never completed. Check the Solicitation Analyst's log and re-run it.",
+  sub_research:
+    "No subcontractor cleared verification for this opportunity. Needs operator attention (add subs or dismiss).",
+  outreach:
+    "No subcontractor replied after outreach + follow-up. Needs operator attention (call subs directly or dismiss).",
+  bid_building:
+    "Quotes were entered but the Bid Builder never priced the bid. Check its log and re-run it.",
+};
+
 /** True when an auto stage has seen no activity beyond its expected window. */
 export function isStalled(stage: string, hoursSinceUpdate: number | null): boolean {
   if (hoursSinceUpdate == null) return false;
@@ -169,6 +191,12 @@ export interface StepInput {
   hoursSinceUpdate?: number | null;
   /** Deadline passed without submission; the record was auto-archived. */
   expired?: boolean;
+  /** At least one positive quote is on file. */
+  hasQuotes?: boolean;
+  /** Outreach exists only as draft/failed sends (no real contact yet). */
+  outreachDraftOnly?: boolean;
+  /** Opportunity risk_flags (for stalled_* and similar). */
+  riskFlags?: string[] | null;
 }
 
 export interface NextStep {
@@ -197,8 +225,9 @@ export function stepHasAction(step: NextStep): boolean {
 export function deriveStep(s: StepInput): NextStep {
   if (s.stage === "won")
     return {
-      title: "Nothing, this one is won 🎉",
+      title: "Nothing, this one is won",
       why: "The contract record was created. Track milestones and compliance from the Contracts page.",
+      after: "Contracts holds milestones, compliance items, and payment tracking for this win.",
       cta: "View contracts",
       href: "/contracts",
       tone: "info",
@@ -262,7 +291,7 @@ export function deriveStep(s: StepInput): NextStep {
 
   const step = deriveStageStep(s);
 
-  // Truth-in-advertising overrides: "the system is working on it" copy is a
+  // Truth-in-advertising overrides: "Brost Co is working on it" copy is a
   // lie when the operator paused automation or the stage has visibly stalled.
   if (step.waitingOn === "system" || (s.stage === "outreach" && step.waitingOn === "subs")) {
     if (s.automationPaused)
@@ -275,11 +304,14 @@ export function deriveStep(s: StepInput): NextStep {
         tone: "warn",
         waitingOn: "you",
       };
-    if (isStalled(s.stage, s.hoursSinceUpdate ?? null))
+    const stalledFlag = (s.riskFlags ?? []).find((f) => f.startsWith("stalled_"));
+    if (stalledFlag || isStalled(s.stage, s.hoursSinceUpdate ?? null))
       return {
         title: "This looks stuck, check the automation log",
-        why: `No activity for over ${STALL_HOURS[s.stage]} hours in a stage that normally completes sooner. The responsible agent may have hit an error or a missing API key.`,
-        after: "The log shows the last run and its reasoning; “Run now” retries the agent immediately.",
+        why:
+          STALL_REASONING[s.stage] ??
+          `No activity for over ${STALL_HOURS[s.stage]} hours in a stage that normally completes sooner. The responsible agent may have hit an error or a missing API key.`,
+        after: "The log shows the last run and its reasoning; Run now retries the agent immediately.",
         cta: "Open automation log",
         href: `/agents${STAGE_AGENT[s.stage] ? `?agent=${STAGE_AGENT[s.stage]}` : ""}`,
         tone: "warn",
@@ -303,10 +335,19 @@ export const STAGE_AGENT: Partial<Record<string, string>> = {
 function deriveStageStep(s: StepInput): NextStep {
   switch (s.stage) {
     case "monitoring":
+      return {
+        title: "No action required. Brost Co is preparing this opportunity",
+        why: "The notice was just imported. Scoring against your company profile starts next.",
+        after: "High scores start analysis automatically; borderline ones come back to you for a decision.",
+        cta: "View brief",
+        anchor: "#brief",
+        tone: "info",
+        waitingOn: "system",
+      };
     case "scoring":
       return {
-        title: "Nothing yet, scoring is running",
-        why: "The system is scoring this against your company profile. It becomes actionable within a few minutes.",
+        title: "No action required. Brost Co is scoring this opportunity",
+        why: "Brost Co is scoring this against your company profile. It becomes actionable within a few minutes.",
         after: "High scores start analysis automatically; borderline ones come back to you for a decision.",
         cta: "View brief",
         anchor: "#brief",
@@ -315,8 +356,8 @@ function deriveStageStep(s: StepInput): NextStep {
       };
     case "analysis":
       return {
-        title: "Nothing yet, the plain-English brief is being written",
-        why: "The analyst is reading the solicitation and attachments. When it's done, sub research starts automatically.",
+        title: "No action required. Brost Co is writing the plain-English brief",
+        why: "The analyst is reading the solicitation and attachments. When it is done, sub research starts automatically.",
         after: "Sub research finds and verifies local subs for each required trade, then emails them.",
         cta: "View brief",
         anchor: "#brief",
@@ -324,9 +365,23 @@ function deriveStageStep(s: StepInput): NextStep {
         waitingOn: "system",
       };
     case "sub_research":
+      if (
+        s.outreachDraftOnly ||
+        (s.riskFlags ?? []).includes("outreach_send_failed")
+      ) {
+        return {
+          title: "Outreach could not send. Fix email setup or re-run outreach",
+          why: "Sub research found candidates, but messages stayed as drafts because email transport is missing or the send failed.",
+          after: "Once email works and outreach re-runs, Brost Co contacts subs and schedules follow-ups.",
+          cta: "Review integrations",
+          href: "/settings/integrations",
+          tone: "warn",
+          waitingOn: "you",
+        };
+      }
       return {
-        title: "Nothing yet, finding subcontractors",
-        why: "The system is finding and verifying local subs for each required trade. They'll be emailed automatically.",
+        title: "No action required. Brost Co is finding subcontractors",
+        why: "Brost Co is finding and verifying local subs for each required trade. They will be emailed automatically.",
         after: "Replies create call cards for you; a 48-hour follow-up goes out on its own.",
         cta: "View trade coverage",
         anchor: "#coverage",
@@ -334,6 +389,28 @@ function deriveStageStep(s: StepInput): NextStep {
         waitingOn: "system",
       };
     case "outreach":
+      if (s.outreachDraftOnly) {
+        return {
+          title: "Outreach could not send. Fix email setup or re-run outreach",
+          why: "Messages are stored as drafts because email transport is missing or the send failed. Subs have not been contacted yet.",
+          after: "Once email works and outreach re-runs, Brost Co sends messages and schedules 48-hour follow-ups.",
+          cta: "Review integrations",
+          href: "/settings/integrations",
+          tone: "warn",
+          waitingOn: "you",
+        };
+      }
+      if (s.hasQuotes) {
+        return {
+          title: "Confirm quotes and finish remaining pricing",
+          why: "At least one quote is already on file. Finish required trades so Bid Builder can price the package.",
+          after: "When required trades are priced, Brost Co refreshes the bid package for your review.",
+          cta: "Open required pricing",
+          anchor: "#coverage",
+          tone: "action",
+          waitingOn: "you",
+        };
+      }
       return {
         title: "Wait for replies (or call ahead)",
         why: "Outreach emails are out, with an automatic 48-hour follow-up. Replies create call cards automatically. You can also call subs directly from the Call Queue.",
@@ -344,6 +421,28 @@ function deriveStageStep(s: StepInput): NextStep {
         waitingOn: "subs",
       };
     case "call_queue":
+      if (s.hasQuotes && (s.tradeCoverageUncovered ?? 0) === 0 && s.requiredTradeCount > 0) {
+        return {
+          title: "Quotes are in. Finish and review the bid package",
+          why: "Required trades have pricing. Move to the package checklist and clear any remaining items before submit.",
+          after: "Submitting starts outcome tracking; Brost Co reminds you when the agency announces.",
+          cta: "Go to submission",
+          anchor: "#submission",
+          tone: "action",
+          waitingOn: "you",
+        };
+      }
+      if (s.hasQuotes) {
+        return {
+          title: "Enter remaining quotes, then finish the package",
+          why: "Some pricing is already on file. Complete required trades from Coverage or Quote Entry.",
+          after: "When all required trades are priced, Bid Builder refreshes the package for review.",
+          cta: "Open required pricing",
+          anchor: "#coverage",
+          tone: "action",
+          waitingOn: "you",
+        };
+      }
       return {
         title: "Call the subcontractors",
         why: "Subs are ready to be called. Each call card opens a guided workspace that captures their price and answers in one pass.",

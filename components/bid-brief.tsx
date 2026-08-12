@@ -279,7 +279,7 @@ export function BidBrief({
         )}
 
         {/* Attachments */}
-        <div id="attachments" className="section-prominent">
+        <div id="brief-attachments" className="section-prominent">
           <p className="eyebrow mb-3">Original documents</p>
           {documents.length === 0 ? (
             <p className="text-sm text-slate-500">

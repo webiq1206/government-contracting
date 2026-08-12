@@ -40,6 +40,8 @@ const OVERRIDES: Record<string, string> = {
   incomplete_solicitation: "Solicitation incomplete",
   outreach_scope_too_thin: "Scope too thin to email subs",
   outreach_docs_missing: "Documents missing, held outreach",
+  outreach_send_failed: "Outreach could not send",
+  prime_only_blocked: "Prime-only past performance blocked pursuit",
 };
 
 /** One flag key → a short, plain-English label. */

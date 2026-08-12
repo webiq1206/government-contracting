@@ -125,6 +125,29 @@ export default async function OpportunityPage({ params }: { params: { id: string
     })),
     quotes: quoteRows,
   });
+  const riskFlags = opp.risk_flags ?? [];
+  const pastPerfBlocked =
+    riskFlags.includes("prime_only_blocked") ||
+    (opp.past_perf_classification === "prime_only" &&
+      opp.stage === "analysis" &&
+      Boolean(opp.human_action_required));
+  const CONTACTED = new Set([
+    "sent",
+    "followed_up",
+    "responsive",
+    "called",
+    "quoted",
+  ]);
+  const outreachStates = subs.map((s) => s.outreach_state ?? "");
+  const outreachDraftOnly =
+    (opp.stage === "outreach" || opp.stage === "sub_research") &&
+    (riskFlags.includes("outreach_send_failed") ||
+      (outreachStates.length > 0 &&
+        outreachStates.every((st) => !CONTACTED.has(st)) &&
+        outreachStates.some((st) =>
+          ["draft", "send_failed", "email_unverified"].includes(st)
+        )));
+
   const readiness = computeBidReadiness({
     stage: opp.stage,
     status: opp.status,
@@ -147,6 +170,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
     packageReady: bid?.package_ready ?? null,
     humanFlags: (bid?.human_flags as string[] | null) ?? null,
     humanActionRequired: opp.human_action_required,
+    tier: opp.tier,
+    pastPerfBlocked,
     completenessMissing: analysis?.completeness?.missing ?? null,
     packageBlockers: (bid?.validation_json as { blockers?: string[] } | null)?.blockers ?? null,
   });
@@ -264,6 +289,12 @@ export default async function OpportunityPage({ params }: { params: { id: string
         <OpportunityWorkspace
           banner={
             <div className="space-y-3 px-5 pt-4 sm:px-6">
+              <div className="rounded-md border border-border/55 bg-surface/80 px-3 py-2.5 dark:border-white/10">
+                <p className="mb-1.5 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  Where this stands
+                </p>
+                <OpportunityJourney stage={opp.stage} />
+              </div>
               <div id="next" data-guide-target="next-step">
                 <NextStepBanner
                   opportunityId={opp.id}
@@ -277,12 +308,15 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   hasBid={Boolean(bid)}
                   bidSubmitted={Boolean(bid?.submitted_at)}
                   outcome={bid?.outcome ?? null}
-                  pastPerfBlocked={opp.past_perf_classification === "prime_only"}
+                  pastPerfBlocked={pastPerfBlocked}
                   automationPaused={automation.paused}
                   hoursSinceUpdate={hoursSinceUpdate}
                   expired={
                     opp.status === "archived" && (opp.risk_flags ?? []).includes("expired")
                   }
+                  hasQuotes={quotesEntered > 0}
+                  outreachDraftOnly={outreachDraftOnly}
+                  riskFlags={opp.risk_flags}
                 />
               </div>
               <AttentionStrip readiness={readiness} opportunityId={opp.id} />
@@ -362,8 +396,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
           requirements={
             <div
               className="scroll-mt-editorial space-y-4 px-5 py-8 sm:px-6"
-              id="overview"
-              data-guide-target="overview"
+              id="requirements"
+              data-guide-target="requirements"
             >
               <SectionHeading eyebrow="Requirements" title="Key facts">
                 Deadline countdown, value, identity, and eligibility details.
@@ -504,27 +538,16 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
                     Triage
                   </h2>
-                  <div className="flex gap-2">
-                    <ActionButton
-                      endpoint={`/api/opportunities/${opp.id}/action`}
-                      body={{ action: "pursue" }}
-                      className="btn-success"
-                    >
-                      Pursue
-                    </ActionButton>
-                    <ActionButton
-                      endpoint={`/api/opportunities/${opp.id}/action`}
-                      body={{ action: "dismiss" }}
-                      className="btn-danger"
-                      confirm="Dismiss this opportunity?"
-                    >
-                      Dismiss
-                    </ActionButton>
-                  </div>
+                  <p className="text-sm text-slate-600">
+                    Pursue or pass from the Next step banner at the top of this page.
+                  </p>
+                  <a href="#next-step" className="btn-ghost text-xs">
+                    Use Next step above
+                  </a>
                 </div>
               )}
 
-              {opp.past_perf_classification === "prime_only" && (
+              {pastPerfBlocked && (
                 <div className="card border-risk/50 bg-risk/5">
                   <p className="text-sm font-medium text-risk">
                     Blocked: prime-only past performance required
@@ -535,6 +558,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     so automation stopped here. You can pursue it anyway as an exception, or
                     dismiss it.
                   </p>
+                  <a href="#next-step" className="btn-ghost mt-2 inline-flex text-xs">
+                    Use Next step above
+                  </a>
                 </div>
               )}
             </div>
@@ -811,9 +837,12 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   title="Where this bid stands"
                   tip={termTip("workflow")}
                 >
-                  Completed steps, the active step, and who owns the next move.
+                  Same tracker as the top banner. Use Next step for the action to take now.
                 </SectionHeading>
                 <OpportunityJourney stage={opp.stage} />
+                <a href="#next-step" className="btn-ghost text-xs">
+                  Jump to Next step
+                </a>
               </div>
 
               <div id="activity" className="scroll-mt-editorial space-y-2">

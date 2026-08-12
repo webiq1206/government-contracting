@@ -65,4 +65,26 @@ describe("computeBidReadiness", () => {
     expect(result.blocked.length).toBeGreaterThan(0);
     expect(result.packageReady).toBe(false);
   });
+
+  it("uses plain-English flag labels and triage-specific human items", () => {
+    const result = computeBidReadiness({
+      stage: "scoring",
+      status: "open",
+      deadline: null,
+      riskFlags: ["incomplete_scoring", "stalled_scoring"],
+      requiredTrades: [],
+      quotes: [],
+      tradeCoverageUncovered: 0,
+      subsFound: 0,
+      hasBid: false,
+      humanActionRequired: true,
+      tier: "review",
+    });
+    const flag = result.actionRequired.find((a) => a.key === "flag-incomplete_scoring");
+    expect(flag?.label).toBe("Needs a human to finish scoring");
+    expect(result.actionRequired.some((a) => a.key === "flag-stalled_scoring")).toBe(
+      false
+    );
+    expect(result.actionRequired.some((a) => a.key === "human-triage")).toBe(true);
+  });
 });

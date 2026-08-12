@@ -54,12 +54,17 @@ export async function POST(req: Request) {
         let plan = (session.metadata?.plan_key as PlanKey) || "standard";
         let priceId: string | null = null;
         let periodEnd: string | null = null;
+        let trialEndsAt: string | null = null;
+        let status = "active";
         if (subId) {
           const sub = await stripe.subscriptions.retrieve(subId);
           priceId = sub.items.data[0]?.price?.id ?? null;
           plan = planFromPriceId(priceId) !== "none" ? planFromPriceId(priceId) : plan;
+          status = sub.status || "active";
           const period = (sub as { current_period_end?: number }).current_period_end;
           periodEnd = period ? new Date(period * 1000).toISOString() : null;
+          const trialEnd = (sub as { trial_end?: number | null }).trial_end;
+          trialEndsAt = trialEnd ? new Date(trialEnd * 1000).toISOString() : null;
         }
         const priceLocked =
           session.metadata?.price_locked === "true" || plan === "founding";
@@ -69,9 +74,10 @@ export async function POST(req: Request) {
           stripe_price_id: priceId,
           plan_key: plan,
           plan_amount_cents: amountCentsForPlan(plan),
-          subscription_status: "active",
+          subscription_status: status,
           price_locked: priceLocked,
           current_period_end: periodEnd,
+          trial_ends_at: trialEndsAt,
           cancel_at_period_end: false,
         });
         await trackEvent({
@@ -106,6 +112,7 @@ export async function POST(req: Request) {
           plan = "standard";
         }
         const period = (sub as { current_period_end?: number }).current_period_end;
+        const trialEnd = (sub as { trial_end?: number | null }).trial_end;
         const patch: Parameters<typeof updateOrganizationBilling>[1] = {
           stripe_subscription_id: sub.id,
           plan_key: plan,
@@ -116,6 +123,7 @@ export async function POST(req: Request) {
               : sub.status,
           cancel_at_period_end: Boolean(sub.cancel_at_period_end),
           current_period_end: period ? new Date(period * 1000).toISOString() : null,
+          trial_ends_at: trialEnd ? new Date(trialEnd * 1000).toISOString() : null,
           price_locked: Boolean(org?.price_locked) || plan === "founding",
         };
         if (!org?.price_locked) patch.stripe_price_id = priceId;

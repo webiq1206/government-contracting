@@ -375,7 +375,24 @@ export const outreach: AgentDefinition = {
       ]);
     }
 
-    await query(`update opportunities set stage='outreach' where id=$1`, [opportunityId]);
+    // Only claim "Contacting subs" when a message actually left the building.
+    // Drafts / failed sends keep the prior stage and flag the operator instead.
+    if (sent) {
+      await query(`update opportunities set stage='outreach' where id=$1`, [opportunityId]);
+    } else {
+      await query(
+        `update opportunities
+           set human_action_required=true,
+               risk_flags = (
+                 select array_agg(distinct x)
+                 from unnest(
+                   coalesce(risk_flags, '{}') || array['outreach_send_failed']::text[]
+                 ) as x
+               )
+         where id=$1`,
+        [opportunityId]
+      );
+    }
 
     // Every sub we actually email becomes a call card so the operator can follow
     // up by phone; not everyone replies to email. A later reply upgrades this

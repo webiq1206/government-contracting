@@ -175,4 +175,40 @@ describe("deriveStep", () => {
     }
     expect(stepHasAction(deriveStep(input({ expired: true })))).toBe(true);
   });
+
+  it("uses present-tense labels for the current journey chip", () => {
+    const current = journeySteps("scoring").find((s) => s.status === "current")!;
+    expect(current.label).toBe("Scoring");
+    const done = journeySteps("analysis").find((s) => s.stage === "scoring")!;
+    expect(done.label).toBe("Scored");
+  });
+
+  it("splits monitoring vs scoring copy", () => {
+    expect(deriveStep(input({ stage: "monitoring" })).title).toMatch(/preparing/i);
+    expect(deriveStep(input({ stage: "scoring" })).title).toMatch(/scoring/i);
+  });
+
+  it("warns when outreach is draft-only instead of waiting on subs", () => {
+    const step = deriveStep(
+      input({ stage: "outreach", outreachDraftOnly: true })
+    )!;
+    expect(step.waitingOn).toBe("you");
+    expect(step.href).toBe("/settings/integrations");
+  });
+
+  it("uses stalled risk-flag reasoning when present", () => {
+    const step = deriveStep(
+      input({
+        stage: "analysis",
+        hoursSinceUpdate: 0,
+        riskFlags: ["stalled_analysis"],
+      })
+    )!;
+    expect(step.tone).toBe("warn");
+    expect(step.why).toMatch(/solicitation analysis/i);
+  });
+
+  it("includes what happens next on won", () => {
+    expect(deriveStep(input({ stage: "won" })).after).toBeTruthy();
+  });
 });

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { MouseEvent } from "react";
 import { ActionButton } from "./action-button";
+import { openEditorialTarget } from "@/lib/editorial-nav";
 import { deriveStep, PARTY_LABEL, type StepInput } from "@/lib/domain/journey";
 
 /**
@@ -15,6 +16,16 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
   const step = deriveStep(input);
   const hasLink = Boolean(step.cta && (step.href || step.anchor));
   const linkClass = `${step.decision ? "btn-ghost" : "btn-primary"} text-xs`;
+  const waitingBadge =
+    step.waitingOn === "you"
+      ? "bg-pursue/10 text-pursue"
+      : step.waitingOn === "system"
+        ? "bg-gold/15 text-foreground"
+        : "bg-muted text-muted-foreground";
+  const waitingText =
+    step.waitingOn === "you"
+      ? "Action required"
+      : `Waiting on ${PARTY_LABEL[step.waitingOn]}`;
 
   return (
     <div
@@ -32,20 +43,15 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
           <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
             Next step
           </h2>
-          <span
-            className={`badge ${
-              step.waitingOn === "you"
-                ? "bg-pursue/10 text-pursue"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            waiting on {PARTY_LABEL[step.waitingOn]}
-          </span>
+          <span className={`badge ${waitingBadge}`}>{waitingText}</span>
         </div>
         <p className="mt-1.5 text-base font-semibold text-foreground">{step.title}</p>
         <p className="mt-0.5 text-sm text-slate-600">{step.why}</p>
         {step.after && (
-          <p className="mt-0.5 text-xs text-slate-500">Then: {step.after}</p>
+          <p className="mt-2 text-sm text-slate-700">
+            <span className="font-semibold text-foreground">What happens next: </span>
+            {step.after}
+          </p>
         )}
       </div>
 
@@ -104,7 +110,10 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
           <a
             href={step.anchor}
             className={linkClass}
-            onClick={(e) => openInPageTarget(e, step.anchor!)}
+            onClick={(e) => {
+              e.preventDefault();
+              openEditorialTarget(step.anchor!);
+            }}
           >
             {step.cta} {step.decision ? "" : "↓"}
           </a>
@@ -114,22 +123,8 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
   );
 }
 
-/** Open the matching editorial tab before scrolling to an in-page target. */
-function openInPageTarget(e: MouseEvent<HTMLAnchorElement>, anchor: string) {
-  const target = anchor.replace(/^#/, "");
-  if (!target || typeof window === "undefined") return;
+/** @deprecated Prefer openEditorialTarget from lib/editorial-nav. */
+export function openInPageTarget(e: MouseEvent<HTMLAnchorElement>, anchor: string) {
   e.preventDefault();
-  window.dispatchEvent(
-    new CustomEvent("editorial-open-tab", { detail: { target } })
-  );
-  const url = new URL(window.location.href);
-  url.hash = target;
-  window.history.replaceState(null, "", url.toString());
-  // Wait for the tab panel to paint so scroll-margin clears the sticky tab bar.
-  window.setTimeout(() => {
-    const el =
-      document.querySelector<HTMLElement>(`[data-guide-target="${target}"]`) ||
-      document.getElementById(target);
-    el?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 50);
+  openEditorialTarget(anchor);
 }

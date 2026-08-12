@@ -10,6 +10,7 @@ import {
   FOUNDING_MONTHLY_USD,
   STANDARD_MONTHLY_CENTS,
   STANDARD_MONTHLY_USD,
+  TRIAL_DAYS,
   type PlanKey,
 } from "./prices";
 
@@ -94,12 +95,16 @@ export async function createCheckoutSession(input: {
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     client_reference_id: input.orgId,
+    // Collect a card up front so Stripe can charge automatically when the
+    // 7-day trial ends unless the customer cancels in the Billing portal.
+    payment_method_collection: "always",
     metadata: {
       org_id: input.orgId,
       plan_key: input.plan,
       price_locked: input.plan === "founding" ? "true" : "false",
     },
     subscription_data: {
+      trial_period_days: TRIAL_DAYS,
       metadata: {
         org_id: input.orgId,
         plan_key: input.plan,

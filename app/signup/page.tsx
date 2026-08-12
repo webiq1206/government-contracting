@@ -69,7 +69,8 @@ export default async function SignupPage({
               <span className="num font-semibold text-foreground">
                 ${FOUNDING_MONTHLY_USD.toLocaleString()}/month
               </span>
-              , locked in while you stay subscribed. Standard is $
+              , locked in while you stay subscribed. Includes a free 7-day trial; after that
+              your card is charged automatically unless you cancel. Standard is $
               {STANDARD_MONTHLY_USD.toLocaleString()}/month after the offer ends.
             </>
           ) : (
@@ -78,7 +79,8 @@ export default async function SignupPage({
               <span className="num font-semibold text-foreground">
                 ${STANDARD_MONTHLY_USD.toLocaleString()}/month
               </span>
-              .
+              . Includes a free 7-day trial; after that your card is charged automatically
+              unless you cancel.
             </>
           )}
         </p>

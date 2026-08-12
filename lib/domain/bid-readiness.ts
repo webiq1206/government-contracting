@@ -4,6 +4,8 @@
  * items for this opportunity (not arbitrary weights).
  */
 
+import { flagLabel } from "@/lib/flag-labels";
+
 export type AttentionAction = {
   label: string;
   href?: string;
@@ -70,6 +72,8 @@ export function computeBidReadiness(input: {
   packageReady?: boolean | null;
   humanFlags?: string[] | null;
   humanActionRequired?: boolean;
+  tier?: string | null;
+  pastPerfBlocked?: boolean;
   completenessMissing?: CompletenessMissing[] | null;
   packageBlockers?: string[] | null;
 }): BidReadiness {
@@ -244,17 +248,55 @@ export function computeBidReadiness(input: {
   }
 
   if (input.humanActionRequired && input.stage !== "dismissed") {
-    actionRequired.push({
-      key: "human",
-      label: "Your decision or input is needed",
-      why: "The system paused here for a judgment call or missing human step.",
-      who: "admin",
-      how: "Use the Next step banner actions, or resolve the items listed above.",
-      href: "#next-step",
-      action: { label: "Take care of this", href: "#next-step" },
-      severity: "action",
-      bucket: "actionRequired",
-    });
+    if (input.pastPerfBlocked) {
+      actionRequired.push({
+        key: "human-past-perf",
+        label: "Decide whether to pursue with prime-only past performance",
+        why: "The agency wants past performance from your company itself. Automation stopped for your call.",
+        who: "admin",
+        how: "Use Pursue or Dismiss in the Next step banner.",
+        href: "#next-step",
+        action: { label: "Decide in Next step", href: "#next-step" },
+        severity: "action",
+        bucket: "actionRequired",
+      });
+    } else if (input.tier === "review") {
+      actionRequired.push({
+        key: "human-triage",
+        label: "Decide: pursue or pass this borderline score",
+        why: "This scored in the middle band. If you do not act before the timer, it auto-dismisses.",
+        who: "admin",
+        how: "Use Pursue or Dismiss in the Next step banner after reading the brief.",
+        href: "#next-step",
+        action: { label: "Decide in Next step", href: "#next-step" },
+        severity: "action",
+        bucket: "actionRequired",
+      });
+    } else if ((input.riskFlags ?? []).some((f) => f.includes("deadline"))) {
+      actionRequired.push({
+        key: "human-deadline",
+        label: "Deadline pressure needs your judgment",
+        why: "The close date is near relative to remaining work. Confirm pursuit still makes sense.",
+        who: "admin",
+        how: "Review Coverage and Pricing, then act from the Next step banner.",
+        href: "#next-step",
+        action: { label: "Open Next step", href: "#next-step" },
+        severity: "action",
+        bucket: "actionRequired",
+      });
+    } else {
+      actionRequired.push({
+        key: "human",
+        label: "Your decision or input is needed",
+        why: "Brost Co paused here for a judgment call or a missing human step.",
+        who: "admin",
+        how: "Use the Next step banner actions, or resolve the items listed above.",
+        href: "#next-step",
+        action: { label: "Open Next step", href: "#next-step" },
+        severity: "action",
+        bucket: "actionRequired",
+      });
+    }
   }
 
   for (const flag of input.riskFlags ?? []) {
@@ -272,16 +314,18 @@ export function computeBidReadiness(input: {
       // Already represented via completeness / trade items when possible.
       if ((input.completenessMissing ?? []).length > 0) continue;
     }
+    if (flag.startsWith("stalled_")) continue; // surfaced via Next step stall copy
+    if (flag.startsWith("auto_retried_")) continue;
     actionRequired.push({
       key: `flag-${flag}`,
-      label: flag.replace(/_/g, " "),
+      label: flagLabel(flag),
       why: "Flagged during scoring or analysis. Review before you commit more effort.",
       who: "either",
-      how: "Open Overview flags or re-run the related agent after fixing source data.",
-      href: "#overview",
+      how: "Open Requirements flags or re-run the related agent after fixing source data.",
+      href: "#requirements",
       action: {
-        label: "Review flag",
-        href: "#overview",
+        label: "Review in Requirements",
+        href: "#requirements",
         modal: "review-missing",
       },
       severity: flag.includes("deadline") || flag.includes("expir") ? "action" : "warn",
@@ -343,12 +387,12 @@ export function computeBidReadiness(input: {
   for (const f of input.humanFlags ?? []) {
     actionRequired.push({
       key: `hf-${f}`,
-      label: f.replace(/_/g, " "),
+      label: flagLabel(f),
       why: "Raised while assembling the bid package.",
       who: "admin",
-      how: "Open Submission and clear the flagged item.",
+      how: "Open the package checklist and clear the flagged item.",
       href: "#submission",
-      action: { label: "Open submission", href: "#submission" },
+      action: { label: "Open package checklist", href: "#submission" },
       severity: "warn",
       bucket: "actionRequired",
     });

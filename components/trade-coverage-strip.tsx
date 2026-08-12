@@ -1,8 +1,12 @@
+"use client";
+
+import type { MouseEvent } from "react";
 import { InfoTip } from "@/components/info-tip";
 import { SubWorkNeeded } from "@/components/sub-work-needed";
 import { outreachLabel } from "@/lib/domain/sub-contact";
 import { resolveSubWork } from "@/lib/domain/sub-work";
 import type { TradeCoverageSummary } from "@/lib/domain/trade-coverage";
+import { openEditorialTarget } from "@/lib/editorial-nav";
 
 export interface TradeCoverageSubLine {
   trade: string | null;
@@ -122,6 +126,7 @@ export function TradeCoverageStrip({
                     <a
                       href={cta.href}
                       className="btn-primary mt-2 inline-flex text-xs"
+                      onClick={(e) => onHashNav(e, cta.href)}
                     >
                       {cta.label}
                     </a>
@@ -190,10 +195,16 @@ function Metric({
   );
   if (href) {
     return (
-      <a href={href} className="hover:text-accent">
+      <a href={href} className="hover:text-accent" onClick={(e) => onHashNav(e, href)}>
         {inner}
       </a>
     );
   }
   return <span>{inner}</span>;
+}
+
+function onHashNav(e: MouseEvent<HTMLAnchorElement>, href: string) {
+  if (!href.startsWith("#")) return;
+  e.preventDefault();
+  openEditorialTarget(href);
 }

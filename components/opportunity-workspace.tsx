@@ -7,6 +7,7 @@ const HASH_ALIASES: Record<string, string> = {
   score: "brief",
   overview: "requirements",
   requirements: "requirements",
+  "key-facts": "requirements",
   coverage: "coverage",
   subs: "coverage",
   quotes: "pricing",

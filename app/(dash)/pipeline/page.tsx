@@ -29,7 +29,7 @@ const LANES: { key: LaneKey; label: string; blurb: string; badge: string }[] = [
   },
   {
     key: "system",
-    label: "System is working",
+    label: "Brost Co is working",
     blurb: "Scoring, analysis, and research running on their own.",
     badge: "bg-slate-200 text-slate-600",
   },
@@ -50,6 +50,15 @@ const LANES: { key: LaneKey; label: string; blurb: string; badge: string }[] = [
 function laneFor(o: Opportunity): LaneKey {
   if (o.stage === "won" || o.stage === "lost") return "decided";
   if (o.human_action_required) return "you";
+  // Human-owned mid/late pipeline even when human_action_required was cleared
+  // after a partial quote save.
+  if (
+    o.stage === "call_queue" ||
+    o.stage === "quote_entry" ||
+    o.stage === "bid_building"
+  ) {
+    return "you";
+  }
   const party = stageParty(o.stage);
   if (party === "you") return "you";
   if (party === "subs" || party === "agency") return "waiting";

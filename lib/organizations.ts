@@ -18,6 +18,7 @@ export interface Organization {
   price_locked: boolean;
   cancel_at_period_end: boolean;
   current_period_end: string | null;
+  trial_ends_at: string | null;
   created_at: string;
 }
 
@@ -128,6 +129,7 @@ export async function updateOrganizationBilling(
     price_locked: boolean;
     cancel_at_period_end: boolean;
     current_period_end: string | null;
+    trial_ends_at: string | null;
   }>
 ): Promise<void> {
   const fields: string[] = [];

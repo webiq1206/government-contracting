@@ -1,5 +1,5 @@
 /**
- * Founding customer promotion: $597/mo locked for life of the subscription.
+ * Founding customer promotion: $497/mo locked for life of the subscription.
  * Window is 5 days from go-live. Ends_at is stored in app_settings and is
  * never a hardcoded "5 days remaining" string in the UI.
  */

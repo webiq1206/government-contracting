@@ -74,7 +74,7 @@ export default async function BillingSettingsPage({
     </Link>
   ) : canCheckout ? (
     <Link href="/api/billing/checkout?plan=standard" className="btn-primary">
-      Start subscription
+      Start 7-day free trial
     </Link>
   ) : null;
 
@@ -122,11 +122,19 @@ export default async function BillingSettingsPage({
               </dd>
             </div>
             <div>
-              <dt className="label">{org?.cancel_at_period_end ? "Access until" : "Renews on"}</dt>
+              <dt className="label">
+                {status === "trialing"
+                  ? "Trial ends"
+                  : org?.cancel_at_period_end
+                    ? "Access until"
+                    : "Renews on"}
+              </dt>
               <dd className="mt-0.5 text-slate-800">
-                {org?.current_period_end
-                  ? shortDate(org.current_period_end)
-                  : "-"}
+                {status === "trialing" && org?.trial_ends_at
+                  ? shortDate(org.trial_ends_at)
+                  : org?.current_period_end
+                    ? shortDate(org.current_period_end)
+                    : "-"}
               </dd>
             </div>
             <div>

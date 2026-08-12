@@ -113,7 +113,7 @@ export function JsonLd({
             priceCurrency: "USD",
             category: "Subscription",
             description:
-              "Limited founding rate locked for the life of an active subscription.",
+              "Limited founding rate locked for the life of an active subscription. Includes a free 7-day trial; then billed monthly unless canceled.",
             priceValidUntil: promoEndsAt ?? undefined,
             url: `${SITE_URL}/signup?plan=founding`,
           },
@@ -123,6 +123,8 @@ export function JsonLd({
             price: String(standardMonthly),
             priceCurrency: "USD",
             category: "Subscription",
+            description:
+              "Standard monthly subscription with a free 7-day trial; then billed monthly unless canceled.",
             url: `${SITE_URL}/signup?plan=standard`,
           },
         ]
@@ -133,14 +135,16 @@ export function JsonLd({
             price: String(standardMonthly),
             priceCurrency: "USD",
             category: "Subscription",
+            description:
+              "Standard monthly subscription with a free 7-day trial; then billed monthly unless canceled.",
             url: `${SITE_URL}/signup?plan=standard`,
           },
         ],
   };
 
   const pricingAnswer = promoActive
-    ? `Standard pricing is $${standardMonthly} per month. Founding customers who join during the launch window lock in $${foundingMonthly} per month for as long as they remain subscribed.`
-    : `Brost Co is $${standardMonthly} per month.`;
+    ? `Standard pricing is $${standardMonthly} per month. Founding customers who join during the launch window lock in $${foundingMonthly} per month for as long as they remain subscribed. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`
+    : `Brost Co is $${standardMonthly} per month. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`;
 
   const faq = {
     "@context": "https://schema.org",

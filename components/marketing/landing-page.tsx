@@ -4,7 +4,25 @@ import { Wordmark } from "@/components/wordmark";
 import { BrandMark } from "@/components/brand-mark";
 import { PromoCountdown } from "./promo-countdown";
 import { LandingFaq } from "./landing-faq";
+import { LandingMobileNav } from "./landing-mobile-nav";
 import "./landing.css";
+
+/** Thin horizontal arrow for primary CTAs (replaces diagonal ↗). */
+function CtaArrow() {
+  return (
+    <span className="btn-arrow" aria-hidden="true">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
 
 export interface LandingPageProps {
   promoActive: boolean;
@@ -101,14 +119,12 @@ export function LandingPage({
   const monthlySavings = currency(standardMonthly - foundingMonthly);
   const showCountdown = promoActive && promoEndsAt;
   const primaryCta = promoActive
-    ? "Start with founding access"
-    : "Get started";
-  const priceCta = promoActive
-    ? `Lock in ${foundingLabel} per month`
-    : `Subscribe at ${standardLabel} per month`;
+    ? "Start founding free trial"
+    : "Start free trial";
+  const priceCta = "Start 7-day free trial";
   const pricingFaq = promoActive
-    ? `Standard pricing is ${standardLabel} per month. Founding customers who join during the launch window lock in ${foundingLabel} per month for as long as they remain subscribed.`
-    : `Brost Co is ${standardLabel} per month.`;
+    ? `Standard pricing is ${standardLabel} per month. Founding customers who join during the launch window lock in ${foundingLabel} per month for as long as they remain subscribed. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`
+    : `Brost Co is ${standardLabel} per month. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`;
   const faqItems = [
     ...FAQ_BASE.slice(0, 4),
     { q: "How much does Brost Co cost?", a: pricingFaq },
@@ -132,23 +148,10 @@ export function LandingPage({
           <div className="nav-actions">
             <Link href={loginHref}>Log in</Link>
             <Link className="btn btn-small" href={signupHref}>
-              Get started <span aria-hidden="true">↗</span>
+              Get started <CtaArrow />
             </Link>
           </div>
-          <details className="mobile-nav">
-            <summary aria-label="Open navigation">
-              <i />
-              <i />
-            </summary>
-            <nav aria-label="Mobile navigation">
-              <a href="#platform">Platform</a>
-              <a href="#workflow">How it works</a>
-              <a href="#pricing">Pricing</a>
-              <a href="#faq">FAQ</a>
-              <Link href={loginHref}>Log in</Link>
-              <Link href={signupHref}>Get started</Link>
-            </nav>
-          </details>
+          <LandingMobileNav signupHref={signupHref} loginHref={loginHref} />
         </header>
 
         <section className="hero" id="top">
@@ -169,7 +172,7 @@ export function LandingPage({
               </p>
               <div className="hero-actions">
                 <Link className="btn" href={signupHref}>
-                  {primaryCta} <span aria-hidden="true">↗</span>
+                  {primaryCta} <CtaArrow />
                 </Link>
                 <a className="under-link" href="#split">
                   See who does the work <span aria-hidden="true">↓</span>
@@ -516,7 +519,7 @@ export function LandingPage({
                 forward. You step in for judgment, calls, and the final send.
               </p>
               <Link className="under-link" href={signupHref}>
-                Set up your company profile <span aria-hidden="true">↗</span>
+                Set up your company profile <CtaArrow />
               </Link>
             </div>
             <ol>
@@ -615,7 +618,10 @@ export function LandingPage({
               {promoActive && (
                 <aside>
                   <b>FOUNDING RATE</b>
-                  <span>Locked for the life of your active subscription.</span>
+                  <span>
+                    Locked for the life of your active subscription. Includes a free 7-day
+                    trial.
+                  </span>
                 </aside>
               )}
             </div>
@@ -633,6 +639,8 @@ export function LandingPage({
                   </div>
                   <p>
                     Save {monthlySavings} each month while founding enrollment remains open.
+                    Start with a free 7-day trial. After that, you are billed {foundingLabel}
+                    per month unless you cancel.
                   </p>
                 </>
               ) : (
@@ -641,7 +649,10 @@ export function LandingPage({
                     <strong>{standardLabel}</strong>
                     <span>/month</span>
                   </div>
-                  <p>Standard rate, billed monthly.</p>
+                  <p>
+                    Start with a free 7-day trial. After that, you are billed {standardLabel} per
+                    month unless you cancel.
+                  </p>
                 </>
               )}
               {showCountdown && (
@@ -657,7 +668,7 @@ export function LandingPage({
                 <li>✓ Today queue and complete pipeline visibility</li>
               </ul>
               <Link className="btn" href={signupHref}>
-                {priceCta} <span aria-hidden="true">↗</span>
+                {priceCta} <CtaArrow />
               </Link>
               <small>Final submission always requires your review and action.</small>
             </div>
@@ -697,7 +708,7 @@ export function LandingPage({
               You open Today each morning and act on the decisions that need you.
             </p>
             <Link className="btn" href={signupHref}>
-              {primaryCta} <span aria-hidden="true">↗</span>
+              {primaryCta} <CtaArrow />
             </Link>
           </div>
         </section>

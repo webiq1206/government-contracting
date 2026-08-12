@@ -1,7 +1,10 @@
 /** SaaS list prices in whole USD (display) and cents (Stripe). */
 
 export const STANDARD_MONTHLY_USD = 2997;
-export const FOUNDING_MONTHLY_USD = 597;
+export const FOUNDING_MONTHLY_USD = 497;
+
+/** Free trial length applied to every new Stripe Checkout subscription. */
+export const TRIAL_DAYS = 7;
 
 export const STANDARD_MONTHLY_CENTS = STANDARD_MONTHLY_USD * 100;
 export const FOUNDING_MONTHLY_CENTS = FOUNDING_MONTHLY_USD * 100;
