@@ -38,7 +38,7 @@ export default async function EmailLogPage({
       ...overrides,
     };
     if (merged.q) p.set("q", String(merged.q));
-    if (merged.status && merged.status !== "all") p.set("status", String(merged.status));
+    if (merged.status) p.set("status", String(merged.status));
     if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
     const qs = p.toString();
     return `/email-log${qs ? `?${qs}` : ""}`;
