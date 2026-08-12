@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
-    "@supabase/supabase-js": "^2.45.4",
+    "@supabase/supabase-js": "2.109.0",
     "@types/node": "^20.19.43",
     "@types/pg": "^8.20.0",
     "@types/react": "^18.3.31",
@@ -52,7 +52,7 @@
     "tsx": "^4.23.0",
     "twilio": "^5.3.5",
     "typescript": "^5.9.3",
-    "unpdf": "^0.12.2",
+    "unpdf": "^1.8.0",
     "zod": "^3.23.8"
   },
   "optionalDependencies": {
@@ -64,5 +64,8 @@
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.15",
     "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "tar": "^7.5.22"
   }
 }

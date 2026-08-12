@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     siteName: "Brost Co",
     images: [
       {
-        url: "/opengraph-image",
+        url: "/og.png",
         width: 1200,
         height: 630,
         alt: "Brost Co, Automated Government Procurement Software",
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     title: "Brost Co | Hard Parts of Government Contracting Done",
     description:
       "Brost Co watches SAM.gov, scores fit, emails subcontractors, and builds bid packages. You decide, call when needed, and submit.",
-    images: ["/twitter-image"],
+    images: ["/og.png"],
   },
   keywords: [
     "government contracting software",

@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     url: SITE_URL,
     images: [
       {
-        url: "/opengraph-image",
+        url: "/og.png",
         width: 1200,
         height: 630,
         alt: "Brost Co, Automated Government Procurement Software",
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Brost Co | Government Contracting Software",
     description: DESCRIPTION,
-    images: ["/twitter-image"],
+    images: ["/og.png"],
   },
 };
 

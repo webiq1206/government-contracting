@@ -1,14 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // In Cloud Run / containerised builds, webpack's WASM hasher (xxhash64) fails
-  // with "Cannot read properties of undefined (reading 'length')". Switching to
-  // the native Node.js sha256 hasher avoids the WASM initialisation entirely.
+  // Cloud Run / Replit builds have flaky webpack WASM (xxhash64) init. Prefer
+  // Node's sha256 hasher, and keep the build on the main thread so a worker
+  // crash cannot surface as Hash.update(undefined).
   webpack: (config) => {
     config.output.hashFunction = "sha256";
+    config.output.hashDigest = "hex";
     return config;
   },
   experimental: {
+    webpackBuildWorker: false,
     // The dashboard's server actions / route handlers import server-only packages.
     // Keep them external so Next never tries to bundle them into route code.
     serverComponentsExternalPackages: [
@@ -21,6 +23,7 @@ const nextConfig = {
       "googleapis",
       "@anthropic-ai/sdk",
       "resend",
+      "stripe",
       "pdf-lib",
       "docx",
       "unpdf",
