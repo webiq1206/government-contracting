@@ -21,11 +21,7 @@ export default async function RulesPage() {
         status="Pipeline guardrails"
         subtitle="Deadline warnings, minimum lead-time intake, and archive retention. Changes apply everywhere the moment you save."
       />
-      <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-4xl px-5 sm:px-6">
-          <AutomationRulesForm initial={rules} />
-        </div>
-      </div>
+      <AutomationRulesForm initial={rules} />
     </>
   );
 }

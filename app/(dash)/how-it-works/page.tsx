@@ -2,7 +2,10 @@ import Link from "next/link";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 
-export const dynamic = "force-static";
+// Must stay dynamic: this route lives under the auth dash layout, which reads
+// the session cookie. force-static made cookies unavailable and bounced every
+// visit through /login → /today.
+export const dynamic = "force-dynamic";
 
 /**
  * The whole Brost Co journey on one screen. Steps must stay aligned with
@@ -36,7 +39,7 @@ const WHO_LABEL: Record<Step["who"], string> = {
 };
 
 const WHO_BADGE: Record<Step["who"], string> = {
-  auto: "bg-slate-200 text-slate-600",
+  auto: "bg-muted text-slate-600",
   you: "bg-pursue/10 text-pursue",
   subs: "bg-review/15 text-review",
   agency: "bg-accent/10 text-accent-strong",
@@ -364,7 +367,7 @@ export default function HowItWorksPage() {
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Stay eligible to bid
                   </h3>
-                  <span className="badge bg-slate-200 text-slate-600">automatic + your renewals</span>
+                  <span className="badge bg-muted text-slate-600">automatic + your renewals</span>
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-slate-600">
                   Registrations, certifications, and insurance are checked daily
@@ -383,7 +386,7 @@ export default function HowItWorksPage() {
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Learn from every outcome
                   </h3>
-                  <span className="badge bg-slate-200 text-slate-600">automatic</span>
+                  <span className="badge bg-muted text-slate-600">automatic</span>
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-slate-600">
                   Wins and losses update subcontractor reliability and may propose
@@ -396,7 +399,7 @@ export default function HowItWorksPage() {
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Watch the automation when something stalls
                   </h3>
-                  <span className="badge bg-slate-200 text-slate-600">when needed</span>
+                  <span className="badge bg-muted text-slate-600">when needed</span>
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-slate-600">
                   Every agent action is logged on{" "}

@@ -64,7 +64,7 @@ export function tierColor(tier: string | null | undefined): string {
     case "dismiss":
       return "bg-dismiss/15 text-slate-400";
     default:
-      return "bg-ink-700 text-slate-300";
+      return "bg-muted text-muted-foreground";
   }
 }
 

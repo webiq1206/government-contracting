@@ -95,12 +95,12 @@ export default async function ProfilePage() {
       />
 
       <div
-        className="scroll-thin flex-1 overflow-y-auto"
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
         data-guide-target="profile"
         id="profile"
       >
         {!json ? (
-          <div className="p-5">
+          <div className="scroll-thin flex-1 overflow-y-auto p-5">
             <EmptyState
               title="No active company profile"
               description="Run npm run db:seed to create the default profile, or save a new profile below once the editor loads."
@@ -110,7 +110,7 @@ export default async function ProfilePage() {
           <EditorialTabs
             ariaLabel="Company profile sections"
             defaultTab="company"
-            stickyTopClass="md:top-[3.25rem]"
+            layout="fill"
             hashAliases={{
               profile: "company",
               scoring: "scoring",

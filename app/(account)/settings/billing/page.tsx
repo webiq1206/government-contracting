@@ -7,7 +7,7 @@ import {
   STANDARD_MONTHLY_USD,
 } from "@/lib/billing/prices";
 import { shortDate } from "@/lib/format";
-import { stripeEnabled } from "@/lib/billing/stripe";
+import { stripeEnabled } from "@/lib/billing/enabled";
 
 export const dynamic = "force-dynamic";
 
@@ -143,10 +143,12 @@ export default async function BillingSettingsPage({
               Company profile
             </Link>
           </div>
-          <p className="text-xs leading-relaxed text-slate-500">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             {hasStripeCustomer
               ? "Update payment method, view invoices, or cancel anytime in the Stripe customer portal. Founding rates stay in effect for the life of an active subscription and do not transfer to a new organization after cancellation."
-              : "Start a subscription to unlock the full platform. Founding rates stay in effect for the life of an active subscription."}
+              : isActive
+                ? "Your workspace is unlocked. Connect Stripe checkout when you are ready to manage invoices and renewals from the billing portal."
+                : "Start a subscription to unlock the full platform. Founding rates stay in effect for the life of an active subscription."}
           </p>
         </div>
       </div>

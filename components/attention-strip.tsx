@@ -20,7 +20,7 @@ export function AttentionStrip({
 
   return (
     <div id="attention" className="scroll-mt-12 space-y-3">
-      <div className="rounded-md border border-border bg-background px-4 py-4 sm:px-5">
+      <div className="rounded-md border border-border/55 bg-surface px-4 py-4 dark:border-white/10 sm:px-5">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
             <p className="eyebrow-gold">Submission readiness</p>

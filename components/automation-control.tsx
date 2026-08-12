@@ -55,22 +55,16 @@ export function AutomationControl({ state }: { state: AutomationState }) {
 /** Compact site-wide warning shown (only) while automation is paused. */
 export function AutomationPausedBanner({
   state,
-  variant = "light",
+  variant: _variant = "light",
 }: {
   state: AutomationState;
+  /** @deprecated Theme tokens cover both surfaces; kept for call-site compatibility. */
   variant?: "light" | "shell";
 }) {
   if (!state.paused) return null;
-  const shell = variant === "shell";
   return (
-    <div
-      className={`flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-3 ${
-        shell
-          ? "border-review/50 bg-review/15"
-          : "border-review/40 bg-review/10"
-      }`}
-    >
-      <p className={`text-sm ${shell ? "text-white/85" : "text-slate-800"}`}>
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-review/40 bg-review/10 px-4 py-3">
+      <p className="text-sm text-foreground">
         <span className="font-semibold">Everything is paused.</span> No monitoring, pipeline
         work, outreach email, digests, or SMS will happen until you resume.
       </p>

@@ -44,6 +44,7 @@ yarn-error.log*
 /test-results/
 /playwright-report/
 /.cache/
+/.theme-qa/
 
 # replit
 .upm/

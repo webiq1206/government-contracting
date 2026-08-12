@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CONTENT_CATEGORIES } from "@/lib/domain/content";
 import { shortDate } from "@/lib/format";
 import type { ContentCategory, ContentLibraryItem } from "@/lib/types";
 
-const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
-  CONTENT_CATEGORIES.map((c) => [c.value, c.label])
-);
+const CATEGORY_META = Object.fromEntries(
+  CONTENT_CATEGORIES.map((c) => [c.value, c])
+) as Record<ContentCategory, (typeof CONTENT_CATEGORIES)[number]>;
 
 interface FormState {
   id: string | null; // null = creating a new snippet
@@ -26,6 +26,8 @@ const EMPTY_FORM: FormState = {
   tags: "",
 };
 
+type FilterId = "all" | ContentCategory;
+
 /**
  * Content Library manager. The operator curates reusable, pre-approved snippets
  * here; the Bid Builder and Sources Sought Responder automatically pull the
@@ -33,13 +35,27 @@ const EMPTY_FORM: FormState = {
  */
 export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }) {
   const router = useRouter();
+  const [filter, setFilter] = useState<FilterId>("all");
   const [form, setForm] = useState<FormState | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const visible = useMemo(
+    () => (filter === "all" ? items : items.filter((i) => i.category === filter)),
+    [items, filter]
+  );
+
+  const activeHint =
+    filter === "all"
+      ? "Save short, reusable paragraphs once. Brost Co inserts the best match into proposals and Sources Sought replies. Tag each snippet (trade, agency, NAICS) so the right one is chosen."
+      : CATEGORY_META[filter].hint;
+
   function startNew() {
     setError(null);
-    setForm({ ...EMPTY_FORM });
+    setForm({
+      ...EMPTY_FORM,
+      category: filter === "all" ? "past_performance" : filter,
+    });
   }
   function startEdit(item: ContentLibraryItem) {
     setError(null);
@@ -111,15 +127,13 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
     }
   }
 
+  const selectedCategoryHint = form ? CATEGORY_META[form.category]?.hint : null;
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="max-w-2xl text-sm leading-relaxed text-slate-600">
-          Save the language you reuse across bids, your best past-performance
-          write-ups, capability statements, win themes, and technical approaches.
-          The automation pulls the most relevant snippets into each draft on its
-          own; the more specific your <span className="font-medium">tags</span>{" "}
-          (trades, agencies, NAICS, keywords), the better the match.
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          {activeHint}
         </p>
         {!form && (
           <button className="btn-primary shrink-0" onClick={startNew}>
@@ -128,13 +142,37 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
         )}
       </div>
 
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Filter snippets by type"
+      >
+        <FilterChip
+          active={filter === "all"}
+          onClick={() => setFilter("all")}
+          label={`All (${items.length})`}
+        />
+        {CONTENT_CATEGORIES.map((c) => {
+          const count = items.filter((i) => i.category === c.value).length;
+          return (
+            <FilterChip
+              key={c.value}
+              active={filter === c.value}
+              onClick={() => setFilter(c.value)}
+              label={`${c.label} (${count})`}
+              title={c.hint}
+            />
+          );
+        })}
+      </div>
+
       {/* Editor */}
       {form && (
         <div className="card space-y-3 border-accent bg-accent-soft">
           <p className="eyebrow text-accent-strong">
             {form.id ? "Edit snippet" : "New snippet"}
           </p>
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <div className="grid gap-3 sm:grid-cols-[1fr_minmax(12rem,16rem)]">
             <div>
               <label className="label mb-1 block">Title</label>
               <input
@@ -145,7 +183,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
               />
             </div>
             <div>
-              <label className="label mb-1 block">Category</label>
+              <label className="label mb-1 block">Snippet type</label>
               <select
                 className="input"
                 value={form.category}
@@ -161,11 +199,16 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
               </select>
             </div>
           </div>
+          {selectedCategoryHint && (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {selectedCategoryHint}
+            </p>
+          )}
           <div>
             <label className="label mb-1 block">Content</label>
             <textarea
               className="input min-h-[140px] resize-y font-normal"
-              placeholder="The reusable paragraph(s). Written as you'd want it to read in a proposal."
+              placeholder="The reusable paragraph(s). Write it the way you want it to read in a proposal."
               value={form.body}
               onChange={(e) => setForm({ ...form, body: e.target.value })}
             />
@@ -178,6 +221,9 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
               value={form.tags}
               onChange={(e) => setForm({ ...form, tags: e.target.value })}
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Tags help Brost Co pick this snippet for the right bid.
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <button className="btn-primary" onClick={save} disabled={busyId === "form"}>
@@ -192,15 +238,15 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
       )}
 
       {/* List */}
-      {items.length === 0 ? (
-        <div className="card text-sm text-slate-500">
-          No content yet. Add your first reusable snippet, once you have a few,
-          every bid narrative and Sources Sought response starts drawing on them
-          automatically.
+      {visible.length === 0 ? (
+        <div className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-muted-foreground">
+          {items.length === 0
+            ? "No snippets yet. Add one when you have language you reuse on bids. Brost Co will pull matching snippets into drafts automatically."
+            : "No snippets in this type yet. Switch to All, or add a new snippet for this type."}
         </div>
       ) : (
         <ul className="space-y-2">
-          {items.map((item) => (
+          {visible.map((item) => (
             <li
               key={item.id}
               className={`card ${item.is_active ? "" : "opacity-60"}`}
@@ -208,15 +254,18 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-slate-900">{item.title}</span>
-                    <span className="badge bg-surface text-slate-600">
-                      {CATEGORY_LABEL[item.category] ?? item.category}
+                    <span className="font-medium text-foreground">{item.title}</span>
+                    <span
+                      className="badge bg-muted text-muted-foreground"
+                      title={CATEGORY_META[item.category]?.hint}
+                    >
+                      {CATEGORY_META[item.category]?.label ?? item.category}
                     </span>
                     {!item.is_active && (
-                      <span className="badge bg-slate-200 text-slate-500">disabled</span>
+                      <span className="badge bg-muted text-muted-foreground">disabled</span>
                     )}
                   </div>
-                  <p className="mt-1 line-clamp-2 text-sm text-slate-600">{item.body}</p>
+                  <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.body}</p>
                   {item.tags.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {item.tags.map((t) => (
@@ -226,7 +275,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
                       ))}
                     </div>
                   )}
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Updated {shortDate(item.updated_at)}
                   </p>
                 </div>
@@ -260,5 +309,33 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
         </ul>
       )}
     </div>
+  );
+}
+
+function FilterChip({
+  active,
+  onClick,
+  label,
+  title,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={
+        active
+          ? "rounded-md border border-foreground/25 bg-foreground px-2.5 py-1 text-xs font-medium text-background"
+          : "rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+      }
+    >
+      {label}
+    </button>
   );
 }

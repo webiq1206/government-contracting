@@ -4,7 +4,9 @@ import { currentUser } from "@/lib/auth";
 import { Suspense } from "react";
 import { ToastProvider } from "@/components/toaster";
 import { GuideWizard } from "@/components/guide-wizard";
+import { ThemeWordmark } from "@/components/theme-wordmark";
 import { Wordmark } from "@/components/wordmark";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { subscriptionAllowsAccess } from "@/lib/organizations";
 
@@ -13,7 +15,7 @@ import { subscriptionAllowsAccess } from "@/lib/organizations";
  * failures cannot loop through the dash subscription gate.
  *
  * Header behaviour:
- *  - Subscribed:   Compact dark ink bar (matches the dash mobile header)
+ *  - Subscribed:   Compact bar matching the dash mobile header
  *                  + MobileTabBar so Today / Calls / Pipeline / Review are
  *                  reachable without going back to the dash layout.
  *  - Unsubscribed: Standard light checkout header with "Complete checkout" CTA.
@@ -33,28 +35,27 @@ export default async function AccountLayout({
 
   return (
     <ToastProvider>
-      <div className="flex min-h-dvh flex-col bg-background">
+      <div className="flex min-h-dvh flex-col bg-background text-foreground">
         {subscribed ? (
-          /* ── Subscribed header: matches the dash ink bar ── */
-          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/10 bg-ink px-3">
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 bg-background px-3 dark:border-white/10">
             <Link
               href="/today"
-              className="inline-flex shrink-0 items-center"
-              style={{ height: "1.75rem" }}
+              className="inline-flex min-w-0 max-w-[42%] items-center overflow-hidden"
+              style={{ height: "1.5rem" }}
               aria-label="Brost Co Today"
             >
-              <Wordmark variant="light" className="h-full w-auto" />
+              <ThemeWordmark className="h-full w-auto max-w-full" />
             </Link>
             <div className="flex-1" />
+            <ThemeToggle compact />
             <Link
               href="/today"
-              className="text-sm text-white/50 hover:text-white/90 transition-colors"
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               ← Today
             </Link>
           </header>
         ) : (
-          /* ── Unsubscribed header: checkout CTA ── */
           <header className="flex shrink-0 items-center justify-between border-b border-border bg-background px-5 py-3">
             <Link
               href="/"
@@ -77,8 +78,6 @@ export default async function AccountLayout({
         </main>
       </div>
 
-      {/* Bottom nav bar for subscribed users so Today / Calls / Pipeline / Review
-          are reachable directly from the billing page on mobile. */}
       {subscribed && <MobileTabBar reviewCount={0} callCount={0} />}
 
       <Suspense fallback={null}>

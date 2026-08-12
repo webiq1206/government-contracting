@@ -33,11 +33,11 @@ export const dynamic = "force-dynamic";
  */
 
 const ROW =
-  "group flex flex-col gap-3 border-b border-white/10 px-1 py-4 transition-colors hover:bg-white/[0.02] sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-1.5";
+  "group flex flex-col gap-3 border-b border-border/55 px-1 py-4 transition-colors hover:bg-muted/40 dark:border-white/10 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-1.5";
 
 function CtaArrow({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-white/70 transition-colors group-hover:text-gold">
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-gold">
       {label}
       <span aria-hidden className="text-gold">
         ↗
@@ -89,7 +89,7 @@ function OppActionRow({
       className={`${ROW} ${focused ? "focus-rail pl-3" : ""}`}
     >
       {n && (
-        <span className="font-mono text-[9px] tracking-[0.08em] text-white/30 sm:w-8">
+        <span className="font-mono text-[9px] tracking-[0.08em] text-muted-foreground sm:w-8">
           {n}
         </span>
       )}
@@ -97,10 +97,10 @@ function OppActionRow({
         <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-gold">
           {category}
         </p>
-        <p className="mt-1 text-sm font-medium text-white sm:truncate">
+        <p className="mt-1 text-sm font-medium text-foreground sm:truncate">
           {o.title ?? "Untitled opportunity"}
         </p>
-        <p className="mt-0.5 text-xs text-white/40 sm:truncate">{meta}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground sm:truncate">{meta}</p>
       </div>
       <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end sm:gap-3">
         {party && !inlineTriage && (
@@ -108,13 +108,13 @@ function OppActionRow({
             className={`badge ${
               party === "you"
                 ? "bg-pursue/20 text-pursue"
-                : "bg-white/10 text-white/55"
+                : "bg-muted text-muted-foreground"
             }`}
           >
             waiting on {PARTY_LABEL[party]}
           </span>
         )}
-        <DeadlineBadge deadline={o.deadline} rules={rules} variant="shell" />
+        <DeadlineBadge deadline={o.deadline} rules={rules} />
         {!inlineTriage && (
           <StopClickPropagation className="inline-flex">
             <SnoozeButton
@@ -183,13 +183,13 @@ function Section({
 }) {
   return (
     <details id={id} open={defaultOpen} className="group scroll-mt-12">
-      <summary className="flex cursor-pointer list-none items-end justify-between gap-3 border-b border-white/15 pb-3 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-end justify-between gap-3 border-b border-border/55 dark:border-white/15 pb-3 [&::-webkit-details-marker]:hidden">
         <div>
           <p className="eyebrow-gold">{eyebrow}</p>
-          <h2 className="mt-1 font-display text-2xl font-normal text-white">
+          <h2 className="mt-1 font-display text-2xl font-normal text-foreground">
             {title}
             {typeof count === "number" && (
-              <span className="num ml-2 text-base font-normal text-white/40">
+              <span className="num ml-2 text-base font-normal text-muted-foreground">
                 ({count} {count === 1 ? "item" : "items"})
               </span>
             )}
@@ -244,10 +244,10 @@ function PipelineHealthRail({
               Live
             </span>
           </div>
-          <p className="mt-4 font-display text-5xl text-white">
+          <p className="mt-4 font-display text-5xl text-foreground">
             <span className="num">{active}</span>
           </p>
-          <p className="mt-1 text-sm text-white/45">active opportunities</p>
+          <p className="mt-1 text-sm text-foreground/45">active opportunities</p>
 
           <div className="mt-6 flex h-24 items-end gap-1.5">
             {bars.map((b, i) => (
@@ -260,28 +260,28 @@ function PipelineHealthRail({
             ))}
           </div>
 
-          <ul className="mt-6 divide-y divide-white/10 text-sm text-white/60">
+          <ul className="mt-6 divide-y divide-border/55 dark:divide-white/10 text-sm text-muted-foreground">
             <li className="flex justify-between py-2.5">
               <span>Needs you</span>
-              <span className="num text-white">{totalActions}</span>
+              <span className="num text-foreground">{totalActions}</span>
             </li>
             <li className="flex justify-between py-2.5">
               <span>In capture</span>
-              <span className="num text-white">{strongFits}</span>
+              <span className="num text-foreground">{strongFits}</span>
             </li>
             <li className="flex justify-between py-2.5">
               <span>In pursuit</span>
-              <span className="num text-white">{inPursuit}</span>
+              <span className="num text-foreground">{inPursuit}</span>
             </li>
             <li className="flex justify-between py-2.5">
               <span>Packages ready</span>
-              <span className="num text-white">{packagesReady}</span>
+              <span className="num text-foreground">{packagesReady}</span>
             </li>
           </ul>
         </div>
 
-        <div className="border border-gold/28 bg-[#11120f] px-4 py-3">
-          <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-white/40">
+        <div className="border border-gold/28 bg-surface-raised px-4 py-3">
+          <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
             Automation activity
           </p>
           <p className="mt-1 text-sm font-medium text-gold">
@@ -294,7 +294,7 @@ function PipelineHealthRail({
         {digestParts.length > 0 && (
           <Link
             href="/agents"
-            className="block shell-panel p-4 text-sm text-white/65 transition-colors hover:border-gold/40"
+            className="block shell-panel p-4 text-sm text-foreground/65 transition-colors hover:border-gold/40"
           >
             <p className="eyebrow-gold">Recent activity</p>
             <p className="mt-2 leading-relaxed">{digestParts.join(" · ")}</p>
@@ -365,33 +365,33 @@ export default async function TodayPage() {
   const clear = totalActions === 0 && setup.complete;
 
   return (
-    <div className="flex page-shell bg-ink text-white">
+    <div className="flex page-shell bg-background text-foreground">
       <TodayLive />
       <div className="scroll-thin flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           <div className="mb-2 flex justify-end">
-            <HelpPopover help={PAGE_HELP["today"]} variant="dark" />
+            <HelpPopover help={PAGE_HELP["today"]} />
           </div>
 
           <TodayGreeting clear={clear} actionCount={totalActions} />
 
           <div className="mt-8 flex gap-10">
             <div className="min-w-0 flex-1 space-y-10">
-              <AutomationPausedBanner state={automation} variant="shell" />
+              <AutomationPausedBanner state={automation} />
 
               {engineDown && (
                 <div className="rounded-md border border-risk/40 bg-risk/10 px-4 py-3 text-sm">
                   <p className="font-semibold text-risk">
                     The automation engine is not running.
                   </p>
-                  <p className="mt-1 text-white/70">
+                  <p className="mt-1 text-muted-foreground">
                     {engine.lastRunAt
                       ? `Nothing has run since ${timeAgo(engine.lastRunAt)}. `
                       : "No automated work has ever run, though opportunities are waiting. "}
                     Records will not move, be scored, or be monitored until it is back. On
                     Replit this usually means the app is not running as an always-on
                     deployment: open your Repl and press{" "}
-                    <span className="font-medium text-white">Run</span> (or use a Reserved-VM
+                    <span className="font-medium text-foreground">Run</span> (or use a Reserved-VM
                     deployment for 24/7 operation). The{" "}
                     <Link href="/agents" className="underline">
                       Automation Log
@@ -402,7 +402,7 @@ export default async function TodayPage() {
               )}
 
               {!setup.complete && (
-                <div className="rounded-md border border-white/10 bg-shell p-4 [&_.card]:border-white/10 [&_.card]:bg-shell [&_h2]:text-white [&_p]:text-white/60">
+                <div className="rounded-md border border-border/55 bg-surface p-4 dark:border-white/10">
                   <SetupChecklist checklist={setup} />
                 </div>
               )}
@@ -410,7 +410,6 @@ export default async function TodayPage() {
               {clear && (
                 <EmptyState
                   tone="success"
-                  variant="shell"
                   title="You are clear for now"
                   description={`${data.stageCounts.reduce((n, s) => n + s.count, 0).toLocaleString()} opportunities are being worked automatically. Anything that needs a person will show up here.`}
                   action={
@@ -452,7 +451,7 @@ export default async function TodayPage() {
                   count={data.triage.length}
                   defaultOpen={firstOpen === "triage"}
                 >
-                  <p className="mb-2 text-sm text-white/45">
+                  <p className="mb-2 text-sm text-foreground/45">
                     These scored in the borderline band, so the system wants your judgment.
                     Decide right here, or click a row to read the full brief first. Unactioned
                     items auto-dismiss when their timer runs out.
@@ -480,7 +479,7 @@ export default async function TodayPage() {
                   count={data.calls.count}
                   defaultOpen={firstOpen === "calls"}
                 >
-                  <p className="mb-2 text-sm text-white/45">
+                  <p className="mb-2 text-sm text-foreground/45">
                     Each row opens that call&rsquo;s guided workspace: the script, project
                     details, and a form that saves the quote and every answer in one step.
                     Skip removes it from the queue and records that you chose not to call;
@@ -497,20 +496,20 @@ export default async function TodayPage() {
                     >
                       <div className="min-w-0 flex-1">
                         <p className="eyebrow-gold">Quote follow-up</p>
-                        <p className="mt-1 text-sm font-medium text-white sm:truncate">
+                        <p className="mt-1 text-sm font-medium text-foreground sm:truncate">
                           Call {c.company_name}
                           {c.trade
                             ? ` about ${c.trade.toLowerCase()} pricing`
                             : " for their quote"}
                         </p>
-                        <p className="mt-0.5 text-xs text-white/40 sm:truncate">
+                        <p className="mt-0.5 text-xs text-muted-foreground sm:truncate">
                           {[c.opportunity_title, c.phone ?? "no phone on file"]
                             .filter(Boolean)
                             .join(" · ")}
                         </p>
                         {c.work_summary && (
-                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/50">
-                            <span className="font-medium text-white/70">Work: </span>
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                            <span className="font-medium text-muted-foreground">Work: </span>
                             {c.work_summary}
                           </p>
                         )}
@@ -521,7 +520,7 @@ export default async function TodayPage() {
                             Replied, interested
                           </span>
                         )}
-                        <DeadlineBadge deadline={c.deadline} rules={rules} variant="shell" />
+                        <DeadlineBadge deadline={c.deadline} rules={rules} />
                         <StopClickPropagation className="flex items-center gap-2">
                           <SnoozeButton
                             kind="call_card"
@@ -549,7 +548,7 @@ export default async function TodayPage() {
                   {data.calls.count > data.calls.rows.length && (
                     <Link
                       href="/call-queue"
-                      className="block border-b border-white/10 px-1 py-3 text-center text-xs text-white/45 transition-colors hover:text-gold"
+                      className="block border-b border-border/55 px-1 py-3 dark:border-white/10 text-center text-xs text-foreground/45 transition-colors hover:text-gold"
                     >
                       {data.calls.count - data.calls.rows.length} more call
                       {data.calls.count - data.calls.rows.length === 1 ? "" : "s"} in the
@@ -567,7 +566,7 @@ export default async function TodayPage() {
                   count={data.subFollowUps.length}
                   defaultOpen={firstOpen === "other"}
                 >
-                  <p className="mb-2 text-sm text-white/45">
+                  <p className="mb-2 text-sm text-foreground/45">
                     Automated email and follow-up already went out. These still need a person,
                     usually a quick call, before pricing can land.
                   </p>
@@ -582,11 +581,11 @@ export default async function TodayPage() {
                     >
                       <div className="min-w-0 flex-1">
                         <p className="eyebrow-gold">Coverage follow-up</p>
-                        <p className="mt-1 truncate text-sm font-medium text-white">
+                        <p className="mt-1 truncate text-sm font-medium text-foreground">
                           Call {s.company_name}
                           {s.trade ? ` about ${s.trade.toLowerCase()} pricing` : ""}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-white/40">
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {[
                             s.opportunity_title,
                             outreachLabel(s.outreach_state),
@@ -600,14 +599,14 @@ export default async function TodayPage() {
                             .join(" · ")}
                         </p>
                         {s.work_summary && (
-                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/50">
-                            <span className="font-medium text-white/70">Work: </span>
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                            <span className="font-medium text-muted-foreground">Work: </span>
                             {s.work_summary}
                           </p>
                         )}
                       </div>
                       <div className="flex shrink-0 items-center gap-3">
-                        <DeadlineBadge deadline={s.deadline} rules={rules} variant="shell" />
+                        <DeadlineBadge deadline={s.deadline} rules={rules} />
                         <CtaArrow label="Open opportunity" />
                       </div>
                     </Link>
@@ -622,7 +621,7 @@ export default async function TodayPage() {
                   title="Quotes that need a look"
                   count={data.quoteReviews.length}
                 >
-                  <p className="mb-2 text-sm text-white/45">
+                  <p className="mb-2 text-sm text-foreground/45">
                     These prices look unusually high or low versus comps. Confirm or replace
                     them before the bid package is finalized.
                   </p>
@@ -637,17 +636,17 @@ export default async function TodayPage() {
                     >
                       <div className="min-w-0 flex-1">
                         <p className="eyebrow-gold">Quote review</p>
-                        <p className="mt-1 truncate text-sm font-medium text-white">
+                        <p className="mt-1 truncate text-sm font-medium text-foreground">
                           Review {q.quote_amount != null ? currency(q.quote_amount) : "a quote"}
                           {q.trade ? ` for ${q.trade}` : ""}
                           {q.company_name ? ` from ${q.company_name}` : ""}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-white/40">
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {q.opportunity_title ?? "Opportunity"} · outside expected range
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-3">
-                        <DeadlineBadge deadline={q.deadline} rules={rules} variant="shell" />
+                        <DeadlineBadge deadline={q.deadline} rules={rules} />
                         <CtaArrow label="Review quote" />
                       </div>
                     </Link>
@@ -693,7 +692,7 @@ export default async function TodayPage() {
                   title="Submitted, awaiting a decision"
                   count={data.awaitingOutcome.length}
                 >
-                  <p className="mb-2 text-sm text-white/45">
+                  <p className="mb-2 text-sm text-foreground/45">
                     When the agency announces, record the result so the platform can set up
                     the contract (win) or learn from the loss.
                   </p>
@@ -740,10 +739,10 @@ export default async function TodayPage() {
                     <Link key={c.id} href="/compliance" className={ROW}>
                       <div className="min-w-[14rem] flex-1">
                         <p className="eyebrow-gold">Compliance</p>
-                        <p className="mt-1 truncate text-sm font-medium text-white">
+                        <p className="mt-1 truncate text-sm font-medium text-foreground">
                           Renew: {c.label}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-white/40">
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {c.days_remaining != null && c.days_remaining >= 0
                             ? `${c.days_remaining} day${c.days_remaining === 1 ? "" : "s"} until it lapses`
                             : c.due_at
@@ -770,11 +769,11 @@ export default async function TodayPage() {
                     <div key={w.id} className={`${ROW} cursor-default`}>
                       <div className="min-w-0 flex-1">
                         <p className="eyebrow-gold">Scoring weights</p>
-                        <p className="mt-1 truncate text-sm font-medium text-white">
+                        <p className="mt-1 truncate text-sm font-medium text-foreground">
                           Approve new scoring weights (v{w.version}), proposed{" "}
                           {timeAgo(w.proposed_at)}
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-white/40">
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {w.rationale ??
                             "The Learning Loop analyzed recent wins and losses and suggests adjusting how opportunities are scored."}
                         </p>
@@ -805,11 +804,11 @@ export default async function TodayPage() {
                     <Link href="/authority" className={ROW}>
                       <div className="min-w-0 flex-1">
                         <p className="eyebrow-gold">Site authority</p>
-                        <p className="mt-1 truncate text-sm font-medium text-white">
+                        <p className="mt-1 truncate text-sm font-medium text-foreground">
                           Approve {data.backlinkApprovals} drafted outreach email
                           {data.backlinkApprovals === 1 ? "" : "s"} before they send
                         </p>
-                        <p className="mt-0.5 truncate text-xs text-white/40">
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           Site Authority drafted these to earn backlinks. Nothing sends
                           without your approval.
                         </p>
@@ -821,7 +820,7 @@ export default async function TodayPage() {
               )}
 
               {data.snoozedCount > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 border border-dashed border-white/15 px-4 py-2.5 text-xs text-white/45">
+                <div className="flex flex-wrap items-center justify-between gap-2 border border-dashed border-border/55 px-4 py-2.5 text-xs text-muted-foreground dark:border-white/15">
                   <span>
                     {data.snoozedCount} snoozed item
                     {data.snoozedCount === 1 ? "" : "s"} hidden for now. Each returns
@@ -838,12 +837,12 @@ export default async function TodayPage() {
                 </div>
               )}
 
-              <details className="group rounded-md border border-white/10 bg-shell/60 px-4 py-3 lg:hidden">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-white/80 [&::-webkit-details-marker]:hidden">
+              <details className="group rounded-md border border-border/55 dark:border-white/10 bg-surface/60 px-4 py-3 lg:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-foreground/80 [&::-webkit-details-marker]:hidden">
                   Pipeline overview and last 24 hours
                   <span
                     aria-hidden
-                    className="text-white/40 transition-transform group-open:rotate-180"
+                    className="text-muted-foreground transition-transform group-open:rotate-180"
                   >
                     ▾
                   </span>
@@ -853,11 +852,11 @@ export default async function TodayPage() {
                   {digestParts.length > 0 && (
                     <Link
                       href="/agents"
-                      className="block rounded-md border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm text-white/80 transition-colors hover:border-gold/60"
+                      className="block rounded-md border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm text-foreground/80 transition-colors hover:border-gold/60"
                     >
                       <span className="font-semibold text-gold">Last 24 hours:</span>{" "}
                       {digestParts.join(" · ")}
-                      <span className="text-white/45"> · open Automation Log</span>
+                      <span className="text-foreground/45"> · open Automation Log</span>
                     </Link>
                   )}
                 </div>

@@ -19,7 +19,7 @@ import type {
   AuditFinding,
 } from "@/lib/types";
 import { currency, pct, timeAgo } from "@/lib/format";
-import { Wordmark } from "@/components/wordmark";
+import { ThemeWordmark } from "@/components/theme-wordmark";
 
 const STATUS_META: Record<
   ResolvedRequirement["status"],
@@ -171,13 +171,13 @@ export function SubmissionPackage({
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-md border border-border bg-[#F2EFE9] px-6 py-7 shadow-sm">
+        <div className="rounded-md border border-border/55 bg-surface px-6 py-7 shadow-sm dark:border-white/10">
           <p className="text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
             Bid package · {submitted ? "Submitted" : "Final review"}
           </p>
-          <div className="mt-5 h-px w-full bg-border" />
+          <div className="mt-5 h-px w-full bg-border/55 dark:bg-white/10" />
           <div className="mt-5">
-            <Wordmark variant="dark" className="h-6" />
+            <ThemeWordmark className="h-6" />
           </div>
           <h3 className="mt-6 font-display text-2xl leading-snug text-foreground sm:text-3xl">
             {opportunityTitle ?? "Bid proposal"}
@@ -213,34 +213,34 @@ export function SubmissionPackage({
           </div>
         </div>
 
-        <div className="rounded-md border border-white/10 bg-ink px-6 py-7 text-white">
+        <div className="rounded-md border border-border/55 bg-surface px-6 py-7 text-foreground dark:border-white/10 dark:bg-shell">
           <p className="eyebrow-gold">Submission readiness</p>
           <p className="mt-3 font-display text-4xl text-gold">
             <span className="num">{readyPct}%</span>
           </p>
-          <p className="mt-1 text-[0.65rem] uppercase tracking-[0.14em] text-white/45">
+          <p className="mt-1 text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground">
             {ready
               ? "Ready for your approval"
               : submitted
                 ? "Submitted"
                 : "Finish items below"}
           </p>
-          <ul className="mt-6 divide-y divide-white/10">
+          <ul className="mt-6 divide-y divide-border/55 dark:divide-white/10">
             {readinessRows.map((row) => (
               <li key={row.title} className="flex items-start gap-3 py-3">
                 <span
                   className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.65rem] ${
                     row.ok
                       ? "border-pursue/50 text-pursue"
-                      : "border-white/20 text-white/35"
+                      : "border-border-strong/40 text-muted-foreground"
                   }`}
                   aria-hidden
                 >
                   {row.ok ? "✓" : "·"}
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm text-white">{row.title}</p>
-                  <p className="mt-0.5 text-xs text-white/45">{row.detail}</p>
+                  <p className="text-sm text-foreground">{row.title}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{row.detail}</p>
                 </div>
               </li>
             ))}

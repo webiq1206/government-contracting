@@ -320,7 +320,7 @@ export function GuideWizard() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed z-[65] hidden md:flex items-center gap-2 rounded-md border border-gold/40 bg-ink px-4 py-3 text-sm font-medium text-white shadow-lg transition-colors hover:bg-shell focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold md:bottom-6 md:right-6"
+        className="fixed z-[65] hidden items-center gap-2 rounded-md border border-gold/40 bg-surface px-4 py-3 text-sm font-medium text-foreground shadow-lg transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold dark:bg-shell md:bottom-6 md:right-6 md:flex"
         aria-haspopup="dialog"
         aria-expanded={open}
       >
@@ -349,7 +349,7 @@ export function GuideWizard() {
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-xl border border-white/10 bg-background shadow-2xl outline-none md:inset-y-0 md:bottom-auto md:left-auto md:right-0 md:h-full md:max-h-none md:w-full md:max-w-md md:rounded-none md:border-l md:border-t-0 md:border-b-0"
+            className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-xl border border-border/55 bg-background shadow-2xl outline-none dark:border-white/10 md:inset-y-0 md:bottom-auto md:left-auto md:right-0 md:h-full md:max-h-none md:w-full md:max-w-md md:rounded-none md:border-l md:border-t-0 md:border-b-0"
           >
             <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 md:px-5">
               <div className="min-w-0">
@@ -384,8 +384,8 @@ export function GuideWizard() {
                   onClick={() => setMode(key as Mode)}
                   className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium ${
                     mode === key
-                      ? "bg-foreground text-white"
-                      : "bg-surface text-slate-600 hover:bg-slate-200"
+                      ? "bg-foreground text-background"
+                      : "bg-surface text-muted-foreground hover:bg-muted"
                   }`}
                 >
                   {label}
@@ -452,7 +452,7 @@ export function GuideWizard() {
                         key={`${m.role}-${i}`}
                         className={`rounded-md px-3 py-2 text-sm ${
                           m.role === "user"
-                            ? "ml-6 bg-foreground text-white"
+                            ? "ml-6 bg-foreground text-background"
                             : "mr-4 border border-border bg-surface text-slate-800"
                         }`}
                       >

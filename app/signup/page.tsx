@@ -3,7 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import { SignupForm } from "@/components/signup-form";
-import { Wordmark } from "@/components/wordmark";
+import { ThemeWordmark } from "@/components/theme-wordmark";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { getFoundingPromo } from "@/lib/billing/promo";
 import {
   FOUNDING_MONTHLY_USD,
@@ -45,13 +46,16 @@ export default async function SignupPage({
   });
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-surface px-4 py-12">
+    <main className="relative flex min-h-screen items-center justify-center bg-background px-4 py-12 text-foreground">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle compact />
+      </div>
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <p className="eyebrow mb-3">Autonomous Procurement Execution</p>
           <h1 className="flex justify-center">
             <Link href="/">
-              <Wordmark className="h-12" />
+              <ThemeWordmark className="h-12" />
             </Link>
           </h1>
           <div className="mx-auto mt-4 h-px w-12 bg-accent" />

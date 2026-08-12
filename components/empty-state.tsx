@@ -9,43 +9,28 @@ export function EmptyState({
   description,
   action,
   tone = "neutral",
-  variant = "light",
+  variant: _variant = "light",
 }: {
   title: string;
   description?: ReactNode;
   action?: ReactNode;
   tone?: "neutral" | "success";
-  /** Dark shell surfaces (Today). */
+  /** @deprecated Theme tokens cover both surfaces; kept for call-site compatibility. */
   variant?: "light" | "shell";
 }) {
-  const shell = variant === "shell";
   return (
     <div
       className={`mx-auto max-w-lg rounded-md border p-5 text-center sm:p-6 ${
-        shell
-          ? tone === "success"
-            ? "border-pursue/35 bg-pursue/10"
-            : "border-white/10 bg-shell"
-          : tone === "success"
-            ? "card border-pursue/30 bg-pursue/5"
-            : "card"
+        tone === "success"
+          ? "border-pursue/30 bg-pursue/5"
+          : "border-border/55 bg-surface dark:border-white/10"
       }`}
     >
-      <p
-        className={`font-display text-xl ${
-          shell ? "font-normal text-white" : "font-semibold text-foreground"
-        }`}
-      >
+      <p className="font-display text-xl font-normal text-foreground sm:font-semibold">
         {title}
       </p>
       {description != null && description !== "" ? (
-        <div
-          className={`mt-2 text-sm leading-relaxed ${
-            shell ? "text-white/55" : "text-slate-500"
-          }`}
-        >
-          {description}
-        </div>
+        <div className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</div>
       ) : null}
       {action ? <div className="mt-4 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>

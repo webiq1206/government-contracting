@@ -88,7 +88,7 @@ export function CallWorkspaceLauncher({
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
             >
-              <div className="rounded-md border border-border bg-background px-5 py-4 text-sm text-slate-700 shadow-2xl">
+              <div className="rounded-md border border-border/55 bg-surface px-5 py-4 text-sm text-foreground shadow-2xl dark:border-white/10">
                 Loading call workspace…
               </div>
             </div>
@@ -101,11 +101,11 @@ export function CallWorkspaceLauncher({
               }}
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
             >
-              <div className="max-w-md rounded-md border border-risk/40 bg-background p-5 shadow-2xl">
+              <div className="max-w-md rounded-md border border-risk/40 bg-surface p-5 text-foreground shadow-2xl">
                 <p className="text-sm font-medium text-risk">
                   Couldn&rsquo;t load the call workspace.
                 </p>
-                <p className="mt-1 text-xs text-slate-500">{err}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{err}</p>
                 <button
                   onClick={() => {
                     setOpen(false);

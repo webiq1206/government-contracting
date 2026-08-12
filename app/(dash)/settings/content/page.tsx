@@ -5,7 +5,6 @@ import { EmailTemplateEditor, type EmailTemplate } from "@/components/email-temp
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { contentLibrary } from "@/lib/data";
 import { query } from "@/lib/db";
-import { CONTENT_CATEGORIES } from "@/lib/domain/content";
 
 export const dynamic = "force-dynamic";
 
@@ -35,69 +34,54 @@ export default async function ContentLibraryPage() {
         title="Content Library"
         status={
           items.length
-            ? `${items.length} snippet${items.length === 1 ? "" : "s"} saved`
-            : "Empty"
+            ? `${items.length} snippet${items.length === 1 ? "" : "s"} · ${templates.length} email template${templates.length === 1 ? "" : "s"}`
+            : `${templates.length} email template${templates.length === 1 ? "" : "s"}`
         }
-        subtitle="Reusable, pre-approved language the automation drafts from for outreach, bids, and follow-ups."
+        subtitle="Two places to store language Brost Co reuses: emails it sends to subcontractors, and short proposal paragraphs it drafts into bids."
       />
-      <div className="scroll-thin flex-1 overflow-y-auto">
-        <EditorialTabs
-          ariaLabel="Content settings"
-          defaultTab="all"
-          stickyTopClass="top-[3.25rem]"
-          tabs={[
-            {
-              id: "all",
-              label: `All (${items.length})`,
-              content: (
-                <div className="px-5 py-6 sm:px-6">
-                  <ContentLibraryManager items={items} />
+      <EditorialTabs
+        ariaLabel="Content settings"
+        defaultTab="email-templates"
+        layout="fill"
+        tabs={[
+          {
+            id: "email-templates",
+            label: "Emails to subcontractors",
+            content: (
+              <div className="space-y-6 px-5 py-6 sm:px-6">
+                <div className="max-w-2xl">
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    These are the outreach and follow-up emails Brost Co sends when it
+                    contacts subcontractors. Use fill-in fields for names, trades, and
+                    deadlines (they update per bid). Select text in the body to bold,
+                    highlight, or turn lines into bullets.
+                  </p>
                 </div>
-              ),
-            },
-            ...CONTENT_CATEGORIES.map((cat) => {
-              const filtered = items.filter((i) => i.category === cat.value);
-              return {
-                id: cat.value,
-                label: `${cat.label} (${filtered.length})`,
-                content: (
-                  <div className="px-5 py-6 sm:px-6">
-                    <ContentLibraryManager items={filtered} />
+                {templates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No active outreach templates found in the database.
+                  </p>
+                ) : (
+                  <div className="space-y-8">
+                    {templates.map((t) => (
+                      <EmailTemplateEditor key={t.slug} template={t} />
+                    ))}
                   </div>
-                ),
-              };
-            }),
-            {
-              id: "email-templates",
-              label: "Email Templates",
-              content: (
-                <div className="space-y-6 px-5 py-6 sm:px-6">
-                  <div className="max-w-2xl">
-                    <p className="text-sm leading-relaxed text-slate-600">
-                      Customize the emails the automation sends to subcontractors.
-                      Click or drag a{" "}
-                      <span className="font-medium">token</span> into the subject or
-                      body to insert a placeholder — each token is filled with live
-                      solicitation data before the email goes out.
-                    </p>
-                  </div>
-                  {templates.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      No active outreach templates found in the database.
-                    </p>
-                  ) : (
-                    <div className="space-y-8">
-                      {templates.map((t) => (
-                        <EmailTemplateEditor key={t.slug} template={t} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ),
-            },
-          ]}
-        />
-      </div>
+                )}
+              </div>
+            ),
+          },
+          {
+            id: "snippets",
+            label: `Proposal snippets (${items.length})`,
+            content: (
+              <div className="px-5 py-6 sm:px-6">
+                <ContentLibraryManager items={items} />
+              </div>
+            ),
+          },
+        ]}
+      />
     </>
   );
 }

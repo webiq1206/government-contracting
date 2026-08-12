@@ -323,7 +323,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   {breakdown ? (
                     <ScoreBreakdownCard breakdown={breakdown} />
                   ) : (
-                    <div className="rounded-md border border-border bg-background p-5">
+                    <div className="rounded-md border border-border/55 bg-surface p-5 dark:border-white/10">
                       <p className="eyebrow-gold">Score breakdown</p>
                       <p className="mt-3 text-sm text-muted-foreground">
                         Scoring has not finished yet. The fit score box updates when dimensions

@@ -16,9 +16,14 @@ export interface EditorialTab {
 }
 
 /**
- * Sticky editorial tab bar + mounted panels (hidden when inactive).
+ * Editorial tab bar + mounted panels (hidden when inactive).
  * Syncs with URL hash and listens for `editorial-open-tab` / guide focus events
  * so deep links and Guide Me can reveal the right panel.
+ *
+ * `layout`:
+ * - `sticky` (default): tab bar sticks inside a parent scroller (opportunity, etc.).
+ * - `fill`: tab bar is fixed chrome; only panel content scrolls. Use under
+ *   settings section nav so the two menus never compete for sticky offsets.
  */
 export function EditorialTabs({
   tabs,
@@ -27,6 +32,7 @@ export function EditorialTabs({
   hashAliases,
   banner,
   stickyTopClass = "top-0",
+  layout = "sticky",
 }: {
   tabs: EditorialTab[];
   ariaLabel: string;
@@ -34,8 +40,9 @@ export function EditorialTabs({
   /** Map hash fragment -> tab id (e.g. quotes -> pricing). */
   hashAliases?: Record<string, string>;
   banner?: ReactNode;
-  /** Sticky offset when nested under another sticky bar (e.g. settings nav). */
+  /** Sticky offset when nested under another sticky bar. Ignored for `fill`. */
   stickyTopClass?: string;
+  layout?: "sticky" | "fill";
 }) {
   const reactId = useId();
   const initial =
@@ -122,56 +129,78 @@ export function EditorialTabs({
     }
   }
 
+  const tablist = (
+    <div
+      role="tablist"
+      aria-label={ariaLabel}
+      onKeyDown={onKeyDown}
+      className={
+        layout === "fill"
+          ? "flex shrink-0 gap-4 overflow-x-auto border-b border-border bg-background px-5 py-2 sm:gap-5 sm:px-6"
+          : `flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2.5 backdrop-blur sm:px-6 sm:py-3 md:sticky md:z-20 ${stickyTopClass}`
+      }
+    >
+      {tabs.map((t) => {
+        const active = tab === t.id;
+        const tabClass =
+          layout === "fill"
+            ? active
+              ? "dash-tab dash-tab--active whitespace-nowrap text-xs uppercase tracking-[0.1em]"
+              : "dash-tab whitespace-nowrap text-xs uppercase tracking-[0.1em]"
+            : active
+              ? "dash-tab dash-tab--active whitespace-nowrap uppercase tracking-[0.12em]"
+              : "dash-tab whitespace-nowrap uppercase tracking-[0.12em]";
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`${reactId}-tab-${t.id}`}
+            aria-selected={active}
+            aria-controls={`${reactId}-panel-${t.id}`}
+            tabIndex={active ? 0 : -1}
+            onClick={() => go(t.id)}
+            className={tabClass}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const panels = tabs.map((t) => {
+    const active = tab === t.id;
+    return (
+      <div
+        key={t.id}
+        role="tabpanel"
+        id={`${reactId}-panel-${t.id}`}
+        aria-labelledby={`${reactId}-tab-${t.id}`}
+        data-editorial-panel={t.id}
+        hidden={!active}
+        className={active ? "block" : "hidden"}
+      >
+        {t.content}
+      </div>
+    );
+  });
+
+  if (layout === "fill") {
+    return (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {banner}
+        {tablist}
+        <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">{panels}</div>
+      </div>
+    );
+  }
+
   return (
     <div>
       {banner}
-
-      <div
-        role="tablist"
-        aria-label={ariaLabel}
-        onKeyDown={onKeyDown}
-        className={`flex gap-5 overflow-x-auto border-y border-border bg-background/95 px-5 py-2.5 backdrop-blur sm:px-6 sm:py-3 md:sticky md:z-20 ${stickyTopClass}`}
-      >
-        {tabs.map((t) => {
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              id={`${reactId}-tab-${t.id}`}
-              aria-selected={active}
-              aria-controls={`${reactId}-panel-${t.id}`}
-              tabIndex={active ? 0 : -1}
-              onClick={() => go(t.id)}
-              className={
-                active
-                  ? "dash-tab dash-tab--active whitespace-nowrap uppercase tracking-[0.12em]"
-                  : "dash-tab whitespace-nowrap uppercase tracking-[0.12em]"
-              }
-            >
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {tabs.map((t) => {
-        const active = tab === t.id;
-        return (
-          <div
-            key={t.id}
-            role="tabpanel"
-            id={`${reactId}-panel-${t.id}`}
-            aria-labelledby={`${reactId}-tab-${t.id}`}
-            data-editorial-panel={t.id}
-            hidden={!active}
-            className={active ? "block" : "hidden"}
-          >
-            {t.content}
-          </div>
-        );
-      })}
+      {tablist}
+      {panels}
     </div>
   );
 }

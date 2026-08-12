@@ -116,7 +116,7 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
     <EditorialTabs
       ariaLabel="Automation rule sections"
       defaultTab="deadlines"
-      stickyTopClass="top-[3.25rem]"
+      layout="fill"
       hashAliases={{
         deadlines: "deadlines",
         colors: "deadlines",
@@ -130,7 +130,7 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
           id: "deadlines",
           label: "Deadlines",
           content: (
-            <div className="space-y-4 py-6">
+            <div className="mx-auto w-full max-w-4xl space-y-4 px-5 py-6 sm:px-6">
               <section className="card">
                 <h2 className="font-display text-xl text-foreground">Deadline warning colors</h2>
                 <p className="mt-1 max-w-3xl text-sm text-slate-600">
@@ -189,7 +189,7 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
           id: "lead-time",
           label: "Lead time",
           content: (
-            <div className="space-y-4 py-6">
+            <div className="mx-auto w-full max-w-4xl space-y-4 px-5 py-6 sm:px-6">
               <section className="card">
                 <h2 className="font-display text-xl text-foreground">Minimum lead time</h2>
                 <p className="mt-1 max-w-3xl text-sm text-slate-600">
@@ -240,7 +240,7 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
           id: "archive",
           label: "Archive",
           content: (
-            <div className="space-y-4 py-6">
+            <div className="mx-auto w-full max-w-4xl space-y-4 px-5 py-6 sm:px-6">
               <section className="card">
                 <h2 className="font-display text-xl text-foreground">Archive &amp; cleanup</h2>
                 <p className="mt-1 max-w-3xl text-sm text-slate-600">

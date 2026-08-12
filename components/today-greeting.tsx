@@ -32,17 +32,17 @@ export function TodayGreeting({
   const estimated = Math.max(5, actionCount * 6);
 
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-8">
+    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border/55 pb-8 dark:border-white/10">
       <div className="min-w-0">
         <p className="eyebrow-gold">{parts.date}</p>
         <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
           Needs your attention
         </p>
-        <h1 className="mt-2 font-display text-3xl leading-tight text-white sm:text-4xl lg:text-[2.75rem]">
+        <h1 className="mt-2 font-display text-3xl leading-tight text-foreground sm:text-4xl lg:text-[2.75rem]">
           {clear ? (
             <>
               {parts.greeting}.{" "}
-              <span className="text-white/70">You are clear for now.</span>
+              <span className="text-muted-foreground">You are clear for now.</span>
             </>
           ) : (
             <>
@@ -53,15 +53,15 @@ export function TodayGreeting({
           )}
         </h1>
         {!clear && (
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/50">
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
             {parts.greeting}. Work the queue in order. Each row opens the exact place to finish
             the task.
           </p>
         )}
       </div>
       {!clear && (
-        <div className="border border-gold/35 bg-[#11120f] px-4 py-3 text-right">
-          <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-white/40">
+        <div className="border border-gold/35 bg-surface-raised px-4 py-3 text-right">
+          <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-muted-foreground">
             Live queue
           </p>
           <p className="mt-1 font-display text-2xl text-gold">

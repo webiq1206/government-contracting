@@ -134,6 +134,29 @@ describe("plainToHtml", () => {
     expect(result).toContain("Para one");
     expect(result).toContain("Para two");
   });
+
+  it("escapes HTML before applying markup", () => {
+    const result = plainToHtml('Hello <script>alert(1)</script> **friend**');
+    expect(result).not.toContain("<script>");
+    expect(result).toContain("&lt;script&gt;");
+    expect(result).toContain("<strong>friend</strong>");
+  });
+
+  it("renders bold and highlight markers", () => {
+    const result = plainToHtml("Please **reply soon** with ==your best price==.");
+    expect(result).toContain("<strong>reply soon</strong>");
+    expect(result).toContain('background-color:#FFF3CD');
+    expect(result).toContain("your best price");
+  });
+
+  it("renders consecutive dash lines as a bullet list", () => {
+    const result = plainToHtml("Intro\n- First\n- Second\nThanks");
+    expect(result).toContain("<ul");
+    expect(result).toContain("<li>First</li>");
+    expect(result).toContain("<li>Second</li>");
+    expect(result).toContain("Intro");
+    expect(result).toContain("Thanks");
+  });
 });
 
 // ---------------------------------------------------------------------------

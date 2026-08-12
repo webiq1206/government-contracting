@@ -34,7 +34,7 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
             className={`badge ${
               step.waitingOn === "you"
                 ? "bg-pursue/10 text-pursue"
-                : "bg-slate-200 text-slate-600"
+                : "bg-muted text-muted-foreground"
             }`}
           >
             waiting on {PARTY_LABEL[step.waitingOn]}

@@ -48,7 +48,7 @@ export function LoginForm() {
           <label className="label">Password</label>
           <Link
             href="/forgot-password"
-            className="text-xs text-accent hover:underline"
+            className="min-h-9 inline-flex items-center text-xs font-medium text-accent-strong hover:underline md:min-h-0"
           >
             Forgot password?
           </Link>
@@ -68,7 +68,7 @@ export function LoginForm() {
       </button>
       <p className="text-center text-xs text-muted-foreground">
         New here?{" "}
-        <Link href="/signup" className="text-accent hover:underline">
+        <Link href="/signup" className="font-medium text-accent-strong hover:underline">
           Start a subscription
         </Link>
       </p>

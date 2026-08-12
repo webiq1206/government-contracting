@@ -131,7 +131,7 @@ export function ContactQuickEdit({
           <span
             role="dialog"
             aria-label={`Edit contact — ${companyName}`}
-            className="fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 block max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-white p-4 text-left shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-6 sm:max-h-none sm:w-72 sm:p-3"
+            className="fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 block max-h-[70vh] overflow-y-auto rounded-lg border border-border/55 bg-surface p-4 text-left text-foreground shadow-lg dark:border-white/10 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-6 sm:max-h-none sm:w-72 sm:p-3"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               // Escape closes this popover only — don't let it bubble to the

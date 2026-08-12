@@ -4,7 +4,6 @@ import { Nav } from "@/components/nav";
 import { Suspense } from "react";
 import { CommandPalette } from "@/components/command-palette";
 import { GuideWizard } from "@/components/guide-wizard";
-import { GuideNudge } from "@/components/guide-nudge";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { ToastProvider } from "@/components/toaster";
 import { getAutomationState } from "@/lib/app-settings";
@@ -47,7 +46,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
       {/* h-dvh + overflow-hidden: pages fill the visible viewport (not 100vh
           under mobile browser chrome) and scroll inside main, clear of the
           fixed bottom tab bar. */}
-      <div className="flex h-dvh flex-col overflow-hidden bg-ink md:flex-row">
+      <div className="flex h-dvh flex-col overflow-hidden bg-background md:flex-row">
         <Nav
           email={user.email}
           reviewCount={counts.review}
@@ -56,14 +55,13 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           engineLabel={engineLabel}
           automationPaused={automation.paused}
         />
-        <main className="page-main min-h-0 min-w-0 flex-1 text-foreground">
+        <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
           {children}
         </main>
       </div>
       <CommandPalette />
       <Suspense fallback={null}>
         <GuideWizard />
-        <GuideNudge />
       </Suspense>
       <MobileTabBar reviewCount={counts.review} callCount={counts.callQueue} />
     </ToastProvider>

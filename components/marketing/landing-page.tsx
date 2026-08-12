@@ -18,7 +18,7 @@ export interface LandingPageProps {
 const FAQ_BASE = [
   {
     q: "What is Brost Co?",
-    a: "Brost Co is procurement execution software for federal services contractors. It monitors SAM.gov, evaluates opportunities against your business, helps source subcontractors, prepares bid packages, and gives your team one prioritized list of work that needs attention.",
+    a: "Brost Co is government contracting software for federal services contractors. It watches SAM.gov for matching work, scores each opportunity against your company, finds subcontractors, tracks quotes, builds the bid package, and shows you one daily list of decisions that need a person.",
   },
   {
     q: "Does Brost Co replace SAM.gov?",
@@ -26,15 +26,15 @@ const FAQ_BASE = [
   },
   {
     q: "Does Brost Co submit bids automatically?",
-    a: "No. Brost Co prepares and validates the bid package, but you retain final control. Signatures, attestations, and submission stay with your team.",
+    a: "No. Brost Co prepares and validates the bid package, but you keep final control. Signatures, attestations, and submission stay with your team.",
   },
   {
     q: "Who is Brost Co built for?",
-    a: "Brost Co is designed for small and mid-size federal services contractors pursuing construction, facilities, and professional services work without a large in-house capture team.",
+    a: "Brost Co is built for small and mid-size federal services contractors in construction, facilities, and professional services that do not have a large capture team.",
   },
   {
     q: "How is this different from a CRM?",
-    a: "A general CRM tracks deals. Brost Co runs the federal bid lifecycle, including NAICS fit, set-asides, solicitation deadlines, subcontractor coverage, pricing, compliance gates, and submission readiness.",
+    a: "A general CRM tracks deals. Brost Co runs the federal bid lifecycle: NAICS fit, set-asides, deadlines, subcontractor coverage, pricing, compliance checks, and submission readiness.",
   },
 ] as const;
 
@@ -141,34 +141,38 @@ export function LandingPage({
             <div className="hero-copy">
               <p className="eyebrow light">
                 <i />
-                Procurement execution
+                Government contracting software
               </p>
-              <h1>Win the right government contracts. Stop managing the process by hand.</h1>
+              <h1>
+                Brost Co finds federal work that fits you, then prepares the bid
+              </h1>
               <p className="lead">
-                Brost Co finds the right opportunities, scores the fit, builds subcontractor
-                coverage, and prepares your bids. You stay focused on the decisions only you can
-                make.
+                Brost Co is government contracting software for federal services contractors. It
+                monitors SAM.gov, scores each opportunity against your company, finds
+                subcontractors, tracks quotes, and builds the bid package. You open one daily
+                list for pursue or pass decisions, calls, and final approvals. Brost Co keeps
+                the rest of the pipeline moving.
               </p>
               <div className="hero-actions">
                 <Link className="btn" href={signupHref}>
                   {primaryCta} <span aria-hidden="true">↗</span>
                 </Link>
                 <a className="under-link" href="#platform">
-                  Explore the platform <span aria-hidden="true">↓</span>
+                  See what is included <span aria-hidden="true">↓</span>
                 </a>
               </div>
               <div className="proof">
                 <div>
-                  <b>One</b>
-                  <span>daily priority queue</span>
+                  <b>One list</b>
+                  <span>of what needs you today</span>
                 </div>
                 <div>
-                  <b>0 to 100</b>
-                  <span>opportunity fit scoring</span>
+                  <b>Fit score</b>
+                  <span>on every opportunity</span>
                 </div>
                 <div>
-                  <b>Human</b>
-                  <span>approval stays required</span>
+                  <b>You approve</b>
+                  <span>before any bid goes out</span>
                 </div>
               </div>
             </div>
@@ -246,43 +250,49 @@ export function LandingPage({
                 <i />
                 The real problem
               </p>
-              <h2>Your pipeline is not short on opportunities. It is short on clarity.</h2>
+              <h2>
+                Federal bids fail in the gaps between SAM.gov, email, spreadsheets, and memory
+              </h2>
             </div>
             <div>
               <p className="editorial">
-                Federal contracting creates work at every turn. When research, outreach, pricing,
-                and review live across portals, inboxes, spreadsheets, and memory, good
-                opportunities quietly lose momentum.
+                Finding work is only the start. Qualifying the fit, chasing subcontractors,
+                collecting prices, and assembling a compliant package usually live in different
+                tools. Brost Co puts that whole path in one place so good opportunities do not
+                stall.
               </p>
               <div className="problem-grid">
                 <article>
                   <small>01</small>
                   <h3>Too much noise</h3>
                   <p>
-                    Every posting looks urgent when there is no consistent way to compare fit,
-                    risk, and timing.
+                    Without a clear fit score, every SAM.gov posting feels urgent and your team
+                    chases the wrong work.
                   </p>
                 </article>
                 <article>
                   <small>02</small>
                   <h3>Too many handoffs</h3>
                   <p>
-                    Details disappear between opportunity research, subcontractor outreach,
-                    pricing, and final review.
+                    Opportunity notes, subcontractor emails, and pricing details get lost between
+                    people and tools before the bid is ready.
                   </p>
                 </article>
                 <article>
                   <small>03</small>
                   <h3>Too little visibility</h3>
                   <p>
-                    Your team cannot act quickly when nobody can see the next decision, missing
-                    quote, or deadline.
+                    Nobody sees the next decision, the missing quote, or the deadline until it is
+                    almost too late.
                   </p>
                 </article>
                 <article className="answer">
                   <small>THE SHIFT</small>
-                  <h3>One system that moves the work forward.</h3>
-                  <p>Brost Co brings people in at the exact moment judgment is required.</p>
+                  <h3>One system that moves each bid forward.</h3>
+                  <p>
+                    Brost Co runs the repeatable work and brings you in only when judgment,
+                    a call, or approval is required.
+                  </p>
                 </article>
               </div>
             </div>
@@ -296,8 +306,13 @@ export function LandingPage({
                 <i />
                 The platform
               </p>
-              <h2>One operating system for the work between opportunity and submission.</h2>
-              <p>Every screen answers one question: what should happen now?</p>
+              <h2>
+                Everything from opportunity intake to a review-ready bid package
+              </h2>
+              <p>
+                Each screen answers one question: what needs you now, and what is Brost Co
+                already handling?
+              </p>
             </header>
             <div className="bento">
               <article className="panel dark today-panel">
@@ -306,7 +321,7 @@ export function LandingPage({
                     <small>01</small>
                     <h3>Today</h3>
                   </div>
-                  <p>Work ordered by consequence, not by the time it entered the system.</p>
+                  <p>Your daily list of pursue or pass decisions, calls, and approvals.</p>
                 </header>
                 <div className="today-mini" aria-hidden>
                   <div className="mini-head">
@@ -345,7 +360,7 @@ export function LandingPage({
                     <small>02</small>
                     <h3>Opportunity scoring</h3>
                   </div>
-                  <p>See the number. Understand the reason.</p>
+                  <p>A 0 to 100 fit score with clear reasons to pursue or pass.</p>
                 </header>
                 <div className="score-ui" aria-hidden>
                   <div className="score-ring">
@@ -378,7 +393,7 @@ export function LandingPage({
                     <small>03</small>
                     <h3>Subcontractor coverage</h3>
                   </div>
-                  <p>Know which trades are covered before pricing slips.</p>
+                  <p>See which trades have quotes and which still need outreach.</p>
                 </header>
                 <div className="coverage" aria-hidden>
                   <p>
@@ -409,7 +424,7 @@ export function LandingPage({
                     <small>04</small>
                     <h3>Bid package</h3>
                   </div>
-                  <p>A complete review surface before anything leaves your hands.</p>
+                  <p>Pricing, certifications, and compliance checks in one place to review.</p>
                 </header>
                 <div className="package-ui" aria-hidden>
                   <div className="papers">
@@ -438,10 +453,10 @@ export function LandingPage({
                 <i />
                 How it works
               </p>
-              <h2>From federal posting to submission, without losing the thread.</h2>
+              <h2>From a SAM.gov posting to a package you can submit</h2>
               <p>
-                Automation handles repeatable work. Your team handles judgment, relationships,
-                approval, and submission.
+                Brost Co handles intake, scoring, outreach, and package prep. Your team handles
+                judgment, relationships, approval, and the final submission.
               </p>
               <Link className="under-link" href={signupHref}>
                 Set up your company profile <span aria-hidden="true">↗</span>
@@ -472,8 +487,8 @@ export function LandingPage({
                 <h2>Automated where it should be. Human where it matters.</h2>
               </div>
               <p>
-                Brost Co prepares the context, recommends the next move, and keeps approval in
-                your hands.
+                Brost Co gathers the facts, recommends the next move, and keeps every approval
+                in your hands. Nothing is submitted without you.
               </p>
             </header>
             <div className="compare-grid">
@@ -519,7 +534,7 @@ export function LandingPage({
 
         <section className="statement">
           <span aria-hidden>“</span>
-          <h2>Stop asking your team where the bid stands. Open Brost Co and know.</h2>
+          <h2>Stop asking where the bid stands. Open Brost Co and see the next step.</h2>
           <p>THE OPERATING PRINCIPLE</p>
         </section>
 
@@ -530,10 +545,10 @@ export function LandingPage({
                 <i />
                 {promoActive ? "Founding access" : "Pricing"}
               </p>
-              <h2>Build a disciplined federal pipeline before you build a larger team.</h2>
+              <h2>Run a federal bid pipeline without hiring a capture team first</h2>
               <p>
-                One subscription includes opportunity monitoring, scoring, subcontractor
-                sourcing, bid preparation, and your daily priority queue.
+                One subscription includes SAM.gov monitoring, fit scoring, subcontractor
+                sourcing, quote tracking, bid package prep, and your daily Today queue.
               </p>
               {promoActive && (
                 <aside>
@@ -614,10 +629,10 @@ export function LandingPage({
               <i />
               Start now
             </p>
-            <h2>Put your federal pipeline on a schedule you can keep.</h2>
+            <h2>Start with the federal work that actually fits your company</h2>
             <p>
-              Set up your profile once. Open Today every morning. Give the right opportunities
-              the attention they deserve.
+              Set your company profile once. Brost Co watches for matching opportunities. You
+              open Today each morning and act on the decisions that need you.
             </p>
             <Link className="btn" href={signupHref}>
               {primaryCta} <span aria-hidden="true">↗</span>
@@ -631,7 +646,7 @@ export function LandingPage({
               <Link className="type-logo footer-logo" href="#top" aria-label="Brost Co home">
                 <Wordmark variant="dark" className="h-7" />
               </Link>
-              <p>Procurement execution for federal services contractors.</p>
+              <p>Government contracting software for federal services contractors.</p>
             </div>
             <nav aria-label="Footer navigation">
               <a href="#platform">Platform</a>

@@ -78,8 +78,11 @@ export default async function IntegrationsPage({
         subtitle="Connect the services that power automation. Paste a key, press Test to verify live, then Save."
       />
 
-      <div className="scroll-thin flex-1 overflow-y-auto">
-        <div className="space-y-4 px-5 pt-5 sm:px-6">
+      {(gmailParam === "connected" ||
+        gmailParam === "denied" ||
+        gmailParam === "error" ||
+        resendOutreachActive) && (
+        <div className="shrink-0 space-y-3 border-b border-border px-5 py-4 sm:px-6">
           {gmailParam === "connected" && (
             <div className="card border-pursue/40 bg-pursue/5 text-sm text-pursue">
               Gmail connected successfully. Outreach emails can now send.
@@ -106,87 +109,86 @@ export default async function IntegrationsPage({
             </div>
           )}
         </div>
+      )}
 
-        <EditorialTabs
-          ariaLabel="Integration groups"
-          defaultTab="core"
-          stickyTopClass="top-[3.25rem]"
-          hashAliases={{
-            sam: "core",
-            claude: "core",
-            gmail: "outreach",
-            resend: "outreach",
-            twilio: "outreach",
-            hunter: "outreach",
-            maps: "data",
-            googleMaps: "data",
-          }}
-          tabs={[
-            {
-              id: "core",
-              label: "Core",
-              content: (
-                <div className="space-y-4 px-5 py-6 sm:px-6">
-                  <p className="text-sm text-muted-foreground">
-                    Required for intake and scoring. Without these, the pipeline stays empty.
-                  </p>
-                  <IntegrationManager
-                    initial={initial.filter((i) => CORE_IDS.has(i.id))}
-                  />
-                  <div className="card flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">Job queue backend</p>
-                      <p className="mt-0.5 text-xs text-slate-600">
-                        {status.queue === "bullmq"
-                          ? "BullMQ (Redis-backed). REDIS_URL is set."
-                          : "pg-boss (Postgres-backed). Set REDIS_URL in the environment to switch to BullMQ."}
-                      </p>
-                    </div>
-                    <span className="badge bg-accent/10 font-mono text-accent">
-                      {status.queue}
-                    </span>
+      <EditorialTabs
+        ariaLabel="Integration groups"
+        defaultTab="core"
+        layout="fill"
+        hashAliases={{
+          sam: "core",
+          claude: "core",
+          gmail: "outreach",
+          resend: "outreach",
+          twilio: "outreach",
+          hunter: "outreach",
+          maps: "data",
+          googleMaps: "data",
+        }}
+        tabs={[
+          {
+            id: "core",
+            label: "Core",
+            content: (
+              <div className="space-y-4 px-5 py-6 sm:px-6">
+                <p className="text-sm text-muted-foreground">
+                  Required for intake and scoring. Without these, the pipeline stays empty.
+                </p>
+                <IntegrationManager
+                  initial={initial.filter((i) => CORE_IDS.has(i.id))}
+                />
+                <div className="card flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Job queue backend</p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      {status.queue === "bullmq"
+                        ? "BullMQ (Redis-backed). REDIS_URL is set."
+                        : "pg-boss (Postgres-backed). Set REDIS_URL in the environment to switch to BullMQ."}
+                    </p>
                   </div>
+                  <span className="badge bg-accent/10 font-mono text-accent">
+                    {status.queue}
+                  </span>
                 </div>
-              ),
-            },
-            {
-              id: "outreach",
-              label: "Outreach",
-              content: (
-                <div className="space-y-4 px-5 py-6 sm:px-6">
-                  <p className="text-sm text-muted-foreground">
-                    Email, SMS, and contact enrichment for subcontractor outreach.
-                  </p>
-                  <IntegrationManager
-                    initial={initial.filter((i) => OUTREACH_IDS.has(i.id))}
-                  />
-                </div>
-              ),
-            },
-            {
-              id: "data",
-              label: "Data",
-              content: (
-                <div className="space-y-4 px-5 py-6 sm:px-6">
-                  <p className="text-sm text-muted-foreground">
-                    Optional enrichment: maps, SEO, labor data, and file storage.
-                  </p>
-                  <IntegrationManager
-                    initial={initial.filter((i) => DATA_IDS.has(i.id))}
-                  />
-                </div>
-              ),
-            },
-          ]}
-        />
-
-        <p className="px-5 pb-6 text-xs text-slate-500 sm:px-6">
-          Values saved here are encrypted before they reach the database, shown only as a
-          masked preview, and take effect immediately (the background worker refreshes within
-          5 minutes). Environment variables still work as a fallback; a value saved on this
-          page takes priority over its environment variable.
-        </p>
-      </div>
+                <p className="text-xs text-slate-500">
+                  Values saved here are encrypted before they reach the database, shown only as a
+                  masked preview, and take effect immediately (the background worker refreshes within
+                  5 minutes). Environment variables still work as a fallback; a value saved on this
+                  page takes priority over its environment variable.
+                </p>
+              </div>
+            ),
+          },
+          {
+            id: "outreach",
+            label: "Outreach",
+            content: (
+              <div className="space-y-4 px-5 py-6 sm:px-6">
+                <p className="text-sm text-muted-foreground">
+                  Email, SMS, and contact enrichment for subcontractor outreach.
+                </p>
+                <IntegrationManager
+                  initial={initial.filter((i) => OUTREACH_IDS.has(i.id))}
+                />
+              </div>
+            ),
+          },
+          {
+            id: "data",
+            label: "Data",
+            content: (
+              <div className="space-y-4 px-5 py-6 sm:px-6">
+                <p className="text-sm text-muted-foreground">
+                  Optional enrichment: maps, SEO, labor data, and file storage.
+                </p>
+                <IntegrationManager
+                  initial={initial.filter((i) => DATA_IDS.has(i.id))}
+                />
+              </div>
+            ),
+          },
+        ]}
+      />
     </>
   );
 }

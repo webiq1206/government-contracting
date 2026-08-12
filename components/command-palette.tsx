@@ -101,7 +101,7 @@ export function CommandPalette() {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-md border border-white/10 bg-background shadow-2xl"
+        className="w-full max-w-lg overflow-hidden rounded-md border border-border/55 bg-surface text-foreground shadow-2xl dark:border-white/10"
       >
         <input
           ref={inputRef}

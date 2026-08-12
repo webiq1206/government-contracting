@@ -16,10 +16,9 @@ const TABS = [
 ] as const;
 
 /**
- * Cross-page settings navigation.
- *
- * Mobile: scrolls with the page (non-sticky) so it doesn't eat screen height.
- * Desktop (md+): sticky at top-0, same as before.
+ * Cross-page settings section nav. Lives as static chrome above each settings
+ * page (page-shell does not scroll), so in-page EditorialTabs can use
+ * layout="fill" without a second sticky offset fighting this bar.
  */
 export function SettingsNav() {
   const pathname = usePathname();
@@ -28,7 +27,7 @@ export function SettingsNav() {
     <div
       role="navigation"
       aria-label="Settings sections"
-      className="flex gap-4 overflow-x-auto border-b border-border bg-background/95 px-4 py-2 backdrop-blur sm:gap-5 sm:px-6 sm:py-3 md:sticky md:top-0 md:z-30"
+      className="flex shrink-0 gap-4 overflow-x-auto border-b border-border bg-surface px-4 py-2 sm:gap-5 sm:px-6 sm:py-2.5"
       style={{ WebkitOverflowScrolling: "touch" } as React.CSSProperties}
     >
       {TABS.map((t) => {

@@ -5,7 +5,7 @@
 /* ==========================================================================
    BROST CO brand design system (aligned to marketing landing)
    Ink #171713 · Night #090a09 / #171813 · Paper #f1ece3 · Gold #c3a06b
-   Dark shell powers nav + Today. Paper is the work surface.
+   Light / Dark themes swap via `html.dark` + CSS variables.
    DM Sans is UI/body; GFS Didot is display (.font-display); JetBrains Mono
    is micro labels. Gold signals importance only, never a large field.
    Sage green (`pursue` #5A6B52 family) is the positive/"go" accent.
@@ -13,12 +13,109 @@
 
 :root {
   color-scheme: light;
+
+  /* Surfaces */
+  --background: 241 236 227; /* paper #f1ece3 */
+  --foreground: 23 23 19; /* ink */
+  --surface: 246 242 235;
+  --surface-raised: 251 250 247;
+  --muted: 232 225 214;
+  --muted-foreground: 107 100 88;
+  --border: 205 195 181; /* #cdc3b5 */
+  --border-strong: 180 168 150;
+
+  /* Chrome (sidebar / elevated panels) — light theme stays on paper family */
+  --shell: 246 242 235;
+  --shell-border: 205 195 181;
+
+  /* Brand ink stays dark in both themes (gold CTAs, marketing night). */
+  --ink: 23 23 19;
+
+  /* Accents */
+  --accent: 126 94 51; /* accessible gold-brown */
+  --accent-soft: 246 241 232;
+  --accent-strong: 126 94 51;
+  --gold: 195 160 107; /* #c3a06b */
+  --gold-deep: 166 130 80; /* #a68250 */
+
+  /* Status */
+  --pursue: 90 107 82;
+  --pursue-strong: 74 89 67;
+  --pursue-soft: 233 237 229;
+  --review: 133 92 44;
+  --dismiss: 120 120 110;
+  --risk: 162 69 60;
+
+  /* Warm slate ramp (light) */
+  --slate-50: 248 247 244;
+  --slate-100: 241 236 227;
+  --slate-200: 226 220 208;
+  --slate-300: 205 195 181;
+  --slate-400: 168 158 142;
+  --slate-500: 120 112 98;
+  --slate-600: 92 85 74;
+  --slate-700: 64 59 51;
+  --slate-800: 40 37 32;
+  --slate-900: 23 23 19;
+  --slate-950: 12 12 10;
+
+  --warning-strip-bg: 246 241 232;
+  --warning-strip-fg: 122 86 40;
+  --badge-match-bg: 233 237 229;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: 9 10 9; /* night */
+  --foreground: 246 242 235;
+  --surface: 23 24 19; /* #171813 */
+  --surface-raised: 30 31 28;
+  --muted: 36 37 33;
+  --muted-foreground: 186 176 160;
+  --border: 255 255 255;
+  --border-strong: 255 255 255;
+
+  --shell: 23 24 19;
+  --shell-border: 255 255 255;
+
+  --ink: 23 23 19;
+
+  --accent: 195 160 107;
+  --accent-soft: 36 32 24;
+  --accent-strong: 212 180 130;
+  --gold: 195 160 107;
+  --gold-deep: 166 130 80;
+
+  --pursue: 138 158 128;
+  --pursue-strong: 168 186 156;
+  --pursue-soft: 32 38 30;
+  --review: 212 168 104;
+  --dismiss: 140 140 130;
+  --risk: 220 120 110;
+
+  /* Flipped slate so existing text-slate-800 etc. stay readable on dark */
+  --slate-50: 12 12 10;
+  --slate-100: 17 18 19;
+  --slate-200: 36 37 33;
+  --slate-300: 55 56 50;
+  --slate-400: 107 100 88;
+  --slate-500: 140 132 118;
+  --slate-600: 180 170 155;
+  --slate-700: 210 200 185;
+  --slate-800: 232 225 214;
+  --slate-900: 246 242 235;
+  --slate-950: 251 250 247;
+
+  --warning-strip-bg: 48 38 24;
+  --warning-strip-fg: 212 168 104;
+  --badge-match-bg: 32 38 30;
 }
 
 html,
 body {
-  background: #f1ece3;
-  color: #171713;
+  background: rgb(var(--background));
+  color: rgb(var(--foreground));
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -28,12 +125,18 @@ body {
 *,
 ::before,
 ::after {
-  border-color: #cdc3b5;
+  border-color: rgb(var(--border) / 0.55);
+}
+
+.dark *,
+.dark ::before,
+.dark ::after {
+  border-color: rgb(var(--border) / 0.12);
 }
 
 ::selection {
   background-color: rgba(195, 160, 107, 0.22);
-  color: #171713;
+  color: rgb(var(--foreground));
 }
 
 @layer components {
@@ -50,7 +153,7 @@ body {
      Applied via class, never as a default. */
   .font-accent {
     font-family: theme("fontFamily.serif");
-    color: #c3a06b;
+    color: rgb(var(--gold));
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
@@ -98,7 +201,10 @@ body {
     @apply bg-gold text-ink hover:bg-[#d6b986];
   }
   .btn-ghost {
-    @apply border border-border-strong text-foreground hover:bg-surface;
+    @apply border border-border-strong/40 text-foreground hover:bg-surface;
+  }
+  .dark .btn-ghost {
+    @apply border-white/25 hover:bg-white/5;
   }
   .btn-danger {
     @apply bg-risk text-white hover:bg-red-800;
@@ -118,18 +224,31 @@ body {
 
   /* Surfaces */
   .card {
-    @apply rounded-sm border border-border bg-background p-4 sm:p-5 shadow-none;
+    @apply rounded-sm border border-border/55 bg-surface p-4 sm:p-5 shadow-none;
+  }
+  .dark .card {
+    @apply border-white/12 bg-shell;
   }
   .card-hover {
     @apply transition-colors hover:border-border-strong hover:bg-surface-raised;
   }
+  .dark .card-hover:hover,
+  .dark a.card:hover {
+    @apply border-gold/45 bg-surface-raised;
+  }
 
-  /* Dark editorial surfaces (nav, Today, readiness panels) */
+  /* Elevated panels (sidebar chrome, readiness blocks) */
   .shell-panel {
-    @apply rounded-sm border border-white/10 bg-shell;
+    @apply rounded-sm border border-border/55 bg-shell;
+  }
+  .dark .shell-panel {
+    @apply border-white/10;
   }
   .shell-ghost {
-    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm border border-white/25 bg-transparent px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm border border-border-strong/40 bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .dark .shell-ghost {
+    @apply border-white/25 hover:bg-white/5;
   }
   @media (min-width: 768px) {
     .shell-ghost {
@@ -139,6 +258,9 @@ body {
   .focus-rail {
     border-left: 2px solid #c3a06b;
     background: linear-gradient(90deg, rgba(195, 160, 107, 0.1), transparent);
+  }
+  .dark .focus-rail {
+    background: linear-gradient(90deg, rgba(195, 160, 107, 0.18), transparent);
   }
   .fit-score-box {
     @apply flex h-[4.5rem] w-[4.5rem] shrink-0 flex-col items-center justify-center border border-gold sm:h-[5.25rem] sm:w-[5.25rem];
@@ -160,9 +282,15 @@ body {
     @apply absolute bottom-0 left-0 right-0 h-0.5 bg-gold;
   }
   .action-row {
-    @apply relative border-b border-border px-1 py-4 transition-colors;
+    @apply relative border-b border-border/55 px-1 py-4 transition-colors;
+  }
+  .dark .action-row {
+    @apply border-white/10;
   }
   .action-row--shell {
+    @apply border-border/55;
+  }
+  .dark .action-row--shell {
     @apply border-white/10;
   }
   /* Landing-matched eyebrow: mono label with gold hairline rule. */
@@ -186,17 +314,17 @@ body {
     @apply rounded-md border px-4 py-3 text-sm;
   }
   .status-strip--risk {
-    @apply border-risk/40 bg-risk/5 text-slate-800;
+    @apply border-risk/40 bg-risk/5 text-foreground;
     border-left-width: 3px;
     border-left-color: #A2453C;
   }
   .status-strip--review {
-    @apply border-review/40 bg-review/5 text-slate-800;
+    @apply border-review/40 bg-review/5 text-foreground;
     border-left-width: 3px;
     border-left-color: #855C2C;
   }
   .status-strip--ok {
-    @apply border-pursue/35 bg-pursue/5 text-slate-800;
+    @apply border-pursue/35 bg-pursue/5 text-foreground;
     border-left-width: 3px;
     border-left-color: #5A6B52;
   }
@@ -208,7 +336,7 @@ body {
 
   /* Sticky jump nav chips */
   .jump-chip {
-    @apply badge shrink-0 border border-border bg-surface text-slate-600 transition-colors hover:border-gold/50 hover:bg-gold/10 hover:text-foreground;
+    @apply badge shrink-0 border border-border/55 bg-surface text-slate-600 transition-colors hover:border-gold/50 hover:bg-gold/10 hover:text-foreground;
   }
   .jump-chip--primary {
     @apply border-gold/40 bg-gold/10 text-accent-strong;
@@ -244,8 +372,11 @@ body {
 
   /* Inputs: taller on phones for fat-finger accuracy. */
   .input {
-    @apply w-full rounded-sm border border-border-strong bg-background px-3 py-2.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent sm:min-h-0 sm:py-2 sm:text-sm;
+    @apply w-full rounded-sm border border-border-strong/40 bg-background px-3 py-2.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent sm:min-h-0 sm:py-2 sm:text-sm;
     min-height: 2.75rem;
+  }
+  .dark .input {
+    @apply border-white/20 bg-shell focus:border-gold;
   }
   @media (min-width: 640px) {
     .input {
@@ -258,19 +389,19 @@ body {
 
   /* Tables */
   .th {
-    @apply border-b border-border px-3 py-2 text-left text-[0.7rem] font-semibold uppercase text-muted-foreground;
+    @apply border-b border-border/55 px-3 py-2 text-left text-[0.7rem] font-semibold uppercase text-muted-foreground;
     letter-spacing: 0.1em;
   }
   .td {
-    @apply border-b border-border px-3 py-2 text-sm text-slate-800;
+    @apply border-b border-border/55 px-3 py-2 text-sm text-slate-800;
   }
 
   /* Signature editorial components */
   .rule {
-    @apply h-px w-full bg-border;
+    @apply h-px w-full bg-border/55;
   }
   .callout-panel {
-    @apply rounded-sm border border-border bg-accent-soft p-5;
+    @apply rounded-sm border border-border/55 bg-accent-soft p-5;
     border-left: 3px solid #c3a06b;
   }
   .accent-left {
@@ -279,7 +410,7 @@ body {
   }
   .section-prominent {
     @apply pt-5;
-    border-top: 2px solid #171713;
+    border-top: 2px solid rgb(var(--foreground));
   }
 
   /* Collapsible section: a tap-to-expand accordion on mobile, an always-open
@@ -328,24 +459,37 @@ body {
     @apply bg-accent text-white;
   }
   .chip {
-    @apply cursor-pointer rounded-sm border border-border px-3.5 py-2.5 text-left transition-colors hover:border-muted-foreground hover:bg-surface;
+    @apply cursor-pointer rounded-sm border border-border/55 px-3.5 py-2.5 text-left transition-colors hover:border-muted-foreground hover:bg-surface;
   }
   .chip--active {
     @apply border-accent bg-accent-soft text-accent-strong;
   }
   .warning-strip {
     @apply rounded-md px-4 py-3 text-sm;
-    border-left: 3px solid #9A6B34; /* muted ochre */
-    background: #F6F1E8;
-    color: #7A5628;
+    border-left: 3px solid #9A6B34;
+    background: rgb(var(--warning-strip-bg));
+    color: rgb(var(--warning-strip-fg));
   }
   .badge-match {
     /* A positive "this fits" signal, so it reads green, not gold. */
     @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-[0.6875rem] font-semibold uppercase text-pursue-strong;
     letter-spacing: 0.04em;
-    background: #E9EDE5; /* pale sage */
+    background: rgb(var(--badge-match-bg));
     border: 1px solid rgba(90, 107, 82, 0.35);
   }
+}
+
+/* Email template preview: keep list spacing readable without a prose plugin. */
+.email-preview ul {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.email-preview li {
+  margin: 0.15rem 0;
+}
+.email-preview strong {
+  font-weight: 600;
 }
 
 .scroll-thin::-webkit-scrollbar {
@@ -353,107 +497,17 @@ body {
   width: 8px;
 }
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: #cdc3b5;
+  background: rgb(var(--border) / 0.55);
   border-radius: 4px;
+}
+.dark .scroll-thin::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.18);
 }
 
 :focus-visible {
   outline: 2px solid #7E5E33; /* accessible gold-brown (3:1+ vs background) */
   outline-offset: 2px;
 }
-
-/* ==========================================================================
-   Mobile dark card context (.mobile-dark)
-   Placed OUTSIDE @layer so these rules win the CSS cascade over Tailwind's
-   layered utilities without needing !important.  Only activates at <768 px;
-   desktop layouts inside the same element are completely unaffected.
-   ========================================================================== */
-@media (max-width: 767px) {
-  .mobile-dark {
-    background-color: #090a09; /* ink */
-  }
-
-  /* Cards take the dark editorial shell fill */
-  .mobile-dark .card {
-    background-color: #171813; /* shell */
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-  .mobile-dark .card-hover:hover,
-  .mobile-dark a.card:hover {
-    background-color: #1e1f1c;
-    border-color: rgba(195, 160, 107, 0.45); /* gold hint on hover */
-  }
-  /* Focus-rail human-action highlight stays gold but adapts to dark fill */
-  .mobile-dark .focus-rail {
-    background: linear-gradient(90deg, rgba(195, 160, 107, 0.18), transparent);
-  }
-
-  /* Primary text (headings, company names) */
-  .mobile-dark .card .text-slate-900,
-  .mobile-dark .card .text-slate-800 {
-    color: #f6f2eb;
-  }
-  /* Secondary/meta text */
-  .mobile-dark .card .text-slate-700,
-  .mobile-dark .card .text-slate-600 {
-    color: rgba(246, 242, 235, 0.6);
-  }
-  /* Tertiary / muted text */
-  .mobile-dark .card .text-slate-500 {
-    color: rgba(246, 242, 235, 0.45);
-  }
-  /* Accent-strong (pipeline next-action label) */
-  .mobile-dark .card .text-accent-strong {
-    color: #c3a06b; /* gold on dark */
-  }
-
-  /* Section group headers (stage labels, etc. — outside .card) */
-  .mobile-dark .text-slate-800 {
-    color: rgba(255, 255, 255, 0.88);
-  }
-  .mobile-dark .text-slate-500 {
-    color: rgba(255, 255, 255, 0.45);
-  }
-
-  /* Neutral badges (slate fill) go translucent white on dark */
-  .mobile-dark .badge.bg-slate-200,
-  .mobile-dark .badge.bg-slate-100 {
-    background-color: rgba(255, 255, 255, 0.10);
-    color: rgba(255, 255, 255, 0.60);
-  }
-
-  /* ── Card action menu popup exclusion ──────────────────────────────────
-     The pipeline card menu popup is absolutely positioned inside .card but
-     renders on a light bg-background surface. These rules have higher
-     specificity (4 class/attr selectors vs 3) so they win over the general
-     card overrides above, restoring natural light-surface text colours. */
-  /* Score-breakdown <details> panel: override the light bg-surface/60 slab and
-     its inner divider so the panel reads on the dark card shell. Text colours
-     (text-slate-600/700/500) are already remapped by the rules above. */
-  .mobile-dark .card details {
-    background-color: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-  .mobile-dark .card details ul {
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-
-  /* ── Card action menu popup exclusion ──────────────────────────────────
-     The pipeline card menu popup is absolutely positioned inside .card but
-     renders on a light bg-background surface. These rules have higher
-     specificity (4 class/attr selectors vs 3) so they win over the general
-     card overrides above, restoring natural light-surface text colours. */
-  .mobile-dark .card [role="menu"],
-  .mobile-dark .card [role="menu"] * {
-    color: revert;
-  }
-  .mobile-dark .card [role="menu"] .text-pursue-strong {
-    color: #4A5943;
-  }
-  .mobile-dark .card [role="menu"] .text-risk {
-    color: #A2453C;
-  }
-  .mobile-dark .card [role="menu"] .text-pursue {
-    color: #5A6B52;
-  }
+.dark :focus-visible {
+  outline-color: #c3a06b;
 }

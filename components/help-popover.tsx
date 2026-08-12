@@ -16,14 +16,14 @@ export interface HelpContent {
 
 export function HelpPopover({
   help,
-  variant = "light",
+  variant: _variant = "light",
 }: {
   help: HelpContent;
+  /** @deprecated Theme tokens cover both surfaces; kept for call-site compatibility. */
   variant?: "light" | "dark";
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const dark = variant === "dark";
 
   useEffect(() => {
     if (!open) return;
@@ -51,12 +51,8 @@ export function HelpPopover({
         onClick={() => setOpen((o) => !o)}
         className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors sm:h-6 sm:w-6 ${
           open
-            ? dark
-              ? "border-gold bg-gold text-ink"
-              : "border-accent bg-accent text-white"
-            : dark
-              ? "border-white/25 text-white/55 hover:border-gold hover:text-gold"
-              : "border-border-strong text-slate-500 hover:border-accent hover:text-accent"
+            ? "border-gold bg-gold text-ink"
+            : "border-border-strong/40 text-muted-foreground hover:border-gold hover:text-gold"
         }`}
       >
         ?

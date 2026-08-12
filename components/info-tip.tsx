@@ -49,10 +49,10 @@ export function InfoTip({
           e.stopPropagation();
           setOpen((o) => !o);
         }}
-        className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[0.625rem] font-semibold leading-none transition-colors ${
+        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-[0.625rem] font-semibold leading-none transition-colors sm:h-4 sm:w-4 ${
           open
-            ? "border-accent bg-accent text-white"
-            : "border-border-strong text-slate-500 hover:border-accent hover:text-accent"
+            ? "border-gold bg-gold text-ink"
+            : "border-border-strong/50 text-muted-foreground hover:border-gold hover:text-gold"
         }`}
       >
         ?
@@ -61,8 +61,8 @@ export function InfoTip({
         <span
           id={tipId}
           role="tooltip"
-          className={`absolute z-40 w-64 rounded-md border border-border bg-background p-3 text-left text-xs leading-relaxed text-slate-600 shadow-lg ${
-            side === "bottom" ? "left-0 top-6" : "bottom-6 left-0"
+          className={`absolute z-40 w-64 rounded-md border border-border/55 bg-surface p-3 text-left text-xs leading-relaxed text-foreground shadow-lg dark:border-white/10 ${
+            side === "bottom" ? "left-0 top-10 sm:top-6" : "bottom-10 left-0 sm:bottom-6"
           }`}
         >
           {children}

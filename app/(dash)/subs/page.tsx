@@ -53,7 +53,7 @@ export default async function SubsPage({
         minReliability={minRelRaw}
         q={searchParams.q}
       />
-      <div className="scroll-thin mobile-dark flex-1 overflow-auto p-4">
+      <div className="scroll-thin flex-1 overflow-auto p-4">
         {subs.length === 0 && !hasFilters && (
           <EmptyState
             title="Your sub database is empty"
@@ -78,7 +78,7 @@ export default async function SubsPage({
                 href={`/subs/${s.id}`}
                 className="card block transition-colors hover:border-accent/60"
               >
-                {/* Gold eyebrow label — visible only on mobile inside .mobile-dark context */}
+                {/* Gold eyebrow label for mobile list cards */}
                 <p className="eyebrow mb-2 md:hidden">
                   {(s.trade_categories ?? [])[0] ?? "Subcontractor"}
                 </p>

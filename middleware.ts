@@ -20,6 +20,7 @@ const PUBLIC_PREFIXES = [
   "/terms",
   "/billing/success",
   "/settings/billing",
+  "/theme-qa",
   "/api/auth",
   "/api/billing",
   "/api/health",

@@ -21,16 +21,16 @@ export function JsonLd({
     image: `${SITE_URL}/opengraph-image`,
     email: "hello@brostco.com",
     description:
-      "Brost Co is procurement execution software for federal services contractors. It finds, scores, sources, and prepares government contract opportunities.",
+      "Brost Co is government contracting software for federal services contractors. It finds, scores, sources, and prepares government contract opportunities.",
   };
 
   const webpage = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: "Brost Co | Procurement Execution for Federal Contractors",
+    name: "Brost Co | Government Contracting Software",
     url: SITE_URL,
     description:
-      "Win the right government contracts. Brost Co finds, scores, sources, and prepares opportunities so you stop managing the process by hand.",
+      "Brost Co finds federal work that fits you, scores each opportunity, sources subcontractors, and prepares bid packages. You approve every decision that matters.",
     primaryImageOfPage: {
       "@type": "ImageObject",
       url: `${SITE_URL}/opengraph-image`,

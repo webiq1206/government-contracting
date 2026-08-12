@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
+import { plainToHtml, renderTemplate } from "@/lib/domain/template-render";
+import { TEMPLATE_TOKEN_SAMPLES } from "@/lib/domain/template-tokens";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -25,32 +27,8 @@ interface TemplateVersion {
   created_at: string;
 }
 
-// ---------------------------------------------------------------------------
-// Preview sample values (one realistic example per token)
-// ---------------------------------------------------------------------------
-
-const SAMPLE: Record<string, string> = {
-  owner_name: "Marcus",
-  company_name: "BROSTCO Holdings LLC",
-  opportunity_title: "HVAC Maintenance Services, Building 36C",
-  location_state: "Virginia",
-  deadline: "Aug 25, 2026",
-  trade: "HVAC",
-  scope_summary:
-    "replace HVAC units in 4 buildings, approximately 120,000 sq ft total",
-  questions:
-    "- Do you have experience with federal facilities in Virginia?\n- Can you provide bonding and insurance certificates within 48 hours?",
-  sender_name: "Jared",
-  phone: "(800) 555-0199",
-  solicitation_number: "W912DR-26-R-0042",
-  agency: "US Army Corps of Engineers",
-};
-
-function renderPreview(template: string): string {
-  return template.replace(
-    /\{\{\s*(\w+)\s*\}\}/g,
-    (_, key) => SAMPLE[key] ?? `{{${key}}}`
-  );
+function previewFilled(template: string): string {
+  return renderTemplate(template, TEMPLATE_TOKEN_SAMPLES);
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +77,52 @@ function spliceIntoInput(
   const end = el.selectionEnd ?? current.length;
   const next = current.slice(0, start) + token + current.slice(end);
   return { next, cursor: start + token.length };
+}
+
+/** Wrap the current textarea selection (or insert a placeholder word). */
+function wrapSelection(
+  el: HTMLTextAreaElement,
+  current: string,
+  before: string,
+  after: string,
+  emptyPlaceholder = "text"
+): { next: string; selectStart: number; selectEnd: number } {
+  const start = el.selectionStart ?? current.length;
+  const end = el.selectionEnd ?? current.length;
+  const selected = current.slice(start, end);
+  const inner = selected.length > 0 ? selected : emptyPlaceholder;
+  const next = current.slice(0, start) + before + inner + after + current.slice(end);
+  const selectStart = start + before.length;
+  const selectEnd = selectStart + inner.length;
+  return { next, selectStart, selectEnd };
+}
+
+/** Prefix each selected line with "- ", or insert a bullet at the cursor. */
+function toggleBulletLines(
+  el: HTMLTextAreaElement,
+  current: string
+): { next: string; selectStart: number; selectEnd: number } {
+  const start = el.selectionStart ?? 0;
+  const end = el.selectionEnd ?? 0;
+  const lineStart = current.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+  const lineEndIdx = current.indexOf("\n", end);
+  const lineEnd = lineEndIdx === -1 ? current.length : lineEndIdx;
+  const block = current.slice(lineStart, lineEnd);
+  const lines = block.split("\n");
+  const allBulleted = lines.every((l) => /^\s*[-*]\s+/.test(l) || l.trim() === "");
+  const nextLines = lines.map((l) => {
+    if (l.trim() === "") return l;
+    if (allBulleted) return l.replace(/^\s*[-*]\s+/, "");
+    if (/^\s*[-*]\s+/.test(l)) return l;
+    return `- ${l}`;
+  });
+  const replaced = nextLines.join("\n");
+  const next = current.slice(0, lineStart) + replaced + current.slice(lineEnd);
+  return {
+    next,
+    selectStart: lineStart,
+    selectEnd: lineStart + replaced.length,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +264,7 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
                       v{v.version}
                     </span>
                     {isCurrent && (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 shrink-0">
+                      <span className="shrink-0 rounded-full bg-pursue/15 px-2 py-0.5 text-[10px] font-semibold text-pursue-strong">
                         current
                       </span>
                     )}
@@ -262,13 +286,13 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
                     <div className="border-t border-border px-4 py-3 space-y-3">
                       <div>
                         <p className="label mb-1 text-xs">Subject</p>
-                        <p className="rounded bg-white border border-border px-3 py-2 font-mono text-xs text-slate-700 whitespace-pre-wrap">
-                          {v.subject || <em className="text-slate-400">(no subject)</em>}
+                        <p className="rounded border border-border/55 bg-background px-3 py-2 font-mono text-xs text-foreground whitespace-pre-wrap dark:border-white/10">
+                          {v.subject || <em className="text-muted-foreground">(no subject)</em>}
                         </p>
                       </div>
                       <div>
                         <p className="label mb-1 text-xs">Body</p>
-                        <p className="max-h-48 overflow-y-auto rounded bg-white border border-border px-3 py-2 font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed scroll-thin">
+                        <p className="max-h-48 overflow-y-auto rounded border border-border/55 bg-background px-3 py-2 font-mono text-xs text-foreground whitespace-pre-wrap leading-relaxed scroll-thin dark:border-white/10">
                           {v.body}
                         </p>
                       </div>
@@ -365,6 +389,40 @@ export function EmailTemplateEditor({ template }: Props) {
     insertToken(match[1]);
   }
 
+  function applyBodyEdit(
+    edit: (el: HTMLTextAreaElement, current: string) => {
+      next: string;
+      selectStart: number;
+      selectEnd: number;
+    }
+  ) {
+    const el = bodyRef.current;
+    if (!el) return;
+    lastFocused.current = "body";
+    const { next, selectStart, selectEnd } = edit(el, body);
+    setBody(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(selectStart, selectEnd);
+    });
+  }
+
+  function formatBold() {
+    applyBodyEdit((el, current) =>
+      wrapSelection(el, current, "**", "**", "bold text")
+    );
+  }
+
+  function formatHighlight() {
+    applyBodyEdit((el, current) =>
+      wrapSelection(el, current, "==", "==", "highlighted text")
+    );
+  }
+
+  function formatBullets() {
+    applyBodyEdit((el, current) => toggleBulletLines(el, current));
+  }
+
   // -------------------------------------------------------------------------
   // Send test email
   // -------------------------------------------------------------------------
@@ -435,7 +493,7 @@ export function EmailTemplateEditor({ template }: Props) {
 
   function handleRestored(newVersion: number, restoredSubject: string | null, restoredBody: string) {
     // Update the active version counter shown in the header.
-    // The editor fields are NOT overwritten — the operator must explicitly
+    // The editor fields are NOT overwritten. The operator must explicitly
     // decide whether to adopt the restored content.
     setCurrentVersion(newVersion);
   }
@@ -444,14 +502,14 @@ export function EmailTemplateEditor({ template }: Props) {
   // Render
   // -------------------------------------------------------------------------
 
-  const previewSubject = renderPreview(subject || "(no subject)");
-  const previewBody = renderPreview(body);
+  const previewSubject = previewFilled(subject || "(no subject)");
+  const previewBodyHtml = plainToHtml(previewFilled(body));
 
   return (
     <div className="card space-y-5">
       {/* Header */}
       <div className="border-b border-border pb-4">
-        <p className="font-medium text-slate-900">{humanSlug(template.slug)}</p>
+        <p className="font-medium text-foreground">{humanSlug(template.slug)}</p>
         {template.description && (
           <p className="mt-0.5 text-sm text-slate-500">{template.description}</p>
         )}
@@ -482,7 +540,26 @@ export function EmailTemplateEditor({ template }: Props) {
 
       {/* Body */}
       <div>
-        <label className="label mb-1.5 block">Email body</label>
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+          <label className="label block">Email body</label>
+          <div
+            className="flex flex-wrap items-center gap-1"
+            role="toolbar"
+            aria-label="Email body formatting"
+          >
+            <FormatButton label="Bold" title="Bold selected text" onClick={formatBold} />
+            <FormatButton
+              label="Highlight"
+              title="Highlight selected text"
+              onClick={formatHighlight}
+            />
+            <FormatButton
+              label="Bullets"
+              title="Turn selected lines into a bullet list"
+              onClick={formatBullets}
+            />
+          </div>
+        </div>
         <textarea
           ref={bodyRef}
           className="input min-h-[260px] resize-y font-mono text-sm leading-relaxed"
@@ -493,11 +570,12 @@ export function EmailTemplateEditor({ template }: Props) {
           }}
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDropBody}
-          placeholder="Write your email here. Click or drag a token above to insert it at the cursor."
+          placeholder="Write your email here. Select text, then use Bold, Highlight, or Bullets. Click or drag a fill-in field above to insert it."
         />
-        <p className="mt-1.5 text-xs text-slate-400">
-          Plain text. Line breaks become line breaks in the email. Click a token
-          chip to insert it at the cursor, or drag it into this field.
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Select text, then use Bold, Highlight, or Bullets. Fill-in fields look like{" "}
+          <span className="font-mono text-foreground">{"{{trade}}"}</span> and are
+          replaced when Brost Co sends the email.
         </p>
       </div>
 
@@ -552,14 +630,14 @@ export function EmailTemplateEditor({ template }: Props) {
             if (e.target === e.currentTarget) setShowPreview(false);
           }}
         >
-          <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-2xl">
+          <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border/55 bg-surface text-foreground shadow-2xl dark:border-white/10">
             {/* Preview header */}
-            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-4">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border/55 px-6 py-4 dark:border-white/10">
               <div className="min-w-0">
                 <p className="eyebrow text-accent-strong">
                   Email preview · sample values
                 </p>
-                <p className="mt-2 text-sm font-medium text-slate-900 break-words">
+                <p className="mt-2 text-sm font-medium text-foreground break-words">
                   Subject: {previewSubject}
                 </p>
               </div>
@@ -572,20 +650,47 @@ export function EmailTemplateEditor({ template }: Props) {
             </div>
             {/* Preview body */}
             <div className="scroll-thin overflow-y-auto px-6 py-5">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-800">
-                {previewBody}
-              </p>
+              <div
+                className="email-preview prose-sm text-sm leading-relaxed text-foreground"
+                dangerouslySetInnerHTML={{ __html: previewBodyHtml }}
+              />
             </div>
             {/* Preview footer */}
             <div className="shrink-0 border-t border-border bg-surface px-6 py-3">
-              <p className="text-xs text-slate-400">
-                Tokens shown with representative sample data. Actual emails use
-                live solicitation values.
+              <p className="text-xs text-muted-foreground">
+                Fill-in fields shown with sample data. Actual emails use live
+                solicitation values. Bold, highlight, and bullets match what
+                recipients see.
               </p>
             </div>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function FormatButton({
+  label,
+  title,
+  onClick,
+}: {
+  label: string;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onMouseDown={(e) => {
+        // Keep textarea selection when clicking the toolbar.
+        e.preventDefault();
+      }}
+      onClick={onClick}
+      className="rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:border-foreground/30 hover:bg-surface"
+    >
+      {label}
+    </button>
   );
 }

@@ -1,9 +1,10 @@
 /**
  * Stripe Billing helpers for Brost Co SaaS subscriptions.
  * Gracefully disabled when STRIPE_SECRET_KEY is unset (local/dev).
+ * The Stripe SDK is required only when a secret key is present.
  */
-import Stripe from "stripe";
 import { config } from "../config";
+import { stripeEnabled } from "./enabled";
 import {
   FOUNDING_MONTHLY_CENTS,
   FOUNDING_MONTHLY_USD,
@@ -12,14 +13,24 @@ import {
   type PlanKey,
 } from "./prices";
 
-export function stripeEnabled(): boolean {
-  return Boolean(process.env.STRIPE_SECRET_KEY);
-}
+export { stripeEnabled };
 
-export function getStripe(): Stripe | null {
+/** Minimal Stripe client shape used by this module (avoids a hard SDK import). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type StripeClient = any;
+
+export function getStripe(): StripeClient | null {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) return null;
-  return new Stripe(key, { apiVersion: "2026-07-29.dahlia" });
+  try {
+    // Lazy require so pages that only check stripeEnabled() still compile when
+    // the optional SDK is not installed in a local workspace.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const StripeCtor = require("stripe");
+    return new StripeCtor(key, { apiVersion: "2026-07-29.dahlia" });
+  } catch {
+    return null;
+  }
 }
 
 export function priceIdForPlan(plan: PlanKey): string | null {

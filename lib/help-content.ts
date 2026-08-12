@@ -127,11 +127,11 @@ export const PAGE_HELP: Record<string, HelpContent> = {
     ],
   },
   content: {
-    title: "Reusable language the automation drafts from",
+    title: "Emails and proposal language Brost Co reuses",
     points: [
-      "Save your best past-performance, capability, and win-theme snippets once.",
-      "The Bid Builder and Sources Sought Responder pull the best matches in automatically.",
-      "Tag each snippet (trades, agencies, NAICS) so the right one is chosen.",
+      "Emails to subcontractors: edit the outreach and follow-up messages the system sends.",
+      "Proposal snippets: short paragraphs (past work, what you can do, why choose you) that get drafted into bids.",
+      "Tag snippets with trades, agencies, or NAICS so the right paragraph is chosen automatically.",
     ],
   },
   opportunity: {
@@ -148,7 +148,7 @@ export const PAGE_HELP: Record<string, HelpContent> = {
     points: [
       "Every step from setup through win/loss is listed here in order.",
       "Green steps need you; gray steps run automatically; others wait on subs or the agency.",
-      "Day to day, use Today — this page is the map, not the to-do list.",
+      "Day to day, use Today. This page is the map, not the to-do list.",
     ],
   },
 };

@@ -13,14 +13,14 @@ export const dynamic = "force-dynamic";
 const SITE_URL = process.env.APP_URL || "https://brostco.com";
 
 export const metadata: Metadata = {
-  title: "Brost Co | Procurement Execution for Federal Contractors",
+  title: "Brost Co | Government Contracting Software",
   description:
-    "Win the right government contracts. Brost Co finds, scores, sources, and prepares opportunities so you stop managing the process by hand.",
+    "Brost Co finds federal work that fits you, scores each opportunity, sources subcontractors, and prepares bid packages. You approve every decision that matters.",
   alternates: { canonical: SITE_URL },
   openGraph: {
-    title: "Brost Co | Procurement Execution for Federal Contractors",
+    title: "Brost Co | Government Contracting Software",
     description:
-      "Brost Co finds the right opportunities, scores the fit, builds subcontractor coverage, and prepares your bids. You stay focused on decisions only you can make.",
+      "Government contracting software for federal services contractors. Monitor SAM.gov, score fit, source subcontractors, track quotes, and prepare bids in one place.",
     url: SITE_URL,
     type: "website",
     siteName: "Brost Co",
@@ -29,15 +29,15 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "Brost Co, procurement execution software for federal services contractors",
+        alt: "Brost Co government contracting software for federal services contractors",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Brost Co | Procurement Execution for Federal Contractors",
+    title: "Brost Co | Government Contracting Software",
     description:
-      "Win the right government contracts. Brost Co finds, scores, sources, and prepares opportunities so you stop managing the process by hand.",
+      "Brost Co finds federal work that fits you, scores each opportunity, sources subcontractors, and prepares bid packages. You approve every decision that matters.",
     images: ["/twitter-image"],
   },
   keywords: [

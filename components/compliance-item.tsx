@@ -198,7 +198,7 @@ export function ComplianceItemCard({
           <p className="text-sm font-medium text-slate-900">
             {item.label}
             {item.manual && (
-              <span className="badge ml-1.5 bg-slate-100 text-slate-500">yours</span>
+              <span className="badge ml-1.5 bg-muted text-muted-foreground">yours</span>
             )}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">

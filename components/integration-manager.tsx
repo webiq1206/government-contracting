@@ -224,7 +224,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
                   {f.source !== "none" && (
                     <span className="flex items-center gap-2 text-xs text-slate-500">
                       <span className="num">{f.masked}</span>
-                      <span className="badge bg-slate-100 text-slate-500">
+                      <span className="badge bg-muted text-muted-foreground">
                         {f.source === "ui" ? "saved here" : "from environment"}
                       </span>
                       {f.source === "ui" && (

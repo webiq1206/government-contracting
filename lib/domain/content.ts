@@ -8,13 +8,40 @@
  */
 import type { ContentCategory, ContentLibraryItem } from "../types";
 
-/** The canonical content categories, with an operator-facing label for each. */
-export const CONTENT_CATEGORIES: { value: ContentCategory; label: string }[] = [
-  { value: "past_performance", label: "Past performance" },
-  { value: "capability", label: "Capability" },
-  { value: "win_theme", label: "Win theme" },
-  { value: "technical_approach", label: "Technical approach" },
-  { value: "boilerplate", label: "Boilerplate" },
+/**
+ * Canonical snippet types. Labels are plain English for operators; `hint` is
+ * the one-line "what is this for?" shown in the Content Library UI.
+ */
+export const CONTENT_CATEGORIES: {
+  value: ContentCategory;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "past_performance",
+    label: "Past work write-ups",
+    hint: "Short proof of jobs you or your subs already finished well. Pulled into proposals when an agency asks for experience.",
+  },
+  {
+    value: "capability",
+    label: "What we can do",
+    hint: "Your company strengths, trades, and coverage in plain language. Used in capability statements and Sources Sought replies.",
+  },
+  {
+    value: "win_theme",
+    label: "Why choose us",
+    hint: "The main reasons an agency should pick you (speed, local teams, quality). Repeated as themes across a bid.",
+  },
+  {
+    value: "technical_approach",
+    label: "How we will do the work",
+    hint: "Reusable paragraphs about method, schedule, or quality control that the Bid Builder can drop into a technical narrative.",
+  },
+  {
+    value: "boilerplate",
+    label: "Standard company language",
+    hint: "Legal name, about-us, certifications, and other copy you reuse almost every time.",
+  },
 ];
 
 const CATEGORY_VALUES = CONTENT_CATEGORIES.map((c) => c.value);
