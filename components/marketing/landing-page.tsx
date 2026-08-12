@@ -6,24 +6,9 @@ import { PromoCountdown } from "./promo-countdown";
 import { LandingFaq } from "./landing-faq";
 import { LandingMobileNav } from "./landing-mobile-nav";
 import { ProductFilm } from "./product-film";
+import { LandingStickyCta } from "./landing-sticky-cta";
+import { CtaArrow } from "./cta-arrow";
 import "./landing.css";
-
-/** Thin horizontal arrow for primary CTAs (replaces diagonal ↗). */
-function CtaArrow() {
-  return (
-    <span className="btn-arrow" aria-hidden="true">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path
-          d="M2.5 8h11M9.5 4.5 13 8l-3.5 3.5"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
-  );
-}
 
 export interface LandingPageProps {
   promoActive: boolean;
@@ -127,6 +112,11 @@ export function LandingPage({
     ? "Start founding free trial"
     : "Start free trial";
   const priceCta = "Start 7-day free trial";
+  // Sticky bar carries the money question; the button carries the action.
+  const stickyPriceNote = promoActive
+    ? `${foundingLabel}/mo founding rate, locked for life`
+    : `${standardLabel} per month after your free trial`;
+  const stickySubNote = "Cancel anytime";
   const pricingFaq = promoActive
     ? `Standard pricing is ${standardLabel} per month. Founding customers who join during the launch window lock in ${foundingLabel} per month for as long as they remain subscribed. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`
     : `Brost Co is ${standardLabel} per month. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`;
@@ -748,6 +738,13 @@ export function LandingPage({
           </div>
         </footer>
       </main>
+
+      <LandingStickyCta
+        href={signupHref}
+        label={priceCta}
+        priceNote={stickyPriceNote}
+        subNote={stickySubNote}
+      />
     </div>
   );
 }

@@ -21,6 +21,9 @@ const PUBLIC_PREFIXES = [
   "/billing/success",
   "/settings/billing",
   "/theme-qa",
+  // Landing product film (video, poster, captions) — served to anonymous
+  // visitors on `/`, so it must never be bounced to the login page.
+  "/film",
   "/api/auth",
   "/api/billing",
   "/api/health",

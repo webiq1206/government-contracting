@@ -9,26 +9,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const SHOTS = [
-  "today",
-  "pipeline",
-  "opportunity",
-  "attention",
-  "coverage",
-  "call",
-  "quotes",
-  "package",
-  "submit",
-  "close",
-] as const;
-
-export default function FilmCapturePage({
-  searchParams,
-}: {
-  searchParams?: { shot?: string };
-}) {
+/**
+ * Capture stage for the landing product film. Rendered at a fixed 1920x1080
+ * and driven frame by frame from scripts/render-product-film.mjs. Dev only.
+ */
+export default function FilmCapturePage() {
   if (process.env.NODE_ENV === "production") notFound();
-  const shot = searchParams?.shot ?? "today";
-  if (!SHOTS.includes(shot as (typeof SHOTS)[number])) notFound();
-  return <FilmCapture shot={shot} />;
+  return <FilmCapture />;
 }

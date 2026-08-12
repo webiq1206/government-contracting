@@ -462,3 +462,74 @@
 .mkt-lp .score-ui { grid-template-columns: 1fr; }
 .mkt-lp .coverage p { grid-template-columns: .8fr 1.4fr .5fr; }
     }
+
+/* ---------------------------------------------------------------------------
+   Sticky trial CTA
+   Pinned top bar on desktop, thumb-reachable bottom bar on phones. Hidden
+   until the hero scrolls away and while a section with its own CTA is on
+   screen; visibility (not just opacity) is toggled so it leaves the tab order.
+--------------------------------------------------------------------------- */
+.mkt-lp .sticky-cta {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  padding: 0 clamp(24px,4vw,70px);
+  background: rgba(10,11,9,.82);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-bottom: 1px solid rgba(195,160,107,.26);
+  box-shadow: 0 18px 44px rgba(0,0,0,.34);
+  color: #f7f3eb;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-101%);
+  transition: transform .5s cubic-bezier(.22,.68,.24,1), opacity .35s ease, visibility 0s linear .5s;
+}
+.mkt-lp .sticky-cta.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: transform .5s cubic-bezier(.22,.68,.24,1), opacity .35s ease, visibility 0s;
+}
+.mkt-lp .sticky-cta-inner { width: min(1300px, 100%); min-height: 70px; display: flex; align-items: center; gap: 22px; }
+.mkt-lp .sticky-cta-logo { display: inline-flex; align-items: center; flex-shrink: 0; }
+.mkt-lp .sticky-cta-logo img { height: 20px; width: auto; }
+.mkt-lp .sticky-cta-rule { width: 1px; height: 26px; flex-shrink: 0; background: rgba(255,255,255,.18); }
+.mkt-lp .sticky-cta-copy { min-width: 0; margin-right: auto; display: flex; flex-direction: column; gap: 4px; }
+.mkt-lp .sticky-cta-copy b { font-size: 13px; font-weight: 500; line-height: 1.2; color: #f7f3eb; }
+.mkt-lp .sticky-cta-copy span { font: 500 9px/1.2 "JetBrains Mono", monospace; letter-spacing: .14em; text-transform: uppercase; color: var(--on-dark-label); }
+.mkt-lp .sticky-cta-btn { flex-shrink: 0; }
+.mkt-lp .sticky-cta a:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+
+/* Tablet: the wordmark and price line compete for room — drop the mono label. */
+@media (max-width: 1050px) {
+  .mkt-lp .sticky-cta-copy span { display: none; }
+  .mkt-lp .sticky-cta-inner { gap: 18px; }
+}
+
+/* Phone: move to the bottom, full-width button, clear of the home indicator. */
+@media (max-width: 760px) {
+  .mkt-lp .sticky-cta {
+    inset: auto 0 0;
+    padding: 11px 16px calc(11px + env(safe-area-inset-bottom, 0px));
+    border-bottom: 0;
+    border-top: 1px solid rgba(195,160,107,.3);
+    box-shadow: 0 -18px 40px rgba(0,0,0,.45);
+    transform: translateY(101%);
+  }
+  .mkt-lp .sticky-cta.is-visible { transform: translateY(0); }
+  .mkt-lp .sticky-cta-inner { width: 100%; min-height: 0; flex-direction: column; align-items: stretch; gap: 9px; }
+  .mkt-lp .sticky-cta-logo, .mkt-lp .sticky-cta-rule { display: none; }
+  .mkt-lp .sticky-cta-copy { margin: 0; flex-direction: row; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 4px 9px; }
+  .mkt-lp .sticky-cta-copy b { font-size: 12px; }
+  .mkt-lp .sticky-cta-copy span { display: inline; font-size: 8px; }
+  .mkt-lp .sticky-cta-btn { width: 100%; min-height: 52px; font-size: 14px; }
+}
+
+/* Very narrow phones: keep the price line on one row. */
+@media (max-width: 380px) {
+  .mkt-lp .sticky-cta-copy span { display: none; }
+  .mkt-lp .sticky-cta-copy b { font-size: 11px; }
+}
