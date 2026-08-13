@@ -5,6 +5,7 @@
  * new version", so we cache with a short TTL and bust the cache on write.
  */
 import { queryOne, query } from "../db";
+import { defaultCompanyProfile } from "../domain/default-profile";
 import type { CompanyProfile, CompanyProfileJson } from "../types";
 import { currentOrgId, LEGACY_ORG_ID } from "../tenant-context";
 
@@ -51,8 +52,51 @@ export async function getActiveProfile(
   // org_id; now that several orgs can each hold an active profile, "any
   // active row" could be another tenant's company identity, which would then
   // be injected into this tenant's AI prompts and outgoing documents.
-  if (row) _cache = { orgId, profile: row, at: Date.now() };
-  return row;
+  if (!row) return null;
+  const profile = { ...row, profile_json: withProfileDefaults(row.profile_json) };
+  _cache = { orgId, profile, at: Date.now() };
+  return profile;
+}
+
+/**
+ * Fill in any section a stored profile is missing.
+ *
+ * Every consumer of this object reaches straight into a nested section
+ * (`decision_thresholds.pursue_min_score`, `scoring_rubric.dimensions`,
+ * `pricing_rules.out_of_range_tolerance_pct`), so a partial profile is not a
+ * degraded experience, it is a crash. Profiles written before the signup
+ * defaults existed are exactly that, and repairing on read fixes those
+ * accounts without a migration and without anyone having to notice.
+ *
+ * Only missing sections are filled. Anything the customer has actually set is
+ * left alone, including values that differ from our defaults.
+ */
+export function withProfileDefaults(
+  stored: Partial<CompanyProfileJson> | null | undefined
+): CompanyProfileJson {
+  const s = (stored ?? {}) as Partial<CompanyProfileJson>;
+  const defaults = defaultCompanyProfile({
+    legalName: s.legal_name ?? "My company",
+    email: s.email ?? "",
+    ownerName: s.owner_name ?? null,
+  });
+  return {
+    ...defaults,
+    ...s,
+    // Nested sections merge one level deep: a profile that has
+    // decision_thresholds but is missing a key added later should not lose the
+    // rest of the object to a shallow spread.
+    scoring_rubric: s.scoring_rubric?.dimensions?.length
+      ? s.scoring_rubric
+      : defaults.scoring_rubric,
+    hard_exclusions: s.hard_exclusions?.length ? s.hard_exclusions : defaults.hard_exclusions,
+    sub_standards: { ...defaults.sub_standards, ...(s.sub_standards ?? {}) },
+    pricing_rules: { ...defaults.pricing_rules, ...(s.pricing_rules ?? {}) },
+    decision_thresholds: {
+      ...defaults.decision_thresholds,
+      ...(s.decision_thresholds ?? {}),
+    },
+  };
 }
 
 export function invalidateProfileCache(): void {

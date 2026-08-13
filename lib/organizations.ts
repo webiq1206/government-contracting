@@ -6,6 +6,8 @@ import { query, queryOne } from "./db";
 import { LEGACY_ORG_ID } from "./tenant-context";
 import type { PlanKey } from "./billing/prices";
 import { TRIAL_STATUS, trialEndsAt } from "./billing/entitlements";
+import { defaultCompanyProfile } from "./domain/default-profile";
+import { renderProfileText } from "./ai/companyProfile";
 
 export interface Organization {
   id: string;
@@ -133,24 +135,19 @@ export async function createOrganizationForUser(
     [org.id, input.userId]
   );
 
-  // Empty active company profile shell so Finish Setting Up can populate it.
+  // A COMPLETE active profile, not a shell. The rest of the platform assumes
+  // every section exists: the profile page reads decision_thresholds, scoring
+  // maps over hard_exclusions and the rubric, quote entry reads pricing_rules.
+  // The old eight-field shell crashed the Company Profile page on a new
+  // account and would have taken scoring with it.
+  const profileJson = defaultCompanyProfile({
+    legalName: input.name,
+    email: input.email,
+  });
   await q(
     `insert into company_profile (org_id, version, is_active, profile_json, profile_text, updated_by)
-     values ($1, 1, true, $2::jsonb, '', $3)`,
-    [
-      org.id,
-      JSON.stringify({
-        legal_name: input.name.trim(),
-        dba_name: "",
-        uei: "",
-        cage_code: "",
-        naics_codes: [],
-        service_areas: [],
-        certifications: [],
-        email: input.email,
-      }),
-      input.userId,
-    ]
+     values ($1, 1, true, $2::jsonb, $3, $4)`,
+    [org.id, JSON.stringify(profileJson), renderProfileText(profileJson), input.userId]
   );
 
   return org;
