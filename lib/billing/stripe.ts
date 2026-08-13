@@ -61,36 +61,44 @@ export async function createCheckoutSession(input: {
     };
   }
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: input.customerId || undefined,
-    customer_email: input.customerId ? undefined : input.customerEmail,
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: input.successUrl,
-    cancel_url: input.cancelUrl,
-    client_reference_id: input.orgId,
-    // Collect a card up front so Stripe can charge automatically when the
-    // trial ends unless the customer cancels in the Billing portal.
-    payment_method_collection: "always",
-    metadata: {
-      org_id: input.orgId,
-      plan_key: input.plan,
-      interval: input.interval,
-    },
-    subscription_data: {
-      trial_period_days: TRIAL_DAYS,
+  // Stripe rejects a session outright for reasons the caller cannot predict
+  // (a product missing its tax code under Managed Payments, an archived price,
+  // an account restriction). Catch it here so the route redirects with a
+  // readable message instead of letting the exception become a blank browser
+  // error page on the customer's first attempt to pay.
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: input.customerId || undefined,
+      customer_email: input.customerId ? undefined : input.customerEmail,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      client_reference_id: input.orgId,
+      // Collect a card up front so Stripe can charge automatically when the
+      // trial ends unless the customer cancels in the Billing portal.
+      payment_method_collection: "always",
       metadata: {
         org_id: input.orgId,
         plan_key: input.plan,
         interval: input.interval,
       },
-    },
-    // Discount eligibility and expiry are Stripe's to enforce. Keeping that
-    // logic out of our code is the point: an expired code fails at Stripe.
-    allow_promotion_codes: input.allowPromotionCodes ?? true,
-  });
-
-  return { url: session.url };
+      subscription_data: {
+        trial_period_days: TRIAL_DAYS,
+        metadata: {
+          org_id: input.orgId,
+          plan_key: input.plan,
+          interval: input.interval,
+        },
+      },
+      // Discount eligibility and expiry are Stripe's to enforce. Keeping that
+      // logic out of our code is the point: an expired code fails at Stripe.
+      allow_promotion_codes: input.allowPromotionCodes ?? true,
+    });
+    return { url: session.url };
+  } catch (err) {
+    return { url: null, error: (err as Error).message };
+  }
 }
 
 export async function createBillingPortalSession(input: {

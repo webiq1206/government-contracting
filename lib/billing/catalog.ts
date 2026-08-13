@@ -15,6 +15,14 @@
 export type PlanKey = "standard" | "founding" | "none";
 export type BillingInterval = "month" | "year";
 
+/**
+ * Stripe tax code for the products we sell: software as a service, business
+ * use. Required on every product once Managed Payments is enabled, which is
+ * the default on newer Stripe accounts; without it checkout is rejected
+ * outright rather than degrading.
+ */
+export const PRODUCT_TAX_CODE = "txcd_10103000";
+
 /** Free trial applied to every new subscription, in days. */
 export const TRIAL_DAYS = 7;
 

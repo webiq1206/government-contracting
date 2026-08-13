@@ -37,9 +37,18 @@ Set up on 2026-08-13 in the Brost Co account `acct_1U40q0BUr8hLmEzF`.
 | Webhook endpoint | `we_1U41CcBUr8hLmEzFZDkBGJrF`, active, 8 events, `https://brostco.com/api/billing/webhook` |
 | Portal configuration | `bpc_1U41EoBUr8hLmEzFHvtzuUeQ` |
 
+Products use deterministic ids (`brostco_standard`, `brostco_founding`).
+
 These are TEST ids. Live mode needs business verification first, then the same
 steps again: the setup script produces different price ids, the webhook has its
 own signing secret, and portal settings are configured separately per mode.
+
+**Managed Payments requires a product tax code.** Newer Stripe accounts enable
+Managed Payments by default, and it rejects any checkout whose product has no
+`tax_code`. Ours is `txcd_10103000` (software as a service, business use), set
+by the setup script. If checkout starts failing with "the product tax code is
+missing", run `npm run stripe:setup` again; it repairs the product each price
+actually belongs to.
 
 **Plan switching is deliberately off in the Customer Portal.** Stripe's portal
 cannot enforce the grandfathered-rate protection, and worse, the webhook keeps

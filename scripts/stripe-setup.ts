@@ -18,7 +18,13 @@
  * repricing existing subscribers.
  */
 import "../lib/env";
-import { allPrices, PLANS, priceEnvNames, type PlanPrice } from "../lib/billing/catalog";
+import {
+  allPrices,
+  PLANS,
+  priceEnvNames,
+  PRODUCT_TAX_CODE,
+  type PlanPrice,
+} from "../lib/billing/catalog";
 
 const VERIFY_ONLY = process.argv.includes("--verify");
 
@@ -49,8 +55,57 @@ interface Resolved {
   detail?: string;
 }
 
+/**
+ * Give a product the tax code if it lacks one.
+ *
+ * Targets a product by id rather than by search, because an account can end up
+ * with more than one product per plan and repairing only the first match
+ * leaves the others rejecting checkout while the script reports "ok".
+ */
+async function ensureTaxCode(productId: string, label: string): Promise<void> {
+  const product = await stripe.products.retrieve(productId);
+  if (product.tax_code) return;
+  await stripe.products.update(productId, { tax_code: PRODUCT_TAX_CODE });
+  console.log(`  set tax code on product ${productId} (${label})`);
+}
+
+/**
+ * The product id for a plan, chosen by us rather than by Stripe.
+ *
+ * Deterministic on purpose. The obvious implementation looks the product up
+ * with products.search, but that index is eventually consistent: on a first
+ * run the search for the product just created still returns nothing, so every
+ * price ends up under its own duplicate product. Retrieving a known id is
+ * immediately consistent and makes the script genuinely idempotent.
+ */
+function productIdFor(plan: PlanPrice["plan"]): string {
+  return `brostco_${plan}`;
+}
+
+/** Ensure the plan's product exists, with its tax code, at a known id. */
+async function ensureProduct(price: PlanPrice) {
+  const id = productIdFor(price.plan);
+  try {
+    const product = await stripe.products.retrieve(id);
+    await ensureTaxCode(id, price.plan);
+    return product;
+  } catch {
+    return stripe.products.create({
+      id,
+      name: `Brost Co ${PLANS[price.plan].name}`,
+      description: PLANS[price.plan].blurb,
+      tax_code: PRODUCT_TAX_CODE,
+      metadata: { plan_key: price.plan },
+    });
+  }
+}
+
 /** Find the price for a lookup key, or create it under the plan's product. */
 async function resolvePrice(price: PlanPrice): Promise<Resolved> {
+  // One product per plan, reused across intervals so the customer sees a
+  // single product with monthly and annual options rather than two products.
+  const product = await ensureProduct(price);
+
   const existing = await stripe.prices.list({
     lookup_keys: [price.lookupKey],
     active: true,
@@ -59,6 +114,10 @@ async function resolvePrice(price: PlanPrice): Promise<Resolved> {
   const found = existing.data[0];
 
   if (found) {
+    // Repair the product this price actually belongs to, which is not always
+    // the one the search above returned.
+    const ownerId = typeof found.product === "string" ? found.product : found.product?.id;
+    if (ownerId) await ensureTaxCode(ownerId, price.lookupKey);
     if (found.unit_amount !== price.amountCents) {
       return {
         price,
@@ -76,20 +135,6 @@ async function resolvePrice(price: PlanPrice): Promise<Resolved> {
   if (VERIFY_ONLY) {
     return { price, id: null, status: "missing" };
   }
-
-  // One product per plan, reused across intervals so the customer sees a
-  // single product with monthly and annual options rather than two products.
-  const productSearch = await stripe.products.search({
-    query: `metadata['plan_key']:'${price.plan}'`,
-    limit: 1,
-  });
-  const product =
-    productSearch.data[0] ??
-    (await stripe.products.create({
-      name: `Brost Co ${PLANS[price.plan].name}`,
-      description: PLANS[price.plan].blurb,
-      metadata: { plan_key: price.plan },
-    }));
 
   const created = await stripe.prices.create({
     product: product.id,
