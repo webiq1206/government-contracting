@@ -98,7 +98,7 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
                 </p>
                 {r.opportunity_id ? (
                   <Link
-                    href={`/opportunities/${r.opportunity_id}`}
+                    href={`/opportunity/${r.opportunity_id}`}
                     className="text-xs text-accent hover:underline"
                   >
                     {r.opportunity_title ?? "Open the solicitation"}

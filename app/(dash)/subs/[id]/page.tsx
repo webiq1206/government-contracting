@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { subDetail } from "@/lib/data";
+import { subConversations } from "@/lib/domain/conversation";
+import { gmail } from "@/lib/integrations/gmail";
+import { ConversationThreads } from "@/components/conversation-threads";
 import { PageHeader } from "@/components/badges";
 import { SubNotes } from "@/components/sub-notes";
 import { SubEditor } from "@/components/sub-editor";
@@ -48,6 +51,13 @@ export default async function SubDetailPage({
   if (!detail) notFound();
 
   const { sub, communications, quotes, stats, pairings } = detail;
+  // Threads and inbox state are read alongside the detail so the page renders
+  // in one pass; a missing connection disables the composer rather than
+  // letting a reply fail after it is typed.
+  const [conversations, inboxConnected] = await Promise.all([
+    subConversations(params.id),
+    gmail.isConnected().catch(() => false),
+  ]);
   const projects: ProjectHistoryItem[] = Array.isArray(sub.project_history)
     ? sub.project_history
     : [];
@@ -243,9 +253,25 @@ export default async function SubDetailPage({
               )}
             </div>
 
+            <div className="card" id="conversations">
+              <h2 className="mb-1 text-sm font-semibold text-slate-900">
+                Email conversations{" "}
+                <span className="font-normal text-slate-500">({conversations.length})</span>
+              </h2>
+              <p className="mb-3 text-xs text-slate-500">
+                Read and reply right here. Messages go out from your own address and stay in
+                the same thread, so you never have to open Gmail.
+              </p>
+              <ConversationThreads
+                subcontractorId={sub.id}
+                canSend={inboxConnected}
+                conversations={conversations}
+              />
+            </div>
+
             <div className="card" id="communications">
               <h2 className="mb-1 text-sm font-semibold text-slate-900">
-                Communications & history{" "}
+                Full history{" "}
                 <span className="font-normal text-slate-500">({communications.length})</span>
               </h2>
               <p className="mb-3 text-xs text-slate-500">
