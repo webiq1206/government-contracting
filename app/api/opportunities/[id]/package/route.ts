@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { queryOne } from "@/lib/db";
 import { storage } from "@/lib/integrations/storage";
 import { makeZip, type ZipEntry } from "@/lib/zip";
@@ -20,11 +20,12 @@ interface DocRow {
  * operator must still add (signatures, bid bonds, etc.).
  */
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
 
   const opp = await queryOne<Opportunity>(
-    `select id, title, solicitation_number from opportunities where id=$1`,
+    `select id, title, solicitation_number from opportunities where id=$1 and org_id=$2`,
     [params.id]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });

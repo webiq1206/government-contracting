@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
-import { query } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-guard";
+import { activeTemplates } from "@/lib/domain/template-store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,23 +10,13 @@ const EDITABLE_SLUGS = ["template_1_outreach", "template_2_followup"] as const;
 
 /** Return the active version of each editable outreach template. */
 export async function GET() {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
 
-  const templates = await query<{
-    id: string;
-    slug: string;
-    version: number;
-    subject: string | null;
-    body: string;
-    description: string | null;
-  }>(
-    `SELECT DISTINCT ON (slug) id, slug, version, subject, body, description
-       FROM templates
-      WHERE slug = ANY($1) AND is_active = true
-      ORDER BY slug, version DESC`,
-    [EDITABLE_SLUGS]
-  );
+  // Own copies win over platform defaults; ownedByOrg tells the editor
+  // whether a save will be the org's first (copy-on-write).
+  const templates = await activeTemplates(EDITABLE_SLUGS, orgId);
 
   return NextResponse.json({ templates });
 }

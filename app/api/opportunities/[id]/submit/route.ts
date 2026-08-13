@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { logAgent } from "@/lib/logger";
@@ -10,11 +10,12 @@ export const dynamic = "force-dynamic";
 
 /** Operator submits the reviewed bid package. Guards the submit-lead-hours rule + prime_only block. */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
   const { force } = await req.json().catch(() => ({}));
 
-  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [params.id]);
+  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const bid = await queryOne<{

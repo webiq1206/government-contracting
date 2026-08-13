@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { saveTemplateVersion } from "@/lib/domain/template-versions";
 import { logAgent } from "@/lib/logger";
 import { sendOutreachEmail } from "@/lib/integrations/email-transport";
 import { renderTemplate, plainToHtml } from "@/lib/domain/template-render";
-import { query } from "@/lib/db";
+import { templateHistory } from "@/lib/domain/template-store";
 import {
   TEMPLATE_PREVIEW_ATTACHMENTS,
   TEMPLATE_TOKEN_SAMPLES,
@@ -30,8 +30,9 @@ export async function GET(
   req: Request,
   { params }: { params: { slug: string } }
 ) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
 
   const { slug } = params;
   if (!EDITABLE_SLUGS.includes(slug)) {
@@ -43,21 +44,7 @@ export async function GET(
     return NextResponse.json({ error: "Use ?history=true" }, { status: 400 });
   }
 
-  const rows = await query<{
-    id: string;
-    version: number;
-    subject: string | null;
-    body: string;
-    is_active: boolean;
-    created_at: string;
-  }>(
-    `SELECT id, version, subject, body, is_active, created_at
-       FROM templates
-      WHERE slug = $1
-      ORDER BY version DESC
-      LIMIT 5`,
-    [slug]
-  );
+  const rows = await templateHistory(slug, orgId);
 
   return NextResponse.json({ versions: rows });
 }
@@ -76,8 +63,9 @@ export async function POST(
   req: Request,
   { params }: { params: { slug: string } }
 ) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const { slug } = params;
   if (!EDITABLE_SLUGS.includes(slug)) {
@@ -154,8 +142,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: { slug: string } }
 ) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const { slug } = params;
   if (!EDITABLE_SLUGS.includes(slug)) {
@@ -176,7 +165,7 @@ export async function PATCH(
   const newBody = body.body.trim();
 
   try {
-    const inserted = await saveTemplateVersion(slug, subject, newBody);
+    const inserted = await saveTemplateVersion(slug, subject, newBody, orgId);
 
     await logAgent({
       agent: "operator",

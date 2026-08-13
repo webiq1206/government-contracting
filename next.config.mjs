@@ -32,6 +32,25 @@ const nextConfig = {
     // Lint is run explicitly; do not fail production builds on lint warnings.
     ignoreDuringBuilds: true,
   },
+  // Baseline security headers. Deliberately not a full CSP: that needs a
+  // tested allowlist (Next inline runtime, Google Fonts, Stripe redirects)
+  // and an untested CSP shipped at launch breaks pages in ways a missing one
+  // does not. These four are safe everywhere and cover the common cases:
+  // clickjacking, MIME sniffing, referrer leakage to third parties, and
+  // never-needed browser capabilities.
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

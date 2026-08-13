@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext, findOrgRecord, notFoundResponse } from "@/lib/org-guard";
 import { callCardById, callCardHistory } from "@/lib/data";
 
 export const runtime = "nodejs";
@@ -12,8 +12,12 @@ export const dynamic = "force-dynamic";
  * cards can be reopened) instead of scanning the whole pending queue.
  */
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+
+  // callCardById assembles context by bare id; prove ownership first.
+  const owned = await findOrgRecord("call_cards", params.id, ctx.orgId, "id");
+  if (!owned) return notFoundResponse();
 
   const card = await callCardById(params.id);
   if (!card) {

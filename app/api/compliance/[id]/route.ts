@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 
@@ -16,14 +16,15 @@ export const dynamic = "force-dynamic";
 const STATUSES = new Set(["ok", "warning", "critical", "blocked", "resolved"]);
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
   const item = await queryOne<{ id: string; label: string }>(
-    `select id, label from compliance_items where id=$1`,
-    [params.id]
+    `select id, label from compliance_items where id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -85,12 +86,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 /** Delete an operator-created item. Monitor-managed items can't be deleted here
  *  (the monitor would just recreate them), so this only removes source='operator'. */
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const item = await queryOne<{ id: string; label: string; source: string }>(
-    `select id, label, coalesce(source,'monitor') as source from compliance_items where id=$1`,
-    [params.id]
+    `select id, label, coalesce(source,'monitor') as source from compliance_items where id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (item.source !== "operator") {

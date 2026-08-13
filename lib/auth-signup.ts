@@ -1,7 +1,7 @@
 /**
  * Self-serve account creation for SaaS signup.
  */
-import { query, queryOne } from "./db";
+import { queryOne, transaction } from "./db";
 import { hashPassword, createSession, type SessionUser } from "./auth";
 import { createOrganizationForUser } from "./organizations";
 import { trackEvent } from "./analytics";
@@ -32,18 +32,27 @@ export async function signupAccount(input: {
   }
 
   const password_hash = hashPassword(input.password);
-  const user = await queryOne<{ id: string; email: string; name: string | null; role: string }>(
-    `insert into users (email, password_hash, name, role)
-     values ($1, $2, $3, 'operator')
-     returning id, email, name, role`,
-    [email, password_hash, input.name.trim() || null]
-  );
-  if (!user) return { error: "Could not create account." };
-
-  const org = await createOrganizationForUser({
-    userId: user.id,
-    name: input.companyName.trim() || input.name.trim() || "My company",
-    email,
+  // User, organization, membership, and profile shell are one atomic unit: a
+  // failure anywhere rolls all of it back. A partial signup used to strand a
+  // users row that blocked the email address while owning nothing.
+  const { user, org } = await transaction(async (client) => {
+    const created = await client.query<{ id: string; email: string; name: string | null; role: string }>(
+      `insert into users (email, password_hash, name, role)
+       values ($1, $2, $3, 'operator')
+       returning id, email, name, role`,
+      [email, password_hash, input.name.trim() || null]
+    );
+    const user = created.rows[0];
+    if (!user) throw new Error("Could not create account.");
+    const org = await createOrganizationForUser(
+      {
+        userId: user.id,
+        name: input.companyName.trim() || input.name.trim() || "My company",
+        email,
+      },
+      client
+    );
+    return { user, org };
   });
 
   const token = await createSession(user.id);

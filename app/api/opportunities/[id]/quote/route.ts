@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { getProfileJson } from "@/lib/ai/companyProfile";
@@ -20,8 +20,9 @@ interface QuoteInput {
 
 /** Operator enters written sub quotes; platform prices the bid + flags out-of-range, then triggers Bid Builder. */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const body = await req.json().catch(() => ({}));
   const items: QuoteInput[] = Array.isArray(body.items) ? body.items : [];
@@ -29,7 +30,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "No quotes provided." }, { status: 400 });
   }
 
-  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [params.id]);
+  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const profile = await getProfileJson();
 

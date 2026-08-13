@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 
@@ -8,12 +8,13 @@ export const dynamic = "force-dynamic";
 
 /** Remove an operator-defined KPI. */
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const kpi = await queryOne<{ id: string; label: string }>(
-    `select id, label from custom_kpis where id=$1`,
-    [params.id]
+    `select id, label from custom_kpis where id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   if (!kpi) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

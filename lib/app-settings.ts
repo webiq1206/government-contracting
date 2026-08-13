@@ -10,12 +10,36 @@
  */
 import { query, queryOne } from "./db";
 import { normalizeRules, type AutomationRules } from "./domain/intake";
+import { LEGACY_ORG_ID } from "./tenant-context";
+
+/**
+ * Settings are per-organization, scoped by key prefix.
+ *
+ * app_settings.key is the table's primary key and predates organizations, so
+ * "automation" was one row for the whole platform: any customer flipping the
+ * pause switch stopped every other customer's automation. Rather than
+ * migrate the primary key under a launch deadline, the org boundary lives in
+ * the key itself: the founding org keeps the bare keys its existing rows
+ * already use, every other org reads and writes "<orgId>:<key>". Same
+ * isolation, zero data migration, and a later PK migration can fold the
+ * prefix into a column without changing this module's callers.
+ */
+async function scopedKey(key: string): Promise<string> {
+  try {
+    const { tryResolveTenantOrgId } = await import("./tenant");
+    const orgId = await tryResolveTenantOrgId();
+    if (orgId && orgId !== LEGACY_ORG_ID) return `${orgId}:${key}`;
+  } catch {
+    // Fall through to the platform-level key.
+  }
+  return key;
+}
 
 async function getSetting<T>(key: string, fallback: T): Promise<T> {
   try {
     const row = await queryOne<{ value_json: T }>(
       `select value_json from app_settings where key = $1`,
-      [key]
+      [await scopedKey(key)]
     );
     return row ? row.value_json : fallback;
   } catch {
@@ -29,7 +53,7 @@ async function setSetting(key: string, value: unknown, updatedBy?: string): Prom
      values ($1, $2, now(), $3)
      on conflict (key) do update
        set value_json = excluded.value_json, updated_at = now(), updated_by = excluded.updated_by`,
-    [key, JSON.stringify(value), updatedBy ?? null]
+    [await scopedKey(key), JSON.stringify(value), updatedBy ?? null]
   );
 }
 
@@ -51,14 +75,20 @@ export const AUTOMATION_PAUSED_ERROR =
 const AUTOMATION_KEY = "automation";
 const AUTOMATION_DEFAULT: AutomationState = { paused: false, changed_at: null, changed_by: null };
 
-/** Short in-memory cache so burst enqueue/send paths do not hammer the DB. */
+/**
+ * Short in-memory cache so burst enqueue/send paths do not hammer the DB.
+ * Keyed by the scoped key: settings are per-org now, and a single cached
+ * value would hand one org's pause state to another for the cache window.
+ */
 const STATE_CACHE_MS = 2_000;
-let stateCache: { at: number; state: AutomationState } | null = null;
+const stateCache = new Map<string, { at: number; state: AutomationState }>();
 
 /** Current automation state. Default (and failure mode) is RUNNING. */
 export async function getAutomationState(): Promise<AutomationState> {
-  if (stateCache && Date.now() - stateCache.at < STATE_CACHE_MS) {
-    return stateCache.state;
+  const cacheKey = await scopedKey(AUTOMATION_KEY);
+  const hit = stateCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < STATE_CACHE_MS) {
+    return hit.state;
   }
   const v = await getSetting<Partial<AutomationState>>(AUTOMATION_KEY, AUTOMATION_DEFAULT);
   const state: AutomationState = {
@@ -66,7 +96,7 @@ export async function getAutomationState(): Promise<AutomationState> {
     changed_at: v.changed_at ?? null,
     changed_by: v.changed_by ?? null,
   };
-  stateCache = { at: Date.now(), state };
+  stateCache.set(cacheKey, { at: Date.now(), state });
   return state;
 }
 
@@ -82,13 +112,13 @@ export async function setAutomationPaused(paused: boolean, by: string): Promise<
     changed_by: by,
   };
   await setSetting(AUTOMATION_KEY, state, by);
-  stateCache = { at: Date.now(), state };
+  stateCache.set(await scopedKey(AUTOMATION_KEY), { at: Date.now(), state });
   return state;
 }
 
 /** Test helper: clear the in-memory pause cache between cases. */
 export function clearAutomationStateCache(): void {
-  stateCache = null;
+  stateCache.clear();
 }
 
 // ---------------------------------------------------------------------------

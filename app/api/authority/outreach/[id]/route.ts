@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
@@ -16,8 +16,9 @@ export const dynamic = "force-dynamic";
  * ever goes out unattended. Editing the copy before approval is supported.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
   const body = (await req.json().catch(() => ({}))) as {
     action?: "approve" | "reject";
     subject?: string;
@@ -28,8 +29,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const outreach = await queryOne<{ id: string; prospect_id: string }>(
-    `select id, prospect_id from backlink_outreach where id = $1`,
-    [params.id]
+    `select id, prospect_id from backlink_outreach where id = $1 and org_id = $2`,
+    [params.id, orgId]
   );
   if (!outreach) return NextResponse.json({ error: "Draft not found." }, { status: 404 });
 

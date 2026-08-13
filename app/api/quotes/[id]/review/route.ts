@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 
@@ -12,8 +12,9 @@ export const dynamic = "force-dynamic";
  *   dismiss → leave flag but snooze from Today via note (optional future)
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const body = (await req.json().catch(() => ({}))) as { action?: string };
   const action = body.action === "accept" ? "accept" : null;
@@ -26,7 +27,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     opportunity_id: string;
     trade: string | null;
     quote_amount: number | null;
-  }>(`select id, opportunity_id, trade, quote_amount from quotes where id=$1`, [params.id]);
+  }>(`select id, opportunity_id, trade, quote_amount from quotes where id=$1 and org_id=$2`, [params.id, orgId]);
   if (!quote) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   await query(`update quotes set is_out_of_range = false where id=$1`, [params.id]);

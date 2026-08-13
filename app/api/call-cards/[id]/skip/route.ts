@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext, findOrgRecord, notFoundResponse } from "@/lib/org-guard";
 import { skipCallCard } from "@/lib/skip-call";
 
 export const runtime = "nodejs";
@@ -16,8 +16,12 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+
+  // skipCallCard works by bare id; prove the card is ours before handing over.
+  const card = await findOrgRecord("call_cards", params.id, ctx.orgId, "id");
+  if (!card) return notFoundResponse();
 
   const body = (await req.json().catch(() => ({}))) as {
     reason?: string;

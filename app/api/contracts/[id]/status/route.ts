@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 
@@ -10,8 +10,9 @@ const ALLOWED = new Set(["active", "completed"]);
 
 /** Move a contract between active and completed (past). */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const body = await req.json().catch(() => ({}));
   const status = typeof body.status === "string" ? body.status : "";
@@ -19,8 +20,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "Invalid status." }, { status: 400 });
   }
 
-  const contract = await queryOne<{ id: string }>(`select id from contracts where id=$1`, [
+  const contract = await queryOne<{ id: string }>(`select id from contracts where id=$1 and org_id=$2`, [
     params.id,
+    orgId,
   ]);
   if (!contract) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

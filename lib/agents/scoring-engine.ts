@@ -152,8 +152,14 @@ export const scoringEngine: AgentDefinition = {
     // 2) Rubric scoring via Claude (per-dimension judgment against the profile).
     // Apply any operator-approved Learning Loop weights (normalized to 100 pts) so
     // an approved weight version actually changes scoring; default = raw rubric.
+    // Scoped to the org being scored: with several tenants each holding an
+    // active weight version, "any active row" would score this org's
+    // opportunities with someone else's approved rubric.
+    const { tryResolveTenantOrgId } = await import("../tenant");
+    const weightsOrgId = await tryResolveTenantOrgId();
     const activeWeights = await queryOne<{ weights: Record<string, unknown> }>(
-      `select weights from scoring_weights where is_active = true limit 1`
+      `select weights from scoring_weights where is_active = true and org_id = $1 limit 1`,
+      [weightsOrgId]
     );
     const rubricDims = applyWeightOverrides(profile.scoring_rubric.dimensions, activeWeights?.weights);
     const rubric = { ...profile.scoring_rubric, dimensions: rubricDims };

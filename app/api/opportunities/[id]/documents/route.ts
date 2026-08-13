@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { storage } from "@/lib/integrations/storage";
 import { logAgent } from "@/lib/logger";
@@ -20,12 +20,13 @@ const ALLOWED = new Set([
  * Operator document upload for an opportunity (proof, amendments, attachments).
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const opp = await queryOne<{ id: string }>(
-    `select id from opportunities where id=$1`,
-    [params.id]
+    `select id from opportunities where id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

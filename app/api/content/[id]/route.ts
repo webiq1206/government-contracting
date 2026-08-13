@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 import { parseContentBody } from "@/lib/domain/content";
@@ -14,12 +14,13 @@ export const dynamic = "force-dynamic";
  * full title/category/body validation.
  */
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const existing = await queryOne<{ id: string }>(
-    `select id from content_library where id=$1`,
-    [params.id]
+    `select id from content_library where id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
@@ -60,12 +61,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 /** Delete a snippet. */
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const existing = await queryOne<{ id: string }>(
-    `select id from content_library where id=$1`,
-    [params.id]
+    `select id from content_library where id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

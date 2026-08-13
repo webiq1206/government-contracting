@@ -47,14 +47,12 @@ export async function getActiveProfile(
       limit 1`,
     [orgId]
   );
-  // Pre-migration fallback (org_id column absent or null legacy rows).
-  const profile =
-    row ??
-    (await queryOne<CompanyProfile>(
-      `select * from company_profile where is_active = true limit 1`
-    ).catch(() => null));
-  if (profile) _cache = { orgId, profile, at: Date.now() };
-  return profile;
+  // No unscoped fallback. It existed for the window before 028 backfilled
+  // org_id; now that several orgs can each hold an active profile, "any
+  // active row" could be another tenant's company identity, which would then
+  // be injected into this tenant's AI prompts and outgoing documents.
+  if (row) _cache = { orgId, profile: row, at: Date.now() };
+  return row;
 }
 
 export function invalidateProfileCache(): void {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
@@ -43,13 +43,14 @@ const STAGE_AGENTS: Record<string, string[]> = {
 };
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const { action } = await req.json().catch(() => ({}));
   const opp = await queryOne<{ id: string; stage: string }>(
-    `select id, stage from opportunities where id=$1`,
-    [params.id]
+    `select id, stage from opportunities where id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

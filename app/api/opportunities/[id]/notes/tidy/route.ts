@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { complete, ClaudeNotConfiguredError } from "@/lib/ai/claude";
 import { noEmDash } from "@/lib/sanitize";
 
@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
  * never invents.
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
 
   const body = await req.json().catch(() => ({}));
   const notes = typeof body.notes === "string" ? body.notes.trim() : "";

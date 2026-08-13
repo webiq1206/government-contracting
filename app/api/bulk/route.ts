@@ -144,8 +144,8 @@ export async function POST(req: Request) {
     let processed = 0;
     for (const id of ids) {
       const opp = await queryOne<{ id: string }>(
-        `select id from opportunities where id = $1`,
-        [id]
+        `select id from opportunities where id = $1 and org_id = $2`,
+        [id, auth.organizationId]
       );
       if (!opp) continue;
 

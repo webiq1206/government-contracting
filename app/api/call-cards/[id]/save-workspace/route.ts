@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { transaction, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
@@ -45,8 +45,9 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
   const body = await req.json().catch(() => ({}));
   const response = (body.response ?? {}) as CallResponse;
   const closeCard = body.closeCard === true;
@@ -91,8 +92,8 @@ export async function POST(
       // 1) Look up the card + related ids.
       const card = (
         await c.query<{ opportunity_id: string; subcontractor_id: string; status: string }>(
-          `select opportunity_id, subcontractor_id, status from call_cards where id=$1`,
-          [params.id]
+          `select opportunity_id, subcontractor_id, status from call_cards where id=$1 and org_id=$2`,
+          [params.id, orgId]
         )
       ).rows[0];
       if (!card) throw new Error("Call card not found.");

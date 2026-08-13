@@ -20,6 +20,11 @@ export default function robots(): MetadataRoute.Robots {
           "/login",
           "/setup",
           "/billing/",
+          // Token-bearing URLs: the subcontractor portal and document links.
+          // Both also send noindex on the page; this keeps crawlers from even
+          // requesting them.
+          "/vendor/",
+          "/d/",
         ],
       },
     ],

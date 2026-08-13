@@ -47,12 +47,12 @@ export const outreachFollowup: AgentDefinition = {
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     // Load the active follow-up template and company profile once per run.
+    // Template resolution is org-aware (own copy, else platform default) so a
+    // follow-up never goes out with another tenant's wording.
+    const { activeTemplate } = await import("../domain/template-store");
+    const { tryResolveTenantOrgId } = await import("../tenant");
     const [tmpl, profile] = await Promise.all([
-      queryOne<{ subject: string | null; body: string }>(
-        `select subject, body from templates
-          where slug = 'template_2_followup' and is_active = true
-          order by version desc limit 1`
-      ),
+      tryResolveTenantOrgId().then((orgId) => activeTemplate("template_2_followup", orgId)),
       getProfileJson(),
     ]);
 

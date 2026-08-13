@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne, transaction } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
@@ -14,15 +14,16 @@ export const dynamic = "force-dynamic";
  * the Learning Loop and Analytics.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
   const body = await req.json().catch(() => ({}));
   const outcome = body.outcome as "won" | "lost" | "no_award";
   if (!["won", "lost", "no_award"].includes(outcome)) {
     return NextResponse.json({ error: "outcome must be won|lost|no_award" }, { status: 400 });
   }
 
-  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1`, [params.id]);
+  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const bid = await queryOne<{ id: string; bid_amount: number | null }>(
     `select id, bid_amount from bids where opportunity_id=$1 order by created_at desc limit 1`,
@@ -99,6 +100,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       message: `WON. Contract created. CPARS calendar set.`,
     });
     await enqueue("analytics-engine", {});
+    // The paperwork gate moves from bidding to working the moment this is a
+    // real contract: from here on, a sub without current insurance starting
+    // work is the prime's exposure, not just a stalled outreach.
+    await enqueue("sub-onboarding", { opportunityId: params.id });
   } else {
     if (bid) {
       await query(`update bids set outcome=$2, award_amount=$3, loss_reason=$4 where id=$1`, [

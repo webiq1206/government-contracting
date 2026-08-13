@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { saveTemplateVersion } from "@/lib/domain/template-versions";
 import { logAgent } from "@/lib/logger";
 import { query } from "@/lib/db";
+import { LEGACY_ORG_ID } from "@/lib/tenant-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,8 +23,9 @@ export async function POST(
   req: Request,
   { params }: { params: { slug: string } }
 ) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const { slug } = params;
   if (!EDITABLE_SLUGS.includes(slug)) {
@@ -39,9 +41,13 @@ export async function POST(
   }
 
   // Look up the requested historical version.
+  // Restore from the same lineage the history endpoint showed: the org's own
+  // versions once any exist, else the platform default lineage.
   const rows = await query<{ subject: string | null; body: string }>(
-    `SELECT subject, body FROM templates WHERE slug = $1 AND version = $2`,
-    [slug, body.version]
+    `SELECT subject, body FROM templates
+      WHERE slug = $1 AND version = $2 AND org_id in ($3, $4)
+      ORDER BY (org_id = $3) DESC LIMIT 1`,
+    [slug, body.version, orgId, LEGACY_ORG_ID]
   );
 
   if (rows.length === 0) {
@@ -54,7 +60,7 @@ export async function POST(
   const source = rows[0];
 
   try {
-    const inserted = await saveTemplateVersion(slug, source.subject, source.body);
+    const inserted = await saveTemplateVersion(slug, source.subject, source.body, orgId);
 
     await logAgent({
       agent: "operator",

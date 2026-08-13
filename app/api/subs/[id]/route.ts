@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 
@@ -28,14 +28,15 @@ const TEXT_FIELDS = [
 ] as const;
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
   const sub = await queryOne<{ id: string }>(
-    `select id from subcontractors where id=$1`,
-    [params.id]
+    `select id from subcontractors where id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
 

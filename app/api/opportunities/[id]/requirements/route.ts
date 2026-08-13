@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { validatePackage, computeReady } from "@/lib/domain/package";
 import { logAgent } from "@/lib/logger";
@@ -15,8 +15,9 @@ export const dynamic = "force-dynamic";
  * Body: { requirement_id?: string, finding_id?: string, confirmed: boolean }
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
   const body = (await req.json().catch(() => ({}))) as {
     requirement_id?: string;
     finding_id?: string;
@@ -41,7 +42,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     >
   >(
     `select id, compliance_matrix, audit_findings, bid_amount, sub_quote_total, markup_pct
-       from bids where opportunity_id=$1 order by created_at desc limit 1`,
+       from bids where opportunity_id=$1 and org_id=$2 order by created_at desc limit 1`,
     [params.id]
   );
   if (!bid || !bid.compliance_matrix) {

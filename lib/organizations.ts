@@ -1,6 +1,7 @@
 /**
  * Organization (tenant) helpers: membership, subscription gates, creation.
  */
+import type { PoolClient } from "pg";
 import { query, queryOne } from "./db";
 import { LEGACY_ORG_ID } from "./tenant-context";
 import type { PlanKey } from "./billing/prices";
@@ -75,15 +76,28 @@ function slugify(name: string): string {
   );
 }
 
-export async function createOrganizationForUser(input: {
-  userId: string;
-  name: string;
-  email: string;
-}): Promise<Organization> {
+export async function createOrganizationForUser(
+  input: {
+    userId: string;
+    name: string;
+    email: string;
+  },
+  client?: PoolClient
+): Promise<Organization> {
+  // When a transaction client is supplied every write joins the caller's
+  // transaction, so signup is all-or-nothing: a failure in any insert rolls
+  // back the lot instead of stranding a user row that blocks the email
+  // forever while owning nothing.
+  const q = client
+    ? <T extends object>(text: string, params?: unknown[]) =>
+        client.query(text, params as never[]).then((r) => r.rows as T[])
+    : (query as <T extends object>(text: string, params?: unknown[]) => Promise<T[]>);
+  const q1 = async <T extends object>(text: string, params?: unknown[]) =>
+    (await q<T>(text, params))[0] ?? null;
   const base = slugify(input.name);
   let slug = base;
   for (let i = 0; i < 8; i++) {
-    const clash = await queryOne<{ id: string }>(
+    const clash = await q1<{ id: string }>(
       `select id from organizations where slug = $1`,
       [slug]
     );
@@ -91,7 +105,7 @@ export async function createOrganizationForUser(input: {
     slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
   }
 
-  const org = await queryOne<Organization>(
+  const org = await q1<Organization>(
     `insert into organizations (name, slug, plan_key, subscription_status)
      values ($1, $2, 'none', 'none')
      returning *`,
@@ -99,13 +113,13 @@ export async function createOrganizationForUser(input: {
   );
   if (!org) throw new Error("Failed to create organization.");
 
-  await query(
+  await q(
     `insert into organization_members (org_id, user_id, role) values ($1, $2, 'owner')`,
     [org.id, input.userId]
   );
 
   // Empty active company profile shell so Finish Setting Up can populate it.
-  await query(
+  await q(
     `insert into company_profile (org_id, version, is_active, profile_json, profile_text, updated_by)
      values ($1, 1, true, $2::jsonb, '', $3)`,
     [

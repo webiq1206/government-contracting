@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 import { resolveSnoozeUntil } from "@/lib/domain/snooze";
@@ -19,8 +19,9 @@ export const dynamic = "force-dynamic";
  * while hidden.
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
   const body = (await req.json().catch(() => ({}))) as {
     kind?: string;
     id?: string;
@@ -29,8 +30,8 @@ export async function POST(req: Request) {
   };
 
   if (body.wakeAll) {
-    await query(`update opportunities set snoozed_until=null where snoozed_until is not null`);
-    await query(`update call_cards set snoozed_until=null where snoozed_until is not null`);
+    await query(`update opportunities set snoozed_until=null where snoozed_until is not null and org_id=$1`, [orgId]);
+    await query(`update call_cards set snoozed_until=null where snoozed_until is not null and org_id=$1`, [orgId]);
     return NextResponse.json({ ok: true });
   }
 
@@ -61,8 +62,8 @@ export async function POST(req: Request) {
                 then $2::timestamptz + interval '4 hours'
                 else review_expires_at
               end
-        where id = $1 returning id, title`,
-      [body.id, until ? until.toISOString() : null]
+        where id = $1 and org_id = $3 returning id, title`,
+      [body.id, until ? until.toISOString() : null, orgId]
     );
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await logAgent({
@@ -76,8 +77,8 @@ export async function POST(req: Request) {
     });
   } else {
     const row = await queryOne<{ id: string; opportunity_id: string }>(
-      `update call_cards set snoozed_until = $2 where id = $1 returning id, opportunity_id`,
-      [body.id, until ? until.toISOString() : null]
+      `update call_cards set snoozed_until = $2 where id = $1 and org_id = $3 returning id, opportunity_id`,
+      [body.id, until ? until.toISOString() : null, orgId]
     );
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
     await logAgent({

@@ -106,11 +106,11 @@ export const outreach: AgentDefinition = {
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 
-    const tmpl = await queryOne<{ subject: string | null; body: string }>(
-      `select subject, body from templates
-       where slug='template_1_outreach' and is_active=true
-       order by version desc limit 1`
-    );
+    // Org-aware: this tenant's own copy if they saved one, else the platform
+    // default. Never another tenant's edit.
+    const { activeTemplate } = await import("../domain/template-store");
+    const { tryResolveTenantOrgId } = await import("../tenant");
+    const tmpl = await activeTemplate("template_1_outreach", await tryResolveTenantOrgId());
     if (!tmpl) return { ok: false, summary: "no active template_1_outreach template" };
 
     const analysis = opp.solicitation_analysis;

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 
@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
  * countdown/alerts.
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth, orgId } = ctx;
 
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const label = typeof body.label === "string" ? body.label.trim() : "";
@@ -32,10 +33,10 @@ export async function POST(req: Request) {
   }
 
   const row = await queryOne<{ id: string }>(
-    `insert into compliance_items (category, label, source, due_at, status, last_checked_at)
-     values ($1, $2, 'operator', $3, 'ok', now())
+    `insert into compliance_items (org_id, category, label, source, due_at, status, last_checked_at)
+     values ($4, $1, $2, 'operator', $3, 'ok', now())
      returning id`,
-    [category, label, dueAt]
+    [category, label, dueAt, orgId]
   );
 
   await logAgent({

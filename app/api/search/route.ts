@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { query } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -19,8 +19,9 @@ export interface SearchResult {
  * capped per type, newest-relevant first. Powers the ⌘K palette.
  */
 export async function GET(req: Request) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
 
   const q = new URL(req.url).searchParams.get("q")?.trim() ?? "";
   if (q.length < 2) return NextResponse.json({ results: [] });
@@ -30,27 +31,27 @@ export async function GET(req: Request) {
     query<{ id: string; title: string | null; agency: string | null; solicitation_number: string | null; stage: string; status: string }>(
       `select id, title, agency, solicitation_number, stage, status
          from opportunities
-        where title ilike $1 or solicitation_number ilike $1 or agency ilike $1
+        where org_id = $2 and (title ilike $1 or solicitation_number ilike $1 or agency ilike $1)
         order by (status='open') desc, updated_at desc
         limit 8`,
-      [like]
+      [like, orgId]
     ),
     query<{ id: string; company_name: string; city: string | null; state: string | null; trade_categories: string[] | null }>(
       `select id, company_name, city, state, trade_categories
          from subcontractors
-        where company_name ilike $1 or owner_name ilike $1
+        where org_id = $2 and (company_name ilike $1 or owner_name ilike $1)
         order by is_preferred desc, company_name asc
         limit 6`,
-      [like]
+      [like, orgId]
     ),
     query<{ id: string; contract_number: string | null; title: string | null }>(
       `select c.id, c.contract_number, o.title
          from contracts c
          left join opportunities o on o.id = c.opportunity_id
-        where c.contract_number ilike $1 or o.title ilike $1
+        where c.org_id = $2 and (c.contract_number ilike $1 or o.title ilike $1)
         order by c.created_at desc
         limit 4`,
-      [like]
+      [like, orgId]
     ),
   ]);
 
