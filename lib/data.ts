@@ -2,6 +2,13 @@
  * Server-side data-access layer. Dashboard server components import these
  * directly (no internal HTTP hop for reads). All functions are read-only;
  * mutations go through API routes in app/api/*.
+ *
+ * EVERY function that reads a tenant-owned table must scope it with
+ * `currentOrg()`. This is the read half of the tenant boundary: the API routes
+ * enforce it for writes, and without it here a brand-new customer's first page
+ * load shows another customer's subcontractors, contracts, and pipeline. That
+ * is exactly what happened, and it was found by signing up as a new user and
+ * seeing "1 subcontractor" on an empty account.
  */
 import { query, queryOne } from "./db";
 import type { KpiParams } from "./domain/kpi";
@@ -16,6 +23,20 @@ import {
   emailLogStatusSql,
   type EmailLogStatusFilter,
 } from "./domain/email-log";
+
+/**
+ * The organization every read in this module is scoped to.
+ *
+ * Resolves from the agent's async-local context first (worker jobs) and then
+ * the signed-in user's membership. Falls back to the founding org so the
+ * original single-tenant install, whose rows predate organization_members,
+ * keeps working.
+ */
+async function currentOrg(): Promise<string> {
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+}
 
 export async function queueCounts(): Promise<{ review: number; callQueue: number }> {
   const { tryResolveTenantOrgId } = await import("./tenant");
@@ -132,6 +153,7 @@ export interface CallCardRow {
 }
 
 export async function callQueue(): Promise<CallCardRow[]> {
+  const orgId = await currentOrg();
   return query<CallCardRow>(
     `select cc.id, cc.opportunity_id, cc.subcontractor_id, cc.card_json, cc.call_script,
             cc.question_list, cc.needs_project_history, cc.status, cc.source,
@@ -149,11 +171,13 @@ export async function callQueue(): Promise<CallCardRow[]> {
        join subcontractors s on s.id = cc.subcontractor_id
        join opportunities o on o.id = cc.opportunity_id
       where cc.status='pending'
+        and cc.org_id = $1
         and (cc.snoozed_until is null or cc.snoozed_until <= now())
         -- Uncallable cards (no phone) are never shown; Call Prep refuses to
         -- create them going forward, and this keeps historical empties off Today.
         and nullif(btrim(coalesce(s.phone, '')), '') is not null
-      order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc`
+      order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc`,
+    [orgId]
   );
 }
 
@@ -162,6 +186,7 @@ export async function callQueue(): Promise<CallCardRow[]> {
  * (so a completed card can be reopened for review). Same shape as callQueue().
  */
 export async function callCardById(id: string): Promise<CallCardRow | null> {
+  const orgId = await currentOrg();
   return queryOne<CallCardRow>(
     `select cc.id, cc.opportunity_id, cc.subcontractor_id, cc.card_json, cc.call_script,
             cc.question_list, cc.needs_project_history, cc.status, cc.source,
@@ -178,26 +203,27 @@ export async function callCardById(id: string): Promise<CallCardRow | null> {
        from call_cards cc
        join subcontractors s on s.id = cc.subcontractor_id
        join opportunities o on o.id = cc.opportunity_id
-      where cc.id=$1`,
-    [id]
+      where cc.id=$1 and cc.org_id=$2`,
+    [id, orgId]
   );
 }
 
 /** Fetch prior communications + quotes for the (sub, opp) pair, used by the Call Workspace. */
 export async function callCardHistory(subId: string, oppId: string) {
+  const orgId = await currentOrg();
   const [communications, quotes] = await Promise.all([
     query(
       `select id, channel, direction, subject, body, created_at, replied_at
          from communications
-        where subcontractor_id=$1 and opportunity_id=$2
+        where subcontractor_id=$1 and opportunity_id=$2 and org_id=$3
         order by created_at desc limit 20`,
-      [subId, oppId]
+      [subId, oppId, orgId]
     ),
     query(
       `select id, trade, quote_amount, payment_terms, is_out_of_range, created_at
-         from quotes where subcontractor_id=$1 and opportunity_id=$2
+         from quotes where subcontractor_id=$1 and opportunity_id=$2 and org_id=$3
         order by created_at desc limit 50`,
-      [subId, oppId]
+      [subId, oppId, orgId]
     ),
   ]);
   return { communications, quotes };
@@ -212,8 +238,9 @@ export interface SubFilters {
 }
 
 export async function subDatabase(filters: SubFilters = {}): Promise<Subcontractor[]> {
-  const where: string[] = ["blacklisted = false"];
-  const params: unknown[] = [];
+  const orgId = await currentOrg();
+  const params: unknown[] = [orgId];
+  const where: string[] = ["blacklisted = false", "org_id = $1"];
   if (filters.trade) {
     params.push(filters.trade);
     where.push(`$${params.length} = any(trade_categories)`);
@@ -286,7 +313,7 @@ export async function emailLogPaged(opts: {
       : "";
   const statusSql = emailLogStatusSql(status, EMAIL_LOG_RESPONDED);
 
-  const from = (searchParamIndex: number) => `
+  const from = (searchParamIndex: number, orgParamIndex: number) => `
     from communications c
     join subcontractors s on s.id = c.subcontractor_id
     left join opportunities o on o.id = c.opportunity_id
@@ -302,12 +329,20 @@ export async function emailLogPaged(opts: {
          )
     ) replies on true
     where c.channel = 'email'
+      and c.org_id = $${orgParamIndex}
       ${searchSql(searchParamIndex)}
   `;
 
+  // The org is appended LAST to each array so the existing positional indexes
+  // ($1 limit, $2 offset, $3 search) keep their meaning.
+  const orgId = await currentOrg();
   const listParams: unknown[] = [EMAIL_LOG_PAGE_SIZE, offset];
   if (searchNeedle) listParams.push(searchNeedle);
+  listParams.push(orgId);
+  const listOrgIndex = listParams.length;
   const countParams: unknown[] = searchNeedle ? [searchNeedle] : [];
+  countParams.push(orgId);
+  const countOrgIndex = countParams.length;
 
   const [rows, totals, countRows] = await Promise.all([
     query<EmailLogRow>(
@@ -316,14 +351,14 @@ export async function emailLogPaged(opts: {
               ${EMAIL_LOG_RESPONDED} as responded,
               c.subcontractor_id, s.company_name,
               c.opportunity_id, o.title as opportunity_title
-       ${from(3)}
+       ${from(3, listOrgIndex)}
          and ${statusSql}
        order by c.created_at desc
        limit $1 offset $2`,
       listParams
     ),
     query<{ count: string }>(
-      `select count(*)::text as count ${from(1)} and ${statusSql}`,
+      `select count(*)::text as count ${from(1, countOrgIndex)} and ${statusSql}`,
       countParams
     ),
     query<{
@@ -339,7 +374,7 @@ export async function emailLogPaged(opts: {
          count(*) filter (where c.direction = 'outbound' and c.opened_at is not null)::text as opened,
          count(*) filter (where c.direction = 'outbound' and c.clicked_at is not null)::text as clicked,
          count(*) filter (where ${EMAIL_LOG_RESPONDED})::text as responded
-       ${from(1)}`,
+       ${from(1, countOrgIndex)}`,
       countParams
     ),
   ]);
@@ -481,14 +516,17 @@ export async function complianceBoard() {
     `select ci.*, c.contract_number
        from compliance_items ci
        left join contracts c on c.id = ci.contract_id
+      where ci.org_id = $1
       order by
         case ci.status when 'blocked' then 0 when 'critical' then 1 when 'warning' then 2 else 3 end,
-        (ci.due_at is null), ci.due_at asc`
+        (ci.due_at is null), ci.due_at asc`,
+    [await currentOrg()]
   );
   return items;
 }
 
 export async function activeContracts() {
+  const orgId = await currentOrg();
   return query(
     `select c.*, o.title as opportunity_title,
             ps.company_name as primary_sub_name,
@@ -497,13 +535,15 @@ export async function activeContracts() {
        left join opportunities o on o.id = c.opportunity_id
        left join subcontractors ps on ps.id = c.primary_sub_id
        left join subcontractors bs on bs.id = c.backup_sub_id
-      where c.status='active'
-      order by c.end_date asc nulls last`
+      where c.status='active' and c.org_id=$1
+      order by c.end_date asc nulls last`,
+    [orgId]
   );
 }
 
 /** Contracts no longer active (completed/closed), for the Past contracts view. */
 export async function completedContracts() {
+  const orgId = await currentOrg();
   return query(
     `select c.*, o.title as opportunity_title,
             ps.company_name as primary_sub_name,
@@ -512,22 +552,25 @@ export async function completedContracts() {
        left join opportunities o on o.id = c.opportunity_id
        left join subcontractors ps on ps.id = c.primary_sub_id
        left join subcontractors bs on bs.id = c.backup_sub_id
-      where c.status <> 'active'
-      order by c.end_date desc nulls last, c.updated_at desc`
+      where c.status <> 'active' and c.org_id=$1
+      order by c.end_date desc nulls last, c.updated_at desc`,
+    [orgId]
   );
 }
 
 export async function latestKpiSnapshot(): Promise<Record<string, unknown> | null> {
   const row = await queryOne<{ output_json: Record<string, unknown> }>(
     `select output_json from agent_logs
-      where agent='analytics-engine' and action='kpi-snapshot'
-      order by created_at desc limit 1`
+      where agent='analytics-engine' and action='kpi-snapshot' and org_id=$1
+      order by created_at desc limit 1`,
+    [await currentOrg()]
   );
   return row?.output_json ?? null;
 }
 
 /** Live-computed KPIs as a fallback when the Analytics Engine hasn't run yet. */
 export async function computeKpisFallback() {
+  const orgId = await currentOrg();
   const row = await queryOne<{
     won: string;
     lost: string;
@@ -536,13 +579,16 @@ export async function computeKpisFallback() {
     active_revenue: string | null;
   }>(
     `select
-       (select count(*) from bids where outcome='won') as won,
-       (select count(*) from bids where outcome='lost') as lost,
-       (select avg(margin_pct) from bids where outcome='won') as avg_margin,
-       (select sum(value_estimated) from opportunities where stage not in ('dismissed','lost') and status='open') as pipeline_value,
+       (select count(*) from bids where outcome='won' and org_id=$1) as won,
+       (select count(*) from bids where outcome='lost' and org_id=$1) as lost,
+       (select avg(margin_pct) from bids where outcome='won' and org_id=$1) as avg_margin,
+       (select sum(value_estimated) from opportunities
+         where stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_value,
        (select sum(c.award_amount) from contracts c
           left join opportunities o on o.id = c.opportunity_id
-         where c.status='active' and (o.id is null or o.status <> 'archived')) as active_revenue`
+         where c.status='active' and c.org_id=$1
+           and (o.id is null or o.status <> 'archived')) as active_revenue`,
+    [orgId]
   );
   const won = Number(row?.won ?? 0);
   const lost = Number(row?.lost ?? 0);
@@ -565,19 +611,26 @@ export async function analyticsExtras(): Promise<{
   counts: { open_opps: number; new_30d: number; bids_30d: number; active_contracts: number };
   byStage: { stage: string; count: number; value: number }[];
 }> {
+  const orgId = await currentOrg();
   const [counts, byStage] = await Promise.all([
     queryOne<{ open_opps: number; new_30d: number; bids_30d: number; active_contracts: number }>(
       `select
-         (select count(*)::int from opportunities where status='open' and stage not in ('dismissed','lost')) as open_opps,
-         (select count(*)::int from opportunities where created_at >= now() - interval '30 days') as new_30d,
-         (select count(*)::int from bids where submitted_at is not null and submitted_at >= now() - interval '30 days') as bids_30d,
-         (select count(*)::int from contracts where status='active') as active_contracts`
+         (select count(*)::int from opportunities
+           where status='open' and stage not in ('dismissed','lost') and org_id=$1) as open_opps,
+         (select count(*)::int from opportunities
+           where created_at >= now() - interval '30 days' and org_id=$1) as new_30d,
+         (select count(*)::int from bids
+           where submitted_at is not null and submitted_at >= now() - interval '30 days'
+             and org_id=$1) as bids_30d,
+         (select count(*)::int from contracts where status='active' and org_id=$1) as active_contracts`,
+      [orgId]
     ),
     query<{ stage: string; count: number; value: number }>(
       `select stage, count(*)::int as count, coalesce(sum(value_estimated),0)::float8 as value
          from opportunities
-        where status='open' and stage not in ('dismissed','lost')
-        group by stage`
+        where status='open' and stage not in ('dismissed','lost') and org_id=$1
+        group by stage`,
+      [orgId]
     ),
   ]);
   return {
@@ -599,7 +652,9 @@ export async function customKpis(): Promise<CustomKpiRow[]> {
   try {
     return await query<CustomKpiRow>(
       `select id, label, metric, params, sort_order from custom_kpis
-        order by sort_order asc, created_at asc limit 50`
+        where org_id = $1
+        order by sort_order asc, created_at asc limit 50`,
+      [await currentOrg()]
     );
   } catch {
     return [];
@@ -613,6 +668,7 @@ export async function customKpis(): Promise<CustomKpiRow[]> {
  * a 0..100 number; currency/count return the raw number.
  */
 export async function computeCustomKpi(metric: string, params: KpiParams): Promise<number | null> {
+  const orgId = await currentOrg();
   const days = params.days ?? 0;
   const minScore = params.minScore ?? 0;
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
@@ -621,30 +677,34 @@ export async function computeCustomKpi(metric: string, params: KpiParams): Promi
       case "open_opportunities": {
         const r = await queryOne<{ n: number }>(
           `select count(*)::int as n from opportunities
-            where status='open' and stage not in ('dismissed','lost') and coalesce(score,0) >= $1`,
-          [minScore]
+            where status='open' and stage not in ('dismissed','lost')
+              and coalesce(score,0) >= $1 and org_id = $2`,
+          [minScore, orgId]
         );
         return Number(r?.n ?? 0);
       }
       case "pipeline_value": {
         const r = await queryOne<{ n: number }>(
           `select coalesce(sum(value_estimated),0)::float8 as n from opportunities
-            where status='open' and stage not in ('dismissed','lost') and coalesce(score,0) >= $1`,
-          [minScore]
+            where status='open' and stage not in ('dismissed','lost')
+              and coalesce(score,0) >= $1 and org_id = $2`,
+          [minScore, orgId]
         );
         return Number(r?.n ?? 0);
       }
       case "opportunities_added": {
         const r = await queryOne<{ n: number }>(
-          `select count(*)::int as n from opportunities where created_at >= $1`,
-          [since]
+          `select count(*)::int as n from opportunities
+            where created_at >= $1 and org_id = $2`,
+          [since, orgId]
         );
         return Number(r?.n ?? 0);
       }
       case "bids_submitted": {
         const r = await queryOne<{ n: number }>(
-          `select count(*)::int as n from bids where submitted_at is not null and submitted_at >= $1`,
-          [since]
+          `select count(*)::int as n from bids
+            where submitted_at is not null and submitted_at >= $1 and org_id = $2`,
+          [since, orgId]
         );
         return Number(r?.n ?? 0);
       }
@@ -653,8 +713,8 @@ export async function computeCustomKpi(metric: string, params: KpiParams): Promi
           `select count(*) filter (where outcome='won')::int as won,
                   count(*) filter (where outcome in ('won','lost'))::int as decided
              from bids
-            where ($1::boolean is false or submitted_at >= $2)`,
-          [days > 0, since]
+            where ($1::boolean is false or submitted_at >= $2) and org_id = $3`,
+          [days > 0, since, orgId]
         );
         const won = Number(r?.won ?? 0);
         const decided = Number(r?.decided ?? 0);
@@ -662,19 +722,23 @@ export async function computeCustomKpi(metric: string, params: KpiParams): Promi
       }
       case "avg_margin": {
         const r = await queryOne<{ n: number | null }>(
-          `select avg(margin_pct)::float8 as n from bids where outcome='won'`
+          `select avg(margin_pct)::float8 as n from bids where outcome='won' and org_id = $1`,
+          [orgId]
         );
         return r?.n != null ? Number(r.n) : null;
       }
       case "active_contracts": {
         const r = await queryOne<{ n: number }>(
-          `select count(*)::int as n from contracts where status='active'`
+          `select count(*)::int as n from contracts where status='active' and org_id = $1`,
+          [orgId]
         );
         return Number(r?.n ?? 0);
       }
       case "active_contract_revenue": {
         const r = await queryOne<{ n: number }>(
-          `select coalesce(sum(award_amount),0)::float8 as n from contracts where status='active'`
+          `select coalesce(sum(award_amount),0)::float8 as n from contracts
+            where status='active' and org_id = $1`,
+          [orgId]
         );
         return Number(r?.n ?? 0);
       }
@@ -687,12 +751,13 @@ export async function computeCustomKpi(metric: string, params: KpiParams): Promi
 }
 
 export async function agentLogs(filters: { agent?: string; limit?: number } = {}) {
-  const params: unknown[] = [];
-  let where = "";
+  const params: unknown[] = [await currentOrg()];
+  const clauses: string[] = ["org_id = $1"];
   if (filters.agent) {
     params.push(filters.agent);
-    where = `where agent = $${params.length}`;
+    clauses.push(`agent = $${params.length}`);
   }
+  const where = `where ${clauses.join(" and ")}`;
   params.push(filters.limit ?? 200);
   return query(
     `select id, agent, action, level, status, message, reasoning, opportunity_id,
@@ -712,8 +777,8 @@ export async function agentLogsPaged(filters: {
   q?: string;
   page?: number;
 }): Promise<{ rows: Record<string, unknown>[]; total: number; page: number; pageSize: number }> {
-  const params: unknown[] = [];
-  const where: string[] = [];
+  const params: unknown[] = [await currentOrg()];
+  const where: string[] = ["org_id = $1"];
   if (filters.agent) {
     params.push(filters.agent);
     where.push(`agent = $${params.length}`);
@@ -729,7 +794,7 @@ export async function agentLogsPaged(filters: {
       `(message ilike $${params.length} or action ilike $${params.length} or reasoning ilike $${params.length})`
     );
   }
-  const whereSql = where.length ? `where ${where.join(" and ")}` : "";
+  const whereSql = `where ${where.join(" and ")}`;
   const page = Math.max(1, filters.page ?? 1);
   const countParams = [...params];
   params.push(LOG_PAGE_SIZE, (page - 1) * LOG_PAGE_SIZE);
@@ -792,12 +857,12 @@ export async function opportunityCompetitors(id: string): Promise<CompetitorRow[
             max(awarded_at)::text                                           as last_award_at,
             bool_or(is_incumbent)                                           as is_incumbent
        from pricing_comps
-      where opportunity_id = $1
+      where opportunity_id = $1 and org_id = $2
         and recipient_name is not null and btrim(recipient_name) <> ''
       group by recipient_name
       order by award_count desc, total_adj desc
       limit 50`,
-    [id]
+    [id, await currentOrg()]
   );
 }
 
@@ -1345,7 +1410,9 @@ export interface EngineStatus {
 export async function engineStatus(): Promise<EngineStatus> {
   const row = await queryOne<{ last_run: string | null; open_count: number }>(
     `select (select max(started_at) from job_runs) as last_run,
-            (select count(*)::int from opportunities where status='open') as open_count`
+            (select count(*)::int from opportunities
+              where status='open' and org_id=$1) as open_count`,
+    [await currentOrg()]
   );
   return { lastRunAt: row?.last_run ?? null, openCount: row?.open_count ?? 0 };
 }
@@ -1399,21 +1466,22 @@ export async function dailyDigest(): Promise<DailyDigest> {
   const row = await queryOne<Record<keyof DailyDigest, number>>(
     `select
        (select count(*) from opportunities
-         where created_at > now() - interval '24 hours')::int as found,
+         where created_at > now() - interval '24 hours' and org_id=$1)::int as found,
        (select count(*) from agent_logs
          where agent='scoring-engine' and action='auto-pursue'
-           and created_at > now() - interval '24 hours')::int as "autoPursued",
+           and created_at > now() - interval '24 hours' and org_id=$1)::int as "autoPursued",
        (select count(*) from communications
          where direction='inbound' and channel='email'
-           and created_at > now() - interval '24 hours')::int as replies,
+           and created_at > now() - interval '24 hours' and org_id=$1)::int as replies,
        (select count(distinct opportunity_id) from bids
-         where updated_at > now() - interval '24 hours')::int as "bidsPriced",
+         where updated_at > now() - interval '24 hours' and org_id=$1)::int as "bidsPriced",
        (select count(*) from agent_logs
          where agent='expired-opportunity-sweep' and action='archive-expired'
-           and created_at > now() - interval '24 hours')::int as "expiredArchived",
+           and created_at > now() - interval '24 hours' and org_id=$1)::int as "expiredArchived",
        (select count(*) from agent_logs
          where agent='operator' and action='call-logged'
-           and created_at > now() - interval '24 hours')::int as "callsLogged"`
+           and created_at > now() - interval '24 hours' and org_id=$1)::int as "callsLogged"`,
+    [await currentOrg()]
   );
   return {
     found: row?.found ?? 0,

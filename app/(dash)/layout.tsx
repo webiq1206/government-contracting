@@ -10,6 +10,7 @@ import { getAutomationState } from "@/lib/app-settings";
 import { queueCounts, engineStatus } from "@/lib/data";
 import { timeAgo } from "@/lib/format";
 import { accessLevel, trialDaysLeft } from "@/lib/billing/entitlements";
+import { isPlatformAdmin } from "@/lib/platform-admin";
 import { TrialBanner } from "@/components/trial-banner";
 import { TrialExpiredModal } from "@/components/trial-expired-modal";
 import { allQuotaStates } from "@/lib/billing/trial-limits";
@@ -66,6 +67,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           engineHealthy={engineHealthy}
           engineLabel={engineLabel}
           automationPaused={automation.paused}
+          isPlatformAdmin={isPlatformAdmin(user.email)}
         />
         <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
           {access === "trial" && (

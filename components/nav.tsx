@@ -34,6 +34,19 @@ const PRIMARY: Item[] = [
   { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass", badge: "review" },
 ];
 
+/**
+ * Platform-owner tools, shown only to platform admins.
+ *
+ * Site Authority tracks OUR marketing domain's backlinks through Ahrefs. It
+ * was in the customer navigation, where it is both meaningless to a
+ * contractor and a window onto our own business. It is an internal tool and
+ * now sits with the other internal tool.
+ */
+const PLATFORM_ADMIN_ITEMS: Item[] = [
+  { href: "/admin/billing", label: "All customers (billing)" },
+  { href: "/authority", label: "Site authority (ours)" },
+];
+
 const MORE: { section: string; items: Item[] }[] = [
   {
     section: "Records",
@@ -49,7 +62,6 @@ const MORE: { section: string; items: Item[] }[] = [
       { href: "/agents", label: "What the system did" },
       { href: "/email-log", label: "Email log" },
       { href: "/analytics", label: "Results & numbers" },
-      { href: "/authority", label: "Site authority" },
       { href: "/how-it-works", label: "How this all works" },
     ],
   },
@@ -76,6 +88,7 @@ export function Nav({
   engineHealthy,
   engineLabel,
   automationPaused = false,
+  isPlatformAdmin = false,
 }: {
   email: string;
   reviewCount: number;
@@ -86,6 +99,8 @@ export function Nav({
   engineLabel?: string;
   /** Master kill switch is on; nothing automated will run. */
   automationPaused?: boolean;
+  /** Whether to show the platform-owner tools group. */
+  isPlatformAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -375,7 +390,12 @@ export function Nav({
 
             {(moreOpen || moreHasActive) && (
               <div className="mt-1 space-y-3 pb-2">
-                {MORE.map((group) => (
+                {[
+                  ...MORE,
+                  ...(isPlatformAdmin
+                    ? [{ section: "Platform admin", items: PLATFORM_ADMIN_ITEMS }]
+                    : []),
+                ].map((group) => (
                   <div key={group.section}>
                     <p className="mb-1 px-3 text-[0.6rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                       {group.section}

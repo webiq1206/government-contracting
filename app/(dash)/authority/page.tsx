@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import { isPlatformAdmin } from "@/lib/platform-admin";
+import { currentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/badges";
 import { EmptyState } from "@/components/empty-state";
 import { ActionButton } from "@/components/action-button";
@@ -57,6 +60,13 @@ function reasonsOf(p: ProspectRow): string[] {
 }
 
 export default async function AuthorityPage() {
+  // Platform-owner tool: this tracks OUR marketing domain, not the customer's.
+  // It was reachable by every signed-in customer, showing them our Ahrefs
+  // data and a feature that means nothing to a contractor. 404 for everyone
+  // else, matching how /admin/billing hides itself.
+  const user = await currentUser().catch(() => null);
+  if (!isPlatformAdmin(user?.email)) notFound();
+
   await hydrateIntegrationEnv();
   const status = integrationStatus();
   const connected = status.ahrefs;
