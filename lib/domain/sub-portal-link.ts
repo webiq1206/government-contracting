@@ -28,9 +28,16 @@ export interface PortalPointer {
 export const PORTAL_TTL_SECONDS = 14 * 24 * 3600;
 
 function secret(): string {
-  return (
-    process.env.AUTH_SECRET || process.env.SESSION_SECRET || "dev-insecure-secret-change-me"
-  );
+  const s = process.env.AUTH_SECRET || process.env.SESSION_SECRET;
+  if (s) return s;
+  // These tokens authorize signing a tax form. Minting one against the
+  // public default secret in production would make every portal link
+  // forgeable by anyone who has read the source, so refuse outright rather
+  // than degrade. Dev and tests keep the default for convenience.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET must be set before portal links can be issued.");
+  }
+  return "dev-insecure-secret-change-me";
 }
 
 function b64url(buf: Buffer): string {

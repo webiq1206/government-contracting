@@ -48,12 +48,19 @@ A paste-ready template lives at `scripts/replit-secrets-stripe.env`
 |---|---|
 | `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_...` or `sk_live_...`) |
 | `STRIPE_WEBHOOK_SECRET` | Webhook signing secret (`whsec_...`) for `https://YOUR_DOMAIN/api/billing/webhook` |
-| `STRIPE_PRICE_FOUNDING` | Monthly Price ID for **$497** founding plan (`price_...`) |
-| `STRIPE_PRICE_STANDARD` | Monthly Price ID for **$2,997** standard plan (`price_...`) |
+| `STRIPE_PRICE_STANDARD_MONTHLY` | Price ID for **$2,997/mo** standard (printed by `npm run stripe:setup`) |
+| `STRIPE_PRICE_STANDARD_ANNUAL` | Price ID for **$20,979/yr** standard |
+| `STRIPE_PRICE_FOUNDING_MONTHLY` | Price ID for **$497/mo** founding |
+| `STRIPE_PRICE_FOUNDING_ANNUAL` | Price ID for **$3,479/yr** founding |
 | `FOUNDING_PROMO_ENDS_AT` | Optional ISO end for the founding window (e.g. `2026-08-16T00:00:00.000Z`) |
 
-Create the webhook in Stripe for events `checkout.session.completed`,
-`customer.subscription.updated`, and `customer.subscription.deleted`.
+Create the webhook subscribed to the full event list in BILLING.md step 3:
+`checkout.session.completed`, `customer.subscription.created`,
+`customer.subscription.updated`, `customer.subscription.deleted`,
+`customer.subscription.trial_will_end`, `invoice.paid`,
+`invoice.payment_failed`, `invoice.payment_action_required`.
+The three-event list this file used to show left failed payments and trial
+expiry invisible to the app, so access never followed billing.
 If you use Deployments, add the same Stripe keys under **Deployments → Secrets**
 (workspace Secrets do not always carry over).
 

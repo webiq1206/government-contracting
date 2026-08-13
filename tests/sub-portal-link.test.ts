@@ -57,6 +57,25 @@ describe("the link a subcontractor signs through", () => {
     expect(url.startsWith("https://app.brostco.com/vendor/")).toBe(true);
   });
 
+  it("refuses to mint a token in production without a real secret", () => {
+    // A portal token signs a tax form. On the public default secret every
+    // link would be forgeable from the source code, so production must throw
+    // rather than degrade.
+    const env = process.env.NODE_ENV;
+    const auth = process.env.AUTH_SECRET;
+    const sess = process.env.SESSION_SECRET;
+    process.env.NODE_ENV = "production";
+    delete process.env.AUTH_SECRET;
+    delete process.env.SESSION_SECRET;
+    try {
+      expect(() => encodePortalToken({ s: SUB, e: nowSec() + 60 })).toThrow(/AUTH_SECRET/);
+    } finally {
+      process.env.NODE_ENV = env;
+      if (auth != null) process.env.AUTH_SECRET = auth;
+      if (sess != null) process.env.SESSION_SECRET = sess;
+    }
+  });
+
   it("expires in a fortnight, not indefinitely", () => {
     const token = subPortalUrl(SUB).split("/vendor/")[1];
     const decoded = decodePortalToken(token);
