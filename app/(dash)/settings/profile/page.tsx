@@ -6,6 +6,9 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { shortDate } from "@/lib/format";
 import { ProfileEditor } from "@/components/profile-editor";
+import { SamProfileImport } from "@/components/sam-profile-import";
+import { integrationStatus } from "@/lib/config";
+import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { AutomationSettings } from "@/components/automation-settings";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import type { CompanyProfileJson } from "@/lib/types";
@@ -22,6 +25,11 @@ interface ProposedWeightRow {
 export default async function ProfilePage() {
   const profile = await getActiveProfile({ fresh: true });
   const json: CompanyProfileJson | null = profile?.profile_json ?? null;
+
+  // The SAM key can live in UI-managed integration settings rather than the
+  // environment, so hydrate before asking whether import is available.
+  await hydrateIntegrationEnv();
+  const samConnected = integrationStatus().sam;
 
   const proposed = await query<ProposedWeightRow>(
     `select id, version, rationale, proposed_at
@@ -124,6 +132,10 @@ export default async function ProfilePage() {
                 label: "Company",
                 content: (
                   <div className="space-y-6 px-5 py-6 sm:px-6">
+                    {/* Above the form on purpose: importing fills most of it,
+                        so offering it after the fields would be offering it
+                        after the work. */}
+                    <SamProfileImport samConnected={samConnected} />
                     <ProfileEditor json={json} />
                   </div>
                 ),

@@ -105,3 +105,58 @@ describe("computeSetupChecklist", () => {
     expect(c.items.find((i) => i.key === "email")!.href).toBe("/settings/integrations");
   });
 });
+
+/**
+ * Ordering is a product decision with a technical reason behind it, so it is
+ * pinned rather than left to whoever edits the array next.
+ *
+ * The monitor polls SAM once per NAICS code and skips federal ingestion
+ * entirely when either the key or the codes are missing. Those two steps
+ * therefore decide whether the product does anything at all; the rest only
+ * change the quality of what arrives.
+ */
+describe("setup order follows the dependency chain", () => {
+  it("puts SAM.gov first and NAICS immediately after it", () => {
+    const keys = computeSetupChecklist(allOff).items.map((i) => i.key);
+    expect(keys[0]).toBe("sam");
+    expect(keys[1]).toBe("naics");
+  });
+
+  it("marks exactly those two as required", () => {
+    const required = computeSetupChecklist(allOff)
+      .items.filter((i) => i.required)
+      .map((i) => i.key);
+    expect(required).toEqual(["sam", "naics"]);
+  });
+
+  it("counts the required steps still outstanding", () => {
+    expect(computeSetupChecklist(allOff).requiredRemaining).toBe(2);
+    expect(computeSetupChecklist(allOn).requiredRemaining).toBe(0);
+  });
+});
+
+describe("the connected-but-searchless trap", () => {
+  const samNoNaics: SetupInputs = {
+    profile: { uei: "ABC123", cage_code: "1A2B3", naics_codes: [], service_areas: [], certifications: [] },
+    integrations: { sam: true, claude: false, googleMaps: false, gmail: false },
+  };
+
+  it("flags a connected SAM key with no NAICS codes", () => {
+    // This combination looks finished and finds nothing: the customer sees a
+    // connected integration and an empty pipeline with no link between them.
+    expect(computeSetupChecklist(samNoNaics).discoveryStalled).toBe(true);
+  });
+
+  it("says why, in the NAICS step itself", () => {
+    const naics = computeSetupChecklist(samNoNaics).items.find((i) => i.key === "naics")!;
+    expect(naics.hint).toContain("SAM.gov is connected");
+  });
+
+  it("does not flag a stall before SAM is connected", () => {
+    expect(computeSetupChecklist(allOff).discoveryStalled).toBe(false);
+  });
+
+  it("does not flag a stall once both are in place", () => {
+    expect(computeSetupChecklist(allOn).discoveryStalled).toBe(false);
+  });
+});

@@ -37,6 +37,122 @@ export interface SamOpportunity {
   uiLink?: string;
 }
 
+/**
+ * One company as SAM knows it, flattened to the fields a profile needs.
+ *
+ * SAM's shape is deeply nested and inconsistently populated; this is the
+ * contract the rest of the app codes against, so a change at SAM lands in the
+ * mapper rather than in a settings page.
+ */
+export interface SamEntity {
+  uei: string | null;
+  cageCode: string | null;
+  legalName: string | null;
+  dba: string | null;
+  /** "Active", "Expired", ... A stale registration cannot win work. */
+  registrationStatus: string | null;
+  registrationExpiresAt: string | null;
+  physicalAddress: string | null;
+  entityState: string | null;
+  naicsCodes: string[];
+  /** Set-aside certifications SAM records, e.g. 8(a), HUBZone, WOSB, SDVOSB. */
+  certifications: string[];
+  structure: string | null;
+}
+
+/** The subset of SAM's entity payload this maps from. */
+interface RawSamEntity {
+  entityRegistration?: {
+    ueiSAM?: string;
+    cageCode?: string;
+    legalBusinessName?: string;
+    dbaName?: string;
+    registrationStatus?: string;
+    registrationExpirationDate?: string;
+  };
+  coreData?: {
+    physicalAddress?: {
+      addressLine1?: string;
+      addressLine2?: string;
+      city?: string;
+      stateOrProvinceCode?: string;
+      zipCode?: string;
+    };
+    entityInformation?: { entityStructureDesc?: string };
+    businessTypes?: { businessTypeList?: { businessTypeDesc?: string }[] };
+  };
+  assertions?: {
+    goodsAndServices?: {
+      naicsList?: { naicsCode?: string; naicsDescription?: string }[];
+    };
+  };
+}
+
+/**
+ * SAM business types that are actually set-aside certifications.
+ *
+ * The businessTypeList mixes genuine certifications with descriptors like
+ * "For Profit Organization" and "Limited Liability Company", which are not
+ * certifications and would be wrong to claim as such on a bid.
+ */
+const CERTIFICATION_HINTS = [
+  "8(a)",
+  "HUBZone",
+  "Women Owned",
+  "Woman Owned",
+  "Economically Disadvantaged",
+  "Veteran Owned",
+  "Service Disabled",
+  "Small Disadvantaged",
+  "Native American",
+  "Native Hawaiian",
+  "Alaskan Native",
+  "Tribally Owned",
+  "Minority Owned",
+];
+
+export function mapSamEntity(raw: RawSamEntity): SamEntity {
+  const reg = raw.entityRegistration ?? {};
+  const core = raw.coreData ?? {};
+  const addr = core.physicalAddress ?? {};
+  const street = [addr.addressLine1, addr.addressLine2].filter(Boolean).join(" ").trim();
+  const cityState = [addr.city, addr.stateOrProvinceCode].filter(Boolean).join(", ");
+  const physicalAddress =
+    [street, cityState, addr.zipCode].filter(Boolean).join(", ").trim() || null;
+
+  const naicsCodes = Array.from(
+    new Set(
+      (raw.assertions?.goodsAndServices?.naicsList ?? [])
+        .map((n) => (n.naicsCode ?? "").trim())
+        .filter((c) => /^\d{6}$/.test(c))
+    )
+  );
+
+  const certifications = Array.from(
+    new Set(
+      (core.businessTypes?.businessTypeList ?? [])
+        .map((b) => (b.businessTypeDesc ?? "").trim())
+        .filter((desc) =>
+          CERTIFICATION_HINTS.some((h) => desc.toLowerCase().includes(h.toLowerCase()))
+        )
+    )
+  );
+
+  return {
+    uei: reg.ueiSAM?.trim() || null,
+    cageCode: reg.cageCode?.trim() || null,
+    legalName: reg.legalBusinessName?.trim() || null,
+    dba: reg.dbaName?.trim() || null,
+    registrationStatus: reg.registrationStatus?.trim() || null,
+    registrationExpiresAt: reg.registrationExpirationDate?.trim() || null,
+    physicalAddress,
+    entityState: addr.stateOrProvinceCode?.trim() || null,
+    naicsCodes,
+    certifications,
+    structure: core.entityInformation?.entityStructureDesc?.trim() || null,
+  };
+}
+
 export interface SearchParams {
   postedFrom?: string; // MM/DD/YYYY
   postedTo?: string; // MM/DD/YYYY
@@ -160,6 +276,42 @@ export const sam = {
       };
     } catch {
       return null;
+    }
+  },
+
+  /**
+   * Look a company up in SAM's entity registry, to prefill their profile.
+   *
+   * Searched by UEI when they know it, otherwise by legal name. Name search
+   * can match several entities (subsidiaries, similar names, stale
+   * registrations), so every match is returned and the customer picks; we
+   * never guess which company someone works for.
+   *
+   * Everything here is already public record in SAM, and it is the customer's
+   * own registration, but it still lands in a review form rather than
+   * straight into their profile. A wrong UEI on a bid is a rejected bid.
+   */
+  async findEntities(input: {
+    uei?: string;
+    name?: string;
+  }): Promise<{ disabled?: boolean; error?: boolean; entities: SamEntity[] }> {
+    if (!config.sam.enabled) return { disabled: true, entities: [] };
+    const uei = input.uei?.trim();
+    const name = input.name?.trim();
+    if (!uei && !name) return { entities: [] };
+    try {
+      const data = await withRetry(() =>
+        fetchJson<{ entityData?: RawSamEntity[] }>(ENTITY_BASE, {
+          query: {
+            api_key: config.sam.apiKey,
+            includeSections: "entityRegistration,coreData,assertions",
+            ...(uei ? { ueiSAM: uei } : { legalBusinessName: name as string }),
+          },
+        })
+      );
+      return { entities: (data.entityData ?? []).slice(0, 10).map(mapSamEntity) };
+    } catch {
+      return { error: true, entities: [] };
     }
   },
 

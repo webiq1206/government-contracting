@@ -35,6 +35,25 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
         working opportunities with only a few minutes from you each day.
       </p>
 
+      {/* The specific trap: a connected SAM key with no NAICS codes looks
+          finished and finds nothing, because the monitor skips federal
+          ingestion outright. Say so where the customer is already looking. */}
+      {checklist.discoveryStalled && (
+        <p className="mt-3 rounded-md border border-risk/40 bg-risk/5 px-3 py-2.5 text-sm leading-relaxed text-risk">
+          SAM.gov is connected, but no searches can run yet: Brost Co searches one NAICS code
+          at a time, and your profile has none. Add them and opportunities start arriving on
+          the next run.
+        </p>
+      )}
+
+      {checklist.requiredRemaining > 0 && !checklist.discoveryStalled && (
+        <p className="mt-3 text-sm leading-relaxed text-slate-600">
+          {checklist.requiredRemaining === 1
+            ? "The step marked Required is the one that turns discovery on. Everything else improves what you get."
+            : "The two steps marked Required are what turn discovery on. Everything else improves what you get."}
+        </p>
+      )}
+
       <ul className="mt-4 space-y-2">
         {remaining.map((item) => (
           <li key={item.key}>
@@ -43,11 +62,14 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
               className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border bg-background px-4 py-3 transition-colors hover:border-accent/60"
             >
               <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-900">
-                  <span className="mr-1.5 text-slate-500" aria-hidden>
+                <p className="flex flex-wrap items-center gap-x-2 text-sm font-medium text-slate-900">
+                  <span className="text-slate-500" aria-hidden>
                     ○
                   </span>
                   {item.label}
+                  {item.required && (
+                    <span className="badge bg-risk/15 text-risk">Required</span>
+                  )}
                 </p>
                 <p className="mt-0.5 pl-5 text-xs text-slate-500">{item.hint}</p>
               </div>

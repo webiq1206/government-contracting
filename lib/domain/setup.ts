@@ -28,6 +28,14 @@ export interface SetupItem {
   hint: string;
   done: boolean;
   href: string;
+  /**
+   * True when nothing enters the pipeline until this is done.
+   *
+   * The distinction is not decoration. Four of these steps sharpen results;
+   * two decide whether the product does anything at all, and a new customer
+   * previously had no way to tell which was which.
+   */
+  required: boolean;
 }
 
 export interface SetupChecklist {
@@ -35,6 +43,17 @@ export interface SetupChecklist {
   done: number;
   total: number;
   complete: boolean;
+  /** Required steps still outstanding. Zero means opportunities can flow. */
+  requiredRemaining: number;
+  /**
+   * Set when the SAM.gov key is connected but no NAICS codes are saved.
+   *
+   * This pairing is a silent trap: the monitor skips federal ingestion
+   * entirely when NAICS is empty, logging a warning nobody reads. The customer
+   * sees a connected integration and an empty pipeline, with no visible link
+   * between the two. Surfaced here so the UI can say it out loud.
+   */
+  discoveryStalled: boolean;
 }
 
 const has = (arr?: string[] | null) => Array.isArray(arr) && arr.length > 0;
@@ -66,15 +85,44 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
           : "Your federal identifiers go on every bid and required form.",
     done: hasUei && hasCage,
     href: PROFILE_HREF,
+    // Needed before a bid can be submitted, not before opportunities arrive.
+    required: false,
   };
+  const hasNaics = has(p?.naics_codes);
+
+  /**
+   * Order is the product's opinion about what to do first, so it follows the
+   * dependency chain rather than the shape of the settings pages.
+   *
+   * SAM.gov and NAICS come first because they are the only two steps that
+   * decide whether anything happens at all: the monitor polls SAM once per
+   * NAICS code, and skips federal ingestion outright when either is missing.
+   * Everything after them improves what arrives. The previous order walked a
+   * new customer through four profile fields before reaching the connection
+   * that makes the product function.
+   *
+   * They are adjacent on purpose. Neither works alone, and splitting them
+   * across the list is what let someone connect SAM, see an empty pipeline,
+   * and have no idea the missing NAICS codes were the reason.
+   */
   const items: SetupItem[] = [
-    identity,
+    {
+      key: "sam",
+      label: "Connect SAM.gov",
+      hint: "The source of every federal opportunity. Until this is connected, your pipeline stays empty.",
+      done: i.integrations.sam,
+      href: INTEGRATIONS_HREF,
+      required: true,
+    },
     {
       key: "naics",
       label: "Pick your NAICS codes",
-      hint: "The industry codes decide which opportunities fit you and drive scoring.",
-      done: has(p?.naics_codes),
+      hint: i.integrations.sam && !hasNaics
+        ? "SAM.gov is connected but searches cannot run without these. Your industry codes are what Brost Co searches on, one code at a time."
+        : "Your industry codes are what Brost Co searches SAM.gov with, and what scoring judges fit against. Nothing is found without them.",
+      done: hasNaics,
       href: PROFILE_HREF,
+      required: true,
     },
     {
       key: "service_areas",
@@ -82,20 +130,16 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
       hint: "Where you work, used to judge whether an opportunity is a geographic fit.",
       done: has(p?.service_areas),
       href: PROFILE_HREF,
+      required: false,
     },
+    identity,
     {
       key: "certifications",
       label: "List your certifications",
       hint: "Small-business and set-aside certifications unlock the opportunities reserved for them.",
       done: has(p?.certifications),
       href: PROFILE_HREF,
-    },
-    {
-      key: "sam",
-      label: "Connect SAM.gov",
-      hint: "The source of new federal opportunities. Without it, nothing enters your pipeline.",
-      done: i.integrations.sam,
-      href: INTEGRATIONS_HREF,
+      required: false,
     },
     {
       key: "claude",
@@ -103,6 +147,7 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
       hint: "Powers scoring, plain-English bid briefs, and call scripts.",
       done: i.integrations.claude,
       href: INTEGRATIONS_HREF,
+      required: false,
     },
     {
       key: "googleMaps",
@@ -110,6 +155,7 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
       hint: "Finds local subcontractors for each trade automatically.",
       done: i.integrations.googleMaps,
       href: INTEGRATIONS_HREF,
+      required: false,
     },
     {
       // The connected inbox is the whole email system: it sends outreach, and
@@ -119,9 +165,17 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
       hint: "Sends subcontractor outreach from your own address and reads their replies back into the record.",
       done: i.integrations.gmail,
       href: INTEGRATIONS_HREF,
+      required: false,
     },
   ];
 
   const done = items.filter((it) => it.done).length;
-  return { items, done, total: items.length, complete: done === items.length };
+  return {
+    items,
+    done,
+    total: items.length,
+    complete: done === items.length,
+    requiredRemaining: items.filter((it) => it.required && !it.done).length,
+    discoveryStalled: i.integrations.sam && !hasNaics,
+  };
 }
