@@ -2,6 +2,7 @@ import { config, integrationStatus } from "@/lib/config";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { IntegrationManager } from "@/components/integration-manager";
+import { SendingDomainCard } from "@/components/sending-domain-card";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-settings";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
@@ -174,6 +175,10 @@ export default async function IntegrationsPage({
                 <p className="text-sm text-muted-foreground">
                   Email, SMS, and contact enrichment for subcontractor outreach.
                 </p>
+                {/* Sending identity comes first: it is the one thing every
+                    account has to get right, and it is the only email setup
+                    step that does not involve pasting a key. */}
+                <SendingDomainCard />
                 <IntegrationManager
                   initial={initial.filter((i) => OUTREACH_IDS.has(i.id))}
                 />

@@ -163,6 +163,30 @@ export const config = {
     },
   },
 
+  /**
+   * The domain every tenant sends from until they verify their own. Owned and
+   * DNS-authenticated by us, so a customer can send outreach on day one
+   * without touching their registrar.
+   */
+  get platformSendingDomain() {
+    return str("PLATFORM_SENDING_DOMAIN", "send.brostco.com");
+  },
+
+  outreach: {
+    /**
+     * Reply-To of last resort, used only when a tenant has not set their own.
+     * Never left empty: a subcontractor reply that bounces is a lost bid.
+     */
+    get fallbackReplyTo() { return str("OUTREACH_REPLY_TO", "info@brostco.com"); },
+    /**
+     * From header used when tenant lookup is impossible (database down, no org
+     * context). Deliberately the founding tenant's verified identity, not the
+     * shared domain: a transient outage must not quietly downgrade a customer
+     * who has already verified their own domain.
+     */
+    get fallbackFrom() { return str("OUTREACH_FROM", "BROSTCO <info@brostco.com>"); },
+  },
+
   stripe: {
     get secretKey() { return str("STRIPE_SECRET_KEY"); },
     get webhookSecret() { return str("STRIPE_WEBHOOK_SECRET"); },

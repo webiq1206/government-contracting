@@ -60,7 +60,7 @@ afterEach(() => {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-describe("OUTREACH_SENDER / OUTREACH_EMAIL constants", () => {
+describe("platform fallback sender constants", () => {
   it("OUTREACH_SENDER is the literal canonical address", () => {
     expect(OUTREACH_SENDER).toBe("BROSTCO <info@brostco.com>");
   });
@@ -88,7 +88,7 @@ describe("sendOutreachEmail — Gmail path", () => {
     expect(mockGmailSend.mock.calls[0][0].replyTo).toBe("info@brostco.com");
   });
 
-  it("From and Reply-To are the same literal values even when RESEND_OUTREACH_FROM is different", async () => {
+  it("falls back to the platform identity, ignoring RESEND_OUTREACH_FROM, when no tenant is resolvable", async () => {
     // Simulate a non-default RESEND_OUTREACH_FROM — the transport must ignore it
     const config = await import("../lib/config");
     const originalGetter = Object.getOwnPropertyDescriptor(config.config.resend, "outreachFrom");
@@ -98,7 +98,8 @@ describe("sendOutreachEmail — Gmail path", () => {
     });
     try {
       await sendOutreachEmail(BASE_PARAMS);
-      // Must still be the hardcoded constant, not the config value
+      // With no tenant row reachable, the platform identity is used rather
+      // than RESEND_OUTREACH_FROM or the shared sending domain.
       expect(mockGmailSend.mock.calls[0][0].from).toBe("BROSTCO <info@brostco.com>");
       expect(mockGmailSend.mock.calls[0][0].replyTo).toBe("info@brostco.com");
     } finally {
@@ -165,7 +166,7 @@ describe("sendOutreachEmail — Resend path", () => {
     expect(call.replyTo).not.toMatch(/\+t/);
   });
 
-  it("From and Reply-To remain locked even when RESEND_OUTREACH_FROM is different", async () => {
+  it("falls back to the platform identity, ignoring RESEND_OUTREACH_FROM, when no tenant is resolvable", async () => {
     const config = await import("../lib/config");
     const originalGetter = Object.getOwnPropertyDescriptor(config.config.resend, "outreachFrom");
     Object.defineProperty(config.config.resend, "outreachFrom", {

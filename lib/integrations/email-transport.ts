@@ -15,12 +15,16 @@ import {
   findEmailSafetyIssues,
   describeEmailSafetyIssues,
 } from "../domain/email-safety";
+import { resolveOutreachSender } from "../domain/sending-domain";
+import { tryResolveTenantOrgId } from "../tenant";
 
 /**
- * Canonical sub-facing sender identity — hardcoded so outreach is always
- * consistent regardless of RESEND_OUTREACH_FROM or the connected Gmail account.
- * Every email a subcontractor receives must come from (and be replyable to)
- * this address.
+ * The founding tenant's sender identity, and the fallback used whenever no
+ * tenant context is available (a script, a job that lost its org).
+ *
+ * Per-tenant identity lives in organization_sending_domains and is resolved by
+ * resolveOutreachSender(); these constants are the floor, not the rule, so a
+ * send can never end up with an empty From header.
  */
 export const OUTREACH_SENDER = "BROSTCO <info@brostco.com>";
 export const OUTREACH_EMAIL  = "info@brostco.com";
@@ -133,18 +137,25 @@ export async function sendOutreachEmail(
       return { filename: meta.filename, content: a.content, mime: meta.mime };
     });
 
+  // Sender identity is per tenant: each customer sends from their own verified
+  // domain, or from the shared platform domain with their real inbox as
+  // Reply-To until DNS lands. Resolution never throws, but a job with no org
+  // context still falls back to the platform constants rather than sending
+  // with a blank From.
+  const orgId = await tryResolveTenantOrgId();
+  const sender = orgId
+    ? await resolveOutreachSender(orgId)
+    : { from: OUTREACH_SENDER, replyTo: OUTREACH_EMAIL, verified: true, domain: "brostco.com" };
+
   if (provider === "gmail") {
-    // OUTREACH_SENDER / OUTREACH_EMAIL are module-level constants — they do not
-    // read from config so From and Reply-To are the same regardless of which
-    // Gmail account is OAuth-connected or what RESEND_OUTREACH_FROM is set to.
     const res = await gmail.send({
       to: params.to,
       subject: params.subject,
       html: params.html,
       text: params.text,
       trackingId: params.trackingId,
-      from: OUTREACH_SENDER,
-      replyTo: OUTREACH_EMAIL,
+      from: sender.from,
+      replyTo: sender.replyTo,
       attachments,
     });
     if (res.disabled) return { provider: null, disabled: true, error: "Gmail became unavailable." };
@@ -157,17 +168,15 @@ export async function sendOutreachEmail(
   }
 
   const html = params.trackingId ? injectTracking(params.html, params.trackingId) : params.html;
-  // From is locked to OUTREACH_SENDER. Reply-To is OUTREACH_EMAIL so subs see
-  // and reply to info@brostco.com. Inbound replies arriving at info@brostco.com
-  // are correlated by sender email (weak match); Gmail threading is the strong
-  // match path when Gmail is the active transport.
+  // Inbound replies are correlated by sender email (weak match); Gmail
+  // threading is the strong match path when Gmail is the active transport.
   const res = await resend.send({
     to: params.to,
     subject: params.subject,
     html,
     text: params.text,
-    from: OUTREACH_SENDER,
-    replyTo: OUTREACH_EMAIL,
+    from: sender.from,
+    replyTo: sender.replyTo,
     attachments: attachments.map((a) => ({
       filename: a.filename,
       content: a.content,
