@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { subDetail } from "@/lib/data";
 import { subConversations } from "@/lib/domain/conversation";
+import { draftsForSubcontractor } from "@/lib/domain/reply-draft";
+import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { gmail } from "@/lib/integrations/gmail";
 import { ConversationThreads } from "@/components/conversation-threads";
 import { PageHeader } from "@/components/badges";
@@ -56,10 +58,13 @@ export default async function SubDetailPage({
   // Threads and inbox state are read alongside the detail so the page renders
   // in one pass; a missing connection disables the composer rather than
   // letting a reply fail after it is typed.
-  const [conversations, inboxConnected, compliance] = await Promise.all([
+  const [conversations, inboxConnected, compliance, savedDrafts] = await Promise.all([
     subConversations(params.id),
     gmail.isConnected().catch(() => false),
     subComplianceView(params.id),
+    // Drafts already written for these threads, so returning to the page shows
+    // the work rather than an empty box that costs money to refill.
+    draftsForSubcontractor(params.id, await tryResolveTenantOrgId()).catch(() => ({})),
   ]);
   const projects: ProjectHistoryItem[] = Array.isArray(sub.project_history)
     ? sub.project_history
@@ -294,6 +299,7 @@ export default async function SubDetailPage({
                 subcontractorId={sub.id}
                 canSend={inboxConnected}
                 conversations={conversations}
+                savedDrafts={savedDrafts}
               />
             </div>
 

@@ -11,33 +11,13 @@
  * solicitation instead so nothing is dropped from the history.
  */
 import { query } from "../db";
+import type { Conversation, ConversationMessage } from "./conversation-thread";
 
-export interface ConversationMessage {
-  id: string;
-  direction: "inbound" | "outbound";
-  subject: string | null;
-  body: string | null;
-  created_at: string;
-  recipient_email: string | null;
-  /** "clarification" for the automatic follow-up, so the UI can label it. */
-  kind: string | null;
-  gmail_message_id: string | null;
-}
-
-export interface Conversation {
-  /** Gmail thread id, or a synthetic key when the messages predate threading. */
-  key: string;
-  threadId: string | null;
-  opportunityId: string | null;
-  opportunityTitle: string | null;
-  trade: string | null;
-  subject: string | null;
-  lastAt: string;
-  /** Newest inbound message id, used as In-Reply-To when replying. */
-  replyToMessageId: string | null;
-  awaitingUs: boolean;
-  messages: ConversationMessage[];
-}
+// The shape and the "what can be replied to" rule live in a database-free
+// module so the browser composer can share them. Re-exported here so callers
+// that already read from this module do not have to care.
+export { replyTarget } from "./conversation-thread";
+export type { Conversation, ConversationMessage };
 
 interface Row {
   id: string;

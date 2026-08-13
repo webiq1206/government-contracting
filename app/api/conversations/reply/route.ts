@@ -4,6 +4,7 @@ import { resolveTenantOrgId } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
 import { sendOutreachEmail } from "@/lib/integrations/email-transport";
 import { logAgent } from "@/lib/logger";
+import { discardDraftsForThread } from "@/lib/domain/reply-draft";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,6 +116,32 @@ export async function POST(req: Request) {
       JSON.stringify({ kind: "manual" }),
     ]
   );
+
+  // The reply has gone out, so any draft for this thread is not a draft any
+  // more. Discarded here, in the request that sent it, rather than by the
+  // browser afterwards: a tidy-up the client forgets leaves sent text sitting
+  // in the box on the next page load, one click from going out twice.
+  await discardDraftsForThread({
+    subcontractorId: sub.id,
+    threadId: res.threadId ?? body.threadId ?? null,
+    opportunityId,
+    orgId,
+  }).catch(async (err) => {
+    // The mail is already gone, so failing the request now would tell the
+    // operator their reply did not send when it did. Say so in the log
+    // instead. A leftover row is untidy, not dangerous: drafts are only ever
+    // read for a message that is still the last word in its thread, and this
+    // one no longer is.
+    await logAgent({
+      agent: "outreach",
+      action: "manual-reply",
+      status: "error",
+      subcontractorId: sub.id,
+      opportunityId,
+      level: "error",
+      message: `Reply sent, but clearing the saved draft failed: ${(err as Error).message}`,
+    }).catch(() => {});
+  });
 
   await logAgent({
     agent: "outreach",

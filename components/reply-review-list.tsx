@@ -106,6 +106,16 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
                 ) : (
                   <span className="text-xs text-foreground/45">No solicitation linked</span>
                 )}
+                {/* The row shows an excerpt and asks what they meant. Answering
+                    them is a different job, and it lives on their page with the
+                    rest of the thread, so link there instead of making the
+                    operator hunt for the conversation by name. */}
+                <Link
+                  href={`/subs/${r.subcontractor_id}#conversations`}
+                  className="mt-0.5 block text-xs text-accent hover:underline"
+                >
+                  Read the thread and reply
+                </Link>
               </div>
               <span className="badge shrink-0 bg-review/15 text-review">Needs your read</span>
             </div>
