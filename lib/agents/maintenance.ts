@@ -22,6 +22,8 @@ import {
   OUTCOME_LABEL,
 } from "../domain/reply-outcome";
 import { requestClarification, describeGap } from "../domain/reply-clarify";
+import { readReplyAttachments, combineReplyText } from "../domain/reply-attachments";
+import { advanceIfQuotesComplete } from "../domain/advance-stage";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
 import { getAutomationRules } from "../app-settings";
 import { enqueue } from "../queue";
@@ -768,6 +770,8 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     const notifyLines: string[] = [];
     let matched = 0;
     let reviewCount = 0;
+    const touchedOpportunities = new Set<string>();
+    const opportunityTitles = new Map<string, string>();
     for (const r of replies) {
       // Match reply to an outbound communication by thread id (reliable), else
       // by sender email (weaker: an unrelated email from a known sub would also
@@ -779,8 +783,21 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       });
       if (!comm) continue;
       matched++;
+      if (comm.opportunity_id) {
+        touchedOpportunities.add(comm.opportunity_id);
+        if (comm.opportunity_title) {
+          opportunityTitles.set(comm.opportunity_id, comm.opportunity_title);
+        }
+      }
 
-      const replyText = r.body || r.snippet;
+      // Many subs attach the quote and write "see attached". Read the
+      // documents first so extraction sees the numbers, not just the note.
+      const docs = await readReplyAttachments({
+        messageId: r.messageId,
+        attachments: r.attachments ?? [],
+        orgId,
+      });
+      const replyText = combineReplyText(r.body || r.snippet, docs.text);
       // Shared capture pipeline: resolves/creates the sub, records the reply,
       // marks responsive, and auto-saves the quote only under the safety rules
       // (strong correlation + sender ownership + AI-confirmed price + no
@@ -808,7 +825,9 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       const mentionedPrice = extracted.quoteAmount ?? extractMentionedPrice(replyText);
 
       // Understand first, then decide whether we are allowed to act on it.
-      const decision = decideReply(extracted);
+      const decision = decideReply(extracted, {
+        unreadableAttachments: docs.unreadable,
+      });
       const gaps = blockingGaps(extracted, decision.outcome);
       if (subId) {
         // History is written either way. A reply we did not act on is exactly
@@ -841,6 +860,17 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
             outcome: decision.outcome,
           });
         }
+      }
+
+      if (docs.unreadable.length > 0) {
+        await logAgent({
+          agent: "reply-poll",
+          action: "attachment-unreadable",
+          opportunityId: comm.opportunity_id,
+          subcontractorId: subId ?? undefined,
+          level: "warn",
+          message: `${companyName ?? fromEmail} attached ${docs.unreadable.join(", ")}, which could not be read (it may be a scan). Open the email and check it yourself.`,
+        });
       }
 
       if (decision.needsReview) {
@@ -944,6 +974,19 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
           `${clarified ? ` We asked them for ${gaps.map(describeGap).join(", ")}.` : ""}` +
           `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
       );
+    }
+
+    // Once every reply in this batch is recorded, see whether any of the
+    // solicitations they touched are now fully priced. Done per opportunity
+    // rather than per reply so two replies in the same batch cannot race.
+    for (const opportunityId of touchedOpportunities) {
+      const res = await advanceIfQuotesComplete(opportunityId).catch(() => null);
+      if (res?.advanced && res.enqueue) {
+        enqueued.push(res.enqueue);
+        notifyLines.push(
+          `<li>All trades are now priced on &ldquo;${opportunityTitles.get(opportunityId) ?? "a solicitation"}&rdquo;. Moved to Bid Building automatically.</li>`
+        );
+      }
     }
 
     // One notification email per poll (not per reply), best-effort: silently

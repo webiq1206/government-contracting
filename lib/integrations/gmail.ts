@@ -253,9 +253,47 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
 
 type GmailPart = {
   mimeType?: string | null;
-  body?: { data?: string | null } | null;
+  filename?: string | null;
+  body?: { data?: string | null; attachmentId?: string | null; size?: number | null } | null;
   parts?: GmailPart[] | null;
 };
+
+/** An attachment reference found on a message, before its bytes are fetched. */
+export interface GmailAttachmentRef {
+  filename: string;
+  mimeType: string;
+  attachmentId: string;
+  size: number;
+}
+
+/**
+ * Walk a payload for real file attachments.
+ *
+ * Inline images and the message's own body parts are skipped: a signature logo
+ * is not a quote, and pulling every one of them would burn API calls and
+ * memory for nothing.
+ */
+export function collectAttachments(
+  payload: GmailPart | null | undefined
+): GmailAttachmentRef[] {
+  if (!payload) return [];
+  const out: GmailAttachmentRef[] = [];
+  const stack: GmailPart[] = [payload];
+  while (stack.length) {
+    const p = stack.shift()!;
+    if (p.parts) stack.push(...p.parts);
+    const id = p.body?.attachmentId;
+    const name = p.filename?.trim();
+    if (!id || !name) continue;
+    out.push({
+      filename: name,
+      mimeType: p.mimeType ?? "application/octet-stream",
+      attachmentId: id,
+      size: p.body?.size ?? 0,
+    });
+  }
+  return out;
+}
 
 function decodeB64Url(data: string): string {
   return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
@@ -370,19 +408,66 @@ export const gmail = {
   },
 
   /**
+   * Download one attachment's bytes.
+   *
+   * Size-capped: a subcontractor's quote is a few pages, and pulling a 40 MB
+   * scan into memory inside a polling loop would take the worker down.
+   */
+  async getAttachment(
+    messageId: string,
+    attachmentId: string,
+    orgId?: string,
+    maxBytes = 10 * 1024 * 1024
+  ): Promise<Buffer | null> {
+    const client = await gmailClient(orgId);
+    if (!client) return null;
+    try {
+      const res = await client.users.messages.attachments.get({
+        userId: "me",
+        messageId,
+        id: attachmentId,
+      });
+      const data = res.data.data;
+      if (!data) return null;
+      const buf = Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+      return buf.length > maxBytes ? null : buf;
+    } catch {
+      // A failed attachment must not lose the reply itself.
+      return null;
+    }
+  },
+
+  /**
    * Detect replies since a given time. Returns messages that are inbound (not
    * from us) grouped by threadId, so the Outreach agent can mark subs responsive.
    */
   async fetchReplies(
     sinceEpochSec: number,
     orgId?: string
-  ): Promise<{ disabled?: boolean; replies: { threadId: string; from: string; snippet: string; messageId: string; body: string }[] }> {
+  ): Promise<{
+    disabled?: boolean;
+    replies: {
+      threadId: string;
+      from: string;
+      snippet: string;
+      messageId: string;
+      body: string;
+      attachments: GmailAttachmentRef[];
+    }[];
+  }> {
     const client = await gmailClient(orgId);
     if (!client) return { disabled: true, replies: [] };
     try {
       const q = `in:inbox newer_than:7d -from:me after:${sinceEpochSec}`;
       const list = await client.users.messages.list({ userId: "me", q, maxResults: 50 });
-      const replies: { threadId: string; from: string; snippet: string; messageId: string; body: string }[] = [];
+      const replies: {
+        threadId: string;
+        from: string;
+        snippet: string;
+        messageId: string;
+        body: string;
+        attachments: GmailAttachmentRef[];
+      }[] = [];
       for (const m of list.data.messages ?? []) {
         // format:"full" so we get the real body (price extraction needs more
         // than the ~200-char snippet).
@@ -399,6 +484,7 @@ export const gmail = {
           snippet: msg.data.snippet ?? "",
           messageId: msg.data.id ?? "",
           body: extractBodyText(msg.data.payload) || (msg.data.snippet ?? ""),
+          attachments: collectAttachments(msg.data.payload as GmailPart),
         });
       }
       return { replies };

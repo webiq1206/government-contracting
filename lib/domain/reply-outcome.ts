@@ -87,8 +87,18 @@ export interface ReplyDecision {
  * worse than waiting: the reading was uncertain, the reply contradicts itself,
  * or the extraction never came from real understanding in the first place.
  */
-export function decideReply(extracted: ExtractedReply): ReplyDecision {
+export function decideReply(
+  extracted: ExtractedReply,
+  opts: {
+    /**
+     * Attachments that looked like a quote but could not be read (a scan, an
+     * unsupported format). Their contents are unknown, not absent.
+     */
+    unreadableAttachments?: string[];
+  } = {}
+): ReplyDecision {
   const outcome = outcomeForIntent(extracted.intent, extracted.isQuote);
+  const unread = opts.unreadableAttachments ?? [];
 
   if (extracted.method !== "ai") {
     return {
@@ -105,6 +115,17 @@ export function decideReply(extracted: ExtractedReply): ReplyDecision {
       act: false,
       needsReview: true,
       reviewReason: `Their reply contradicts itself: ${extracted.conflicts.join("; ")}`,
+    };
+  }
+  // A document we could not open is unknown content, not missing content.
+  // Treating "no price in the body" as "they gave no price" would be wrong
+  // precisely when the sub did the normal thing and attached their quote.
+  if (unread.length > 0 && extracted.quoteAmount == null) {
+    return {
+      outcome,
+      act: false,
+      needsReview: true,
+      reviewReason: `They attached ${unread.join(", ")}, which could not be read. Open the email and check whether their price is in there.`,
     };
   }
   if (extracted.confidence < MIN_ACT_CONFIDENCE) {

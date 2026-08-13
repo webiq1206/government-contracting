@@ -1000,6 +1000,22 @@ export interface ProposedWeightsRow {
   proposed_at: string;
 }
 
+/** One reply held back for a person to read and decide. */
+export interface ActionReplyReviewRow {
+  id: string;
+  subcontractor_id: string;
+  company_name: string | null;
+  opportunity_id: string | null;
+  opportunity_title: string | null;
+  trade: string | null;
+  intent: string;
+  reason: string | null;
+  review_reason: string | null;
+  original_message: string | null;
+  confidence: string;
+  created_at: string;
+}
+
 export interface ActionCenterData {
   /** Opportunities awaiting a pursue/dismiss decision. */
   triage: ActionOppRow[];
@@ -1021,6 +1037,13 @@ export interface ActionCenterData {
   complianceAlerts: ComplianceAlertRow[];
   /** Learning Loop scoring-weight proposals awaiting approve/reject. */
   proposedWeights: ProposedWeightsRow[];
+  /**
+   * Subcontractor replies the platform deliberately did not act on: the read
+   * was uncertain, the message contradicted itself, or an attached quote could
+   * not be opened. Written to the database whether or not we acted, so this is
+   * where those land for a human.
+   */
+  replyReviews: ActionReplyReviewRow[];
   /** Backlink outreach drafts awaiting the operator's send approval. */
   backlinkApprovals: number;
   /** Items the operator snoozed that are still hidden (they return on their own). */
@@ -1064,6 +1087,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     backlinkRow,
     snoozedRow,
     stageCounts,
+    replyReviews,
   ] = await Promise.all([
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
@@ -1222,6 +1246,21 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
       `select stage, count(*)::int as count from opportunities
           where status='open' and org_id='${orgId}' group by stage`
     ),
+    // Replies the platform held back rather than acted on. Scoped by org so
+    // one tenant never sees another's subcontractor correspondence.
+    query<ActionReplyReviewRow>(
+      `select e.id, e.subcontractor_id, s.company_name,
+              e.opportunity_id, o.title as opportunity_title, e.trade,
+              e.intent, e.reason, e.review_reason, e.original_message,
+              e.confidence::text as confidence, e.created_at
+         from subcontractor_reply_events e
+         left join subcontractors s on s.id = e.subcontractor_id
+         left join opportunities o on o.id = e.opportunity_id
+        where e.needs_review and e.reviewed_at is null
+          and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))
+        order by e.created_at desc
+        limit 20`
+    ).catch(() => []),
   ]);
 
   const callsWithWork: ActionCallRow[] = callRows.map(
@@ -1267,6 +1306,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     backlinkApprovals: backlinkRow?.n ?? 0,
     snoozedCount: snoozedRow?.n ?? 0,
     stageCounts,
+    replyReviews,
   };
 }
 

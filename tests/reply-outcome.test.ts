@@ -108,3 +108,21 @@ describe("workflow is held until the bid information is complete", () => {
     expect(blockingGaps(reply({ missingFields: ["price"] }), "declined")).toEqual([]);
   });
 });
+
+describe("an unreadable attachment is unknown content, not absent content", () => {
+  it("refuses to act when a quote document could not be read and no price was found", () => {
+    const d = decideReply(reply({ intent: "quote" }), {
+      unreadableAttachments: ["Quote.pdf"],
+    });
+    expect(d.act).toBe(false);
+    expect(d.reviewReason).toContain("Quote.pdf");
+  });
+
+  it("still acts when the price was read from the body despite an unreadable extra file", () => {
+    const d = decideReply(
+      reply({ intent: "quote", isQuote: true, quoteAmount: 42000 }),
+      { unreadableAttachments: ["logo-scan.pdf"] }
+    );
+    expect(d.act).toBe(true);
+  });
+});

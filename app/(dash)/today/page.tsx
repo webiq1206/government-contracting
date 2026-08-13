@@ -25,6 +25,7 @@ import { currency, shortDate, timeAgo } from "@/lib/format";
 import { withGuideQuery } from "@/lib/guide-links";
 import { TodayBulkCalls } from "@/components/today-bulk-calls";
 import { TodayBulkTriage } from "@/components/today-bulk-triage";
+import { ReplyReviewList } from "@/components/reply-review-list";
 
 export const dynamic = "force-dynamic";
 
@@ -346,6 +347,7 @@ export default async function TodayPage() {
     (data.backlinkApprovals > 0 ? 1 : 0);
   const totalActions =
     data.urgent.length +
+    data.replyReviews.length +
     data.triage.length +
     data.calls.count +
     data.subFollowUps.length +
@@ -358,11 +360,13 @@ export default async function TodayPage() {
   const firstOpen =
     data.urgent.length > 0
       ? "urgent"
-      : data.triage.length > 0
-        ? "triage"
-        : data.calls.count > 0
-          ? "calls"
-          : "other";
+      : data.replyReviews.length > 0
+        ? "reply-reviews"
+        : data.triage.length > 0
+          ? "triage"
+          : data.calls.count > 0
+            ? "calls"
+            : "other";
 
   const clear = totalActions === 0 && setup.complete;
 
@@ -442,6 +446,18 @@ export default async function TodayPage() {
                       rules={rules}
                     />
                   ))}
+                </Section>
+              )}
+
+              {data.replyReviews.length > 0 && (
+                <Section
+                  id="reply-reviews"
+                  eyebrow="Needs your read"
+                  title="Replies the system wasn't sure about"
+                  count={data.replyReviews.length}
+                  defaultOpen={firstOpen === "reply-reviews"}
+                >
+                  <ReplyReviewList rows={data.replyReviews} />
                 </Section>
               )}
 
