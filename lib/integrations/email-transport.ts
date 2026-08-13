@@ -1,33 +1,33 @@
 /**
- * Unified outreach email transport. Gmail when connected (keeps threading +
- * reply detection); otherwise Resend (sends from the configured outreach
- * address, e.g. info@brostco.com). Fails loudly when neither is available so
- * outreach is never silently dropped.
+ * Outreach email transport. Gmail only.
  *
- * Reply reading is Gmail-only: Resend can send but cannot read an inbox, so
- * automatic reply detection / price capture still requires Gmail.
+ * Every tenant connects their own inbox, and all of their subcontractor email
+ * is sent from it. That keeps sending, threading, reply detection, and
+ * conversation history in one place: the mailbox we send from is the mailbox
+ * we sync, so a reply is a real Gmail thread rather than something we have to
+ * correlate by guesswork.
+ *
+ * Fails loudly when no inbox is connected, so outreach is never silently
+ * dropped and never goes out as somebody else.
  */
 import { gmail } from "./gmail";
-import { email as resend } from "./resend";
 import { config } from "../config";
 import { normalizeAttachmentMeta } from "../domain/attachment-meta";
 import {
   findEmailSafetyIssues,
   describeEmailSafetyIssues,
 } from "../domain/email-safety";
-import { resolveOutreachSender } from "../domain/sending-domain";
+import { resolveOutreachSender } from "../domain/sender-identity";
 import { tryResolveTenantOrgId } from "../tenant";
 
 /**
- * The founding tenant's sender identity, and the fallback used whenever no
- * tenant context is available (a script, a job that lost its org).
- *
- * Per-tenant identity lives in organization_sending_domains and is resolved by
- * resolveOutreachSender(); these constants are the floor, not the rule, so a
- * send can never end up with an empty From header.
+ * Last-resort identity, used only when tenant lookup is impossible (a script
+ * with no org context). Real per-tenant identity comes from the connected
+ * inbox via resolveOutreachSender(); these constants exist so a send can never
+ * end up with a blank From header.
  */
 export const OUTREACH_SENDER = "BROSTCO <info@brostco.com>";
-export const OUTREACH_EMAIL  = "info@brostco.com";
+export const OUTREACH_EMAIL = "info@brostco.com";
 
 export interface OutreachAttachment {
   filename: string;
@@ -40,20 +40,23 @@ export interface OutreachSendParams {
   subject: string;
   html: string;
   text?: string;
-  /** Our tracking id; injects the open pixel + wraps links for either provider. */
+  /** Our tracking id; injects the open pixel + wraps links. */
   trackingId?: string;
-  // NOTE: From and Reply-To are intentionally absent from this interface.
-  // The transport layer always locks them to the configured outreach sender
-  // (RESEND_OUTREACH_FROM, default "BROSTCO <info@brostco.com>") so every
-  // sub-facing email is consistent and callers cannot accidentally override them.
+  // NOTE: From and Reply-To are intentionally absent. The transport locks them
+  // to the tenant's connected inbox so callers cannot send as another account.
   attachments?: OutreachAttachment[];
+  /** Reply inside an existing Gmail thread instead of starting a new one. */
+  threadId?: string;
+  inReplyTo?: string;
+  /** Which tenant is sending. Defaults to the ambient org context. */
+  orgId?: string;
 }
 
-export type OutreachProvider = "gmail" | "resend";
+export type OutreachProvider = "gmail";
 
 export interface OutreachSendResult {
   provider: OutreachProvider | null;
-  /** True when no transport is available (neither Gmail nor Resend). */
+  /** True when no inbox is connected. */
   disabled?: boolean;
   /**
    * True when the email was refused by the pre-send safety check because the
@@ -64,7 +67,6 @@ export interface OutreachSendResult {
   blocked?: boolean;
   error?: string;
   messageId?: string | null;
-  /** Gmail-only; Resend has no thread concept. */
   threadId?: string | null;
 }
 
@@ -81,17 +83,13 @@ export function injectTracking(html: string, trackingId: string): string {
 }
 
 /** Which transport would be used for the next outreach send, or null. */
-export async function outreachTransport(): Promise<OutreachProvider | null> {
-  if (await gmail.isConnected()) return "gmail";
-  if (config.resend.enabled) return "resend";
-  return null;
+export async function outreachTransport(
+  orgId?: string
+): Promise<OutreachProvider | null> {
+  return (await gmail.isConnected(orgId)) ? "gmail" : null;
 }
 
-/**
- * Send an outreach email through the active transport.
- * Gmail keeps its own tracking injection (buildRaw); the Resend path injects
- * tracking here before handing off.
- */
+/** Send an outreach email through the tenant's connected inbox. */
 export async function sendOutreachEmail(
   params: OutreachSendParams
 ): Promise<OutreachSendResult> {
@@ -116,15 +114,24 @@ export async function sendOutreachEmail(
     return { provider: null, disabled: true, error: AUTOMATION_PAUSED_ERROR };
   }
 
-  const provider = await outreachTransport();
-  if (!provider) {
+  const orgId = params.orgId ?? (await tryResolveTenantOrgId());
+  if (!(await gmail.isConnected(orgId ?? undefined))) {
     return {
       provider: null,
       disabled: true,
       error:
-        "No email transport available: connect Gmail or set RESEND_API_KEY to send outreach.",
+        "No inbox connected. Open Settings and click Connect Google Inbox to send outreach.",
     };
   }
+
+  // Identity comes from the connected mailbox. If that row is unreadable while
+  // the connection is live, fall back to the platform address rather than
+  // sending with a blank From.
+  const sender = orgId
+    ? await resolveOutreachSender(orgId)
+    : { from: OUTREACH_SENDER, replyTo: OUTREACH_EMAIL, connected: true };
+  const from = sender.connected && sender.from ? sender.from : OUTREACH_SENDER;
+  const replyTo = sender.connected && sender.replyTo ? sender.replyTo : OUTREACH_EMAIL;
 
   const attachments = (params.attachments ?? [])
     .filter((a) => a.content?.length)
@@ -137,54 +144,27 @@ export async function sendOutreachEmail(
       return { filename: meta.filename, content: a.content, mime: meta.mime };
     });
 
-  // Sender identity is per tenant: each customer sends from their own verified
-  // domain, or from the shared platform domain with their real inbox as
-  // Reply-To until DNS lands. Resolution never throws, but a job with no org
-  // context still falls back to the platform constants rather than sending
-  // with a blank From.
-  const orgId = await tryResolveTenantOrgId();
-  const sender = orgId
-    ? await resolveOutreachSender(orgId)
-    : { from: OUTREACH_SENDER, replyTo: OUTREACH_EMAIL, verified: true, domain: "brostco.com" };
-
-  if (provider === "gmail") {
-    const res = await gmail.send({
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
-      text: params.text,
-      trackingId: params.trackingId,
-      from: sender.from,
-      replyTo: sender.replyTo,
-      attachments,
-    });
-    if (res.disabled) return { provider: null, disabled: true, error: "Gmail became unavailable." };
-    return {
-      provider,
-      error: res.error,
-      messageId: res.messageId ?? null,
-      threadId: res.threadId ?? null,
-    };
-  }
-
-  const html = params.trackingId ? injectTracking(params.html, params.trackingId) : params.html;
-  // Inbound replies are correlated by sender email (weak match); Gmail
-  // threading is the strong match path when Gmail is the active transport.
-  const res = await resend.send({
+  const res = await gmail.send({
     to: params.to,
     subject: params.subject,
-    html,
+    html: params.html,
     text: params.text,
-    from: sender.from,
-    replyTo: sender.replyTo,
-    attachments: attachments.map((a) => ({
-      filename: a.filename,
-      content: a.content,
-      // Required for openability when the filename is ambiguous; Resend
-      // otherwise derives type only from the extension.
-      contentType: a.mime,
-    })),
+    trackingId: params.trackingId,
+    from,
+    replyTo,
+    attachments,
+    threadId: params.threadId,
+    inReplyTo: params.inReplyTo,
+    orgId: orgId ?? undefined,
   });
-  if (res.disabled) return { provider: null, disabled: true, error: "Resend became unavailable." };
-  return { provider, error: res.error, messageId: res.id ?? null, threadId: null };
+
+  if (res.disabled) {
+    return { provider: null, disabled: true, error: "Gmail became unavailable." };
+  }
+  return {
+    provider: "gmail",
+    error: res.error,
+    messageId: res.messageId ?? null,
+    threadId: res.threadId ?? null,
+  };
 }

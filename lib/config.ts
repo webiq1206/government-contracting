@@ -146,45 +146,15 @@ export const config = {
     },
   },
 
-  resend: {
-    get apiKey() { return str("RESEND_API_KEY"); },
-    get from() { return str("RESEND_FROM", "BROSTCO <alerts@brostco.com>"); },
-    /** From-address for subcontractor outreach sent via Resend. */
-    get outreachFrom() { return str("RESEND_OUTREACH_FROM", "BROSTCO <info@brostco.com>"); },
-    get digestTo() { return str("DIGEST_EMAIL_TO"); },
-    /** Svix signing secret for the Resend inbound-email webhook (whsec_...). */
-    get webhookSecret() { return str("RESEND_WEBHOOK_SECRET"); },
-    get enabled() {
-      return Boolean(this.apiKey);
-    },
-    /** True when replies to Resend-sent outreach can be captured automatically. */
-    get inboundEnabled() {
-      return Boolean(this.apiKey && this.webhookSecret);
-    },
-  },
-
   /**
-   * The domain every tenant sends from until they verify their own. Owned and
-   * DNS-authenticated by us, so a customer can send outreach on day one
-   * without touching their registrar.
+   * Platform system email (password resets, digests, alerts). Delivered
+   * through the platform's own connected Gmail inbox, not a tenant's.
    */
-  get platformSendingDomain() {
-    return str("PLATFORM_SENDING_DOMAIN", "send.brostco.com");
-  },
-
-  outreach: {
-    /**
-     * Reply-To of last resort, used only when a tenant has not set their own.
-     * Never left empty: a subcontractor reply that bounces is a lost bid.
-     */
-    get fallbackReplyTo() { return str("OUTREACH_REPLY_TO", "info@brostco.com"); },
-    /**
-     * From header used when tenant lookup is impossible (database down, no org
-     * context). Deliberately the founding tenant's verified identity, not the
-     * shared domain: a transient outage must not quietly downgrade a customer
-     * who has already verified their own domain.
-     */
-    get fallbackFrom() { return str("OUTREACH_FROM", "BROSTCO <info@brostco.com>"); },
+  systemMail: {
+    /** Optional explicit From. Defaults to the connected platform address. */
+    get from() { return str("SYSTEM_MAIL_FROM"); },
+    /** Where operator digests and alerts go. */
+    get digestTo() { return str("DIGEST_EMAIL_TO"); },
   },
 
   stripe: {
@@ -224,7 +194,6 @@ export function integrationStatus() {
     hunter: config.hunter.enabled,
     gmail: config.gmail.configured,
     twilio: config.twilio.enabled,
-    resend: config.resend.enabled,
     supabaseStorage: config.supabase.enabled,
     queue: config.queue.backend,
   };

@@ -22,7 +22,6 @@ const nextConfig = {
       "twilio",
       "googleapis",
       "@anthropic-ai/sdk",
-      "resend",
       "stripe",
       "pdf-lib",
       "docx",

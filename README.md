@@ -16,7 +16,7 @@ Built to the BROSTCO System Design & Build Brief (SYS-01 … SYS-12).
 Presentation   Next.js 14 (App Router) + Tailwind, dashboard (7 views), mobile-ready Call Queue
 Agents         13 isolated modules + maintenance jobs, run by a worker via a job queue
 AI             Anthropic Claude (claude-sonnet-4-6). Company Profile injected as system context on EVERY call
-Integrations   SAM.gov · USASpending · BLS CPI · Google Places · Hunter.io · Gmail OAuth · Twilio · Resend · Supabase Storage · Playwright scrapers
+Integrations   SAM.gov · USASpending · BLS CPI · Google Places · Hunter.io · Gmail OAuth · Twilio · Supabase Storage · Playwright scrapers
 Data           PostgreSQL (Supabase). Single source of truth. Versioned company_profile + scoring_weights
 Queue          pg-boss (Postgres-backed, default) or BullMQ (set REDIS_URL)
 ```
@@ -130,7 +130,7 @@ lib/
   db.ts              pg pool + query helpers
   ai/                claude client (profile injection) + company profile loader
   domain/            pure, tested business logic (scoring, pricing, compliance)
-  integrations/      SAM, USASpending, BLS, Google, Hunter, Gmail, Twilio, Resend,
+  integrations/      SAM, USASpending, BLS, Google, Hunter, Gmail, Twilio,
                      storage, document generation, scrapers/
   agents/            13 agents + maintenance + runner + registry
   queue/             pluggable pg-boss / BullMQ
@@ -145,5 +145,5 @@ scripts/             migrate, seed, run-agent CLI
 ## Cost (SYS-12)
 
 At ~50 opportunities/month, roughly **$300–650/mo** all-in (Supabase, Claude,
-Google Places, Hunter, Twilio, Resend, hosting). Recovered on the margin of a
+Google Places, Hunter, Twilio, hosting). Recovered on the margin of a
 single mid-size contract.

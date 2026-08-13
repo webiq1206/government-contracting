@@ -19,7 +19,6 @@ export interface SetupInputs {
     googleMaps: boolean;
     gmail: boolean;
     /** Resend API key present — can send outreach without Google OAuth. */
-    resend: boolean;
   };
 }
 
@@ -113,12 +112,12 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
       href: INTEGRATIONS_HREF,
     },
     {
-      // Gmail OAuth or Resend both satisfy outreach email. Resend is the
-      // supported path when the operator does not want to connect Google.
+      // The connected inbox is the whole email system: it sends outreach, and
+      // it is the mailbox we sync replies back out of.
       key: "email",
-      label: "Connect email (Gmail or Resend)",
-      hint: "Sends subcontractor outreach and detects their replies. Resend works without Google OAuth.",
-      done: i.integrations.gmail || i.integrations.resend,
+      label: "Connect your Google inbox",
+      hint: "Sends subcontractor outreach from your own address and reads their replies back into the record.",
+      done: i.integrations.gmail,
       href: INTEGRATIONS_HREF,
     },
   ];

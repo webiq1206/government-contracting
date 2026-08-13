@@ -104,17 +104,6 @@ export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>
     return { ok: false, message: `BLS returned: ${body.message?.[0] ?? body.status ?? res.status}` };
   },
 
-  resend: async (v) => {
-    const key = v.RESEND_API_KEY;
-    if (!key) return { ok: false, message: "Enter your Resend API key first." };
-    const res = await timedFetch("https://api.resend.com/domains", {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    if (res.status === 401) return { ok: false, message: "Resend rejected this key." };
-    if (!res.ok) return { ok: false, message: `Resend returned an error (HTTP ${res.status}).` };
-    return { ok: true, message: "Connected. Email digests can send." };
-  },
-
   twilio: async (v) => {
     const sid = v.TWILIO_ACCOUNT_SID;
     const token = v.TWILIO_AUTH_TOKEN;

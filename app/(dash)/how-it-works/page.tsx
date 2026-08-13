@@ -74,7 +74,7 @@ const PHASES: Phase[] = [
         who: "you",
         href: "/settings/integrations",
         hrefLabel: "Open integrations",
-        what: "Connect email (Gmail or Resend) so subcontractor outreach can send. Add optional keys for Google Places (finding local subs), SAM.gov, and SMS alerts as needed. Today’s Finish Setting Up checklist tracks what is still open.",
+        what: "Click Connect Google Inbox and sign in, so outreach sends from your own address and replies come back into the record. Add optional keys for Google Places (finding local subs), SAM.gov, and SMS alerts as needed. Today’s Finish Setting Up checklist tracks what is still open.",
         next: "With email connected, outreach and follow-ups can run without you copying messages by hand.",
       },
     ],

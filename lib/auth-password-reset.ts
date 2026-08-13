@@ -1,10 +1,11 @@
 /**
- * Password reset via single-use tokens emailed through Resend when configured.
+ * Password reset via single-use tokens, emailed through the platform inbox.
  */
 import { createHash, randomBytes } from "node:crypto";
 import { query, queryOne } from "./db";
 import { hashPassword } from "./auth";
 import { config } from "./config";
+import { systemMail } from "./integrations/system-mail";
 import { trackEvent } from "./analytics";
 
 function hashToken(token: string): string {
@@ -43,22 +44,17 @@ async function sendResetEmail(
   name: string | null,
   resetUrl: string
 ): Promise<void> {
-  const key = process.env.RESEND_API_KEY;
-  const from =
-    process.env.RESEND_FROM ||
-    process.env.RESEND_OUTREACH_FROM ||
-    "Brost Co <noreply@brostco.com>";
-  if (!key) {
+  if (!(await systemMail.enabled())) {
+    // Nothing can be delivered. Log the link in development so the flow is
+    // still testable, and stay silent in production rather than leaking a
+    // reset URL into the logs of a live system.
     if (!config.isProd) {
       console.info(`[password-reset] ${to}: ${resetUrl}`);
     }
     return;
   }
-  try {
-    const { Resend } = await import("resend");
-    const resend = new Resend(key);
-    await resend.emails.send({
-      from,
+  await systemMail
+    .send({
       to,
       subject: "Reset your Brost Co password",
       text: [
@@ -69,10 +65,8 @@ async function sendResetEmail(
         "",
         "If you did not request this, you can ignore this email.",
       ].join("\n"),
-    });
-  } catch (err) {
-    console.error("[password-reset] email failed", err);
-  }
+    })
+    .catch((err) => console.error("[password-reset] email failed", err));
 }
 
 export async function resetPasswordWithToken(input: {

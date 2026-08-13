@@ -280,8 +280,8 @@ async function PipelineOnboarding() {
   if (!st.sam) missing.push("SAM.gov (opportunity ingestion)");
   if (!st.claude) missing.push("Anthropic (scoring + bid briefs)");
   if (!st.googleMaps) missing.push("Google Maps (subcontractor discovery)");
-  if (!st.gmail && !st.resend) {
-    missing.push("Email: Gmail or Resend (outreach + reply tracking)");
+  if (!st.gmail) {
+    missing.push("Google Inbox (sending outreach and reading replies)");
   }
 
   return (

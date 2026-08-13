@@ -1,12 +1,20 @@
 /**
- * Gmail client, all outreach sends from the real Gmail account, with reply
- * detection and open/click tracking (tracking pixel + wrapped links). OAuth 2.0
- * refresh-token flow. Tokens live in integration_tokens (or GMAIL_REFRESH_TOKEN
- * env for a headless setup). Degrades gracefully when not configured.
+ * Gmail client. Every tenant connects their own inbox and all of their outreach
+ * sends from it, with reply detection and open/click tracking.
+ *
+ * Tokens are keyed by (provider, org_id) in integration_tokens, so one
+ * customer's connection can never be used to send as another. The OAuth client
+ * id/secret are platform-level (one Google app, many connected inboxes), which
+ * is what makes Connect Google Inbox a single button for the customer.
+ *
+ * GMAIL_REFRESH_TOKEN remains supported as a headless escape hatch for the
+ * founding tenant only. Degrades gracefully when not configured.
  */
 import { google } from "googleapis";
 import { config } from "../config";
 import { queryOne, query } from "../db";
+import { tryResolveTenantOrgId } from "../tenant";
+import { LEGACY_ORG_ID } from "../tenant-context";
 
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
@@ -37,38 +45,89 @@ export function getAuthUrl(state?: string): string {
   });
 }
 
-/** Exchange an OAuth code for tokens and persist the refresh token. */
-export async function exchangeCode(code: string): Promise<{ email?: string }> {
+/**
+ * Exchange an OAuth code for tokens and persist them against ONE organization.
+ *
+ * Google only returns a refresh token on the first consent for an account, so
+ * a reconnect that omits it must not blank out the stored one. The insert
+ * therefore merges into the existing token blob rather than replacing it.
+ */
+export async function exchangeCode(
+  code: string,
+  orgId: string
+): Promise<{ email?: string }> {
   const client = oauthClient();
   const { tokens } = await client.getToken(code);
-  await query(
-    `insert into integration_tokens (provider, data, updated_at)
-     values ('gmail', $1, now())
-     on conflict (provider) do update set data = excluded.data, updated_at = now()`,
-    [JSON.stringify(tokens)]
-  );
-  // Discover the authorized email address.
+
+  let email: string | undefined;
   client.setCredentials(tokens);
   try {
-    const gmail = google.gmail({ version: "v1", auth: client });
-    const prof = await gmail.users.getProfile({ userId: "me" });
-    return { email: prof.data.emailAddress ?? undefined };
+    const api = google.gmail({ version: "v1", auth: client });
+    const prof = await api.users.getProfile({ userId: "me" });
+    email = prof.data.emailAddress ?? undefined;
   } catch {
-    return {};
+    // A profile read failure is not a reason to discard a valid grant.
   }
+
+  await query(
+    `insert into integration_tokens (provider, org_id, data, email, status, last_error, updated_at)
+     values ('gmail', $1, $2::jsonb, $3, 'connected', null, now())
+     on conflict (provider, org_id) do update set
+       -- Merge so a reconnect without a fresh refresh_token keeps the old one.
+       data       = integration_tokens.data || excluded.data,
+       email      = coalesce(excluded.email, integration_tokens.email),
+       status     = 'connected',
+       last_error = null,
+       updated_at = now()`,
+    [orgId, JSON.stringify(tokens), email ?? null]
+  );
+
+  return { email };
 }
 
-async function getRefreshToken(): Promise<string | null> {
+/** Which organization's inbox to act as, defaulting to the caller's tenant. */
+async function resolveOrg(orgId?: string): Promise<string | null> {
+  return orgId ?? (await tryResolveTenantOrgId());
+}
+
+async function getRefreshToken(orgId: string): Promise<string | null> {
   const row = await queryOne<{ data: { refresh_token?: string } }>(
-    `select data from integration_tokens where provider = 'gmail'`
+    `select data from integration_tokens where provider = 'gmail' and org_id = $1`,
+    [orgId]
   ).catch(() => null);
-  return row?.data?.refresh_token ?? config.gmail.refreshToken ?? null;
+  if (row?.data?.refresh_token) return row.data.refresh_token;
+  // Headless escape hatch, founding tenant only. Handing this env token to any
+  // other org would let them send from the platform's own mailbox.
+  if (orgId === LEGACY_ORG_ID && config.gmail.refreshToken) {
+    return config.gmail.refreshToken;
+  }
+  return null;
 }
 
-/** Authorized Gmail client, or null if not connected. */
-async function gmailClient() {
+/**
+ * Record why an inbox stopped working. A user can revoke access from their
+ * Google account at any time and we only learn about it when a call fails, so
+ * the failure is stored rather than swallowed, and the UI can tell them to
+ * reconnect instead of silently sending nothing.
+ */
+async function markConnectionError(orgId: string, message: string): Promise<void> {
+  const revoked = /invalid_grant|unauthorized|invalid_client|Token has been expired or revoked/i.test(
+    message
+  );
+  await query(
+    `update integration_tokens
+        set status = $2, last_error = $3, updated_at = now()
+      where provider = 'gmail' and org_id = $1`,
+    [orgId, revoked ? "revoked" : "error", message.slice(0, 500)]
+  ).catch(() => {});
+}
+
+/** Authorized Gmail client for one organization, or null if not connected. */
+async function gmailClient(orgId?: string) {
   if (!config.gmail.configured) return null;
-  const refresh = await getRefreshToken();
+  const org = await resolveOrg(orgId);
+  if (!org) return null;
+  const refresh = await getRefreshToken(org);
   if (!refresh) return null;
   const client = oauthClient();
   client.setCredentials({ refresh_token: refresh });
@@ -90,6 +149,16 @@ export interface SendEmailParams {
    */
   from?: string;
   replyTo?: string;
+  /** Which tenant's connected inbox to send from. Defaults to the caller's. */
+  orgId?: string;
+  /**
+   * Existing Gmail thread to reply inside. Both this and inReplyTo are needed:
+   * threadId tells the API which conversation, while In-Reply-To/References are
+   * what the RECIPIENT's mail client uses to thread it on their side.
+   */
+  threadId?: string;
+  /** Message-Id of the message being replied to. */
+  inReplyTo?: string;
   attachments?: { filename: string; content: Buffer; mime?: string }[];
 }
 
@@ -132,6 +201,8 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
       `From: ${from}`,
       `To: ${params.to}`,
       params.replyTo ? `Reply-To: ${params.replyTo}` : "",
+      params.inReplyTo ? `In-Reply-To: ${params.inReplyTo}` : "",
+      params.inReplyTo ? `References: ${params.inReplyTo}` : "",
       `Subject: ${params.subject}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -144,6 +215,8 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
       `From: ${from}`,
       `To: ${params.to}`,
       params.replyTo ? `Reply-To: ${params.replyTo}` : "",
+      params.inReplyTo ? `In-Reply-To: ${params.inReplyTo}` : "",
+      params.inReplyTo ? `References: ${params.inReplyTo}` : "",
       `Subject: ${params.subject}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/mixed; boundary="${mixed}"`,
@@ -221,8 +294,50 @@ function stripHtml(html: string): string {
 export const gmail = {
   configured: () => config.gmail.configured,
 
-  async isConnected(): Promise<boolean> {
-    return (await gmailClient()) != null;
+  async isConnected(orgId?: string): Promise<boolean> {
+    return (await gmailClient(orgId)) != null;
+  },
+
+  /** Connected address and health for one tenant, for the settings UI. */
+  async connection(orgId?: string): Promise<{
+    connected: boolean;
+    email: string | null;
+    status: string;
+    lastError: string | null;
+  }> {
+    const org = await resolveOrg(orgId);
+    if (!org) return { connected: false, email: null, status: "none", lastError: null };
+    const row = await queryOne<{
+      email: string | null;
+      status: string;
+      last_error: string | null;
+      data: { refresh_token?: string };
+    }>(
+      `select email, status, last_error, data from integration_tokens
+        where provider = 'gmail' and org_id = $1`,
+      [org]
+    ).catch(() => null);
+    if (!row?.data?.refresh_token) {
+      return { connected: false, email: null, status: "none", lastError: null };
+    }
+    return {
+      // "revoked" means the grant is gone even though a row still exists, so
+      // the UI must prompt a reconnect rather than claim it is working.
+      connected: row.status !== "revoked",
+      email: row.email,
+      status: row.status,
+      lastError: row.last_error,
+    };
+  },
+
+  /** Forget a tenant's connection. Their inbox is untouched at Google. */
+  async disconnect(orgId?: string): Promise<void> {
+    const org = await resolveOrg(orgId);
+    if (!org) return;
+    await query(
+      `delete from integration_tokens where provider = 'gmail' and org_id = $1`,
+      [org]
+    );
   },
 
   async send(
@@ -232,7 +347,8 @@ export const gmail = {
     if (await isAutomationPaused()) {
       return { disabled: true, error: AUTOMATION_PAUSED_ERROR };
     }
-    const client = await gmailClient();
+    const org = await resolveOrg(params.orgId);
+    const client = await gmailClient(org ?? undefined);
     if (!client) return { disabled: true };
     try {
       // params.from overrides GMAIL_SENDER so the outreach transport can lock
@@ -241,11 +357,15 @@ export const gmail = {
       const raw = buildGmailRawMessage(params, from);
       const res = await client.users.messages.send({
         userId: "me",
-        requestBody: { raw },
+        // threadId keeps the reply in the same conversation in the sender's
+        // own mailbox, which is what the in-app thread view reads back.
+        requestBody: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
       });
       return { messageId: res.data.id ?? undefined, threadId: res.data.threadId ?? undefined };
     } catch (err) {
-      return { error: (err as Error).message };
+      const message = (err as Error).message;
+      if (org) await markConnectionError(org, message);
+      return { error: message };
     }
   },
 
@@ -254,9 +374,10 @@ export const gmail = {
    * from us) grouped by threadId, so the Outreach agent can mark subs responsive.
    */
   async fetchReplies(
-    sinceEpochSec: number
+    sinceEpochSec: number,
+    orgId?: string
   ): Promise<{ disabled?: boolean; replies: { threadId: string; from: string; snippet: string; messageId: string; body: string }[] }> {
-    const client = await gmailClient();
+    const client = await gmailClient(orgId);
     if (!client) return { disabled: true, replies: [] };
     try {
       const q = `in:inbox newer_than:7d -from:me after:${sinceEpochSec}`;

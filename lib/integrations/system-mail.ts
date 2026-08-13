@@ -1,0 +1,83 @@
+/**
+ * Platform system email: password resets, digests, operator alerts.
+ *
+ * Distinct from outreach. Outreach goes out through the TENANT's connected
+ * inbox so subcontractors hear from the company they are bidding with; system
+ * mail goes out through the PLATFORM's own connected inbox, because it is from
+ * us and because the recipient may not belong to a tenant with a connection
+ * yet (a password reset is the obvious case).
+ *
+ * Never throws. A failed digest must not take down the agent that produced it.
+ */
+import { gmail } from "./gmail";
+import { config } from "../config";
+import { LEGACY_ORG_ID } from "../tenant-context";
+
+export interface SystemMailResult {
+  disabled?: boolean;
+  error?: string;
+  messageId?: string;
+}
+
+/** Minimal HTML wrapper so plain-text system mail is still readable. */
+function asHtml(text: string): string {
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.5">${escaped.replace(
+    /\n/g,
+    "<br />"
+  )}</div>`;
+}
+
+export const systemMail = {
+  /**
+   * True when platform mail can actually be delivered. Callers check this
+   * before composing an expensive digest.
+   */
+  async enabled(): Promise<boolean> {
+    return gmail.isConnected(LEGACY_ORG_ID);
+  },
+
+  async send(params: {
+    to: string | string[];
+    subject: string;
+    text: string;
+    html?: string;
+  }): Promise<SystemMailResult> {
+    const to = Array.isArray(params.to) ? params.to.join(", ") : params.to;
+    if (!to.trim()) return { disabled: true, error: "No recipient." };
+
+    const res = await gmail.send({
+      to,
+      subject: params.subject,
+      html: params.html ?? asHtml(params.text),
+      text: params.text,
+      // The platform's own inbox, explicitly. Falling back to ambient tenant
+      // context here would send a password reset from a customer's mailbox.
+      orgId: LEGACY_ORG_ID,
+      ...(config.systemMail.from ? { from: config.systemMail.from } : {}),
+    });
+
+    if (res.disabled) {
+      return { disabled: true, error: "Platform inbox is not connected." };
+    }
+    return { error: res.error, messageId: res.messageId };
+  },
+
+  /** Digest helper: subject plus prebuilt HTML, with a plain-text fallback. */
+  async sendDigest(params: {
+    to: string | string[];
+    subject: string;
+    html: string;
+    text?: string;
+  }): Promise<SystemMailResult> {
+    return this.send({
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      text: params.text ?? params.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+    });
+  },
+};

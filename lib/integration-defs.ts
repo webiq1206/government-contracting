@@ -157,57 +157,17 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
   },
   {
     id: "gmail",
-    name: "Gmail",
-    what: "Sends subcontractor outreach from your address, sends the 48-hour follow-ups, and detects replies to queue calls automatically. Optional if Resend is configured for outreach (add Resend's inbound webhook secret for reply detection without Google OAuth).",
-    without: "No automated outreach emails unless Resend is configured; you contact subs manually.",
-    where: "console.cloud.google.com → OAuth client (Web) → paste ID + secret here, then click Connect Gmail.",
+    name: "Google Inbox",
+    what: "Sends every subcontractor email from your own address, reads their replies back into the record, and keeps the whole conversation in one thread you can see here.",
+    without: "No outreach can be sent and no replies can be read. This is the one connection the platform cannot work without.",
+    where: "Click Connect Google Inbox and sign in. Nothing to copy or paste.",
     fields: [
       { env: "GMAIL_CLIENT_ID", label: "OAuth client ID", secret: false, developer: true },
       { env: "GMAIL_CLIENT_SECRET", label: "OAuth client secret", secret: true, developer: true },
-      { env: "GMAIL_SENDER", label: "Send-as address", secret: false, placeholder: "you@yourcompany.com" },
     ],
     testable: false,
-    guide: {
-      cost: "Free. Uses your own Gmail or Google Workspace account.",
-      steps: [
-        "In the Google Cloud Console, open APIs & Services, then OAuth consent screen. Choose External, fill the basics, and add your own email as a test user.",
-        "Go to Credentials, click Create credentials, and choose OAuth client ID. Pick Application type: Web application.",
-        "Under Authorized redirect URIs, add your site address followed by /api/integrations/gmail/callback (for example https://brostco.com/api/integrations/gmail/callback).",
-        "Copy the Client ID and Client secret into the boxes above, put your Gmail address in Send-as, press Save, then click Connect Gmail and approve.",
-      ],
-      links: [
-        { label: "OAuth consent screen", url: "https://console.cloud.google.com/apis/credentials/consent" },
-        { label: "Create OAuth client", url: "https://console.cloud.google.com/apis/credentials" },
-      ],
-    },
   },
-  {
-    id: "resend",
-    name: "Resend",
-    what: "Sends your daily analytics digest and system emails. Also carries subcontractor outreach and follow-ups whenever Gmail is not connected; add the inbound webhook secret to capture replies and prices automatically without Gmail.",
-    without: "No email digests (everything is still visible in the app).",
-    where: "resend.com → API Keys. For reply capture: resend.com → Webhooks → add endpoint /api/webhooks/resend-inbound (event: email.received) and paste its signing secret.",
-    fields: [
-      { env: "RESEND_API_KEY", label: "API key", secret: true },
-      { env: "DIGEST_EMAIL_TO", label: "Send digest to", secret: false, placeholder: "you@yourcompany.com" },
-      { env: "RESEND_OUTREACH_FROM", label: "Outreach send-from (optional)", secret: false, placeholder: "BROSTCO <info@brostco.com>" },
-      { env: "RESEND_WEBHOOK_SECRET", label: "Inbound webhook signing secret (optional)", secret: true, placeholder: "whsec_..." },
-    ],
-    testable: true,
-    guide: {
-      cost: "Free tier covers low volume.",
-      steps: [
-        "Open Resend and sign up.",
-        "Go to API Keys and click Create API Key (Sending access is enough). Copy it.",
-        "Paste the key above and enter where the daily digest should go in Send digest to.",
-        "For best delivery, verify your own domain under Domains (optional to start).",
-      ],
-      links: [
-        { label: "Resend API keys", url: "https://resend.com/api-keys" },
-        { label: "Verify a domain", url: "https://resend.com/domains" },
-      ],
-    },
-  },
+
   {
     id: "twilio",
     name: "Twilio SMS",

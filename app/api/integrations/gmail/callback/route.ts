@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { requireUser } from "@/lib/api-auth";
 import { exchangeCode } from "@/lib/integrations/gmail";
 import { config } from "@/lib/config";
+import { resolveTenantOrgId } from "@/lib/tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,11 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${config.appUrl}/settings/integrations?gmail=missing_code`);
   }
   try {
-    const { email } = await exchangeCode(code);
+    // Bind the grant to the signed-in user's organization, resolved here from
+    // the session rather than from anything in the callback URL, so a crafted
+    // redirect cannot attach an inbox to someone else's tenant.
+    const orgId = await resolveTenantOrgId();
+    const { email } = await exchangeCode(code, orgId);
     return NextResponse.redirect(
       `${config.appUrl}/settings/integrations?gmail=connected${email ? `&email=${encodeURIComponent(email)}` : ""}`
     );

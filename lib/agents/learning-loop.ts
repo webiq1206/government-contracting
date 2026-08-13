@@ -15,7 +15,7 @@ import { query, queryOne } from "../db";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
-import { email } from "../integrations/resend";
+import { systemMail } from "../integrations/system-mail";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, ScoreBreakdown } from "../types";
 
@@ -196,11 +196,12 @@ export const learningLoop: AgentDefinition = {
     });
 
     // --- Optional email digest. ---
-    if (email.enabled()) {
+    if (await systemMail.enabled()) {
       const html = `<h2>Learning Loop, Weekly Report</h2><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(
         report
       )}</pre>`;
-      await email.sendDigest({
+      await systemMail.sendDigest({
+        to: config.systemMail.digestTo,
         subject: `BROST CO Learning Loop, ${wins}W/${losses}L this cycle`,
         html,
         text: report,

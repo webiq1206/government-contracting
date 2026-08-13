@@ -3,7 +3,7 @@ import { computeSetupChecklist, type SetupInputs } from "@/lib/domain/setup";
 
 const allOff: SetupInputs = {
   profile: null,
-  integrations: { sam: false, claude: false, googleMaps: false, gmail: false, resend: false },
+  integrations: { sam: false, claude: false, googleMaps: false, gmail: false },
 };
 
 const allOn: SetupInputs = {
@@ -14,7 +14,7 @@ const allOn: SetupInputs = {
     service_areas: ["Idaho"],
     certifications: ["Small Business"],
   },
-  integrations: { sam: true, claude: true, googleMaps: true, gmail: true, resend: false },
+  integrations: { sam: true, claude: true, googleMaps: true, gmail: true },
 };
 
 describe("computeSetupChecklist", () => {
@@ -82,22 +82,16 @@ describe("computeSetupChecklist", () => {
   it("reflects partial integration state", () => {
     const c = computeSetupChecklist({
       profile: allOn.profile,
-      integrations: { sam: true, claude: true, googleMaps: false, gmail: false, resend: false },
+      integrations: { sam: true, claude: true, googleMaps: false, gmail: false },
     });
     expect(c.done).toBe(6); // 4 profile + sam + claude
     expect(c.items.find((i) => i.key === "email")!.done).toBe(false);
   });
 
-  it("treats Resend alone as completing the email step (no Gmail OAuth)", () => {
+  it("completes the email step only once an inbox is connected", () => {
     const c = computeSetupChecklist({
       profile: allOn.profile,
-      integrations: {
-        sam: true,
-        claude: true,
-        googleMaps: true,
-        gmail: false,
-        resend: true,
-      },
+      integrations: { ...allOn.integrations, gmail: true },
     });
     expect(c.items.find((i) => i.key === "email")!.done).toBe(true);
     expect(c.done).toBe(8);

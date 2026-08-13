@@ -2,14 +2,14 @@ import { config, integrationStatus } from "@/lib/config";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { IntegrationManager } from "@/components/integration-manager";
-import { SendingDomainCard } from "@/components/sending-domain-card";
+import { GoogleInboxCard } from "@/components/google-inbox-card";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-settings";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
 import { gmail } from "@/lib/integrations/gmail";
 
 const CORE_IDS = new Set(["sam", "claude"]);
-const OUTREACH_IDS = new Set(["gmail", "resend", "twilio", "hunter"]);
+const OUTREACH_IDS = new Set(["gmail", "twilio", "hunter"]);
 const DATA_IDS = new Set([
   "googleMaps",
   "ahrefs",
@@ -26,25 +26,19 @@ export default async function IntegrationsPage({
   searchParams?: { gmail?: string; gmailError?: string };
 }) {
   await hydrateIntegrationEnv();
-  const [sources, gmailConnected] = await Promise.all([
+  const [sources, inbox] = await Promise.all([
     settingSources(),
-    gmail.isConnected().catch(() => false),
+    gmail
+      .connection()
+      .catch(() => ({ connected: false, email: null, status: "none", lastError: null })),
   ]);
+  const gmailConnected = inbox.connected;
   const status = integrationStatus();
   const gmailParam = searchParams?.gmail;
   const gmailError = searchParams?.gmailError;
-  const resendOutreachActive = !gmailConnected && config.resend.enabled;
 
   const initial = INTEGRATION_DEFS.map((def) => {
-    // When Resend is carrying outreach, the Gmail card's "no outreach" warning
-    // is wrong; say what is actually happening instead.
-    const without =
-      def.id === "gmail" && resendOutreachActive
-        ? `Outreach and follow-ups are sending via Resend from ${config.resend.outreachFrom}.` +
-          (config.resend.inboundEnabled
-            ? " Reply detection and price capture run through the Resend inbound webhook."
-            : " Connect Gmail (or add the Resend inbound webhook secret) to enable reply detection and automatic price capture.")
-        : def.without;
+    const without = def.without;
     const fields = def.fields.map((f) => ({
       ...f,
       ...(sources[f.env] ?? { source: "none" as const, masked: null }),
@@ -84,7 +78,7 @@ export default async function IntegrationsPage({
         gmailParam === "denied" ||
         gmailParam === "error" ||
         gmailError ||
-        resendOutreachActive) && (
+        false) && (
         <div className="shrink-0 space-y-3 border-b border-border px-5 py-4 sm:px-6">
           {gmailError && (
             <div className="card border-review/40 bg-review/5 text-sm text-review">
@@ -99,16 +93,6 @@ export default async function IntegrationsPage({
           {gmailParam === "denied" && (
             <div className="card border-review/40 bg-review/5 text-sm text-review">
               Gmail connection was denied. You can retry below.
-            </div>
-          )}
-          {resendOutreachActive && (
-            <div className="card border-accent/40 bg-accent-soft/60 text-sm text-accent-strong">
-              Subcontractor outreach is sending via <strong>Resend</strong> from{" "}
-              {config.resend.outreachFrom}.{" "}
-              {config.resend.inboundEnabled
-                ? "Replies are captured automatically through the Resend inbound webhook (prices are extracted and saved to the record)."
-                : "Reply detection and automatic price capture need Gmail connected or the Resend inbound webhook configured (add the webhook signing secret below)."}{" "}
-              Make sure the sender domain is verified in Resend, or sends will fail.
             </div>
           )}
           {gmailParam === "error" && (
@@ -127,7 +111,6 @@ export default async function IntegrationsPage({
           sam: "core",
           claude: "core",
           gmail: "outreach",
-          resend: "outreach",
           twilio: "outreach",
           hunter: "outreach",
           maps: "data",
@@ -175,10 +158,12 @@ export default async function IntegrationsPage({
                 <p className="text-sm text-muted-foreground">
                   Email, SMS, and contact enrichment for subcontractor outreach.
                 </p>
-                {/* Sending identity comes first: it is the one thing every
-                    account has to get right, and it is the only email setup
-                    step that does not involve pasting a key. */}
-                <SendingDomainCard />
+                {/* The inbox connection comes first: it is the only email step
+                    a customer takes, and nothing else in outreach works
+                    without it. */}
+                <GoogleInboxCard
+                  initial={{ ...inbox, available: config.gmail.configured }}
+                />
                 <IntegrationManager
                   initial={initial.filter((i) => OUTREACH_IDS.has(i.id))}
                 />

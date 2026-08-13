@@ -8,7 +8,8 @@
  */
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
-import { email } from "../integrations/resend";
+import { systemMail } from "../integrations/system-mail";
+import { config } from "../config";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -175,8 +176,9 @@ export const analyticsEngine: AgentDefinition = {
 
     // --- Weekly digest on Mondays. ---
     const isMonday = new Date().getDay() === 1;
-    if (isMonday && email.enabled()) {
-      await email.sendDigest({
+    if (isMonday && (await systemMail.enabled())) {
+      await systemMail.sendDigest({
+        to: config.systemMail.digestTo,
         subject: `BROST CO Weekly KPIs, ${kpis.win_rate.overall}% win rate`,
         html: renderDigestHtml(kpis),
         text: renderDigestText(kpis),

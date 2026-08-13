@@ -58,7 +58,7 @@ If you use Deployments, add the same Stripe keys under **Deployments → Secrets
 (workspace Secrets do not always carry over).
 
 Add the rest from `.env.example` as you obtain each key (SAM, Google Maps,
-Hunter, Gmail OAuth, Twilio, Resend, Ahrefs). Every one is optional, the
+Hunter, Gmail OAuth, Twilio, Ahrefs). Gmail is required (it sends outreach and reads replies); the rest are optional, the
 platform runs and is testable without them and lights each feature up when its
 key appears.
 

@@ -45,7 +45,7 @@ export default function PrivacyPage() {
           <h2 className="font-display text-2xl text-foreground">Processors</h2>
           <p>
             We use subprocessors such as hosting providers, Stripe (payments), email delivery
-            (e.g. Resend), and model providers when you enable AI-assisted features. Each is
+            (Google), and model providers when you enable AI-assisted features. Each is
             bound by contractual data protections appropriate to their role.
           </p>
           <h2 className="font-display text-2xl text-foreground">Retention</h2>

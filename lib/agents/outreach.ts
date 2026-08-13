@@ -344,7 +344,7 @@ export const outreach: AgentDefinition = {
           subcontractorId,
           message: res.blocked
             ? `Held email to ${sub.company_name}, nothing was sent. ${res.error}`
-            : `${res.provider === "resend" ? "Resend" : "Gmail"} send failed: ${res.error}`,
+            : `Gmail send failed: ${res.error}`,
         });
       } else {
         sent = true;

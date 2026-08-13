@@ -10,7 +10,7 @@ import { gmail } from "../integrations/gmail";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { captureReply, matchInboundReply } from "../reply-capture";
 import { sms } from "../integrations/twilio";
-import { email } from "../integrations/resend";
+import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
 import { logAgent } from "../logger";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
@@ -813,13 +813,15 @@ export const replyPoll: AgentDefinition = {
     }
 
     // One notification email per poll (not per reply), best-effort: silently
-    // skipped when Resend isn't configured; Today + the log still surface it.
-    if (notifyLines.length > 0 && email.enabled() && config.resend.digestTo) {
-      await email
+    // skipped when the platform inbox isn't connected; Today + the log still
+    // surface it either way.
+    if (notifyLines.length > 0 && config.systemMail.digestTo && (await systemMail.enabled())) {
+      await systemMail
         .send({
-          to: config.resend.digestTo,
+          to: config.systemMail.digestTo,
           subject: `BROST CO: ${notifyLines.length} subcontractor repl${notifyLines.length === 1 ? "y" : "ies"} received`,
           html: `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424"><p>Replies just came in. Each sub is marked responsive and has a call card on Today:</p><ul>${notifyLines.join("")}</ul><p>Open Today to start the calls.</p><div style="width:48px;height:2px;background:#B28F5D;margin-top:16px"></div></div>`,
+          text: `Replies just came in. Each sub is marked responsive and has a call card on Today. Open Today to start the calls.`,
         })
         .catch(() => undefined);
     }
