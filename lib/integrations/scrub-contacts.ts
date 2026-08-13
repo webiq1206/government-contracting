@@ -3,8 +3,18 @@
  * the system toward a subcontractor. Strips phones, emails, and common
  * contracting-officer name patterns so subs cannot bypass Brost Co.
  *
- * Replacements use [CONTACT REDACTED] so the surrounding sentence stays readable.
+ * Removal is SILENT. Earlier versions substituted a visible "[CONTACT REDACTED]"
+ * marker, which told the sub that something had been withheld and — worse —
+ * looked like a broken email. A contact is now removed along with the prose that
+ * introduced it, so the sub reads clean copy with no sign anything was taken out.
+ *
+ * This operates on solicitation-derived text ONLY, at the point it enters the
+ * template variables. It must never be run over an assembled email: after token
+ * substitution the operator's own phone and email are indistinguishable from the
+ * contracting officer's, and scrubbing the rendered body censors Brost Co's own
+ * contact details.
  */
+import { OMISSION, repairOmissions } from "../domain/text-repair";
 
 /**
  * US phone number patterns (covers the most common formats):
@@ -27,8 +37,6 @@ const EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
 const CO_NAME_RE =
   /\b(?:Contracting\s+Officer|Contract\s+Specialist|Contracting\s+Specialist|Point\s+of\s+Contact|POC|KO|COR|COTR)(?:'s)?\s*[:\-]?\s+[A-Z][a-zA-Z.'\-]+(?:\s+[A-Z][a-zA-Z.'\-]+){0,2}/g;
 
-const REDACTED = "[CONTACT REDACTED]";
-
 /**
  * Rewrite raw SAM API notice URLs to the public SAM.gov web URL so external
  * recipients (subs) can actually open the link without an API key.
@@ -48,27 +56,37 @@ export function rewriteSamUrls(text: string): string {
 }
 
 /**
- * Remove phones, emails, and common solicitor name patterns from `text`.
+ * Remove phones, emails, and common solicitor name patterns from `text`,
+ * repairing the surrounding sentence so nothing signals that a removal happened.
  * Returns the sanitised string and a count of how many matches were removed.
+ *
+ * Matching order matters: emails are masked before phones so the digits inside
+ * an address are not mistaken for a phone number, and names last so a title
+ * whose number was already masked ("Contracting Officer: Jane Doe, <masked>")
+ * still matches.
  */
 export function scrubGovtContacts(text: string): {
   sanitised: string;
   count: number;
 } {
   let count = 0;
-  const sanitised = text
+  const masked = text
     .replace(EMAIL_RE, () => {
       count++;
-      return REDACTED;
+      return OMISSION;
     })
-    .replace(PHONE_RE, (m) => {
-      if (m.trim() === REDACTED) return m;
+    .replace(PHONE_RE, () => {
       count++;
-      return REDACTED;
+      return OMISSION;
     })
     .replace(CO_NAME_RE, () => {
       count++;
-      return REDACTED;
+      return OMISSION;
     });
-  return { sanitised, count };
+
+  // Nothing matched: return the original untouched rather than round-tripping
+  // clean copy through the repair pass.
+  if (count === 0) return { sanitised: text, count: 0 };
+
+  return { sanitised: repairOmissions(masked), count };
 }

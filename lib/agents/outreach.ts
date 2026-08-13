@@ -191,7 +191,23 @@ export const outreach: AgentDefinition = {
       .map((q) => `- ${q}`)
       .join("\n");
 
-    const contactsRedacted = scopeRedacted + questionsRedacted;
+    // Every remaining solicitation-derived free-text value must be scrubbed
+    // BEFORE it enters `vars`, not merely before it enters the details block:
+    // templates are operator-editable and may reference {{opportunity_title}},
+    // {{agency}} or {{trade}} directly. Scrubbing is a no-op on clean values,
+    // so this costs nothing when there is no contact to remove.
+    const { sanitised: titleClean, count: titleRedacted } = scrubGovtContacts(
+      opp.title ?? ""
+    );
+    const { sanitised: agencyClean, count: agencyRedacted } = scrubGovtContacts(
+      opp.agency ?? ""
+    );
+    // Recipient-facing copy only — `trade` itself still drives attachment
+    // filtering and must keep its original value for matching.
+    const { sanitised: tradeClean, count: tradeRedacted } = scrubGovtContacts(trade);
+
+    const contactsRedacted =
+      scopeRedacted + questionsRedacted + titleRedacted + agencyRedacted + tradeRedacted;
     const senderName = outreachDisplayName(profile);
     // Greeting uses first name of sub owner when available; never invent a last name.
     const subGreeting = (() => {
@@ -203,10 +219,10 @@ export const outreach: AgentDefinition = {
     const vars: Record<string, string> = {
       owner_name: subGreeting,
       company_name: profile.legal_name,
-      opportunity_title: opp.title ?? "an upcoming opportunity",
+      opportunity_title: titleClean || "an upcoming opportunity",
       location_state: opp.location_state ?? "",
       deadline: deadlineLabel,
-      trade,
+      trade: tradeClean,
       scope_summary: scopeSummary,
       questions,
       // External display name only (first name / configured outreach name).
@@ -214,13 +230,16 @@ export const outreach: AgentDefinition = {
       phone: profile.phone ?? "",
       solicitation_number: opp.solicitation_number ?? "",
       // Agency name is OK; never inject analysis.contacts / CO details.
-      agency: opp.agency ?? "",
+      agency: agencyClean,
     };
 
-    const subject = scrubGovtContacts(renderTemplate(tmpl.subject ?? "Partnership opportunity", vars)).sanitised;
-    const plainBody = scrubInternalFailureCopy(
-      scrubGovtContacts(renderTemplate(tmpl.body, vars)).sanitised
-    );
+    // Solicitation-derived values (scope_summary, questions, title, agency) were
+    // already scrubbed on their way into `vars`. The assembled email is NEVER
+    // scrubbed: after substitution the operator's own phone and email are
+    // indistinguishable from the contracting officer's, so a pass here censors
+    // Brost Co's own contact details out of Brost Co's own email.
+    const subject = renderTemplate(tmpl.subject ?? "Partnership opportunity", vars);
+    const plainBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
 
     // Trade-filtered official docs (unaltered PDFs). Generated copy is scrubbed;
     // source PDFs are not rewritten.
@@ -267,11 +286,11 @@ export const outreach: AgentDefinition = {
     });
 
     const details = buildOutreachDetailsBlock({
-      title: scrubGovtContacts(opp.title ?? "").sanitised || null,
+      title: titleClean || null,
       solicitationNumber: opp.solicitation_number,
-      agency: scrubGovtContacts(opp.agency ?? "").sanitised || null,
+      agency: agencyClean || null,
       deadlineLabel,
-      trade,
+      trade: tradeClean,
       attachedNames: gathered.files.map((f) => f.filename),
       links: gathered.links,
     });
@@ -323,7 +342,9 @@ export const outreach: AgentDefinition = {
           status: "error",
           opportunityId,
           subcontractorId,
-          message: `${res.provider === "resend" ? "Resend" : "Gmail"} send failed: ${res.error}`,
+          message: res.blocked
+            ? `Held email to ${sub.company_name} — nothing was sent. ${res.error}`
+            : `${res.provider === "resend" ? "Resend" : "Gmail"} send failed: ${res.error}`,
         });
       } else {
         sent = true;

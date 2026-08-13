@@ -52,12 +52,16 @@ describe("renderTemplate", () => {
     expect(result).toContain("HVAC Maintenance Services");
   });
 
-  it("renders unknown tokens as empty string (no raw placeholder leaks to subs)", () => {
+  it("drops the copy around an unknown token rather than leaving a hole", () => {
+    // Neither "Hello Sam, ref {{unknown_token}}!" (raw placeholder) nor
+    // "Hello Sam, ref !" (visible gap) may reach a sub. The clause that needed
+    // the value goes, and with nothing substantial left the line goes too.
     const result = renderTemplate("Hello {{owner_name}}, ref {{unknown_token}}!", {
       owner_name: "Sam",
     });
-    expect(result).toBe("Hello Sam, ref !");
     expect(result).not.toContain("{{");
+    expect(result).not.toMatch(/\s[.,;:!?](\s|$)/);
+    expect(result).toBe("");
   });
 
   it("handles whitespace inside token braces", () => {
@@ -73,11 +77,11 @@ describe("renderTemplate", () => {
     expect(result).toBe("Jared from BROSTCO. — Jared");
   });
 
-  it("returns the template unchanged when vars is empty", () => {
+  it("produces nothing rather than a skeleton when vars is empty", () => {
     const tmpl = "Hello {{owner_name}}, please reply by {{deadline}}.";
     const result = renderTemplate(tmpl, {});
-    // Both tokens replaced with empty string.
-    expect(result).toBe("Hello , please reply by .");
+    // Previously rendered "Hello , please reply by ." — two visible gaps.
+    expect(result).toBe("");
   });
 
   it("renders the seed template_1_outreach subject correctly", () => {

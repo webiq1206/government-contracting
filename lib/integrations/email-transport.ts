@@ -11,6 +11,10 @@ import { gmail } from "./gmail";
 import { email as resend } from "./resend";
 import { config } from "../config";
 import { normalizeAttachmentMeta } from "../domain/attachment-meta";
+import {
+  findEmailSafetyIssues,
+  describeEmailSafetyIssues,
+} from "../domain/email-safety";
 
 /**
  * Canonical sub-facing sender identity — hardcoded so outreach is always
@@ -47,6 +51,13 @@ export interface OutreachSendResult {
   provider: OutreachProvider | null;
   /** True when no transport is available (neither Gmail nor Resend). */
   disabled?: boolean;
+  /**
+   * True when the email was refused by the pre-send safety check because the
+   * rendered copy would have looked broken to the recipient. Distinct from
+   * `disabled` (no transport) and from a provider `error` (delivery failed):
+   * nothing was attempted, and the fix is to the content, not the connection.
+   */
+  blocked?: boolean;
   error?: string;
   messageId?: string | null;
   /** Gmail-only; Resend has no thread concept. */
@@ -80,6 +91,22 @@ export async function outreachTransport(): Promise<OutreachProvider | null> {
 export async function sendOutreachEmail(
   params: OutreachSendParams
 ): Promise<OutreachSendResult> {
+  // Content safety runs before anything else, so no configuration or transport
+  // state can bypass it. An email that is never sent is recoverable; one that
+  // reaches a subcontractor with a hole in it is not.
+  const safetyIssues = findEmailSafetyIssues({
+    subject: params.subject,
+    text: params.text,
+    html: params.html,
+  });
+  if (safetyIssues.length > 0) {
+    return {
+      provider: null,
+      blocked: true,
+      error: describeEmailSafetyIssues(safetyIssues),
+    };
+  }
+
   const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
   if (await isAutomationPaused()) {
     return { provider: null, disabled: true, error: AUTOMATION_PAUSED_ERROR };

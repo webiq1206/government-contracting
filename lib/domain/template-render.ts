@@ -3,18 +3,31 @@
  * (lib/agents/outreach.ts) and the 48-hour follow-up agent
  * (lib/agents/maintenance.ts) so both send paths go through identical logic.
  */
+import { OMISSION, repairOmissions } from "./text-repair";
 
 /**
- * Simple {{var}} replacement. Unknown tokens render as empty string so a
- * misconfigured template never leaks raw placeholders to a subcontractor.
+ * {{var}} replacement where a missing value removes the sentence that needed it.
+ *
+ * Rendering an absent token as an empty string leaves a hole in the prose —
+ * "You can also call me at ." — which is as damaging as leaking the raw token.
+ * An unknown or blank value is masked instead, and the clause or sentence that
+ * existed only to introduce it is dropped, so the email either says something
+ * correctly or does not say it at all.
  */
 export function renderTemplate(
   template: string,
   vars: Record<string, string>
 ): string {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key: string) =>
-    key in vars ? vars[key] : ""
-  );
+  let omitted = false;
+  const masked = template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key: string) => {
+    const value = key in vars ? vars[key] : "";
+    if (typeof value !== "string" || value.trim() === "") {
+      omitted = true;
+      return OMISSION;
+    }
+    return value;
+  });
+  return omitted ? repairOmissions(masked) : masked;
 }
 
 /**

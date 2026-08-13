@@ -5,6 +5,7 @@
  */
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
+import { scrubGovtContacts } from "../integrations/scrub-contacts";
 import {
   sendOutreachEmail,
   type OutreachSendResult,
@@ -34,10 +35,15 @@ export function buildDeclineThankYouEmail(
     if (!raw) return "there";
     return raw.split(/\s+/)[0] || "there";
   })();
-  const title = (input.opportunityTitle ?? "").trim() || "the opportunity";
-  const tradeBit = (input.trade ?? "").trim()
-    ? ` (${input.trade!.trim()})`
-    : "";
+  // Title and trade are solicitation-derived and go straight into copy a
+  // subcontractor reads, so government contacts are removed here rather than
+  // after assembly (scrubbing the finished email would censor our own details).
+  // Scrubbing is a no-op on clean values.
+  const title =
+    scrubGovtContacts((input.opportunityTitle ?? "").trim()).sanitised.trim() ||
+    "the opportunity";
+  const tradeClean = scrubGovtContacts((input.trade ?? "").trim()).sanitised.trim();
+  const tradeBit = tradeClean ? ` (${tradeClean})` : "";
 
   const subject = `Thank you, ${title}`;
   const text = [

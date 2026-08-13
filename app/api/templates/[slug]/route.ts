@@ -122,6 +122,11 @@ export async function POST(
       { status: 503 }
     );
   }
+  if (result.blocked) {
+    // The template itself would render badly — the operator can fix this here,
+    // so report it as a content problem rather than a delivery failure.
+    return NextResponse.json({ error: result.error }, { status: 422 });
+  }
   if (result.error) {
     return NextResponse.json({ error: result.error }, { status: 502 });
   }

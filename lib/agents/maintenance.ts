@@ -19,8 +19,8 @@ import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import { getProfileJson } from "../ai/companyProfile";
 import { outreachDisplayName } from "../domain/solicitation-completeness";
-import { scrubGovtContacts } from "../integrations/scrub-contacts";
 import { scrubInternalFailureCopy } from "../domain/outreach-email";
+import { scrubGovtContacts } from "../integrations/scrub-contacts";
 import {
   renderTemplate,
   formatDeadlineLabel,
@@ -104,7 +104,9 @@ export const outreachFollowup: AgentDefinition = {
           sender_name: senderName,
           company_name: companyName,
           phone,
-          trade: row.trade ?? "",
+          // Solicitation-derived, and reachable from an operator-edited
+          // template via {{trade}} — scrub on the way in, never after render.
+          trade: scrubGovtContacts(row.trade ?? "").sanitised,
           location_state: row.location_state ?? "",
           deadline: formatDeadlineLabel(row.deadline),
           // Tokens rarely used in the follow-up but available for custom templates.
@@ -114,12 +116,10 @@ export const outreachFollowup: AgentDefinition = {
           scope_summary: "",
           questions: "",
         };
-        const rawSubject = scrubGovtContacts(
-          renderTemplate(tmpl.subject ?? "Re: our quote request", vars)
-        ).sanitised;
-        const rawBody = scrubInternalFailureCopy(
-          scrubGovtContacts(renderTemplate(tmpl.body, vars)).sanitised
-        );
+        // Never scrub the assembled email — it would censor the operator's own
+        // phone number. The follow-up carries no solicitation-derived text.
+        const rawSubject = renderTemplate(tmpl.subject ?? "Re: our quote request", vars);
+        const rawBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
         subject = rawSubject || "Re: our quote request";
         html = plainToHtml(rawBody);
       } else {
@@ -153,6 +153,24 @@ export const outreachFollowup: AgentDefinition = {
           row.subcontractor_id,
         ]);
         sent++;
+      } else if (res.blocked) {
+        // The follow-up marker was already consumed above, so this will not be
+        // retried automatically. Make sure a human sees that it never went out.
+        if (row.opportunity_id) {
+          await query(
+            `update opportunities set human_action_required = true where id = $1`,
+            [row.opportunity_id]
+          );
+        }
+        await logAgent({
+          agent: "outreach-followup",
+          action: "send",
+          level: "error",
+          status: "error",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          message: `Held follow-up email — nothing was sent. ${res.error}`,
+        });
       }
     }
     return { ok: true, summary: `Sent ${sent} follow-up(s) of ${due.length} due.` };
