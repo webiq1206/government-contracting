@@ -109,6 +109,27 @@ export async function sendOutreachEmail(
     };
   }
 
+  // Nothing leaves the building while an admin is signed in as this customer.
+  // A support session exists to see what the customer sees; a message sent
+  // from it lands in a real subcontractor's inbox, over the customer's name,
+  // and cannot be recalled. The check sits here, at the one choke point every
+  // sending path already funnels through, so a future agent or route inherits
+  // it instead of having to remember it.
+  //
+  // Background sends are unaffected: the worker has no session, so this reads
+  // as "nobody is impersonating", which is the right answer for the
+  // customer's own scheduled automation.
+  const { currentImpersonator } = await import("../impersonation");
+  const impersonator = await currentImpersonator();
+  if (impersonator) {
+    return {
+      provider: null,
+      blocked: true,
+      error:
+        "Blocked: this is a support session. Outreach is not sent while an administrator is signed in as this account.",
+    };
+  }
+
   const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
   if (await isAutomationPaused()) {
     return { provider: null, disabled: true, error: AUTOMATION_PAUSED_ERROR };

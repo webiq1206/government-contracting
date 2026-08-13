@@ -8,7 +8,8 @@ import { ThemeWordmark } from "@/components/theme-wordmark";
 import { Wordmark } from "@/components/wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MobileTabBar } from "@/components/mobile-tab-bar";
-import { subscriptionAllowsAccess } from "@/lib/organizations";
+import { entitlementOf, hasAccess } from "@/lib/billing/entitlements";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 
 /**
  * Authenticated but not necessarily subscribed. Used for Billing so checkout
@@ -31,7 +32,10 @@ export default async function AccountLayout({
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/signup");
 
-  const subscribed = subscriptionAllowsAccess(user.subscriptionStatus);
+  // Comped and trialling accounts get the full in-app header here, not the
+  // checkout header: they are not mid-purchase and telling them to "complete
+  // checkout" would be wrong.
+  const subscribed = hasAccess(entitlementOf(user));
 
   return (
     <ToastProvider>
@@ -85,6 +89,12 @@ export default async function AccountLayout({
             subscribed ? "pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0" : ""
           }`}
         >
+          {user.impersonatedBy && (
+            <ImpersonationBanner
+              adminEmail={user.impersonatedBy}
+              viewingEmail={user.email}
+            />
+          )}
           {children}
         </main>
       </div>

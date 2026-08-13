@@ -28,7 +28,12 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "./db";
 import { requireUser } from "./api-auth";
-import { accessLevel, accessBlockedReason, type AccessLevel } from "./billing/entitlements";
+import {
+  accessLevel,
+  accessBlockedReason,
+  entitlementOf,
+  type AccessLevel,
+} from "./billing/entitlements";
 import { resolveTenantOrgId } from "./tenant";
 import type { SessionUser } from "./auth";
 
@@ -52,20 +57,14 @@ export async function requireOrgContext(
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
 
-  // Date-aware: a trial past its end date is refused here even if the expiry
-  // sweep has not yet rewritten the stored status.
-  const level = accessLevel({
-    subscription_status: auth.subscriptionStatus,
-    trial_ends_at: auth.trialEndsAt,
-  });
+  // Date-aware, exemption-aware and suspension-aware: one answer, from
+  // entitlements.ts, for every gate in the application.
+  const level = accessLevel(entitlementOf(auth));
   const requireBilling = opts.requireBilling !== false;
   if (requireBilling && level === "none") {
     return NextResponse.json(
       {
-        error: accessBlockedReason({
-          subscription_status: auth.subscriptionStatus,
-          trial_ends_at: auth.trialEndsAt,
-        }),
+        error: accessBlockedReason(entitlementOf(auth)),
         upgradeUrl: "/settings/billing",
       },
       { status: 402 }

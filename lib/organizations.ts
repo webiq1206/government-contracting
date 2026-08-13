@@ -33,26 +33,29 @@ export interface Organization {
   last_payment_status: string | null;
   last_payment_at: string | null;
   last_payment_error: string | null;
+  /** Comped: full access whatever the subscription says. */
+  billing_exempt: boolean;
+  billing_exempt_reason: string | null;
+  billing_exempt_granted_by: string | null;
+  billing_exempt_granted_at: string | null;
+  /** Administrative suspension. Outranks billing_exempt. */
+  suspended_at: string | null;
+  suspended_reason: string | null;
+  suspended_by: string | null;
   created_at: string;
 }
 
-const ACTIVE = new Set(["active", "trialing"]);
-
 /**
- * Whether a status grants any access at all.
+ * `subscriptionAllowsAccess(status)` used to live here, taking a bare status
+ * string. It has been removed rather than extended.
  *
- * Includes our cardless trial. Note what this cannot see: the trial's END
- * DATE. A status of 'trial' is allowed here even on a lapsed trial, because
- * the argument is a bare string. Anything that can load the organization
- * should call `accessLevel()` in billing/entitlements.ts instead, which
- * checks the date and is what the real gates use. This function survives for
- * callers that only ever hold a status, and it is deliberately the more
- * permissive of the two: the expiry sweep flips lapsed trials to
- * 'trial_expired' within the hour, and every gate that matters re-checks.
+ * Two access helpers meant every gate silently chose one, and they disagreed:
+ * the status-only one could not see a trial's end date, and once comping
+ * existed it could not have seen the exemption either. That is how the
+ * platform owner ended up locked out of his own product on some screens and
+ * not others. There is now exactly one answer, `accessLevel()` in
+ * billing/entitlements.ts, and `entitlementOf(sessionUser)` to feed it.
  */
-export function subscriptionAllowsAccess(status: string | null | undefined): boolean {
-  return ACTIVE.has(status ?? "") || status === "trial";
-}
 
 export async function getOrganization(orgId: string): Promise<Organization | null> {
   return queryOne<Organization>(`select * from organizations where id = $1`, [orgId]);
@@ -73,10 +76,25 @@ export async function getOrgForUser(userId: string): Promise<Organization | null
   );
 }
 
+/**
+ * Every organization the background agents should keep working for.
+ *
+ * This deliberately mirrors accessLevel() rather than filtering on
+ * subscription_status alone. A status-only filter is what locked our own
+ * comped organization out of scheduled opportunity monitoring while the UI
+ * quite happily let us in: access said yes, the worker said no, and the two
+ * were only discoverable as "why is nothing being ingested". A cardless trial
+ * is judged by its date here for the same reason the gates judge it by date.
+ */
 export async function listActiveOrganizations(): Promise<Organization[]> {
   return query<Organization>(
     `select * from organizations
-      where subscription_status in ('active','trialing')
+      where suspended_at is null
+        and (
+          billing_exempt
+          or subscription_status in ('active','trialing')
+          or (subscription_status = 'trial' and trial_ends_at > now())
+        )
       order by created_at asc`
   );
 }

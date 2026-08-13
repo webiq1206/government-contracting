@@ -40,6 +40,13 @@ export function isPlatformAdmin(email: string | null | undefined): boolean {
 export async function requirePlatformAdmin(): Promise<SessionUser | NextResponse> {
   const user = await currentUser().catch(() => null);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // A support session is never an admin session, even when the admin who
+  // opened it is on the allowlist. This is what stops an impersonated session
+  // from reaching the admin area, and it is also what makes nested
+  // impersonation impossible: starting one requires this guard to pass.
+  if (user.impersonatedBy) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   if (!isPlatformAdmin(user.email)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

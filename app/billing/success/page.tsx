@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
-import { getOrganization, subscriptionAllowsAccess } from "@/lib/organizations";
+import { getOrganization } from "@/lib/organizations";
+import { hasAccess } from "@/lib/billing/entitlements";
 import { trackEvent } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export default async function BillingSuccessPage({
   if (!user) redirect("/login");
   if (user.organizationId) {
     const org = await getOrganization(user.organizationId);
-    if (org && subscriptionAllowsAccess(org.subscription_status)) {
+    if (org && hasAccess(org)) {
       await trackEvent({
         event: "onboarding_started",
         orgId: org.id,

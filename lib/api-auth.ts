@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser, type SessionUser } from "./auth";
-import { subscriptionAllowsAccess } from "./organizations";
+import { accessLevel, accessBlockedReason, entitlementOf } from "./billing/entitlements";
 
 /**
  * Guard for API route handlers. Returns the user, or a 401 response to return
@@ -25,9 +25,12 @@ export async function requireSubscriber(): Promise<SessionUser | NextResponse> {
   if (!auth.organizationId) {
     return NextResponse.json({ error: "No organization on this account." }, { status: 403 });
   }
-  if (!subscriptionAllowsAccess(auth.subscriptionStatus)) {
+  // Date-aware and exemption-aware: the same single answer the dashboard shell
+  // and the org guard use, so a comped account cannot be refused here while
+  // being allowed there.
+  if (accessLevel(entitlementOf(auth)) === "none") {
     return NextResponse.json(
-      { error: "Subscription inactive. Update billing to continue." },
+      { error: accessBlockedReason(entitlementOf(auth)), upgradeUrl: "/settings/billing" },
       { status: 402 }
     );
   }

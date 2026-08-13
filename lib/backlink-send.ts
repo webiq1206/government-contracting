@@ -8,6 +8,7 @@
 import { randomUUID } from "crypto";
 import { query, queryOne } from "./db";
 import { gmail } from "./integrations/gmail";
+import { currentImpersonator } from "./impersonation";
 import { logAgent } from "./logger";
 
 export type SendOutcome =
@@ -17,8 +18,27 @@ export type SendOutcome =
 
 const FOLLOW_UP_DAYS = 5;
 
+/**
+ * Nothing leaves this module during a support session.
+ *
+ * This is the second outbound-mail sink in the application, and it sends to
+ * strangers from the operator's own Gmail account. The guarantee that an
+ * administrator signed in as a customer cannot mail anybody on that customer's
+ * behalf has to hold at every sink, not just the outreach one, or it is not a
+ * guarantee. Returns null outside a request scope, so the worker's scheduled
+ * sending is untouched.
+ */
+async function blockedBySupportSession(): Promise<SendOutcome | null> {
+  const admin = await currentImpersonator();
+  if (!admin) return null;
+  return { status: "skipped", reason: "blocked during a support session" };
+}
+
 /** Send one approved outreach draft. No-op (skip) unless it is approved, unsent, and has a recipient. */
 export async function sendApprovedOutreach(outreachId: string): Promise<SendOutcome> {
+  const blocked = await blockedBySupportSession();
+  if (blocked) return blocked;
+
   const row = await queryOne<{
     id: string;
     prospect_id: string;
@@ -137,7 +157,8 @@ export async function sendFollowUps(limit = 25): Promise<{ sent: number }> {
       order by o.follow_up_at asc limit $1`,
     [limit]
   );
-  if (!rows.length || !(await gmail.isConnected())) return { sent: 0 };
+  if (!rows.length || (await blockedBySupportSession())) return { sent: 0 };
+  if (!(await gmail.isConnected())) return { sent: 0 };
   let sent = 0;
   for (const r of rows) {
     const body = `Hi,\n\nJust following up on my note below in case it slipped through. No worries if now isn't a good time.\n\n${r.body ?? ""}`;

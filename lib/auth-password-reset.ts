@@ -13,12 +13,17 @@ function hashToken(token: string): string {
 }
 
 export async function requestPasswordReset(email: string): Promise<{ ok: true }> {
-  const user = await queryOne<{ id: string; email: string; name: string | null }>(
-    `select id, email, name from users where email = $1`,
-    [email.toLowerCase().trim()]
-  );
+  // Accepts a login alias as well as the account's own address: someone whose
+  // working address is an alias will type that one, and being told nothing
+  // happened would be indistinguishable from the account not existing.
+  const { findUserByLoginEmail } = await import("./auth");
+  const user = await findUserByLoginEmail(email);
   // Always succeed to avoid account enumeration.
   if (!user) return { ok: true };
+  // Send to the address that was entered, not the canonical one. The person
+  // asking may only have access to the alias inbox, and mailing somewhere else
+  // would look like the reset silently failed.
+  const deliverTo = email.toLowerCase().trim();
 
   const token = randomBytes(32).toString("hex");
   const tokenHash = hashToken(token);
@@ -30,7 +35,7 @@ export async function requestPasswordReset(email: string): Promise<{ ok: true }>
   );
 
   const resetUrl = `${config.appUrl.replace(/\/$/, "")}/reset-password?token=${token}`;
-  await sendResetEmail(user.email, user.name, resetUrl);
+  await sendResetEmail(deliverTo, user.name, resetUrl);
   await trackEvent({
     event: "password_reset_requested",
     userId: user.id,

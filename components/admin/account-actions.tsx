@@ -1,0 +1,287 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+/**
+ * The dangerous half of the account detail page.
+ *
+ * Every action posts, shows what came back, and refreshes. Nothing is
+ * optimistic: these change somebody else's billing or delete their data, and
+ * showing success before the server agreed is how an admin walks away
+ * believing a comp was applied when it was not.
+ */
+export function AccountActions({
+  orgId,
+  orgName,
+  billingExempt,
+  suspended,
+  canImpersonate,
+  ownerEmail,
+}: {
+  orgId: string;
+  orgName: string;
+  billingExempt: boolean;
+  suspended: boolean;
+  canImpersonate: boolean;
+  ownerEmail: string | null;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const [compReason, setCompReason] = useState("");
+  const [suspendReason, setSuspendReason] = useState("");
+  const [days, setDays] = useState(14);
+  const [confirmName, setConfirmName] = useState("");
+
+  async function run(
+    key: string,
+    body: Record<string, unknown>,
+    method: "POST" | "DELETE" = "POST"
+  ) {
+    setBusy(key);
+    setNote(null);
+    try {
+      const res = await fetch(`/api/admin/accounts/${orgId}`, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setNote({ ok: false, text: data.error ?? "That did not work." });
+        return;
+      }
+      setNote({ ok: true, text: data.message ?? "Done." });
+      if (method === "DELETE") {
+        window.location.href = "/admin/accounts";
+        return;
+      }
+      router.refresh();
+    } catch {
+      setNote({ ok: false, text: "Could not reach the server." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function impersonate() {
+    setBusy("impersonate");
+    setNote(null);
+    try {
+      const res = await fetch("/api/admin/impersonate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        redirect?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setNote({ ok: false, text: data.error ?? "Could not start a support session." });
+        setBusy(null);
+        return;
+      }
+      // Full navigation: the session cookie now belongs to another account and
+      // nothing rendered so far is still correct.
+      window.location.href = data.redirect ?? "/today";
+    } catch {
+      setNote({ ok: false, text: "Could not reach the server." });
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {note && (
+        <p
+          className={`rounded-md border px-4 py-3 text-sm ${
+            note.ok
+              ? "border-pursue/40 bg-pursue/5 text-pursue"
+              : "border-risk/40 bg-risk/5 text-risk"
+          }`}
+        >
+          {note.text}
+        </p>
+      )}
+
+      <Card
+        title="Billing exemption"
+        body="A comped account has full access no matter what Stripe says, and is never metered. Used for our own organization and for anyone we have decided not to charge."
+      >
+        {billingExempt ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy !== null}
+            onClick={() => run("uncomp", { action: "uncomp" })}
+          >
+            {busy === "uncomp" ? "Working…" : "Put back on normal billing"}
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="input flex-1"
+              placeholder="Why is this account comped?"
+              value={compReason}
+              onChange={(e) => setCompReason(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busy !== null || !compReason.trim()}
+              onClick={() => run("comp", { action: "comp", reason: compReason })}
+            >
+              {busy === "comp" ? "Working…" : "Comp this account"}
+            </button>
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title="Trial"
+        body="Extending counts from today when the trial has already lapsed, so a lapsed account gets the whole extra window rather than days added to a date in the past."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            max={365}
+            className="input w-24"
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+          />
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy !== null}
+            onClick={() => run("extend", { action: "extend_trial", days })}
+          >
+            {busy === "extend" ? "Working…" : "Extend trial"}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy !== null}
+            onClick={() => run("restart", { action: "restart_trial" })}
+          >
+            {busy === "restart" ? "Working…" : "Start a fresh trial"}
+          </button>
+        </div>
+      </Card>
+
+      <Card
+        title="Subscription"
+        body="Cancels at Stripe as well as here. If Stripe refuses, nothing changes on our side. An account marked cancelled while still being charged is the worst of both."
+      >
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busy !== null}
+          onClick={() => run("cancel", { action: "cancel" })}
+        >
+          {busy === "cancel" ? "Working…" : "Cancel subscription"}
+        </button>
+      </Card>
+
+      {canImpersonate && (
+        <Card
+          title="Sign in as this customer"
+          body={`Opens a one-hour support session as ${
+            ownerEmail ?? "the owner"
+          }. Outreach email is blocked and billing changes are refused for as long as it lasts, and every session is recorded.`}
+        >
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={busy !== null}
+            onClick={impersonate}
+          >
+            {busy === "impersonate" ? "Starting…" : "Start support session"}
+          </button>
+        </Card>
+      )}
+
+      <Card
+        title={suspended ? "Reinstate" : "Suspend"}
+        body="Suspension stops access and touches nothing else. It is reversible in one click, which makes it the right answer to almost everything that feels like it needs a deletion."
+      >
+        {suspended ? (
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busy !== null}
+            onClick={() => run("reactivate", { action: "reactivate" })}
+          >
+            {busy === "reactivate" ? "Working…" : "Reinstate this account"}
+          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="input flex-1"
+              placeholder="Why is this account being suspended?"
+              value={suspendReason}
+              onChange={(e) => setSuspendReason(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy !== null || !suspendReason.trim()}
+              onClick={() => run("suspend", { action: "suspend", reason: suspendReason })}
+            >
+              {busy === "suspend" ? "Working…" : "Suspend"}
+            </button>
+          </div>
+        )}
+      </Card>
+
+      <div className="rounded-lg border-2 border-risk/50 p-4">
+        <h3 className="font-semibold text-risk">Delete this account</h3>
+        <p className="pt-1 text-sm text-muted-foreground">
+          Removes the organization and every opportunity, subcontractor, quote,
+          document and message in it. There is no undo and no backup. Consider
+          suspending instead. Type <strong>{orgName}</strong> to confirm.
+        </p>
+        <div className="flex flex-wrap items-center gap-2 pt-3">
+          <input
+            className="input flex-1"
+            placeholder={orgName}
+            value={confirmName}
+            onChange={(e) => setConfirmName(e.target.value)}
+          />
+          <button
+            type="button"
+            className="rounded-md bg-risk px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            disabled={busy !== null || confirmName !== orgName}
+            onClick={() => run("delete", { confirmName }, "DELETE")}
+          >
+            {busy === "delete" ? "Deleting…" : "Delete permanently"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Card({
+  title,
+  body,
+  children,
+}: {
+  title: string;
+  body: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-border p-4">
+      <h3 className="font-semibold">{title}</h3>
+      <p className="pt-1 text-sm text-muted-foreground">{body}</p>
+      <div className="pt-3">{children}</div>
+    </div>
+  );
+}

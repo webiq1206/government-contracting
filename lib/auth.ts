@@ -77,7 +77,32 @@ export interface SessionUser {
    * trial from a lapsed one.
    */
   trialEndsAt: string | null;
+  /**
+   * The org is comped: full access whatever the subscription says. Carried on
+   * the session for the same reason as trialEndsAt, so a gate holding only a
+   * session can reach the right answer without another query.
+   */
+  billingExempt: boolean;
+  /** Set when an admin has suspended the org. Outranks billingExempt. */
+  suspendedAt: string | null;
+  /**
+   * Email of the platform admin currently signed in as this account, or null
+   * for an ordinary session. Anything sensitive must check this: an
+   * impersonated session is a support tool, not the account holder.
+   */
+  impersonatedBy: string | null;
 }
+
+/** The fields every SessionUser gets before attachOrg fills in the org ones. */
+const NO_ORG = {
+  organizationId: null,
+  subscriptionStatus: null,
+  planKey: null,
+  trialEndsAt: null,
+  billingExempt: false,
+  suspendedAt: null,
+  impersonatedBy: null,
+} as const;
 
 /**
  * True when at least one operator-role user exists in the DB. Used by the
@@ -94,36 +119,61 @@ export async function hasAnyOperator(): Promise<boolean> {
   }
 }
 
+interface LoginRow {
+  id: string;
+  email: string;
+  password_hash: string;
+  name: string | null;
+  role: string;
+}
+
 /**
- * Verify credentials. Falls back to the env operator (OPERATOR_EMAIL +
- * OPERATOR_PASSWORD_HASH) when the users table has no matching row yet, so the
- * platform is loginnable immediately after setting those two env vars.
+ * Find the account that owns a sign-in address.
+ *
+ * An account can be reached by its own address or by any of its aliases, and
+ * either way this returns the canonical user row. The alias is a front door,
+ * not a second identity: the session, the displayed email and outbound mail
+ * all keep using `users.email`.
+ */
+export async function findUserByLoginEmail(email: string): Promise<LoginRow | null> {
+  const normalized = email.toLowerCase().trim();
+  if (!normalized) return null;
+
+  const direct = await queryOne<LoginRow>(
+    `select id, email, password_hash, name, role from users where lower(email) = $1`,
+    [normalized]
+  );
+  if (direct) return direct;
+
+  return queryOne<LoginRow>(
+    `select u.id, u.email, u.password_hash, u.name, u.role
+       from user_email_aliases a
+       join users u on u.id = a.user_id
+      where lower(a.email) = $1`,
+    [normalized]
+  );
+}
+
+/**
+ * Verify credentials. Accepts the account's own address or any of its login
+ * aliases. Falls back to the env operator (OPERATOR_EMAIL +
+ * OPERATOR_PASSWORD_HASH) when no account matches at all, so the platform is
+ * loginnable immediately after setting those two env vars.
  */
 export async function authenticate(
   email: string,
   password: string
 ): Promise<SessionUser | null> {
-  const user = await queryOne<{
-    id: string;
-    email: string;
-    password_hash: string;
-    name: string | null;
-    role: string;
-  }>(`select id, email, password_hash, name, role from users where email = $1`, [
-    email.toLowerCase().trim(),
-  ]);
+  const user = await findUserByLoginEmail(email);
 
   if (user) {
     if (!verifyPassword(password, user.password_hash)) return null;
     return attachOrg({
+      ...NO_ORG,
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
-      organizationId: null,
-      subscriptionStatus: null,
-      planKey: null,
-      trialEndsAt: null,
     });
   }
 
@@ -136,14 +186,11 @@ export async function authenticate(
     verifyPassword(password, config.auth.operatorPasswordHash)
   ) {
     return attachOrg({
+      ...NO_ORG,
       id: "env-operator",
       email: config.auth.operatorEmail,
       name: "Operator",
       role: "operator",
-      organizationId: null,
-      subscriptionStatus: null,
-      planKey: null,
-      trialEndsAt: null,
     });
   }
   return null;
@@ -159,6 +206,8 @@ async function attachOrg(user: SessionUser): Promise<SessionUser> {
       subscriptionStatus: org?.subscription_status ?? null,
       planKey: org?.plan_key ?? null,
       trialEndsAt: org?.trial_ends_at ?? null,
+      billingExempt: Boolean(org?.billing_exempt),
+      suspendedAt: org?.suspended_at ?? null,
     };
   } catch {
     return user;
@@ -179,19 +228,84 @@ export async function createSession(userId: string): Promise<string> {
   return token;
 }
 
+/**
+ * How long a support session lasts. Short on purpose: an admin signed in as a
+ * customer is the highest-privilege state in the product, and the failure mode
+ * to design against is not an attacker, it is an admin who wandered off with
+ * the tab open.
+ */
+export const IMPERSONATION_TTL_MINUTES = 60;
+
+/**
+ * Open a session as another account, marked with who opened it.
+ *
+ * The admin's own session id is stored on the row so "return to admin" can put
+ * the original session back rather than forcing a re-login. Keeping the marker
+ * on the session row, not in a second cookie, means a browser that drops
+ * cookies cannot turn a support session into an unmarked one.
+ */
+export async function createImpersonationSession(input: {
+  targetUserId: string;
+  adminUserId: string | null;
+  adminEmail: string;
+  adminSessionId: string | null;
+}): Promise<string> {
+  const token = randomBytes(32).toString("hex");
+  const expires = new Date(Date.now() + IMPERSONATION_TTL_MINUTES * 60_000);
+  await query(
+    `insert into sessions
+       (id, user_id, expires_at, impersonator_user_id, impersonator_email, impersonator_session_id)
+     values ($1, $2, $3, $4, $5, $6)`,
+    [
+      token,
+      input.targetUserId,
+      expires.toISOString(),
+      // The env operator has no users row, so only its email is recorded.
+      input.adminUserId && input.adminUserId !== "env-operator" ? input.adminUserId : null,
+      input.adminEmail,
+      input.adminSessionId,
+    ]
+  );
+  return token;
+}
+
+/**
+ * Close a support session and hand back the admin's original session token.
+ *
+ * Returns null when the token is not an impersonation or the original session
+ * has since expired; the caller should then just sign the browser out rather
+ * than leave it holding a dead cookie.
+ */
+export async function endImpersonation(token: string | undefined): Promise<string | null> {
+  if (!token || token.startsWith("env-operator.")) return null;
+  const row = await queryOne<{
+    impersonator_session_id: string | null;
+    impersonator_email: string | null;
+  }>(
+    `select impersonator_session_id, impersonator_email from sessions
+      where id = $1 and impersonator_email is not null`,
+    [token]
+  );
+  if (!row) return null;
+  await query(`delete from sessions where id = $1`, [token]).catch(() => {});
+  if (!row.impersonator_session_id) return null;
+  const original = await queryOne<{ id: string }>(
+    `select id from sessions where id = $1 and expires_at > now()`,
+    [row.impersonator_session_id]
+  );
+  return original?.id ?? null;
+}
+
 export async function resolveSession(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   if (token.startsWith("env-operator.")) {
     if (envOperatorAllowed() && config.auth.operatorEmail && verifyEnvOperator(token)) {
       return attachOrg({
+        ...NO_ORG,
         id: "env-operator",
         email: config.auth.operatorEmail,
         name: "Operator",
         role: "operator",
-        organizationId: null,
-        subscriptionStatus: null,
-        planKey: null,
-        trialEndsAt: null,
       });
     }
     return null;
@@ -202,23 +316,23 @@ export async function resolveSession(token: string | undefined): Promise<Session
     name: string | null;
     role: string;
     expires_at: string;
+    impersonator_email: string | null;
   }>(
-    `select u.id, u.email, u.name, u.role, s.expires_at
+    `select u.id, u.email, u.name, u.role, s.expires_at, s.impersonator_email
        from sessions s join users u on u.id = s.user_id
       where s.id = $1 and s.expires_at > now()`,
     [token]
   );
   if (!row) return null;
-  return attachOrg({
+  const user = await attachOrg({
+    ...NO_ORG,
     id: row.id,
     email: row.email,
     name: row.name,
     role: row.role,
-    organizationId: null,
-    subscriptionStatus: null,
-    planKey: null,
-    trialEndsAt: null,
   });
+  // Set last so attachOrg cannot drop it.
+  return { ...user, impersonatedBy: row.impersonator_email };
 }
 
 export async function destroySession(token: string | undefined): Promise<void> {

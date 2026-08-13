@@ -10,7 +10,7 @@ import {
   FOUNDING_MONTHLY_USD,
   STANDARD_MONTHLY_USD,
 } from "@/lib/billing/prices";
-import { subscriptionAllowsAccess } from "@/lib/organizations";
+import { entitlementOf, hasAccess } from "@/lib/billing/entitlements";
 import { trackEvent } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
@@ -28,11 +28,8 @@ export default async function SignupPage({
   searchParams?: { plan?: string };
 }) {
   const user = await currentUser().catch(() => null);
-  if (user && subscriptionAllowsAccess(user.subscriptionStatus)) {
-    redirect("/today");
-  }
-  if (user && !subscriptionAllowsAccess(user.subscriptionStatus)) {
-    redirect("/settings/billing");
+  if (user) {
+    redirect(hasAccess(entitlementOf(user)) ? "/today" : "/settings/billing");
   }
 
   const promo = await getFoundingPromo({ startIfMissing: true });

@@ -9,8 +9,9 @@ import { ToastProvider } from "@/components/toaster";
 import { getAutomationState } from "@/lib/app-settings";
 import { queueCounts, engineStatus } from "@/lib/data";
 import { timeAgo } from "@/lib/format";
-import { accessLevel, trialDaysLeft } from "@/lib/billing/entitlements";
+import { accessLevel, entitlementOf, trialDaysLeft } from "@/lib/billing/entitlements";
 import { isPlatformAdmin } from "@/lib/platform-admin";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { TrialBanner } from "@/components/trial-banner";
 import { TrialExpiredModal } from "@/components/trial-expired-modal";
 import { allQuotaStates } from "@/lib/billing/trial-limits";
@@ -22,10 +23,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/signup");
 
-  const access = accessLevel({
-    subscription_status: user.subscriptionStatus,
-    trial_ends_at: user.trialEndsAt,
-  });
+  const access = accessLevel(entitlementOf(user));
   // No redirect on an expired trial: the paywall renders over the dashboard so
   // the customer sees what they built while deciding. Enforcement is not this
   // panel, it is the 402 that every mutating route returns independently.
@@ -67,11 +65,17 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           engineHealthy={engineHealthy}
           engineLabel={engineLabel}
           automationPaused={automation.paused}
-          isPlatformAdmin={isPlatformAdmin(user.email)}
+          isPlatformAdmin={!user.impersonatedBy && isPlatformAdmin(user.email)}
         />
         <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
+          {user.impersonatedBy && (
+            <ImpersonationBanner
+              adminEmail={user.impersonatedBy}
+              viewingEmail={user.email}
+            />
+          )}
           {access === "trial" && (
-            <TrialBanner daysLeft={trialDaysLeft({ subscription_status: user.subscriptionStatus, trial_ends_at: user.trialEndsAt })} quotas={quotas} />
+            <TrialBanner daysLeft={trialDaysLeft(entitlementOf(user))} quotas={quotas} />
           )}
           {children}
         </main>

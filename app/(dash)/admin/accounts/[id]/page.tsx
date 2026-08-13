@@ -1,0 +1,161 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { PageHeader } from "@/components/badges";
+import { requirePlatformAdmin, isPlatformAdmin } from "@/lib/platform-admin";
+import { adminAccount, adminAccountMembers } from "@/lib/admin/accounts";
+import { adminActionsForOrg } from "@/lib/admin/audit";
+import { accessBlockedReason } from "@/lib/billing/entitlements";
+import { AccountActions } from "@/components/admin/account-actions";
+import { shortDate } from "@/lib/format";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * One account, everything we know about it, and everything we can do to it.
+ *
+ * The read-only summary is deliberately above the actions: the most common
+ * reason to be here is answering "why can this person not get in", and that is
+ * usually answered by the Access line without touching anything.
+ */
+export default async function AdminAccountPage({ params }: { params: { id: string } }) {
+  const auth = await requirePlatformAdmin();
+  if (auth instanceof Response) notFound();
+
+  const org = await adminAccount(params.id);
+  if (!org) notFound();
+
+  const [members, audit] = await Promise.all([
+    adminAccountMembers(org.id),
+    adminActionsForOrg(org.id),
+  ]);
+
+  const accessText =
+    org.access === "full"
+      ? org.billing_exempt
+        ? "Full access (comped, not billed)"
+        : "Full access"
+      : org.access === "trial"
+        ? `On trial until ${org.trial_ends_at ? shortDate(org.trial_ends_at) : "an unknown date"}`
+        : accessBlockedReason(org);
+
+  return (
+    <>
+      <PageHeader
+        eyebrow="Platform admin"
+        title={org.name}
+        status={org.suspended_at ? "Suspended" : (org.subscription_status ?? "no status")}
+        subtitle={org.owner_email ?? "No owner on this account."}
+      />
+      <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
+        <Link href="/admin/accounts" className="text-sm text-accent-strong hover:underline">
+          ← All accounts
+        </Link>
+
+        <div
+          className={`rounded-lg border p-4 ${
+            org.access === "none"
+              ? "border-risk/40 bg-risk/5"
+              : "border-border bg-surface/50"
+          }`}
+        >
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            What this account can do right now
+          </div>
+          <p className="pt-1 font-medium">{accessText}</p>
+          {org.billing_exempt && org.billing_exempt_reason && (
+            <p className="pt-1 text-sm text-muted-foreground">
+              Comped: {org.billing_exempt_reason}
+            </p>
+          )}
+          {org.suspended_at && (
+            <p className="pt-1 text-sm text-risk">
+              Suspended {shortDate(org.suspended_at)}
+              {org.suspended_reason ? `: ${org.suspended_reason}` : ""}
+            </p>
+          )}
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-border p-4 text-sm sm:grid-cols-3">
+          <Field label="Plan" value={org.plan_key ?? "-"} />
+          <Field label="Stripe status" value={org.subscription_status ?? "-"} />
+          <Field
+            label="Trial ends"
+            value={org.trial_ends_at ? shortDate(org.trial_ends_at) : "-"}
+          />
+          <Field label="Stripe customer" value={org.stripe_customer_id ?? "-"} />
+          <Field label="Subscription" value={org.stripe_subscription_id ?? "-"} />
+          <Field label="Created" value={shortDate(org.created_at)} />
+        </dl>
+
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold">People ({members.length})</h2>
+          <ul className="divide-y divide-border/60 rounded-lg border border-border text-sm">
+            {members.map((m) => (
+              <li key={m.user_id} className="flex flex-wrap items-baseline gap-x-2 px-4 py-2">
+                <span className="font-medium">{m.email}</span>
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {m.role}
+                </span>
+                {m.name && <span className="text-muted-foreground">{m.name}</span>}
+                {m.aliases.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    also signs in as {m.aliases.join(", ")}
+                  </span>
+                )}
+              </li>
+            ))}
+            {members.length === 0 && (
+              <li className="px-4 py-4 text-muted-foreground">Nobody is on this account.</li>
+            )}
+          </ul>
+        </section>
+
+        <AccountActions
+          orgId={org.id}
+          orgName={org.name}
+          billingExempt={org.billing_exempt}
+          suspended={Boolean(org.suspended_at)}
+          ownerEmail={org.owner_email}
+          canImpersonate={
+            Boolean(org.owner_user_id) &&
+            org.owner_user_id !== auth.id &&
+            !isPlatformAdmin(org.owner_email ?? "")
+          }
+        />
+
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold">Admin history for this account</h2>
+          <div className="rounded-lg border border-border">
+            {audit.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+                No administrator has touched this account.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/60 text-sm">
+                {audit.map((a) => (
+                  <li key={a.id} className="flex flex-wrap gap-x-2 px-4 py-2">
+                    <span className="text-muted-foreground">{shortDate(a.created_at)}</span>
+                    <span className="font-medium">{a.admin_email}</span>
+                    <span>{a.action.replace(/_/g, " ")}</span>
+                    {a.detail?.reason ? (
+                      <span className="text-muted-foreground">{String(a.detail.reason)}</span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="truncate font-medium">{value}</dd>
+    </div>
+  );
+}

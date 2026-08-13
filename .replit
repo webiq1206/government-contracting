@@ -44,3 +44,8 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
+
+[userenv]
+
+[userenv.shared]
+PLATFORM_ADMIN_EMAILS = "brostcoholdings@gmail.com,info@brostco.com,hello@brostco.com"

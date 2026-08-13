@@ -9,7 +9,7 @@ import {
   TRIAL_STATUS,
   TRIAL_EXPIRED_STATUS,
 } from "@/lib/billing/entitlements";
-import { subscriptionAllowsAccess } from "@/lib/organizations";
+import { entitlementOf, hasAccess, isSuspended } from "@/lib/billing/entitlements";
 import { TRIAL_DAYS } from "@/lib/billing/catalog";
 
 const NOW = new Date("2026-08-13T12:00:00Z");
@@ -91,23 +91,127 @@ describe("counting the trial down", () => {
   });
 });
 
-describe("the string-only gate", () => {
-  /**
-   * subscriptionAllowsAccess cannot see a date, so it must stay the permissive
-   * of the two gates. Pinning that keeps someone from later "fixing" it into
-   * something that disagrees with accessLevel in the strict direction.
-   */
-  it("admits a trial status, leaving expiry to the date-aware gate", () => {
-    expect(subscriptionAllowsAccess("trial")).toBe(true);
-    expect(subscriptionAllowsAccess("active")).toBe(true);
-    expect(subscriptionAllowsAccess("trialing")).toBe(true);
+/**
+ * The comped account.
+ *
+ * This is the bug that started it: the organization that runs this platform
+ * reads 'canceled' in Stripe, because it has never paid itself, and every gate
+ * in the application therefore locked its owner out of his own product. The
+ * exemption has to beat the status, the date, and the absence of both.
+ */
+describe("an account that is comped", () => {
+  it("gets full access even though Stripe says the subscription is cancelled", () => {
+    expect(
+      accessLevel({ subscription_status: "canceled", billing_exempt: true }, NOW)
+    ).toBe("full");
   });
 
-  it("refuses a closed trial and every failed state", () => {
-    expect(subscriptionAllowsAccess(TRIAL_EXPIRED_STATUS)).toBe(false);
-    expect(subscriptionAllowsAccess("past_due")).toBe(false);
-    expect(subscriptionAllowsAccess("none")).toBe(false);
-    expect(subscriptionAllowsAccess(null)).toBe(false);
+  it("gets full access with no subscription and no trial at all", () => {
+    expect(accessLevel({ subscription_status: null, billing_exempt: true }, NOW)).toBe("full");
+  });
+
+  it("is not downgraded to a trial by a trial date that has passed", () => {
+    expect(
+      accessLevel(
+        { subscription_status: TRIAL_STATUS, trial_ends_at: days(-30), billing_exempt: true },
+        NOW
+      )
+    ).toBe("full");
+  });
+
+  it("still reads as locked out when the flag is off", () => {
+    expect(
+      accessLevel({ subscription_status: "canceled", billing_exempt: false }, NOW)
+    ).toBe("none");
+  });
+});
+
+/**
+ * Suspension is the one thing that outranks the exemption. An admin who
+ * suspends an account has made a deliberate decision, and a comp granted
+ * months earlier must not quietly undo it.
+ */
+describe("an account that is suspended", () => {
+  it("is locked out even when comped", () => {
+    expect(
+      accessLevel(
+        { subscription_status: "active", billing_exempt: true, suspended_at: days(-1) },
+        NOW
+      )
+    ).toBe("none");
+  });
+
+  it("is locked out even on a paid, live subscription", () => {
+    expect(
+      accessLevel({ subscription_status: "active", suspended_at: days(-1) }, NOW)
+    ).toBe("none");
+  });
+
+  it("says it was suspended rather than blaming a payment", () => {
+    const reason = accessBlockedReason(
+      { subscription_status: "active", suspended_at: days(-1) },
+      NOW
+    );
+    expect(reason).toMatch(/suspended/i);
+    // The customer's work is still there; saying so is the difference between
+    // a support email and a panic.
+    expect(reason).toMatch(/nothing has been deleted/i);
+  });
+
+  it("reads as not suspended when the column is null", () => {
+    expect(isSuspended({ subscription_status: "active", suspended_at: null })).toBe(false);
+  });
+});
+
+/**
+ * One helper, fed from the session, so a gate holding only a SessionUser
+ * reaches the same answer as one holding the organization row. Two gates that
+ * disagreed is how the owner ended up locked out of some screens and not
+ * others.
+ */
+describe("reading entitlement off a session", () => {
+  it("carries the exemption through from the session", () => {
+    expect(
+      hasAccess(
+        entitlementOf({
+          subscriptionStatus: "canceled",
+          trialEndsAt: null,
+          billingExempt: true,
+          suspendedAt: null,
+        }),
+        NOW
+      )
+    ).toBe(true);
+  });
+
+  it("carries suspension through from the session", () => {
+    expect(
+      hasAccess(
+        entitlementOf({
+          subscriptionStatus: "active",
+          trialEndsAt: null,
+          billingExempt: true,
+          suspendedAt: days(-1),
+        }),
+        NOW
+      )
+    ).toBe(false);
+  });
+
+  it("treats missing fields as the safe default rather than access", () => {
+    expect(hasAccess(entitlementOf({ subscriptionStatus: TRIAL_EXPIRED_STATUS }), NOW)).toBe(
+      false
+    );
+    expect(hasAccess(entitlementOf({ subscriptionStatus: "active" }), NOW)).toBe(true);
+  });
+
+  it("still expires a lapsed trial that is not comped", () => {
+    expect(
+      hasAccess(
+        entitlementOf({ subscriptionStatus: TRIAL_STATUS, trialEndsAt: days(-1) }),
+        NOW
+      )
+    ).toBe(false);
   });
 });
 

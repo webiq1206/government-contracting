@@ -126,8 +126,19 @@ export async function checkTrialQuota(
 ): Promise<QuotaDecision> {
   if (!orgId) return { allowed: true };
 
-  const rows = await query<{ subscription_status: string; trial_ends_at: string | null }>(
-    `select subscription_status, trial_ends_at::text as trial_ends_at
+  const rows = await query<{
+    subscription_status: string;
+    trial_ends_at: string | null;
+    billing_exempt: boolean;
+    suspended_at: string | null;
+  }>(
+    // billing_exempt and suspended_at are selected because accessLevel needs
+    // them. Without the exemption here a comped account would be metered like
+    // a trial, which is exactly the bug the exemption exists to prevent.
+    `select subscription_status,
+            trial_ends_at::text as trial_ends_at,
+            billing_exempt,
+            suspended_at::text as suspended_at
        from organizations where id = $1`,
     [orgId]
   ).catch(() => null);

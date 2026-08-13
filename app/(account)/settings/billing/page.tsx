@@ -70,7 +70,12 @@ export default async function BillingSettingsPage({
   const quotas = org && access === "trial" ? await allQuotaStates(org.id).catch(() => []) : [];
 
   const status = org?.subscription_status ?? "none";
-  const statusLabel = subscriptionStatusLabel(status);
+  // A comped account's Stripe status is usually 'canceled' or 'none', which is
+  // true and completely misleading on this page. Say what is actually
+  // happening instead, or the owner reads "Canceled" on an account that works
+  // perfectly and goes looking for a problem that does not exist.
+  const comped = Boolean(org?.billing_exempt);
+  const statusLabel = comped ? "Comped" : subscriptionStatusLabel(status);
   const isActive = status === "active" || status === "trialing";
 
   // What the customer is actually charged, taken from Stripe rather than the
@@ -98,11 +103,14 @@ export default async function BillingSettingsPage({
         ? `Standard · $${STANDARD_MONTHLY_USD.toLocaleString()}/mo`
         : "No plan selected";
 
-  const primaryCta = hasStripeCustomer ? (
-    <Link href="/api/billing/portal" className="btn-primary">
-      Open billing portal
-    </Link>
-  ) : null;
+  // A comped account has nothing to check out for and nothing to manage in the
+  // Stripe portal. Offering either would only lead somewhere confusing.
+  const primaryCta =
+    hasStripeCustomer && !comped ? (
+      <Link href="/api/billing/portal" className="btn-primary">
+        Open billing portal
+      </Link>
+    ) : null;
 
   return (
     <>
@@ -112,10 +120,24 @@ export default async function BillingSettingsPage({
         subtitle="Subscription, invoices, and cancellation for your organization."
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
-        {searchParams?.error && (
+        {searchParams?.error === "support_session" ? (
           <div className="rounded-md border border-risk/40 bg-risk/5 px-4 py-3 text-sm text-risk">
-            Billing action failed ({searchParams.error}). Try again or contact
-            hello@brostco.com.
+            Billing cannot be changed from a support session. Return to your own
+            account first.
+          </div>
+        ) : (
+          searchParams?.error && (
+            <div className="rounded-md border border-risk/40 bg-risk/5 px-4 py-3 text-sm text-risk">
+              Billing action failed ({searchParams.error}). Try again or contact
+              hello@brostco.com.
+            </div>
+          )
+        )}
+        {comped && (
+          <div className="rounded-md border border-pursue/40 bg-pursue/5 px-4 py-3 text-sm text-pursue">
+            This account is comped. You have full access to everything and there
+            is nothing to pay.
+            {org?.billing_exempt_reason ? ` (${org.billing_exempt_reason})` : ""}
           </div>
         )}
         {searchParams?.checkout === "canceled" && (

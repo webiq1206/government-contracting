@@ -21,6 +21,13 @@ export async function GET(req: Request) {
   if (!auth.organizationId) {
     return NextResponse.redirect(new URL("/signup", appBaseUrl()));
   }
+  // Checkout takes a payment method. Not something to start on someone's
+  // behalf from a support session.
+  if (auth.impersonatedBy) {
+    return NextResponse.redirect(
+      new URL("/settings/billing?error=support_session", appBaseUrl())
+    );
+  }
 
   const url = new URL(req.url);
   const promo = await getFoundingPromo({ startIfMissing: false });

@@ -6,10 +6,23 @@ import { hashPassword, createSession, type SessionUser } from "./auth";
 import { createOrganizationForUser } from "./organizations";
 import { trackEvent } from "./analytics";
 
+/**
+ * Whether an address can still be claimed.
+ *
+ * Checks aliases as well as accounts. An address that is somebody's alias is
+ * as taken as one that is somebody's account: letting signup claim it would
+ * hand a stranger a working front door to an existing account. A trigger in
+ * migration 044 enforces the same rule in the database; this exists so the
+ * caller gets a sentence instead of a constraint violation.
+ */
 export async function emailTaken(email: string): Promise<boolean> {
+  const normalized = email.toLowerCase().trim();
   const row = await queryOne<{ id: string }>(
-    `select id from users where email = $1`,
-    [email.toLowerCase().trim()]
+    `select id from users where lower(email) = $1
+      union all
+     select id from user_email_aliases where lower(email) = $1
+      limit 1`,
+    [normalized]
   );
   return Boolean(row);
 }
@@ -73,6 +86,9 @@ export async function signupAccount(input: {
       subscriptionStatus: org.subscription_status,
       planKey: org.plan_key,
       trialEndsAt: org.trial_ends_at,
+      billingExempt: Boolean(org.billing_exempt),
+      suspendedAt: org.suspended_at,
+      impersonatedBy: null,
     },
     orgId: org.id,
     token,

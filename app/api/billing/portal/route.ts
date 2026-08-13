@@ -14,6 +14,14 @@ export async function GET() {
   if (!auth.organizationId) {
     return NextResponse.redirect(new URL("/signup", appBaseUrl()));
   }
+  // The Stripe portal can cancel the subscription and change the card on file.
+  // An admin in a support session must not be able to do that on a customer's
+  // behalf, and the customer would have no record of who did.
+  if (auth.impersonatedBy) {
+    return NextResponse.redirect(
+      new URL("/settings/billing?error=support_session", appBaseUrl())
+    );
+  }
   const org = await getOrganization(auth.organizationId);
   if (!org?.stripe_customer_id) {
     return NextResponse.redirect(

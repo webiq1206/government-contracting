@@ -26,6 +26,15 @@
  * Stripe's own 'trialing' remains supported and grants full access: it means a
  * card is already on file and the charge is automatic, which is a stronger
  * commitment than our cardless trial, not a weaker one.
+ *
+ * Two flags sit outside the status entirely, on their own columns:
+ *
+ *   billing_exempt - full access, permanently, whatever Stripe thinks. The
+ *                    platform owner's own organization and any comped account.
+ *                    Not a status value on purpose: every webhook rewrites
+ *                    subscription_status, so a 'comped' status would be erased
+ *                    the first time Stripe mentioned the account.
+ *   suspended_at   - an administrative stop. Outranks the exemption.
  */
 import { TRIAL_DAYS } from "./catalog";
 
@@ -42,6 +51,13 @@ const FULL = new Set(["active", "trialing"]);
 export interface EntitlementInput {
   subscription_status: string | null | undefined;
   trial_ends_at?: string | Date | null;
+  /**
+   * Full access regardless of subscription. The platform owner's own
+   * organization, and any account an admin has comped.
+   */
+  billing_exempt?: boolean | null;
+  /** Administrative suspension. Outranks everything, including the exemption. */
+  suspended_at?: string | Date | null;
 }
 
 /**
@@ -51,14 +67,54 @@ export interface EntitlementInput {
  * has not run yet. The sweep keeps the stored status tidy for queries and
  * admin views; this function is what actually gates behaviour, so a sweep that
  * is late (or wedged) can never hand out free access.
+ *
+ * Order matters. Suspension is checked before the exemption because suspension
+ * is a deliberate administrative act and an exempt account must not be able to
+ * ignore it. The exemption is then checked before any status or date, because
+ * its entire purpose is to be immune to both: the platform owner's own
+ * organization reads 'canceled' in Stripe's eyes and must still work.
  */
 export function accessLevel(org: EntitlementInput, now = new Date()): AccessLevel {
+  if (isSuspended(org)) return "none";
+  if (org.billing_exempt) return "full";
   const status = org.subscription_status ?? "";
   if (FULL.has(status)) return "full";
   if (status === TRIAL_STATUS) {
     return trialHasEnded(org, now) ? "none" : "trial";
   }
   return "none";
+}
+
+/** True when an admin has suspended the organization. */
+export function isSuspended(org: EntitlementInput): boolean {
+  return Boolean(org.suspended_at);
+}
+
+/**
+ * Build an entitlement input from a session user.
+ *
+ * Structurally typed rather than importing SessionUser, which would make
+ * lib/auth and this module circular. Every gate should go through this so a
+ * new field (the exemption was one) reaches all of them at once instead of
+ * being remembered at each call site.
+ */
+export function entitlementOf(user: {
+  subscriptionStatus?: string | null;
+  trialEndsAt?: string | null;
+  billingExempt?: boolean | null;
+  suspendedAt?: string | null;
+}): EntitlementInput {
+  return {
+    subscription_status: user.subscriptionStatus ?? null,
+    trial_ends_at: user.trialEndsAt ?? null,
+    billing_exempt: user.billingExempt ?? false,
+    suspended_at: user.suspendedAt ?? null,
+  };
+}
+
+/** Whether this organization may use the product at all. */
+export function hasAccess(org: EntitlementInput, now = new Date()): boolean {
+  return accessLevel(org, now) !== "none";
 }
 
 /** True when a cardless trial's window has closed. */
@@ -98,6 +154,9 @@ export function isCardlessTrial(org: EntitlementInput): boolean {
  * it rather than for a log.
  */
 export function accessBlockedReason(org: EntitlementInput, now = new Date()): string {
+  if (isSuspended(org)) {
+    return "This account has been suspended. Contact support to have it reinstated; nothing has been deleted.";
+  }
   const status = org.subscription_status ?? "none";
   if (status === TRIAL_STATUS || status === TRIAL_EXPIRED_STATUS) {
     return "Your free trial has ended. Choose a plan to pick up exactly where you left off, with everything you set up still here.";

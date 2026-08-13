@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
+import { impersonationRefusal } from "@/lib/impersonation";
 import { resolveTenantOrgId } from "@/lib/tenant";
 import { getStripe } from "@/lib/billing/stripe";
 import { getOrganization } from "@/lib/organizations";
@@ -32,6 +33,10 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
+  // Moving up proration is 'always_invoice', so this route charges a card
+  // immediately. Nobody signed in as a customer for support gets to do that.
+  const refusal = impersonationRefusal(auth);
+  if (refusal) return refusal;
   const orgId = await resolveTenantOrgId();
 
   const body = (await req.json().catch(() => ({}))) as {
