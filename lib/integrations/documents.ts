@@ -643,6 +643,68 @@ async function buildAmendmentAckPdf(data: AmendmentAckData): Promise<Buffer> {
   return Buffer.from(await w.save());
 }
 
+export interface SignedW9Render {
+  /** The canonical text from canonicalW9Text. Rendered as-is, never rebuilt. */
+  canonicalText: string;
+  companyName: string;
+  signedName: string;
+  signedAt: Date;
+  /** The evidence hash, printed so a paper copy carries it too. */
+  docHash: string;
+  ip: string | null;
+}
+
+/**
+ * The stored copy of a W-9 signed in the platform.
+ *
+ * Rendered from the exact canonical text the signer reviewed, line for line,
+ * with nothing added to the body. Anything this function composed itself could
+ * differ from what was on screen, which would make the whole signature
+ * worthless. The only additions sit under an audit heading, below the
+ * signature, and describe the act of signing rather than the form.
+ *
+ * The taxpayer identification number arrives already masked in the canonical
+ * text. Do not print it in full here: this file gets emailed to accountants.
+ */
+export async function renderSignedW9Pdf(data: SignedW9Render): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const fonts = await makeFonts(doc);
+  const w = new PdfWriter(doc, fonts);
+
+  for (const line of data.canonicalText.split("\n")) {
+    if (!line.trim()) {
+      w.gap(6);
+      continue;
+    }
+    const isTitle = line === "SUBSTITUTE FORM W-9";
+    const isSectionHead = /^(Part I|Part II|Under penalties)/.test(line);
+    w.text(line, {
+      size: isTitle ? 16 : 10,
+      bold: isTitle || isSectionHead,
+      color: isTitle ? [0.141, 0.141, 0.141] : [0.15, 0.15, 0.15],
+    });
+  }
+
+  w.heading("Electronic signature record");
+  w.text(
+    "Signed electronically under the E-SIGN Act. The signer typed their name, ticked the certification above, and submitted this form from the address recorded below.",
+    { size: 9, color: [0.35, 0.35, 0.35] }
+  );
+  w.gap(4);
+  w.row("Signed by", data.signedName, { size: 10, bold: true });
+  w.row("Signed at", data.signedAt.toISOString(), { size: 10 });
+  w.row("Submitted from", data.ip ?? "address not recorded", { size: 10 });
+  w.row("Requested by", data.companyName, { size: 10 });
+  w.gap(4);
+  w.text(`Document hash: ${data.docHash}`, { size: 8, color: [0.45, 0.45, 0.45] });
+  w.text(
+    "The hash is keyed to this requester and covers both the text above and the full taxpayer identification number, which is stored encrypted and is not printed on this document.",
+    { size: 8, color: [0.45, 0.45, 0.45] }
+  );
+
+  return Buffer.from(await w.save());
+}
+
 export const documents = {
   buildBidPdf,
   buildBidDocx,
@@ -652,4 +714,5 @@ export const documents = {
   buildRepsAndCertsPdf,
   buildComplianceMatrixPdf,
   buildAmendmentAckPdf,
+  renderSignedW9Pdf,
 };
