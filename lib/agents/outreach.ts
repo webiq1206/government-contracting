@@ -363,8 +363,8 @@ export const outreach: AgentDefinition = {
       `insert into communications
          (subcontractor_id, opportunity_id, channel, direction, subject, body,
           gmail_message_id, gmail_thread_id, tracking_id, follow_up_at, provider,
-          recipient_email)
-       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9,$10)`,
+          recipient_email, meta)
+       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
       [
         subcontractorId,
         opportunityId,
@@ -380,6 +380,10 @@ export const outreach: AgentDefinition = {
         provider,
         // Capture exact address used — sub record may be updated later.
         sub.email ?? null,
+        // The trade this email was about, so a reply's outcome lands on the
+        // right trade line instead of every trade this sub was approached for
+        // on the same solicitation.
+        JSON.stringify(trade ? { trade } : {}),
       ]
     );
 

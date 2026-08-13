@@ -27,6 +27,12 @@ export interface MatchedComm {
   company_name: string | null;
   sub_email: string | null;
   opportunity_title: string | null;
+  /**
+   * Trade the outbound email was about. Carried through so a reply outcome
+   * lands on the right trade line rather than every trade this sub was
+   * approached for on the same solicitation.
+   */
+  trade: string | null;
 }
 
 export interface CaptureReplyInput {
@@ -69,6 +75,17 @@ function emptyExtracted(): ExtractedReply {
     canPerform: null,
     capabilityNotes: null,
     tradesMentioned: [],
+    scopeSummary: null,
+    laborCost: null,
+    materialCost: null,
+    exclusions: [],
+    qualifications: [],
+    leadTimeDays: null,
+    availabilityNotes: null,
+    quoteValidUntil: null,
+    missingFields: [],
+    conflicts: [],
+    confidence: 0,
     method: "regex",
   };
 }
@@ -106,7 +123,8 @@ export async function matchInboundReply(opts: {
   fromEmail: string;
 }): Promise<{ comm: MatchedComm | null; strongMatch: boolean }> {
   const select = `select c.id, c.subcontractor_id, c.opportunity_id,
-            s.company_name, s.email as sub_email, o.title as opportunity_title
+            s.company_name, s.email as sub_email, o.title as opportunity_title,
+            (c.meta->>'trade') as trade
        from communications c
        left join subcontractors s on s.id = c.subcontractor_id
        join opportunities o on o.id = c.opportunity_id`;

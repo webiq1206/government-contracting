@@ -12,6 +12,7 @@ export type ReplyIntent =
   | "quote"
   | "interested"
   | "decline"
+  | "unavailable"
   | "cant_fulfill"
   | "question"
   | "other";
@@ -30,6 +31,33 @@ export interface ExtractedReply {
   capabilityNotes: string | null;
   /** Trades they mention they do (or do not) cover. */
   tradesMentioned: string[];
+  /** What work they are pricing, in their own terms. */
+  scopeSummary: string | null;
+  /** Cost split when they break it out; null when they quote a single number. */
+  laborCost: number | null;
+  materialCost: number | null;
+  /** Work they explicitly exclude from the price. */
+  exclusions: string[];
+  /** Conditions attached to the price (permits by others, escalation, etc.). */
+  qualifications: string[];
+  /** Lead time before they can start, in days. */
+  leadTimeDays: number | null;
+  /** Free-text availability window when a date is not extractable. */
+  availabilityNotes: string | null;
+  /** How long they say the price holds. */
+  quoteValidUntil: string | null;
+  /**
+   * Bid fields a human would still have to chase. Drives the automatic
+   * clarification email and blocks the workflow from advancing early.
+   */
+  missingFields: string[];
+  /**
+   * Statements that contradict each other or the solicitation. Never resolved
+   * automatically: a wrong guess here puts a bad number in a bid.
+   */
+  conflicts: string[];
+  /** 0 to 1. Low confidence routes to a human instead of acting. */
+  confidence: number;
   /** "ai" when Claude parsed it; "regex" fallback (treat as a hint). */
   method: "ai" | "regex";
 }
@@ -42,6 +70,7 @@ const ReplySchema = z.object({
     "quote",
     "interested",
     "decline",
+    "unavailable",
     "cant_fulfill",
     "question",
     "other",
@@ -54,7 +83,25 @@ const ReplySchema = z.object({
   can_perform: z.boolean().nullable(),
   capability_notes: z.string().nullable(),
   trades_mentioned: z.array(z.string()).nullable(),
+  scope_summary: z.string().nullable(),
+  labor_cost: z.number().nullable(),
+  material_cost: z.number().nullable(),
+  exclusions: z.array(z.string()).nullable(),
+  qualifications: z.array(z.string()).nullable(),
+  lead_time_days: z.number().nullable(),
+  availability_notes: z.string().nullable(),
+  quote_valid_until: z.string().nullable(),
+  missing_fields: z.array(z.string()).nullable(),
+  conflicts: z.array(z.string()).nullable(),
+  confidence: z.number(),
 });
+
+/** Accept a money figure only in a range a real subcontract price can occupy. */
+function sanePositive(n: number | null): number | null {
+  return n != null && Number.isFinite(n) && n > 0 && n <= 100_000_000
+    ? Math.round(n)
+    : null;
+}
 
 /** Largest plausible dollar figure in the text, or null. */
 export function regexPrice(text: string): number | null {
@@ -75,6 +122,19 @@ function emptyRegexResult(price: number | null): ExtractedReply {
     canPerform: null,
     capabilityNotes: null,
     tradesMentioned: [],
+    scopeSummary: null,
+    laborCost: null,
+    materialCost: null,
+    exclusions: [],
+    qualifications: [],
+    leadTimeDays: null,
+    availabilityNotes: null,
+    quoteValidUntil: null,
+    missingFields: [],
+    conflicts: [],
+    // A regex hit is a number in some text, not an understood reply. Zero
+    // confidence keeps it out of every automatic decision downstream.
+    confidence: 0,
     method: "regex",
   };
 }
@@ -97,7 +157,8 @@ export async function extractReplyFromReply(
           "- intent:",
           "  - quote: they give a price (or clear bid number) for the work",
           "  - interested: they want to proceed / will bid but no price yet",
-          "  - decline: they are not interested / pass on this opportunity",
+          "  - decline: they are not interested in this opportunity at all",
+          "  - unavailable: they WOULD do this kind of work but cannot take THIS job now (busy, booked, capacity, timing). This is not a decline.",
           "  - cant_fulfill: they cannot perform the work (wrong trade, capacity, geography, licensing, etc.)",
           "  - question: they mainly ask clarifying questions",
           "  - other: anything else (acknowledgement, out-of-office, unclear)",
@@ -109,6 +170,24 @@ export async function extractReplyFromReply(
           "- can_perform: true/false when they clearly say they can or cannot do the work; else null.",
           "- capability_notes: short summary of what they can/cannot do and why (especially for decline / cant_fulfill), else null.",
           "- trades_mentioned: list of trades they mention covering or not covering; empty array if none.",
+          "- scope_summary: what work they are actually pricing, in their words, else null.",
+          "- labor_cost / material_cost: whole dollars when they break the price out; null when they give only a total.",
+          "- exclusions: work they explicitly say is NOT included. Empty array if none stated.",
+          "- qualifications: conditions attached to the price (permits by others, price escalation, access needed). Empty array if none.",
+          "- lead_time_days: whole days before they can start, converting weeks to days. Null when not stated.",
+          "- availability_notes: their stated availability window when no clean number exists, else null.",
+          "- quote_valid_until: how long the price holds, as they state it, else null.",
+          "- missing_fields: bid information a buyer would still need that this reply does not answer.",
+          "  Use short field names such as: price, scope, lead_time, exclusions, payment_terms, bonding, insurance, licensing.",
+          "  Empty array when the reply is complete for its intent.",
+          "- conflicts: statements that contradict each other or the request (two different prices,",
+          "  a scope they exclude but also price, a start date after the deadline). Empty array if none.",
+          "- confidence: 0 to 1, how sure you are of intent AND the numbers.",
+          "  Be strict. Use below 0.6 when the email is vague, forwarded, quotes another thread,",
+          "  is machine-generated, or when you are inferring a price rather than reading one.",
+          "  A low score sends this to a human, which is always the correct outcome when unsure.",
+          "",
+          "Never invent a value. A field you cannot read from the email is null or an empty array.",
           "",
           "Email reply:",
           "---",
@@ -138,6 +217,24 @@ export async function extractReplyFromReply(
         paymentTerms: data.payment_terms,
         notes: data.notes,
         companyName: data.company_name,
+        scopeSummary: data.scope_summary,
+        laborCost: sanePositive(data.labor_cost),
+        materialCost: sanePositive(data.material_cost),
+        exclusions: data.exclusions ?? [],
+        qualifications: data.qualifications ?? [],
+        leadTimeDays:
+          data.lead_time_days != null &&
+          Number.isFinite(data.lead_time_days) &&
+          data.lead_time_days >= 0 &&
+          data.lead_time_days <= 3650
+            ? Math.round(data.lead_time_days)
+            : null,
+        availabilityNotes: data.availability_notes,
+        quoteValidUntil: data.quote_valid_until,
+        missingFields: data.missing_fields ?? [],
+        conflicts: data.conflicts ?? [],
+        // Clamp: a model returning 1.4 must not read as extra-confident.
+        confidence: Math.min(1, Math.max(0, Number(data.confidence) || 0)),
         canPerform,
         capabilityNotes: data.capability_notes,
         tradesMentioned: (data.trades_mentioned ?? [])

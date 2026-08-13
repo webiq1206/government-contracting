@@ -13,6 +13,14 @@ import { sms } from "../integrations/twilio";
 import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
 import { logAgent } from "../logger";
+import { runWithOrg } from "../tenant-context";
+import {
+  decideReply,
+  applyOutcomeToSolicitation,
+  recordReplyEvent,
+  blockingGaps,
+  OUTCOME_LABEL,
+} from "../domain/reply-outcome";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
 import { getAutomationRules } from "../app-settings";
 import { enqueue } from "../queue";
@@ -709,16 +717,56 @@ export const replyPoll: AgentDefinition = {
     "Detects subcontractor email replies, updates the sub's status, triggers Call Prep, and notifies you about who replied and what changed.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    if (!(await gmail.isConnected())) {
-      return { ok: true, summary: "Gmail not connected, reply polling skipped." };
+    // Each tenant has their own inbox. Poll every connected one inside its own
+    // org context: a single shared poll would read one customer's mailbox and
+    // attribute the replies to whoever happened to be the ambient tenant.
+    const orgs = await query<{ org_id: string }>(
+      `select org_id from integration_tokens
+        where provider = 'gmail' and status <> 'revoked'`
+    ).catch(() => []);
+    if (orgs.length === 0) {
+      return { ok: true, summary: "No inbox connected, reply polling skipped." };
+    }
+
+    const results: AgentResult[] = [];
+    for (const { org_id } of orgs) {
+      // One tenant's failure must not stop the rest from being polled.
+      try {
+        results.push(await runWithOrg(org_id, () => pollRepliesForOrg(org_id)));
+      } catch (err) {
+        results.push({
+          ok: false,
+          summary: `Reply poll failed for one account: ${(err as Error).message}`,
+        });
+      }
+    }
+
+    const enqueued = results.flatMap((r) => r.enqueued ?? []);
+    const failed = results.filter((r) => !r.ok).length;
+    return {
+      ok: failed === 0,
+      summary: `Polled ${orgs.length} connected inbox${orgs.length === 1 ? "" : "es"}. ${results
+        .map((r) => r.summary)
+        .join(" ")}`,
+      enqueued,
+      humanActionRequired: results.some((r) => r.humanActionRequired),
+    };
+  },
+};
+
+/** Poll one tenant's inbox. Runs inside that tenant's org context. */
+async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
+    if (!(await gmail.isConnected(orgId))) {
+      return { ok: true, summary: "Inbox not connected, skipped." };
     }
     const sinceSec = Math.floor(Date.now() / 1000) - 3600; // last hour
-    const { replies, disabled } = await gmail.fetchReplies(sinceSec);
-    if (disabled) return { ok: true, summary: "Gmail disabled, reply polling skipped." };
+    const { replies, disabled } = await gmail.fetchReplies(sinceSec, orgId);
+    if (disabled) return { ok: true, summary: "Inbox unavailable, skipped." };
 
     const enqueued: AgentResult["enqueued"] = [];
     const notifyLines: string[] = [];
     let matched = 0;
+    let reviewCount = 0;
     for (const r of replies) {
       // Match reply to an outbound communication by thread id (reliable), else
       // by sender email (weaker: an unrelated email from a known sub would also
@@ -757,6 +805,60 @@ export const replyPoll: AgentDefinition = {
         thankYouSent,
       } = result;
       const mentionedPrice = extracted.quoteAmount ?? extractMentionedPrice(replyText);
+
+      // Understand first, then decide whether we are allowed to act on it.
+      const decision = decideReply(extracted);
+      const gaps = blockingGaps(extracted, decision.outcome);
+      if (subId) {
+        // History is written either way. A reply we did not act on is exactly
+        // the one a human most needs to be able to read back.
+        await recordReplyEvent({
+          orgId,
+          subcontractorId: subId,
+          opportunityId: comm.opportunity_id ?? null,
+          trade: comm.trade ?? null,
+          extracted,
+          originalMessage: replyText,
+          gmailMessageId: r.messageId,
+          gmailThreadId: r.threadId,
+          needsReview: decision.needsReview || gaps.length > 0,
+          reviewReason:
+            decision.reviewReason ??
+            (gaps.length > 0
+              ? `Still needed before this can move forward: ${gaps.join(", ")}.`
+              : null),
+        });
+        if (decision.needsReview || gaps.length > 0) reviewCount++;
+        // Only a confident, self-consistent reading changes the record. An
+        // "unavailable" or "not a fit" mark lands on this solicitation alone,
+        // so the sub is still offered the next job.
+        if (decision.act && comm.opportunity_id) {
+          await applyOutcomeToSolicitation({
+            opportunityId: comm.opportunity_id,
+            subcontractorId: subId,
+            trade: comm.trade ?? null,
+            outcome: decision.outcome,
+          });
+        }
+      }
+
+      if (decision.needsReview) {
+        notifyLines.push(
+          `<li><strong>${companyName ?? fromEmail}</strong> replied about &ldquo;${comm.opportunity_title ?? "an opportunity"}&rdquo;,` +
+            ` but nothing was changed automatically. ${decision.reviewReason}` +
+            `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
+        );
+        await logAgent({
+          agent: "reply-poll",
+          action: "reply-needs-review",
+          opportunityId: comm.opportunity_id,
+          subcontractorId: subId ?? undefined,
+          level: "warn",
+          message: `${companyName ?? fromEmail} replied about "${comm.opportunity_title ?? "an opportunity"}", flagged for you to read. ${decision.reviewReason}`,
+          reasoning: `Confidence ${extracted.confidence}. Reply excerpt: ${replyText.slice(0, 300)}`,
+        });
+        continue;
+      }
 
       if (subId && !declined) {
         enqueued.push({
@@ -828,11 +930,11 @@ export const replyPoll: AgentDefinition = {
 
     return {
       ok: true,
-      summary: `Polled replies: ${matched} matched; statuses updated, Call Prep triggered, operator notified.`,
+      summary: `${matched} matched.`,
       enqueued,
+      humanActionRequired: reviewCount > 0,
     };
-  },
-};
+}
 
 /**
  * Contact Recheck Sweep — re-runs Sub Verify for subs that still have no
