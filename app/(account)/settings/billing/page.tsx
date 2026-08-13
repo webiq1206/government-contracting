@@ -58,6 +58,22 @@ export default async function BillingSettingsPage({
   const status = org?.subscription_status ?? "none";
   const statusLabel = subscriptionStatusLabel(status);
   const isActive = status === "active" || status === "trialing";
+
+  // What the customer is actually charged, taken from Stripe rather than the
+  // list price, so a grandfathered or discounted rate is shown as it is.
+  const cents = org?.stripe_amount_cents ?? org?.plan_amount_cents ?? null;
+  const per = org?.billing_interval === "year" ? "per year" : "per month";
+  const chargeLabel =
+    cents != null ? `$${(cents / 100).toLocaleString("en-US")} ${per}` : "-";
+  const discountLabel = org?.discount_percent_off
+    ? `${org.discount_percent_off}% off${org.discount_code ? ` (${org.discount_code})` : ""}${
+        org.discount_ends_at ? ` until ${shortDate(org.discount_ends_at)}` : ""
+      }`
+    : org?.discount_amount_off_cents
+      ? `$${(org.discount_amount_off_cents / 100).toLocaleString("en-US")} off${
+          org.discount_code ? ` (${org.discount_code})` : ""
+        }`
+      : null;
   const hasStripeCustomer = Boolean(org?.stripe_customer_id);
   const canCheckout = stripeEnabled() && !hasStripeCustomer;
 
@@ -137,6 +153,28 @@ export default async function BillingSettingsPage({
                     : "-"}
               </dd>
             </div>
+            <div>
+              <dt className="label">Price</dt>
+              <dd className="mt-0.5 text-slate-800">
+                {chargeLabel}
+                {discountLabel ? (
+                  <span className="mt-0.5 block text-xs font-normal text-pursue">
+                    {discountLabel}
+                  </span>
+                ) : null}
+              </dd>
+            </div>
+            {status === "trialing" ? (
+              <div>
+                <dt className="label">After your trial</dt>
+                <dd className="mt-0.5 text-slate-800">
+                  {/* Stated plainly before the charge happens, not after. */}
+                  {chargeLabel === "-"
+                    ? "-"
+                    : `${chargeLabel}, starting ${org?.trial_ends_at ? shortDate(org.trial_ends_at) : "when the trial ends"}`}
+                </dd>
+              </div>
+            ) : null}
             <div>
               <dt className="label">Billing portal</dt>
               <dd className="mt-0.5 text-slate-800">

@@ -1,20 +1,28 @@
-/** SaaS list prices in whole USD (display) and cents (Stripe). */
+/**
+ * Backwards-compatible shim.
+ *
+ * Pricing now lives in one place, lib/billing/catalog.ts. These re-exports
+ * exist so older import sites keep working; nothing new should import from
+ * here, and no amount should ever be defined in this file again.
+ */
+export {
+  TRIAL_DAYS,
+  PLANS,
+  planPrice,
+  allPrices,
+  type PlanKey,
+  type BillingInterval,
+} from "./catalog";
 
-export const STANDARD_MONTHLY_USD = 2997;
-export const FOUNDING_MONTHLY_USD = 497;
+import { PLANS, planPrice, type PlanKey } from "./catalog";
 
-/** Free trial length applied to every new Stripe Checkout subscription. */
-export const TRIAL_DAYS = 7;
-
+export const STANDARD_MONTHLY_USD = PLANS.standard.monthlyUsd;
+export const FOUNDING_MONTHLY_USD = PLANS.founding.monthlyUsd;
 export const STANDARD_MONTHLY_CENTS = STANDARD_MONTHLY_USD * 100;
 export const FOUNDING_MONTHLY_CENTS = FOUNDING_MONTHLY_USD * 100;
 
-export type PlanKey = "standard" | "founding" | "none";
-
 export function planAmountUsd(plan: PlanKey): number | null {
-  if (plan === "standard") return STANDARD_MONTHLY_USD;
-  if (plan === "founding") return FOUNDING_MONTHLY_USD;
-  return null;
+  return plan === "none" ? null : planPrice(plan, "month").amountUsd;
 }
 
 export function annualSavingsUsd(): number {

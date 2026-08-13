@@ -6,13 +6,10 @@
 import { config } from "../config";
 import { stripeEnabled } from "./enabled";
 import {
-  FOUNDING_MONTHLY_CENTS,
-  FOUNDING_MONTHLY_USD,
-  STANDARD_MONTHLY_CENTS,
-  STANDARD_MONTHLY_USD,
   TRIAL_DAYS,
-  type PlanKey,
-} from "./prices";
+  priceIdFor,
+  type BillingInterval,
+} from "./catalog";
 
 export { stripeEnabled };
 
@@ -34,57 +31,34 @@ export function getStripe(): StripeClient | null {
   }
 }
 
-export function priceIdForPlan(plan: PlanKey): string | null {
-  if (plan === "founding") return process.env.STRIPE_PRICE_FOUNDING || null;
-  if (plan === "standard") return process.env.STRIPE_PRICE_STANDARD || null;
-  return null;
-}
-
-export function planFromPriceId(priceId: string | null | undefined): PlanKey {
-  if (!priceId) return "none";
-  if (priceId === process.env.STRIPE_PRICE_FOUNDING) return "founding";
-  if (priceId === process.env.STRIPE_PRICE_STANDARD) return "standard";
-  return "none";
-}
-
-export function amountCentsForPlan(plan: PlanKey): number | null {
-  if (plan === "founding") return FOUNDING_MONTHLY_CENTS;
-  if (plan === "standard") return STANDARD_MONTHLY_CENTS;
-  return null;
-}
-
-export function amountUsdForPlan(plan: PlanKey): number | null {
-  if (plan === "founding") return FOUNDING_MONTHLY_USD;
-  if (plan === "standard") return STANDARD_MONTHLY_USD;
-  return null;
-}
-
+/**
+ * Checkout for one plan and interval.
+ *
+ * Refuses rather than improvising. The previous version created a brand new
+ * Stripe product and price on the fly whenever the configured price ID was
+ * missing, which in production meant a duplicate product per checkout and a
+ * price nobody had approved.
+ */
 export async function createCheckoutSession(input: {
   orgId: string;
   customerEmail: string;
   customerId?: string | null;
   plan: "founding" | "standard";
+  interval: BillingInterval;
   successUrl: string;
   cancelUrl: string;
+  /** Enable Stripe's promotion-code box. Stripe enforces validity and expiry. */
+  allowPromotionCodes?: boolean;
 }): Promise<{ url: string | null; error?: string }> {
   const stripe = getStripe();
   if (!stripe) return { url: null, error: "Stripe is not configured." };
 
-  let priceId = priceIdForPlan(input.plan);
-  // Dev fallback: create an ad-hoc price when env price IDs are not set yet.
+  const priceId = priceIdFor(input.plan, input.interval);
   if (!priceId) {
-    const product = await stripe.products.create({
-      name: input.plan === "founding" ? "Brost Co Founding" : "Brost Co Standard",
-      metadata: { plan_key: input.plan },
-    });
-    const price = await stripe.prices.create({
-      product: product.id,
-      unit_amount: amountCentsForPlan(input.plan)!,
-      currency: "usd",
-      recurring: { interval: "month" },
-      metadata: { plan_key: input.plan },
-    });
-    priceId = price.id;
+    return {
+      url: null,
+      error: `No Stripe price is configured for the ${input.plan} plan billed ${input.interval === "year" ? "annually" : "monthly"}. Run the Stripe setup script and set the price ID.`,
+    };
   }
 
   const session = await stripe.checkout.sessions.create({
@@ -96,22 +70,24 @@ export async function createCheckoutSession(input: {
     cancel_url: input.cancelUrl,
     client_reference_id: input.orgId,
     // Collect a card up front so Stripe can charge automatically when the
-    // 7-day trial ends unless the customer cancels in the Billing portal.
+    // trial ends unless the customer cancels in the Billing portal.
     payment_method_collection: "always",
     metadata: {
       org_id: input.orgId,
       plan_key: input.plan,
-      price_locked: input.plan === "founding" ? "true" : "false",
+      interval: input.interval,
     },
     subscription_data: {
       trial_period_days: TRIAL_DAYS,
       metadata: {
         org_id: input.orgId,
         plan_key: input.plan,
-        price_locked: input.plan === "founding" ? "true" : "false",
+        interval: input.interval,
       },
     },
-    allow_promotion_codes: false,
+    // Discount eligibility and expiry are Stripe's to enforce. Keeping that
+    // logic out of our code is the point: an expired code fails at Stripe.
+    allow_promotion_codes: input.allowPromotionCodes ?? true,
   });
 
   return { url: session.url };

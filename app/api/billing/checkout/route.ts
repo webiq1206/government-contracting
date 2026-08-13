@@ -6,8 +6,8 @@ import {
   createCheckoutSession,
   stripeEnabled,
 } from "@/lib/billing/stripe";
-import { getOrganization, updateOrganizationBilling } from "@/lib/organizations";
-import { amountCentsForPlan } from "@/lib/billing/stripe";
+import { getOrganization } from "@/lib/organizations";
+import { billingConfigured, type BillingInterval } from "@/lib/billing/catalog";
 import { trackEvent } from "@/lib/analytics";
 
 export const runtime = "nodejs";
@@ -26,21 +26,34 @@ export async function GET(req: Request) {
   const promo = await getFoundingPromo({ startIfMissing: false });
   let plan: "founding" | "standard" =
     url.searchParams.get("plan") === "founding" ? "founding" : "standard";
+  // Eligibility is decided here, on the server, from the stored promo window.
+  // A closed window means the founding rate cannot be claimed by anyone who
+  // simply passes ?plan=founding.
   if (plan === "founding" && !promo.active) plan = "standard";
+  const interval: BillingInterval =
+    url.searchParams.get("interval") === "year" ? "year" : "month";
 
   const org = await getOrganization(auth.organizationId);
   if (!org) {
     return NextResponse.redirect(new URL("/signup", appBaseUrl()));
   }
 
-  if (!stripeEnabled()) {
-    await updateOrganizationBilling(org.id, {
-      plan_key: plan,
-      plan_amount_cents: amountCentsForPlan(plan),
-      subscription_status: "active",
-      price_locked: plan === "founding",
+  // Billing must be fully wired before anyone can subscribe. The previous
+  // version granted active access with no payment whenever Stripe was
+  // unconfigured, which in production was free access for anyone who reached
+  // this URL.
+  const configured = billingConfigured();
+  if (!configured.ok) {
+    console.error("[billing] checkout blocked, missing:", configured.missing.join(", "));
+    await trackEvent({
+      event: "checkout_blocked",
+      orgId: org.id,
+      userId: auth.id,
+      meta: { missing: configured.missing },
     });
-    return NextResponse.redirect(new URL("/today", appBaseUrl()));
+    return NextResponse.redirect(
+      new URL("/settings/billing?error=unavailable", appBaseUrl())
+    );
   }
 
   const checkout = await createCheckoutSession({
@@ -48,6 +61,7 @@ export async function GET(req: Request) {
     customerEmail: auth.email,
     customerId: org.stripe_customer_id,
     plan,
+    interval,
     successUrl: `${appBaseUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${appBaseUrl()}/settings/billing?checkout=canceled`,
   });
@@ -66,7 +80,7 @@ export async function GET(req: Request) {
     event: "checkout_started",
     orgId: org.id,
     userId: auth.id,
-    meta: { plan },
+    meta: { plan, interval },
   });
   return NextResponse.redirect(checkout.url);
 }

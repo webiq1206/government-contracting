@@ -8,6 +8,7 @@ import {
   stripeEnabled,
 } from "@/lib/billing/stripe";
 import { trackEvent } from "@/lib/analytics";
+import { billingConfigured, type BillingInterval } from "@/lib/billing/catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
     name?: string;
     companyName?: string;
     plan?: string;
+    interval?: string;
   };
 
   const result = await signupAccount({
@@ -37,31 +39,28 @@ export async function POST(req: Request) {
   let plan: "founding" | "standard" =
     body.plan === "founding" ? "founding" : "standard";
   if (plan === "founding" && !promo.active) plan = "standard";
+  const interval: BillingInterval = body.interval === "year" ? "year" : "month";
 
-  if (!stripeEnabled()) {
-    // Local/dev without Stripe: activate org so the product can be exercised.
-    const { updateOrganizationBilling } = await import("@/lib/organizations");
-    const { amountCentsForPlan } = await import("@/lib/billing/stripe");
-    await updateOrganizationBilling(result.orgId, {
-      plan_key: plan,
-      plan_amount_cents: amountCentsForPlan(plan),
-      subscription_status: "active",
-      price_locked: plan === "founding",
-    });
-    await trackEvent({
-      event: "subscription_completed",
-      orgId: result.orgId,
-      userId: result.user.id,
-      path: "/signup",
-      meta: { plan, mode: "dev_bypass" },
-    });
-    return NextResponse.json({ redirect: "/today" });
+  // No unpaid path to an active account. This previously activated the
+  // organization outright whenever Stripe was unconfigured, which in
+  // production handed out full access for free to anyone who signed up.
+  const configured = billingConfigured();
+  if (!configured.ok) {
+    console.error("[billing] signup blocked, missing:", configured.missing.join(", "));
+    return NextResponse.json(
+      {
+        error:
+          "Signups are temporarily unavailable while billing is being set up. Please try again shortly.",
+      },
+      { status: 503 }
+    );
   }
 
   const checkout = await createCheckoutSession({
     orgId: result.orgId,
     customerEmail: result.user.email,
     plan,
+    interval,
     successUrl: `${appBaseUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${appBaseUrl()}/signup?plan=${plan}&checkout=canceled`,
   });

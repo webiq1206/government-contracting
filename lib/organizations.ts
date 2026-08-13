@@ -19,6 +19,16 @@ export interface Organization {
   cancel_at_period_end: boolean;
   current_period_end: string | null;
   trial_ends_at: string | null;
+  billing_interval: string | null;
+  /** What Stripe actually charges, which may be below list. */
+  stripe_amount_cents: number | null;
+  discount_code: string | null;
+  discount_percent_off: number | null;
+  discount_amount_off_cents: number | null;
+  discount_ends_at: string | null;
+  last_payment_status: string | null;
+  last_payment_at: string | null;
+  last_payment_error: string | null;
   created_at: string;
 }
 
@@ -117,6 +127,36 @@ export async function createOrganizationForUser(input: {
   return org;
 }
 
+/**
+ * Columns this function is permitted to write.
+ *
+ * The update is built by interpolating keys into SQL, so the set of writable
+ * columns is pinned here rather than trusted from the caller's object. Today
+ * every caller passes a typed literal; this makes that safe by construction
+ * instead of by convention.
+ */
+const BILLING_COLUMNS = new Set([
+  "stripe_customer_id",
+  "stripe_subscription_id",
+  "stripe_price_id",
+  "plan_key",
+  "plan_amount_cents",
+  "stripe_amount_cents",
+  "billing_interval",
+  "subscription_status",
+  "price_locked",
+  "cancel_at_period_end",
+  "current_period_end",
+  "trial_ends_at",
+  "discount_code",
+  "discount_percent_off",
+  "discount_amount_off_cents",
+  "discount_ends_at",
+  "last_payment_status",
+  "last_payment_at",
+  "last_payment_error",
+]);
+
 export async function updateOrganizationBilling(
   orgId: string,
   patch: Partial<{
@@ -125,11 +165,21 @@ export async function updateOrganizationBilling(
     stripe_price_id: string | null;
     plan_key: PlanKey;
     plan_amount_cents: number | null;
+    /** What Stripe actually charges, which may be below list. */
+    stripe_amount_cents: number | null;
+    billing_interval: string | null;
     subscription_status: string;
     price_locked: boolean;
     cancel_at_period_end: boolean;
     current_period_end: string | null;
     trial_ends_at: string | null;
+    discount_code: string | null;
+    discount_percent_off: number | null;
+    discount_amount_off_cents: number | null;
+    discount_ends_at: string | null;
+    last_payment_status: string | null;
+    last_payment_at: string | null;
+    last_payment_error: string | null;
   }>
 ): Promise<void> {
   const fields: string[] = [];
@@ -137,6 +187,7 @@ export async function updateOrganizationBilling(
   let i = 1;
   for (const [k, v] of Object.entries(patch)) {
     if (v === undefined) continue;
+    if (!BILLING_COLUMNS.has(k)) continue;
     fields.push(`${k} = $${i++}`);
     vals.push(v);
   }
