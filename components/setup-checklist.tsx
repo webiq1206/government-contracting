@@ -11,6 +11,7 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
   if (checklist.complete) return null;
 
   const remaining = checklist.items.filter((i) => !i.done);
+  const finished = checklist.items.filter((i) => i.done);
   const pct = Math.round((checklist.done / checklist.total) * 100);
 
   return (
@@ -56,10 +57,30 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
         ))}
       </ul>
 
-      {checklist.done > 0 && (
-        <p className="mt-3 text-xs text-slate-500">
-          {checklist.done} step{checklist.done === 1 ? "" : "s"} already done. Nice progress.
-        </p>
+      {/* Completed steps are listed, not just counted. "1 of 8 done" above a
+          list of seven open items is arithmetic the reader has to do, and
+          leaves them unable to see WHICH step they apparently finished. */}
+      {finished.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs text-slate-500">
+            {finished.length} step{finished.length === 1 ? "" : "s"} already done
+          </summary>
+          <ul className="mt-2 space-y-1.5">
+            {finished.map((item) => (
+              <li key={item.key} className="flex items-start gap-2 pl-1 text-xs">
+                <span className="text-pursue" aria-hidden>
+                  ✓
+                </span>
+                <span className="text-slate-600">
+                  {item.label}
+                  <Link href={item.href} className="ml-2 text-accent hover:underline">
+                    Change
+                  </Link>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </div>
   );

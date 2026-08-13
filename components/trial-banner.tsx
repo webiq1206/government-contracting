@@ -2,6 +2,16 @@ import Link from "next/link";
 import { TRIAL_METRIC_LABEL, type QuotaState } from "@/lib/billing/trial-limits";
 
 /**
+ * Short forms for narrow screens. The full labels wrapped the banner onto four
+ * lines on a phone, costing 129px of a 812px viewport on every page.
+ */
+const SHORT_LABEL: Record<string, string> = {
+  outreach_emails: "emails",
+  ai_briefs: "briefs",
+  bid_packages: "packages",
+};
+
+/**
  * The trial's status line, on every page of the dashboard.
  *
  * Two jobs, in this order: tell someone how long they have left, and tell them
@@ -51,7 +61,8 @@ export function TrialBanner({
             <span className="num">
               {q.used}/{q.limit}
             </span>{" "}
-            {TRIAL_METRIC_LABEL[q.metric]}
+            <span className="sm:hidden">{SHORT_LABEL[q.metric] ?? q.metric}</span>
+            <span className="hidden sm:inline">{TRIAL_METRIC_LABEL[q.metric]}</span>
           </span>
         ))}
       </span>

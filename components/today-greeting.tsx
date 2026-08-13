@@ -19,9 +19,16 @@ function partsFor(now: Date) {
 export function TodayGreeting({
   clear,
   actionCount,
+  setupRemaining = 0,
 }: {
   clear: boolean;
   actionCount: number;
+  /**
+   * Setup steps still outstanding. A brand-new account has nothing in its
+   * queue but plenty to do, and the queue framing ("work the queue in order")
+   * read as though the product were broken. Setup gets its own state.
+   */
+  setupRemaining?: number;
 }) {
   const [parts, setParts] = useState(() => partsFor(new Date()));
 
@@ -30,16 +37,26 @@ export function TodayGreeting({
   }, []);
 
   const estimated = Math.max(5, actionCount * 6);
+  // Nothing to work yet, but setup is unfinished: the honest headline is the
+  // setup, not an empty queue.
+  const settingUp = actionCount === 0 && setupRemaining > 0;
 
   return (
     <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border/55 pb-8 dark:border-white/10">
       <div className="min-w-0">
         <p className="eyebrow-gold">{parts.date}</p>
         <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
-          Needs your attention
+          {settingUp ? "Getting started" : "Needs your attention"}
         </p>
         <h1 className="mt-2 font-display text-3xl leading-tight text-foreground sm:text-4xl lg:text-[2.75rem]">
-          {clear ? (
+          {settingUp ? (
+            <>
+              {parts.greeting}.{" "}
+              <span className="text-muted-foreground">
+                {setupRemaining} step{setupRemaining === 1 ? "" : "s"} to go.
+              </span>
+            </>
+          ) : clear ? (
             <>
               {parts.greeting}.{" "}
               <span className="text-muted-foreground">You are clear for now.</span>
@@ -52,12 +69,18 @@ export function TodayGreeting({
             </>
           )}
         </h1>
-        {!clear && (
+        {settingUp ? (
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Finish the setup below and Brost Co starts pulling federal opportunities, scoring
+            them against your company, and lining up the work that needs you. Nothing appears
+            here until that is connected.
+          </p>
+        ) : !clear ? (
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
             {parts.greeting}. Work the queue in order. Each row opens the exact place to finish
             the task.
           </p>
-        )}
+        ) : null}
       </div>
       {!clear && (
         <div className="border border-gold/35 bg-surface-raised px-4 py-3 text-right">

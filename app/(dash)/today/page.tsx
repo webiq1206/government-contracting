@@ -234,9 +234,29 @@ function PipelineHealthRail({
     (byStage.quote_entry ?? 0) +
     (byStage.bid_building ?? 0);
   const packagesReady = byStage.bid_building ?? 0;
-  const bars = [35, 48, 42, 62, 55, 78, 70].map((h, i) => ({
-    h: Math.min(100, h + (active > 0 ? (i * 3) % 17 : 0)),
-  }));
+  /**
+   * Real stage distribution, not decoration.
+   *
+   * These bars were a hardcoded [35, 48, 42, 62, 55, 78, 70] with a cosmetic
+   * jitter, sitting under a "Live" badge. On a brand-new account with nothing
+   * in the pipeline they drew a healthy upward trend, which is the one thing a
+   * dashboard must never do. Now each bar is a real stage, scaled to the
+   * busiest one, and an empty pipeline draws nothing.
+   */
+  const BAR_STAGES: { key: string; label: string }[] = [
+    { key: "scoring", label: "Scoring" },
+    { key: "analysis", label: "Analysis" },
+    { key: "sub_research", label: "Finding subs" },
+    { key: "outreach", label: "Outreach" },
+    { key: "call_queue", label: "Calls" },
+    { key: "quote_entry", label: "Quotes" },
+    { key: "bid_building", label: "Bid building" },
+  ];
+  const peak = Math.max(1, ...BAR_STAGES.map((st) => byStage[st.key] ?? 0));
+  const bars = BAR_STAGES.map((st) => {
+    const count = byStage[st.key] ?? 0;
+    return { ...st, count, h: count === 0 ? 0 : Math.max(8, (count / peak) * 100) };
+  });
 
   return (
     <aside className="hidden w-72 shrink-0 lg:block">
@@ -253,16 +273,23 @@ function PipelineHealthRail({
           </p>
           <p className="mt-1 text-sm text-foreground/45">active opportunities</p>
 
-          <div className="mt-6 flex h-24 items-end gap-1.5">
-            {bars.map((b, i) => (
-              <div
-                key={i}
-                className="flex-1 rounded-sm bg-gradient-to-t from-gold/25 to-gold/85"
-                style={{ height: `${b.h}%` }}
-                aria-hidden
-              />
-            ))}
-          </div>
+          {active > 0 ? (
+            <div className="mt-6 flex h-24 items-end gap-1.5">
+              {bars.map((b) => (
+                <div
+                  key={b.key}
+                  className="flex-1 rounded-sm bg-gradient-to-t from-gold/25 to-gold/85"
+                  style={{ height: `${b.h}%` }}
+                  title={`${b.label}: ${b.count}`}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-6 border border-dashed border-border/55 px-3 py-4 text-center text-xs leading-relaxed text-muted-foreground">
+              Nothing in the pipeline yet. Opportunities appear here once SAM.gov is
+              connected and the first search runs.
+            </p>
+          )}
 
           <ul className="mt-6 divide-y divide-border/55 dark:divide-white/10 text-sm text-muted-foreground">
             <li className="flex justify-between py-2.5">
@@ -381,7 +408,11 @@ export default async function TodayPage() {
             <HelpPopover help={PAGE_HELP["today"]} />
           </div>
 
-          <TodayGreeting clear={clear} actionCount={totalActions} />
+          <TodayGreeting
+            clear={clear}
+            actionCount={totalActions}
+            setupRemaining={setup.total - setup.done}
+          />
 
           <div className="mt-8 flex gap-10">
             <div className="min-w-0 flex-1 space-y-10">
