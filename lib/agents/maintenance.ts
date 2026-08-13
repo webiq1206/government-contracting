@@ -21,6 +21,7 @@ import {
   blockingGaps,
   OUTCOME_LABEL,
 } from "../domain/reply-outcome";
+import { requestClarification, describeGap } from "../domain/reply-clarify";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
 import { getAutomationRules } from "../app-settings";
 import { enqueue } from "../queue";
@@ -860,6 +861,36 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         continue;
       }
 
+      // Understood, acted on, but incomplete: ask them for the gap instead of
+      // parking the solicitation until somebody notices.
+      let clarified = false;
+      if (decision.act && gaps.length > 0 && subId && comm.opportunity_id) {
+        const clarify = await requestClarification({
+          opportunityId: comm.opportunity_id,
+          subcontractorId: subId,
+          toEmail: comm.sub_email ?? fromEmail,
+          companyName: companyName ?? null,
+          opportunityTitle: comm.opportunity_title,
+          trade: comm.trade ?? null,
+          gaps,
+          outcome: decision.outcome,
+          threadId: r.threadId,
+          inReplyToMessageId: r.messageId,
+          orgId,
+        });
+        clarified = clarify.sent;
+        if (clarify.sent) {
+          await logAgent({
+            agent: "reply-poll",
+            action: "clarification-sent",
+            opportunityId: comm.opportunity_id,
+            subcontractorId: subId,
+            level: "info",
+            message: `Asked ${companyName ?? fromEmail} for ${gaps.map(describeGap).join(", ")} before this can move forward.`,
+          });
+        }
+      }
+
       if (subId && !declined) {
         enqueued.push({
           agent: "call-prep",
@@ -909,7 +940,8 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
                   ? ` Mentions <strong>$${mentionedPrice.toLocaleString()}</strong>.`
                   : ""
           }` +
-          ` Updated: marked responsive, reply saved, call card queued.` +
+          ` Updated: marked ${OUTCOME_LABEL[decision.outcome].toLowerCase()}, reply saved, call card queued.` +
+          `${clarified ? ` We asked them for ${gaps.map(describeGap).join(", ")}.` : ""}` +
           `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
       );
     }
