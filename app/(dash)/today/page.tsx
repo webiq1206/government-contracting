@@ -13,6 +13,7 @@ import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
 import { stageParty, PARTY_LABEL, STAGE_LABEL } from "@/lib/domain/journey";
 import { outreachLabel } from "@/lib/domain/sub-contact";
+import { DOC_LABEL } from "@/lib/domain/sub-compliance";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { ActionButton } from "@/components/action-button";
 import { SnoozeButton } from "@/components/snooze-button";
@@ -347,6 +348,7 @@ export default async function TodayPage() {
     (data.backlinkApprovals > 0 ? 1 : 0);
   const totalActions =
     data.urgent.length +
+    data.awardCompliance.length +
     data.replyReviews.length +
     data.triage.length +
     data.calls.count +
@@ -446,6 +448,59 @@ export default async function TodayPage() {
                       rules={rules}
                     />
                   ))}
+                </Section>
+              )}
+
+              {/* Above the reply queue on purpose. Everything else here costs
+                  a missed opportunity; this one is a sub on a live contract
+                  working without cover, which is the prime's breach. */}
+              {data.awardCompliance.length > 0 && (
+                <Section
+                  id="award-compliance"
+                  eyebrow="Won work"
+                  title="Subs on the job without complete paperwork"
+                  count={data.awardCompliance.length}
+                >
+                  {data.awardCompliance.map((row) => {
+                    const a = row.assessment;
+                    const lapsed = a.expired.length > 0;
+                    return (
+                      <Link
+                        key={`${row.contractId}-${row.subcontractorId}`}
+                        href={`/subs/${row.subcontractorId}#compliance`}
+                        className={ROW}
+                      >
+                        <div className="min-w-[14rem] flex-1">
+                          <p className="eyebrow-gold">
+                            {row.namedOnContract ? "On the contract" : "Quoted, not designated"}
+                          </p>
+                          <p className="mt-1 truncate text-sm font-medium text-foreground">
+                            {row.companyName}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {row.opportunityTitle ?? "Won work"}
+                            {" · "}
+                            {a.blockReason
+                              ? a.blockReason.replace(/^Cannot send work: /, "")
+                              : a.expiringSoon
+                                  .map(
+                                    (e) =>
+                                      `${DOC_LABEL[e.docType]} expires ${shortDate(e.expiresAt)}`
+                                  )
+                                  .join("; ")}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <span
+                            className={`badge ${lapsed ? "bg-risk/15 text-risk" : "bg-review/15 text-review"}`}
+                          >
+                            {lapsed ? "Not covered" : "Needs chasing"}
+                          </span>
+                          <CtaArrow label="Open paperwork" />
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </Section>
               )}
 

@@ -280,7 +280,9 @@ export function canonicalW9Text(form: W9FormData, meta: SignedW9Meta): string {
     W9_CERTIFICATION_HEADING,
     ...W9_CERTIFICATION.map((c, i) => `${i + 1}. ${c}`),
     "",
-    `Signed by: ${form.signedName.trim()}`,
+    // From meta rather than the form, so the review screen can render the
+    // document before a name has been typed and fill it in live as one is.
+    `Signed by: ${meta.signedName}`,
     `Signed at: ${meta.signedAt.toISOString()}`,
   ];
   return lines.join("\n");

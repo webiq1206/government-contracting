@@ -5,6 +5,7 @@ import {
   parseComplianceUpload,
   recordUploadedDocument,
 } from "@/lib/sub-compliance-store";
+import { guardRejectedToken, guardWrite } from "@/lib/vendor-throttle";
 import { logAgent } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -21,11 +22,22 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request, { params }: { params: { token: string } }) {
   const pointer = decodePortalToken(params.token);
   if (!pointer) {
-    return NextResponse.json(
-      { error: "This link has expired. Reply to the email you received and we will send a new one." },
-      { status: 403 }
+    return (
+      guardRejectedToken(req) ??
+      NextResponse.json(
+        {
+          error:
+            "This link has expired. Reply to the email you received and we will send a new one.",
+        },
+        { status: 403 }
+      )
     );
   }
+
+  // Ahead of formData(), which is what actually buffers the upload. Checking
+  // after it would mean a rejected request had already cost us the full 12 MB.
+  const throttled = guardWrite(req, pointer.s, "upload");
+  if (throttled) return throttled;
 
   const sub = await loadPortalSubject(pointer.s);
   if (!sub) {

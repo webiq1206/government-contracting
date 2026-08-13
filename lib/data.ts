@@ -6,6 +6,11 @@
 import { query, queryOne } from "./db";
 import type { KpiParams } from "./domain/kpi";
 import { resolveSubWork } from "./domain/sub-work";
+import {
+  loadAwardCompliance,
+  needsAttentionOnWonWork,
+  type AwardComplianceRow,
+} from "./sub-compliance-store";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 import {
   emailLogStatusSql,
@@ -1035,6 +1040,13 @@ export interface ActionCenterData {
   quoteReviews: ActionQuoteReviewRow[];
   /** Compliance renewals that are past "ok" (warning/critical/blocked). */
   complianceAlerts: ComplianceAlertRow[];
+  /**
+   * Subcontractors on won work whose paperwork is not good enough to put them
+   * on the job. Distinct from complianceAlerts, which is our own registrations
+   * (SAM, licences). This is other people's insurance, and after an award it
+   * is the prime's exposure rather than theirs.
+   */
+  awardCompliance: AwardComplianceRow[];
   /** Learning Loop scoring-weight proposals awaiting approve/reject. */
   proposedWeights: ProposedWeightsRow[];
   /**
@@ -1088,6 +1100,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     snoozedRow,
     stageCounts,
     replyReviews,
+    awardComplianceRows,
   ] = await Promise.all([
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
@@ -1261,6 +1274,10 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
         order by e.created_at desc
         limit 20`
     ).catch(() => []),
+    // Subcontractor paperwork on live contracts. Assessed in TypeScript rather
+    // than SQL so Today, the onboarding agent, and the sub's own page all
+    // apply exactly the same rules.
+    loadAwardCompliance({ orgId }).catch(() => []),
   ]);
 
   const callsWithWork: ActionCallRow[] = callRows.map(
@@ -1275,6 +1292,9 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
         }).work || null,
     })
   );
+  // Only the ones a person has to do something about. A sub whose paperwork
+  // is complete is not news.
+  const awardCompliance = awardComplianceRows.filter(needsAttentionOnWonWork);
   const followUpsWithWork: ActionSubFollowUpRow[] = subFollowUps.map(
     ({ solicitation_analysis, description, ...row }) => ({
       ...row,
@@ -1302,6 +1322,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     subFollowUps: followUpsWithWork,
     quoteReviews,
     complianceAlerts,
+    awardCompliance,
     proposedWeights,
     backlinkApprovals: backlinkRow?.n ?? 0,
     snoozedCount: snoozedRow?.n ?? 0,

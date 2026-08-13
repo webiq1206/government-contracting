@@ -79,6 +79,7 @@ export const QUEUE_NAMES = [
   "analytics-engine",
   "sources-sought-responder",
   "backlink-scout",
+  "sub-onboarding",
   // maintenance jobs
   "outreach-followup",
   "review-expiry-sweep",

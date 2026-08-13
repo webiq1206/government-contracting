@@ -38,6 +38,7 @@ import {
   unresponsiveSweep,
 } from "./maintenance";
 import { complianceSweep } from "./compliance-sweep";
+import { subOnboarding } from "./sub-onboarding";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -55,6 +56,7 @@ export const ROSTER: AgentDefinition[] = [
   analyticsEngine,
   sourcesSoughtResponder,
   backlinkScout,
+  subOnboarding,
 ];
 
 export const MAINTENANCE: AgentDefinition[] = [
@@ -98,6 +100,9 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     { agent: expiredOpportunitySweep, cron: "15 * * * *" }, // hourly at :15
     { agent: retentionSweep, cron: "45 3 * * *" }, // daily at 03:45
     { agent: complianceSweep, cron: "20 6 * * *" }, // daily at 06:20, before the working day
+    // Just after the sweep, so it acts on statuses the sweep has just brought
+    // up to date rather than yesterday's.
+    { agent: subOnboarding, cron: "35 6 * * *" }, // daily at 06:35
     { agent: logRetentionSweep, cron: "30 3 * * *" }, // daily at 03:30
     { agent: backlinkOutreachSweep, cron: "*/20 * * * *" }, // every 20 min
     { agent: contactRecheckSweep, cron: "5 * * * *" }, // hourly at :05, small batch per run

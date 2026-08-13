@@ -23,6 +23,7 @@ import {
   currentStatus,
   DOC_LABEL,
   type ComplianceAssessment,
+  type ComplianceDoc,
   type DocStatus,
   type DocType,
 } from "./domain/sub-compliance";
@@ -318,6 +319,118 @@ export async function recordUploadedDocument(
   });
 
   return { id: inserted.id, storagePath: up.path };
+}
+
+/* ----------------------- paperwork on won work -------------------------- */
+
+export interface AwardComplianceRow {
+  opportunityId: string;
+  opportunityTitle: string | null;
+  contractId: string;
+  orgId: string | null;
+  subcontractorId: string;
+  companyName: string;
+  email: string | null;
+  emailVerified: boolean;
+  /**
+   * True when the contract names them primary or backup, rather than them
+   * merely having quoted the job.
+   *
+   * This is the difference between "we know they are on it" and "they might
+   * be", and it decides what may be done automatically. Emailing a sub who
+   * quoted and lost that we need their W-9 because they are on the job would
+   * be wrong, so only the named ones are chased without a human.
+   */
+  namedOnContract: boolean;
+  assessment: ComplianceAssessment;
+}
+
+/**
+ * Every subcontractor attached to a live contract, with their paperwork
+ * assessed.
+ *
+ * One query with the documents aggregated per sub rather than a query per
+ * subcontractor, because both callers run over the whole book: the onboarding
+ * agent sweeps it daily and Today renders it on every page load.
+ */
+export async function loadAwardCompliance(
+  opts: { opportunityId?: string; orgId?: string } = {},
+  now = new Date()
+): Promise<AwardComplianceRow[]> {
+  const params: unknown[] = [];
+  const where: string[] = [`c.status = 'active'`];
+  if (opts.opportunityId) {
+    params.push(opts.opportunityId);
+    where.push(`o.id = $${params.length}`);
+  }
+  if (opts.orgId) {
+    params.push(opts.orgId);
+    where.push(`o.org_id = $${params.length}`);
+  }
+
+  interface Raw {
+    opportunity_id: string;
+    opportunity_title: string | null;
+    contract_id: string;
+    org_id: string | null;
+    subcontractor_id: string;
+    company_name: string;
+    email: string | null;
+    email_verified: boolean | null;
+    named_on_contract: boolean;
+    docs: ComplianceDoc[] | null;
+  }
+
+  const rows = await query<Raw>(
+    `select distinct on (c.id, s.id)
+            o.id as opportunity_id, o.title as opportunity_title, o.org_id,
+            c.id as contract_id, s.id as subcontractor_id, s.company_name,
+            s.email, s.email_verified,
+            (s.id in (c.primary_sub_id, c.backup_sub_id)) as named_on_contract,
+            coalesce((
+              select json_agg(json_build_object(
+                       'doc_type', d.doc_type,
+                       'status', d.status,
+                       'expires_at', d.expires_at,
+                       'signed_at', d.signed_at,
+                       'verified_at', d.verified_at))
+                from subcontractor_documents d
+               where d.subcontractor_id = s.id
+            ), '[]'::json) as docs
+       from contracts c
+       join opportunities o on o.id = c.opportunity_id
+       join subcontractors s
+         on s.id in (c.primary_sub_id, c.backup_sub_id)
+         or s.id in (select q.subcontractor_id from quotes q
+                      where q.opportunity_id = o.id and q.subcontractor_id is not null)
+      where ${where.join(" and ")}
+      order by c.id, s.id, named_on_contract desc`,
+    params
+  ).catch(() => []);
+
+  return rows.map((r) => ({
+    opportunityId: r.opportunity_id,
+    opportunityTitle: r.opportunity_title,
+    contractId: r.contract_id,
+    orgId: r.org_id,
+    subcontractorId: r.subcontractor_id,
+    companyName: r.company_name,
+    email: r.email,
+    emailVerified: Boolean(r.email_verified),
+    namedOnContract: Boolean(r.named_on_contract),
+    assessment: assessCompliance(r.docs ?? [], now),
+  }));
+}
+
+/**
+ * Whether a row belongs in front of a person.
+ *
+ * Not simply `!clearedForAward`. An expiring certificate clears the gate,
+ * which is correct before an award and not enough after one: the sub is on
+ * site, and "expires in three weeks" is a date somebody has to act before.
+ */
+export function needsAttentionOnWonWork(row: AwardComplianceRow): boolean {
+  return !row.assessment.clearedForAward || row.assessment.expiringSoon.length > 0;
 }
 
 /* --------------------------- upload parsing ----------------------------- */

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { loadSubForOperator } from "@/lib/sub-access";
 import { setDocumentDecision } from "@/lib/sub-compliance-store";
 
@@ -18,8 +18,9 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string; docId: string } }
 ) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth } = ctx;
 
   const sub = await loadSubForOperator(params.id);
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });

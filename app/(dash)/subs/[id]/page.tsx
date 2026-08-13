@@ -7,6 +7,8 @@ import { ConversationThreads } from "@/components/conversation-threads";
 import { PageHeader } from "@/components/badges";
 import { SubNotes } from "@/components/sub-notes";
 import { SubEditor } from "@/components/sub-editor";
+import { SubCompliancePanel } from "@/components/sub-compliance-panel";
+import { subComplianceView } from "@/lib/sub-compliance-store";
 import {
   contactBadgeClass,
   contactStatusHint,
@@ -54,9 +56,10 @@ export default async function SubDetailPage({
   // Threads and inbox state are read alongside the detail so the page renders
   // in one pass; a missing connection disables the composer rather than
   // letting a reply fail after it is typed.
-  const [conversations, inboxConnected] = await Promise.all([
+  const [conversations, inboxConnected, compliance] = await Promise.all([
     subConversations(params.id),
     gmail.isConnected().catch(() => false),
+    subComplianceView(params.id),
   ]);
   const projects: ProjectHistoryItem[] = Array.isArray(sub.project_history)
     ? sub.project_history
@@ -79,6 +82,15 @@ export default async function SubDetailPage({
             .join(" · ") || "Location not on file"
         }
       >
+        {!compliance.assessment.clearedForAward && (
+          <a
+            href="#compliance"
+            className="badge bg-risk/15 text-risk"
+            title={compliance.assessment.blockReason ?? undefined}
+          >
+            Cannot be sent work
+          </a>
+        )}
         {sub.is_preferred && (
           <span className="badge bg-review/15 text-review">Preferred</span>
         )}
@@ -201,6 +213,22 @@ export default async function SubDetailPage({
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2" data-guide-target="sub-contact" id="sub-contact">
+            {/* Ahead of the contact card: whether this sub can be sent work at
+                all outranks how to reach them. */}
+            <SubCompliancePanel
+              subId={sub.id}
+              companyName={sub.company_name}
+              docs={compliance.docs.map((d) => ({
+                ...d,
+                // Show the status as of now, not as of whenever the row was
+                // last written. A certificate can lapse between sweeps.
+                status: compliance.liveStatus[d.id] ?? d.status,
+              }))}
+              blockReason={compliance.assessment.blockReason}
+              cleared={compliance.assessment.clearedForAward}
+              expiringSoon={compliance.assessment.expiringSoon}
+            />
+
             <SubEditor
               sub={{
                 id: sub.id,

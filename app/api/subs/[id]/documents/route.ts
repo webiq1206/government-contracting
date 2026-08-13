@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireOrgContext } from "@/lib/org-guard";
 import { loadSubForOperator } from "@/lib/sub-access";
 import { parseComplianceUpload, recordUploadedDocument } from "@/lib/sub-compliance-store";
 import { logAgent } from "@/lib/logger";
@@ -19,8 +19,9 @@ export const dynamic = "force-dynamic";
  * and "we filed their paper" survives into the audit trail.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { user: auth } = ctx;
 
   const sub = await loadSubForOperator(params.id);
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
