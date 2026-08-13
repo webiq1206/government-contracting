@@ -37,6 +37,7 @@ import {
   contactRecheckSweep,
   unresponsiveSweep,
 } from "./maintenance";
+import { complianceSweep } from "./compliance-sweep";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -65,6 +66,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   scoringRecoverySweep,
   expiredOpportunitySweep,
   retentionSweep,
+  complianceSweep,
   logRetentionSweep,
   backlinkOutreachSweep,
   contactRecheckSweep,
@@ -95,6 +97,7 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     { agent: scoringRecoverySweep, cron: "*/15 * * * *" }, // every 15 min
     { agent: expiredOpportunitySweep, cron: "15 * * * *" }, // hourly at :15
     { agent: retentionSweep, cron: "45 3 * * *" }, // daily at 03:45
+    { agent: complianceSweep, cron: "20 6 * * *" }, // daily at 06:20, before the working day
     { agent: logRetentionSweep, cron: "30 3 * * *" }, // daily at 03:30
     { agent: backlinkOutreachSweep, cron: "*/20 * * * *" }, // every 20 min
     { agent: contactRecheckSweep, cron: "5 * * * *" }, // hourly at :05, small batch per run
