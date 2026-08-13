@@ -287,7 +287,7 @@ function buildCallPrompt(
     `TRADE: ${trade ?? "(scope work)"}`,
     `OPPORTUNITY: ${opp.title ?? "(untitled)"}`,
     "",
-    "WHAT WE NEED THIS SUBCONTRACTOR TO DO (plain English — weave this into the script so the estimator can explain the work clearly):",
+    "WHAT WE NEED THIS SUBCONTRACTOR TO DO (plain English, weave this into the script so the estimator can explain the work clearly):",
     tradeWork ||
       (analysis?.draft_sow ?? opp.description ?? "(no SOW available)").slice(0, 2000),
     "",

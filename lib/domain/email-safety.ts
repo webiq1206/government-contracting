@@ -113,7 +113,7 @@ export function findEmailSafetyIssues(input: {
   if (bodySupplied && !/[A-Za-z0-9]/.test(readableBody)) {
     issues.push({
       kind: "empty_body",
-      detail: "The body is empty — there would be nothing for the recipient to read.",
+      detail: "The body is empty, there would be nothing for the recipient to read.",
     });
   }
 

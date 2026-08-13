@@ -65,7 +65,7 @@ export const DEFAULT_PROFILE: CompanyProfileJson = {
     dimensions: [
       { key: "naics_active", label: "NAICS code in active list", max_points: 20, guidance: "Full points when the primary NAICS is one of our 42 active codes. Zero if it is on the excluded list; adjacency scores partial." },
       { key: "sb_setaside_match", label: "Small business set-aside match", max_points: 15, guidance: "Full for Total/Partial Small Business set-asides (we are SB). Reduced for unrestricted. Zero if it requires a certification we lack." },
-      { key: "value_in_band", label: "Contract value in $50K–$350K range", max_points: 15, guidance: "Full inside the simplified-acquisition band. Zero below $50K. Above $350K only after 3+ contracts won." },
+      { key: "value_in_band", label: "Contract value in $50K-$350K range", max_points: 15, guidance: "Full inside the simplified-acquisition band. Zero below $50K. Above $350K only after 3+ contracts won." },
       { key: "multiyear_idiq", label: "Multi-year or IDIQ contract", max_points: 15, guidance: "Full for multi-year or IDIQ vehicles, highest priority. A 3-year IDIQ at $100K/yr outranks a one-time $250K." },
       { key: "pp_not_required", label: "Past performance not required at prime level", max_points: 10, guidance: "Full when not required or when subcontractor/team experience is accepted. Zero when prime-only experience is required." },
       { key: "pricing_comps", label: "Historical pricing comps available", max_points: 10, guidance: "Full when USASpending has comparable awards in the same NAICS/state to anchor pricing." },
@@ -97,7 +97,7 @@ export const DEFAULT_PROFILE: CompanyProfileJson = {
     markup_default_pct: 30,
     out_of_range_tolerance_pct: 20,
     cpi_series_id: "CUUR0000SA0", // CPI-U, all items, US city average
-    recompete_undercut_pct: [3, 8], // price 3–8% below incumbent's last award
+    recompete_undercut_pct: [3, 8], // price 3-8% below incumbent's last award
     sanity_low_pct: 30, // flag if a bid is >30% below the historical median
     new_naics_learning_premium_pct: 15,
     remote_premium_pct: 10, // +10% floor for work >80mi from a metro
@@ -135,7 +135,7 @@ export const DEFAULT_PROFILE: CompanyProfileJson = {
     block_prime_only: false,
   },
   pricing_philosophy:
-    "Price to win. On simplified acquisitions the lowest reasonable price that still clears the margin floor wins. Do not price to maximize margin on individual contracts, price to build a win record; margins expand as past performance accumulates. Recompete: price 3–8% below the incumbent's last award. New contract: at or below the inflation-adjusted historical median. Never bid above P75 unless scope clearly exceeds historical contracts. Flag for human review if a bid is more than 30% below the historical median (COs can reject unreasonably low bids).",
+    "Price to win. On simplified acquisitions the lowest reasonable price that still clears the margin floor wins. Do not price to maximize margin on individual contracts, price to build a win record; margins expand as past performance accumulates. Recompete: price 3-8% below the incumbent's last award. New contract: at or below the inflation-adjusted historical median. Never bid above P75 unless scope clearly exceeds historical contracts. Flag for human review if a bid is more than 30% below the historical median (COs can reject unreasonably low bids).",
   legal_guardrails: [
     "FAR 52.219-14: at most 50% of a service contract's value may go to non-similarly-situated subs. Alert at 45% (mandatory 5% buffer).",
     "Similarly-situated subs (same Small Business status under the assigned subcontract NAICS) do not count against the 50% cap, prioritize them to maximize flexibility.",

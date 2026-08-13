@@ -335,7 +335,7 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '  "attention_items": string[],              // risks / unusual clauses (liquidated damages, tight timeline, high bonding, prime-only past perf) a human should note',
     '  "pursue_recommendation": string,          // 1-3 sentences: should we pursue, and the single biggest reason for/against',
     '  "required_trades": string[],              // trades we would need subcontractors for',
-    '  "trade_scopes": [{ "trade": string, "work": string }],  // REQUIRED for each required_trades entry: 2-5 plain-English sentences a non-expert can read aloud on a phone call — exactly what THAT trade must do on this job (tasks, locations, materials, frequency). No jargon, no government form numbers, no contracting-officer contact info.',
+    '  "trade_scopes": [{ "trade": string, "work": string }],  // REQUIRED for each required_trades entry: 2-5 plain-English sentences a non-expert can read aloud on a phone call, exactly what THAT trade must do on this job (tasks, locations, materials, frequency). No jargon, no government form numbers, no contracting-officer contact info.',
     '  "geographic_area": string,                // area to source subs from',
     '  "risk_flags": string[],                   // short machine-ish flags, e.g. "liquidated_damages", "high_bonding"',
     '  "past_perf_classification": "not_required"|"team_accepted"|"prime_only",',

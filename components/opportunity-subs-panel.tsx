@@ -91,7 +91,7 @@ export function OpportunitySubsPanel({
           <div className="space-y-5">
             <p className="text-xs leading-relaxed text-slate-500">
               Status and history update as emails send, replies arrive, calls are
-              logged, or a call is skipped — the same record you see on each
+              logged, or a call is skipped, the same record you see on each
               sub&rsquo;s full profile.
             </p>
             {[...trades.entries()].map(([trade, rows]) => {
@@ -173,7 +173,7 @@ export function OpportunitySubsPanel({
                               ? timeAgo(s.last_touch_at)
                               : s.last_contacted
                                 ? timeAgo(s.last_contacted)
-                                : "—"}
+                                : "Not set"}
                           </span>
                           {s.responded_at && (
                             <span className="text-pursue">

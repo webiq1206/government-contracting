@@ -169,7 +169,7 @@ export const outreachFollowup: AgentDefinition = {
           status: "error",
           opportunityId: row.opportunity_id,
           subcontractorId: row.subcontractor_id,
-          message: `Held follow-up email — nothing was sent. ${res.error}`,
+          message: `Held follow-up email, nothing was sent. ${res.error}`,
         });
       }
     }
@@ -783,7 +783,7 @@ export const replyPoll: AgentDefinition = {
       const priceNote = quoteSaved
         ? ` Their quote of $${extracted.quoteAmount!.toLocaleString()} was saved to the record; confirm it on the call.`
         : quoteSkippedExisting
-          ? ` Their email quotes $${extracted.quoteAmount!.toLocaleString()}, but a quote already exists for this sub on this job — review and update it manually if needed.`
+          ? ` Their email quotes $${extracted.quoteAmount!.toLocaleString()}, but a quote already exists for this sub on this job, review and update it manually if needed.`
           : mentionedPrice != null
             ? ` Their email mentions $${mentionedPrice.toLocaleString()}, confirm it on the call.`
             : "";
@@ -802,7 +802,7 @@ export const replyPoll: AgentDefinition = {
             quoteSaved
               ? ` Quote <strong>$${extracted.quoteAmount!.toLocaleString()}</strong> saved automatically.`
               : quoteSkippedExisting
-                ? ` Quotes <strong>$${extracted.quoteAmount!.toLocaleString()}</strong>, but an existing quote is on file — review manually.`
+                ? ` Quotes <strong>$${extracted.quoteAmount!.toLocaleString()}</strong>, but an existing quote is on file, review manually.`
                 : mentionedPrice != null
                   ? ` Mentions <strong>$${mentionedPrice.toLocaleString()}</strong>.`
                   : ""

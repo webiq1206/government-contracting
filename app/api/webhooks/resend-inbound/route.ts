@@ -75,7 +75,7 @@ export async function POST(req: Request) {
         action: "resend-inbound-error",
         level: "error",
         status: "error",
-        message: `Resend inbound webhook received email ${emailId} but its content could not be fetched: ${fetched.error}. The reply was NOT captured — check it in the info@ inbox.`,
+        message: `Resend inbound webhook received email ${emailId} but its content could not be fetched: ${fetched.error}. The reply was NOT captured, check it in the info@ inbox.`,
       });
       return NextResponse.json({ error: "content fetch failed" }, { status: 502 });
     }
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
   const priceNote = result.quoteSaved
     ? ` Their quote of $${result.extracted.quoteAmount!.toLocaleString()} was saved to the record; confirm it on the call.`
     : result.quoteSkippedExisting
-      ? ` Their email quotes $${result.extracted.quoteAmount!.toLocaleString()}, but a quote already exists — review manually.`
+      ? ` Their email quotes $${result.extracted.quoteAmount!.toLocaleString()}, but a quote already exists, review manually.`
       : result.extracted.quoteAmount != null
         ? ` Their email mentions $${result.extracted.quoteAmount.toLocaleString()}, confirm it on the call.`
         : "";

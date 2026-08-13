@@ -814,7 +814,7 @@ function SceneSubmit({ local, cursor }: SceneProps) {
         </div>
         <div style={{ marginTop: 18, font: `400 34px/1.45 ${sans}`, color: MUTED, maxWidth: 1080 }}>
           The package is complete. Brost Co will not file to the agency on your
-          behalf — you submit through the agency channel, then mark it sent here.
+          behalf. You submit through the agency channel, then mark it sent here.
         </div>
 
         <div style={{ display: "flex", gap: 72, marginTop: 40, paddingTop: 34, borderTop: `1px solid ${HAIR}` }}>
@@ -930,7 +930,7 @@ export const BEATS: Beat[] = [
   {
     id: "scoring",
     kicker: "02 · Analysis & scoring",
-    caption: "Each one gets a fit score you can trace — NAICS, set-aside, past work, distance.",
+    caption: "Each one gets a fit score you can trace: NAICS, set-aside, past work, distance.",
     tag: "auto",
     dur: 4.6,
     Scene: SceneScore,

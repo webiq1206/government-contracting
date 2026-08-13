@@ -202,7 +202,7 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Field
                     label="Minimum days between arrival and the deadline"
-                    hint="Set 0 to turn this rule off. 7–14 days is typical."
+                    hint="Set 0 to turn this rule off. 7 to 14 days is typical."
                   >
                     <input
                       type="number"

@@ -96,7 +96,7 @@ const PHASES: Phase[] = [
         n: 4,
         name: "Score every opportunity",
         who: "auto",
-        what: "Each opportunity is scored 0–100 against your company profile (fit, geography, size, set-aside, deadline feasibility, risk, and more). Strong fits (Pursue) continue automatically. Borderline fits (Review) wait for you. Poor fits are set aside.",
+        what: "Each opportunity is scored 0-100 against your company profile (fit, geography, size, set-aside, deadline feasibility, risk, and more). Strong fits (Pursue) continue automatically. Borderline fits (Review) wait for you. Poor fits are set aside.",
         next: "Pursue-tier work starts analysis on its own. Review-tier work appears on Today and in the Review Queue.",
       },
       {

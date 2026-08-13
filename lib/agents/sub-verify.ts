@@ -169,7 +169,7 @@ export const subVerify: AgentDefinition = {
               : "mx_missing";
           notes.push(
             emailVerified
-              ? "Email published on the sub's own website and its domain accepts mail — treated as sendable."
+              ? "Email published on the sub's own website and its domain accepts mail, treated as sendable."
               : mxOk
                 ? "Email scraped from website is off-domain (free-mail or third party); kept as a draft for operator approval."
                 : "Email scraped from website but its domain has no MX records; likely undeliverable."

@@ -54,7 +54,7 @@ function blank(v: unknown): boolean {
   if (v == null) return true;
   if (typeof v === "string") {
     const s = v.trim();
-    return s.length === 0 || NA_RE.test(s) || s === "-" || s === "—";
+    return s.length === 0 || NA_RE.test(s) || s === "-" || s === "\u2014";
   }
   if (Array.isArray(v)) return v.length === 0;
   return false;

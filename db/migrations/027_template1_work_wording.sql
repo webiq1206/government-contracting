@@ -4,7 +4,7 @@ UPDATE templates
 SET body =
   'Hi {{owner_name}},' || chr(10) ||
   '' || chr(10) ||
-  'I''m {{sender_name}} with {{company_name}}. We have a {{trade}} job in {{location_state}} — deadline {{deadline}} — and need a qualified local partner to price the scope.' || chr(10) ||
+  'I''m {{sender_name}} with {{company_name}}. We have a {{trade}} job in {{location_state}}, deadline {{deadline}}, and need a qualified local partner to price the scope.' || chr(10) ||
   '' || chr(10) ||
   'What we need you to do: {{scope_summary}}' || chr(10) ||
   '' || chr(10) ||

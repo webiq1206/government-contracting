@@ -512,7 +512,7 @@ export function SubmissionPackage({
                   <a
                     className="text-accent-strong underline"
                     href={`mailto:${contact.email}?subject=${encodeURIComponent(
-                      `Quote Submission${solicitationNumber ? ` – ${solicitationNumber}` : ""}${opportunityTitle ? ` – ${opportunityTitle}` : ""}`
+                      `Quote Submission${solicitationNumber ? `, ${solicitationNumber}` : ""}${opportunityTitle ? `, ${opportunityTitle}` : ""}`
                     )}&body=${encodeURIComponent(
                       "Good morning,\n\nPlease find our quote attached for the referenced solicitation. All required documents are included.\n\nWe appreciate your consideration and are available for any questions.\n\n[Your name]\n[Your company]\n[Your phone]"
                     )}`}

@@ -17,7 +17,7 @@ export function SubWorkNeeded({
   if (!work.work) return null;
 
   const title = work.trade
-    ? `What we need them to do — ${work.trade}`
+    ? `What we need them to do: ${work.trade}`
     : "What we need them to do";
 
   if (variant === "inline") {
@@ -50,7 +50,7 @@ export function SubWorkNeeded({
         <p className="eyebrow text-accent-strong">{title}</p>
         <InfoTip label="About this work description">
           Plain-English summary of the work this subcontractor would perform.
-          Use it on calls and in replies — you should not need the full
+          Use it on calls and in replies, you should not need the full
           solicitation in front of you.
           {!work.tradeSpecific &&
             " This is the overall job scope; a trade-specific summary was not available yet."}

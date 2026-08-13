@@ -92,7 +92,7 @@ export const outreach: AgentDefinition = {
       );
       return {
         ok: true,
-        summary: `Held ${sub.company_name}: no verified email and no phone — automation cannot reach them.`,
+        summary: `Held ${sub.company_name}: no verified email and no phone, automation cannot reach them.`,
         humanActionRequired: true,
       };
     }
@@ -343,7 +343,7 @@ export const outreach: AgentDefinition = {
           opportunityId,
           subcontractorId,
           message: res.blocked
-            ? `Held email to ${sub.company_name} — nothing was sent. ${res.error}`
+            ? `Held email to ${sub.company_name}, nothing was sent. ${res.error}`
             : `${res.provider === "resend" ? "Resend" : "Gmail"} send failed: ${res.error}`,
         });
       } else {

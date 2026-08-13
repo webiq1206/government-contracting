@@ -7,6 +7,7 @@ import { query } from "./db";
 import { storage } from "./integrations/storage";
 import type { OutreachAttachment } from "./integrations/email-transport";
 import { normalizeAttachmentMeta } from "./domain/attachment-meta";
+import { publicDocUrl, isAllowedUpstream } from "./domain/doc-link";
 
 /** Keep total attachment payload comfortably under Gmail's 25MB raw limit. */
 const MAX_TOTAL_BYTES = 15 * 1024 * 1024;
@@ -114,8 +115,11 @@ async function materializeDocs(
         content: bytes,
       });
       if (total + bytes.length > MAX_TOTAL_BYTES) {
-        const url = await storage.signedUrl(d.storage_path, 7 * 24 * 3600);
-        if (url) links.push({ name: meta.filename, url });
+        // Too big to attach: link it on OUR domain, never a storage provider.
+        links.push({
+          name: meta.filename,
+          url: publicDocUrl({ k: "s", v: d.storage_path, n: meta.filename }),
+        });
         continue;
       }
       total += bytes.length;
@@ -125,11 +129,11 @@ async function materializeDocs(
         mime: meta.mime,
       });
     } catch {
-      const url = await storage.signedUrl(d.storage_path, 7 * 24 * 3600).catch(() => null);
-      if (url) {
-        const meta = normalizeAttachmentMeta({ filename: d.name, mime: d.mime });
-        links.push({ name: meta.filename, url });
-      }
+      const meta = normalizeAttachmentMeta({ filename: d.name, mime: d.mime });
+      links.push({
+        name: meta.filename,
+        url: publicDocUrl({ k: "s", v: d.storage_path, n: meta.filename }),
+      });
     }
   }
 
@@ -153,24 +157,32 @@ async function materializeDocs(
           files.push({ filename: meta.filename, content: bytes, mime: meta.mime });
           continue;
         }
-        const url = await storage.signedUrl(a.storage_path, 7 * 24 * 3600).catch(() => null);
-        if (url) {
-          links.push({ name: meta.filename, url });
-          continue;
-        }
+        links.push({
+          name: meta.filename,
+          url: publicDocUrl({ k: "s", v: a.storage_path, n: meta.filename }),
+        });
+        continue;
       } catch {
-        const url = await storage.signedUrl(a.storage_path, 7 * 24 * 3600).catch(() => null);
-        if (url) {
-          const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
-          links.push({ name: meta.filename, url });
-          continue;
-        }
+        const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
+        links.push({
+          name: meta.filename,
+          url: publicDocUrl({ k: "s", v: a.storage_path, n: meta.filename }),
+        });
+        continue;
       }
     }
     if (a.url && !seen.has(a.url)) {
       seen.add(a.url);
       const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
-      links.push({ name: meta.filename, url: a.url });
+      // Never hand a subcontractor a SAM.gov URL. We proxy the file through
+      // our own domain so the email only ever shows a brostco.com link, and
+      // the recipient is not invited to go bid the job themselves.
+      if (isAllowedUpstream(a.url)) {
+        links.push({
+          name: meta.filename,
+          url: publicDocUrl({ k: "u", v: a.url, n: meta.filename }),
+        });
+      }
     }
   }
 
