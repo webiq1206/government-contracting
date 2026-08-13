@@ -72,6 +72,7 @@ export async function signupAccount(input: {
       organizationId: org.id,
       subscriptionStatus: org.subscription_status,
       planKey: org.plan_key,
+      trialEndsAt: org.trial_ends_at,
     },
     orgId: org.id,
     token,

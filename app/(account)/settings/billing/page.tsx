@@ -8,12 +8,17 @@ import {
 } from "@/lib/billing/prices";
 import { shortDate } from "@/lib/format";
 import { stripeEnabled } from "@/lib/billing/enabled";
+import { accessLevel, trialDaysLeft, isCardlessTrial } from "@/lib/billing/entitlements";
+import { allQuotaStates, TRIAL_METRIC_LABEL } from "@/lib/billing/trial-limits";
+import { TrialPlanPicker } from "@/components/trial-plan-picker";
 
 export const dynamic = "force-dynamic";
 
 const SUBSCRIPTION_STATUS_LABEL: Record<string, string> = {
   active: "Active",
   trialing: "Trial",
+  trial: "Free trial",
+  trial_expired: "Trial ended",
   canceled: "Canceled",
   past_due: "Past due",
   unpaid: "Unpaid",
@@ -32,7 +37,10 @@ function subscriptionStatusClass(status: string | null | undefined): string {
   switch (status) {
     case "active":
     case "trialing":
+    case "trial":
       return "text-pursue";
+    case "trial_expired":
+      return "text-risk";
     case "past_due":
     case "unpaid":
     case "incomplete":
@@ -48,12 +56,18 @@ function subscriptionStatusClass(status: string | null | undefined): string {
 export default async function BillingSettingsPage({
   searchParams,
 }: {
-  searchParams?: { error?: string; checkout?: string };
+  searchParams?: { error?: string; checkout?: string; expired?: string };
 }) {
   const user = await currentUser();
   const org = user?.organizationId
     ? await getOrganization(user.organizationId)
     : null;
+
+  const access = org ? accessLevel(org) : "none";
+  const onTrial = org ? isCardlessTrial(org) : false;
+  const daysLeft = org ? trialDaysLeft(org) : 0;
+  // Only a live trial has meters worth showing.
+  const quotas = org && access === "trial" ? await allQuotaStates(org.id).catch(() => []) : [];
 
   const status = org?.subscription_status ?? "none";
   const statusLabel = subscriptionStatusLabel(status);
@@ -88,10 +102,6 @@ export default async function BillingSettingsPage({
     <Link href="/api/billing/portal" className="btn-primary">
       Open billing portal
     </Link>
-  ) : canCheckout ? (
-    <Link href="/api/billing/checkout?plan=standard" className="btn-primary">
-      Start 7-day free trial
-    </Link>
   ) : null;
 
   return (
@@ -112,6 +122,65 @@ export default async function BillingSettingsPage({
           <div className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-slate-600">
             Checkout canceled. Your account is unchanged.
           </div>
+        )}
+
+        {/* The locked state. Anyone redirected here by the access gate lands
+            on this first, so the answer to "why can I not get in" is the top
+            of the page and the fix is directly under it. */}
+        {access === "none" && onTrial && (
+          <div className="card max-w-xl space-y-2 border-risk/40 bg-risk/5">
+            <p className="text-sm font-semibold text-slate-900">Your free trial has ended</p>
+            <p className="text-sm leading-relaxed text-slate-700">
+              Nothing has been deleted. Your company profile, every opportunity found for
+              you, your subcontractor database, and any quotes already received are exactly
+              where you left them. Choose a plan below and it all comes straight back.
+            </p>
+            <p className="text-sm text-slate-600">
+              You were never charged and no card is on file.
+            </p>
+          </div>
+        )}
+
+        {access === "trial" && (
+          <div className="card max-w-xl space-y-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="eyebrow">Free trial</p>
+              <p className={`text-sm font-semibold ${daysLeft <= 2 ? "text-risk" : "text-slate-900"}`}>
+                {daysLeft <= 0
+                  ? "Ends today"
+                  : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left`}
+                {org?.trial_ends_at ? ` · ${shortDate(org.trial_ends_at)}` : ""}
+              </p>
+            </div>
+            <p className="text-sm leading-relaxed text-slate-600">
+              Finding, scoring, and analysing opportunities runs without limit during the
+              trial. These three are metered so the trial cannot run up a bill on your
+              behalf:
+            </p>
+            <ul className="space-y-1.5 text-sm">
+              {quotas.map((q) => (
+                <li key={q.metric} className="flex items-center justify-between gap-3">
+                  <span className="text-slate-700">{TRIAL_METRIC_LABEL[q.metric]}</span>
+                  <span className={`num text-sm ${q.exhausted ? "text-risk" : "text-slate-800"}`}>
+                    {q.used} of {q.limit}
+                    {q.exhausted ? " · used up" : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-slate-500">
+              Choosing a plan lifts every limit immediately. Nothing is charged until you do.
+            </p>
+          </div>
+        )}
+
+        {/* Plan choice, for anyone who has not yet paid. */}
+        {!hasStripeCustomer && canCheckout && (
+          <TrialPlanPicker
+            expired={access === "none"}
+            foundingMonthly={FOUNDING_MONTHLY_USD}
+            standardMonthly={STANDARD_MONTHLY_USD}
+          />
         )}
 
         <div className="card max-w-xl space-y-3">

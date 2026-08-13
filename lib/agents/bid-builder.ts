@@ -76,6 +76,15 @@ export const bidBuilder: AgentDefinition = {
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
 
+    // Trial meter, before any Claude call or document render. A bid package is
+    // the most expensive thing the platform builds, so the check sits ahead of
+    // the work rather than beside the insert.
+    const { checkTrialQuota } = await import("../billing/trial-limits");
+    const quota = await checkTrialQuota(opp.org_id, "bid_packages");
+    if (!quota.allowed) {
+      return { ok: false, summary: quota.message ?? "Trial limit reached.", humanActionRequired: true };
+    }
+
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 

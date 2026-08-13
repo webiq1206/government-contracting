@@ -109,17 +109,17 @@ export function LandingPage({
   const monthlySavings = currency(standardMonthly - foundingMonthly);
   const showCountdown = promoActive && promoEndsAt;
   const primaryCta = promoActive
-    ? "Start founding free trial"
-    : "Start free trial";
-  const priceCta = "Start 7-day free trial";
+    ? "Start founding trial, no card"
+    : "Start free trial, no card";
+  const priceCta = "Start free trial, no card";
   // Sticky bar carries the money question; the button carries the action.
   const stickyPriceNote = promoActive
     ? `${foundingLabel}/mo founding rate, locked for life`
     : `${standardLabel} per month after your free trial`;
   const stickySubNote = "Cancel anytime";
   const pricingFaq = promoActive
-    ? `Standard pricing is ${standardLabel} per month. Founding customers who join during the launch window lock in ${foundingLabel} per month for as long as they remain subscribed. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`
-    : `Brost Co is ${standardLabel} per month. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`;
+    ? `Standard pricing is ${standardLabel} per month. Founding customers who join during the launch window lock in ${foundingLabel} per month for as long as they remain subscribed. Every plan starts with a free 7-day trial that needs no credit card. Choose a plan before the trial ends to keep your account; nothing is charged until you do.`
+    : `Brost Co is ${standardLabel} per month. Every plan starts with a free 7-day trial that needs no credit card. Choose a plan before the trial ends to keep your account; nothing is charged until you do.`;
   const faqItems = [
     ...FAQ_BASE.slice(0, 4),
     { q: "How much does Brost Co cost?", a: pricingFaq },
@@ -617,8 +617,8 @@ export function LandingPage({
                 <aside>
                   <b>FOUNDING RATE</b>
                   <span>
-                    Locked for the life of your active subscription. Includes a free 7-day
-                    trial.
+                    Locked for the life of your active subscription. Starts with a free
+                    7-day trial, no credit card.
                   </span>
                 </aside>
               )}
@@ -637,7 +637,7 @@ export function LandingPage({
                   </div>
                   <p>
                     Save {monthlySavings} each month while founding enrollment remains open.
-                    Start with a free 7-day trial. After that, you are billed {foundingLabel}
+                    Start with a free 7-day trial, no credit card. After that, you are billed {foundingLabel}
                     per month unless you cancel.
                   </p>
                 </>

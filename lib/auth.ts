@@ -71,6 +71,12 @@ export interface SessionUser {
   /** Stripe subscription_status for the org (active, trialing, none, …). */
   subscriptionStatus: string | null;
   planKey: string | null;
+  /**
+   * End of the cardless trial, carried on the session so every access gate can
+   * judge expiry without a second query. A status alone cannot tell a live
+   * trial from a lapsed one.
+   */
+  trialEndsAt: string | null;
 }
 
 /**
@@ -117,6 +123,7 @@ export async function authenticate(
       organizationId: null,
       subscriptionStatus: null,
       planKey: null,
+      trialEndsAt: null,
     });
   }
 
@@ -136,6 +143,7 @@ export async function authenticate(
       organizationId: null,
       subscriptionStatus: null,
       planKey: null,
+      trialEndsAt: null,
     });
   }
   return null;
@@ -150,6 +158,7 @@ async function attachOrg(user: SessionUser): Promise<SessionUser> {
       organizationId: org?.id ?? null,
       subscriptionStatus: org?.subscription_status ?? null,
       planKey: org?.plan_key ?? null,
+      trialEndsAt: org?.trial_ends_at ?? null,
     };
   } catch {
     return user;
@@ -182,6 +191,7 @@ export async function resolveSession(token: string | undefined): Promise<Session
         organizationId: null,
         subscriptionStatus: null,
         planKey: null,
+        trialEndsAt: null,
       });
     }
     return null;
@@ -207,6 +217,7 @@ export async function resolveSession(token: string | undefined): Promise<Session
     organizationId: null,
     subscriptionStatus: null,
     planKey: null,
+    trialEndsAt: null,
   });
 }
 

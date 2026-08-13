@@ -5,6 +5,7 @@ import type { PoolClient } from "pg";
 import { query, queryOne } from "./db";
 import { LEGACY_ORG_ID } from "./tenant-context";
 import type { PlanKey } from "./billing/prices";
+import { TRIAL_STATUS, trialEndsAt } from "./billing/entitlements";
 
 export interface Organization {
   id: string;
@@ -35,8 +36,20 @@ export interface Organization {
 
 const ACTIVE = new Set(["active", "trialing"]);
 
+/**
+ * Whether a status grants any access at all.
+ *
+ * Includes our cardless trial. Note what this cannot see: the trial's END
+ * DATE. A status of 'trial' is allowed here even on a lapsed trial, because
+ * the argument is a bare string. Anything that can load the organization
+ * should call `accessLevel()` in billing/entitlements.ts instead, which
+ * checks the date and is what the real gates use. This function survives for
+ * callers that only ever hold a status, and it is deliberately the more
+ * permissive of the two: the expiry sweep flips lapsed trials to
+ * 'trial_expired' within the hour, and every gate that matters re-checks.
+ */
 export function subscriptionAllowsAccess(status: string | null | undefined): boolean {
-  return ACTIVE.has(status ?? "");
+  return ACTIVE.has(status ?? "") || status === "trial";
 }
 
 export async function getOrganization(orgId: string): Promise<Organization | null> {
@@ -106,10 +119,12 @@ export async function createOrganizationForUser(
   }
 
   const org = await q1<Organization>(
-    `insert into organizations (name, slug, plan_key, subscription_status)
-     values ($1, $2, 'none', 'none')
+    // Starts on the cardless trial. The trial clock begins at signup rather
+    // than at first use, so "7 days" means the same thing to us and to them.
+    `insert into organizations (name, slug, plan_key, subscription_status, trial_ends_at)
+     values ($1, $2, 'none', $3, $4)
      returning *`,
-    [input.name.trim() || "My company", slug]
+    [input.name.trim() || "My company", slug, TRIAL_STATUS, trialEndsAt().toISOString()]
   );
   if (!org) throw new Error("Failed to create organization.");
 

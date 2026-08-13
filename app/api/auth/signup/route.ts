@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
 import { signupAccount } from "@/lib/auth-signup";
 import { setSessionCookie } from "@/lib/auth";
-import { getFoundingPromo } from "@/lib/billing/promo";
-import {
-  appBaseUrl,
-  createCheckoutSession,
-  stripeEnabled,
-} from "@/lib/billing/stripe";
 import { trackEvent } from "@/lib/analytics";
-import { billingConfigured, type BillingInterval } from "@/lib/billing/catalog";
+import { billingConfigured } from "@/lib/billing/catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,50 +45,28 @@ export async function POST(req: Request) {
 
   await setSessionCookie(result.token);
 
-  const promo = await getFoundingPromo({ startIfMissing: false });
-  let plan: "founding" | "standard" =
-    body.plan === "founding" ? "founding" : "standard";
-  if (plan === "founding" && !promo.active) plan = "standard";
-  const interval: BillingInterval = body.interval === "year" ? "year" : "month";
-
-  // No unpaid path to an active account. This previously activated the
-  // organization outright whenever Stripe was unconfigured, which in
-  // production handed out full access for free to anyone who signed up.
+  // Signup no longer touches Stripe. The 7-day trial is cardless and granted
+  // by createOrganizationForUser, so the first thing a new customer sees is
+  // the product rather than a payment form. Billing being unconfigured is
+  // therefore no longer a reason to refuse a signup: it only prevents the
+  // upgrade, which is checked at /api/billing/checkout when they choose a
+  // plan. It is still worth a loud log, because a trial nobody can convert is
+  // a silent revenue outage.
   const configured = billingConfigured();
   if (!configured.ok) {
-    console.error("[billing] signup blocked, missing:", configured.missing.join(", "));
-    return NextResponse.json(
-      {
-        error:
-          "Signups are temporarily unavailable while billing is being set up. Please try again shortly.",
-      },
-      { status: 503 }
-    );
-  }
-
-  const checkout = await createCheckoutSession({
-    orgId: result.orgId,
-    customerEmail: result.user.email,
-    plan,
-    interval,
-    successUrl: `${appBaseUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${appBaseUrl()}/signup?plan=${plan}&checkout=canceled`,
-  });
-
-  if (!checkout.url) {
-    return NextResponse.json(
-      { error: checkout.error || "Checkout unavailable." },
-      { status: 502 }
+    console.error(
+      "[billing] TRIALS CANNOT CONVERT, missing:",
+      configured.missing.join(", ")
     );
   }
 
   await trackEvent({
-    event: "checkout_started",
+    event: "trial_started",
     orgId: result.orgId,
     userId: result.user.id,
     path: "/signup",
-    meta: { plan },
+    meta: { plan: body.plan === "founding" ? "founding" : "standard" },
   });
 
-  return NextResponse.json({ checkoutUrl: checkout.url });
+  return NextResponse.json({ redirect: "/today" });
 }

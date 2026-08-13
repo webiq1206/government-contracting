@@ -6,7 +6,6 @@
 import { config } from "../config";
 import { stripeEnabled } from "./enabled";
 import {
-  TRIAL_DAYS,
   priceIdFor,
   type BillingInterval,
 } from "./catalog";
@@ -49,6 +48,13 @@ export async function createCheckoutSession(input: {
   cancelUrl: string;
   /** Enable Stripe's promotion-code box. Stripe enforces validity and expiry. */
   allowPromotionCodes?: boolean;
+  /**
+   * Stripe-side trial days. Defaults to none, because the free trial now
+   * happens BEFORE checkout and is cardless: someone reaching this page has
+   * already had their 7 days and is choosing to start paying. Granting a
+   * second trial here would silently double every trial to 14 days.
+   */
+  trialDays?: number;
 }): Promise<{ url: string | null; error?: string }> {
   const stripe = getStripe();
   if (!stripe) return { url: null, error: "Stripe is not configured." };
@@ -75,8 +81,7 @@ export async function createCheckoutSession(input: {
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
       client_reference_id: input.orgId,
-      // Collect a card up front so Stripe can charge automatically when the
-      // trial ends unless the customer cancels in the Billing portal.
+      // A card is always collected here: this is the upgrade, not the trial.
       payment_method_collection: "always",
       metadata: {
         org_id: input.orgId,
@@ -84,7 +89,9 @@ export async function createCheckoutSession(input: {
         interval: input.interval,
       },
       subscription_data: {
-        trial_period_days: TRIAL_DAYS,
+        ...(input.trialDays && input.trialDays > 0
+          ? { trial_period_days: input.trialDays }
+          : {}),
         metadata: {
           org_id: input.orgId,
           plan_key: input.plan,

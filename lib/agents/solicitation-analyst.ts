@@ -398,6 +398,19 @@ export const solicitationAnalyst: AgentDefinition = {
       };
     }
 
+    // Trial meter. Placed after the idempotency return so re-running an
+    // existing analysis is free: the meter counts opportunities analysed, not
+    // times the agent was invoked.
+    const { checkTrialQuota } = await import("../billing/trial-limits");
+    const briefQuota = await checkTrialQuota(opp.org_id, "ai_briefs");
+    if (!briefQuota.allowed) {
+      return {
+        ok: false,
+        summary: briefQuota.message ?? "Trial limit reached.",
+        humanActionRequired: true,
+      };
+    }
+
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 

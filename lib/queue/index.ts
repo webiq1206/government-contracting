@@ -90,6 +90,7 @@ export const QUEUE_NAMES = [
   "expired-opportunity-sweep",
   "retention-sweep",
   "compliance-sweep",
+  "trial-sweep",
   "log-retention-sweep",
   "backlink-outreach-sweep",
   "contact-recheck-sweep",

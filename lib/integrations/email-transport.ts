@@ -115,6 +115,19 @@ export async function sendOutreachEmail(
   }
 
   const orgId = params.orgId ?? (await tryResolveTenantOrgId());
+
+  // The trial's outreach meter. Every path that emails a subcontractor goes
+  // through this function, which is why the check lives here rather than in
+  // each agent: a new sending code path inherits the limit instead of
+  // quietly bypassing it. Reported as `disabled` so callers already handle
+  // it the same way they handle a paused or unconnected transport, and the
+  // message is the one the operator sees.
+  const { checkTrialQuota } = await import("../billing/trial-limits");
+  const quota = await checkTrialQuota(orgId, "outreach_emails");
+  if (!quota.allowed) {
+    return { provider: null, disabled: true, error: quota.message };
+  }
+
   if (!(await gmail.isConnected(orgId ?? undefined))) {
     return {
       provider: null,

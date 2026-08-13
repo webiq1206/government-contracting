@@ -28,13 +28,15 @@
 import { NextResponse } from "next/server";
 import { queryOne } from "./db";
 import { requireUser } from "./api-auth";
-import { subscriptionAllowsAccess } from "./organizations";
+import { accessLevel, accessBlockedReason, type AccessLevel } from "./billing/entitlements";
 import { resolveTenantOrgId } from "./tenant";
 import type { SessionUser } from "./auth";
 
 export interface OrgContext {
   user: SessionUser;
   orgId: string;
+  /** "full" or "trial". Never "none": that is refused before this is built. */
+  access: AccessLevel;
 }
 
 /**
@@ -50,10 +52,22 @@ export async function requireOrgContext(
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
 
+  // Date-aware: a trial past its end date is refused here even if the expiry
+  // sweep has not yet rewritten the stored status.
+  const level = accessLevel({
+    subscription_status: auth.subscriptionStatus,
+    trial_ends_at: auth.trialEndsAt,
+  });
   const requireBilling = opts.requireBilling !== false;
-  if (requireBilling && !subscriptionAllowsAccess(auth.subscriptionStatus)) {
+  if (requireBilling && level === "none") {
     return NextResponse.json(
-      { error: "Subscription inactive. Update billing to continue." },
+      {
+        error: accessBlockedReason({
+          subscription_status: auth.subscriptionStatus,
+          trial_ends_at: auth.trialEndsAt,
+        }),
+        upgradeUrl: "/settings/billing",
+      },
       { status: 402 }
     );
   }
@@ -68,7 +82,7 @@ export async function requireOrgContext(
     return NextResponse.json({ error: "No organization on this account." }, { status: 403 });
   }
 
-  return { user: auth, orgId };
+  return { user: auth, orgId, access: level === "none" ? "trial" : level };
 }
 
 /**
