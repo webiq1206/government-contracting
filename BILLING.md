@@ -23,6 +23,33 @@ cancels first.
 
 ---
 
+## Current state (test mode)
+
+Set up on 2026-08-13 in the Brost Co account `acct_1U40q0BUr8hLmEzF`.
+
+| Item | Value |
+|---|---|
+| Products and prices | Created, all four, verified idempotent |
+| `STRIPE_PRICE_STANDARD_MONTHLY` | `price_1U418aBUr8hLmEzF9Q2qSHf0` |
+| `STRIPE_PRICE_STANDARD_ANNUAL` | `price_1U418aBUr8hLmEzF0SOU37vD` |
+| `STRIPE_PRICE_FOUNDING_MONTHLY` | `price_1U418bBUr8hLmEzFOB0qDfuS` |
+| `STRIPE_PRICE_FOUNDING_ANNUAL` | `price_1U418bBUr8hLmEzFJm8uIQvi` |
+| Webhook endpoint | `we_1U41CcBUr8hLmEzFZDkBGJrF`, active, 8 events, `https://brostco.com/api/billing/webhook` |
+| Portal configuration | `bpc_1U41EoBUr8hLmEzFHvtzuUeQ` |
+
+These are TEST ids. Live mode needs business verification first, then the same
+steps again: the setup script produces different price ids, the webhook has its
+own signing secret, and portal settings are configured separately per mode.
+
+**Plan switching is deliberately off in the Customer Portal.** Stripe's portal
+cannot enforce the grandfathered-rate protection, and worse, the webhook keeps
+`plan_key` locked for a grandfathered account while Stripe would charge the new
+price, so the record would read founding while the card was charged standard.
+Plan changes go through `/api/billing/change-plan`, which enforces it properly.
+The portal keeps payment methods, invoices, and cancellation.
+
+---
+
 ## Step 1: create the Brost Co Stripe account
 
 Brost Co bills under its own account, not webiq.co. That keeps brostco.com on
