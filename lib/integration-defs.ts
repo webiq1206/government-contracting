@@ -10,6 +10,13 @@ export interface IntegrationFieldDef {
   /** Secret values render masked and are never echoed back in full. */
   secret: boolean;
   placeholder?: string;
+  /**
+   * True for credentials that identify the APPLICATION rather than the
+   * customer: OAuth client IDs and secrets. When the platform ships these as
+   * deployment secrets every tenant inherits them, so the customer is never
+   * asked to register a developer app and the field is hidden from the UI.
+   */
+  developer?: boolean;
 }
 
 /** Plain-English "how to get this key", shown in an info box on the card. */
@@ -155,8 +162,8 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     without: "No automated outreach emails unless Resend is configured; you contact subs manually.",
     where: "console.cloud.google.com → OAuth client (Web) → paste ID + secret here, then click Connect Gmail.",
     fields: [
-      { env: "GMAIL_CLIENT_ID", label: "OAuth client ID", secret: false },
-      { env: "GMAIL_CLIENT_SECRET", label: "OAuth client secret", secret: true },
+      { env: "GMAIL_CLIENT_ID", label: "OAuth client ID", secret: false, developer: true },
+      { env: "GMAIL_CLIENT_SECRET", label: "OAuth client secret", secret: true, developer: true },
       { env: "GMAIL_SENDER", label: "Send-as address", secret: false, placeholder: "you@yourcompany.com" },
     ],
     testable: false,

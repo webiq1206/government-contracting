@@ -16,6 +16,12 @@ interface FieldState {
   placeholder?: string;
   source: "ui" | "env" | "none";
   masked: string | null;
+  /**
+   * True for credentials that belong to the APPLICATION, not the customer
+   * (OAuth client id/secret). When the platform supplies these as deployment
+   * secrets, no customer should ever see or create them.
+   */
+  developer?: boolean;
   last_validated_at?: string | null;
   last_error?: string | null;
 }
@@ -146,6 +152,16 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {items.map((def) => {
         const result = results[def.id];
+        // A credential the platform supplies for everyone. When it is present
+        // the customer has no developer app to register, so the sign-up
+        // instructions and the input boxes are noise: hide both.
+        const platformManaged = def.fields.some((f) => f.developer && f.source === "env");
+        const visibleFields = def.fields.filter((f) => !(f.developer && f.source === "env"));
+        // Connecting only needs the OAuth app credentials, whoever supplied
+        // them. The send-as address is set separately and must not gate this.
+        const oauthReady =
+          def.fields.some((f) => f.developer) &&
+          def.fields.filter((f) => f.developer).every((f) => f.source !== "none");
         return (
           <div key={def.id} className="card flex flex-col gap-3">
             <div className="flex items-start justify-between gap-3">
@@ -178,7 +194,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
               </p>
             )}
 
-            {def.guide && (
+            {def.guide && !platformManaged && (
               <details className="group rounded-md border border-accent/30 bg-accent-soft/60 open:pb-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium text-accent-strong [&::-webkit-details-marker]:hidden">
                   <span>How do I get this?</span>
@@ -217,7 +233,26 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
               </details>
             )}
 
-            {def.fields.map((f) => (
+            {platformManaged && (
+              <p className="flex items-center gap-2 text-xs text-pursue">
+                <span aria-hidden>✓</span>
+                <span>Connection set up for you. Just sign in below.</span>
+              </p>
+            )}
+
+            {visibleFields.map((f) =>
+              // Platform-managed credential: the operator of this platform set
+              // it once as a deployment secret, so every customer inherits it
+              // and must never be asked to create their own developer app.
+              // Show it as handled and render no input at all.
+              f.source === "env" && f.developer ? (
+                <div key={f.env} className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span aria-hidden className="text-pursue">
+                    ✓
+                  </span>
+                  <span>{f.label}: set up for you, nothing to enter.</span>
+                </div>
+              ) : (
               <div key={f.env}>
                 <div className="flex items-center justify-between">
                   <label className="label">{f.label}</label>
@@ -252,10 +287,11 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
                   onChange={(e) => setDrafts((d) => ({ ...d, [f.env]: e.target.value }))}
                 />
               </div>
-            ))}
+              )
+            )}
 
             {def.id === "gmail" &&
-              (def.configured ? (
+              (oauthReady ? (
                 <a href="/api/integrations/gmail/connect" className="btn-ghost w-fit text-xs">
                   {def.gmailConnected ? "Reconnect Gmail" : "Connect Gmail →"}
                 </a>
@@ -298,7 +334,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
                     {busy === `test:${def.id}` ? "Testing…" : "Test connection"}
                   </button>
                 )}
-                {def.fields.length > 0 && (
+                {visibleFields.length > 0 && (
                   <button
                     className="btn-primary text-xs"
                     onClick={() => save(def)}
