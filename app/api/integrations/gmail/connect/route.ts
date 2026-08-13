@@ -17,10 +17,15 @@ export async function GET() {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
   if (!config.gmail.configured) {
-    return NextResponse.json(
-      { error: "Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET first." },
-      { status: 400 }
+    // Never strand the operator on a raw JSON error page. Send them back to
+    // the page they came from with a plain-English explanation of the one
+    // thing they missed (pasting is not saving).
+    const back = new URL("/settings/integrations", config.appUrl);
+    back.searchParams.set(
+      "gmailError",
+      "Gmail is not connected yet: your OAuth client ID and secret have not been saved. Paste both into the Gmail card below and press Save, then click Connect Gmail."
     );
+    return NextResponse.redirect(back);
   }
   // Random state, stored in a short-lived httpOnly cookie and echoed via the
   // OAuth `state` param; the callback rejects any mismatch. This blocks a

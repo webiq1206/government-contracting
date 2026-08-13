@@ -254,14 +254,31 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
               </div>
             ))}
 
-            {def.id === "gmail" && (
-              <a
-                href="/api/integrations/gmail/connect"
-                className={`btn-ghost w-fit text-xs ${def.gmailConnected ? "" : ""}`}
-              >
-                {def.gmailConnected ? "Reconnect Gmail" : "Connect Gmail →"}
-              </a>
-            )}
+            {def.id === "gmail" &&
+              (def.configured ? (
+                <a href="/api/integrations/gmail/connect" className="btn-ghost w-fit text-xs">
+                  {def.gmailConnected ? "Reconnect Gmail" : "Connect Gmail →"}
+                </a>
+              ) : (
+                // Connecting before the client ID/secret are SAVED sends the
+                // operator to a raw JSON error on a blank page. Pasting into
+                // the boxes is not saving, so say so plainly and keep the
+                // button inert until there is something to connect with.
+                <div className="w-fit">
+                  <button
+                    type="button"
+                    disabled
+                    className="btn-ghost w-fit cursor-not-allowed text-xs opacity-50"
+                    title="Save your client ID and secret first"
+                  >
+                    Connect Gmail →
+                  </button>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Paste the client ID and secret above, press{" "}
+                    <span className="font-medium">Save</span>, then this button turns on.
+                  </p>
+                </div>
+              ))}
 
             {result && (
               <p className={`text-sm ${result.ok ? "text-pursue" : "text-risk"}`}>

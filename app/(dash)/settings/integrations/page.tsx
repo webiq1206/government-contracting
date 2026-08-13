@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function IntegrationsPage({
   searchParams,
 }: {
-  searchParams?: { gmail?: string };
+  searchParams?: { gmail?: string; gmailError?: string };
 }) {
   await hydrateIntegrationEnv();
   const [sources, gmailConnected] = await Promise.all([
@@ -31,6 +31,7 @@ export default async function IntegrationsPage({
   ]);
   const status = integrationStatus();
   const gmailParam = searchParams?.gmail;
+  const gmailError = searchParams?.gmailError;
   const resendOutreachActive = !gmailConnected && config.resend.enabled;
 
   const initial = INTEGRATION_DEFS.map((def) => {
@@ -81,8 +82,14 @@ export default async function IntegrationsPage({
       {(gmailParam === "connected" ||
         gmailParam === "denied" ||
         gmailParam === "error" ||
+        gmailError ||
         resendOutreachActive) && (
         <div className="shrink-0 space-y-3 border-b border-border px-5 py-4 sm:px-6">
+          {gmailError && (
+            <div className="card border-review/40 bg-review/5 text-sm text-review">
+              {gmailError}
+            </div>
+          )}
           {gmailParam === "connected" && (
             <div className="card border-pursue/40 bg-pursue/5 text-sm text-pursue">
               Gmail connected successfully. Outreach emails can now send.
