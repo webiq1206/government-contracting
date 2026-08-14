@@ -1,10 +1,23 @@
 /**
- * Shared inbound-reply capture pipeline, used by both the Gmail reply poller
- * (lib/agents/maintenance.ts) and the Resend inbound webhook
- * (app/api/webhooks/resend-inbound). Given an already-matched outbound
- * communication, it resolves/creates the subcontractor, records the inbound
- * communication, then either soft-closes on decline or marks responsive and
- * auto-saves the quote under the safety rules in lib/reply-matching.ts.
+ * Shared inbound-reply capture pipeline, used by the Gmail reply poller
+ * (lib/agents/maintenance.ts) and written to be reusable by an inbound-mail
+ * webhook. Given an already-matched outbound communication, it resolves or
+ * creates the subcontractor, records the inbound communication, then either
+ * soft-closes on decline or marks responsive and auto-saves the quote under
+ * the safety rules in lib/reply-matching.ts.
+ *
+ * Everything here takes the organization as an argument rather than resolving
+ * it, and every lookup names it.
+ *
+ * The reason is the weak match. A reply that carries no tracking token and no
+ * thread id is correlated by the sender's own email address, and an address is
+ * not unique to one tenant: the same electrician is on several customers'
+ * rosters and gets outreach from all of them. Unscoped, one customer's inbox
+ * poll could match another customer's outbound email, record the reply against
+ * their opportunity, mark it replied, attach the subcontractor, and on a strong
+ * enough match save a quote and start their bid. The sender chooses which
+ * organization gets hit by choosing when to reply, which is why the filter
+ * cannot be left to the caller to remember.
  */
 import { query, queryOne } from "./db";
 import {
@@ -36,6 +49,8 @@ export interface MatchedComm {
 }
 
 export interface CaptureReplyInput {
+  /** The organization that owns the conversation this reply belongs to. */
+  orgId: string;
   comm: MatchedComm;
   /** Reply correlated reliably (Gmail thread id or Resend plus-address token). */
   strongMatch: boolean;
@@ -114,8 +129,17 @@ export function parseCorrelationToken(recipients: string[]): string | null {
   return null;
 }
 
-/** Find the outbound communication a reply belongs to (strong then weak match). */
+/**
+ * Find the outbound communication a reply belongs to (strong then weak match),
+ * within one organization's own conversations.
+ *
+ * The mailbox being polled belongs to one customer, so the reply it produced
+ * can only answer that customer's outreach. A match outside the org is not a
+ * weaker match, it is the wrong conversation.
+ */
 export async function matchInboundReply(opts: {
+  /** The organization whose mailbox this reply arrived in. */
+  orgId: string;
   /** Plus-address tracking token extracted from the To/recipient list. Strong match. */
   trackingToken?: string | null;
   /** Gmail thread ID. Strong match (Gmail transport only). */
@@ -127,36 +151,37 @@ export async function matchInboundReply(opts: {
             (c.meta->>'trade') as trade
        from communications c
        left join subcontractors s on s.id = c.subcontractor_id
-       join opportunities o on o.id = c.opportunity_id`;
+       join opportunities o on o.id = c.opportunity_id
+      where c.org_id = $1`;
   if (opts.trackingToken) {
     const comm = await queryOne<MatchedComm>(
       `${select}
-        where c.tracking_id = $1 and c.direction='outbound'
+        and c.tracking_id = $2 and c.direction='outbound'
         order by c.created_at desc limit 1`,
-      [opts.trackingToken]
+      [opts.orgId, opts.trackingToken]
     );
     if (comm) return { comm, strongMatch: true };
   }
   if (opts.threadId) {
     const comm = await queryOne<MatchedComm>(
       `${select}
-        where c.gmail_thread_id = $1 and c.direction='outbound' and c.replied_at is null
+        and c.gmail_thread_id = $2 and c.direction='outbound' and c.replied_at is null
         order by c.created_at desc limit 1`,
-      [opts.threadId]
+      [opts.orgId, opts.threadId]
     );
     if (comm) return { comm, strongMatch: true };
   }
   const comm = await queryOne<MatchedComm>(
     `${select}
-      where lower(s.email) = $1 and c.direction='outbound' and c.replied_at is null
+      and lower(s.email) = $2 and c.direction='outbound' and c.replied_at is null
       order by c.created_at desc limit 1`,
-    [normalizeEmail(opts.fromEmail)]
+    [opts.orgId, normalizeEmail(opts.fromEmail)]
   );
   return { comm, strongMatch: false };
 }
 
 export async function captureReply(input: CaptureReplyInput): Promise<CaptureReplyResult> {
-  const { comm, strongMatch, fromEmail, replyText } = input;
+  const { orgId, comm, strongMatch, fromEmail, replyText } = input;
   const extract = input.extract ?? extractReplyFromReply;
   const closeOut = input.closeOut ?? closeOutDeclinedSub;
 
@@ -167,8 +192,8 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   if (input.messageId) {
     const existing = await queryOne<{ id: string; subcontractor_id: string | null }>(
       `select id, subcontractor_id from communications
-        where direction='inbound' and gmail_message_id = $1 limit 1`,
-      [input.messageId]
+        where org_id = $2 and direction='inbound' and gmail_message_id = $1 limit 1`,
+      [input.messageId, orgId]
     );
     if (existing) {
       return {
@@ -207,9 +232,13 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   let companyName = comm.company_name;
   let senderVerified = senderMatchesSub(fromEmail, comm.sub_email);
   if (!subId) {
+    // Scoped to this org: the same firm sits on several customers' rosters, so
+    // an unscoped match hands back another customer's subcontractor and pairs
+    // them with this opportunity.
     const bySender = await queryOne<{ id: string; company_name: string }>(
-      `select id, company_name from subcontractors where lower(email) = $1 limit 1`,
-      [normalizeEmail(fromEmail)]
+      `select id, company_name from subcontractors
+        where org_id = $2 and lower(email) = $1 limit 1`,
+      [normalizeEmail(fromEmail), orgId]
     );
     if (bySender) {
       subId = bySender.id;
@@ -220,11 +249,14 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
         extracted.companyName?.trim() ||
         fromEmail.split("@")[1]?.split(".")[0] ||
         fromEmail;
+      // subcontractors is a root table, so nothing derives its org. A sub
+      // created here without one is invisible to the roster of the customer
+      // whose reply created it.
       const inserted = await queryOne<{ id: string }>(
-        `insert into subcontractors (company_name, email, email_verified, trade_categories, notes)
-         values ($1, $2, false, $3, 'Auto-created from an email reply to outreach; verify before relying on it.')
+        `insert into subcontractors (org_id, company_name, email, email_verified, trade_categories, notes)
+         values ($4, $1, $2, false, $3, 'Auto-created from an email reply to outreach; verify before relying on it.')
          returning id`,
-        [name, normalizeEmail(fromEmail), osRow?.trade ? [osRow.trade] : []]
+        [name, normalizeEmail(fromEmail), osRow?.trade ? [osRow.trade] : [], orgId]
       );
       subId = inserted?.id ?? null;
       companyName = name;
@@ -258,8 +290,8 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // unique index (migration 022) makes this race-safe under concurrent
   // webhook retries.
   await query(
-    `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, replied_at, meta)
-     values ($1,$2,'email','inbound',$3,$4,$5,$6, now(), $7::jsonb)
+    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, replied_at, meta)
+     values ($8,$1,$2,'email','inbound',$3,$4,$5,$6, now(), $7::jsonb)
      on conflict do nothing`,
     [
       subId,
@@ -269,6 +301,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       input.threadId ?? null,
       input.messageId ?? null,
       JSON.stringify(meta),
+      orgId,
     ]
   );
   await query(`update communications set replied_at = now() where id = $1`, [comm.id]);
@@ -340,11 +373,19 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       .filter(Boolean)
       .join(" ");
     const inserted = await queryOne<{ id: string }>(
-      `insert into quotes (opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes)
-       values ($1,$2,$3,$4,$5,$6)
+      `insert into quotes (org_id, opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes)
+       values ($7,$1,$2,$3,$4,$5,$6)
        on conflict (opportunity_id, subcontractor_id, (coalesce(trade,''))) do nothing
        returning id`,
-      [comm.opportunity_id, subId, trade, extracted.quoteAmount, extracted.paymentTerms, notes]
+      [
+        comm.opportunity_id,
+        subId,
+        trade,
+        extracted.quoteAmount,
+        extracted.paymentTerms,
+        notes,
+        orgId,
+      ]
     );
     quoteSaved = inserted != null;
     quoteSkippedExisting = inserted == null;

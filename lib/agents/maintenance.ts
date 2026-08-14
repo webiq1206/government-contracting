@@ -875,6 +875,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // match, so email-matched replies never auto-save quotes).
       const fromEmail = (r.from.match(/<([^>]+)>/)?.[1] ?? r.from).toLowerCase().trim();
       const { comm, strongMatch } = await matchInboundReply({
+        orgId,
         threadId: r.threadId,
         fromEmail,
       });
@@ -900,6 +901,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // (strong correlation + sender ownership + AI-confirmed price + no
       // existing quote).
       const result = await captureReply({
+        orgId,
         comm,
         strongMatch,
         fromEmail,

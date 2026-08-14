@@ -16,6 +16,11 @@ d("reply capture pipeline (Resend inbound path)", () => {
   let cap: typeof import("../lib/reply-capture");
 
   const ids = {
+    // Capture takes the organization as an argument and every lookup names it,
+    // so the fixtures need a real one to belong to. A reply to a conversation
+    // owned by nobody is matched by nobody.
+    org: "",
+    orgName: `reply-capture-${randomUUID()}`,
     opp: "",
     sub: "",
     comm: "",
@@ -53,14 +58,22 @@ d("reply capture pipeline (Resend inbound path)", () => {
     ({ query, queryOne } = await import("../lib/db"));
     cap = await import("../lib/reply-capture");
 
+    const org = await queryOne<{ id: string }>(
+      `insert into organizations (name, subscription_status) values ($1, 'active') returning id`,
+      [ids.orgName]
+    );
+    ids.org = org!.id;
+
     const opp = await queryOne<{ id: string }>(
-      `insert into opportunities (title, stage, source) values ('TEST reply-capture opp', 'outreach', 'manual') returning id`
+      `insert into opportunities (org_id, title, stage, source)
+       values ($1, 'TEST reply-capture opp', 'outreach', 'manual') returning id`,
+      [ids.org]
     );
     ids.opp = opp!.id;
     const sub = await queryOne<{ id: string }>(
-      `insert into subcontractors (company_name, email, email_verified)
-       values ('TEST Reply Capture Sub', $1, true) returning id`,
-      [ids.subEmail]
+      `insert into subcontractors (org_id, company_name, email, email_verified)
+       values ($2, 'TEST Reply Capture Sub', $1, true) returning id`,
+      [ids.subEmail, ids.org]
     );
     ids.sub = sub!.id;
     await query(
@@ -83,7 +96,9 @@ d("reply capture pipeline (Resend inbound path)", () => {
     await query(`delete from communications where opportunity_id=$1`, [ids.opp]);
     await query(`delete from opportunity_subs where opportunity_id=$1`, [ids.opp]);
     await query(`delete from opportunities where id=$1`, [ids.opp]);
-    await query(`delete from subcontractors where id=$1`, [ids.sub]);
+    await query(`delete from subcontractors where org_id=$1`, [ids.org]);
+    await query(`delete from agent_logs where org_id=$1`, [ids.org]);
+    await query(`delete from organizations where id=$1`, [ids.org]);
   });
 
   it("correlates by tracking token, verifies sender, and saves the quote", async () => {
@@ -91,6 +106,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
     expect(token).toBe(ids.tracking);
 
     const { comm, strongMatch } = await cap.matchInboundReply({
+      orgId: ids.org,
       trackingToken: token,
       fromEmail: ids.subEmail,
     });
@@ -98,6 +114,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
     expect(strongMatch).toBe(true);
 
     const result = await cap.captureReply({
+      orgId: ids.org,
       comm: comm!,
       strongMatch,
       fromEmail: ids.subEmail,
@@ -124,11 +141,13 @@ d("reply capture pipeline (Resend inbound path)", () => {
 
   it("is idempotent: redelivering the same message id repeats no side effects", async () => {
     const { comm, strongMatch } = await cap.matchInboundReply({
+      orgId: ids.org,
       trackingToken: ids.tracking,
       fromEmail: ids.subEmail,
     });
     // Same messageId as the first capture ("resend-msg-1").
     const result = await cap.captureReply({
+      orgId: ids.org,
       comm: comm!,
       strongMatch,
       fromEmail: ids.subEmail,
@@ -148,10 +167,12 @@ d("reply capture pipeline (Resend inbound path)", () => {
 
   it("never overwrites the existing quote on a second reply", async () => {
     const { comm, strongMatch } = await cap.matchInboundReply({
+      orgId: ids.org,
       trackingToken: ids.tracking,
       fromEmail: ids.subEmail,
     });
     const result = await cap.captureReply({
+      orgId: ids.org,
       comm: comm!,
       strongMatch,
       fromEmail: ids.subEmail,
@@ -187,6 +208,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
       [ids.sub, ids.opp]
     );
     const { comm, strongMatch } = await cap.matchInboundReply({
+      orgId: ids.org,
       trackingToken: null,
       fromEmail: ids.subEmail,
     });
@@ -195,6 +217,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
 
     await query(`delete from quotes where opportunity_id=$1`, [ids.opp]); // clear so only the gate blocks
     const result = await cap.captureReply({
+      orgId: ids.org,
       comm: comm!,
       strongMatch,
       fromEmail: ids.subEmail,
@@ -213,11 +236,13 @@ d("reply capture pipeline (Resend inbound path)", () => {
 
   it("blocks auto-save when a different participant replies in the same thread", async () => {
     const { comm, strongMatch } = await cap.matchInboundReply({
+      orgId: ids.org,
       trackingToken: ids.tracking,
       fromEmail: "someone-else@another-company.test",
     });
     expect(strongMatch).toBe(true); // token matches the thread
     const result = await cap.captureReply({
+      orgId: ids.org,
       comm: comm!,
       strongMatch,
       fromEmail: "someone-else@another-company.test",
@@ -259,6 +284,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
     );
 
     const { comm, strongMatch } = await cap.matchInboundReply({
+      orgId: ids.org,
       trackingToken: null,
       fromEmail: ids.subEmail,
     });
@@ -266,6 +292,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
 
     const closeOutCalls: unknown[] = [];
     const result = await cap.captureReply({
+      orgId: ids.org,
       comm: comm!,
       strongMatch,
       fromEmail: ids.subEmail,
