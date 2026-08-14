@@ -30,7 +30,11 @@ export type AdminAction =
   | "invitation_created"
   | "invitation_resent"
   | "invitation_revoked"
-  | "invitation_accepted";
+  | "invitation_accepted"
+  // Lending a platform credential spends our money under someone else's
+  // account, so who did it and why is part of the record, not a note.
+  | "platform_key_granted"
+  | "platform_key_revoked";
 
 export interface AdminAuditEntry {
   id: string;

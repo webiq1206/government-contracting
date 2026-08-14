@@ -6,6 +6,8 @@ import { adminAccount, adminAccountMembers } from "@/lib/admin/accounts";
 import { adminActionsForOrg } from "@/lib/admin/audit";
 import { accessBlockedReason } from "@/lib/billing/entitlements";
 import { AccountActions } from "@/components/admin/account-actions";
+import { PlatformKeyGrants } from "@/components/admin/platform-key-grants";
+import { platformKeyStates } from "@/lib/admin/platform-keys";
 import { shortDate } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +26,10 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
   const org = await adminAccount(params.id);
   if (!org) notFound();
 
-  const [members, audit] = await Promise.all([
+  const [members, audit, keyStates] = await Promise.all([
     adminAccountMembers(org.id),
     adminActionsForOrg(org.id),
+    platformKeyStates(org.id),
   ]);
 
   // Two places a discount can live, and the admin should not have to know
@@ -139,6 +142,13 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
             org.owner_user_id !== auth.id &&
             !isPlatformAdmin(org.owner_email ?? "")
           }
+        />
+
+        <PlatformKeyGrants
+          orgId={org.id}
+          orgName={org.name}
+          states={keyStates}
+          isTrial={org.access === "trial"}
         />
 
         <section className="space-y-2">

@@ -14,6 +14,7 @@ import {
   grantConcession,
   removeConcession,
 } from "@/lib/admin/concessions";
+import { grantKeyToAccount, revokeKeyFromAccount } from "@/lib/admin/platform-keys";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     days?: number;
     percent?: number;
     months?: number;
+    envKey?: string;
+    expiresAt?: string | null;
   };
   const orgId = params.id;
   const adminEmail = auth.email;
@@ -91,6 +94,25 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       break;
     case "make_free":
       result = await convertToFree({ orgId, reason, adminEmail });
+      break;
+    case "grant_key":
+      result = await grantKeyToAccount({
+        orgId,
+        key: String(body.envKey ?? ""),
+        note: reason,
+        // An empty string from an untouched date input means no expiry, which
+        // is a real choice here and not a missing value.
+        expiresAt: body.expiresAt ? String(body.expiresAt) : null,
+        adminEmail,
+        adminUserId: auth.id,
+      });
+      break;
+    case "revoke_key":
+      result = await revokeKeyFromAccount({
+        orgId,
+        key: String(body.envKey ?? ""),
+        adminEmail,
+      });
       break;
     default:
       return NextResponse.json({ error: "Unknown action." }, { status: 400 });
