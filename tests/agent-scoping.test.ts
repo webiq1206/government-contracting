@@ -16,9 +16,11 @@ import { join } from "node:path";
  * no single-record predicate, which reads whatever exists in the table and
  * therefore reads every tenant's rows.
  *
- * KNOWN_SCANS is the set that existed when this guard was written. It is debt,
- * deliberately recorded rather than silently carried, and the test fails if it
- * GROWS. Shrinking it is the point; anything new has to be justified here.
+ * KNOWN_SCANS recorded the twelve that existed when this guard was written,
+ * as debt rather than something silently carried. All twelve are now scoped
+ * and the map is empty, so the rule is simply that agents do not scan. A new
+ * entry here is a deliberate decision to ship an unscoped read, and needs the
+ * risk written down beside it.
  */
 const TENANT_TABLES = [
   "subcontractors", "opportunities", "contracts", "quotes", "bids", "call_cards",
@@ -26,15 +28,8 @@ const TENANT_TABLES = [
   "documents", "pricing_comps",
 ];
 
-/**
- * Agents with cross-tenant scans still outstanding, and what each risks.
- *
- *   compliance-monitor  a dedupe lookup can match another org's item, and the
- *                       non-small-business sweep reads every org's contracts
- */
-const KNOWN_SCANS: Record<string, number> = {
-  "compliance-monitor.ts": 2,
-};
+/** Agents with cross-tenant scans still outstanding. There are none. */
+const KNOWN_SCANS: Record<string, number> = {};
 
 /**
  * Reads that are global on purpose, and have to stay that way.
