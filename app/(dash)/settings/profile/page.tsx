@@ -8,6 +8,7 @@ import { shortDate } from "@/lib/format";
 import { ProfileEditor } from "@/components/profile-editor";
 import { SamProfileImport } from "@/components/sam-profile-import";
 import { integrationStatus } from "@/lib/config";
+import { orgIntegrationStatus } from "@/lib/integration-keys";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { AutomationSettings } from "@/components/automation-settings";
 import { EditorialTabs } from "@/components/editorial-tabs";
@@ -29,7 +30,7 @@ export default async function ProfilePage() {
   // The SAM key can live in UI-managed integration settings rather than the
   // environment, so hydrate before asking whether import is available.
   await hydrateIntegrationEnv();
-  const samConnected = integrationStatus().sam;
+  const samConnected = (await orgIntegrationStatus()).sam;
 
   const proposed = await query<ProposedWeightRow>(
     `select id, version, rationale, proposed_at

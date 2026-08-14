@@ -5,6 +5,7 @@
  * so agents log a skip instead of crashing.
  */
 import { config } from "../config";
+import { orgApiKey } from "../integration-keys";
 import { fetchJson, withRetry } from "./http";
 
 const OPP_BASE = "https://api.sam.gov/opportunities/v2/search";
@@ -215,13 +216,20 @@ export function wantNoticeType(type: string | undefined): boolean {
 }
 
 export const sam = {
-  enabled: () => config.sam.enabled,
+  /**
+   * Whether the CURRENT organization can call SAM.
+   *
+   * Per-org, not per-deployment: every customer brings their own key, so
+   * "enabled" is a question about them, not about the platform.
+   */
+  enabled: async () => (await orgApiKey("SAM_API_KEY")).length > 0,
 
   async searchOpportunities(
     params: SearchParams = {}
   ): Promise<{ disabled?: boolean; total: number; items: SamOpportunity[] }> {
-    if (!config.sam.enabled) return { disabled: true, total: 0, items: [] };
-    const query = buildOpportunityQuery(params, config.sam.apiKey);
+    const apiKey = await orgApiKey("SAM_API_KEY");
+    if (!apiKey) return { disabled: true, total: 0, items: [] };
+    const query = buildOpportunityQuery(params, apiKey);
     // Never throw on a SAM outage / rate-limit (SAM keys are ~1000/day): the
     // Opportunity Monitor's primary ingestion path must log a skip, not crash.
     try {
@@ -261,12 +269,13 @@ export const sam = {
   async getEntityRegistration(
     uei: string
   ): Promise<{ disabled?: boolean; status?: string; expiresAt?: string } | null> {
-    if (!config.sam.enabled || !uei) return { disabled: true };
+    const apiKey = await orgApiKey("SAM_API_KEY");
+    if (!apiKey || !uei) return { disabled: true };
     try {
       const data = await withRetry(() =>
         fetchJson<{ entityData?: { entityRegistration?: { registrationStatus?: string; registrationExpirationDate?: string } }[] }>(
           ENTITY_BASE,
-          { query: { api_key: config.sam.apiKey, ueiSAM: uei } }
+          { query: { api_key: apiKey, ueiSAM: uei } }
         )
       );
       const reg = data.entityData?.[0]?.entityRegistration;
@@ -303,7 +312,8 @@ export const sam = {
     detail?: string;
     entities: SamEntity[];
   }> {
-    if (!config.sam.enabled) return { disabled: true, entities: [] };
+    const apiKey = await orgApiKey("SAM_API_KEY");
+    if (!apiKey) return { disabled: true, entities: [] };
     const uei = input.uei?.trim();
     const name = input.name?.trim();
     if (!uei && !name) return { entities: [] };
@@ -330,7 +340,7 @@ export const sam = {
         const data = await withRetry(() =>
           fetchJson<{ entityData?: RawSamEntity[] }>(ENTITY_BASE, {
             query: {
-              api_key: config.sam.apiKey,
+              api_key: apiKey,
               includeSections,
               ...(uei ? { ueiSAM: uei } : { legalBusinessName: name as string }),
             },
@@ -366,11 +376,12 @@ export const sam = {
   async isExcluded(
     name: string
   ): Promise<{ disabled?: boolean; excluded: boolean; error?: boolean }> {
-    if (!config.sam.enabled || !name) return { disabled: true, excluded: false };
+    const apiKey = await orgApiKey("SAM_API_KEY");
+    if (!apiKey || !name) return { disabled: true, excluded: false };
     try {
       const data = await withRetry(() =>
         fetchJson<{ totalRecords?: number }>(EXCLUSION_BASE, {
-          query: { api_key: config.sam.apiKey, exclusionName: name },
+          query: { api_key: apiKey, exclusionName: name },
         })
       );
       return { excluded: (data.totalRecords ?? 0) > 0 };
@@ -381,7 +392,8 @@ export const sam = {
 
   /** Award notices for post-submission tracking (win/loss detection). */
   async getAwardNotices(solicitationNumber: string): Promise<SamOpportunity[]> {
-    if (!config.sam.enabled || !solicitationNumber) return [];
+    const apiKey = await orgApiKey("SAM_API_KEY");
+    if (!apiKey || !solicitationNumber) return [];
     // Look up by exact solicitation number (solnum), not a title keyword, award
     // notices rarely carry the solicitation number in their title, so the old
     // title filter returned nothing and win/loss detection never fired.

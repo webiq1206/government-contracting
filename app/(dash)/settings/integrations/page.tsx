@@ -1,4 +1,5 @@
 import { config, integrationStatus } from "@/lib/config";
+import { orgIntegrationStatus } from "@/lib/integration-keys";
 import { PageHeader } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { IntegrationManager } from "@/components/integration-manager";
@@ -33,7 +34,7 @@ export default async function IntegrationsPage({
       .catch(() => ({ connected: false, email: null, status: "none", lastError: null })),
   ]);
   const gmailConnected = inbox.connected;
-  const status = integrationStatus();
+  const status = { ...integrationStatus(), ...(await orgIntegrationStatus()) };
   const gmailParam = searchParams?.gmail;
   const gmailError = searchParams?.gmailError;
 

@@ -7,6 +7,7 @@ import { SetupChecklist } from "@/components/setup-checklist";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { integrationStatus } from "@/lib/config";
+import { orgIntegrationStatus } from "@/lib/integration-keys";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { computeSetupChecklist } from "@/lib/domain/setup";
@@ -359,7 +360,9 @@ export default async function TodayPage() {
     digest.expiredArchived > 0 && `${digest.expiredArchived} expired archived`,
   ].filter(Boolean) as string[];
   await hydrateIntegrationEnv();
-  const integrations = integrationStatus();
+  // Per-organization, not per-deployment: the setup checklist must reflect
+  // the keys THIS customer has entered, never the platform's environment.
+  const integrations = { ...integrationStatus(), ...(await orgIntegrationStatus()) };
   const setup = computeSetupChecklist({
     profile: profile?.profile_json ?? null,
     integrations,
