@@ -34,14 +34,11 @@ const TENANT_TABLES = [
  *   learning-loop       proposes scoring weights from every tenant's outcomes
  *   maintenance         follow-ups, scoring recovery, and expiry sweeps select
  *                       across tenants
- *   sub-finder          can reuse ANOTHER organization's subcontractor on this
- *                       organization's opportunity, which is the worst of them
  */
 const KNOWN_SCANS: Record<string, number> = {
   "compliance-monitor.ts": 2,
   "learning-loop.ts": 2,
   "maintenance.ts": 6,
-  "sub-finder.ts": 2,
 };
 
 function crossTenantScans(src: string): string[] {
@@ -83,6 +80,23 @@ describe("agents do not read across organizations", () => {
       `New cross-tenant scans. Scope them by organization, or record them in ` +
         `KNOWN_SCANS with the risk stated:\n\n${unexpected.join("\n\n")}`
     ).toEqual([]);
+  });
+
+  it("keeps sub finder scoped, since it writes what it reads", () => {
+    // The dedupe lookups key off google_place_id and company_name, which the
+    // scan check treats as single-record predicates and therefore skips. They
+    // are not: the same firm sits on several customers' rosters, so an
+    // unscoped match returns another org's row and then updates it.
+    const src = readFileSync("lib/agents/sub-finder.ts", "utf8");
+    expect(crossTenantScans(src)).toEqual([]);
+    for (const lit of src.match(/`[^`]*`/g) ?? []) {
+      const flat = lit.replace(/\s+/g, " ");
+      if (!/^`select .* from subcontractors\b/i.test(flat)) continue;
+      expect(flat, "every subcontractor read must name its org").toContain("org_id");
+    }
+    expect(src, "a sub with no org is invisible to the roster that created it").toMatch(
+      /insert into subcontractors\s*\(\s*org_id,/
+    );
   });
 
   it("keeps the analytics engine scoped, since its snapshot is customer-facing", () => {
