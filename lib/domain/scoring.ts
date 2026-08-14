@@ -76,13 +76,19 @@ export function checkHardExclusions(
     triggered.push("unrestricted_under_threshold");
   }
 
-  // Security clearance required (keyword scan).
-  if (/\b(top[-\s]?secret|ts\/sci|secret clearance|security clearance required|active clearance)\b/.test(text)) {
+  // Security clearance required. Negation-aware: solicitations routinely say
+  // "no clearance is required", and matching the bare phrase dismissed them.
+  if (requirementMentioned(text, /top[-\s]?secret|ts\/sci|secret clearance|security clearance|active clearance/g)) {
     triggered.push("security_clearance");
   }
 
   // Licensed professional / stamped deliverables required.
-  if (/(professional engineer|\bpe stamp\b|engineering stamp|engineer'?s stamp|architect(ural)? stamp|licensed (professional )?(engineer|architect)|stamped (drawings|plans|deliverables))/.test(text)) {
+  if (
+    requirementMentioned(
+      text,
+      /professional engineer|\bpe stamp\b|engineering stamp|engineer'?s stamp|architect(?:ural)? stamp|licensed (?:professional )?(?:engineer|architect)|stamped (?:drawings|plans|deliverables)/g
+    )
+  ) {
     triggered.push("licensed_professional");
   }
 
@@ -116,6 +122,53 @@ export function checkHardExclusions(
   }
 
   return [...new Set(triggered)];
+}
+
+/**
+ * Whether a requirement is genuinely imposed, rather than merely mentioned.
+ *
+ * These two checks auto-dismiss an opportunity outright, so a bare keyword
+ * scan is the wrong instrument: federal solicitations say "no security
+ * clearance is required" and "architect stamp not required" constantly, and
+ * matching the phrase inside those sentences threw away work the customer
+ * could have won, silently and with no way to notice.
+ *
+ * Each match is read in context. A negation close before it ("no", "not",
+ * "without", "waived") or a negated qualifier close after it ("not required",
+ * "is not needed") means the document is saying the opposite, and the match is
+ * discarded. Anything still standing is treated as a real requirement.
+ *
+ * Deliberately conservative in one direction only: an unusual phrasing that
+ * slips past leaves an opportunity in the pipeline for a human to reject,
+ * which costs a moment. The failure it prevents costs the bid.
+ */
+export function requirementMentioned(text: string, pattern: RegExp): boolean {
+  const NEGATION_BEFORE = /\b(no|not|non|without|never|excluding|excluded|waived|waives?)\b[^.]{0,40}$/;
+  const NEGATION_AFTER = /^[^.]{0,40}\b(not required|not needed|is not|are not|isn't|aren't|waived|not necessary)\b/;
+  /**
+   * The phrase alone is not a requirement. "Work will be inspected by the
+   * government's professional engineer" names someone else's engineer, and
+   * dismissing on it threw away ordinary construction work. So an obligation
+   * has to be stated nearby for the match to count.
+   */
+  // `requir\w*` on purpose: require, requires, required, requiring, and
+  // requirement all state the same obligation, and listing only some of them
+  // let "Deliverables require a PE stamp" read as a passing mention.
+  // Negation is checked first, so "does not require" is already discarded.
+  const OBLIGATION = /\b(must|shall|requir\w*|mandator\w*|responsible for|expected to)\b/;
+  const re = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+  for (const m of text.matchAll(re)) {
+    const at = m.index ?? 0;
+    const before = text.slice(Math.max(0, at - 60), at);
+    const after = text.slice(at + m[0].length, at + m[0].length + 60);
+    if (NEGATION_BEFORE.test(before)) continue;
+    if (NEGATION_AFTER.test(after)) continue;
+    // Sentence-local: an obligation two paragraphs away is about something
+    // else. The window is the same one the negation checks read.
+    if (!OBLIGATION.test(before) && !OBLIGATION.test(after)) continue;
+    return true;
+  }
+  return false;
 }
 
 function normalizeCert(c: string): string {
@@ -167,7 +220,18 @@ export function applyWeightOverrides<
     return w && typeof w.weight === "number" && w.weight >= 0 ? w.weight : d.max_points;
   };
   const originalTotal = rubricDims.reduce((a, d) => a + d.max_points, 0) || 100;
-  const rawTotal = rubricDims.reduce((a, d) => a + rawOf(d), 0) || 1;
+  const rawTotal = rubricDims.reduce((a, d) => a + rawOf(d), 0);
+  /**
+   * A weighting that sums to nothing carries no information, so the rubric is
+   * returned untouched.
+   *
+   * Without this the normalization divided by a substituted 1, every dimension
+   * floored to zero, and the largest-remainder pass could only hand back one
+   * point per dimension: a 100 point rubric became a 10 point one. Nothing
+   * failed. Scores simply collapsed below a threshold that still assumed 100,
+   * and every opportunity was dismissed.
+   */
+  if (rawTotal <= 0) return rubricDims;
   // Largest-remainder rounding so the normalized max_points sum EXACTLY to the
   // original total. Plain Math.round can produce 99 or 101, which silently
   // shifts the pursue/review thresholds (they assume the original scale).
