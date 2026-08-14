@@ -141,6 +141,19 @@ export default async function AnalyticsPage() {
   const winRate = fb.win_rate;
   const avgMargin = fb.avg_margin_on_wins;
   const pipelineValue = fb.pipeline_value;
+  // Coverage, so the figure can say what it actually describes. A total over
+  // 2 of 41 opportunities is not "the pipeline", and printing it as though it
+  // were is the difference between a number and a misleading number.
+  const pipelineValued = fb.pipeline_valued;
+  const pipelineTotal = fb.pipeline_total;
+  const pipelineCoverage =
+    pipelineTotal === 0
+      ? null
+      : pipelineValued === pipelineTotal
+        ? "all have a published value"
+        : pipelineValued === 0
+          ? `none of ${pipelineTotal} publish a value`
+          : `from ${pipelineValued} of ${pipelineTotal} that publish one`;
   const activeRevenue = fb.active_contract_revenue;
   const wins = fb.wins;
   const losses = fb.losses;
@@ -164,7 +177,9 @@ export default async function AnalyticsPage() {
         title="Analytics"
         status={
           winRate != null
-            ? `${winRate}% win rate · ${currency(pipelineValue)} in pipeline`
+            ? `${winRate}% win rate${
+                pipelineValued > 0 ? ` · ${currency(pipelineValue)} in pipeline` : ""
+              }`
             : `${extras.counts.open_opps} open opportunit${extras.counts.open_opps === 1 ? "y" : "ies"}`
         }
         subtitle={
@@ -198,13 +213,19 @@ export default async function AnalyticsPage() {
             value={avgMargin != null ? `${avgMargin}%` : "-"}
             accent
           />
-          <KpiCard label="Pipeline value" value={currency(pipelineValue)} />
+          <KpiCard
+            label="Pipeline value"
+            value={pipelineValued === 0 ? "Not published" : currency(pipelineValue)}
+            sub={pipelineCoverage ?? undefined}
+          />
           <KpiCard label="Active contract revenue" value={currency(activeRevenue)} />
         </div>
         <p className="text-xs text-slate-500">
-          Win rate is wins divided by decided bids. Pipeline value is the total
-          estimated value of everything still in play. These fill in as bids are
-          decided, so early numbers will look sparse.
+          Win rate is wins divided by decided bids. Pipeline value adds up the
+          opportunities that publish an estimate, and many federal notices do
+          not, so it is a floor rather than a forecast: the card says how many
+          it covers. These fill in as bids are decided, so early numbers look
+          sparse.
         </p>
 
         {/* Live activity, computed straight from the data (no engine run needed). */}

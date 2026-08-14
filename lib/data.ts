@@ -576,6 +576,8 @@ export async function computeKpisFallback() {
     lost: string;
     avg_margin: string | null;
     pipeline_value: string | null;
+    pipeline_valued: string | null;
+    pipeline_total: string | null;
     active_revenue: string | null;
   }>(
     `select
@@ -584,6 +586,14 @@ export async function computeKpisFallback() {
        (select avg(margin_pct) from bids where outcome='won' and org_id=$1) as avg_margin,
        (select sum(value_estimated) from opportunities
          where stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_value,
+       -- How many of those opportunities actually carry an estimate, and how
+       -- many there are in total. Federal notices frequently publish no
+       -- figure, so the sum alone describes an unknown fraction of the
+       -- pipeline and reads as though it described all of it.
+       (select count(value_estimated) from opportunities
+         where stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_valued,
+       (select count(*) from opportunities
+         where stage not in ('dismissed','lost') and status='open' and org_id=$1) as pipeline_total,
        (select sum(c.award_amount) from contracts c
           left join opportunities o on o.id = c.opportunity_id
          where c.status='active' and c.org_id=$1
@@ -598,6 +608,9 @@ export async function computeKpisFallback() {
     losses: lost,
     avg_margin_on_wins: row?.avg_margin ? Math.round(Number(row.avg_margin)) : null,
     pipeline_value: Number(row?.pipeline_value ?? 0),
+    /** Opportunities carrying a published value, and the total in play. */
+    pipeline_valued: Number(row?.pipeline_valued ?? 0),
+    pipeline_total: Number(row?.pipeline_total ?? 0),
     active_contract_revenue: Number(row?.active_revenue ?? 0),
   };
 }
