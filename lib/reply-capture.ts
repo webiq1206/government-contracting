@@ -31,6 +31,7 @@ import {
   normalizeEmail,
 } from "./reply-matching";
 import { closeOutDeclinedSub } from "./domain/decline-closeout";
+import { decideReply, type ReplyDecision } from "./domain/reply-outcome";
 import { enqueue } from "./queue";
 
 export interface MatchedComm {
@@ -58,6 +59,12 @@ export interface CaptureReplyInput {
   replyText: string;
   threadId?: string | null;
   messageId?: string | null;
+  /**
+   * Attachments that looked like a quote but could not be read. Their contents
+   * are unknown, not absent, so a reply carrying one is never acted on
+   * automatically. Passed in because the caller reads the attachments.
+   */
+  unreadableAttachments?: string[];
   /** Injectable for tests; defaults to the Claude extractor. */
   extract?: typeof extractReplyFromReply;
   /** Injectable for tests; defaults to closeOutDeclinedSub. */
@@ -68,6 +75,12 @@ export interface CaptureReplyResult {
   subId: string | null;
   companyName: string | null;
   extracted: ExtractedReply;
+  /**
+   * Whether this reading was trusted enough to change anything, and why not.
+   * Returned so the caller reports the same verdict that governed the writes,
+   * rather than computing a second opinion after the fact.
+   */
+  decision: ReplyDecision;
   quoteSaved: boolean;
   quoteSkippedExisting: boolean;
   senderVerified: boolean;
@@ -200,6 +213,10 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
         subId: existing.subcontractor_id ?? comm.subcontractor_id,
         companyName: comm.company_name,
         extracted: emptyExtracted(),
+        // A redelivery of something already handled. Nothing is read again and
+        // nothing may act, and it is not a review case either: the first
+        // delivery already decided that.
+        decision: { outcome: "none", act: false, needsReview: false, reviewReason: null },
         quoteSaved: false,
         quoteSkippedExisting: false,
         senderVerified: false,
@@ -222,6 +239,26 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   const extracted = await extract(replyText, {
     opportunityTitle: comm.opportunity_title,
     trade: osRow?.trade ?? null,
+  });
+
+  /**
+   * Decide whether this reading may change anything, BEFORE anything is
+   * changed.
+   *
+   * This gate already existed, but it ran in the poller after capture had
+   * finished, which is after the two writes it is meant to govern. A reply the
+   * model scored 0.2, or one quoting two different prices, or one whose only
+   * price was in an attachment nobody could open, still had its quote saved to
+   * the bid and the solicitation advanced, or the subcontractor closed out and
+   * thanked by email. The poller then announced that nothing had been changed
+   * automatically, which was untrue by the time it said it.
+   *
+   * Sender ownership and thread correlation are separate questions and still
+   * apply on top of this: they establish who is speaking, this establishes
+   * whether we understood them.
+   */
+  const decision = decideReply(extracted, {
+    unreadableAttachments: input.unreadableAttachments ?? [],
   });
 
   // Resolve the subcontractor. Sender ownership: the reply must come from the
@@ -306,7 +343,11 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   );
   await query(`update communications set replied_at = now() where id = $1`, [comm.id]);
 
+  // Closing a sub out ends their involvement in this solicitation and emails
+  // them a thank-you, which cannot be recalled. It needs an understood reply,
+  // not just a recognised sender.
   const autoDecline =
+    decision.act &&
     !!subId &&
     shouldAutoDecline({
       senderVerified,
@@ -337,6 +378,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       subId,
       companyName,
       extracted,
+      decision,
       quoteSaved: false,
       quoteSkippedExisting: false,
       senderVerified,
@@ -361,12 +403,14 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // The unique index (migration 021) makes the insert race-safe.
   let quoteSaved = false;
   let quoteSkippedExisting = false;
-  const autoSaveOk = shouldAutoSaveQuote({
-    threadMatched: strongMatch,
-    senderVerified,
-    isQuote: extracted.isQuote,
-    quoteAmount: extracted.quoteAmount,
-  });
+  const autoSaveOk =
+    decision.act &&
+    shouldAutoSaveQuote({
+      threadMatched: strongMatch,
+      senderVerified,
+      isQuote: extracted.isQuote,
+      quoteAmount: extracted.quoteAmount,
+    });
   if (autoSaveOk && subId && extracted.quoteAmount != null) {
     const trade = osRow?.trade ?? null;
     const notes = ["Auto-captured from email reply.", extracted.notes ?? ""]
@@ -407,6 +451,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     subId,
     companyName,
     extracted,
+    decision,
     quoteSaved,
     quoteSkippedExisting,
     senderVerified,

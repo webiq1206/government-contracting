@@ -28,7 +28,43 @@ d("reply capture pipeline (Resend inbound path)", () => {
     subEmail: `test-${randomUUID().slice(0, 8)}@example-sub.test`,
   };
 
+  /**
+   * A complete extraction, spread over per-test overrides.
+   *
+   * tsconfig excludes tests, so a fake missing a field typechecks and then
+   * fails at runtime: these fakes had drifted past confidence, conflicts and
+   * missingFields, which is exactly what capture now reads to decide whether
+   * it may act. Building from one base keeps the next added field from
+   * quietly reaching only production.
+   */
+  const baseExtracted = {
+    intent: "other" as const,
+    isQuote: false,
+    quoteAmount: null as number | null,
+    paymentTerms: null as string | null,
+    notes: null as string | null,
+    companyName: null as string | null,
+    canPerform: null as boolean | null,
+    capabilityNotes: null as string | null,
+    tradesMentioned: [] as string[],
+    scopeSummary: null as string | null,
+    laborCost: null as number | null,
+    materialCost: null as number | null,
+    exclusions: [] as string[],
+    qualifications: [] as string[],
+    leadTimeDays: null as number | null,
+    availabilityNotes: null as string | null,
+    quoteValidUntil: null as string | null,
+    missingFields: [] as string[],
+    conflicts: [] as string[],
+    // Well above MIN_ACT_CONFIDENCE: these tests are about the ownership
+    // rules, so the reading itself must not be what blocks them.
+    confidence: 0.9,
+    method: "ai" as const,
+  };
+
   const fakeExtract = async () => ({
+    ...baseExtracted,
     intent: "quote" as const,
     isQuote: true,
     quoteAmount: 98765,
@@ -36,22 +72,16 @@ d("reply capture pipeline (Resend inbound path)", () => {
     notes: "test extraction",
     companyName: "Test Sub LLC",
     canPerform: true,
-    capabilityNotes: null,
-    tradesMentioned: [] as string[],
-    method: "ai" as const,
+    scopeSummary: "electrical rough-in",
   });
 
   const fakeDeclineExtract = async () => ({
+    ...baseExtracted,
     intent: "cant_fulfill" as const,
-    isQuote: false,
-    quoteAmount: null,
-    paymentTerms: null,
-    notes: null,
     companyName: "Test Sub LLC",
     canPerform: false,
     capabilityNotes: "We do not perform electrical work",
     tradesMentioned: ["plumbing"],
-    method: "ai" as const,
   });
 
   beforeAll(async () => {
@@ -179,16 +209,12 @@ d("reply capture pipeline (Resend inbound path)", () => {
       replyText: "Correction: $50,000.",
       messageId: "resend-msg-2",
       extract: async () => ({
+        ...baseExtracted,
         intent: "quote" as const,
         isQuote: true,
         quoteAmount: 50000,
-        paymentTerms: null,
-        notes: null,
-        companyName: null,
         canPerform: true,
-        capabilityNotes: null,
-        tradesMentioned: [] as string[],
-        method: "ai" as const,
+        scopeSummary: "electrical rough-in",
       }),
     });
     expect(result.quoteSaved).toBe(false);

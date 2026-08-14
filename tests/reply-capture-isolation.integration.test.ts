@@ -28,6 +28,8 @@ d("reply capture stays inside one organization (integration)", () => {
   const orgA = { id: "", name: `replyiso-a-${randomUUID()}`, opp: "", sub: "", comm: "", token: randomUUID() };
   const orgB = { id: "", name: `replyiso-b-${randomUUID()}`, opp: "", sub: "", comm: "", bOnlySub: "" };
 
+  // A complete, confident extraction: this test is about which organization
+  // the reply lands on, so the reading itself must not be what blocks it.
   const fakeExtract = async () => ({
     intent: "quote" as const,
     isQuote: true,
@@ -38,6 +40,17 @@ d("reply capture stays inside one organization (integration)", () => {
     canPerform: true,
     capabilityNotes: null,
     tradesMentioned: [] as string[],
+    scopeSummary: "electrical rough-in",
+    laborCost: null,
+    materialCost: null,
+    exclusions: [] as string[],
+    qualifications: [] as string[],
+    leadTimeDays: null,
+    availabilityNotes: null,
+    quoteValidUntil: null,
+    missingFields: [] as string[],
+    conflicts: [] as string[],
+    confidence: 0.9,
     method: "ai" as const,
   });
 

@@ -37,6 +37,13 @@ export interface AutoSaveDecisionInput {
  * sender-verified, and the AI confirmed a real price. Anything weaker (sender-
  * only fallback match, a different participant replying inside the thread,
  * regex-only price hints) is routed to manual review instead.
+ *
+ * This answers WHO is speaking, and only that. Whether the reply was
+ * understood well enough to act on is decideReply's question, and callers must
+ * pass both gates: this function has no view of confidence, self-contradiction,
+ * or an attachment nobody could open. It once carried the whole decision, and a
+ * quote the model scored 0.2 went onto a bid because the two were never
+ * combined.
  */
 export function shouldAutoSaveQuote(input: AutoSaveDecisionInput): boolean {
   return (
@@ -63,6 +70,9 @@ export interface AutoDeclineDecisionInput {
  * Auto-decline only when the sender owns the mailbox and AI confirmed a decline
  * / can't-fulfill intent. Strong thread correlation is not required (unlike
  * quote auto-save); regex-only extraction never returns a decline intent.
+ *
+ * Same division as above: this is ownership, not comprehension. Closing a sub
+ * out also emails them, so the caller pairs it with decideReply.
  */
 export function shouldAutoDecline(input: AutoDeclineDecisionInput): boolean {
   return input.senderVerified && isDeclineIntent(input.intent);

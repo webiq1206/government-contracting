@@ -16,7 +16,6 @@ import { logAgent } from "../logger";
 import { runWithOrg } from "../tenant-context";
 import { listActiveOrganizations } from "../organizations";
 import {
-  decideReply,
   applyOutcomeToSolicitation,
   recordReplyEvent,
   blockingGaps,
@@ -938,6 +937,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         replyText,
         threadId: r.threadId,
         messageId: r.messageId,
+        unreadableAttachments: docs.unreadable,
       });
       // Already captured (e.g. by the Resend inbound webhook or a previous
       // poll of the sliding window): skip notifications and re-enqueues.
@@ -946,6 +946,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         subId,
         companyName,
         extracted,
+        decision,
         quoteSaved,
         quoteSkippedExisting,
         declined,
@@ -953,10 +954,10 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       } = result;
       const mentionedPrice = extracted.quoteAmount ?? extractMentionedPrice(replyText);
 
-      // Understand first, then decide whether we are allowed to act on it.
-      const decision = decideReply(extracted, {
-        unreadableAttachments: docs.unreadable,
-      });
+      // The same verdict capture acted on, not a second opinion formed after
+      // the writes. Recomputing it here is how the two drifted apart: this
+      // said "nothing was changed automatically" while capture had already
+      // saved a quote on a reading it did not trust.
       const gaps = blockingGaps(extracted, decision.outcome);
       if (subId) {
         // History is written either way. A reply we did not act on is exactly
