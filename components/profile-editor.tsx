@@ -103,6 +103,9 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
   // Decision limits (the automation-band thresholds live in the card above this)
   const [valueMin, setValueMin] = useState(dt.value_min != null ? String(dt.value_min) : "");
   const [valueMax, setValueMax] = useState(dt.value_max != null ? String(dt.value_max) : "");
+  const [unrestrictedMin, setUnrestrictedMin] = useState(
+    dt.unrestricted_min_value != null ? String(dt.unrestricted_min_value) : ""
+  );
   const [minSubs, setMinSubs] = useState(String(dt.min_subs_per_trade ?? ""));
   const [leadHours, setLeadHours] = useState(String(dt.submit_lead_hours ?? ""));
 
@@ -173,6 +176,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
       ...(json.decision_thresholds ?? ({} as DecisionThresholds)),
       value_min: numOpt(valueMin),
       value_max: numOpt(valueMax),
+      unrestricted_min_value: numOpt(unrestrictedMin),
       min_subs_per_trade: num(minSubs),
       submit_lead_hours: num(leadHours),
     };
@@ -457,6 +461,14 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
             type="number"
             placeholder="350000"
             hint="Bigger jobs still enter the pipeline, but always stop for your explicit approval instead of auto-pursuing."
+          />
+          <Field
+            label="Smallest unrestricted contract ($)"
+            value={unrestrictedMin}
+            onChange={setUnrestrictedMin}
+            type="number"
+            placeholder="150000"
+            hint="Open competition below this is passed, since too many bidders turn up to win often enough to be worth pricing. Set-aside work is judged on the smallest-contract figure instead, whatever its size."
           />
           <Field
             label="Min subs per trade to bid"

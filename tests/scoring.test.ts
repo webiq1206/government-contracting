@@ -65,6 +65,25 @@ describe("scoring", () => {
     expect(ex).toContain("unrestricted_under_threshold");
   });
 
+  it("the unrestricted floor is the customer's to change, not a constant", () => {
+    // It was enforced from a hardcoded 150,000 and missing from the profile,
+    // so nobody could see or move it. A firm happy to take open competition at
+    // $90K has to be able to say so.
+    expect(DEFAULT_PROFILE.decision_thresholds.unrestricted_min_value).toBe(150_000);
+    const lowered = {
+      ...DEFAULT_PROFILE,
+      decision_thresholds: {
+        ...DEFAULT_PROFILE.decision_thresholds,
+        unrestricted_min_value: 50_000,
+      },
+    };
+    const ex = checkHardExclusions(
+      { ...baseOpp, set_aside_type: "Unrestricted", value_estimated: 90_000 },
+      lowered
+    );
+    expect(ex).not.toContain("unrestricted_under_threshold");
+  });
+
   it("hard exclusion: security clearance keywords", () => {
     const ex = checkHardExclusions(
       { ...baseOpp, description: "Personnel must hold an active Top Secret / TS/SCI clearance." },

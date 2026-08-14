@@ -216,6 +216,12 @@ export function defaultCompanyProfile(seed: {
       insurance_alert_days: [60, 30, 7],
       value_min: 25_000,
       value_max: 500_000,
+      // Unrestricted work below this is passed: open competition at that size
+      // draws too many bidders to win often enough to be worth pricing. It was
+      // enforced from a constant in lib/domain/scoring.ts and absent here, so
+      // every customer had a $150,000 auto-dismiss they could not see or
+      // change. Set-aside work is unaffected at any value.
+      unrestricted_min_value: 150_000,
       deadline_min_days: 7,
       block_prime_only: false,
     },
