@@ -5,6 +5,7 @@
  * the DB write so logs are visible during local dev and on Replit.
  */
 import { query } from "./db";
+import { currentOrgId } from "./tenant-context";
 
 export interface AgentLogInput {
   agent: string;
@@ -22,6 +23,29 @@ export interface AgentLogInput {
   claudeUsage?: unknown;
 }
 
+/**
+ * Which organization this log line belongs to.
+ *
+ * agent_logs is a root table, so 042's derive-org triggers never reached it,
+ * and nothing here ever set the column: every row on the platform carries a
+ * null org. The Automation Log page reads `where org_id = $1`, so the audit
+ * backbone has been writing to a table no customer can read from. Agents get
+ * the org from their runWithOrg context; a log written while serving a request
+ * gets it from the signed-in user. The auth import is lazy because the worker
+ * has no request to read.
+ */
+async function resolveLogOrgId(): Promise<string | null> {
+  const fromAls = currentOrgId();
+  if (fromAls) return fromAls;
+  try {
+    const { currentUser } = await import("./auth");
+    const user = await currentUser().catch(() => null);
+    return user?.organizationId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function logAgent(entry: AgentLogInput): Promise<void> {
   const level = entry.level ?? "info";
   const prefix = `[${entry.agent}] ${entry.action}`;
@@ -33,10 +57,10 @@ export async function logAgent(entry: AgentLogInput): Promise<void> {
   try {
     await query(
       `insert into agent_logs
-         (agent, action, opportunity_id, subcontractor_id, bid_id,
+         (org_id, agent, action, opportunity_id, subcontractor_id, bid_id,
           level, status, message, reasoning, input_json, output_json,
           duration_ms, claude_usage)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+       values ($14,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         entry.agent,
         entry.action,
@@ -51,6 +75,7 @@ export async function logAgent(entry: AgentLogInput): Promise<void> {
         entry.output == null ? null : JSON.stringify(entry.output),
         entry.durationMs ?? null,
         entry.claudeUsage == null ? null : JSON.stringify(entry.claudeUsage),
+        await resolveLogOrgId(),
       ]
     );
   } catch (err) {

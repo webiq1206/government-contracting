@@ -177,12 +177,17 @@ d("sub finder keeps organizations apart (integration)", () => {
   });
 
   it("does not name another organization's subcontractor in its logs", async () => {
-    const logs = await query<{ message: string | null; reasoning: string | null }>(
-      `select message, reasoning from agent_logs where opportunity_id = $1`,
-      [orgA.oppId]
-    );
+    const logs = await query<{
+      org_id: string | null;
+      message: string | null;
+      reasoning: string | null;
+    }>(`select org_id, message, reasoning from agent_logs where opportunity_id = $1`, [
+      orgA.oppId,
+    ]);
     expect(logs.length).toBeGreaterThan(0);
     for (const row of logs) {
+      // The log page reads by org, so an unowned line is a line nobody sees.
+      expect(row.org_id).toBe(orgA.id);
       expect(`${row.message ?? ""} ${row.reasoning ?? ""}`).not.toContain(B_ONLY);
     }
   });
