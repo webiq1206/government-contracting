@@ -55,13 +55,31 @@ export async function POST(req: Request) {
     );
   }
   if (result.error) {
-    return NextResponse.json(
-      {
-        error:
-          "SAM.gov did not respond. That is usually temporary; try again in a moment, or fill the fields in by hand.",
-      },
-      { status: 502 }
-    );
+    // Say which failure this is. "SAM did not respond" sent someone away to
+    // retry a call that will fail identically every time, when the real
+    // answer is that the key is not entitled to entity data.
+    const status = result.status;
+    const notEntitled = status === 401 || status === 403;
+    const message = notEntitled
+      ? "Your SAM.gov key works for opportunity searches but is not authorized for entity data, which is a separate entitlement on SAM's side. Ask SAM.gov to enable Entity Management for this key, or fill the fields in by hand below."
+      : status === 429
+        ? "SAM.gov is rate limiting this key right now. Wait a minute and try again."
+        : "SAM.gov did not respond. That is usually temporary; try again in a moment, or fill the fields in by hand.";
+
+    await logAgent({
+      agent: "operator",
+      action: "sam-profile-import-failed",
+      level: "warn",
+      status: "error",
+      // The detail is SAM's own error text, which names the missing
+      // entitlement. Logged rather than shown: it is theirs, not the
+      // customer's, and it reads like a stack trace.
+      message: `SAM entity lookup failed for ${ctx.user.email}: HTTP ${status ?? "unknown"}${
+        result.detail ? `, ${result.detail}` : ""
+      }`,
+    });
+
+    return NextResponse.json({ error: message, samStatus: status ?? null }, { status: 502 });
   }
   if (result.entities.length === 0) {
     return NextResponse.json({

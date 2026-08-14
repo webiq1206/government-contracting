@@ -609,7 +609,7 @@ export async function computeKpisFallback() {
  */
 export async function analyticsExtras(): Promise<{
   counts: { open_opps: number; new_30d: number; bids_30d: number; active_contracts: number };
-  byStage: { stage: string; count: number; value: number }[];
+  byStage: { stage: string; count: number; value: number; valued: number }[];
 }> {
   const orgId = await currentOrg();
   const [counts, byStage] = await Promise.all([
@@ -625,8 +625,14 @@ export async function analyticsExtras(): Promise<{
          (select count(*)::int from contracts where status='active' and org_id=$1) as active_contracts`,
       [orgId]
     ),
-    query<{ stage: string; count: number; value: number }>(
-      `select stage, count(*)::int as count, coalesce(sum(value_estimated),0)::float8 as value
+    query<{ stage: string; count: number; value: number; valued: number }>(
+      // `valued` is how many rows actually carry an estimate. Without it the
+      // sum is unreadable: SAM notices frequently omit a value, so a stage of
+      // sixteen opportunities with no estimate anywhere summed to exactly
+      // $0 and rendered identically to "these are worth nothing".
+      `select stage, count(*)::int as count,
+              coalesce(sum(value_estimated),0)::float8 as value,
+              count(value_estimated)::int as valued
          from opportunities
         where status='open' and stage not in ('dismissed','lost') and org_id=$1
         group by stage`,

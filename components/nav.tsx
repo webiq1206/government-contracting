@@ -398,8 +398,14 @@ export function Nav({
                     ? [{ section: "Platform admin", items: PLATFORM_ADMIN_ITEMS }]
                     : []),
                 ].map((group) => (
-                  <div key={group.section}>
-                    <p className="mb-1 px-3 text-[0.6rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                  <div key={group.section} className="pt-1">
+                    {/* Section labels were 9.6px of muted text sitting flush
+                        against the links below them, so they read as another
+                        dim menu item instead of a heading. A rule above, more
+                        weight, and real separation make the grouping visible
+                        at a glance. */}
+                    <p className="mb-1.5 mt-2 flex items-center gap-2 border-t border-border/45 px-3 pt-3 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-foreground/70 dark:border-white/10">
+                      <span aria-hidden className="h-px w-3 shrink-0 bg-gold/70" />
                       {group.section}
                     </p>
                     <ul className="space-y-0.5">

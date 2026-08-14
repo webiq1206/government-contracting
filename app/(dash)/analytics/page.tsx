@@ -259,12 +259,18 @@ export default async function AnalyticsPage() {
             <h3 className="mb-3 text-sm font-semibold text-slate-900">
               Pipeline value by stage
             </h3>
+            <p className="mb-3 text-xs leading-relaxed text-slate-500">
+              Federal notices often publish no dollar figure, so these totals cover only the
+              opportunities that carry one. The last column says how many that is, because a
+              total across 2 of 41 is not the value of the stage.
+            </p>
             <table className="w-full">
               <thead>
                 <tr>
                   <th className="th">Stage</th>
                   <th className="th">Opportunities</th>
                   <th className="th">Estimated value</th>
+                  <th className="th">Value known for</th>
                 </tr>
               </thead>
               <tbody>
@@ -272,7 +278,24 @@ export default async function AnalyticsPage() {
                   <tr key={s.stage} className="border-t border-border">
                     <td className="td">{STAGE_LABEL[s.stage] ?? s.stage.replace(/_/g, " ")}</td>
                     <td className="td num">{s.count}</td>
-                    <td className="td num">{currency(s.value)}</td>
+                    {/* Never print $0 for "no estimate on file". A total that
+                        covers 2 of 41 opportunities is not the value of the
+                        stage, and saying so is the difference between a
+                        number and a misleading number. */}
+                    <td className="td num">
+                      {s.valued === 0 ? (
+                        <span className="text-slate-500">Not published</span>
+                      ) : (
+                        currency(s.value)
+                      )}
+                    </td>
+                    <td className="td text-xs text-slate-500">
+                      {s.valued === 0
+                        ? `none of ${s.count}`
+                        : s.valued === s.count
+                          ? "all"
+                          : `${s.valued} of ${s.count}`}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -294,25 +294,66 @@ export const sam = {
   async findEntities(input: {
     uei?: string;
     name?: string;
-  }): Promise<{ disabled?: boolean; error?: boolean; entities: SamEntity[] }> {
+  }): Promise<{
+    disabled?: boolean;
+    error?: boolean;
+    /** HTTP status SAM returned, so a permissions problem is diagnosable. */
+    status?: number;
+    /** SAM's own words, trimmed. Surfaced because its errors are specific. */
+    detail?: string;
+    entities: SamEntity[];
+  }> {
     if (!config.sam.enabled) return { disabled: true, entities: [] };
     const uei = input.uei?.trim();
     const name = input.name?.trim();
     if (!uei && !name) return { entities: [] };
-    try {
-      const data = await withRetry(() =>
-        fetchJson<{ entityData?: RawSamEntity[] }>(ENTITY_BASE, {
-          query: {
-            api_key: config.sam.apiKey,
-            includeSections: "entityRegistration,coreData,assertions",
-            ...(uei ? { ueiSAM: uei } : { legalBusinessName: name as string }),
-          },
-        })
-      );
-      return { entities: (data.entityData ?? []).slice(0, 10).map(mapSamEntity) };
-    } catch {
-      return { error: true, entities: [] };
+
+    /**
+     * The Entity Management API is a different product from the Opportunities
+     * API, with its own entitlements: a key that polls notices happily can be
+     * refused here, and `assertions` (where the NAICS list lives) is the
+     * section most often gated. So the sections are attempted in descending
+     * order of richness and the first that answers wins, rather than the whole
+     * import failing because one optional section was not permitted.
+     */
+    const sectionSets = [
+      "entityRegistration,coreData,assertions",
+      "entityRegistration,coreData",
+      "entityRegistration",
+    ];
+
+    let lastStatus: number | undefined;
+    let lastDetail: string | undefined;
+
+    for (const includeSections of sectionSets) {
+      try {
+        const data = await withRetry(() =>
+          fetchJson<{ entityData?: RawSamEntity[] }>(ENTITY_BASE, {
+            query: {
+              api_key: config.sam.apiKey,
+              includeSections,
+              ...(uei ? { ueiSAM: uei } : { legalBusinessName: name as string }),
+            },
+          })
+        );
+        return { entities: (data.entityData ?? []).slice(0, 10).map(mapSamEntity) };
+      } catch (err) {
+        const e = err as { status?: number; body?: unknown; message?: string };
+        lastStatus = e.status;
+        lastDetail =
+          typeof e.body === "string"
+            ? e.body.slice(0, 300)
+            : e.body
+              ? JSON.stringify(e.body).slice(0, 300)
+              : e.message;
+        // 401/403 means this key is not entitled to the sections requested;
+        // dropping to a smaller set is worth trying. Anything else (a bad
+        // UEI, an outage) will fail the same way for every set, so stop.
+        if (e.status !== 401 && e.status !== 403) break;
+      }
     }
+
+    return { error: true, status: lastStatus, detail: lastDetail, entities: [] };
   },
 
   /**

@@ -158,7 +158,7 @@ export function LandingPage({
                 <i />
                 Government contracting software
               </p>
-              <h1>Brost Co does the hard, slow parts of government contracting</h1>
+              <h1>The Hard, Slow Parts of Government Contracting Automated</h1>
               <p className="lead">
                 Brost Co watches SAM.gov, scores each opportunity against your company, finds and
                 emails subcontractors, and builds the bid package. You open one daily list for
