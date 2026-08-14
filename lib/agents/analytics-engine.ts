@@ -7,6 +7,8 @@
  * Rule-only (worksWithoutClaude:true). On Mondays, emails a weekly digest.
  */
 import { query, queryOne } from "../db";
+import { listActiveOrganizations } from "../organizations";
+import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
 import { logAgent } from "../logger";
 import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
@@ -44,11 +46,47 @@ export const analyticsEngine: AgentDefinition = {
   cron: "0 7 * * *",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    /**
+     * One snapshot per organization.
+     *
+     * Every query here used to run unscoped, so a single snapshot mixed every
+     * tenant's bids, contracts, and pipeline into one set of numbers, and the
+     * subcontractor rankings carried other customers' company names. It was
+     * then stored without an org, which the dashboard reads by, so after the
+     * read path was scoped the snapshot became unreadable and the analytics
+     * breakdowns sat empty for everyone. Same shape as the opportunity
+     * monitor: resolve the organizations, then do the work inside each.
+     */
+    let orgs = await listActiveOrganizations().catch(() => []);
+    if (orgs.length === 0) {
+      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
+    }
+
+    const summaries: string[] = [];
+    for (const org of orgs) {
+      summaries.push(await runWithOrg(org.id, () => computeForOrg(org.id)));
+    }
+
+    return {
+      ok: true,
+      summary:
+        orgs.length === 1
+          ? summaries[0]
+          : `Snapshots for ${orgs.length} organizations. ${summaries.join(" | ")}`,
+      reasoning:
+        "Computed per organization from that organization's bids, opportunities, contracts, and subcontractors.",
+    };
+  },
+};
+
+/** Build and store one organization's KPI snapshot. Returns a one-line summary. */
+async function computeForOrg(orgId: string): Promise<string> {
     // --- Win rate overall + by dimension. ---
     const overall = await queryOne<{ won: string | number; lost: string | number }>(
       `select count(*) filter (where outcome='won') as won,
               count(*) filter (where outcome='lost') as lost
-         from bids`
+         from bids where org_id = $1`,
+      [orgId]
     );
     const wonCount = n(overall?.won);
     const lostCount = n(overall?.lost);
@@ -58,24 +96,27 @@ export const analyticsEngine: AgentDefinition = {
               count(*) filter (where b.outcome='won') as won,
               count(*) filter (where b.outcome='lost') as lost
          from bids b join opportunities o on o.id=b.opportunity_id
-        where b.outcome in ('won','lost')
-        group by o.naics_code`
+        where b.outcome in ('won','lost') and b.org_id = $1
+        group by o.naics_code`,
+      [orgId]
     );
     const byAgency = await query<RateRow>(
       `select o.agency as key,
               count(*) filter (where b.outcome='won') as won,
               count(*) filter (where b.outcome='lost') as lost
          from bids b join opportunities o on o.id=b.opportunity_id
-        where b.outcome in ('won','lost')
-        group by o.agency`
+        where b.outcome in ('won','lost') and b.org_id = $1
+        group by o.agency`,
+      [orgId]
     );
     const byGeo = await query<RateRow>(
       `select o.location_state as key,
               count(*) filter (where b.outcome='won') as won,
               count(*) filter (where b.outcome='lost') as lost
          from bids b join opportunities o on o.id=b.opportunity_id
-        where b.outcome in ('won','lost')
-        group by o.location_state`
+        where b.outcome in ('won','lost') and b.org_id = $1
+        group by o.location_state`,
+      [orgId]
     );
 
     const mapRates = (rows: RateRow[]) =>
@@ -88,7 +129,8 @@ export const analyticsEngine: AgentDefinition = {
 
     // --- Avg margin on wins. ---
     const marginRow = await queryOne<{ avg: string | number | null }>(
-      `select avg(margin_pct) as avg from bids where outcome='won'`
+      `select avg(margin_pct) as avg from bids where outcome='won' and org_id = $1`,
+      [orgId]
     );
     const avgMarginOnWins = Math.round(n(marginRow?.avg) * 10) / 10;
 
@@ -96,19 +138,24 @@ export const analyticsEngine: AgentDefinition = {
     const pipelineRow = await queryOne<{ total: string | number | null }>(
       `select coalesce(sum(value_estimated),0) as total
          from opportunities
-        where status='open' and stage not in ('dismissed','lost')`
+        where status='open' and stage not in ('dismissed','lost') and org_id = $1`,
+      [orgId]
     );
     const pipelineValue = n(pipelineRow?.total);
 
     // --- Revenue from active contracts. ---
     const revenueRow = await queryOne<{ total: string | number | null }>(
-      `select coalesce(sum(award_amount),0) as total from contracts where status='active'`
+      `select coalesce(sum(award_amount),0) as total from contracts
+        where status='active' and org_id = $1`,
+      [orgId]
     );
     const activeContractRevenue = n(revenueRow?.total);
 
     // --- Pipeline velocity: count per stage (labeled as counts). ---
     const stageRows = await query<{ stage: string; count: string | number }>(
-      `select stage, count(*) as count from opportunities group by stage`
+      `select stage, count(*) as count from opportunities
+        where org_id = $1 group by stage`,
+      [orgId]
     );
     const pipelineByStage = stageRows.map((r) => ({ stage: r.stage, count: n(r.count) }));
 
@@ -123,8 +170,10 @@ export const analyticsEngine: AgentDefinition = {
       `select id, company_name, reliability_score, responsiveness_score, is_preferred
          from subcontractors
         where reliability_score is not null and blacklisted = false
+          and org_id = $1
         order by reliability_score desc nulls last
-        limit 10`
+        limit 10`,
+      [orgId]
     );
     const subRankings = subRows.map((s) => ({
       id: s.id,
@@ -137,7 +186,8 @@ export const analyticsEngine: AgentDefinition = {
     // --- 30/60/90-day cash-flow projection from contract milestones. ---
     const contractRows = await query<MilestoneRow>(
       `select award_amount, start_date, end_date, milestones
-         from contracts where status='active'`
+         from contracts where status='active' and org_id = $1`,
+      [orgId]
     );
     const cashFlow = projectCashFlow(contractRows);
 
@@ -160,10 +210,13 @@ export const analyticsEngine: AgentDefinition = {
     };
 
     // --- Persist snapshot in agent_logs (dashboard reads the latest). ---
+    // The org goes on the row. agent_logs has no trigger to derive it, and the
+    // dashboard reads the snapshot back scoped to the organization, so a row
+    // without one is written and then never found by anybody.
     await query(
-      `insert into agent_logs (agent, action, level, message, output_json)
-       values ('analytics-engine','kpi-snapshot','info','daily KPIs',$1)`,
-      [JSON.stringify(kpis)]
+      `insert into agent_logs (org_id, agent, action, level, message, output_json)
+       values ($2,'analytics-engine','kpi-snapshot','info','daily KPIs',$1)`,
+      [JSON.stringify(kpis), orgId]
     );
 
     await logAgent({
@@ -174,9 +227,15 @@ export const analyticsEngine: AgentDefinition = {
       reasoning: `Win ${wonCount}/${wonCount + lostCount}; avg win margin ${avgMarginOnWins}%; active revenue $${activeContractRevenue.toLocaleString()}.`,
     });
 
-    // --- Weekly digest on Mondays. ---
+    /**
+     * The weekly digest goes to the platform's own address, so it may only
+     * ever carry the platform's own numbers. Sending it for every tenant
+     * would mail one customer's win rates and pipeline to us, once per
+     * customer. Per-tenant digests need a per-tenant recipient, which is a
+     * separate piece of work.
+     */
     const isMonday = new Date().getDay() === 1;
-    if (isMonday && (await systemMail.enabled())) {
+    if (orgId === LEGACY_ORG_ID && isMonday && (await systemMail.enabled())) {
       await systemMail.sendDigest({
         to: config.systemMail.digestTo,
         subject: `BROST CO Weekly KPIs, ${kpis.win_rate.overall}% win rate`,
@@ -185,14 +244,8 @@ export const analyticsEngine: AgentDefinition = {
       });
     }
 
-    return {
-      ok: true,
-      summary: `KPIs: ${kpis.win_rate.overall}% win rate (${wonCount}W/${lostCount}L), $${pipelineValue.toLocaleString()} pipeline, $${activeContractRevenue.toLocaleString()} active revenue.`,
-      reasoning: `Computed from bids/opportunities/contracts/subcontractors; snapshot stored in agent_logs.`,
-      data: kpis,
-    };
-  },
-};
+    return `${kpis.win_rate.overall}% win rate (${wonCount}W/${lostCount}L), $${pipelineValue.toLocaleString()} pipeline`;
+}
 
 interface CashFlowProjection {
   window_days: number[];
