@@ -5,7 +5,7 @@
  * is unavailable (intent stays "other" so we never auto-decline without AI).
  */
 import { z } from "zod";
-import { completeJson } from "./claude";
+import { completeJson, claudeEnabled } from "./claude";
 import { config } from "../config";
 
 export type ReplyIntent =
@@ -144,7 +144,7 @@ export async function extractReplyFromReply(
   context: { opportunityTitle?: string | null; trade?: string | null }
 ): Promise<ExtractedReply> {
   const text = replyText.slice(0, 8000);
-  if (config.claude.enabled) {
+  if (await claudeEnabled()) {
     try {
       const { data } = await completeJson(
         [

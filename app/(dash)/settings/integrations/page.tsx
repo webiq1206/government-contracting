@@ -34,11 +34,20 @@ export default async function IntegrationsPage({
       .catch(() => ({ connected: false, email: null, status: "none", lastError: null })),
   ]);
   const gmailConnected = inbox.connected;
+  // Platform-owned integrations (our Ahrefs, our document storage) are hidden
+  // from customers: a field they can fill that changes nothing for them is
+  // worse than no field at all.
+  const { isPlatformAdmin } = await import("@/lib/platform-admin");
+  const { currentUser } = await import("@/lib/auth");
+  const viewer = await currentUser().catch(() => null);
+  const showPlatformOnly = isPlatformAdmin(viewer?.email);
   const status = { ...integrationStatus(), ...(await orgIntegrationStatus()) };
   const gmailParam = searchParams?.gmail;
   const gmailError = searchParams?.gmailError;
 
-  const initial = INTEGRATION_DEFS.map((def) => {
+  const initial = INTEGRATION_DEFS.filter(
+    (def) => showPlatformOnly || !def.platformOnly
+  ).map((def) => {
     const without = def.without;
     const fields = def.fields.map((f) => ({
       ...f,

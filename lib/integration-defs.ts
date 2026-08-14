@@ -38,6 +38,18 @@ export interface IntegrationDef {
   fields: IntegrationFieldDef[];
   /** Has a live "Test connection" validator. */
   testable: boolean;
+  /**
+   * True when this integration belongs to the platform rather than the
+   * customer, so it is hidden from a customer's settings page.
+   *
+   * Ahrefs tracks OUR marketing domain and only feeds the platform-admin
+   * Site Authority page. Supabase is our document storage. The Gmail OAuth
+   * client is one application that every customer authorizes against, with
+   * their own tokens kept per organization. A customer filling any of these
+   * in would be entering a credential that changes nothing for them, which is
+   * worse than not offering the field.
+   */
+  platformOnly?: boolean;
   guide?: IntegrationGuide;
 }
 
@@ -88,6 +100,7 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
   },
   {
     id: "ahrefs",
+    platformOnly: true,
     name: "Ahrefs (Site Authority)",
     what: "Powers the autonomous Site Authority module: tracks your Domain Rating and referring domains, mines competitors' backlink profiles for prospects, and monitors new and lost backlinks.",
     without: "The Site Authority dashboard has no live data and no backlink prospects are discovered.",
@@ -217,6 +230,7 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
   },
   {
     id: "supabaseStorage",
+    platformOnly: true,
     name: "Supabase Storage (optional)",
     what: "Optional off-database storage for attachments and bid documents. Not required, by default files are stored durably in your database and survive redeploys.",
     without: "Files are stored durably in your Postgres database (survives redeploys). Connect this only if you'd rather keep large files out of the database.",

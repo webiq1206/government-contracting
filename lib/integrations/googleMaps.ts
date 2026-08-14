@@ -1,11 +1,16 @@
 /**
  * Google Places client (legacy Text Search + Place Details). Used to source
- * candidate subcontractors/vendors by trade and location. Requires
- * config.googleMaps.apiKey; when missing, methods return { disabled: true }.
+ * candidate subcontractors/vendors by trade and location.
+ *
+ * The key belongs to the organization, not the platform: Places is billed per
+ * request, so a customer's searches must run on their own key. Resolved per
+ * call via orgApiKey; when they have not set one, methods return
+ * { disabled: true } rather than falling back to ours.
  * Text Search is called once per query; details are fetched only on demand
  * (enrichTopN) to control cost.
  */
 import { config } from "../config";
+import { orgApiKey } from "../integration-keys";
 import { fetchJson, withRetry } from "./http";
 
 const TEXT_SEARCH = "https://maps.googleapis.com/maps/api/place/textsearch/json";
@@ -55,7 +60,8 @@ export const googleMaps = {
     location: string;
     limit?: number;
   }): Promise<{ disabled?: boolean; results: Contractor[] }> {
-    if (!config.googleMaps.enabled) return { disabled: true, results: [] };
+    const apiKey = await orgApiKey("GOOGLE_MAPS_API_KEY");
+    if (!apiKey) return { disabled: true, results: [] };
     const { trade, location, limit = 12 } = params;
 
     try {
@@ -63,7 +69,7 @@ export const googleMaps = {
         fetchJson<TextSearchResponse>(TEXT_SEARCH, {
           query: {
             query: `${trade} contractor in ${location}`,
-            key: config.googleMaps.apiKey,
+            key: apiKey,
           },
         })
       );
@@ -94,14 +100,15 @@ export const googleMaps = {
   async placeDetails(
     placeId: string
   ): Promise<{ phone?: string; website?: string; address?: string } | null> {
-    if (!config.googleMaps.enabled || !placeId) return null;
+    const apiKey = await orgApiKey("GOOGLE_MAPS_API_KEY");
+    if (!apiKey || !placeId) return null;
     try {
       const data = await withRetry(() =>
         fetchJson<DetailsResponse>(DETAILS, {
           query: {
             place_id: placeId,
             fields: "formatted_phone_number,website,formatted_address",
-            key: config.googleMaps.apiKey,
+            key: apiKey,
           },
         })
       );

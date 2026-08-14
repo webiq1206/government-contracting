@@ -5,6 +5,7 @@
  * instead of throwing, so the platform boots without SMS configured.
  */
 import { config } from "../config";
+import { orgApiKey } from "../integration-keys";
 import twilioSdk from "twilio";
 
 const MAX_LEN = 1500;
@@ -19,8 +20,25 @@ export interface SmsResult {
   error?: string;
 }
 
+/**
+ * Twilio credentials belong to the customer, not the platform.
+ *
+ * The FROM number in particular is their phone number: sending a
+ * subcontractor an SMS from OUR number would misattribute the message and
+ * bill us for it.
+ */
+async function twilioCreds(): Promise<{ sid: string; token: string; from: string } | null> {
+  const [sid, token, from] = await Promise.all([
+    orgApiKey("TWILIO_ACCOUNT_SID"),
+    orgApiKey("TWILIO_AUTH_TOKEN"),
+    orgApiKey("TWILIO_FROM_NUMBER"),
+  ]);
+  if (!sid || !token || !from) return null;
+  return { sid, token, from };
+}
+
 export const sms = {
-  enabled: () => config.twilio.enabled,
+  enabled: async () => (await twilioCreds()) !== null,
 
   /** Send an SMS to an arbitrary recipient. */
   async send(to: string, body: string): Promise<SmsResult> {
@@ -29,14 +47,15 @@ export const sms = {
       console.warn("[twilio] Automation paused, skipping send");
       return { disabled: true, error: AUTOMATION_PAUSED_ERROR };
     }
-    if (!config.twilio.enabled) {
-      console.warn("[twilio] SMS not configured, skipping send");
+    const creds = await twilioCreds();
+    if (!creds) {
+      console.warn("[twilio] SMS not configured for this organization, skipping send");
       return { disabled: true };
     }
     try {
-      const client = twilioSdk(config.twilio.accountSid, config.twilio.authToken);
+      const client = twilioSdk(creds.sid, creds.token);
       const msg = await client.messages.create({
-        from: config.twilio.fromNumber,
+        from: creds.from,
         to,
         body: truncate(body),
       });
@@ -48,14 +67,16 @@ export const sms = {
 
   /** Send an operator alert to the configured ALERT_SMS_TO number. */
   async alert(body: string): Promise<SmsResult> {
-    if (!config.twilio.enabled) {
-      console.warn("[twilio] SMS not configured, skipping alert");
+    const creds = await twilioCreds();
+    if (!creds) {
+      console.warn("[twilio] SMS not configured for this organization, skipping alert");
       return { disabled: true };
     }
-    if (!config.twilio.alertTo) {
-      console.warn("[twilio] ALERT_SMS_TO not set, skipping alert");
+    const alertTo = await orgApiKey("ALERT_SMS_TO");
+    if (!alertTo) {
+      console.warn("[twilio] No alert number set for this organization, skipping alert");
       return { disabled: true };
     }
-    return this.send(config.twilio.alertTo, truncate(`[BROSTCO] ${body}`));
+    return this.send(alertTo, truncate(`[BROSTCO] ${body}`));
   },
 };

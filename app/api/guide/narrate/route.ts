@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
-import { complete, ClaudeNotConfiguredError } from "@/lib/ai/claude";
+import { complete, ClaudeNotConfiguredError, claudeEnabled } from "@/lib/ai/claude";
 import { config } from "@/lib/config";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import {
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "guide payload required." }, { status: 400 });
   }
 
-  if (!config.claude.enabled) {
+  if (!(await claudeEnabled())) {
     return NextResponse.json(
       {
         error: "Claude is not connected. Open Integrations to enable plain-English narration.",

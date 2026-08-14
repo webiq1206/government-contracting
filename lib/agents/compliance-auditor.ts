@@ -13,7 +13,7 @@
 import { z } from "zod";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
-import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
+import { completeJson, ClaudeNotConfiguredError, claudeEnabled } from "../ai/claude";
 import { config } from "../config";
 import { logAgent } from "../logger";
 import { noEmDash } from "../sanitize";
@@ -136,7 +136,7 @@ export const complianceAuditor: AgentDefinition = {
     // No Claude key: the AI re-read can't run. Record 'skipped' (the UI says
     // so) instead of leaving the audit "pending" forever; deterministic
     // eligibility findings still apply and still gate submission.
-    if (!config.claude.enabled) {
+    if (!(await claudeEnabled())) {
       const ready = computeReady(validation, preserved);
       await query(
         `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,

@@ -1,9 +1,15 @@
 /**
  * Hunter.io client, email discovery and verification for vendor/contact
- * outreach. Requires config.hunter.apiKey; when missing, every method returns
- * { disabled: true, ... } with a safe empty payload so callers never crash.
+ * outreach.
+ *
+ * The key belongs to the organization, not the platform: Hunter bills per
+ * lookup against a credit balance, so a customer's searches must draw on their
+ * own account. Resolved per call via orgApiKey; when they have not set one,
+ * every method returns { disabled: true, ... } with a safe empty payload so
+ * callers never crash.
  */
 import { config } from "../config";
+import { orgApiKey } from "../integration-keys";
 import { fetchJson, withRetry } from "./http";
 
 const DOMAIN_SEARCH = "https://api.hunter.io/v2/domain-search";
@@ -44,11 +50,12 @@ export const hunter = {
   async domainSearch(
     domain: string
   ): Promise<{ disabled?: boolean; emails: HunterEmail[] }> {
-    if (!config.hunter.enabled) return { disabled: true, emails: [] };
+    const apiKey = await orgApiKey("HUNTER_API_KEY");
+    if (!apiKey) return { disabled: true, emails: [] };
     try {
       const data = await withRetry(() =>
         fetchJson<DomainSearchResponse>(DOMAIN_SEARCH, {
-          query: { domain, api_key: config.hunter.apiKey },
+          query: { domain, api_key: apiKey },
         })
       );
       const emails: HunterEmail[] = (data.data?.emails ?? [])
@@ -73,7 +80,8 @@ export const hunter = {
     last_name?: string;
     company?: string;
   }): Promise<{ disabled?: boolean; email?: string; score?: number }> {
-    if (!config.hunter.enabled) return { disabled: true };
+    const apiKey = await orgApiKey("HUNTER_API_KEY");
+    if (!apiKey) return { disabled: true };
     try {
       const data = await withRetry(() =>
         fetchJson<EmailFinderResponse>(EMAIL_FINDER, {
@@ -82,7 +90,7 @@ export const hunter = {
             first_name: params.first_name,
             last_name: params.last_name,
             company: params.company,
-            api_key: config.hunter.apiKey,
+            api_key: apiKey,
           },
         })
       );
@@ -99,11 +107,12 @@ export const hunter = {
   async verifyEmail(
     email: string
   ): Promise<{ disabled?: boolean; status?: string; score?: number }> {
-    if (!config.hunter.enabled) return { disabled: true };
+    const apiKey = await orgApiKey("HUNTER_API_KEY");
+    if (!apiKey) return { disabled: true };
     try {
       const data = await withRetry(() =>
         fetchJson<EmailVerifierResponse>(EMAIL_VERIFIER, {
-          query: { email, api_key: config.hunter.apiKey },
+          query: { email, api_key: apiKey },
         })
       );
       return {

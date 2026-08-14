@@ -20,11 +20,43 @@ export class ClaudeNotConfiguredError extends Error {
   }
 }
 
-let _client: Anthropic | null = null;
-function client(): Anthropic {
-  if (!config.claude.enabled) throw new ClaudeNotConfiguredError();
-  if (!_client) _client = new Anthropic({ apiKey: config.claude.apiKey });
-  return _client;
+/**
+ * One Anthropic client per organization.
+ *
+ * This was a single module-level singleton built from process.env: whichever
+ * organization triggered the first AI call created it with THEIR key, and
+ * every other tenant then reused that client, and that key, until the process
+ * restarted. Worse than reading a shared env var, because the wrong
+ * credential was captured in memory indefinitely.
+ *
+ * Keyed by organization so a client is still reused within a tenant (the SDK
+ * holds connections), and never across one.
+ */
+const _clients = new Map<string, Anthropic>();
+
+/** Test helper: drop cached SDK clients between cases. */
+export function clearClaudeClients(): void {
+  _clients.clear();
+}
+
+async function client(): Promise<Anthropic> {
+  const { orgApiKey } = await import("../integration-keys");
+  const { tryResolveTenantOrgId } = await import("../tenant");
+  const { LEGACY_ORG_ID } = await import("../tenant-context");
+  const org = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const apiKey = await orgApiKey("ANTHROPIC_API_KEY", org);
+  if (!apiKey) throw new ClaudeNotConfiguredError();
+  const existing = _clients.get(org);
+  if (existing) return existing;
+  const created = new Anthropic({ apiKey });
+  _clients.set(org, created);
+  return created;
+}
+
+/** Whether the CURRENT organization has AI configured. */
+export async function claudeEnabled(): Promise<boolean> {
+  const { orgHasKey } = await import("../integration-keys");
+  return orgHasKey("ANTHROPIC_API_KEY");
 }
 
 export interface ClaudeUsage {
@@ -87,7 +119,8 @@ export async function complete(
     body.thinking = { type: "disabled" };
   }
 
-  const res = await client().messages.create(
+  const anthropic = await client();
+  const res = await anthropic.messages.create(
     body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming
   );
   const rawText = res.content

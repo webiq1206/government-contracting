@@ -66,10 +66,40 @@ describe("integration credentials are per organization", () => {
     expect(fallback).toMatch(/process\.env\[key\]/);
   });
 
-  it("resolves SAM credentials per organization rather than from config", () => {
-    const src = read("lib/integrations/sam.ts");
-    // config.sam.apiKey reads process.env, which is the platform's key.
-    expect(src).not.toMatch(/config\.sam\.apiKey/);
-    expect(src).toMatch(/orgApiKey\("SAM_API_KEY"\)/);
+  /**
+   * Every credential a customer is billed for, one case each. The platform's
+   * key must never be the one that runs their search, their AI call, their
+   * lookup, or sends from their phone number.
+   */
+  it.each([
+    ["lib/integrations/sam.ts", /config\.sam\.apiKey/, /orgApiKey\("SAM_API_KEY"\)/],
+    ["lib/integrations/googleMaps.ts", /config\.googleMaps\.apiKey/, /orgApiKey\("GOOGLE_MAPS_API_KEY"\)/],
+    ["lib/integrations/hunter.ts", /config\.hunter\.apiKey/, /orgApiKey\("HUNTER_API_KEY"\)/],
+    ["lib/integrations/twilio.ts", /config\.twilio\.(accountSid|authToken|fromNumber)/, /orgApiKey\("TWILIO_ACCOUNT_SID"\)/],
+  ])("resolves %s credentials per organization", (file, platformPattern, orgPattern) => {
+    const src = read(file);
+    expect(src, `${file} still reads the platform credential`).not.toMatch(platformPattern);
+    expect(src, `${file} does not resolve a per-org credential`).toMatch(orgPattern);
+  });
+
+  /**
+   * The Anthropic SDK client was a module-level singleton built from
+   * process.env, so the first organization to make an AI call captured its key
+   * in memory for every tenant that followed, until the process restarted.
+   */
+  it("never caches one Anthropic client across organizations", () => {
+    const src = read("lib/ai/claude.ts");
+    expect(src).not.toMatch(/let _client: Anthropic \| null/);
+    expect(src).toMatch(/_clients = new Map<string, Anthropic>/);
+    expect(src).toMatch(/orgApiKey\("ANTHROPIC_API_KEY"/);
+  });
+
+  it("hides platform-owned integrations from customers", () => {
+    // Ahrefs tracks our marketing domain; Supabase is our storage. A field a
+    // customer can fill that changes nothing for them is worse than no field.
+    const defs = read("lib/integration-defs.ts");
+    expect(defs).toMatch(/platformOnly\?: boolean/);
+    const ahrefs = defs.slice(defs.indexOf('id: "ahrefs"'), defs.indexOf('id: "googleMaps"'));
+    expect(ahrefs).toMatch(/platformOnly: true/);
   });
 });

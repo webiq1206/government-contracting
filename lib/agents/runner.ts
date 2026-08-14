@@ -4,6 +4,7 @@
  * isolation, a thrown error is logged and swallowed so it never cascades.
  */
 import { randomUUID } from "node:crypto";
+import { claudeEnabled } from "../ai/claude";
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { enqueue } from "../queue";
@@ -36,7 +37,7 @@ export async function runAgent(
   ).catch(() => null);
 
   try {
-    if (!config.claude.enabled && !def.worksWithoutClaude) {
+    if (!(await claudeEnabled()) && !def.worksWithoutClaude) {
       const result: AgentResult = {
         ok: true,
         summary: `${def.name} skipped: ANTHROPIC_API_KEY not set`,
