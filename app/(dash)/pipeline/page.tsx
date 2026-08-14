@@ -9,7 +9,7 @@ import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { EstimatedValue } from "@/components/estimated-value";
 import { getAutomationRules } from "@/lib/app-settings";
-import { stageParty } from "@/lib/domain/journey";
+import { laneFor, type LaneKey } from "@/lib/domain/pipeline-lanes";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
 
@@ -18,8 +18,6 @@ import type { Opportunity } from "@/lib/types";
  * than by internal stage: three lanes an operator actually thinks in, plus
  * recently decided. The full 11-stage board stays one click away.
  */
-type LaneKey = "you" | "system" | "waiting" | "decided";
-
 const LANES: { key: LaneKey; label: string; blurb: string; badge: string }[] = [
   {
     key: "you",
@@ -46,24 +44,6 @@ const LANES: { key: LaneKey; label: string; blurb: string; badge: string }[] = [
     badge: "bg-pursue/10 text-pursue",
   },
 ];
-
-function laneFor(o: Opportunity): LaneKey {
-  if (o.stage === "won" || o.stage === "lost") return "decided";
-  if (o.human_action_required) return "you";
-  // Human-owned mid/late pipeline even when human_action_required was cleared
-  // after a partial quote save.
-  if (
-    o.stage === "call_queue" ||
-    o.stage === "quote_entry" ||
-    o.stage === "bid_building"
-  ) {
-    return "you";
-  }
-  const party = stageParty(o.stage);
-  if (party === "you") return "you";
-  if (party === "subs" || party === "agency") return "waiting";
-  return "system";
-}
 
 export const dynamic = "force-dynamic";
 

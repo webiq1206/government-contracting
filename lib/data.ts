@@ -38,6 +38,35 @@ async function currentOrg(): Promise<string> {
   return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
 }
 
+/**
+ * What makes a call card still worth working.
+ *
+ * One string because there were four copies of it and they had drifted: the
+ * sidebar badge's copy was missing the snooze clause the other three had, so
+ * it advertised more calls than the Call Queue page would list, and two
+ * numbers under the same word disagreed on every page load.
+ *
+ * The opportunity must still be open. A card outlives the record it belongs
+ * to: nothing clears pending cards when an opportunity is archived, dismissed,
+ * won or lost, so without this the queue keeps asking for calls about work
+ * that finished months ago, and the badge counts them forever.
+ *
+ * Deliberately does NOT carry the org filter. That stays written out at each
+ * call site, where a reader can see it, and where the scoping guards in
+ * tests/data-scoping.test.ts and tests/agent-scoping.test.ts can see it too:
+ * neither can look inside an interpolation, and an org filter they cannot
+ * check is one nobody is checking.
+ *
+ * Expects the aliases cc (call_cards), o (opportunities) and s (subcontractors).
+ */
+export const WORKABLE_CALL_CARD_SQL = `
+  cc.status = 'pending'
+  and o.status = 'open'
+  and (cc.snoozed_until is null or cc.snoozed_until <= now())
+  -- Uncallable cards (no phone) are never shown; Call Prep refuses to create
+  -- them going forward, and this keeps historical empties out of the count.
+  and nullif(btrim(coalesce(s.phone, '')), '') is not null`;
+
 export async function queueCounts(): Promise<{ review: number; callQueue: number }> {
   const { tryResolveTenantOrgId } = await import("./tenant");
   const { LEGACY_ORG_ID } = await import("./tenant-context");
@@ -48,12 +77,12 @@ export async function queueCounts(): Promise<{ review: number; callQueue: number
   const row = await queryOne<{ review: string; call: string }>(
     `select
        (select count(*) from opportunities
-         where org_id='${orgId}' and tier='review' and human_action_required=true and status='open') as review,
+         where org_id = $1 and tier='review' and human_action_required=true and status='open') as review,
        (select count(*) from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
-        where o.org_id='${orgId}' and cc.status='pending'
-          and nullif(btrim(coalesce(s.phone, '')), '') is not null) as call`
+        where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}) as call`,
+    [orgId]
   );
   return { review: Number(row?.review ?? 0), callQueue: Number(row?.call ?? 0) };
 }
@@ -170,12 +199,7 @@ export async function callQueue(): Promise<CallCardRow[]> {
        from call_cards cc
        join subcontractors s on s.id = cc.subcontractor_id
        join opportunities o on o.id = cc.opportunity_id
-      where cc.status='pending'
-        and cc.org_id = $1
-        and (cc.snoozed_until is null or cc.snoozed_until <= now())
-        -- Uncallable cards (no phone) are never shown; Call Prep refuses to
-        -- create them going forward, and this keeps historical empties off Today.
-        and nullif(btrim(coalesce(s.phone, '')), '') is not null
+      where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}
       order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc`,
     [orgId]
   );
@@ -1203,10 +1227,8 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
            from call_cards cc
            join opportunities o on o.id = cc.opportunity_id
            join subcontractors s on s.id = cc.subcontractor_id
-          where cc.status='pending'
-            and o.org_id = '${orgId}'
-            and (cc.snoozed_until is null or cc.snoozed_until <= now())
-            and nullif(btrim(coalesce(s.phone, '')), '') is not null`
+          where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}`,
+      [orgId]
     ),
     query<
       Omit<ActionCallRow, "work_summary"> & {
@@ -1221,12 +1243,10 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          from call_cards cc
          join subcontractors s on s.id = cc.subcontractor_id
          join opportunities o on o.id = cc.opportunity_id
-        where cc.status='pending'
-          and o.org_id = '${orgId}'
-          and (cc.snoozed_until is null or cc.snoozed_until <= now())
-          and nullif(btrim(coalesce(s.phone, '')), '') is not null
+        where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}
         order by (cc.source='reply') desc, (o.deadline is null), o.deadline asc
-        limit 6`
+        limit 6`,
+      [orgId]
     ),
     query<ActionOppRow>(
       `${ACTION_OPP_SELECT}
