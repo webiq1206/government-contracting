@@ -73,15 +73,91 @@ export async function orgApiKey(key: AllowedEnvKey, orgId?: string): Promise<str
 
   let value = row ? (decryptSecret(row.value_enc) ?? "") : "";
 
-  // The founding organization predates the settings UI and configures itself
-  // through the environment. This fallback is scoped to that one org on
-  // purpose: it is the deployment's own account, not a customer's.
+  // Resolution order, and the order matters:
+  //   1. The organization's own key. Always wins, even over a grant, because
+  //      a customer who has supplied a credential should be spending on it.
+  //   2. An explicit grant of the platform key to THIS organization.
+  //   3. The environment, for the founding organization only.
+  //   4. Nothing. An empty string disables the integration rather than
+  //      quietly charging us for a customer's usage.
+  if (!value && org !== LEGACY_ORG_ID && (await hasPlatformGrant(key, org))) {
+    value = process.env[key]?.trim() ?? "";
+  }
   if (!value && org === LEGACY_ORG_ID) {
     value = process.env[key]?.trim() ?? "";
   }
 
   cache.set(cacheKey, { value, at: Date.now() });
   return value;
+}
+
+/**
+ * Whether this organization has been explicitly lent the platform's key.
+ *
+ * Expired grants are ignored here rather than swept, so a grant with an end
+ * date stops working on time even if nothing has run since.
+ */
+async function hasPlatformGrant(key: AllowedEnvKey, orgId: string): Promise<boolean> {
+  const row = await queryOne<{ ok: boolean }>(
+    `select true as ok from platform_key_grants
+      where org_id = $1 and env_key = $2
+        and (expires_at is null or expires_at > now())`,
+    [orgId, key]
+  ).catch(() => null);
+  return row !== null;
+}
+
+export interface PlatformGrant {
+  org_id: string;
+  org_name: string | null;
+  env_key: string;
+  granted_at: string;
+  expires_at: string | null;
+  note: string | null;
+}
+
+/** Every live grant, for the admin screen that manages them. */
+export async function listPlatformGrants(): Promise<PlatformGrant[]> {
+  const { query } = await import("./db");
+  return query<PlatformGrant>(
+    `select g.org_id::text as org_id, o.name as org_name, g.env_key,
+            g.granted_at::text as granted_at, g.expires_at::text as expires_at, g.note
+       from platform_key_grants g
+       left join organizations o on o.id = g.org_id
+      order by g.granted_at desc`
+  ).catch(() => []);
+}
+
+/** Lend one platform key to one organization. Overwrites an existing grant. */
+export async function grantPlatformKey(input: {
+  orgId: string;
+  key: AllowedEnvKey;
+  grantedBy: string | null;
+  note?: string | null;
+  expiresAt?: string | null;
+}): Promise<void> {
+  const { query } = await import("./db");
+  await query(
+    `insert into platform_key_grants (org_id, env_key, granted_by, note, expires_at)
+     values ($1,$2,$3,$4,$5)
+     on conflict (org_id, env_key) do update
+       set granted_by = excluded.granted_by,
+           granted_at = now(),
+           note = excluded.note,
+           expires_at = excluded.expires_at`,
+    [input.orgId, input.key, input.grantedBy, input.note ?? null, input.expiresAt ?? null]
+  );
+  clearIntegrationKeyCache();
+}
+
+/** Take a lent key back. The organization falls straight back to its own. */
+export async function revokePlatformKey(orgId: string, key: AllowedEnvKey): Promise<void> {
+  const { query } = await import("./db");
+  await query(
+    `delete from platform_key_grants where org_id = $1 and env_key = $2`,
+    [orgId, key]
+  );
+  clearIntegrationKeyCache();
 }
 
 /** True when this organization has the credential needed for a feature. */

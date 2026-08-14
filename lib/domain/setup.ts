@@ -5,6 +5,24 @@
  * unit-tested; the Today page renders whatever this returns.
  */
 
+import { INTEGRATION_DEFS } from "../integration-defs";
+
+/**
+ * The plain-English "why" for an integration step, taken from the same catalog
+ * the Integrations page renders.
+ *
+ * Every customer supplies their own credentials, so onboarding has to justify
+ * each one rather than just name it: what it does, what breaks without it, and
+ * what it costs. Reading that from one catalog means the checklist and the
+ * settings page can never drift into saying different things.
+ */
+function integrationHint(id: string, fallback: string): string {
+  const def = INTEGRATION_DEFS.find((d) => d.id === id);
+  if (!def) return fallback;
+  const cost = def.guide?.cost ? ` ${def.guide.cost}` : "";
+  return `${def.what} Without it, ${def.without.charAt(0).toLowerCase()}${def.without.slice(1)}${cost}`;
+}
+
 export interface SetupInputs {
   profile: {
     uei?: string | null;
@@ -108,8 +126,11 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
   const items: SetupItem[] = [
     {
       key: "sam",
-      label: "Connect SAM.gov",
-      hint: "The source of every federal opportunity. Until this is connected, your pipeline stays empty.",
+      label: "Add your SAM.gov API key",
+      hint: integrationHint(
+        "sam",
+        "The source of every federal opportunity. Until this is connected, your pipeline stays empty."
+      ),
       done: i.integrations.sam,
       href: INTEGRATIONS_HREF,
       required: true,
@@ -143,16 +164,22 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
     },
     {
       key: "claude",
-      label: "Connect Claude (Anthropic)",
-      hint: "Powers scoring, plain-English bid briefs, and call scripts.",
+      label: "Add your Anthropic (Claude) key",
+      hint: integrationHint(
+        "claude",
+        "Powers scoring, plain-English bid briefs, and call scripts."
+      ),
       done: i.integrations.claude,
       href: INTEGRATIONS_HREF,
       required: false,
     },
     {
       key: "googleMaps",
-      label: "Connect Google Maps",
-      hint: "Finds local subcontractors for each trade automatically.",
+      label: "Add your Google Maps key",
+      hint: integrationHint(
+        "googleMaps",
+        "Finds local subcontractors for each trade automatically."
+      ),
       done: i.integrations.googleMaps,
       href: INTEGRATIONS_HREF,
       required: false,
