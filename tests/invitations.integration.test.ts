@@ -75,8 +75,24 @@ d("inviting somebody onto chosen terms (integration)", () => {
 
   afterAll(async () => {
     if (!hasDb) return;
+    /**
+     * Purge the way the product does.
+     *
+     * A bare `delete from organizations` fails on the first child row the
+     * signup created (company_profile, before anything else), and the
+     * swallowed error meant every run left nine accounts behind. They show up
+     * on /admin/accounts like real customers; there were 198 of them before
+     * anyone looked. purgeOrganization clears the child tables in passes, and
+     * the leftover count is asserted below so this cannot go quiet again.
+     */
+    const { purgeOrganization } = await import("../lib/admin/accounts");
+    const stranded: string[] = [];
     for (const orgId of created.orgIds) {
-      await query(`delete from organizations where id = $1`, [orgId]).catch(() => {});
+      try {
+        await purgeOrganization(orgId);
+      } catch (err) {
+        stranded.push(`${orgId}: ${(err as Error).message}`);
+      }
     }
     for (const userId of created.userIds) {
       await query(`delete from users where id = $1`, [userId]).catch(() => {});
@@ -86,6 +102,15 @@ d("inviting somebody onto chosen terms (integration)", () => {
       await query(`delete from users where email = $1`, [email]).catch(() => {});
     }
     await query(`delete from admin_actions where admin_email = $1`, [ADMIN]).catch(() => {});
+
+    const left = await query<{ id: string }>(
+      `select id from organizations where id = any($1)`,
+      [created.orgIds]
+    );
+    expect(
+      { stranded, left: left.map((r) => r.id) },
+      "this suite left accounts behind; they will appear on /admin/accounts"
+    ).toEqual({ stranded: [], left: [] });
   });
 
   function track(result: { userId: string; orgId: string }) {

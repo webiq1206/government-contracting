@@ -417,7 +417,7 @@ export async function setSuspended(input: {
 }
 
 /**
- * Delete an account and everything in it. Irreversible.
+ * Remove every row an organization owns, then the organization itself.
  *
  * Roughly thirty tables carry an org_id and most of their foreign keys are ON
  * DELETE NO ACTION, so there is no single statement that does this. Rather
@@ -425,8 +425,67 @@ export async function setSuspended(input: {
  * the deletes run in repeated passes: anything that fails on a foreign key is
  * retried on the next pass, once whatever depended on it is gone. It either
  * converges or the whole transaction rolls back, which is the only acceptable
- * pair of outcomes for an operation like this — a half-deleted tenant is worse
- * than either.
+ * pair of outcomes — a half-deleted tenant is worse than either.
+ *
+ * Exported without the confirmation guards that wrap it in deleteAccount, so
+ * integration tests can clean up the way the product does. They had been
+ * issuing a bare `delete from organizations` with the error swallowed, which
+ * fails on the first child row and leaks the whole account: one suite was
+ * quietly leaving nine organizations behind per run, and the admin accounts
+ * page had accumulated a hundred and ninety-eight of them.
+ */
+export async function purgeOrganization(orgId: string): Promise<void> {
+  const { transaction } = await import("../db");
+  await transaction(async (tx) => {
+    const tables = await tx.query<{ table_name: string }>(
+      `select c.table_name
+         from information_schema.columns c
+         join information_schema.tables t
+           on t.table_schema = c.table_schema and t.table_name = c.table_name
+        where c.table_schema = 'public'
+          and c.column_name = 'org_id'
+          and t.table_type = 'BASE TABLE'
+          and c.table_name <> 'admin_audit_log'`
+    );
+
+    let remaining = tables.rows.map((t) => t.table_name);
+    // Bounded so a genuine cycle fails fast instead of spinning.
+    for (let pass = 0; pass < 12 && remaining.length > 0; pass++) {
+      const failed: string[] = [];
+      for (const table of remaining) {
+        // Each attempt gets a savepoint. Without one, the first foreign-key
+        // error would put the whole transaction into an aborted state and
+        // every later statement — including the retries this loop exists
+        // for — would fail with "current transaction is aborted".
+        await tx.query("savepoint del_pass");
+        try {
+          await tx.query(`delete from "${table}" where org_id = $1`, [orgId]);
+          await tx.query("release savepoint del_pass");
+        } catch {
+          await tx.query("rollback to savepoint del_pass");
+          failed.push(table);
+        }
+      }
+      if (failed.length === remaining.length) {
+        throw new Error(
+          `Could not clear ${failed.join(", ")}: something still references those rows.`
+        );
+      }
+      remaining = failed;
+    }
+    if (remaining.length > 0) {
+      throw new Error(`Gave up clearing ${remaining.join(", ")}.`);
+    }
+
+    await tx.query(`delete from organizations where id = $1`, [orgId]);
+  });
+}
+
+/**
+ * Delete an account and everything in it. Irreversible.
+ *
+ * The guards are the point of this wrapper: it refuses our own account, and it
+ * requires the name typed back exactly. purgeOrganization does the work.
  */
 export async function deleteAccount(input: {
   orgId: string;
@@ -452,52 +511,8 @@ export async function deleteAccount(input: {
     };
   }
 
-  const { transaction } = await import("../db");
-
   try {
-    await transaction(async (tx) => {
-      const tables = await tx.query<{ table_name: string }>(
-        `select c.table_name
-           from information_schema.columns c
-           join information_schema.tables t
-             on t.table_schema = c.table_schema and t.table_name = c.table_name
-          where c.table_schema = 'public'
-            and c.column_name = 'org_id'
-            and t.table_type = 'BASE TABLE'
-            and c.table_name <> 'admin_audit_log'`
-      );
-
-      let remaining = tables.rows.map((t) => t.table_name);
-      // Bounded so a genuine cycle fails fast instead of spinning.
-      for (let pass = 0; pass < 12 && remaining.length > 0; pass++) {
-        const failed: string[] = [];
-        for (const table of remaining) {
-          // Each attempt gets a savepoint. Without one, the first foreign-key
-          // error would put the whole transaction into an aborted state and
-          // every later statement — including the retries this loop exists
-          // for — would fail with "current transaction is aborted".
-          await tx.query("savepoint del_pass");
-          try {
-            await tx.query(`delete from "${table}" where org_id = $1`, [input.orgId]);
-            await tx.query("release savepoint del_pass");
-          } catch {
-            await tx.query("rollback to savepoint del_pass");
-            failed.push(table);
-          }
-        }
-        if (failed.length === remaining.length) {
-          throw new Error(
-            `Could not clear ${failed.join(", ")}: something still references those rows.`
-          );
-        }
-        remaining = failed;
-      }
-      if (remaining.length > 0) {
-        throw new Error(`Gave up clearing ${remaining.join(", ")}.`);
-      }
-
-      await tx.query(`delete from organizations where id = $1`, [input.orgId]);
-    });
+    await purgeOrganization(input.orgId);
   } catch (err) {
     return {
       ok: false,
