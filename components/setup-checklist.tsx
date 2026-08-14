@@ -49,8 +49,8 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
       {checklist.requiredRemaining > 0 && !checklist.discoveryStalled && (
         <p className="mt-3 text-sm leading-relaxed text-slate-600">
           {checklist.requiredRemaining === 1
-            ? "The step marked Required is the one that turns discovery on. Everything else improves what you get."
-            : "The two steps marked Required are what turn discovery on. Everything else improves what you get."}
+            ? "The step marked Required is the last one standing between you and a working pipeline. Everything else improves what you get."
+            : `The ${checklist.requiredRemaining} steps marked Required are what make the platform work: finding opportunities, scoring them, and sourcing subcontractors. Everything else improves what you get.`}
         </p>
       )}
 

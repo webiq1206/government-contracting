@@ -54,4 +54,30 @@ describe("no em dashes in anything a person can read", () => {
     }
     expect(offenders, `em/en dashes found:\n${offenders.join("\n")}`).toEqual([]);
   });
+
+  /**
+   * Source scanning cannot see the two ways a dash actually reaches a reader:
+   * text a person types into the product, and text Claude writes. Both are
+   * stored and then rendered, so both are sanitised on the way in.
+   */
+  it("strips dashes from Claude's output at the single choke point", () => {
+    const src = readFileSync(join(process.cwd(), "lib/ai/claude.ts"), "utf8");
+    expect(src).toMatch(/const text = noEmDash\(rawText\)/);
+  });
+
+  it.each([
+    ["lib/domain/template-versions.ts", /noEmDash\(rawBody\)/, "outreach emails to subcontractors"],
+    ["lib/domain/content.ts", /noEmDash\(content\)/, "proposal snippets drafted into bids"],
+    ["lib/ai/companyProfile.ts", /noEmDash\(rawText\)/, "profile text on generated documents"],
+  ])("sanitises operator-entered text in %s", (file, pattern) => {
+    const src = readFileSync(join(process.cwd(), file), "utf8");
+    expect(src, `${file} stores operator text without stripping dashes`).toMatch(pattern);
+  });
+
+  it("collapses a spaced dash to a comma rather than a bare hyphen", async () => {
+    // "word - word" reads as a typo; the comma is what the house style wants.
+    const { noEmDash } = await import("@/lib/sanitize");
+    expect(noEmDash("fast — reliable")).toBe("fast, reliable");
+    expect(noEmDash("2019–2024")).toBe("2019-2024");
+  });
 });

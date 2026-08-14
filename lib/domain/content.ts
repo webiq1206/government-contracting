@@ -7,6 +7,7 @@
  * no tags we fall back to the most recently updated items.
  */
 import type { ContentCategory, ContentLibraryItem } from "../types";
+import { noEmDash } from "../sanitize";
 
 /**
  * Canonical snippet types. Labels are plain English for operators; `hint` is
@@ -78,7 +79,13 @@ export function parseContentBody(
         )
       )
     : [];
-  return { ok: true, value: { title, category, content, tags } };
+  // Snippets are drafted into bid narratives, so they reach an agency reader.
+  // Sanitised on the way in rather than at render, so what the operator sees
+  // in the library is exactly what a proposal will carry.
+  return {
+    ok: true,
+    value: { title: noEmDash(title), category, content: noEmDash(content), tags },
+  };
 }
 
 /** Lowercase + trim a tag/keyword for case-insensitive comparison. */

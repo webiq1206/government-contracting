@@ -122,15 +122,28 @@ describe("setup order follows the dependency chain", () => {
     expect(keys[1]).toBe("naics");
   });
 
-  it("marks exactly those two as required", () => {
+  /**
+   * Required means the product does not work without it, not merely that it
+   * works better. SAM and NAICS decide whether anything is found at all;
+   * Anthropic and Google Maps decide whether what is found gets scored,
+   * briefed, and staffed. Without all four this is a list of notices.
+   */
+  it("marks the four load-bearing steps as required", () => {
     const required = computeSetupChecklist(allOff)
       .items.filter((i) => i.required)
       .map((i) => i.key);
-    expect(required).toEqual(["sam", "naics"]);
+    expect(required).toEqual(["sam", "naics", "claude", "googleMaps"]);
+  });
+
+  it("leaves the merely-helpful steps optional", () => {
+    const optional = computeSetupChecklist(allOff)
+      .items.filter((i) => !i.required)
+      .map((i) => i.key);
+    expect(optional).toEqual(["service_areas", "identity", "certifications", "email"]);
   });
 
   it("counts the required steps still outstanding", () => {
-    expect(computeSetupChecklist(allOff).requiredRemaining).toBe(2);
+    expect(computeSetupChecklist(allOff).requiredRemaining).toBe(4);
     expect(computeSetupChecklist(allOn).requiredRemaining).toBe(0);
   });
 });

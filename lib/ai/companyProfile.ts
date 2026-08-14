@@ -5,6 +5,7 @@
  * new version", so we cache with a short TTL and bust the cache on write.
  */
 import { queryOne, query } from "../db";
+import { noEmDash } from "../sanitize";
 import { defaultCompanyProfile } from "../domain/default-profile";
 import type { CompanyProfile, CompanyProfileJson } from "../types";
 import { currentOrgId, LEGACY_ORG_ID } from "../tenant-context";
@@ -123,9 +124,12 @@ export async function getProfileJson(): Promise<CompanyProfileJson | null> {
  */
 export async function publishProfile(
   json: CompanyProfileJson,
-  text: string,
+  rawText: string,
   updatedBy: string
 ): Promise<CompanyProfile> {
+  // The rendered profile is injected into every Claude prompt and printed on
+  // generated documents, so it is customer-facing twice over.
+  const text = noEmDash(rawText);
   const orgId = await resolveProfileOrgId();
   const current = await queryOne<{ max: number }>(
     `select coalesce(max(version),0) as max from company_profile where org_id = $1`,

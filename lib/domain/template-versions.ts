@@ -16,6 +16,7 @@
  * every other customer sends with.
  */
 import { transaction } from "../db";
+import { noEmDash } from "../sanitize";
 import { LEGACY_ORG_ID } from "../tenant-context";
 
 export interface SavedTemplateVersion {
@@ -36,10 +37,16 @@ export interface SavedTemplateVersion {
  */
 export async function saveTemplateVersion(
   slug: string,
-  subject: string | null,
-  body: string,
+  rawSubject: string | null,
+  rawBody: string,
   orgId: string
 ): Promise<SavedTemplateVersion> {
+  // Outreach templates become emails to subcontractors, so the house rule
+  // against em dashes has to hold here rather than at render time: the stored
+  // text is what an operator reads back, edits, and previews, and a dash
+  // stripped only on send would keep reappearing in the editor.
+  const subject = rawSubject == null ? null : noEmDash(rawSubject);
+  const body = noEmDash(rawBody);
   return transaction(async (client) => {
     // Lock key includes the org: two orgs saving the same slug do not contend,
     // two saves in one org fully serialise.

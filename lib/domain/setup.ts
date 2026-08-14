@@ -112,12 +112,13 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
    * Order is the product's opinion about what to do first, so it follows the
    * dependency chain rather than the shape of the settings pages.
    *
-   * SAM.gov and NAICS come first because they are the only two steps that
-   * decide whether anything happens at all: the monitor polls SAM once per
-   * NAICS code, and skips federal ingestion outright when either is missing.
-   * Everything after them improves what arrives. The previous order walked a
-   * new customer through four profile fields before reaching the connection
-   * that makes the product function.
+   * SAM.gov and NAICS come first because they decide whether anything
+   * happens at all: the monitor polls SAM once per NAICS code and skips
+   * federal ingestion outright when either is missing. The Anthropic and
+   * Google Maps keys are required too, because without them the product is a
+   * list of notices rather than a system: nothing is scored, no brief is
+   * written, and no subcontractor is found. The previous order walked a new
+   * customer through four profile fields before reaching any of it.
    *
    * They are adjacent on purpose. Neither works alone, and splitting them
    * across the list is what let someone connect SAM, see an empty pipeline,
@@ -171,7 +172,7 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
       ),
       done: i.integrations.claude,
       href: INTEGRATIONS_HREF,
-      required: false,
+      required: true,
     },
     {
       key: "googleMaps",
@@ -182,7 +183,7 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
       ),
       done: i.integrations.googleMaps,
       href: INTEGRATIONS_HREF,
-      required: false,
+      required: true,
     },
     {
       // The connected inbox is the whole email system: it sends outreach, and
