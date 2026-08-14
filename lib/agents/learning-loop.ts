@@ -16,6 +16,8 @@ import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
 import { systemMail } from "../integrations/system-mail";
+import { listActiveOrganizations } from "../organizations";
+import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, ScoreBreakdown } from "../types";
 
@@ -56,175 +58,210 @@ export const learningLoop: AgentDefinition = {
   cron: "0 9 * * 1",
   worksWithoutClaude: false,
   async handler(): Promise<AgentResult> {
-    const profile = await getProfileJson();
-
-    // --- Load recent decided bids. ---
-    const outcomes = await query<BidOutcomeRow>(
-      `select b.id, b.opportunity_id, b.bid_amount, b.margin_pct, b.outcome, b.loss_reason,
-              o.naics_code, o.score_breakdown, o.tier
-         from bids b
-         join opportunities o on o.id = b.opportunity_id
-        where b.outcome in ('won','lost')
-        order by b.updated_at desc
-        limit 100`
-    );
-
-    const wins = outcomes.filter((o) => o.outcome === "won").length;
-    const losses = outcomes.filter((o) => o.outcome === "lost").length;
-
-    // --- Current active weights (baseline for proposals). ---
-    const activeWeights = await queryOne<{ version: number; weights: Record<string, unknown> }>(
-      `select version, weights from scoring_weights where is_active = true limit 1`
-    );
-    const currentWeights: Record<string, unknown> = activeWeights?.weights ?? {};
-
-    // --- Analyze via Claude. ---
-    // Below 20 decided bids the sample is too small: weekly proposals would
-    // churn and contradict each other. Wait for a meaningful sample.
-    const MIN_OUTCOMES_FOR_PROPOSAL = 20;
-    let analysis: z.infer<typeof AnalysisSchema> | null = null;
-    let claudeSkipped = false;
-    if (outcomes.length > 0 && outcomes.length < MIN_OUTCOMES_FOR_PROPOSAL) {
-      await logAgent({
-        agent: "learning-loop",
-        action: "analyze-outcomes",
-        message: `Only ${outcomes.length} decided bid(s) so far (need ${MIN_OUTCOMES_FOR_PROPOSAL}). Weight analysis starts once more wins and losses are recorded. This is normal early on.`,
-      });
-    }
-    if (outcomes.length >= MIN_OUTCOMES_FOR_PROPOSAL) {
-      const prompt = buildAnalysisPrompt(outcomes, currentWeights, profile?.scoring_rubric?.dimensions ?? []);
-      try {
-        const { data, usage } = await completeJson(prompt, {
-          schema: AnalysisSchema,
-          model: config.claude.modelSmart, // rubric-weight reasoning, worth the stronger model
-          maxTokens: 2000,
-        });
-        analysis = data;
-        await logAgent({
-          agent: "learning-loop",
-          action: "analyze-outcomes",
-          message: `Analyzed ${outcomes.length} outcomes (${wins}W/${losses}L).`,
-          claudeUsage: usage,
-        });
-      } catch (err) {
-        if (err instanceof ClaudeNotConfiguredError) {
-          claudeSkipped = true;
-          await logAgent({
-            agent: "learning-loop",
-            action: "analyze-outcomes",
-            level: "warn",
-            status: "skipped",
-            message: "Claude not configured, skipping weight analysis this run.",
-          });
-        } else {
-          throw err;
-        }
-      }
+    /**
+     * One tuning pass per organization.
+     *
+     * Every read here ran unscoped, so the weights proposed to a customer were
+     * derived from every other customer's wins, losses and sub performance,
+     * and the proposal was written with no org at all, which the approval
+     * screen reads by. Nothing leaked to a screen, which is exactly why it
+     * would have gone unnoticed: each customer's tuning was quietly being
+     * driven by strangers' outcomes.
+     */
+    let orgs = await listActiveOrganizations().catch(() => []);
+    if (orgs.length === 0) {
+      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
     }
 
-    // --- Propose a new INACTIVE scoring_weights version (never activate). ---
-    let proposedVersion: number | null = null;
-    if (analysis && analysis.weight_adjustments.length > 0) {
-      const maxVersion = await queryOne<{ max: number }>(
-        `select coalesce(max(version),0) as max from scoring_weights`
-      );
-      proposedVersion = (maxVersion?.max ?? 0) + 1;
-      const mergedWeights: Record<string, unknown> = { ...currentWeights };
-      for (const adj of analysis.weight_adjustments) {
-        const prev = (mergedWeights[adj.key] as Record<string, unknown>) ?? {};
-        mergedWeights[adj.key] = { ...prev, weight: adj.proposed_weight };
-      }
-      const rationale = analysis.weight_adjustments
-        .map((a) => `${a.key}: ${a.current_weight}→${a.proposed_weight} (${a.rationale})`)
-        .join("; ");
-      await query(
-        `insert into scoring_weights
-           (version, weights, rationale, is_active, proposed_by, proposed_at, supporting_data)
-         values ($1,$2,$3,false,'learning-loop',now(),$4)`,
-        [
-          proposedVersion,
-          JSON.stringify(mergedWeights),
-          rationale,
-          JSON.stringify(analysis.supporting_data ?? {}),
-        ]
-      );
-      await logAgent({
-        agent: "learning-loop",
-        action: "propose-weights",
-        message: `Proposed scoring_weights v${proposedVersion} (inactive; awaiting approval).`,
-        reasoning: rationale,
-      });
-    }
-
-    // --- Recompute sub reliability + responsiveness. ---
-    const subUpdates = await recomputeSubScores();
-
-    // --- Weekly report. ---
-    const reportLines: string[] = [];
-    reportLines.push(`Learning Loop weekly report`);
-    reportLines.push(
-      `Outcomes analyzed: ${outcomes.length} (${wins} won, ${losses} lost).`
-    );
-    if (proposedVersion) {
-      reportLines.push(`Proposed scoring weights v${proposedVersion} (inactive, approve to apply).`);
-    } else if (claudeSkipped) {
-      reportLines.push(`Weight analysis skipped (Claude not configured).`);
-    } else {
-      reportLines.push(`No scoring-weight changes proposed this week.`);
-    }
-    if (analysis?.pricing_insight) reportLines.push(`Pricing: ${analysis.pricing_insight}`);
-    if (analysis?.agency_insights) reportLines.push(`Agencies: ${analysis.agency_insights}`);
-    reportLines.push(
-      `Sub scores updated: ${subUpdates.updated}; promoted to preferred: ${subUpdates.promoted}.`
-    );
-    if (analysis?.summary) reportLines.push(analysis.summary);
-    const report = reportLines.join("\n");
-
-    await logAgent({
-      agent: "learning-loop",
-      action: "weekly-report",
-      level: "info",
-      message: "Weekly learning report generated.",
-      reasoning: report,
-      output: {
-        wins,
-        losses,
-        proposedVersion,
-        subUpdated: subUpdates.updated,
-        subPromoted: subUpdates.promoted,
-      },
-    });
-
-    // --- Optional email digest. ---
-    if (await systemMail.enabled()) {
-      const html = `<h2>Learning Loop, Weekly Report</h2><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(
-        report
-      )}</pre>`;
-      await systemMail.sendDigest({
-        to: config.systemMail.digestTo,
-        subject: `BROST CO Learning Loop, ${wins}W/${losses}L this cycle`,
-        html,
-        text: report,
-      });
+    const summaries: string[] = [];
+    for (const org of orgs) {
+      summaries.push(await runWithOrg(org.id, () => learnForOrg(org.id)));
     }
 
     return {
       ok: true,
-      summary: `Learning loop complete: ${outcomes.length} outcomes (${wins}W/${losses}L)${
-        proposedVersion ? `, proposed weights v${proposedVersion}` : ""
-      }; ${subUpdates.updated} subs updated, ${subUpdates.promoted} promoted.`,
-      reasoning: report,
-      data: {
-        outcomes: outcomes.length,
-        wins,
-        losses,
-        proposedVersion,
-        subUpdated: subUpdates.updated,
-        subPromoted: subUpdates.promoted,
-      },
+      summary:
+        summaries.length === 1
+          ? summaries[0]
+          : `Learning loop across ${summaries.length} organizations. ${summaries.join(" | ")}`,
     };
   },
 };
+
+async function learnForOrg(orgId: string): Promise<string> {
+  const profile = await getProfileJson();
+
+  // --- Load recent decided bids. ---
+  const outcomes = await query<BidOutcomeRow>(
+    `select b.id, b.opportunity_id, b.bid_amount, b.margin_pct, b.outcome, b.loss_reason,
+            o.naics_code, o.score_breakdown, o.tier
+       from bids b
+       join opportunities o on o.id = b.opportunity_id
+      where b.org_id = $1
+        and b.outcome in ('won','lost')
+      order by b.updated_at desc
+      limit 100`,
+    [orgId]
+  );
+
+  const wins = outcomes.filter((o) => o.outcome === "won").length;
+  const losses = outcomes.filter((o) => o.outcome === "lost").length;
+
+  // --- Current active weights (baseline for proposals). ---
+  // Several tenants each hold an active version, so "any active row" is
+  // whichever one the planner happens to reach: the proposal would be a
+  // delta against a rubric this customer has never seen.
+  const activeWeights = await queryOne<{ version: number; weights: Record<string, unknown> }>(
+    `select version, weights from scoring_weights
+      where is_active = true and org_id = $1 limit 1`,
+    [orgId]
+  );
+  const currentWeights: Record<string, unknown> = activeWeights?.weights ?? {};
+
+  // --- Analyze via Claude. ---
+  // Below 20 decided bids the sample is too small: weekly proposals would
+  // churn and contradict each other. Wait for a meaningful sample.
+  const MIN_OUTCOMES_FOR_PROPOSAL = 20;
+  let analysis: z.infer<typeof AnalysisSchema> | null = null;
+  let claudeSkipped = false;
+  if (outcomes.length > 0 && outcomes.length < MIN_OUTCOMES_FOR_PROPOSAL) {
+    await logAgent({
+      agent: "learning-loop",
+      action: "analyze-outcomes",
+      message: `Only ${outcomes.length} decided bid(s) so far (need ${MIN_OUTCOMES_FOR_PROPOSAL}). Weight analysis starts once more wins and losses are recorded. This is normal early on.`,
+    });
+  }
+  if (outcomes.length >= MIN_OUTCOMES_FOR_PROPOSAL) {
+    const prompt = buildAnalysisPrompt(outcomes, currentWeights, profile?.scoring_rubric?.dimensions ?? []);
+    try {
+      const { data, usage } = await completeJson(prompt, {
+        schema: AnalysisSchema,
+        model: config.claude.modelSmart, // rubric-weight reasoning, worth the stronger model
+        maxTokens: 2000,
+      });
+      analysis = data;
+      await logAgent({
+        agent: "learning-loop",
+        action: "analyze-outcomes",
+        message: `Analyzed ${outcomes.length} outcomes (${wins}W/${losses}L).`,
+        claudeUsage: usage,
+      });
+    } catch (err) {
+      if (err instanceof ClaudeNotConfiguredError) {
+        claudeSkipped = true;
+        await logAgent({
+          agent: "learning-loop",
+          action: "analyze-outcomes",
+          level: "warn",
+          status: "skipped",
+          message: "Claude not configured, skipping weight analysis this run.",
+        });
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  // --- Propose a new INACTIVE scoring_weights version (never activate). ---
+  let proposedVersion: number | null = null;
+  if (analysis && analysis.weight_adjustments.length > 0) {
+    // Versions are per organization (043 made the uniqueness per org too),
+    // so a busy tenant does not push everyone else's version numbers up.
+    const maxVersion = await queryOne<{ max: number }>(
+      `select coalesce(max(version),0) as max from scoring_weights where org_id = $1`,
+      [orgId]
+    );
+    proposedVersion = (maxVersion?.max ?? 0) + 1;
+    const mergedWeights: Record<string, unknown> = { ...currentWeights };
+    for (const adj of analysis.weight_adjustments) {
+      const prev = (mergedWeights[adj.key] as Record<string, unknown>) ?? {};
+      mergedWeights[adj.key] = { ...prev, weight: adj.proposed_weight };
+    }
+    const rationale = analysis.weight_adjustments
+      .map((a) => `${a.key}: ${a.current_weight}→${a.proposed_weight} (${a.rationale})`)
+      .join("; ");
+    // scoring_weights is a root table, so nothing derives the org for it.
+    // A proposal with no org is one the approval screen, which reads by
+    // org, can never show: the customer would never get to approve it.
+    await query(
+      `insert into scoring_weights
+         (org_id, version, weights, rationale, is_active, proposed_by, proposed_at, supporting_data)
+       values ($5,$1,$2,$3,false,'learning-loop',now(),$4)`,
+      [
+        proposedVersion,
+        JSON.stringify(mergedWeights),
+        rationale,
+        JSON.stringify(analysis.supporting_data ?? {}),
+        orgId,
+      ]
+    );
+    await logAgent({
+      agent: "learning-loop",
+      action: "propose-weights",
+      message: `Proposed scoring_weights v${proposedVersion} (inactive; awaiting approval).`,
+      reasoning: rationale,
+    });
+  }
+
+  // --- Recompute sub reliability + responsiveness. ---
+  const subUpdates = await recomputeSubScores(orgId);
+
+  // --- Weekly report. ---
+  const reportLines: string[] = [];
+  reportLines.push(`Learning Loop weekly report`);
+  reportLines.push(
+    `Outcomes analyzed: ${outcomes.length} (${wins} won, ${losses} lost).`
+  );
+  if (proposedVersion) {
+    reportLines.push(`Proposed scoring weights v${proposedVersion} (inactive, approve to apply).`);
+  } else if (claudeSkipped) {
+    reportLines.push(`Weight analysis skipped (Claude not configured).`);
+  } else {
+    reportLines.push(`No scoring-weight changes proposed this week.`);
+  }
+  if (analysis?.pricing_insight) reportLines.push(`Pricing: ${analysis.pricing_insight}`);
+  if (analysis?.agency_insights) reportLines.push(`Agencies: ${analysis.agency_insights}`);
+  reportLines.push(
+    `Sub scores updated: ${subUpdates.updated}; promoted to preferred: ${subUpdates.promoted}.`
+  );
+  if (analysis?.summary) reportLines.push(analysis.summary);
+  const report = reportLines.join("\n");
+
+  await logAgent({
+    agent: "learning-loop",
+    action: "weekly-report",
+    level: "info",
+    message: "Weekly learning report generated.",
+    reasoning: report,
+    output: {
+      wins,
+      losses,
+      proposedVersion,
+      subUpdated: subUpdates.updated,
+      subPromoted: subUpdates.promoted,
+    },
+  });
+
+  // --- Optional email digest. ---
+  // Same rule as the KPI digest: it goes to the platform's own address, so
+  // it may only ever carry the platform's own numbers. Sent per tenant it
+  // would mail each customer's win/loss record to us, once per customer.
+  if (orgId === LEGACY_ORG_ID && (await systemMail.enabled())) {
+    const html = `<h2>Learning Loop, Weekly Report</h2><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(
+      report
+    )}</pre>`;
+    await systemMail.sendDigest({
+      to: config.systemMail.digestTo,
+      subject: `BROST CO Learning Loop, ${wins}W/${losses}L this cycle`,
+      html,
+      text: report,
+    });
+  }
+
+  return `${outcomes.length} outcomes (${wins}W/${losses}L)${
+    proposedVersion ? `, proposed weights v${proposedVersion}` : ""
+  }; ${subUpdates.updated} subs updated, ${subUpdates.promoted} promoted`;
+}
 
 function buildAnalysisPrompt(
   outcomes: BidOutcomeRow[],
@@ -276,7 +313,7 @@ interface SubUpdateResult {
  * a simple heuristic from quote presence and blacklist status. Subs scoring
  * reliability >= 80 are elevated to preferred.
  */
-async function recomputeSubScores(): Promise<SubUpdateResult> {
+async function recomputeSubScores(orgId: string): Promise<SubUpdateResult> {
   const subs = await query<{
     id: string;
     blacklisted: boolean;
@@ -297,8 +334,10 @@ async function recomputeSubScores(): Promise<SubUpdateResult> {
        from subcontractors s
        left join communications c on c.subcontractor_id = s.id
        left join quotes q on q.subcontractor_id = s.id
+      where s.org_id = $1
       group by s.id, s.blacklisted
-     having count(distinct c.id) > 0 or count(distinct q.id) > 0`
+     having count(distinct c.id) > 0 or count(distinct q.id) > 0`,
+    [orgId]
   );
 
   let updated = 0;

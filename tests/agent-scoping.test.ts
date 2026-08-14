@@ -31,11 +31,9 @@ const TENANT_TABLES = [
  *
  *   compliance-monitor  a dedupe lookup can match another org's item, and the
  *                       non-small-business sweep reads every org's contracts
- *   learning-loop       proposes scoring weights from every tenant's outcomes
  */
 const KNOWN_SCANS: Record<string, number> = {
   "compliance-monitor.ts": 2,
-  "learning-loop.ts": 2,
 };
 
 /**
