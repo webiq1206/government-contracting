@@ -92,6 +92,27 @@ STRIPE_SECRET_KEY=sk_live_... npm run stripe:setup
 The script is idempotent: it finds prices by lookup key, so re-running never
 creates duplicates. It prints the environment lines to paste in step 4.
 
+### Changing a price later
+
+Stripe prices are immutable, so a new amount means a new price object. Edit
+`monthlyUsd` in `lib/billing/catalog.ts` (annual follows automatically at seven
+months of it), then:
+
+```bash
+STRIPE_SECRET_KEY=sk_live_... npx tsx scripts/stripe-setup.ts --reprice
+```
+
+Without `--reprice` the script reports the mismatch and stops, which is what
+you want on a routine run. With it, a new price is created and the lookup key
+moves onto it, so new checkouts use the new rate.
+
+**Existing subscribers are not moved.** A subscription references a price by
+id, so they keep billing at the price they signed up on, and the old price
+stays active in Stripe to serve them. Migrating anyone to the new rate is a
+separate decision, made per customer in the Stripe dashboard or through the
+plan-change flow. Paste the new price IDs into the environment afterwards, or
+checkout will still open at the old rate.
+
 Do not create these products by hand in the dashboard. The script sets a
 `lookup_key` and `plan_key` metadata that the verify step depends on; prices
 created through the UI lack them and will be treated as missing.

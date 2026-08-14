@@ -14,8 +14,16 @@
  *
  * Idempotent. Prices are found by lookup key, so re-running never creates a
  * duplicate. Stripe prices are immutable, so when an amount changes the script
- * reports the mismatch and leaves the old price alone rather than silently
- * repricing existing subscribers.
+ * reports the mismatch and stops rather than silently repricing.
+ *
+ * Add --reprice to act on that mismatch: it issues a new price at the new
+ * amount and moves the lookup key onto it, so new checkouts use the new rate.
+ * A subscription references a price by id, so everyone already subscribed
+ * stays exactly where they are; the old price remains in the account, active
+ * and billing them, just without a lookup key. Moving existing customers onto
+ * a new rate is a separate and deliberate act.
+ *
+ *   STRIPE_SECRET_KEY=sk_live_... npx tsx scripts/stripe-setup.ts --reprice
  */
 import "../lib/env";
 import {
@@ -27,6 +35,15 @@ import {
 } from "../lib/billing/catalog";
 
 const VERIFY_ONLY = process.argv.includes("--verify");
+/**
+ * Permission to issue a NEW price when the catalog's amount no longer matches
+ * Stripe's.
+ *
+ * Behind a flag because it is a money operation. A stray edit to the catalog
+ * followed by a routine setup run should report a mismatch and stop, not
+ * quietly mint a price customers can be charged.
+ */
+const REPRICE = process.argv.includes("--reprice");
 
 function fail(message: string): never {
   console.error(`\n${message}\n`);
@@ -51,7 +68,7 @@ const stripe: any = new Stripe(key, { apiVersion: "2026-07-29.dahlia" });
 interface Resolved {
   price: PlanPrice;
   id: string | null;
-  status: "found" | "created" | "missing" | "mismatch";
+  status: "found" | "created" | "missing" | "mismatch" | "repriced";
   detail?: string;
 }
 
@@ -119,14 +136,44 @@ async function resolvePrice(price: PlanPrice): Promise<Resolved> {
     const ownerId = typeof found.product === "string" ? found.product : found.product?.id;
     if (ownerId) await ensureTaxCode(ownerId, price.lookupKey);
     if (found.unit_amount !== price.amountCents) {
+      if (!REPRICE) {
+        return {
+          price,
+          id: found.id,
+          status: "mismatch",
+          detail:
+            `Stripe has ${found.unit_amount} cents, the catalog expects ${price.amountCents}. ` +
+            "Stripe prices cannot be edited. Re-run with --reprice to create a new " +
+            "price and point new signups at it; everyone already subscribed stays " +
+            "on the price their subscription references.",
+        };
+      }
+      /**
+       * Issue the new price and move the lookup key onto it.
+       *
+       * A Stripe subscription references a price by id, so creating a price
+       * and transferring the key changes what NEW checkouts use and leaves
+       * every existing subscriber exactly where they are. The old price stays
+       * in the account, active and billing its subscribers, simply without a
+       * lookup key. Moving anyone onto the new rate is a separate, deliberate
+       * act.
+       */
+      const replacement = await stripe.prices.create({
+        product: product.id,
+        unit_amount: price.amountCents,
+        currency: "usd",
+        recurring: { interval: price.interval },
+        lookup_key: price.lookupKey,
+        transfer_lookup_key: true,
+        metadata: { plan_key: price.plan, interval: price.interval },
+      });
       return {
         price,
-        id: found.id,
-        status: "mismatch",
+        id: replacement.id,
+        status: "repriced",
         detail:
-          `Stripe has ${found.unit_amount} cents, the catalog expects ${price.amountCents}. ` +
-          "Stripe prices cannot be edited: create a new price, move new signups to it, " +
-          "and decide deliberately what happens to existing subscribers.",
+          `was ${found.unit_amount} cents (${found.id}), now ${price.amountCents}. ` +
+          "Existing subscribers stay on the old price.",
       };
     }
     return { price, id: found.id, status: "found" };
