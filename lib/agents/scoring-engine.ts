@@ -22,6 +22,7 @@ import {
 import { intakeChecks, intakeVerdict } from "../domain/intake";
 import { resolveEstimatedValue } from "../domain/value-extract";
 import { getAutomationRules } from "../app-settings";
+import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
 
@@ -68,259 +69,276 @@ export const scoringEngine: AgentDefinition = {
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
 
-    // Backstop for records ingested before value extraction existed (or from
-    // a source that didn't run it): try once more here, right before scoring
-    // needs the number, so nothing scores as permanently "unknown" just
-    // because it predates this pass.
-    if (opp.value_estimated == null) {
-      const resolved = resolveEstimatedValue({ title: opp.title, description: opp.description });
-      if (resolved) {
-        await query(
-          `update opportunities set value_estimated=$2, value_estimated_source=$3 where id=$1`,
-          [opportunityId, resolved.amount, resolved.source]
-        );
-        opp.value_estimated = resolved.amount;
-        opp.value_estimated_source = resolved.source;
-      }
-    }
-
-    const profile = await getProfileJson();
-    if (!profile) return { ok: false, summary: "no active Company Profile" };
-
-    // 0) Intake quality gate, BEFORE any scoring spend: minimum lead time,
-    // missing deadline, duplicate solicitation number. Nothing is excluded
-    // silently: every finding is logged with a full explanation and lands on
-    // the record's risk flags.
-    const rules = await getAutomationRules();
-    const dupRow =
-      opp.solicitation_number && opp.org_id
-        ? await queryOne<{ n: number }>(
-            `select count(*)::int as n from opportunities
-            where org_id = $3
-              and id <> $2
-              and status = 'open'
-              and solicitation_number is not null
-              and lower(btrim(solicitation_number)) = lower(btrim($1))`,
-            [opp.solicitation_number, opportunityId, opp.org_id]
-          )
-        : null;
-    const findings = intakeChecks({
-      deadline: opp.deadline,
-      duplicateSolicitationCount: dupRow?.n ?? 0,
-      rules,
-      now: new Date(),
-    });
-    const gate = intakeVerdict(findings);
-    for (const f of findings) {
-      await logAgent({
-        agent: "scoring-engine",
-        action: `intake-${f.rule.replace(/_/g, "-")}`,
-        opportunityId,
-        level: f.verdict === "dismiss" ? "warn" : "info",
-        message: f.explanation,
-      });
-    }
-    if (gate === "dismiss") {
-      await query(
-        `update opportunities
-            set stage='dismissed', status='archived', tier='dismiss',
-                human_action_required=false,
-                risk_flags = (select array(select distinct unnest(coalesce(risk_flags,'{}') || $2::text[])))
-          where id=$1`,
-        [opportunityId, findings.map((f) => f.flag)]
-      );
-      return {
-        ok: true,
-        summary: `Intake gate auto-passed this opportunity: ${findings
-          .map((f) => f.rule.replace(/_/g, " "))
-          .join(", ")}.`,
-        reasoning: findings.map((f) => f.explanation).join(" "),
-      };
-    }
-    const intakeFlags = findings.map((f) => f.flag);
-    const forceIntakeReview = gate === "review";
-
-    // 1) Deterministic hard exclusions FIRST.
-    const structuralExclusions = checkHardExclusions(opp, profile);
-
-    // Valid exclusion keys the model may return in extra_exclusions. Anything
-    // outside this set is a hallucination and must be dropped, an unrecognized
-    // exclusion string would otherwise zero the score and auto-dismiss a good
-    // opportunity (buildScoreBreakdown forces dismiss on ANY exclusion).
-    const validExclusionKeys = new Set(profile.hard_exclusions.map((e) => e.key));
-
-    // 2) Rubric scoring via Claude (per-dimension judgment against the profile).
-    // Apply any operator-approved Learning Loop weights (normalized to 100 pts) so
-    // an approved weight version actually changes scoring; default = raw rubric.
-    // Scoped to the org being scored: with several tenants each holding an
-    // active weight version, "any active row" would score this org's
-    // opportunities with someone else's approved rubric.
-    const { tryResolveTenantOrgId } = await import("../tenant");
-    const weightsOrgId = await tryResolveTenantOrgId();
-    const activeWeights = await queryOne<{ weights: Record<string, unknown> }>(
-      `select weights from scoring_weights where is_active = true and org_id = $1 limit 1`,
-      [weightsOrgId]
-    );
-    const rubricDims = applyWeightOverrides(profile.scoring_rubric.dimensions, activeWeights?.weights);
-    const rubric = { ...profile.scoring_rubric, dimensions: rubricDims };
-    let dims: DimensionScore[] = [];
-    let summary = "";
-    let claudeExclusions: string[] = [];
-    let missingKeys: string[] = [];
-    let scoringIncomplete = false;
-
-    try {
-      const prompt = buildScoringPrompt(opp, rubric.dimensions, profile.hard_exclusions);
-      const { data, usage } = await completeJson(prompt, {
-        schema: DimSchema,
-        maxTokens: 1500,
-      });
-      // Reconcile against the FULL rubric so an omitted dimension can't silently
-      // understate the total; a partial response routes to human review below.
-      const reconciled = reconcileDimensions(rubric.dimensions, data.dimensions);
-      dims = reconciled.dims;
-      missingKeys = reconciled.missingKeys;
-      scoringIncomplete = missingKeys.length > 0;
-      // Drop any exclusion key the model invented.
-      claudeExclusions = data.extra_exclusions.filter((k) => validExclusionKeys.has(k));
-      // Value-based rules are OWNED by the deterministic checker above, which
-      // correctly ignores an unknown value. Federal solicitations almost never
-      // publish an estimated value, and the model was reading "value: unknown"
-      // as "cannot confirm it clears the minimum" and excluding the record,
-      // which would auto-dismiss nearly every real notice. Never let the model
-      // apply a money rule to a number it does not have.
-      if (opp.value_estimated == null) {
-        const dropped = claudeExclusions.filter((k) => VALUE_BASED_EXCLUSIONS.has(k));
-        claudeExclusions = claudeExclusions.filter((k) => !VALUE_BASED_EXCLUSIONS.has(k));
-        if (dropped.length > 0) {
-          await logAgent({
-            agent: "scoring-engine",
-            action: "ignore-value-exclusion",
-            opportunityId,
-            level: "info",
-            message: `Ignored ${dropped.join(", ")} because this notice publishes no estimated value. Value limits are applied only against a real number; the record is scored on its other merits.`,
-          });
-        }
-      }
-      summary = data.summary;
-      await logAgent({
-        agent: "scoring-engine",
-        action: "score",
-        opportunityId,
-        message: scoringIncomplete
-          ? `scored via Claude (incomplete: missing ${missingKeys.join(", ")})`
-          : `scored via Claude`,
-        claudeUsage: usage,
-      });
-    } catch (err) {
-      // Missing key OR any transient Claude error (429/5xx/network): fall back to
-      // a neutral heuristic so scoring never blocks the pipeline. The item lands
-      // in review for a human rather than crashing the job (which would retry and
-      // could jam intake during a Claude outage).
-      const heuristic = !(err instanceof ClaudeNotConfiguredError);
-      dims = rubric.dimensions.map((d) => ({
-        key: d.key,
-        label: d.label,
-        points: Math.round(d.max_points * 0.6),
-        max_points: d.max_points,
-        reasoning: heuristic
-          ? "Claude error, neutral heuristic score; needs human review."
-          : "Claude not configured, neutral heuristic score; needs human review.",
-      }));
-      summary = heuristic
-        ? `Scored heuristically (Claude error: ${(err as Error).message}). Manual review recommended.`
-        : "Scored heuristically (Claude disabled). Manual review recommended.";
-      scoringIncomplete = true;
-    }
-
-    const exclusions = [...new Set([...structuralExclusions, ...claudeExclusions])];
-    const breakdown = buildScoreBreakdown(dims, exclusions, profile, summary);
-
-    // Non-dismiss review flags (e.g. value over $350K) + incomplete scoring both
-    // downgrade an otherwise-pursue result to human review, never auto-pursue on
-    // a partial score or a contract larger than the company can self-approve.
-    const flags = reviewFlags(opp, profile);
-    if (scoringIncomplete) flags.push("incomplete_scoring");
-    flags.push(...intakeFlags);
-    const forceReview =
-      (flags.length > 0 || forceIntakeReview) && breakdown.tier === "pursue";
-    if (forceReview) breakdown.tier = "review";
-
-    // 3) Persist score + tier + route.
-    const enqueued: AgentResult["enqueued"] = [];
-    let stage = opp.stage;
-    let humanAction = false;
-    let reviewExpires: string | null = null;
-    let status = "open";
-
-    if (breakdown.tier === "pursue") {
-      // AUTO-PURSUE, unconditional above the pursue threshold (operator preference).
-      // A score >= pursue_min_score that isn't hard-excluded advances straight into
-      // the pipeline (analysis -> pricing -> subs -> outreach) with NO human gate.
-      // Risk conditions (high value, new NAICS, unusual clauses, prime-only) do not
-      // stop it here; a human still reviews before any bid is submitted.
-      stage = "analysis";
-      humanAction = false;
-      enqueued.push(
-        {
-          agent: "solicitation-analyst",
-          payload: { opportunityId },
-          opts: { singletonKey: `analyze:${opportunityId}`, singletonSeconds: 3600 },
-        },
-        {
-          agent: "pricing-research",
-          payload: { opportunityId },
-          opts: { singletonKey: `price:${opportunityId}`, singletonSeconds: 3600 },
-        }
-      );
-      await logAgent({
-        agent: "scoring-engine",
-        action: "auto-pursue",
-        opportunityId,
-        level: "success",
-        message: `Auto-pursued: ${breakdown.total} >= pursue threshold ${profile.decision_thresholds.pursue_min_score}. Pipeline started, no human action required.`,
-      });
-    } else if (breakdown.tier === "review") {
-      stage = "scoring";
-      humanAction = true;
-      reviewExpires = new Date(
-        Date.now() + profile.decision_thresholds.review_auto_dismiss_hours * 3_600_000
-      ).toISOString();
-    } else {
-      stage = "dismissed";
-      status = "archived";
-    }
-
-    await query(
-      `update opportunities
-         set score=$2, score_breakdown=$3, tier=$4, stage=$5, status=$6,
-             human_action_required=$7, review_expires_at=$8, risk_flags=$9
-       where id=$1`,
-      [
-        opportunityId,
-        breakdown.total,
-        JSON.stringify(breakdown),
-        breakdown.tier,
-        stage,
-        status,
-        humanAction,
-        reviewExpires,
-        [...new Set([...exclusions, ...flags])],
-      ]
-    );
-
-    return {
-      ok: true,
-      summary: `Scored ${breakdown.total}/100 → ${breakdown.tier}${
-        exclusions.length ? ` (excluded: ${exclusions.join(", ")})` : ""
-      }`,
-      reasoning: breakdown.summary,
-      data: { total: breakdown.total, tier: breakdown.tier, exclusions },
-      enqueued,
-      humanActionRequired: humanAction,
-    };
+    /**
+     * The opportunity's org is the scope for everything below.
+     *
+     * Nothing about the org travels with a queue job, and the runner sets no
+     * context, so every lookup that resolves the tenant for itself resolved
+     * the founding org instead: the rubric and thresholds an opportunity was
+     * scored against, the intake rules that could auto-dismiss it, the
+     * approved weight version applied to it, and the Anthropic key the call
+     * was billed to. Every customer's opportunities have been scored on our
+     * profile, and paid for on our key.
+     */
+    const orgId = opp.org_id ?? LEGACY_ORG_ID;
+    return runWithOrg(orgId, () => scoreOpportunity(opp, orgId));
   },
 };
+
+async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentResult> {
+  const opportunityId = opp.id;
+
+  // Backstop for records ingested before value extraction existed (or from
+  // a source that didn't run it): try once more here, right before scoring
+  // needs the number, so nothing scores as permanently "unknown" just
+  // because it predates this pass.
+  if (opp.value_estimated == null) {
+    const resolved = resolveEstimatedValue({ title: opp.title, description: opp.description });
+    if (resolved) {
+      await query(
+        `update opportunities set value_estimated=$2, value_estimated_source=$3 where id=$1`,
+        [opportunityId, resolved.amount, resolved.source]
+      );
+      opp.value_estimated = resolved.amount;
+      opp.value_estimated_source = resolved.source;
+    }
+  }
+
+  const profile = await getProfileJson();
+  if (!profile) return { ok: false, summary: "no active Company Profile" };
+
+  // 0) Intake quality gate, BEFORE any scoring spend: minimum lead time,
+  // missing deadline, duplicate solicitation number. Nothing is excluded
+  // silently: every finding is logged with a full explanation and lands on
+  // the record's risk flags.
+  const rules = await getAutomationRules();
+  const dupRow = opp.solicitation_number
+    ? await queryOne<{ n: number }>(
+        `select count(*)::int as n from opportunities
+        where org_id = $3
+          and id <> $2
+          and status = 'open'
+          and solicitation_number is not null
+          and lower(btrim(solicitation_number)) = lower(btrim($1))`,
+        [opp.solicitation_number, opportunityId, orgId]
+      )
+    : null;
+  const findings = intakeChecks({
+    deadline: opp.deadline,
+    duplicateSolicitationCount: dupRow?.n ?? 0,
+    rules,
+    now: new Date(),
+  });
+  const gate = intakeVerdict(findings);
+  for (const f of findings) {
+    await logAgent({
+      agent: "scoring-engine",
+      action: `intake-${f.rule.replace(/_/g, "-")}`,
+      opportunityId,
+      level: f.verdict === "dismiss" ? "warn" : "info",
+      message: f.explanation,
+    });
+  }
+  if (gate === "dismiss") {
+    await query(
+      `update opportunities
+          set stage='dismissed', status='archived', tier='dismiss',
+              human_action_required=false,
+              risk_flags = (select array(select distinct unnest(coalesce(risk_flags,'{}') || $2::text[])))
+        where id=$1`,
+      [opportunityId, findings.map((f) => f.flag)]
+    );
+    return {
+      ok: true,
+      summary: `Intake gate auto-passed this opportunity: ${findings
+        .map((f) => f.rule.replace(/_/g, " "))
+        .join(", ")}.`,
+      reasoning: findings.map((f) => f.explanation).join(" "),
+    };
+  }
+  const intakeFlags = findings.map((f) => f.flag);
+  const forceIntakeReview = gate === "review";
+
+  // 1) Deterministic hard exclusions FIRST.
+  const structuralExclusions = checkHardExclusions(opp, profile);
+
+  // Valid exclusion keys the model may return in extra_exclusions. Anything
+  // outside this set is a hallucination and must be dropped, an unrecognized
+  // exclusion string would otherwise zero the score and auto-dismiss a good
+  // opportunity (buildScoreBreakdown forces dismiss on ANY exclusion).
+  const validExclusionKeys = new Set(profile.hard_exclusions.map((e) => e.key));
+
+  // 2) Rubric scoring via Claude (per-dimension judgment against the profile).
+  // Apply any operator-approved Learning Loop weights (normalized to 100 pts) so
+  // an approved weight version actually changes scoring; default = raw rubric.
+  // Scoped to the org being scored: with several tenants each holding an
+  // active weight version, "any active row" would score this org's
+  // opportunities with someone else's approved rubric. The org comes from
+  // the opportunity rather than from resolving the tenant here, which in a
+  // queue worker only ever answered "the founding org".
+  const activeWeights = await queryOne<{ weights: Record<string, unknown> }>(
+    `select weights from scoring_weights where is_active = true and org_id = $1 limit 1`,
+    [orgId]
+  );
+  const rubricDims = applyWeightOverrides(profile.scoring_rubric.dimensions, activeWeights?.weights);
+  const rubric = { ...profile.scoring_rubric, dimensions: rubricDims };
+  let dims: DimensionScore[] = [];
+  let summary = "";
+  let claudeExclusions: string[] = [];
+  let missingKeys: string[] = [];
+  let scoringIncomplete = false;
+
+  try {
+    const prompt = buildScoringPrompt(opp, rubric.dimensions, profile.hard_exclusions);
+    const { data, usage } = await completeJson(prompt, {
+      schema: DimSchema,
+      maxTokens: 1500,
+    });
+    // Reconcile against the FULL rubric so an omitted dimension can't silently
+    // understate the total; a partial response routes to human review below.
+    const reconciled = reconcileDimensions(rubric.dimensions, data.dimensions);
+    dims = reconciled.dims;
+    missingKeys = reconciled.missingKeys;
+    scoringIncomplete = missingKeys.length > 0;
+    // Drop any exclusion key the model invented.
+    claudeExclusions = data.extra_exclusions.filter((k) => validExclusionKeys.has(k));
+    // Value-based rules are OWNED by the deterministic checker above, which
+    // correctly ignores an unknown value. Federal solicitations almost never
+    // publish an estimated value, and the model was reading "value: unknown"
+    // as "cannot confirm it clears the minimum" and excluding the record,
+    // which would auto-dismiss nearly every real notice. Never let the model
+    // apply a money rule to a number it does not have.
+    if (opp.value_estimated == null) {
+      const dropped = claudeExclusions.filter((k) => VALUE_BASED_EXCLUSIONS.has(k));
+      claudeExclusions = claudeExclusions.filter((k) => !VALUE_BASED_EXCLUSIONS.has(k));
+      if (dropped.length > 0) {
+        await logAgent({
+          agent: "scoring-engine",
+          action: "ignore-value-exclusion",
+          opportunityId,
+          level: "info",
+          message: `Ignored ${dropped.join(", ")} because this notice publishes no estimated value. Value limits are applied only against a real number; the record is scored on its other merits.`,
+        });
+      }
+    }
+    summary = data.summary;
+    await logAgent({
+      agent: "scoring-engine",
+      action: "score",
+      opportunityId,
+      message: scoringIncomplete
+        ? `scored via Claude (incomplete: missing ${missingKeys.join(", ")})`
+        : `scored via Claude`,
+      claudeUsage: usage,
+    });
+  } catch (err) {
+    // Missing key OR any transient Claude error (429/5xx/network): fall back to
+    // a neutral heuristic so scoring never blocks the pipeline. The item lands
+    // in review for a human rather than crashing the job (which would retry and
+    // could jam intake during a Claude outage).
+    const heuristic = !(err instanceof ClaudeNotConfiguredError);
+    dims = rubric.dimensions.map((d) => ({
+      key: d.key,
+      label: d.label,
+      points: Math.round(d.max_points * 0.6),
+      max_points: d.max_points,
+      reasoning: heuristic
+        ? "Claude error, neutral heuristic score; needs human review."
+        : "Claude not configured, neutral heuristic score; needs human review.",
+    }));
+    summary = heuristic
+      ? `Scored heuristically (Claude error: ${(err as Error).message}). Manual review recommended.`
+      : "Scored heuristically (Claude disabled). Manual review recommended.";
+    scoringIncomplete = true;
+  }
+
+  const exclusions = [...new Set([...structuralExclusions, ...claudeExclusions])];
+  const breakdown = buildScoreBreakdown(dims, exclusions, profile, summary);
+
+  // Non-dismiss review flags (e.g. value over $350K) + incomplete scoring both
+  // downgrade an otherwise-pursue result to human review, never auto-pursue on
+  // a partial score or a contract larger than the company can self-approve.
+  const flags = reviewFlags(opp, profile);
+  if (scoringIncomplete) flags.push("incomplete_scoring");
+  flags.push(...intakeFlags);
+  const forceReview =
+    (flags.length > 0 || forceIntakeReview) && breakdown.tier === "pursue";
+  if (forceReview) breakdown.tier = "review";
+
+  // 3) Persist score + tier + route.
+  const enqueued: AgentResult["enqueued"] = [];
+  let stage = opp.stage;
+  let humanAction = false;
+  let reviewExpires: string | null = null;
+  let status = "open";
+
+  if (breakdown.tier === "pursue") {
+    // AUTO-PURSUE, unconditional above the pursue threshold (operator preference).
+    // A score >= pursue_min_score that isn't hard-excluded advances straight into
+    // the pipeline (analysis -> pricing -> subs -> outreach) with NO human gate.
+    // Risk conditions (high value, new NAICS, unusual clauses, prime-only) do not
+    // stop it here; a human still reviews before any bid is submitted.
+    stage = "analysis";
+    humanAction = false;
+    enqueued.push(
+      {
+        agent: "solicitation-analyst",
+        payload: { opportunityId },
+        opts: { singletonKey: `analyze:${opportunityId}`, singletonSeconds: 3600 },
+      },
+      {
+        agent: "pricing-research",
+        payload: { opportunityId },
+        opts: { singletonKey: `price:${opportunityId}`, singletonSeconds: 3600 },
+      }
+    );
+    await logAgent({
+      agent: "scoring-engine",
+      action: "auto-pursue",
+      opportunityId,
+      level: "success",
+      message: `Auto-pursued: ${breakdown.total} >= pursue threshold ${profile.decision_thresholds.pursue_min_score}. Pipeline started, no human action required.`,
+    });
+  } else if (breakdown.tier === "review") {
+    stage = "scoring";
+    humanAction = true;
+    reviewExpires = new Date(
+      Date.now() + profile.decision_thresholds.review_auto_dismiss_hours * 3_600_000
+    ).toISOString();
+  } else {
+    stage = "dismissed";
+    status = "archived";
+  }
+
+  await query(
+    `update opportunities
+       set score=$2, score_breakdown=$3, tier=$4, stage=$5, status=$6,
+           human_action_required=$7, review_expires_at=$8, risk_flags=$9
+     where id=$1`,
+    [
+      opportunityId,
+      breakdown.total,
+      JSON.stringify(breakdown),
+      breakdown.tier,
+      stage,
+      status,
+      humanAction,
+      reviewExpires,
+      [...new Set([...exclusions, ...flags])],
+    ]
+  );
+
+  return {
+    ok: true,
+    summary: `Scored ${breakdown.total}/100 → ${breakdown.tier}${
+      exclusions.length ? ` (excluded: ${exclusions.join(", ")})` : ""
+    }`,
+    reasoning: breakdown.summary,
+    data: { total: breakdown.total, tier: breakdown.tier, exclusions },
+    enqueued,
+    humanActionRequired: humanAction,
+  };
+}
 
 function buildScoringPrompt(
   opp: Opportunity,
