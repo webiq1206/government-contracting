@@ -21,6 +21,7 @@ import {
   bidForTargetMargin,
   marginFromBid,
   markupForTargetMargin,
+  selectQuotesForBid,
   isOutOfRange,
 } from "../domain/pricing";
 import { resolveRequirements, buildManifest, validatePackage, computeReady } from "../domain/package";
@@ -129,7 +130,40 @@ export const bidBuilder: AgentDefinition = {
       });
     }
 
-    const subQuoteTotal = quotes.reduce((sum, q) => sum + num(q.quote_amount), 0);
+    /**
+     * One quote per trade, not all of them.
+     *
+     * Outreach deliberately collects competing quotes for the same scope, so
+     * summing every row priced the job as though every bidder were hired at
+     * once: three electricians on one trade made the bid three electricians
+     * wide, and each appeared as its own line item on the document the agency
+     * reads.
+     */
+    const selection = selectQuotesForBid(
+      quotes.map((q) => ({
+        id: String(q.id),
+        subcontractor_id: q.subcontractor_id ? String(q.subcontractor_id) : null,
+        trade: q.trade ?? null,
+        quote_amount: num(q.quote_amount),
+      }))
+    );
+    const pricedQuotes = selection.selected;
+    const subQuoteTotal = pricedQuotes.reduce((sum, q) => sum + q.quote_amount, 0);
+
+    if (selection.contestedTrades.length > 0) {
+      // The cheapest is a sound default and not a decision. Say which trades
+      // had a choice made in them so a person confirms before submission.
+      await logAgent({
+        agent: "bid-builder",
+        action: "quote-selection",
+        opportunityId,
+        level: "info",
+        message:
+          `Priced from the lowest quote in each trade. More than one quote was on file for: ` +
+          `${selection.contestedTrades.join(", ")}. ${selection.alternates.length} other ` +
+          `quote(s) were left out of the total and are still on the opportunity to compare.`,
+      });
+    }
     const pastPerf = opp.past_perf_classification;
 
     // --- prime_only: block + flag, do not build documents. ---
@@ -191,9 +225,9 @@ export const bidBuilder: AgentDefinition = {
     const failing = qaChecklist.filter((q) => !q.ok);
 
     // --- Line items. ---
-    const lineItems: Array<{ label: string; amount: number }> = quotes.map((q) => ({
+    const lineItems: Array<{ label: string; amount: number }> = pricedQuotes.map((q) => ({
       label: q.trade || "Subcontractor",
-      amount: num(q.quote_amount),
+      amount: q.quote_amount,
     }));
     lineItems.push({
       label: `Markup ${markupPct.toFixed(1)}% (prices to ${profile.target_margin_pct}% target margin)`,

@@ -116,3 +116,66 @@ export function isOutOfRange(
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
+
+export interface QuoteForSelection {
+  id: string;
+  subcontractor_id: string | null;
+  trade: string | null;
+  quote_amount: number;
+}
+
+export interface QuoteSelection {
+  /** Exactly one quote per trade: what the bid is priced and written from. */
+  selected: QuoteForSelection[];
+  /** Everything else, kept so the comparison is not thrown away. */
+  alternates: QuoteForSelection[];
+  /** Trades where more than one sub quoted, so a choice had to be made. */
+  contestedTrades: string[];
+}
+
+/**
+ * Choose which quotes a bid is built from: one per trade.
+ *
+ * The whole outreach workflow exists to collect competing quotes for the same
+ * trade, so an opportunity normally holds several. Adding them all up prices
+ * the job as if every bidder were hired at once. Three electricians quoting
+ * one scope produced a bid three electricians wide, and the generated document
+ * listed each of them as its own line item for the agency to read.
+ *
+ * The lowest quote per trade is taken, which is the competitive default and,
+ * unlike summing, can never overstate the cost. It is a default and not a
+ * verdict: the alternates come back with it, and `contestedTrades` names every
+ * trade where a choice was made so the bid can be held for a human before it
+ * goes anywhere.
+ *
+ * Quotes with no trade are grouped together under one heading. That is a
+ * guess, and the group is reported as contested whenever it holds more than
+ * one quote so somebody confirms it rather than the bid quietly assuming.
+ */
+export function selectQuotesForBid(quotes: QuoteForSelection[]): QuoteSelection {
+  const UNTRADED = "(no trade given)";
+  const groups = new Map<string, QuoteForSelection[]>();
+  for (const q of quotes) {
+    const key = (q.trade ?? "").trim().toLowerCase() || UNTRADED;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(q);
+    else groups.set(key, [q]);
+  }
+
+  const selected: QuoteForSelection[] = [];
+  const alternates: QuoteForSelection[] = [];
+  const contestedTrades: string[] = [];
+
+  for (const [key, bucket] of groups) {
+    // Stable: an exact tie keeps whichever arrived first rather than
+    // reordering the bid between runs on identical data.
+    const ranked = [...bucket].sort((a, b) => a.quote_amount - b.quote_amount);
+    selected.push(ranked[0]);
+    if (ranked.length > 1) {
+      alternates.push(...ranked.slice(1));
+      contestedTrades.push(key === UNTRADED ? UNTRADED : (ranked[0].trade ?? key));
+    }
+  }
+
+  return { selected, alternates, contestedTrades };
+}
