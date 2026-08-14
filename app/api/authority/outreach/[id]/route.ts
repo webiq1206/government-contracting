@@ -65,7 +65,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // If we already have a contact email and Gmail is connected, send it now.
     // Otherwise it stays approved and is sent automatically once a contact is
     // discovered (sendPendingApproved runs on a schedule).
-    const send = await sendApprovedOutreach(params.id);
+    // The org is already resolved for this request, so the send is told which
+    // mailbox it belongs to rather than inferring one.
+    const send = await sendApprovedOutreach(params.id, orgId);
     return NextResponse.json({ ok: true, action: "approve", send });
   } else {
     await query(

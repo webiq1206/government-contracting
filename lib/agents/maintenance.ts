@@ -759,44 +759,74 @@ export const backlinkOutreachSweep: AgentDefinition = {
   description: "Sends approved backlink outreach, follow-ups, and records replies.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const send = await sendPendingApproved(25);
-    const followUp = await sendFollowUps(25);
-
-    // Reply detection for backlink outreach threads.
+    // Prospects, drafts and the mailbox all belong to one customer, so this
+    // sweep runs once per organization. Platform-wide it sent every tenant's
+    // approved outreach from the founding org's inbox and matched replies
+    // against every tenant's prospects at once.
+    const orgs = await listActiveOrganizations().catch(() => []);
+    let sent = 0;
+    let followUps = 0;
+    let errors = 0;
     let repliesMatched = 0;
-    if (await gmail.isConnected()) {
-      const sinceSec = Math.floor(Date.now() / 1000) - 3600;
-      const { replies, disabled } = await gmail.fetchReplies(sinceSec);
-      if (!disabled) {
-        for (const r of replies) {
-          const fromEmail = (r.from.match(/<([^>]+)>/)?.[1] ?? r.from).toLowerCase().trim();
-          const hit = await queryOne<{ id: string }>(
-            `select o.id from backlink_outreach o
-               join backlink_prospects p on p.id = o.prospect_id
-              where (o.gmail_thread_id = $1 or lower(p.contact_email) = $2)
-                and o.sent_at is not null and o.replied_at is null
-              order by o.sent_at desc limit 1`,
-            [r.threadId, fromEmail]
-          );
-          if (!hit) continue;
-          repliesMatched++;
-          await query(`update backlink_outreach set replied_at = now(), updated_at = now() where id = $1`, [
-            hit.id,
-          ]);
-        }
-      }
+    for (const org of orgs) {
+      const res = await runWithOrg(org.id, () => backlinkSweepForOrg(org.id));
+      sent += res.sent;
+      followUps += res.followUps;
+      errors += res.errors;
+      repliesMatched += res.repliesMatched;
     }
 
     return {
       ok: true,
-      summary: `Backlink outreach: ${send.sent} sent, ${followUp.sent} follow-ups, ${repliesMatched} replies.${
-        send.errors ? ` ${send.errors} errors.` : ""
+      summary: `Backlink outreach: ${sent} sent, ${followUps} follow-ups, ${repliesMatched} replies.${
+        errors ? ` ${errors} errors.` : ""
       }`,
-      data: { ...send, followUps: followUp.sent, repliesMatched },
+      data: { sent, followUps, errors, repliesMatched },
       humanActionRequired: repliesMatched > 0,
     };
   },
 };
+
+async function backlinkSweepForOrg(orgId: string): Promise<{
+  sent: number;
+  followUps: number;
+  errors: number;
+  repliesMatched: number;
+}> {
+  const send = await sendPendingApproved(orgId, 25);
+  const followUp = await sendFollowUps(orgId, 25);
+
+  // Reply detection for backlink outreach threads.
+  let repliesMatched = 0;
+  if (await gmail.isConnected(orgId)) {
+    const sinceSec = Math.floor(Date.now() / 1000) - 3600;
+    const { replies, disabled } = await gmail.fetchReplies(sinceSec, orgId);
+    if (!disabled) {
+      for (const r of replies) {
+        const fromEmail = (r.from.match(/<([^>]+)>/)?.[1] ?? r.from).toLowerCase().trim();
+        // Scoped for the same reason inbound subcontractor replies are: a
+        // contact address is not unique to a tenant, so an unscoped match
+        // marks another customer's outreach as answered.
+        const hit = await queryOne<{ id: string }>(
+          `select o.id from backlink_outreach o
+             join backlink_prospects p on p.id = o.prospect_id
+            where o.org_id = $3
+              and (o.gmail_thread_id = $1 or lower(p.contact_email) = $2)
+              and o.sent_at is not null and o.replied_at is null
+            order by o.sent_at desc limit 1`,
+          [r.threadId, fromEmail, orgId]
+        );
+        if (!hit) continue;
+        repliesMatched++;
+        await query(`update backlink_outreach set replied_at = now(), updated_at = now() where id = $1`, [
+          hit.id,
+        ]);
+      }
+    }
+  }
+
+  return { sent: send.sent, followUps: followUp.sent, errors: send.errors, repliesMatched };
+}
 
 /**
  * Best-effort price spotting in a reply snippet: the largest plausible dollar

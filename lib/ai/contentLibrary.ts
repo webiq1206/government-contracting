@@ -23,11 +23,24 @@ export async function retrieveRelevantContent(opts: {
 }): Promise<ContentLibraryItem[]> {
   if (opts.categories.length === 0) return [];
   try {
+    /**
+     * These snippets are folded straight into a customer's proposal, and a
+     * content library is the most proprietary thing in this product: past
+     * performance, capability statements, win themes, all written by one
+     * company about itself. Unscoped, a draft could be assembled from a
+     * competitor's marketing copy, and neither party would ever know.
+     *
+     * The organization is resolved once and named in the SQL. Agents now run
+     * inside their job's context, so this reads the caller's own library.
+     */
+    const { tryResolveTenantOrgId } = await import("../tenant");
+    const { LEGACY_ORG_ID } = await import("../tenant-context");
+    const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
     const items = await query<ContentLibraryItem>(
       `select * from content_library
-        where is_active = true and category = any($1)
+        where org_id = $2 and is_active = true and category = any($1)
         limit 200`,
-      [opts.categories]
+      [opts.categories, orgId]
     );
     return rankContent(items, opts.tags, opts.limit ?? 3);
   } catch (err) {

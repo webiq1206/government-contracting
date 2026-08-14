@@ -21,6 +21,11 @@ vi.mock("../lib/tenant", () => ({
   resolveTenantOrgId: vi.fn(async () => {
     throw new Error("tenant resolution should not be reached");
   }),
+  // Backlink sending resolves its own organization when a caller does not
+  // name one, and does it AFTER the support-session guard. It answers here so
+  // the worker case reaches the database mock, which is what proves the guard
+  // did not refuse a request that has no session to refuse.
+  tryResolveTenantOrgId: vi.fn(async () => "00000000-0000-4000-8000-000000000001"),
 }));
 
 vi.mock("../lib/billing/stripe", () => ({

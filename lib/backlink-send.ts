@@ -10,6 +10,21 @@ import { query, queryOne } from "./db";
 import { gmail } from "./integrations/gmail";
 import { currentImpersonator } from "./impersonation";
 import { logAgent } from "./logger";
+import { LEGACY_ORG_ID } from "./tenant-context";
+
+/**
+ * The organization whose outreach this is.
+ *
+ * Every query and every send here names it. Prospects, drafts and the mailbox
+ * they go out of all belong to one customer, and unscoped this module sent one
+ * customer's approved outreach from another customer's inbox, and listed their
+ * prospect domains and message bodies to whoever opened the page.
+ */
+async function resolveOrgId(orgId?: string): Promise<string> {
+  if (orgId) return orgId;
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+}
 
 export type SendOutcome =
   | { status: "sent"; messageId: string | null }
@@ -35,9 +50,13 @@ async function blockedBySupportSession(): Promise<SendOutcome | null> {
 }
 
 /** Send one approved outreach draft. No-op (skip) unless it is approved, unsent, and has a recipient. */
-export async function sendApprovedOutreach(outreachId: string): Promise<SendOutcome> {
+export async function sendApprovedOutreach(
+  outreachId: string,
+  orgIdOpt?: string
+): Promise<SendOutcome> {
   const blocked = await blockedBySupportSession();
   if (blocked) return blocked;
+  const orgId = await resolveOrgId(orgIdOpt);
 
   const row = await queryOne<{
     id: string;
@@ -52,27 +71,29 @@ export async function sendApprovedOutreach(outreachId: string): Promise<SendOutc
     `select o.id, o.prospect_id, o.subject, o.body, o.approval_status, o.sent_at,
             p.contact_email, p.domain
        from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
-      where o.id = $1`,
-    [outreachId]
+      where o.org_id = $2 and o.id = $1`,
+    [outreachId, orgId]
   );
   if (!row) return { status: "skipped", reason: "not found" };
   if (row.approval_status !== "approved") return { status: "skipped", reason: "not approved" };
   if (row.sent_at) return { status: "skipped", reason: "already sent" };
   if (!row.contact_email) return { status: "skipped", reason: "no contact email yet" };
 
-  if (!(await gmail.isConnected())) {
+  if (!(await gmail.isConnected(orgId))) {
     return { status: "skipped", reason: "Gmail not connected" };
   }
 
   const trackingId = randomUUID();
   const plain = row.body ?? "";
   const html = plain.replace(/\n/g, "<br>");
+  // Named, not inferred: this decides whose mailbox the outreach leaves from.
   const res = await gmail.send({
     to: row.contact_email,
     subject: row.subject ?? "Hello",
     html,
     text: plain,
     trackingId,
+    orgId,
   });
 
   if (res.disabled) return { status: "skipped", reason: "Gmail not connected" };
@@ -115,18 +136,23 @@ export async function sendApprovedOutreach(outreachId: string): Promise<SendOutc
  * Batch: send any approved-but-unsent outreach that now has a contact email
  * (e.g. the email was discovered after approval). Bounded per run.
  */
-export async function sendPendingApproved(limit = 25): Promise<{ sent: number; skipped: number; errors: number }> {
+export async function sendPendingApproved(
+  orgIdOpt?: string,
+  limit = 25
+): Promise<{ sent: number; skipped: number; errors: number }> {
+  const orgId = await resolveOrgId(orgIdOpt);
   const rows = await query<{ id: string }>(
     `select o.id from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
-      where o.approval_status = 'approved' and o.sent_at is null and p.contact_email is not null
+      where o.org_id = $2
+        and o.approval_status = 'approved' and o.sent_at is null and p.contact_email is not null
       order by o.updated_at asc limit $1`,
-    [limit]
+    [limit, orgId]
   );
   let sent = 0,
     skipped = 0,
     errors = 0;
   for (const r of rows) {
-    const out = await sendApprovedOutreach(r.id);
+    const out = await sendApprovedOutreach(r.id, orgId);
     if (out.status === "sent") sent++;
     else if (out.status === "error") errors++;
     else skipped++;
@@ -138,7 +164,11 @@ export async function sendPendingApproved(limit = 25): Promise<{ sent: number; s
  * Send one polite follow-up for approved outreach that was sent, is now past its
  * follow_up_at, hasn't had a follow-up yet, and hasn't received a reply.
  */
-export async function sendFollowUps(limit = 25): Promise<{ sent: number }> {
+export async function sendFollowUps(
+  orgIdOpt?: string,
+  limit = 25
+): Promise<{ sent: number }> {
+  const orgId = await resolveOrgId(orgIdOpt);
   const rows = await query<{
     id: string;
     subject: string | null;
@@ -150,15 +180,16 @@ export async function sendFollowUps(limit = 25): Promise<{ sent: number }> {
   }>(
     `select o.id, o.subject, o.body, o.gmail_thread_id, o.tracking_id, p.contact_email, p.domain
        from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
-      where o.approval_status = 'approved' and o.sent_at is not null
+      where o.org_id = $2
+        and o.approval_status = 'approved' and o.sent_at is not null
         and o.replied_at is null and o.follow_up_sent = false
         and o.follow_up_at is not null and o.follow_up_at < now()
         and p.contact_email is not null
       order by o.follow_up_at asc limit $1`,
-    [limit]
+    [limit, orgId]
   );
   if (!rows.length || (await blockedBySupportSession())) return { sent: 0 };
-  if (!(await gmail.isConnected())) return { sent: 0 };
+  if (!(await gmail.isConnected(orgId))) return { sent: 0 };
   let sent = 0;
   for (const r of rows) {
     const body = `Hi,\n\nJust following up on my note below in case it slipped through. No worries if now isn't a good time.\n\n${r.body ?? ""}`;
@@ -168,6 +199,7 @@ export async function sendFollowUps(limit = 25): Promise<{ sent: number }> {
       html: body.replace(/\n/g, "<br>"),
       text: body,
       trackingId: r.tracking_id ?? undefined,
+      orgId,
     });
     if (!res.error && !res.disabled) {
       sent++;

@@ -240,7 +240,10 @@ export interface SubFilters {
 export async function subDatabase(filters: SubFilters = {}): Promise<Subcontractor[]> {
   const orgId = await currentOrg();
   const params: unknown[] = [orgId];
-  const where: string[] = ["blacklisted = false", "org_id = $1"];
+  // org_id stays in the query text rather than in the interpolated list, so
+  // the scoping is visible to anyone reading the statement, and to the guard
+  // in tests/agent-scoping.test.ts, which cannot see inside an interpolation.
+  const where: string[] = ["blacklisted = false"];
   if (filters.trade) {
     params.push(filters.trade);
     where.push(`$${params.length} = any(trade_categories)`);
@@ -258,7 +261,8 @@ export async function subDatabase(filters: SubFilters = {}): Promise<Subcontract
     where.push(`(company_name ilike $${params.length} or coalesce(owner_name,'') ilike $${params.length})`);
   }
   return query<Subcontractor>(
-    `select * from subcontractors where ${where.join(" and ")}
+    `select * from subcontractors
+      where org_id = $1 and ${where.join(" and ")}
       order by is_preferred desc, coalesce(reliability_score,0) desc, company_name asc
       limit 500`,
     params
@@ -1009,8 +1013,10 @@ export async function contentLibrary(): Promise<ContentLibraryItem[]> {
   try {
     return await query<ContentLibraryItem>(
       `select * from content_library
+        where org_id = $1
         order by is_active desc, category asc, updated_at desc
-        limit 500`
+        limit 500`,
+      [await currentOrg()]
     );
   } catch {
     return [];
@@ -1300,37 +1306,51 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
         order by (o.deadline is null), o.deadline asc, s.company_name asc
         limit 12`
     ),
+    // Scoped like every other row on this screen. Unscoped it listed other
+    // customers' opportunity titles, subcontractor names, and quote amounts on
+    // the Action Center, which is as direct a disclosure as this product has.
     query<ActionQuoteReviewRow>(
       `select q.id as quote_id, o.id as opportunity_id, o.title as opportunity_title,
               s.company_name, q.trade, q.quote_amount, o.deadline
          from quotes q
          join opportunities o on o.id = q.opportunity_id
          left join subcontractors s on s.id = q.subcontractor_id
-        where o.status = 'open'
+        where o.org_id = $1
+          and o.status = 'open'
           and q.is_out_of_range = true
           and o.stage in ('quote_entry','bid_building','call_queue','outreach')
           and (o.snoozed_until is null or o.snoozed_until <= now())
         order by (o.deadline is null), o.deadline asc
-        limit 10`
+        limit 10`,
+      [orgId]
     ),
     query<ComplianceAlertRow>(
       `select id, category, label, due_at,
               coalesce(status_override, status) as status, days_remaining
          from compliance_items
-        where coalesce(status_override, status) in ('warning','critical','blocked')
+        where org_id = $1
+          and coalesce(status_override, status) in ('warning','critical','blocked')
         order by case coalesce(status_override, status)
                    when 'blocked' then 0 when 'critical' then 1 else 2 end,
                  (due_at is null), due_at asc
-        limit 8`
+        limit 8`,
+      [orgId]
     ),
+    // A weight proposal is a rubric change this customer is being asked to
+    // approve, and the rationale quotes their own win/loss record back to
+    // them. Approving another org's proposal would also retune the wrong
+    // rubric.
     query<ProposedWeightsRow>(
       `select id, version, rationale, proposed_at
          from scoring_weights
-        where approved_at is null and proposed_by = 'learning-loop'
-        order by proposed_at desc limit 3`
+        where org_id = $1 and approved_at is null and proposed_by = 'learning-loop'
+        order by proposed_at desc limit 3`,
+      [orgId]
     ),
     queryOne<{ n: number }>(
-      `select count(*)::int as n from backlink_outreach where approval_status='pending'`
+      `select count(*)::int as n from backlink_outreach
+        where org_id = $1 and approval_status='pending'`,
+      [orgId]
     ),
     queryOne<{ n: number }>(
       `select (select count(*) from opportunities
@@ -1561,10 +1581,10 @@ export async function backlinkProspects(limit = 200): Promise<ProspectRow[]> {
             (select o.approval_status from backlink_outreach o
                where o.prospect_id = p.id order by o.created_at desc limit 1) as outreach_status
        from backlink_prospects p
-      where p.tier is not null and p.tier <> 'reject'
+      where p.org_id = $2 and p.tier is not null and p.tier <> 'reject'
       order by p.priority_score desc nulls last
       limit $1`,
-    [limit]
+    [limit, await currentOrg()]
   );
   return rows.map((r) => ({
     id: String(r.id),
@@ -1600,10 +1620,10 @@ export async function outreachActivity(limit = 100): Promise<OutreachActivityRow
     `select o.id, p.domain, p.contact_email, o.subject, o.sent_at, o.replied_at,
             o.follow_up_sent, o.send_error
        from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
-      where o.approval_status = 'approved'
+      where o.org_id = $2 and o.approval_status = 'approved'
       order by o.replied_at desc nulls last, o.sent_at desc nulls last, o.updated_at desc
       limit $1`,
-    [limit]
+    [limit, await currentOrg()]
   );
   return rows.map((r) => ({
     id: String(r.id),
@@ -1635,9 +1655,9 @@ export async function outreachQueue(status = "pending"): Promise<OutreachRow[]> 
     `select o.id, o.prospect_id, p.domain, o.channel, o.subject, o.body,
             o.approval_status, o.created_at, o.sent_at
        from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
-      where o.approval_status = $1
+      where o.org_id = $2 and o.approval_status = $1
       order by p.priority_score desc nulls last, o.created_at desc`,
-    [status]
+    [status, await currentOrg()]
   );
   return rows.map((r) => ({
     id: String(r.id),

@@ -1,35 +1,55 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Background agents must not read across organizations.
+ * Nothing on the server may read across organizations.
  *
- * The data layer has its own guard, but the analytics engine showed that one
- * is not enough: it lived in an agent, computed every tenant's bids and
- * contracts into a single snapshot, and listed other customers' subcontractors
- * by name. Nothing caught it because nothing looked at agents.
+ * This guard began by checking lib/agents, because the analytics engine had
+ * mixed every tenant's numbers into one snapshot and nothing looked at agents.
+ * That boundary turned out to be the wrong one twice over. Reply capture
+ * matched one customer's inbound email against another customer's outreach,
+ * and the Action Center listed other customers' quote amounts and compliance
+ * items on the dashboard. Neither is in lib/agents. Agents call into lib, and
+ * lib was never checked, so it now reads all of it.
  *
- * Most agent SQL is safe without an org filter, and the distinction is worth
- * stating: an agent handed one opportunity id from a queue payload is already
- * scoped by whoever enqueued it. The dangerous shape is a SCAN, a select with
- * no single-record predicate, which reads whatever exists in the table and
- * therefore reads every tenant's rows.
+ * Most SQL here is safe without an org filter, and the distinction is worth
+ * stating: a query handed one record id is already scoped by whoever supplied
+ * it. The dangerous shape is a SCAN, a select with no single-record predicate,
+ * which reads whatever exists in the table and therefore reads every tenant's
+ * rows.
  *
- * KNOWN_SCANS recorded the twelve that existed when this guard was written,
- * as debt rather than something silently carried. All twelve are now scoped
- * and the map is empty, so the rule is simply that agents do not scan. A new
- * entry here is a deliberate decision to ship an unscoped read, and needs the
- * risk written down beside it.
+ * KNOWN_SCANS recorded the twelve that existed when this guard was written, as
+ * debt rather than something silently carried. All are now scoped and the map
+ * is empty, so the rule is simply that server code does not scan. A new entry
+ * is a deliberate decision to ship an unscoped read, and needs the risk
+ * written down beside it.
  */
 const TENANT_TABLES = [
   "subcontractors", "opportunities", "contracts", "quotes", "bids", "call_cards",
   "communications", "compliance_items", "content_library", "custom_kpis",
-  "documents", "pricing_comps",
+  "documents", "pricing_comps", "scoring_weights", "templates",
+  "backlink_outreach", "opportunity_subs",
 ];
 
-/** Agents with cross-tenant scans still outstanding. There are none. */
+/** Files with cross-tenant scans still outstanding. There are none. */
 const KNOWN_SCANS: Record<string, number> = {};
+
+/**
+ * Directories that are generated or vendored, so a finding there is not
+ * something anyone edits.
+ */
+const SKIP_DIRS = new Set(["node_modules", "dist", "api-zod", "api-client-react"]);
+
+function serverFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    if (SKIP_DIRS.has(entry)) continue;
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) serverFiles(path, out);
+    else if (entry.endsWith(".ts")) out.push(path);
+  }
+  return out;
+}
 
 /**
  * Reads that are global on purpose, and have to stay that way.
@@ -45,6 +65,10 @@ const DELIBERATELY_GLOBAL = [
   // organizations, so scoping this to one org would delete bytes another
   // customer's document still points at.
   "from file_blobs where path = any($1)",
+  // storage.getMime: the stored MIME type for a path the caller already holds.
+  // Same shared-path reason, and the answer is "this is a PDF", which carries
+  // nothing of the document itself.
+  "select mime from documents where storage_path = $1",
 ];
 
 function crossTenantScans(src: string): string[] {
@@ -64,21 +88,28 @@ function crossTenantScans(src: string): string[] {
   return out;
 }
 
-describe("agents do not read across organizations", () => {
-  const files = readdirSync("lib/agents").filter((f) => f.endsWith(".ts"));
+describe("server code does not read across organizations", () => {
+  const files = serverFiles("lib");
 
   it("finds the agents it is meant to be checking", () => {
-    expect(files.length).toBeGreaterThan(10);
+    expect(readdirSync("lib/agents").filter((f) => f.endsWith(".ts")).length).toBeGreaterThan(10);
+  });
+
+  it("reads the whole server tree, not just the agents", () => {
+    // The two worst leaks found in this audit were outside lib/agents.
+    expect(files).toContain(join("lib", "reply-capture.ts"));
+    expect(files).toContain(join("lib", "data.ts"));
+    expect(files.length).toBeGreaterThan(50);
   });
 
   it("has no cross-tenant scan outside the recorded set", () => {
     const unexpected: string[] = [];
-    for (const f of files) {
-      const scans = crossTenantScans(readFileSync(join("lib/agents", f), "utf8"));
-      const allowed = KNOWN_SCANS[f] ?? 0;
+    for (const path of files) {
+      const scans = crossTenantScans(readFileSync(path, "utf8"));
+      const allowed = KNOWN_SCANS[path] ?? 0;
       if (scans.length > allowed) {
         unexpected.push(
-          `${f}: ${scans.length} scans, ${allowed} recorded\n    ${scans.slice(allowed).join("\n    ")}`
+          `${path}: ${scans.length} scans, ${allowed} recorded\n    ${scans.slice(allowed).join("\n    ")}`
         );
       }
     }
