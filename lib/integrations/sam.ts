@@ -6,6 +6,65 @@
  */
 import { config } from "../config";
 import { orgApiKey } from "../integration-keys";
+import { queryOne, query } from "../db";
+import { LEGACY_ORG_ID } from "../tenant-context";
+
+/**
+ * Daily ceiling on SAM calls for one organization.
+ *
+ * SAM rate limits a public key near 1,000 requests a day. Stopping at 900
+ * leaves room for the entity and exclusion lookups that share the quota and
+ * for a manual agent run, and means the platform refuses in language a person
+ * can act on rather than SAM refusing with an opaque 429.
+ */
+const SAM_DAILY_CALL_CAP = 900;
+
+async function samOrg(): Promise<string> {
+  try {
+    const { tryResolveTenantOrgId } = await import("../tenant");
+    return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  } catch {
+    return LEGACY_ORG_ID;
+  }
+}
+
+/**
+ * Reserve one call against today's budget.
+ *
+ * Increments first and compares after, so concurrent callers cannot both see
+ * room and both spend it. Returns false when the organization is out, and
+ * every SAM method checks this: search, entity lookup, exclusion check, and
+ * profile import all draw on the same quota, so guarding only the monitor
+ * would leave the ceiling reachable by other paths.
+ */
+async function reserveSamCall(): Promise<boolean> {
+  const org = await samOrg();
+  const row = await queryOne<{ calls: number }>(
+    `insert into sam_daily_calls (org_id, day, calls)
+     values ($1, (now() at time zone 'utc')::date, 1)
+     on conflict (org_id, day) do update set calls = sam_daily_calls.calls + 1
+     returning calls`,
+    [org]
+  ).catch(() => null);
+  // A ledger failure must not stop ingestion; SAM's own limiter remains the
+  // backstop in that case.
+  if (!row) return true;
+  return row.calls <= SAM_DAILY_CALL_CAP;
+}
+
+/** Calls used and remaining today, for the integrations page. */
+export async function samDailyUsage(
+  orgId?: string
+): Promise<{ used: number; cap: number; remaining: number }> {
+  const org = orgId ?? (await samOrg());
+  const row = await queryOne<{ calls: number }>(
+    `select calls from sam_daily_calls
+      where org_id = $1 and day = (now() at time zone 'utc')::date`,
+    [org]
+  ).catch(() => null);
+  const used = row?.calls ?? 0;
+  return { used, cap: SAM_DAILY_CALL_CAP, remaining: Math.max(0, SAM_DAILY_CALL_CAP - used) };
+}
 import { fetchJson, withRetry } from "./http";
 
 const OPP_BASE = "https://api.sam.gov/opportunities/v2/search";
@@ -229,6 +288,7 @@ export const sam = {
   ): Promise<{ disabled?: boolean; total: number; items: SamOpportunity[] }> {
     const apiKey = await orgApiKey("SAM_API_KEY");
     if (!apiKey) return { disabled: true, total: 0, items: [] };
+    if (!(await reserveSamCall())) return { disabled: true, total: 0, items: [] };
     const query = buildOpportunityQuery(params, apiKey);
     // Never throw on a SAM outage / rate-limit (SAM keys are ~1000/day): the
     // Opportunity Monitor's primary ingestion path must log a skip, not crash.
@@ -271,6 +331,7 @@ export const sam = {
   ): Promise<{ disabled?: boolean; status?: string; expiresAt?: string } | null> {
     const apiKey = await orgApiKey("SAM_API_KEY");
     if (!apiKey || !uei) return { disabled: true };
+    if (!(await reserveSamCall())) return { disabled: true };
     try {
       const data = await withRetry(() =>
         fetchJson<{ entityData?: { entityRegistration?: { registrationStatus?: string; registrationExpirationDate?: string } }[] }>(
@@ -314,6 +375,7 @@ export const sam = {
   }> {
     const apiKey = await orgApiKey("SAM_API_KEY");
     if (!apiKey) return { disabled: true, entities: [] };
+    if (!(await reserveSamCall())) return { disabled: true, entities: [] };
     const uei = input.uei?.trim();
     const name = input.name?.trim();
     if (!uei && !name) return { entities: [] };
@@ -378,6 +440,7 @@ export const sam = {
   ): Promise<{ disabled?: boolean; excluded: boolean; error?: boolean }> {
     const apiKey = await orgApiKey("SAM_API_KEY");
     if (!apiKey || !name) return { disabled: true, excluded: false };
+    if (!(await reserveSamCall())) return { disabled: true, excluded: false };
     try {
       const data = await withRetry(() =>
         fetchJson<{ totalRecords?: number }>(EXCLUSION_BASE, {

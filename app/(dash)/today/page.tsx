@@ -363,9 +363,16 @@ export default async function TodayPage() {
   // Per-organization, not per-deployment: the setup checklist must reflect
   // the keys THIS customer has entered, never the platform's environment.
   const integrations = { ...integrationStatus(), ...(await orgIntegrationStatus()) };
+  // Trial organizations borrow the platform's Anthropic and Maps keys, so
+  // those steps are due before the trial ends rather than immediately.
+  const { accessLevel, entitlementOf } = await import("@/lib/billing/entitlements");
+  const { currentUser } = await import("@/lib/auth");
+  const setupUser = await currentUser().catch(() => null);
+  const onTrial = setupUser ? accessLevel(entitlementOf(setupUser)) === "trial" : false;
   const setup = computeSetupChecklist({
     profile: profile?.profile_json ?? null,
     integrations,
+    onTrial,
   });
 
   const urgentIds = new Set(data.urgent.map((o) => o.id));

@@ -8,11 +8,25 @@ import {
 import { isPromoActive, type PromoWindow } from "../lib/billing/promo";
 
 describe("SaaS pricing constants", () => {
-  it("uses $2997 standard and $497 founding with a 7-day trial", () => {
-    expect(STANDARD_MONTHLY_USD).toBe(2997);
+  it("uses $1997 standard and $497 founding with a 7-day trial", () => {
+    expect(STANDARD_MONTHLY_USD).toBe(1997);
     expect(FOUNDING_MONTHLY_USD).toBe(497);
     expect(TRIAL_DAYS).toBe(7);
-    expect(annualSavingsUsd()).toBe((2997 - 497) * 12);
+    expect(annualSavingsUsd()).toBe((1997 - 497) * 12);
+  });
+
+  /**
+   * Annual is derived from monthly rather than stored, so a repricing cannot
+   * leave the two disagreeing. Pinned because the derivation is the thing that
+   * makes a price change safe to do in one line.
+   */
+  it("derives annual as seven months of the monthly rate", async () => {
+    const { allPrices, ANNUAL_MONTHS_CHARGED } = await import("../lib/billing/catalog");
+    expect(ANNUAL_MONTHS_CHARGED).toBe(7);
+    const standardYear = allPrices().find(
+      (p) => p.plan === "standard" && p.interval === "year"
+    )!;
+    expect(standardYear.amountCents).toBe(1997 * 7 * 100);
   });
 });
 

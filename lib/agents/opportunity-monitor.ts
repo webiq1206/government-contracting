@@ -24,7 +24,20 @@ import type { AgentResult } from "../types";
 // up anything skipped on the next run; dedup by source_id prevents re-ingest).
 const SAM_MAX_NAICS = 60; // codes queried per run (most profiles have far fewer)
 const SAM_PAGES_PER_NAICS = 3; // 300 notices/code/run is ample for a 3-day window
-const SAM_REQUEST_BUDGET = 150; // hard cap on SAM calls per run
+/**
+ * SAM calls per run, chosen against SAM's daily ceiling rather than in
+ * isolation.
+ *
+ * SAM allows a public key roughly 1,000 requests a day. At 150 per run on a
+ * two-hourly cron this agent alone asked for about 1,800, so every
+ * organization exceeded its own quota and had ingestion throttled by SAM
+ * without the platform ever saying so. Eight runs a day at 100 is 800, which
+ * leaves room for the entity and exclusion lookups drawing on the same quota.
+ *
+ * Depth per run is unchanged: three pages of 100 notices per NAICS code still
+ * covers far more than a three-hour window produces.
+ */
+const SAM_REQUEST_BUDGET = 100;
 
 function firstPoc(o: SamOpportunity) {
   const poc = o.pointOfContact?.[0];
@@ -277,7 +290,10 @@ export const opportunityMonitor: AgentDefinition = {
   label: "Opportunity Monitor",
   description:
     "Polls SAM.gov + state/local portals per subscribed organization, dedupes, stores, and triggers scoring.",
-  cron: "0 */2 * * *", // every 2 hours
+  // Every 3 hours. Federal solicitations carry deadlines in days, so the
+  // extra hour costs nothing a customer can perceive, and it is what brings
+  // the daily request count under SAM's ceiling.
+  cron: "0 */3 * * *",
   worksWithoutClaude: true, // ingestion is rule-based; scoring needs Claude
   async handler(): Promise<AgentResult> {
     let orgs = await listActiveOrganizations().catch(() => []);

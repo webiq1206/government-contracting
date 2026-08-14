@@ -50,7 +50,7 @@ export const PLANS: Record<Exclude<PlanKey, "none">, PlanDef> = {
     key: "standard",
     name: "Standard",
     blurb: "Full platform access.",
-    monthlyUsd: 2997,
+    monthlyUsd: 1997,
     grandfathered: false,
     promoOnly: false,
   },

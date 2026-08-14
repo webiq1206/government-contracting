@@ -74,15 +74,26 @@ export async function orgApiKey(key: AllowedEnvKey, orgId?: string): Promise<str
   let value = row ? (decryptSecret(row.value_enc) ?? "") : "";
 
   // Resolution order, and the order matters:
-  //   1. The organization's own key. Always wins, even over a grant, because
-  //      a customer who has supplied a credential should be spending on it.
+  //   1. The organization's own key. Always wins, even over a grant or a
+  //      trial allowance, because a customer who has supplied a credential
+  //      should be spending on it rather than on us.
   //   2. An explicit grant of the platform key to THIS organization.
-  //   3. The environment, for the founding organization only.
-  //   4. Nothing. An empty string disables the integration rather than
+  //   3. A trial allowance, while the trial is live and within budget.
+  //   4. The environment, for the founding organization only.
+  //   5. Nothing. An empty string disables the integration rather than
   //      quietly charging us for a customer's usage.
+  let borrowed = false;
   if (!value && org !== LEGACY_ORG_ID && (await hasPlatformGrant(key, org))) {
     value = process.env[key]?.trim() ?? "";
+    borrowed = value.length > 0;
   }
+  if (!value && org !== LEGACY_ORG_ID && (await trialMayBorrow(key, org))) {
+    value = process.env[key]?.trim() ?? "";
+    borrowed = value.length > 0;
+  }
+  // Metered only when the credential is OURS. An organization spending on its
+  // own key is never counted, which is the behaviour we want to encourage.
+  if (borrowed) await recordPlatformKeyUse(key, org);
   if (!value && org === LEGACY_ORG_ID) {
     value = process.env[key]?.trim() ?? "";
   }
@@ -105,6 +116,65 @@ async function hasPlatformGrant(key: AllowedEnvKey, orgId: string): Promise<bool
     [orgId, key]
   ).catch(() => null);
   return row !== null;
+}
+
+/**
+ * Whether a live trial may borrow this key and still has budget.
+ *
+ * Both halves are checked on every resolution rather than swept: a trial that
+ * ended an hour ago stops borrowing immediately, and a budget crossed mid-run
+ * stops the next call rather than the next day.
+ */
+async function trialMayBorrow(key: AllowedEnvKey, orgId: string): Promise<boolean> {
+  const { isLendableDuringTrial, TRIAL_PLATFORM_KEY_BUDGET } = await import(
+    "./billing/trial-keys"
+  );
+  if (!isLendableDuringTrial(key)) return false;
+
+  const org = await queryOne<{ subscription_status: string; trial_ends_at: string | null }>(
+    `select subscription_status, trial_ends_at::text as trial_ends_at
+       from organizations where id = $1`,
+    [orgId]
+  ).catch(() => null);
+  if (!org) return false;
+
+  const { accessLevel } = await import("./billing/entitlements");
+  if (accessLevel(org) !== "trial") return false;
+
+  const budget = TRIAL_PLATFORM_KEY_BUDGET[key] ?? 0;
+  const used = await queryOne<{ calls: number }>(
+    `select calls from platform_key_usage where org_id = $1 and env_key = $2`,
+    [orgId, key]
+  ).catch(() => null);
+  return (used?.calls ?? 0) < budget;
+}
+
+/** Count one call made on a platform credential. */
+async function recordPlatformKeyUse(key: AllowedEnvKey, orgId: string): Promise<void> {
+  const { query } = await import("./db");
+  await query(
+    `insert into platform_key_usage (org_id, env_key, calls)
+     values ($1, $2, 1)
+     on conflict (org_id, env_key)
+       do update set calls = platform_key_usage.calls + 1, last_used = now()`,
+    [orgId, key]
+  ).catch(() => {});
+}
+
+/** Borrowed-key consumption for an organization, for the UI and admin views. */
+export async function platformKeyUsage(
+  orgId: string
+): Promise<{ env_key: string; calls: number; budget: number; exhausted: boolean }[]> {
+  const { query } = await import("./db");
+  const { TRIAL_PLATFORM_KEY_BUDGET } = await import("./billing/trial-keys");
+  const rows = await query<{ env_key: string; calls: number }>(
+    `select env_key, calls from platform_key_usage where org_id = $1`,
+    [orgId]
+  ).catch(() => []);
+  return rows.map((r) => {
+    const budget = TRIAL_PLATFORM_KEY_BUDGET[r.env_key as AllowedEnvKey] ?? 0;
+    return { ...r, budget, exhausted: budget > 0 && r.calls >= budget };
+  });
 }
 
 export interface PlatformGrant {

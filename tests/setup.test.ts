@@ -173,3 +173,39 @@ describe("the connected-but-searchless trap", () => {
     expect(computeSetupChecklist(allOn).discoveryStalled).toBe(false);
   });
 });
+
+/**
+ * During the trial the platform lends its Anthropic and Google Maps keys, so
+ * those steps are due before the trial ends rather than before anything works.
+ * Marking them Required on day one would be false, and a checklist that
+ * overstates urgency stops being read.
+ */
+describe("borrowed keys during the trial", () => {
+  const trialing: SetupInputs = { ...allOff, onTrial: true };
+
+  it("does not demand the borrowed keys while the trial is live", () => {
+    const required = computeSetupChecklist(trialing)
+      .items.filter((i) => i.required)
+      .map((i) => i.key);
+    expect(required).toEqual(["sam", "naics"]);
+  });
+
+  it("still demands SAM, which is never lent", () => {
+    // Lending SAM would exhaust a shared daily quota and stop our own
+    // pipeline along with every other trial.
+    const sam = computeSetupChecklist(trialing).items.find((i) => i.key === "sam")!;
+    expect(sam.required).toBe(true);
+  });
+
+  it("says when the borrowed keys are due", () => {
+    const claude = computeSetupChecklist(trialing).items.find((i) => i.key === "claude")!;
+    expect(claude.label).toMatch(/before the trial ends/);
+  });
+
+  it("demands them once the trial is over", () => {
+    const required = computeSetupChecklist({ ...allOff, onTrial: false })
+      .items.filter((i) => i.required)
+      .map((i) => i.key);
+    expect(required).toEqual(["sam", "naics", "claude", "googleMaps"]);
+  });
+});

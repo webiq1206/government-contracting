@@ -36,8 +36,16 @@ export interface SetupInputs {
     claude: boolean;
     googleMaps: boolean;
     gmail: boolean;
-    /** Resend API key present — can send outreach without Google OAuth. */
   };
+  /**
+   * True while the organization is on its free trial.
+   *
+   * During the trial the platform lends its Anthropic and Google Maps keys, so
+   * those two steps are needed before the trial ends rather than before the
+   * product works. Saying "Required" on day one would be false, and a checklist
+   * that overstates urgency stops being read.
+   */
+  onTrial?: boolean;
 }
 
 export interface SetupItem {
@@ -165,25 +173,30 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
     },
     {
       key: "claude",
-      label: "Add your Anthropic (Claude) key",
+      label: i.onTrial
+        ? "Add your Anthropic (Claude) key before the trial ends"
+        : "Add your Anthropic (Claude) key",
       hint: integrationHint(
         "claude",
         "Powers scoring, plain-English bid briefs, and call scripts."
       ),
       done: i.integrations.claude,
       href: INTEGRATIONS_HREF,
-      required: true,
+      // Borrowed during the trial, mandatory to keep afterwards.
+      required: !i.onTrial,
     },
     {
       key: "googleMaps",
-      label: "Add your Google Maps key",
+      label: i.onTrial
+        ? "Add your Google Maps key before the trial ends"
+        : "Add your Google Maps key",
       hint: integrationHint(
         "googleMaps",
         "Finds local subcontractors for each trade automatically."
       ),
       done: i.integrations.googleMaps,
       href: INTEGRATIONS_HREF,
-      required: true,
+      required: !i.onTrial,
     },
     {
       // The connected inbox is the whole email system: it sends outreach, and
