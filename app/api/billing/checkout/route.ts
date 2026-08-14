@@ -8,6 +8,7 @@ import {
 } from "@/lib/billing/stripe";
 import { getOrganization } from "@/lib/organizations";
 import { billingConfigured, type BillingInterval } from "@/lib/billing/catalog";
+import { invitedTermsForOrg } from "@/lib/admin/invitations";
 import { trackEvent } from "@/lib/analytics";
 
 export const runtime = "nodejs";
@@ -30,19 +31,46 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const promo = await getFoundingPromo({ startIfMissing: false });
-  let plan: "founding" | "standard" =
-    url.searchParams.get("plan") === "founding" ? "founding" : "standard";
-  // Eligibility is decided here, on the server, from the stored promo window.
-  // A closed window means the founding rate cannot be claimed by anyone who
-  // simply passes ?plan=founding.
-  if (plan === "founding" && !promo.active) plan = "standard";
-  const interval: BillingInterval =
-    url.searchParams.get("interval") === "year" ? "year" : "month";
 
   const org = await getOrganization(auth.organizationId);
   if (!org) {
     return NextResponse.redirect(new URL("/signup", appBaseUrl()));
+  }
+
+  // A comped account is free, permanently and by our own decision. There is
+  // nothing here for it to buy, and letting it reach Stripe would mean
+  // charging somebody we told would never be charged. The billing page hides
+  // the plan picker for these accounts, but that is presentation: this is the
+  // guard.
+  if (org.billing_exempt) {
+    return NextResponse.redirect(
+      new URL("/settings/billing?error=account_is_free", appBaseUrl())
+    );
+  }
+
+  // An account that came in through an invitation and has not subscribed yet
+  // is bound to the terms it was invited on. Reading the plan from the query
+  // string here would let an invitee take a discount that was priced against
+  // one plan onto another, and running the public founding window against
+  // them would downgrade a founding invitation accepted after that window
+  // closed. Neither has anything to do with what was agreed with them.
+  const invited = org.stripe_subscription_id
+    ? null
+    : await invitedTermsForOrg(org.id).catch(() => null);
+
+  let plan: "founding" | "standard";
+  let interval: BillingInterval;
+  if (invited) {
+    plan = invited.plan;
+    interval = invited.interval;
+  } else {
+    const promo = await getFoundingPromo({ startIfMissing: false });
+    plan = url.searchParams.get("plan") === "founding" ? "founding" : "standard";
+    // Eligibility is decided here, on the server, from the stored promo window.
+    // A closed window means the founding rate cannot be claimed by anyone who
+    // simply passes ?plan=founding.
+    if (plan === "founding" && !promo.active) plan = "standard";
+    interval = url.searchParams.get("interval") === "year" ? "year" : "month";
   }
 
   // Billing must be fully wired before anyone can subscribe. The previous
@@ -71,6 +99,9 @@ export async function GET(req: Request) {
     interval,
     successUrl: `${appBaseUrl()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
     cancelUrl: `${appBaseUrl()}/settings/billing?checkout=canceled`,
+    // A discount we promised this account before they had a subscription to
+    // put it on. This is the moment it exists, so this is where it goes on.
+    couponId: org.pending_coupon_id,
   });
   if (!checkout.url) {
     await trackEvent({

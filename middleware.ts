@@ -16,6 +16,11 @@ const PUBLIC_PREFIXES = [
   "/setup",
   "/forgot-password",
   "/reset-password",
+  // Accepting an invitation. The person following the link has no account yet
+  // by definition, so bouncing them to the login page would make every
+  // invitation we send a dead end.
+  "/invite",
+  "/api/invitations",
   "/privacy",
   "/terms",
   "/billing/success",

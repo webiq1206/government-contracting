@@ -23,7 +23,14 @@ export type AdminAction =
   | "account_reactivated"
   | "account_deleted"
   | "impersonation_started"
-  | "impersonation_ended";
+  | "impersonation_ended"
+  | "discount_applied"
+  | "free_months_granted"
+  | "discount_removed"
+  | "invitation_created"
+  | "invitation_resent"
+  | "invitation_revoked"
+  | "invitation_accepted";
 
 export interface AdminAuditEntry {
   id: string;

@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/billing/stripe";
 import { planForPriceId, PLANS, type PlanKey } from "@/lib/billing/catalog";
 import { query, queryOne } from "@/lib/db";
-import { updateOrganizationBilling } from "@/lib/organizations";
+import { clearPendingConcession, updateOrganizationBilling } from "@/lib/organizations";
 import { trackEvent } from "@/lib/analytics";
 import {
   claimEvent,
@@ -186,6 +186,10 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
         discount_amount_off_cents: s.amountOffCents,
         discount_ends_at: s.discountEndsAt,
       });
+      // The subscription exists now, so whatever discount was promised has
+      // either been applied at checkout or was never going to be. Either way
+      // Stripe is the record from here.
+      await clearPendingConcession(orgId);
       await markApplied(orgId, event.created);
       await trackEvent({
         event: "subscription_completed",

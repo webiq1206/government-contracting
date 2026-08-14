@@ -49,6 +49,20 @@ export async function createCheckoutSession(input: {
   /** Enable Stripe's promotion-code box. Stripe enforces validity and expiry. */
   allowPromotionCodes?: boolean;
   /**
+   * A discount we already promised this account, applied without them having
+   * to type anything.
+   *
+   * A coupon rather than a promotion code, on purpose: a coupon can only be
+   * attached here, by us, for this account. A promotion code would be a string
+   * anybody could type into the box on somebody else's checkout.
+   *
+   * Stripe will not accept this and `allow_promotion_codes` in the same
+   * session, so passing it turns the code box off. That is the right way
+   * round: somebody who was given terms should not be able to stack a second
+   * code on top, and the terms they were promised are already applied.
+   */
+  couponId?: string | null;
+  /**
    * Stripe-side trial days. Defaults to none, because the free trial now
    * happens BEFORE checkout and is cardless: someone reaching this page has
    * already had their 7 days and is choosing to start paying. Granting a
@@ -100,7 +114,11 @@ export async function createCheckoutSession(input: {
       },
       // Discount eligibility and expiry are Stripe's to enforce. Keeping that
       // logic out of our code is the point: an expired code fails at Stripe.
-      allow_promotion_codes: input.allowPromotionCodes ?? true,
+      // One or the other, never both: Stripe rejects a session carrying a
+      // discount and an open code box together.
+      ...(input.couponId
+        ? { discounts: [{ coupon: input.couponId }] }
+        : { allow_promotion_codes: input.allowPromotionCodes ?? true }),
     });
     return { url: session.url };
   } catch (err) {

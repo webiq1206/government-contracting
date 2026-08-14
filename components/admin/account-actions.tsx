@@ -18,6 +18,7 @@ export function AccountActions({
   suspended,
   canImpersonate,
   ownerEmail,
+  currentDiscount,
 }: {
   orgId: string;
   orgName: string;
@@ -25,6 +26,8 @@ export function AccountActions({
   suspended: boolean;
   canImpersonate: boolean;
   ownerEmail: string | null;
+  /** What they are on today, running at Stripe or still just promised. */
+  currentDiscount: string | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -34,6 +37,12 @@ export function AccountActions({
   const [suspendReason, setSuspendReason] = useState("");
   const [days, setDays] = useState(14);
   const [confirmName, setConfirmName] = useState("");
+
+  const [concessionKind, setConcessionKind] = useState<"percent" | "free_months">("percent");
+  const [percent, setPercent] = useState(20);
+  const [percentMonths, setPercentMonths] = useState("");
+  const [freeMonths, setFreeMonths] = useState(3);
+  const [concessionReason, setConcessionReason] = useState("");
 
   async function run(
     key: string,
@@ -142,6 +151,142 @@ export function AccountActions({
           </div>
         )}
       </Card>
+
+      <Card
+        title="Discounts and free months"
+        body={
+          billingExempt
+            ? "This account is comped, so it is not billed at all and a discount would do nothing. Put it back on normal billing first if it should start paying a reduced rate."
+            : "Free months are a 100% discount that stops on its own, so billing resumes at the normal rate without anyone remembering to change it back. A discount applies to the next invoice if they already subscribe, or automatically at checkout if they have not yet."
+        }
+      >
+        {currentDiscount ? (
+          <div className="space-y-3">
+            <p className="text-sm">
+              Currently on <strong>{currentDiscount}</strong>.
+            </p>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy !== null}
+              onClick={() =>
+                run("remove_discount", {
+                  action: "remove_discount",
+                  reason: concessionReason,
+                })
+              }
+            >
+              {busy === "remove_discount" ? "Working…" : "Back to the normal rate"}
+            </button>
+          </div>
+        ) : billingExempt ? null : (
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="input w-44"
+                value={concessionKind}
+                onChange={(e) =>
+                  setConcessionKind(e.target.value as "percent" | "free_months")
+                }
+              >
+                <option value="percent">A percentage off</option>
+                <option value="free_months">Free months</option>
+              </select>
+              {concessionKind === "percent" ? (
+                <>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    className="input w-20"
+                    value={percent}
+                    onChange={(e) => setPercent(Number(e.target.value))}
+                    aria-label="Percentage off"
+                  />
+                  <span className="text-sm text-muted-foreground">% off for</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={36}
+                    className="input w-40"
+                    placeholder="ever (blank)"
+                    value={percentMonths}
+                    onChange={(e) => setPercentMonths(e.target.value)}
+                    aria-label="Months the discount runs"
+                  />
+                  <span className="text-sm text-muted-foreground">months</span>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="number"
+                    min={1}
+                    max={36}
+                    className="input w-20"
+                    value={freeMonths}
+                    onChange={(e) => setFreeMonths(Number(e.target.value))}
+                    aria-label="Number of free months"
+                  />
+                  <span className="text-sm text-muted-foreground">months free</span>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                className="input flex-1"
+                placeholder="Why are they getting this?"
+                value={concessionReason}
+                onChange={(e) => setConcessionReason(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy !== null || !concessionReason.trim()}
+                onClick={() =>
+                  concessionKind === "percent"
+                    ? run("discount", {
+                        action: "discount",
+                        percent,
+                        months: percentMonths ? Number(percentMonths) : undefined,
+                        reason: concessionReason,
+                      })
+                    : run("free_months", {
+                        action: "free_months",
+                        months: freeMonths,
+                        reason: concessionReason,
+                      })
+                }
+              >
+                {busy === "discount" || busy === "free_months" ? "Working…" : "Apply"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {!billingExempt && (
+        <Card
+          title="Make this account free"
+          body="Stops the subscription at Stripe and then marks the account comped, in that order. Nothing further is charged. This is not a discount: it does not expire and does not depend on Stripe being reachable."
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="input flex-1"
+              placeholder="Why is this account being made free?"
+              value={compReason}
+              onChange={(e) => setCompReason(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busy !== null || !compReason.trim()}
+              onClick={() => run("make_free", { action: "make_free", reason: compReason })}
+            >
+              {busy === "make_free" ? "Working…" : "Cancel billing and make free"}
+            </button>
+          </div>
+        </Card>
+      )}
 
       <Card
         title="Trial"

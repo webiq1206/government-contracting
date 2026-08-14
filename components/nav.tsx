@@ -44,6 +44,7 @@ const PRIMARY: Item[] = [
  */
 const PLATFORM_ADMIN_ITEMS: Item[] = [
   { href: "/admin/accounts", label: "All accounts" },
+  { href: "/admin/invitations", label: "Invitations" },
   { href: "/admin/billing", label: "All customers (billing)" },
   { href: "/authority", label: "Site authority (ours)" },
 ];

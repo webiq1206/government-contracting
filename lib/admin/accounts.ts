@@ -24,6 +24,14 @@ export interface AdminAccountRow {
   suspended_reason: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  /** What Stripe reports today. */
+  discount_code: string | null;
+  discount_percent_off: number | null;
+  discount_amount_off_cents: number | null;
+  discount_ends_at: string | null;
+  /** What we promised an account that has not checked out yet. */
+  pending_concession_code: string | null;
+  pending_concession_label: string | null;
   created_at: string;
   owner_email: string | null;
   owner_name: string | null;
@@ -45,6 +53,12 @@ const ACCOUNT_SELECT = `
          o.suspended_reason,
          o.stripe_customer_id,
          o.stripe_subscription_id,
+         o.discount_code,
+         o.discount_percent_off,
+         o.discount_amount_off_cents,
+         o.discount_ends_at::text as discount_ends_at,
+         o.pending_concession_code,
+         o.pending_concession_label,
          o.created_at::text     as created_at,
          owner.email            as owner_email,
          owner.name             as owner_name,

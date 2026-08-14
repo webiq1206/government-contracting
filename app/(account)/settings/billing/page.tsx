@@ -93,8 +93,18 @@ export default async function BillingSettingsPage({
           org.discount_code ? ` (${org.discount_code})` : ""
         }`
       : null;
+  // A discount that was arranged for this account before it had a subscription
+  // to put one on. Stripe does not know about it yet, so it cannot appear in
+  // the line above, and staying silent would mean a customer who was promised
+  // three free months sees nothing about them anywhere until an invoice
+  // arrives.
+  const promisedDiscount = !comped ? (org?.pending_concession_label ?? null) : null;
   const hasStripeCustomer = Boolean(org?.stripe_customer_id);
-  const canCheckout = stripeEnabled() && !hasStripeCustomer;
+  // A comped account has nothing to buy. Showing it a plan picker invites
+  // somebody who was told their account is free to start paying for it, which
+  // the checkout route now refuses anyway; this is so they are never offered
+  // it in the first place.
+  const canCheckout = stripeEnabled() && !hasStripeCustomer && !comped;
 
   const planLabel =
     org?.plan_key === "founding"
@@ -125,6 +135,11 @@ export default async function BillingSettingsPage({
             Billing cannot be changed from a support session. Return to your own
             account first.
           </div>
+        ) : searchParams?.error === "account_is_free" ? (
+          <div className="rounded-md border border-border bg-surface px-4 py-3 text-sm text-slate-600">
+            There is nothing to subscribe to. This account is free and has full
+            access already.
+          </div>
         ) : (
           searchParams?.error && (
             <div className="rounded-md border border-risk/40 bg-risk/5 px-4 py-3 text-sm text-risk">
@@ -138,6 +153,12 @@ export default async function BillingSettingsPage({
             This account is comped. You have full access to everything and there
             is nothing to pay.
             {org?.billing_exempt_reason ? ` (${org.billing_exempt_reason})` : ""}
+          </div>
+        )}
+        {promisedDiscount && (
+          <div className="rounded-md border border-accent/40 bg-accent/5 px-4 py-3 text-sm text-accent-strong">
+            {promisedDiscount} This is applied automatically when you subscribe,
+            with no code to enter.
           </div>
         )}
         {searchParams?.checkout === "canceled" && (

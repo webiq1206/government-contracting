@@ -9,6 +9,11 @@ import {
   setSuspended,
   type AdminActionResult,
 } from "@/lib/admin/accounts";
+import {
+  convertToFree,
+  grantConcession,
+  removeConcession,
+} from "@/lib/admin/concessions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +34,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     action?: string;
     reason?: string;
     days?: number;
+    percent?: number;
+    months?: number;
   };
   const orgId = params.id;
   const adminEmail = auth.email;
@@ -56,6 +63,34 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       break;
     case "reactivate":
       result = await setSuspended({ orgId, suspended: false, reason, adminEmail });
+      break;
+    case "discount":
+      result = await grantConcession({
+        orgId,
+        concession: {
+          kind: "percent",
+          percent: Number(body.percent),
+          // Optional: no month count means it runs for the life of the
+          // subscription, which is what an open-ended negotiated rate is.
+          months: body.months ? Number(body.months) : null,
+        },
+        reason,
+        adminEmail,
+      });
+      break;
+    case "free_months":
+      result = await grantConcession({
+        orgId,
+        concession: { kind: "free_months", months: Number(body.months) },
+        reason,
+        adminEmail,
+      });
+      break;
+    case "remove_discount":
+      result = await removeConcession({ orgId, reason, adminEmail });
+      break;
+    case "make_free":
+      result = await convertToFree({ orgId, reason, adminEmail });
       break;
     default:
       return NextResponse.json({ error: "Unknown action." }, { status: 400 });

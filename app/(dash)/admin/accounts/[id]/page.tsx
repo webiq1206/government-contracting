@@ -29,6 +29,23 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
     adminActionsForOrg(org.id),
   ]);
 
+  // Two places a discount can live, and the admin should not have to know
+  // which: what Stripe is charging them, or what we promised before they had
+  // anything to charge.
+  const currentDiscount = org.discount_percent_off
+    ? `${Number(org.discount_percent_off)}% off${
+        org.discount_code ? ` (${org.discount_code})` : ""
+      }${org.discount_ends_at ? ` until ${shortDate(org.discount_ends_at)}` : ""}`
+    : org.discount_amount_off_cents
+      ? `$${(org.discount_amount_off_cents / 100).toLocaleString("en-US")} off${
+          org.discount_code ? ` (${org.discount_code})` : ""
+        }`
+      : org.pending_concession_label
+        ? `${org.pending_concession_label} Applies at checkout${
+            org.pending_concession_code ? ` (${org.pending_concession_code})` : ""
+          }.`
+        : null;
+
   const accessText =
     org.access === "full"
       ? org.billing_exempt
@@ -115,6 +132,7 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
           orgName={org.name}
           billingExempt={org.billing_exempt}
           suspended={Boolean(org.suspended_at)}
+          currentDiscount={currentDiscount}
           ownerEmail={org.owner_email}
           canImpersonate={
             Boolean(org.owner_user_id) &&

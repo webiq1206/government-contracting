@@ -38,6 +38,19 @@ export interface Organization {
   billing_exempt_reason: string | null;
   billing_exempt_granted_by: string | null;
   billing_exempt_granted_at: string | null;
+  /**
+   * A discount granted to an account that has nothing to attach it to yet.
+   *
+   * Deliberately separate from the `discount_*` columns above: those mirror
+   * what Stripe is doing, these record what we promised. Handed to Stripe at
+   * checkout and cleared once it starts reporting the discount for real.
+   */
+  pending_concession_code: string | null;
+  pending_coupon_id: string | null;
+  pending_concession_label: string | null;
+  pending_concession_reason: string | null;
+  pending_concession_by: string | null;
+  pending_concession_at: string | null;
   /** Administrative suspension. Outranks billing_exempt. */
   suspended_at: string | null;
   suspended_reason: string | null;
@@ -241,6 +254,34 @@ export async function updateOrganizationBilling(
   await query(
     `update organizations set ${fields.join(", ")} where id = $${i}`,
     vals
+  );
+}
+
+/**
+ * Forget a discount we promised but had nowhere to put.
+ *
+ * Called once the account has a subscription, because from that point Stripe
+ * holds the discount and the `discount_*` mirror describes it. Leaving the
+ * promise behind would mean a future checkout silently applying the same
+ * coupon a second time.
+ *
+ * A separate statement rather than part of `updateOrganizationBilling`: these
+ * columns are deliberately outside the webhook's writable set, and widening
+ * that set to include them would let Stripe payloads reach them.
+ */
+export async function clearPendingConcession(orgId: string): Promise<void> {
+  await query(
+    `update organizations
+        set pending_concession_code = null,
+            pending_coupon_id = null,
+            pending_concession_label = null,
+            pending_concession_reason = null,
+            pending_concession_by = null,
+            pending_concession_at = null,
+            updated_at = now()
+      where id = $1
+        and pending_coupon_id is not null`,
+    [orgId]
   );
 }
 
