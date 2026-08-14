@@ -32,14 +32,27 @@ const TENANT_TABLES = [
  *   compliance-monitor  a dedupe lookup can match another org's item, and the
  *                       non-small-business sweep reads every org's contracts
  *   learning-loop       proposes scoring weights from every tenant's outcomes
- *   maintenance         follow-ups, scoring recovery, and expiry sweeps select
- *                       across tenants
  */
 const KNOWN_SCANS: Record<string, number> = {
   "compliance-monitor.ts": 2,
   "learning-loop.ts": 2,
-  "maintenance.ts": 6,
 };
+
+/**
+ * Reads that are global on purpose, and have to stay that way.
+ *
+ * This is not the same list as KNOWN_SCANS: that one is debt to be paid off,
+ * this one is a set of reads where adding an org filter would be the bug. Each
+ * is matched on a fragment unique to it so an unrelated unscoped read cannot
+ * inherit the exemption, and each says why below.
+ */
+const DELIBERATELY_GLOBAL = [
+  // maintenance: before deleting a file blob, check whether ANY document still
+  // references that path. Blob paths are content-addressed and shared between
+  // organizations, so scoping this to one org would delete bytes another
+  // customer's document still points at.
+  "from file_blobs where path = any($1)",
+];
 
 function crossTenantScans(src: string): string[] {
   const tbl = TENANT_TABLES.join("|");
@@ -49,6 +62,7 @@ function crossTenantScans(src: string): string[] {
     if (!new RegExp(`\\b(from|join)\\s+(${tbl})\\b`).test(flat)) continue;
     if (flat.includes("org_id")) continue;
     if (!/^`select/i.test(flat)) continue;
+    if (DELIBERATELY_GLOBAL.some((frag) => flat.includes(frag))) continue;
     // A predicate naming one record means the caller already scoped it.
     if (/\b\w*id\s*=\s*\$\d/.test(flat)) continue;
     if (/\bid\s*=\s*any\(/.test(flat)) continue;

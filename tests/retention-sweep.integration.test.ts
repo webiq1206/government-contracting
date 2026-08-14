@@ -34,21 +34,35 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
   const OPP1_PATH   = `test-opp1/${randomUUID()}.pdf`;
   const JUNK_PATH   = `test-junk/${randomUUID()}.pdf`;
 
+  // Both sweeps run per organization on that organization's own retention
+  // window, so the fixtures need a real active org to belong to. A record with
+  // no org belongs to no customer and is swept by nobody.
+  const ORG_NAME = `retention-sweep-${randomUUID()}`;
+  let orgId = "";
+
   beforeAll(async () => {
     ({ query, queryOne } = await import("../lib/db"));
     ({ retentionSweep, expiredOpportunitySweep } = await import("../lib/agents/maintenance"));
     ({ setAutomationRules } = await import("../lib/app-settings"));
+    const { runWithOrg } = await import("../lib/tenant-context");
+
+    const org = await queryOne<{ id: string }>(
+      `insert into organizations (name, subscription_status) values ($1, 'active') returning id`,
+      [ORG_NAME]
+    );
+    orgId = org!.id;
 
     // Set retention to 1 day so "old" test records qualify immediately.
-    await setAutomationRules({ retention_days: 1 }, "test@example.com");
+    // Automation rules are per organization, so this is written as this org.
+    await runWithOrg(orgId, () => setAutomationRules({ retention_days: 1 }, "test@example.com"));
 
     const staleDate = "2020-01-01";
 
     // opp1 — plain stale archived record, has its own blob
     await query(
-      `insert into opportunities (id, title, stage, status, source, updated_at)
-       values ($1, 'TEST-RETENTION opp1', 'dismissed', 'archived', 'manual', $2)`,
-      [ids.opp1, staleDate]
+      `insert into opportunities (id, org_id, title, stage, status, source, updated_at)
+       values ($1, $3, 'TEST-RETENTION opp1', 'dismissed', 'archived', 'manual', $2)`,
+      [ids.opp1, staleDate, orgId]
     );
     await query(
       `insert into documents (opportunity_id, kind, name, storage_path, storage_backend)
@@ -62,9 +76,9 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
 
     // opp2 — stale archived WITH a quote; must never be deleted
     await query(
-      `insert into opportunities (id, title, stage, status, source, updated_at)
-       values ($1, 'TEST-RETENTION opp2 (has quote)', 'dismissed', 'archived', 'manual', $2)`,
-      [ids.opp2, staleDate]
+      `insert into opportunities (id, org_id, title, stage, status, source, updated_at)
+       values ($1, $3, 'TEST-RETENTION opp2 (has quote)', 'dismissed', 'archived', 'manual', $2)`,
+      [ids.opp2, staleDate, orgId]
     );
     await query(
       `insert into quotes (opportunity_id, quote_amount)
@@ -74,9 +88,9 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
 
     // opp3 — stale archived, uses a blob path shared with oppShared
     await query(
-      `insert into opportunities (id, title, stage, status, source, updated_at)
-       values ($1, 'TEST-RETENTION opp3 (shared blob)', 'dismissed', 'archived', 'manual', $2)`,
-      [ids.opp3, staleDate]
+      `insert into opportunities (id, org_id, title, stage, status, source, updated_at)
+       values ($1, $3, 'TEST-RETENTION opp3 (shared blob)', 'dismissed', 'archived', 'manual', $2)`,
+      [ids.opp3, staleDate, orgId]
     );
     await query(
       `insert into documents (opportunity_id, kind, name, storage_path, storage_backend)
@@ -86,9 +100,9 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
 
     // oppShared — active open record referencing same blob path
     await query(
-      `insert into opportunities (id, title, stage, status, source)
-       values ($1, 'TEST-RETENTION oppShared (active)', 'analysis', 'open', 'manual')`,
-      [ids.oppShared]
+      `insert into opportunities (id, org_id, title, stage, status, source)
+       values ($1, $2, 'TEST-RETENTION oppShared (active)', 'analysis', 'open', 'manual')`,
+      [ids.oppShared, orgId]
     );
     await query(
       `insert into documents (opportunity_id, kind, name, storage_path, storage_backend)
@@ -103,16 +117,16 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
 
     // oppJunk — past-deadline in monitoring, no work — expired sweep should delete
     await query(
-      `insert into opportunities (id, title, stage, status, source, deadline)
-       values ($1, 'TEST-RETENTION junk (monitoring)', 'monitoring', 'open', 'manual', '2020-01-01')`,
-      [ids.oppJunk]
+      `insert into opportunities (id, org_id, title, stage, status, source, deadline)
+       values ($1, $2, 'TEST-RETENTION junk (monitoring)', 'monitoring', 'open', 'manual', '2020-01-01')`,
+      [ids.oppJunk, orgId]
     );
 
     // oppJunkBlob — past-deadline junk WITH a stored blob
     await query(
-      `insert into opportunities (id, title, stage, status, source, deadline)
-       values ($1, 'TEST-RETENTION junkBlob', 'monitoring', 'open', 'manual', '2020-01-01')`,
-      [ids.oppJunkBlob]
+      `insert into opportunities (id, org_id, title, stage, status, source, deadline)
+       values ($1, $2, 'TEST-RETENTION junkBlob', 'monitoring', 'open', 'manual', '2020-01-01')`,
+      [ids.oppJunkBlob, orgId]
     );
     await query(
       `insert into documents (opportunity_id, kind, name, storage_path, storage_backend)
@@ -132,10 +146,14 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
     await query(`delete from file_blobs where path = any($1)`, [
       [OPP1_PATH, SHARED_PATH, JUNK_PATH],
     ]).catch(() => {});
-    // Restore retention default
-    await (await import("../lib/app-settings")).setAutomationRules(
-      { retention_days: 30 }, "test@example.com"
-    );
+    // The rules row is keyed by org, so removing the org's own key is enough;
+    // no other organization's retention setting is touched.
+    await query(`delete from app_settings where key = $1`, [
+      `${orgId}:automation_rules`,
+    ]).catch(() => {});
+    // The sweep's own log lines reference the org, so they go before it does.
+    await query(`delete from agent_logs where org_id = $1`, [orgId]).catch(() => {});
+    await query(`delete from organizations where id = $1`, [orgId]).catch(() => {});
   });
 
   it("retentionSweep deletes stale archived opp and its blob", async () => {

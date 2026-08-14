@@ -14,6 +14,7 @@ import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
 import { logAgent } from "../logger";
 import { runWithOrg } from "../tenant-context";
+import { listActiveOrganizations } from "../organizations";
 import {
   decideReply,
   applyOutcomeToSolicitation,
@@ -46,147 +47,172 @@ export const outreachFollowup: AgentDefinition = {
   description: "Sends the automated 48-hour follow-up to non-responsive subcontractors.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    // Load the active follow-up template and company profile once per run.
-    // Template resolution is org-aware (own copy, else platform default) so a
-    // follow-up never goes out with another tenant's wording.
-    const { activeTemplate } = await import("../domain/template-store");
-    const { tryResolveTenantOrgId } = await import("../tenant");
-    const [tmpl, profile] = await Promise.all([
-      tryResolveTenantOrgId().then((orgId) => activeTemplate("template_2_followup", orgId)),
-      getProfileJson(),
-    ]);
-
-    const due = await query<{
-      id: string;
-      subcontractor_id: string;
-      opportunity_id: string;
-      tracking_id: string | null;
-      email: string | null;
-      email_verified: boolean;
-      sub_owner_name: string | null;
-      // trade comes from opportunity_subs (not opportunities); LATERAL picks the
-      // most-recently-added trade for this sub/opp pair when multiple exist.
-      trade: string | null;
-      location_state: string | null;
-      deadline: string | null;
-    }>(
-      `select c.id, c.subcontractor_id, c.opportunity_id, c.tracking_id,
-              s.email, s.email_verified, s.owner_name as sub_owner_name,
-              os.trade, o.location_state, o.deadline
-         from communications c
-         join subcontractors s on s.id = c.subcontractor_id
-         left join opportunities o on o.id = c.opportunity_id
-         left join lateral (
-           select trade from opportunity_subs
-           where opportunity_id = c.opportunity_id
-             and subcontractor_id = c.subcontractor_id
-           order by created_at desc
-           limit 1
-         ) os on true
-        where c.channel='email' and c.direction='outbound'
-          and c.follow_up_at is not null and c.follow_up_at <= now()
-          and c.replied_at is null
-        limit 50`
-    );
-
-    const senderName = profile ? outreachDisplayName(profile) : "your contact";
-    const companyName = profile?.legal_name ?? "";
-    const phone = profile?.phone ?? "";
-
-    let sent = 0;
-    for (const row of due) {
-      // Consume the follow-up marker regardless, so we don't loop on errors.
-      await query(`update communications set follow_up_at = null where id = $1`, [row.id]);
-      if (!row.email || !row.email_verified) continue;
-
-      // Build the sub greeting the same way the initial outreach agent does.
-      const ownerFirst = (() => {
-        const raw = (row.sub_owner_name ?? "").trim();
-        if (!raw) return "there";
-        return raw.split(/\s+/)[0] || "there";
-      })();
-
-      let subject: string;
-      let html: string;
-
-      if (tmpl) {
-        const vars: Record<string, string> = {
-          owner_name: ownerFirst,
-          sender_name: senderName,
-          company_name: companyName,
-          phone,
-          // Solicitation-derived, and reachable from an operator-edited
-          // template via {{trade}} — scrub on the way in, never after render.
-          trade: scrubGovtContacts(row.trade ?? "").sanitised,
-          location_state: row.location_state ?? "",
-          deadline: formatDeadlineLabel(row.deadline),
-          // Tokens rarely used in the follow-up but available for custom templates.
-          opportunity_title: "",
-          solicitation_number: "",
-          agency: "",
-          scope_summary: "",
-          questions: "",
-        };
-        // Never scrub the assembled email — it would censor the operator's own
-        // phone number. The follow-up carries no solicitation-derived text.
-        const rawSubject = renderTemplate(tmpl.subject ?? "Re: our quote request", vars);
-        const rawBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
-        subject = rawSubject || "Re: our quote request";
-        html = plainToHtml(rawBody);
-      } else {
-        // Fallback: template not found — use a minimal safe copy.
-        subject = "Following up on our quote request";
-        html = `<p>Hi ${ownerFirst},</p><p>Just following up on my previous email. Happy to answer any questions or set up a quick call.</p><p>${senderName}</p>`;
-      }
-
-      const res = await sendOutreachEmail({
-        to: row.email,
-        subject,
-        html,
-        trackingId: row.tracking_id ?? undefined,
-      });
-      if (!res.disabled && !res.error) {
-        await query(
-          `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider)
-           values ($1,$2,'email','outbound',$3,$4,$5,$6)`,
-          [row.subcontractor_id, row.opportunity_id, subject, html, res.messageId ?? null, res.provider]
-        );
-        // Reflect the follow-up on the pairing + roster so Today / opp / sub
-        // UIs show "Followed up" instead of permanently "Email sent".
-        await query(
-          `update opportunity_subs
-              set outreach_state = 'followed_up'
-            where opportunity_id = $1 and subcontractor_id = $2
-              and outreach_state in ('sent', 'draft', 'email_unverified')`,
-          [row.opportunity_id, row.subcontractor_id]
-        );
-        await query(`update subcontractors set last_contacted = now() where id = $1`, [
-          row.subcontractor_id,
-        ]);
-        sent++;
-      } else if (res.blocked) {
-        // The follow-up marker was already consumed above, so this will not be
-        // retried automatically. Make sure a human sees that it never went out.
-        if (row.opportunity_id) {
-          await query(
-            `update opportunities set human_action_required = true where id = $1`,
-            [row.opportunity_id]
-          );
-        }
-        await logAgent({
-          agent: "outreach-followup",
-          action: "send",
-          level: "error",
-          status: "error",
-          opportunityId: row.opportunity_id,
-          subcontractorId: row.subcontractor_id,
-          message: `Held follow-up email, nothing was sent. ${res.error}`,
-        });
-      }
+    /**
+     * One sweep per organization.
+     *
+     * This is a cron with no payload, so nothing set a tenant context and the
+     * due list was selected across every org while the template, profile, and
+     * mailbox were resolved once, from the founding org. A customer's
+     * follow-up therefore went out through our inbox, over our name and
+     * phone number, against our trial quota. Resolve the organizations, then
+     * do each one's sweep inside its own context.
+     */
+    const orgs = await listActiveOrganizations().catch(() => []);
+    let sentTotal = 0;
+    let dueTotal = 0;
+    for (const org of orgs) {
+      const res = await runWithOrg(org.id, () => followUpForOrg(org.id));
+      sentTotal += res.sent;
+      dueTotal += res.due;
     }
-    return { ok: true, summary: `Sent ${sent} follow-up(s) of ${due.length} due.` };
+    return { ok: true, summary: `Sent ${sentTotal} follow-up(s) of ${dueTotal} due.` };
   },
 };
+
+async function followUpForOrg(orgId: string): Promise<{ sent: number; due: number }> {
+  // Template resolution is org-aware (own copy, else platform default) so a
+  // follow-up never goes out with another tenant's wording.
+  const { activeTemplate } = await import("../domain/template-store");
+  const [tmpl, profile] = await Promise.all([
+    activeTemplate("template_2_followup", orgId),
+    getProfileJson(),
+  ]);
+
+  const due = await query<{
+    id: string;
+    subcontractor_id: string;
+    opportunity_id: string;
+    tracking_id: string | null;
+    email: string | null;
+    email_verified: boolean;
+    sub_owner_name: string | null;
+    // trade comes from opportunity_subs (not opportunities); LATERAL picks the
+    // most-recently-added trade for this sub/opp pair when multiple exist.
+    trade: string | null;
+    location_state: string | null;
+    deadline: string | null;
+  }>(
+    `select c.id, c.subcontractor_id, c.opportunity_id, c.tracking_id,
+            s.email, s.email_verified, s.owner_name as sub_owner_name,
+            os.trade, o.location_state, o.deadline
+       from communications c
+       join subcontractors s on s.id = c.subcontractor_id
+       left join opportunities o on o.id = c.opportunity_id
+       left join lateral (
+         select trade from opportunity_subs
+         where opportunity_id = c.opportunity_id
+           and subcontractor_id = c.subcontractor_id
+         order by created_at desc
+         limit 1
+       ) os on true
+      where c.org_id = $1
+        and c.channel='email' and c.direction='outbound'
+        and c.follow_up_at is not null and c.follow_up_at <= now()
+        and c.replied_at is null
+      limit 50`,
+    [orgId]
+  );
+
+  const senderName = profile ? outreachDisplayName(profile) : "your contact";
+  const companyName = profile?.legal_name ?? "";
+  const phone = profile?.phone ?? "";
+
+  let sent = 0;
+  for (const row of due) {
+    // Consume the follow-up marker regardless, so we don't loop on errors.
+    await query(`update communications set follow_up_at = null where id = $1`, [row.id]);
+    if (!row.email || !row.email_verified) continue;
+
+    // Build the sub greeting the same way the initial outreach agent does.
+    const ownerFirst = (() => {
+      const raw = (row.sub_owner_name ?? "").trim();
+      if (!raw) return "there";
+      return raw.split(/\s+/)[0] || "there";
+    })();
+
+    let subject: string;
+    let html: string;
+
+    if (tmpl) {
+      const vars: Record<string, string> = {
+        owner_name: ownerFirst,
+        sender_name: senderName,
+        company_name: companyName,
+        phone,
+        // Solicitation-derived, and reachable from an operator-edited
+        // template via {{trade}} — scrub on the way in, never after render.
+        trade: scrubGovtContacts(row.trade ?? "").sanitised,
+        location_state: row.location_state ?? "",
+        deadline: formatDeadlineLabel(row.deadline),
+        // Tokens rarely used in the follow-up but available for custom templates.
+        opportunity_title: "",
+        solicitation_number: "",
+        agency: "",
+        scope_summary: "",
+        questions: "",
+      };
+      // Never scrub the assembled email — it would censor the operator's own
+      // phone number. The follow-up carries no solicitation-derived text.
+      const rawSubject = renderTemplate(tmpl.subject ?? "Re: our quote request", vars);
+      const rawBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
+      subject = rawSubject || "Re: our quote request";
+      html = plainToHtml(rawBody);
+    } else {
+      // Fallback: template not found — use a minimal safe copy.
+      subject = "Following up on our quote request";
+      html = `<p>Hi ${ownerFirst},</p><p>Just following up on my previous email. Happy to answer any questions or set up a quick call.</p><p>${senderName}</p>`;
+    }
+
+    // Named rather than inferred: this decides whose mailbox sends, whose
+    // identity is on the From line, and whose quota is charged.
+    const res = await sendOutreachEmail({
+      to: row.email,
+      subject,
+      html,
+      trackingId: row.tracking_id ?? undefined,
+      orgId,
+    });
+    if (!res.disabled && !res.error) {
+      await query(
+        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider)
+         values ($1,$2,'email','outbound',$3,$4,$5,$6)`,
+        [row.subcontractor_id, row.opportunity_id, subject, html, res.messageId ?? null, res.provider]
+      );
+      // Reflect the follow-up on the pairing + roster so Today / opp / sub
+      // UIs show "Followed up" instead of permanently "Email sent".
+      await query(
+        `update opportunity_subs
+            set outreach_state = 'followed_up'
+          where opportunity_id = $1 and subcontractor_id = $2
+            and outreach_state in ('sent', 'draft', 'email_unverified')`,
+        [row.opportunity_id, row.subcontractor_id]
+      );
+      await query(`update subcontractors set last_contacted = now() where id = $1`, [
+        row.subcontractor_id,
+      ]);
+      sent++;
+    } else if (res.blocked) {
+      // The follow-up marker was already consumed above, so this will not be
+      // retried automatically. Make sure a human sees that it never went out.
+      if (row.opportunity_id) {
+        await query(
+          `update opportunities set human_action_required = true where id = $1`,
+          [row.opportunity_id]
+        );
+      }
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send",
+        level: "error",
+        status: "error",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: `Held follow-up email, nothing was sent. ${res.error}`,
+      });
+    }
+  }
+  return { sent, due: due.length };
+}
 
 export const reviewExpirySweep: AgentDefinition = {
   name: "review-expiry-sweep",
@@ -357,14 +383,27 @@ export const scoringRecoverySweep: AgentDefinition = {
     // Monitor: recovery must keep working even when ingestion is failing,
     // which is precisely when records get stranded. Singleton per opportunity
     // per hour makes repeated sweeps idempotent.
-    const unscored = await query<{ id: string; title: string | null }>(
-      `select id, title from opportunities
-        where status='open' and stage in ('monitoring','scoring')
-          and score is null
-          and created_at < now() - interval '20 minutes'
-        order by created_at asc
-        limit 200`
-    );
+    //
+    // Swept per organization, and with a 200 limit per org rather than 200
+    // across the platform: unscoped, one tenant with a large backlog took the
+    // whole budget and the customers behind it were never recovered at all.
+    // Nothing about the org travels with the job (the queue carries only the
+    // payload), so the scoring engine derives it from the opportunity.
+    const orgs = await listActiveOrganizations().catch(() => []);
+    const unscored: { id: string; title: string | null }[] = [];
+    for (const org of orgs) {
+      const rows = await query<{ id: string; title: string | null }>(
+        `select id, title from opportunities
+          where org_id = $1
+            and status='open' and stage in ('monitoring','scoring')
+            and score is null
+            and created_at < now() - interval '20 minutes'
+          order by created_at asc
+          limit 200`,
+        [org.id]
+      );
+      unscored.push(...rows);
+    }
     for (const o of unscored) {
       await enqueue(
         "scoring-engine",
@@ -399,6 +438,33 @@ export const expiredOpportunitySweep: AgentDefinition = {
     "Archives opportunities whose submission deadline passed without a bid. Nothing is deleted: all documents, communications, and history stay on the archived record.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    const orgs = await listActiveOrganizations().catch(() => []);
+    let archived = 0;
+    let deleted = 0;
+    for (const org of orgs) {
+      const res = await runWithOrg(org.id, () => expireForOrg(org.id));
+      archived += res.archived;
+      deleted += res.deleted;
+    }
+    return {
+      ok: true,
+      summary:
+        `Archived ${archived} expired opportunit${archived === 1 ? "y" : "ies"}` +
+        (deleted > 0 ? `; deleted ${deleted} unworkable notice(s).` : "."),
+    };
+  },
+};
+
+/**
+ * One organization's expiry pass.
+ *
+ * Per org rather than platform-wide because this sweep deletes. The archive
+ * step reaches the same rows either way, but the junk delete does not: run
+ * unscoped it removes another customer's records under this run's log line,
+ * with no org on the audit entry that would let them see it happened.
+ */
+async function expireForOrg(orgId: string): Promise<{ archived: number; deleted: number }> {
+  {
     // A passed deadline with no submitted bid means the record can never be
     // won; it leaves the active pipeline (status=archived) so lists stay
     // clean, but keeps its stage and full history for reference. Submitted /
@@ -407,10 +473,12 @@ export const expiredOpportunitySweep: AgentDefinition = {
       `update opportunities
           set status='archived', human_action_required=false,
               risk_flags = (select array(select distinct unnest(coalesce(risk_flags,'{}') || array['expired'])))
-        where status='open'
+        where org_id = $1
+          and status='open'
           and stage not in ('submitted','won','lost')
           and deadline is not null and deadline < now()
-        returning id, title, stage, deadline`
+        returning id, title, stage, deadline`,
+      [orgId]
     );
     for (const o of expired) {
       await logAgent({
@@ -450,7 +518,7 @@ export const expiredOpportunitySweep: AgentDefinition = {
       and not exists (select 1 from call_cards cc    where cc.opportunity_id = o.id)`;
 
     let deletedCount = 0;
-    const junkResult = await purgeOpportunitiesWithBlobs(JUNK_WHERE, []);
+    const junkResult = await purgeOpportunitiesWithBlobs(orgId, JUNK_WHERE, []);
     deletedCount = junkResult.deleted;
     if (deletedCount > 0) {
       await logAgent({
@@ -465,14 +533,9 @@ export const expiredOpportunitySweep: AgentDefinition = {
       });
     }
 
-    return {
-      ok: true,
-      summary:
-        `Archived ${expired.length} expired opportunit${expired.length === 1 ? "y" : "ies"}` +
-        (deletedCount > 0 ? `; deleted ${deletedCount} unworkable notice(s).` : "."),
-    };
-  },
-};
+    return { archived: expired.length, deleted: deletedCount };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Shared helper: transactional opportunity + orphaned blob deletion
@@ -495,14 +558,23 @@ type PurgeResult = { deleted: number; blobsDeleted: number; bytesFreed: number }
  *     (shared-path safe: if another opportunity's document still points to the
  *     same path the blob is kept).
  *
+ * The organization is a separate argument rather than something each caller
+ * writes into its own `whereSql`, because this function deletes: a caller that
+ * forgets the filter erases another customer's records, and there is nothing
+ * to recover them from. Having it here means the filter cannot be forgotten.
+ *
+ * @param orgId     The only organization whose records this call may touch.
  * @param whereSql  Full WHERE clause body (no "WHERE" keyword) referencing
- *                  the opportunity alias "o". Uses $1, $2, … for params.
- * @param params    Positional parameters matching `whereSql`.
+ *                  the opportunity alias "o". Uses $2, $3, … for params;
+ *                  $1 is the organization.
+ * @param params    Positional parameters matching `whereSql`, starting at $2.
  */
 async function purgeOpportunitiesWithBlobs(
+  orgId: string,
   whereSql: string,
   params: unknown[]
 ): Promise<PurgeResult> {
+  const args = [orgId, ...params];
   return transaction(async (client) => {
     // 1. Lock candidate opportunity rows to serialise concurrent sweeps.
     //    FOR UPDATE requires no DISTINCT, so we lock by ID then get paths
@@ -510,8 +582,9 @@ async function purgeOpportunitiesWithBlobs(
     //    takes its own snapshot, re-evaluating all predicates — any bid or
     //    quote inserted after this lock is acquired will be visible there.
     const lockRows = await client.query<{ id: string }>(
-      `select o.id from opportunities o where (${whereSql}) for update of o`,
-      params
+      `select o.id from opportunities o
+        where o.org_id = $1 and (${whereSql}) for update of o`,
+      args
     );
     const candidateIds = lockRows.rows.map((r) => r.id);
 
@@ -523,9 +596,10 @@ async function purgeOpportunitiesWithBlobs(
     const pathRows = await client.query<{ storage_path: string }>(
       `select distinct d.storage_path
          from documents d
-        where d.opportunity_id = any($1)
+        where d.org_id = $2
+          and d.opportunity_id = any($1)
           and d.storage_path is not null`,
-      [candidateIds]
+      [candidateIds, orgId]
     );
     const candidatePaths = pathRows.rows.map((r) => r.storage_path);
 
@@ -536,14 +610,20 @@ async function purgeOpportunitiesWithBlobs(
     //    carries all safety guards and any new violation (bid added after lock)
     //    is visible to this statement's fresh snapshot.
     const delRows = await client.query<{ id: string }>(
-      `delete from opportunities o where (${whereSql}) returning o.id`,
-      params
+      `delete from opportunities o
+        where o.org_id = $1 and (${whereSql}) returning o.id`,
+      args
     );
     const deleted = delRows.rowCount ?? 0;
 
     // 3. Delete orphaned blobs — only those with no remaining document reference.
     //    Cascade already removed our doc rows; paths still referenced by other
     //    documents belong to surviving records and must not be touched.
+    //
+    //    The reference check is deliberately NOT scoped to this org, and must
+    //    stay that way: blob paths are content-addressed and shared, so an org
+    //    filter here would delete bytes another customer's document still
+    //    points at, leaving them with a document that cannot be opened.
     let blobsDeleted = 0;
     let bytesFreed = 0;
     if (candidatePaths.length > 0) {
@@ -580,58 +660,75 @@ export const retentionSweep: AgentDefinition = {
     "Permanently deletes archived opportunities past the configured retention period (default 30 days), only when they have no bids, contracts, or sub quotes. Also deletes orphaned file_blobs for those documents. Set retention to 0 in Settings to keep records forever.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const rules = await getAutomationRules();
-    if (rules.retention_days <= 0) {
-      return {
-        ok: true,
-        summary: "Retention is set to keep archived records forever; nothing deleted.",
-      };
+    /**
+     * Retention is a per-organization setting, so the sweep has to be one too.
+     *
+     * getAutomationRules() reads app_settings under the current tenant, and
+     * this cron set none: every org's archived records were purged on the
+     * FOUNDING org's window. A customer who set retention to 0, meaning keep
+     * my records forever, had them deleted on our schedule instead, and
+     * deletion here is permanent.
+     */
+    const orgs = await listActiveOrganizations().catch(() => []);
+    const summaries: string[] = [];
+    for (const org of orgs) {
+      const line = await runWithOrg(org.id, () => purgeRetentionForOrg(org.id));
+      if (line) summaries.push(line);
     }
+    return {
+      ok: true,
+      summary: summaries.length
+        ? summaries.join(" | ")
+        : "No archived records past any organization's retention window.",
+    };
+  },
+};
 
-    // Eligibility: archived, past the retention window, no bids/contracts/quotes.
-    // The WHERE clause is passed into purgeOpportunitiesWithBlobs so it is
-    // re-evaluated atomically inside the DELETE — preventing a bid or quote
-    // inserted after candidate selection from being silently cascaded away.
-    const RETENTION_WHERE = `
+/** One organization's retention purge, on that organization's own window. */
+async function purgeRetentionForOrg(orgId: string): Promise<string | null> {
+  const rules = await getAutomationRules();
+  if (rules.retention_days <= 0) return null;
+
+  // Eligibility: archived, past the retention window, no bids/contracts/quotes.
+  // The WHERE clause is passed into purgeOpportunitiesWithBlobs so it is
+  // re-evaluated atomically inside the DELETE — preventing a bid or quote
+  // inserted after candidate selection from being silently cascaded away.
+  // $1 is the organization, so the window starts at $2.
+  const RETENTION_WHERE = `
       o.status = 'archived'
       and coalesce(o.deadline, o.updated_at::date)::timestamptz
-          < now() - make_interval(days => $1)
+          < now() - make_interval(days => $2)
       and not exists (select 1 from bids      b where b.opportunity_id = o.id)
       and not exists (select 1 from contracts c where c.opportunity_id = o.id)
       and not exists (select 1 from quotes    q where q.opportunity_id = o.id)`;
 
-    const { deleted, blobsDeleted, bytesFreed } = await purgeOpportunitiesWithBlobs(
-      RETENTION_WHERE,
-      [rules.retention_days]
-    );
+  const { deleted, blobsDeleted, bytesFreed } = await purgeOpportunitiesWithBlobs(
+    orgId,
+    RETENTION_WHERE,
+    [rules.retention_days]
+  );
 
-    if (deleted === 0) {
-      return {
-        ok: true,
-        summary: `No archived records past the ${rules.retention_days}-day retention window.`,
-      };
-    }
+  if (deleted === 0) return null;
 
-    const mbFreed = (bytesFreed / 1024 / 1024).toFixed(2);
-    const summary =
-      `Purged ${deleted} archived opportunit${deleted === 1 ? "y" : "ies"} ` +
-      `(${rules.retention_days}-day window); ` +
-      `${blobsDeleted} file blob(s) deleted, ${mbFreed} MB freed.`;
+  const mbFreed = (bytesFreed / 1024 / 1024).toFixed(2);
+  const summary =
+    `Purged ${deleted} archived opportunit${deleted === 1 ? "y" : "ies"} ` +
+    `(${rules.retention_days}-day window); ` +
+    `${blobsDeleted} file blob(s) deleted, ${mbFreed} MB freed.`;
 
-    await logAgent({
-      agent: "retention-sweep",
-      action: "purge-archived",
-      level: "info",
-      message: summary,
-      reasoning:
-        "Retention policy (Settings → Automation rules, default 30 days). " +
-        "Records with bids, contracts, or sub quotes are always kept regardless of age. " +
-        "File blobs are only deleted when no other document references the same path.",
-    });
+  await logAgent({
+    agent: "retention-sweep",
+    action: "purge-archived",
+    level: "info",
+    message: summary,
+    reasoning:
+      "Retention policy (Settings → Automation rules, default 30 days). " +
+      "Records with bids, contracts, or sub quotes are always kept regardless of age. " +
+      "File blobs are only deleted when no other document references the same path.",
+  });
 
-    return { ok: true, summary };
-  },
-};
+  return summary;
+}
 
 export const logRetentionSweep: AgentDefinition = {
   name: "log-retention-sweep",
@@ -1068,6 +1165,7 @@ export const contactRecheckSweep: AgentDefinition = {
   async handler(): Promise<AgentResult> {
     // Clear historical call cards that can never be dialed so Today / Call
     // Queue stay actionable.
+    const orgs = await listActiveOrganizations().catch(() => []);
     const cleared = await query<{ id: string }>(
       `update call_cards cc
           set status = 'skipped',
@@ -1086,24 +1184,36 @@ export const contactRecheckSweep: AgentDefinition = {
     // Subs missing email OR phone that are attached to an open opportunity.
     // Bounded retry: never checked first, then rechecks no sooner than every
     // 7 days. Small batch per run: full verify hits external APIs.
-    const rows = await query<{
-      subcontractor_id: string;
-      opportunity_id: string;
-      trade: string;
-    }>(
-      `select distinct on (s.id) os.subcontractor_id, os.opportunity_id, os.trade
-         from subcontractors s
-         join opportunity_subs os on os.subcontractor_id = s.id
-         join opportunities o on o.id = os.opportunity_id and o.status = 'open'
-        where s.blacklisted = false
-          and (
-            nullif(btrim(coalesce(s.email, '')), '') is null
-            or nullif(btrim(coalesce(s.phone, '')), '') is null
-          )
-          and (s.contact_checked_at is null or s.contact_checked_at < now() - interval '7 days')
-        order by s.id, s.contact_checked_at asc nulls first
-        limit 20`
-    );
+    //
+    // The batch is 20 per organization, not 20 for the platform. Unscoped, the
+    // order-by handed the whole batch to whichever tenant had the oldest
+    // unchecked subs, so every other customer's subs went unverified run after
+    // run, and the verify jobs it queued were for subs it had no business
+    // reading.
+    const rows: { subcontractor_id: string; opportunity_id: string; trade: string }[] = [];
+    for (const org of orgs) {
+      const orgRows = await query<{
+        subcontractor_id: string;
+        opportunity_id: string;
+        trade: string;
+      }>(
+        `select distinct on (s.id) os.subcontractor_id, os.opportunity_id, os.trade
+           from subcontractors s
+           join opportunity_subs os on os.subcontractor_id = s.id
+           join opportunities o on o.id = os.opportunity_id and o.status = 'open'
+          where s.org_id = $1
+            and s.blacklisted = false
+            and (
+              nullif(btrim(coalesce(s.email, '')), '') is null
+              or nullif(btrim(coalesce(s.phone, '')), '') is null
+            )
+            and (s.contact_checked_at is null or s.contact_checked_at < now() - interval '7 days')
+          order by s.id, s.contact_checked_at asc nulls first
+          limit 20`,
+        [org.id]
+      );
+      rows.push(...orgRows);
+    }
     if (rows.length === 0) {
       return {
         ok: true,
