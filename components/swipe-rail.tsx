@@ -51,7 +51,20 @@ export function SwipeRail({
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
 
+  /**
+   * One child per item, in the same order. Each child must be a SINGLE
+   * element: Children.toArray flattens a fragment into its parts, so a column
+   * returning `<>header, list</>` silently becomes two snap columns, both
+   * clipped at the edge. The mismatch is loud in development rather than
+   * something you discover on a phone.
+   */
   const nodes = Children.toArray(children);
+  if (process.env.NODE_ENV !== "production" && nodes.length !== items.length) {
+    console.error(
+      `[SwipeRail] ${nodes.length} children for ${items.length} items. ` +
+        `Each column must be one element, not a fragment.`
+    );
+  }
 
   const sync = useCallback(() => {
     const el = scroller.current;
@@ -147,7 +160,11 @@ export function SwipeRail({
           ref={scroller}
           role="group"
           aria-label={ariaLabel}
-          className="scroll-thin flex h-full snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden px-4 pb-4"
+          // scroll-pl-4 matches px-4. Without it, mandatory snapping aligns a
+          // snap-start column to the scrollport edge and ignores the padding,
+          // so on load the rail scrolls itself by exactly the padding width
+          // and the first column's heading clips against the screen edge.
+          className="scroll-thin flex h-full snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden px-4 pb-4 scroll-pl-4"
         >
           {nodes.map((node, i) => (
             <div
