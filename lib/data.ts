@@ -141,7 +141,15 @@ export interface CallCardRow {
   subcontractor_id: string;
   card_json: Record<string, unknown>;
   call_script: string | null;
-  question_list: string[] | null;
+  /**
+   * Job-specific questions, as stored in the jsonb column: typed CallQuestion
+   * objects since Call Prep started emitting an answer type per question, and
+   * plain strings on every card written before that. Declared as unknown[]
+   * because it is genuinely both, and coerceQuestions() in domain/call-guide
+   * is the one place that decides which. It was still typed string[] after the
+   * writer changed shape, which is a type describing history rather than data.
+   */
+  question_list: unknown[] | null;
   needs_project_history: boolean;
   status: string;
   /** 'reply' = the sub responded; 'outreach' = cold follow-up after we emailed. */
