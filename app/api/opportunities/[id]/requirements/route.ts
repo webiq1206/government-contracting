@@ -43,7 +43,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   >(
     `select id, compliance_matrix, audit_findings, bid_amount, sub_quote_total, markup_pct
        from bids where opportunity_id=$1 and org_id=$2 order by created_at desc limit 1`,
-    [params.id]
+    [params.id, orgId]
   );
   if (!bid || !bid.compliance_matrix) {
     return NextResponse.json({ error: "No package to update." }, { status: 400 });
