@@ -1,4 +1,5 @@
 import type { SolicitationAnalysis } from "@/lib/types";
+import { ScannableText } from "@/components/scannable-text";
 
 interface DocRow {
   id: string;
@@ -87,7 +88,7 @@ export function BidBrief({
 
         {has(analysis.project_overview) && (
           <Section title="Project overview">
-            <p className="text-sm leading-relaxed text-slate-800">{analysis.project_overview}</p>
+            <ScannableText text={analysis.project_overview} className="text-slate-800" />
           </Section>
         )}
 
@@ -104,9 +105,7 @@ export function BidBrief({
                   className="rounded-md border border-border px-3 py-2.5"
                 >
                   <p className="text-sm font-medium text-slate-900">{ts.trade}</p>
-                  <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-700">
-                    {ts.work}
-                  </p>
+                  <ScannableText text={ts.work} className="mt-1 text-slate-700" />
                 </li>
               ))}
             </ul>
@@ -154,9 +153,10 @@ export function BidBrief({
             <div className="space-y-7 border-t border-border px-4 py-5">
               {has(analysis.scope_plain_language) && (
                 <Section title="Scope of work">
-                  <p className="whitespace-pre-line text-sm leading-relaxed text-slate-800">
-                    {analysis.scope_plain_language}
-                  </p>
+                  <ScannableText
+                    text={analysis.scope_plain_language}
+                    className="text-slate-800"
+                  />
                 </Section>
               )}
 
