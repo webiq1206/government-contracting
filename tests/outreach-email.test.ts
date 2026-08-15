@@ -6,11 +6,12 @@ import {
   scrubInternalFailureCopy,
   shouldHoldMissingDocs,
   scopeTooThinAfterScrub,
+  renderOutreachBrief,
 } from "../lib/domain/outreach-email";
 import { prioritizeDocsForAttach } from "../lib/opportunity-attachments";
 import { DEFAULT_TEMPLATES } from "../db/seedData";
 import { plainToHtml, renderTemplate } from "../lib/domain/template-render";
-import { TEMPLATE_TOKEN_SAMPLES } from "../lib/domain/template-tokens";
+import { TEMPLATE_TOKEN_SAMPLES, previewBriefSections } from "../lib/domain/template-tokens";
 
 const FAILURE_RE = /could not|unable to|failed|HTTP \d+/i;
 
@@ -90,10 +91,29 @@ describe("seed Template 1 render", () => {
     const filled = renderTemplate(tmpl!.body, TEMPLATE_TOKEN_SAMPLES);
     expect(filled).not.toContain("{{");
     expect(filled).not.toContain("==");
-    const html = plainToHtml(filled);
-    expect(html).toContain("<strong>What we need you to price:</strong>");
-    expect(html).toContain("<li>Do you have experience with federal facilities in Virginia?</li>");
+
+    // The body is deliberately a short human note now; the facts and the
+    // bulleted structure come from the brief appended beneath it. Asserting on
+    // the body alone would no longer describe what a subcontractor receives.
+    const html = plainToHtml(filled) + renderOutreachBrief(previewBriefSections()).html;
+    expect(html).toContain(">Statement of Work.pdf (attached)</li>");
+    expect(html).toContain("Scope we need priced");
+    expect(html).toContain("What to send back");
     expect(html).not.toMatch(FAILURE_RE);
+  });
+
+  it("says nothing twice between the body and the brief", () => {
+    // The old body restated the trade, the location, the deadline, the scope
+    // and the reply instructions that the brief already carried.
+    const tmpl = DEFAULT_TEMPLATES.find((t) => t.slug === "template_1_outreach")!;
+    const body = renderTemplate(tmpl.body, TEMPLATE_TOKEN_SAMPLES);
+    const brief = renderOutreachBrief(previewBriefSections()).plain;
+
+    expect(body).not.toContain(TEMPLATE_TOKEN_SAMPLES.deadline);
+    expect(body).not.toContain(TEMPLATE_TOKEN_SAMPLES.scope_summary);
+    expect(body).not.toMatch(/payment terms|exclusions/i);
+    expect(brief).toContain(TEMPLATE_TOKEN_SAMPLES.deadline);
+    expect(brief).toMatch(/payment terms/i);
   });
 });
 

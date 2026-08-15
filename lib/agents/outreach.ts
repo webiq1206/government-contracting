@@ -22,13 +22,11 @@ import { sendOutreachEmail } from "../integrations/email-transport";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
 import { gatherTradeAttachments } from "../opportunity-attachments";
 import { isCallable, isEmailable } from "../domain/sub-contactability";
-import { buildOutreachPacket } from "../domain/outreach-packet";
+import { buildOutreachBrief, describeMissing } from "../domain/outreach-brief";
 import { outreachDisplayName } from "../domain/solicitation-completeness";
 import {
-  buildOutreachDetailsBlock,
+  renderOutreachBrief,
   scrubInternalFailureCopy,
-  shouldHoldMissingDocs,
-  scopeTooThinAfterScrub,
   lineLooksLikeInternalFailure,
 } from "../domain/outreach-email";
 import {
@@ -148,21 +146,43 @@ export const outreach: AgentDefinition = {
 
     const analysis = opp.solicitation_analysis;
     const deadlineLabel = formatDeadlineLabel(opp.deadline);
-    const packet = buildOutreachPacket({
+
+    // Documents first: the brief lists them, and the completeness check has to
+    // know whether any arrived before it can decide the email is sendable.
+    // Trade-filtered official docs (unaltered PDFs). Generated copy is
+    // scrubbed; source PDFs are not rewritten.
+    const gathered = await gatherTradeAttachments(opp, trade);
+
+    /**
+     * Everything the subcontractor needs, as sections, plus what is missing.
+     *
+     * One assembly, one verdict. The old path built a paragraph, checked it
+     * for thinness, gathered documents, then checked those separately, so
+     * "can this email do its job" was answered in two places and neither
+     * looked at project name, location or bid date at all.
+     */
+    const brief = buildOutreachBrief({
       trade,
       analysis,
       description: opp.description,
+      title: opp.title,
+      agency: opp.agency,
+      solicitationNumber: opp.solicitation_number,
       locationState: opp.location_state,
       locationText: opp.location_text,
       deadlineLabel,
+      attachedNames: gathered.files.map((f) => f.filename),
+      links: gathered.links,
+      documentsExpected: gathered.expected,
     });
 
-    if (packet.tooThin) {
+    if (!brief.ready) {
+      const why = describeMissing(brief.missing);
       await query(
         `update opportunities
             set human_action_required = true,
                 risk_flags = (
-                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_scope_too_thin']))
+                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
                 )
           where id = $1`,
         [opportunityId]
@@ -173,27 +193,60 @@ export const outreach: AgentDefinition = {
         level: "warn",
         opportunityId,
         subcontractorId,
-        message: `Refused to email ${sub.company_name}: trade scope is too thin or unspecified. Enrich the solicitation package and re-run analysis before outreach.`,
+        message: `Refused to email ${sub.company_name}: the quote request would be incomplete. ${why}`,
+        reasoning: `Missing: ${brief.missing.filter((m) => m.blocking).map((m) => m.key).join(", ")}.`,
       });
       return {
         ok: true,
-        summary: `Held outreach to ${sub.company_name}: scope too thin to send a usable quote request.`,
+        summary: `Held outreach to ${sub.company_name}: ${why}`,
         humanActionRequired: true,
+        data: { missing: brief.missing.filter((m) => m.blocking).map((m) => m.key) },
       };
     }
 
-    // Rewrite SAM API URLs, then scrub solicitor contacts from every outbound string.
-    const { sanitised: scopeRaw, count: scopeRedacted } = scrubGovtContacts(
-      rewriteSamUrls(packet.scopeSummary)
-    );
-    const scopeSummary = scrubInternalFailureCopy(scopeRaw);
+    // Non-blocking gaps are still worth a line in the log, so an operator can
+    // see why a quote came back as a rough number.
+    for (const soft of brief.missing.filter((m) => !m.blocking)) {
+      await logAgent({
+        agent: "outreach",
+        action: "gap",
+        level: "info",
+        opportunityId,
+        subcontractorId,
+        message: soft.detail,
+      });
+    }
 
-    if (scopeTooThinAfterScrub(scopeSummary)) {
+    /**
+     * Scrub every recipient-facing line of the brief.
+     *
+     * SAM API URLs are rewritten to the public ones, solicitor contacts are
+     * removed so a subcontractor never emails the contracting officer, and any
+     * line that reads as an internal failure is dropped rather than sent.
+     */
+    let contactsRedacted = 0;
+    const briefSections = brief.sections
+      .map((section) => ({
+        heading: section.heading,
+        items: section.items
+          .map((item) => {
+            const { sanitised, count } = scrubGovtContacts(rewriteSamUrls(item));
+            contactsRedacted += count;
+            return scrubInternalFailureCopy(sanitised);
+          })
+          .filter((item) => item.trim() && !lineLooksLikeInternalFailure(item)),
+      }))
+      .filter((section) => section.items.length > 0);
+
+    // The scope section is the email's reason to exist; losing it to scrubbing
+    // means the send is no longer worth making.
+    const scopeSection = briefSections.find((x) => x.heading === "Scope we need priced");
+    if (!scopeSection) {
       await query(
         `update opportunities
             set human_action_required = true,
                 risk_flags = (
-                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_scope_too_thin']))
+                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
                 )
           where id = $1`,
         [opportunityId]
@@ -204,25 +257,22 @@ export const outreach: AgentDefinition = {
         level: "warn",
         opportunityId,
         subcontractorId,
-        message: `Refused to email ${sub.company_name}: trade scope is too thin or unspecified. Enrich the solicitation package and re-run analysis before outreach.`,
+        message: `Refused to email ${sub.company_name}: nothing usable was left of the scope after scrubbing.`,
       });
       return {
         ok: true,
-        summary: `Held outreach to ${sub.company_name}: scope too thin to send a usable quote request.`,
+        summary: `Held outreach to ${sub.company_name}: no usable scope after scrubbing.`,
         humanActionRequired: true,
       };
     }
 
-    let questionsRedacted = 0;
-    const questions = (analysis?.questions_for_subs ?? [])
-      .map((q) => {
-        const { sanitised, count } = scrubGovtContacts(String(q));
-        questionsRedacted += count;
-        return sanitised;
-      })
-      .filter((q) => q.trim() && !lineLooksLikeInternalFailure(q))
-      .map((q) => `- ${q}`)
-      .join("\n");
+    // {{scope_summary}} still resolves, for templates that reference it: the
+    // scope lines as sentences rather than the old everything-blob.
+    const scopeSummary = scopeSection.items.join(" ");
+
+    // {{questions}} resolves to nothing now: those questions are a section of
+    // the brief. Rendering them in the body too was the same list twice.
+    const questions = "";
 
     // Every remaining solicitation-derived free-text value must be scrubbed
     // BEFORE it enters `vars`, not merely before it enters the details block:
@@ -239,8 +289,7 @@ export const outreach: AgentDefinition = {
     // filtering and must keep its original value for matching.
     const { sanitised: tradeClean, count: tradeRedacted } = scrubGovtContacts(trade);
 
-    const contactsRedacted =
-      scopeRedacted + questionsRedacted + titleRedacted + agencyRedacted + tradeRedacted;
+    contactsRedacted += titleRedacted + agencyRedacted + tradeRedacted;
     const senderName = outreachDisplayName(profile);
     // Greeting uses first name of sub owner when available; never invent a last name.
     const subGreeting = (() => {
@@ -274,34 +323,6 @@ export const outreach: AgentDefinition = {
     const subject = renderTemplate(tmpl.subject ?? "Partnership opportunity", vars);
     const plainBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
 
-    // Trade-filtered official docs (unaltered PDFs). Generated copy is scrubbed;
-    // source PDFs are not rewritten.
-    const gathered = await gatherTradeAttachments(opp, trade);
-    if (shouldHoldMissingDocs(gathered.expected, gathered.files.length, gathered.links.length)) {
-      await query(
-        `update opportunities
-            set human_action_required = true,
-                risk_flags = (
-                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_docs_missing']))
-                )
-          where id = $1`,
-        [opportunityId]
-      );
-      await logAgent({
-        agent: "outreach",
-        action: "blocked",
-        level: "warn",
-        opportunityId,
-        subcontractorId,
-        message: `Refused to email ${sub.company_name}: solicitation documents were expected but none could be attached or linked.`,
-      });
-      return {
-        ok: true,
-        summary: `Held outreach to ${sub.company_name}: documents were expected but none could be included.`,
-        humanActionRequired: true,
-      };
-    }
-
     await logAgent({
       agent: "outreach",
       action: "sanitise",
@@ -318,15 +339,7 @@ export const outreach: AgentDefinition = {
         `. Subject: "${subject}" | Body preview: "${plainBody.slice(0, 120).replace(/\n/g, " ")}…"`,
     });
 
-    const details = buildOutreachDetailsBlock({
-      title: titleClean || null,
-      solicitationNumber: opp.solicitation_number,
-      agency: agencyClean || null,
-      deadlineLabel,
-      trade: tradeClean,
-      attachedNames: gathered.files.map((f) => f.filename),
-      links: gathered.links,
-    });
+    const details = renderOutreachBrief(briefSections);
     const detailsPlain = details.plain;
     const detailsHtml = details.html;
 
