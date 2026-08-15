@@ -285,7 +285,11 @@ function MobileColumn({
   children: React.ReactNode;
 }) {
   return (
-    <>
+    // One element, not a fragment. SwipeRail pairs children to stages by
+    // index, and Children.toArray flattens a fragment into its parts, which
+    // turned every column into two: a full-width header column and a separate
+    // card column, each clipped at the snap edge.
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2 shrink-0 pb-1">
         <div className="flex items-baseline gap-2">
           <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
@@ -305,7 +309,7 @@ function MobileColumn({
           children
         )}
       </div>
-    </>
+    </div>
   );
 }
 
