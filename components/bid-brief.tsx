@@ -88,11 +88,11 @@ export function BidBrief({
         {/* The recommendation is not repeated here: the page states it directly
             above this card, and saying it twice is what made the brief feel
             like a document rather than an answer. */}
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-          <Fact label="Bid due" value={fmtDate(analysis.due_date)} strong />
+        {/* The due date and the location are in the page header, on screen from
+            every tab, so this row carries only what the header does not. */}
+        <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
           <Fact label="Estimated value" value={analysis.estimated_value} />
-          <Fact label="Location" value={analysis.location} />
-          <Fact label="How to submit" value={analysis.submission_method} />
+          <Fact label="How to submit" value={analysis.submission_method} strong />
         </div>
 
         {(has(analysis.project_overview) || has(analysis.scope_plain_language)) && (
@@ -249,56 +249,22 @@ export function BidBrief({
           </details>
         )}
 
-        {/* Attachments */}
-        <div id="brief-attachments" className="section-prominent">
-          <p className="eyebrow mb-3">Original documents</p>
-          {documents.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              No attachments were captured for this opportunity yet.
+        {/* The full document list lives on the Files tab, which shows kind,
+            size and the SAM.gov original. Repeating it here gave two lists of
+            the same files with different affordances. This points at it. */}
+        {documents.length > 0 && (
+          <div className="section-prominent">
+            <p className="eyebrow mb-2">Original documents</p>
+            <p className="text-sm text-slate-600">
+              {documents.length} file{documents.length === 1 ? "" : "s"} from the
+              solicitation.{" "}
+              <a href="#attachments" className="text-accent hover:underline">
+                Open them on the Files tab
+              </a>
+              .
             </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {documents.map((d) => (
-                <li
-                  key={d.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-sm"
-                >
-                  <span className="flex items-center gap-2 text-slate-900">
-                    <span className="text-slate-600">▤</span>
-                    {d.name}
-                    {d.kind !== "solicitation" && (
-                      <span className="badge bg-surface-raised text-slate-600">{d.kind}</span>
-                    )}
-                  </span>
-                  <span className="flex items-center gap-3 text-xs">
-                    <a
-                      className="text-accent hover:underline"
-                      href={
-                        d.storage_path
-                          ? `/api/files/${d.storage_path}`
-                          : d.meta?.source_url ?? "#"
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      View
-                    </a>
-                    {d.meta?.source_url && (
-                      <a
-                        className="text-slate-500 hover:text-foreground hover:underline"
-                        href={d.meta.source_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Original ↗
-                      </a>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -53,7 +53,9 @@ export function OpportunityWorkspace({
       banner={banner}
       tabs={[
         { id: "brief", label: "Brief", content: brief },
-        { id: "requirements", label: "Requirements", content: requirements },
+        // "Requirements" now means what it takes to bid, which the Brief owns.
+        // This tab is the solicitation's registry record, so it says Details.
+        { id: "requirements", label: "Details", content: requirements },
         { id: "coverage", label: "Coverage", content: coverage },
         { id: "pricing", label: "Pricing", content: pricing },
         { id: "files", label: "Files", content: files },

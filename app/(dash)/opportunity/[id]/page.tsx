@@ -189,13 +189,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
     : opp.set_aside_type
       ? opp.set_aside_type
       : "Service contract";
-  const metaLine = [
-    place,
-    contractKind,
-    opp.deadline ? `Due ${shortDate(opp.deadline)}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  /**
+   * The header is outside the tab strip, so whatever it shows is on screen on
+   * every tab. That makes it the right home for identity and the deadline, and
+   * the wrong thing to restate inside a tab. The due date used to appear here,
+   * again as a badge beside it, again as a countdown on Requirements, and again
+   * as a fact in the Bid Brief.
+   */
+  const metaLine = [place, contractKind].filter(Boolean).join(" · ");
 
   const whyHeadline =
     analysis?.pursue_recommendation?.trim() ||
@@ -246,21 +247,10 @@ export default async function OpportunityPage({ params }: { params: { id: string
           </p>
           <HelpPopover help={PAGE_HELP["opportunity"]} />
         </div>
+        {/* Stage only. The tier is a TierBadge in the header a few pixels below,
+            and it was rendering in both places at once. */}
         <div className="flex shrink-0 items-center gap-2">
           <span className="badge bg-surface-raised text-slate-600">{stageLabel(opp.stage)}</span>
-          {opp.tier ? (
-            <span
-              className={`badge uppercase ${
-                opp.tier === "pursue"
-                  ? "bg-pursue-soft text-pursue-strong"
-                  : opp.tier === "review"
-                    ? "bg-review/15 text-review"
-                    : "bg-surface-raised text-slate-600"
-              }`}
-            >
-              {opp.tier}
-            </span>
-          ) : null}
         </div>
       </div>
 
@@ -268,7 +258,11 @@ export default async function OpportunityPage({ params }: { params: { id: string
         <header className="border-b border-border px-4 py-4 sm:px-6 sm:py-8">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
             <div className="min-w-0 max-w-3xl flex-1">
-              {opp.agency && <p className="eyebrow-gold">{opp.agency}</p>}
+              {opp.agency && (
+                <p className="eyebrow-gold">
+                  {[opp.agency, opp.sub_agency].filter(Boolean).join(" · ")}
+                </p>
+              )}
               <h1 className="mt-2 font-display text-2xl leading-[1.15] text-foreground sm:mt-3 sm:text-4xl lg:text-[2.75rem]">
                 {opp.title ?? "Opportunity"}
               </h1>
@@ -277,12 +271,20 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4">
                 <TierBadge tier={opp.tier} />
-                <DeadlineBadge deadline={opp.deadline} rules={rules} showDate />
+                <DeadlineBadge deadline={opp.deadline} rules={rules} />
                 {opp.naics_code ? (
                   <span className="badge bg-surface-raised text-slate-600">
                     NAICS {opp.naics_code}
                   </span>
                 ) : null}
+              </div>
+              {/* The single most action-relevant fact, so it lives where every
+                  tab can see it rather than one click inside Details. */}
+              <div className="mt-4">
+                <p className="label">Time to submit</p>
+                <div className="mt-0.5">
+                  <DeadlineCountdown deadline={opp.deadline} />
+                </div>
               </div>
             </div>
             <ScoreBadge score={opp.score} variant="box" />
@@ -404,106 +406,30 @@ export default async function OpportunityPage({ params }: { params: { id: string
               id="requirements"
               data-guide-target="requirements"
             >
-              <SectionHeading eyebrow="Requirements" title="Key facts">
-                Deadline countdown, value, identity, and eligibility details.
+              <SectionHeading eyebrow="Details" title="Solicitation record">
+                The registry facts: how this job is classified, who may bid, and what the
+                agency expects of your company. The deadline, score and tier are in the
+                header above, on every tab.
               </SectionHeading>
               <div className="card">
-                <div className="mb-4 rounded-md border border-border bg-surface px-3 py-2.5">
-                  <p className="label">Time to submit</p>
-                  <div className="mt-0.5">
-                    <DeadlineCountdown deadline={opp.deadline} />
-                  </div>
-                </div>
-
-                <p className="label mb-2">Score & money</p>
-                <div className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                  <Fact
-                    label="Score"
-                    tip="How well this opportunity fits your profile. Open Brief for the full breakdown."
-                    value={
-                      <a href="#brief" className="inline-flex hover:opacity-80">
-                        <ScoreBadge score={opp.score} />
-                      </a>
-                    }
-                  />
-                  <Fact
-                    label="Recommendation"
-                    tip="Pursue / Review / No bid from the scoring tier."
-                    value={<TierBadge tier={opp.tier} />}
-                  />
-                  <Fact
-                    label="Est. value"
-                    tip="Published contract value when available; otherwise an estimate from the listing or attachments."
-                    value={
-                      opp.value_estimated != null ? (
-                        <EstimatedValue
-                          value={opp.value_estimated}
-                          source={opp.value_estimated_source}
-                        />
-                      ) : (
-                        (analysis?.estimated_value ?? "-")
-                      )
-                    }
-                  />
-                  {bestQuote != null && (
-                    <Fact
-                      label="Lowest sub quote"
-                      tip="Lowest price entered from a subcontractor so far on this bid."
-                      value={<span className="num">{currency(bestQuote)}</span>}
-                    />
-                  )}
-                  {bid?.bid_amount != null && (
-                    <Fact
-                      label="Priced bid"
-                      tip="Your assembled bid amount after Bid Builder ran."
-                      value={
-                        <span className="num text-accent">{currency(bid.bid_amount)}</span>
-                      }
-                    />
-                  )}
-                  {requiredTradeCount > 0 && (
-                    <Fact
-                      label="Trades needed"
-                      tip="Distinct trades the solicitation appears to require."
-                      value={<span className="num">{requiredTradeCount}</span>}
-                    />
-                  )}
-                  <Fact
-                    label="Subs paired"
-                    tip="Subcontractors Sub Finder (or you) linked to this opportunity."
-                    value={
-                      <a href="#coverage" className="num text-accent hover:underline">
-                        {subs.length}
-                      </a>
-                    }
-                  />
-                </div>
-
-                <p className="label mb-2">Identity & place</p>
+                {/* Agency, NAICS, place, solicitation number and the deadline are
+                    all in the header, which is visible on every tab. What is left
+                    here is the classification and eligibility record that has
+                    nowhere else to live. */}
+                <p className="label mb-2">Classification</p>
                 <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                  <Fact
-                    label="Agency"
-                    value={[opp.agency, opp.sub_agency].filter(Boolean).join(" · ") || "-"}
-                  />
                   <Fact
                     label="Type"
                     tip="Sources sought are market research; solicitations are live bids."
                     value={opp.is_sources_sought ? "Sources sought" : "Solicitation"}
                   />
-                  <Fact label="NAICS" tip={termTip("naics")} value={opp.naics_code ?? "-"} />
                   <Fact label="PSC" tip={termTip("psc")} value={opp.psc_code ?? "-"} />
                   <Fact
                     label="Set-aside"
                     tip={termTip("set_aside")}
                     value={opp.set_aside_type ?? "-"}
                   />
-                  <Fact
-                    label="Place of performance"
-                    tip={termTip("place_of_performance")}
-                    value={place || "-"}
-                  />
                   <Fact label="Posted" value={shortDate(opp.posted_at)} />
-                  <Fact label="Solicitation #" value={opp.solicitation_number ?? "-"} />
                   <Fact
                     label="Past performance"
                     tip="Whether the agency requires your company (not just subs) to prove similar prior work."
@@ -514,10 +440,6 @@ export default async function OpportunityPage({ params }: { params: { id: string
                         : "-"
                     }
                   />
-                  {analysis?.submission_method &&
-                    analysis.submission_method !== NA_TEXT && (
-                      <Fact label="How to submit" value={analysis.submission_method} />
-                    )}
                 </div>
                 {opp.risk_flags.length > 0 && (
                   <div className="mt-4 border-t border-border pt-3">
@@ -595,6 +517,50 @@ export default async function OpportunityPage({ params }: { params: { id: string
           }
           pricing={
             <div className="space-y-6 px-5 py-8 sm:px-6">
+              {/* The money facts used to sit on the Requirements tab under
+                  "Score & money", which is not where anyone looks for them. */}
+              <div className="card">
+                <p className="label mb-2">The numbers so far</p>
+                <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                  <Fact
+                    label="Est. value"
+                    tip="Published contract value when available; otherwise an estimate from the listing or attachments."
+                    value={
+                      opp.value_estimated != null ? (
+                        <EstimatedValue
+                          value={opp.value_estimated}
+                          source={opp.value_estimated_source}
+                        />
+                      ) : (
+                        (analysis?.estimated_value ?? "-")
+                      )
+                    }
+                  />
+                  <Fact
+                    label="Lowest sub quote"
+                    tip="Lowest price entered from a subcontractor so far on this bid."
+                    value={
+                      bestQuote != null ? (
+                        <span className="num">{currency(bestQuote)}</span>
+                      ) : (
+                        "Not quoted yet"
+                      )
+                    }
+                  />
+                  <Fact
+                    label="Priced bid"
+                    tip="Your assembled bid amount after Bid Builder ran."
+                    value={
+                      bid?.bid_amount != null ? (
+                        <span className="num text-accent">{currency(bid.bid_amount)}</span>
+                      ) : (
+                        "Not priced yet"
+                      )
+                    }
+                  />
+                </div>
+              </div>
+
               {showQuotePanel && (
                 <div
                   className="scroll-mt-editorial"
