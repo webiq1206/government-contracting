@@ -3,6 +3,8 @@
  * Keys must match what outreach and maintenance agents put in `vars`.
  */
 
+import { buildOutreachBrief } from "./outreach-brief";
+
 export type TemplateTokenGroup = "sub" | "job" | "you";
 
 export interface TemplateToken {
@@ -91,16 +93,17 @@ export const TEMPLATE_TOKENS: TemplateToken[] = [
   {
     key: "scope_summary",
     label: "Scope summary",
-    description: "Short, sanitized description of the work for this trade.",
+    description:
+      "Work for this trade, as one sentence. The brief below the body already lists it, so inserting this repeats it.",
     example: "replace HVAC units in 4 buildings, about 120,000 sq ft total",
     group: "job",
   },
   {
     key: "questions",
     label: "Questions for the sub",
-    description: "Bulleted questions Brost Co wants them to answer.",
-    example:
-      "- Do you have experience with federal facilities in Virginia?\n- Can you provide bonding within 48 hours?",
+    description:
+      "Retired. The brief below the body carries these questions, so this token now fills in as nothing.",
+    example: "",
     group: "job",
   },
   {
@@ -136,3 +139,26 @@ export const TEMPLATE_PREVIEW_ATTACHMENTS = [
   "Statement of Work.pdf",
   "Wage Determination.pdf",
 ];
+
+/**
+ * The brief the Outreach agent appends beneath the template body.
+ *
+ * The editor preview and the test send both build it from the same sample
+ * values the token palette advertises, so what an operator sees while editing
+ * is the shape a subcontractor receives. Previewing the old facts-and-files
+ * footer while sending a structured brief would make the editor lie.
+ */
+export function previewBriefSections() {
+  return buildOutreachBrief({
+    trade: TEMPLATE_TOKEN_SAMPLES.trade,
+    title: TEMPLATE_TOKEN_SAMPLES.opportunity_title,
+    agency: TEMPLATE_TOKEN_SAMPLES.agency,
+    solicitationNumber: TEMPLATE_TOKEN_SAMPLES.solicitation_number,
+    locationState: TEMPLATE_TOKEN_SAMPLES.location_state,
+    deadlineLabel: TEMPLATE_TOKEN_SAMPLES.deadline,
+    description: TEMPLATE_TOKEN_SAMPLES.scope_summary,
+    attachedNames: TEMPLATE_PREVIEW_ATTACHMENTS,
+    links: [],
+    documentsExpected: true,
+  }).sections;
+}

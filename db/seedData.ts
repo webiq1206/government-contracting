@@ -167,17 +167,17 @@ export const DEFAULT_TEMPLATES: SeedTemplate[] = [
     slug: "template_1_outreach",
     subject: "{{trade}} Quote Request, {{location_state}}",
     description: "Template 1, initial subcontractor outreach (scannable quote request).",
+    // Intentionally short. Everything factual, the project, the scope, the
+    // dates, what to send back and the document list, is appended by the
+    // Outreach agent as a structured brief. Repeating any of it here is how
+    // the old version produced the same facts twice, once as prose and once
+    // as bullets.
     body: [
       "Hi {{owner_name}},",
       "",
-      "I'm {{sender_name}} with {{company_name}}. We have a {{trade}} job in {{location_state}} (deadline {{deadline}}) and need a qualified local partner to price the work.",
+      "I'm {{sender_name}} with {{company_name}}. We're bidding a project that needs {{trade}} work, and I'd like your price on that scope.",
       "",
-      "**What we need you to price:**",
-      "{{scope_summary}}",
-      "",
-      "{{questions}}",
-      "",
-      "Please reply with your price, including payment terms, lead time, and any exclusions. If it looks like a fit, I would also like to set up a short call.",
+      "Everything you need is below. Reply here with any questions, or call me at {{phone}}.",
       "",
       "{{sender_name}}",
       "{{company_name}}",

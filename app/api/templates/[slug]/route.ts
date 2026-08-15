@@ -6,10 +6,10 @@ import { sendOutreachEmail } from "@/lib/integrations/email-transport";
 import { renderTemplate, plainToHtml } from "@/lib/domain/template-render";
 import { templateHistory } from "@/lib/domain/template-store";
 import {
-  TEMPLATE_PREVIEW_ATTACHMENTS,
   TEMPLATE_TOKEN_SAMPLES,
+  previewBriefSections,
 } from "@/lib/domain/template-tokens";
-import { buildOutreachDetailsBlock } from "@/lib/domain/outreach-email";
+import { renderOutreachBrief } from "@/lib/domain/outreach-email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,15 +86,7 @@ export async function POST(
 
   const renderedSubject = renderTemplate(rawSubject, TEMPLATE_TOKEN_SAMPLES);
   const renderedBodyPlain = renderTemplate(rawBody, TEMPLATE_TOKEN_SAMPLES);
-  const details = buildOutreachDetailsBlock({
-    title: TEMPLATE_TOKEN_SAMPLES.opportunity_title,
-    solicitationNumber: TEMPLATE_TOKEN_SAMPLES.solicitation_number,
-    agency: TEMPLATE_TOKEN_SAMPLES.agency,
-    deadlineLabel: TEMPLATE_TOKEN_SAMPLES.deadline,
-    trade: TEMPLATE_TOKEN_SAMPLES.trade,
-    attachedNames: TEMPLATE_PREVIEW_ATTACHMENTS,
-    links: [],
-  });
+  const details = renderOutreachBrief(previewBriefSections());
   const renderedBodyHtml = plainToHtml(renderedBodyPlain) + details.html;
 
   const result = await sendOutreachEmail({

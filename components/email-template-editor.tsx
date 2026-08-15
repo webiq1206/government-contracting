@@ -4,15 +4,15 @@ import { useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
 import { plainToHtml, renderTemplate } from "@/lib/domain/template-render";
 import {
-  TEMPLATE_PREVIEW_ATTACHMENTS,
   TEMPLATE_TOKEN_SAMPLES,
+  previewBriefSections,
 } from "@/lib/domain/template-tokens";
 import {
   toggleBulletLines,
   wrapHighlightLines,
   wrapSelection,
 } from "@/lib/domain/template-markup";
-import { buildOutreachDetailsBlock } from "@/lib/domain/outreach-email";
+import { renderOutreachBrief } from "@/lib/domain/outreach-email";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -484,15 +484,7 @@ export function EmailTemplateEditor({ template }: Props) {
   // -------------------------------------------------------------------------
 
   const previewSubject = previewFilled(subject || "(no subject)");
-  const previewDetails = buildOutreachDetailsBlock({
-    title: TEMPLATE_TOKEN_SAMPLES.opportunity_title,
-    solicitationNumber: TEMPLATE_TOKEN_SAMPLES.solicitation_number,
-    agency: TEMPLATE_TOKEN_SAMPLES.agency,
-    deadlineLabel: TEMPLATE_TOKEN_SAMPLES.deadline,
-    trade: TEMPLATE_TOKEN_SAMPLES.trade,
-    attachedNames: TEMPLATE_PREVIEW_ATTACHMENTS,
-    links: [],
-  });
+  const previewDetails = renderOutreachBrief(previewBriefSections());
   const previewBodyHtml =
     plainToHtml(previewFilled(body)) + previewDetails.html;
 

@@ -91,15 +91,21 @@ describe("a missing value removes its sentence, never leaves a stub", () => {
     const body = renderTemplate(outreachTemplate.body, { ...FULL_VARS, company_name: "" });
     // "I'm Todd with ." would be worse than not introducing ourselves at all.
     expect(body).not.toContain("I'm Todd with");
-    // The substance of the email is intact.
-    expect(body).toContain("Place riprap along 1,200 linear feet of channel bank.");
-    expect(body).toContain("need a qualified local partner to price the work");
+    // The ask survives losing the introduction. The scope, dates and documents
+    // live in the brief the Outreach agent appends, not in this body.
+    expect(body).toContain("I'd like your price on that scope");
+    expect(body).toContain("Hi Marcus,");
     expectReadsNaturally(body);
   });
 
-  it("leaves no orphaned blank block when the questions list is empty", () => {
-    const body = renderTemplate(outreachTemplate.body, { ...FULL_VARS, questions: "" });
-    expect(body).toContain("Place riprap along 1,200 linear feet of channel bank.");
+  it("keeps the outreach ask intact when there is no phone on file", () => {
+    const body = renderTemplate(outreachTemplate.body, { ...FULL_VARS, phone: "" });
+    expect(body).not.toContain("call me at");
+    // Losing the phone must not take the ask with it. An earlier draft of this
+    // body carried {{location_state}} in the same sentence as the ask, so an
+    // opportunity with no state on it lost the reason for the email entirely.
+    expect(body).toContain("I'd like your price on that scope");
+    expect(body).toContain("Reply here with any questions");
     expectReadsNaturally(body);
   });
 

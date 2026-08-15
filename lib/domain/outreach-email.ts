@@ -3,6 +3,7 @@
  * and guards so internal failures never leak into subcontractor copy.
  */
 import { isPlaceholderScope } from "./solicitation-completeness";
+import type { BriefSection } from "./outreach-brief";
 
 const INTERNAL_FAILURE_RE =
   /\b(could not|couldn't|unable to|failed to|fail to|too thin|HTTP \d{3}|not extractable|no extractable text|too large to parse|could not fetch|could not collect|failed to collect)\b/i;
@@ -133,4 +134,51 @@ export function buildOutreachDetailsBlock(
 
 export function scopeTooThinAfterScrub(scope: string): boolean {
   return isPlaceholderScope(scope) || scope.trim().length < 60;
+}
+
+// ---------------------------------------------------------------------------
+// Structured brief rendering
+// ---------------------------------------------------------------------------
+
+/**
+ * Render the brief as titled sections of bullets, in both plain text and HTML.
+ *
+ * Replaces the old facts-and-file-list block. That one carried five colon
+ * lines and the attachments; everything else about the job was upstream in a
+ * single paragraph. Sections with headings mean a subcontractor can find the
+ * scope, the date or the deliverables without reading the rest.
+ */
+export function renderOutreachBrief(sections: BriefSection[]): OutreachDetailsBlock {
+  const usable = sections.filter((s) => s.items.filter(Boolean).length > 0);
+  if (usable.length === 0) return { plain: "", html: "" };
+
+  const plain = usable
+    .map((s) => `${s.heading.toUpperCase()}\n${s.items.map((i) => `- ${i}`).join("\n")}`)
+    .join("\n\n");
+
+  const html = usable
+    .map(
+      (s) =>
+        `<p style="color:#242424;margin:14px 0 4px;font-weight:600">${escapeHtml(s.heading)}</p>` +
+        `<ul style="margin:0;padding-left:20px;color:#242424">${s.items
+          .map((i) => `<li style="margin:2px 0">${linkify(escapeHtml(i))}</li>`)
+          .join("")}</ul>`
+    )
+    .join("");
+
+  return {
+    plain: `\n\n${plain}`,
+    html:
+      `<div style="border-top:2px solid #B28F5D;margin-top:16px;padding-top:4px">` +
+      html +
+      `</div>`,
+  };
+}
+
+/** Make a bare URL in a document line clickable, without touching the rest. */
+function linkify(escaped: string): string {
+  return escaped.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    (url) => `<a href="${url}">${url}</a>`
+  );
 }
