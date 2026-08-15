@@ -21,12 +21,30 @@ import { isCallable } from "../domain/sub-contactability";
 import { advancePastCallStep } from "../domain/advance-stage";
 import { CALLS_DISABLED_REASON } from "../domain/call-step";
 import { resolveSubWork } from "../domain/sub-work";
+import { coerceQuestions, type CallQuestion } from "../domain/call-guide";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
+/**
+ * Typed questions, not sentences.
+ *
+ * Claude used to return an array of strings, which meant every job-specific
+ * answer landed in one shared textarea while the operator was mid-sentence on
+ * a phone call. Asking for the answer type alongside the question lets the
+ * workspace render a Yes/No pair, a dollar field or a date picker, so the
+ * answer is one tap instead of a paragraph.
+ */
+const QuestionSchema = z.object({
+  ask: z.string(),
+  type: z
+    .enum(["yes_no", "choice", "money", "number", "date", "short_text", "notes"])
+    .default("short_text"),
+  options: z.array(z.string()).optional(),
+});
+
 const CallPlanSchema = z.object({
   call_script: z.string(),
-  question_list: z.array(z.string()).default([]),
+  questions: z.array(QuestionSchema).max(6).default([]),
 });
 
 const PROJECT_HISTORY_QUESTION =
@@ -179,7 +197,11 @@ export const callPrep: AgentDefinition = {
       (subWork.work
         ? ` In plain terms, we need you to: ${subWork.work.replace(/\s+/g, " ").slice(0, 280)}`
         : "");
-    let questionList: string[] = analysis?.questions_for_subs?.slice() ?? [];
+    // Fallback when Claude is off: the analyst's questions, typed by their
+    // wording so even the degraded path gets structured inputs.
+    let questions: CallQuestion[] = coerceQuestions(
+      analysis?.questions_for_subs?.slice() ?? []
+    );
 
     try {
       const prompt = buildCallPrompt(opp, sub, oppSub?.trade ?? null, replied, subWork.work);
@@ -188,7 +210,7 @@ export const callPrep: AgentDefinition = {
         maxTokens: 900,
       });
       callScript = data.call_script;
-      questionList = data.question_list;
+      questions = coerceQuestions(data.questions);
       await logAgent({
         agent: "call-prep",
         action: "generate-card",
@@ -210,16 +232,18 @@ export const callPrep: AgentDefinition = {
       });
     }
 
-    // Always collect project history when we don't have it.
-    if (needsProjectHistory && !questionList.includes(PROJECT_HISTORY_QUESTION)) {
-      questionList.push(PROJECT_HISTORY_QUESTION);
-    }
+    // Project history is asked by the guide itself when the sub has none on
+    // file, so it is no longer appended here: two copies of the same question
+    // is exactly what this card had too much of.
 
     // Scrub solicitor contacts from scripts/questions so they are never read
     // aloud or copied into outbound notes.
     const { scrubGovtContacts } = await import("../integrations/scrub-contacts");
     callScript = scrubGovtContacts(callScript).sanitised;
-    questionList = questionList.map((q) => scrubGovtContacts(String(q)).sanitised);
+    questions = questions.map((q) => ({
+      ...q,
+      ask: scrubGovtContacts(q.ask).sanitised,
+    }));
 
     await query(
       `insert into call_cards
@@ -244,7 +268,7 @@ export const callPrep: AgentDefinition = {
         subcontractorId,
         JSON.stringify(card),
         callScript,
-        JSON.stringify(questionList),
+        JSON.stringify(questions),
         needsProjectHistory,
         source,
       ]
@@ -281,12 +305,12 @@ export const callPrep: AgentDefinition = {
       ok: true,
       summary: `${replied ? "Reply" : "Follow-up"} call card ready for ${
         sub.company_name
-      } on "${opp.title ?? "opportunity"}", ${questionList.length} questions${
+      } on "${opp.title ?? "opportunity"}", ${questions.length} questions${
         needsProjectHistory ? " (incl. project-history collection)" : ""
       }. Queued for the operator.`,
-      reasoning: `Built one-screen card + ${questionList.length}-question list tailored to the draft SOW; opportunity moved to call_queue and flagged for human action.`,
+      reasoning: `Built one-screen card + ${questions.length} typed job-specific questions tailored to the draft SOW; opportunity moved to call_queue and flagged for human action.`,
       data: {
-        questions: questionList.length,
+        questions: questions.length,
         needsProjectHistory,
         trade: oppSub?.trade ?? null,
       },
@@ -326,6 +350,21 @@ function buildCallPrompt(
     "PRE-DRAFTED QUESTIONS FOR SUBS (incorporate the relevant ones):",
     (analysis?.questions_for_subs ?? []).map((q) => `- ${q}`).join("\n") || "(none)",
     "",
-    "Return JSON: { call_script: string, question_list: string[] }. The call_script is a natural 4-6 sentence opener the estimator can read aloud, including a one-sentence plain-English description of the work. The question_list is the specific things to confirm on this call (availability, pricing basis, scope clarifications). Do not include a project-history question, that is appended separately.",
+    "Return JSON: { call_script: string, questions: [{ ask, type, options? }] }.",
+    "",
+    "call_script: two sentences at most, spoken aloud, including a plain-English line on what the work is. The estimator reads this while the other person is waiting, so long is worse than vague.",
+    "",
+    "questions: AT MOST 4, and only things specific to THIS job that a general form cannot ask. The form already captures, with its own structured field, every one of these, so never ask them: whether they can do the work, whether they are interested, their price, firm-or-estimate, start date, availability, insurance, bonding, licenses, certifications, and past projects. A question repeating any of those is discarded.",
+    "",
+    "Each question needs the answer type that makes it fastest to record while someone is talking:",
+    "  yes_no     - anything answerable yes or no. Prefer this; it is one tap.",
+    "  choice     - a small fixed set. Supply options as short labels.",
+    "  money      - a dollar amount.",
+    "  number     - a count or duration.",
+    "  date       - a single date.",
+    "  short_text - a few words, when nothing above fits.",
+    "  notes      - only for genuinely open-ended answers. Use sparingly.",
+    "",
+    "Phrase each question the way the estimator would say it out loud, under 12 words, no preamble.",
   ].join("\n");
 }
