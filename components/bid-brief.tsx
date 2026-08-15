@@ -1,5 +1,7 @@
 import type { SolicitationAnalysis } from "@/lib/types";
 import { ScannableText } from "@/components/scannable-text";
+import { BidRequirements } from "@/components/bid-requirements";
+import { buildOpportunityBrief } from "@/lib/domain/opportunity-brief";
 
 interface DocRow {
   id: string;
@@ -28,10 +30,20 @@ function fmtDate(v?: string): string | undefined {
 }
 
 /**
- * The Bid Brief, a complete, plain-English summary of a solicitation so the
- * operator can decide to pursue in a couple of minutes, with the full original
- * documents one click away. Default view answers: what is this, is it worth
- * pursuing, when is it due. Secondary detail is progressive (collapsed).
+ * The Bid Brief: what the job is, what it takes to bid it, and when.
+ *
+ * The previous version put the recommendation and the project overview at the
+ * top, which the page already shows immediately above, and then hid the scope,
+ * the qualifications, the required forms, the submission instructions, the
+ * mandatory site visit and the key dates inside one collapsed "More from the
+ * solicitation" block. Everything capable of getting a bid rejected was behind
+ * that disclosure, which is exactly the material someone new to federal bidding
+ * does not know to go looking for.
+ *
+ * Now the order follows the questions a reader actually has: what is this, what
+ * would disqualify me, what else is required, when is it due. Only genuinely
+ * secondary material (how bids are scored, the amendment log, who to phone)
+ * stays collapsed.
  */
 export function BidBrief({
   analysis,
@@ -40,24 +52,29 @@ export function BidBrief({
   analysis: SolicitationAnalysis;
   documents: DocRow[];
 }) {
-  const q = analysis.qualifications ?? {};
+  const requirements = buildOpportunityBrief({
+    complianceMatrix: analysis.compliance_matrix,
+    submissionRequirements: analysis.submission_requirements,
+    requiredForms: analysis.required_forms,
+    qualifications: analysis.qualifications,
+    prebidMeeting: analysis.prebid_meeting,
+    siteVisit: analysis.site_visit,
+    specialRequirements: analysis.special_requirements,
+  });
+
+  // Only things that do not belong in the requirement list or the date list.
   const hasSecondary =
-    has(analysis.scope_plain_language) ||
-    Object.values(q).some((v) => Array.isArray(v) && v.length > 0) ||
-    Boolean(analysis.prebid_meeting || analysis.site_visit) ||
-    (analysis.submission_requirements?.length ?? 0) > 0 ||
     (analysis.evaluation_criteria?.length ?? 0) > 0 ||
-    (analysis.required_forms?.length ?? 0) > 0 ||
-    (analysis.key_dates?.length ?? 0) > 0 ||
     (analysis.qa_addenda?.length ?? 0) > 0 ||
-    (analysis.special_requirements?.length ?? 0) > 0 ||
     (analysis.contacts?.length ?? 0) > 0;
 
   return (
     <div className="card p-0">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border px-6 py-4">
         <div>
-          <p className="eyebrow-gold">Why this fits</p>
+          {/* "Why this fits" is the panel above this card. This one is the
+              solicitation itself, so it says so. */}
+          <p className="eyebrow-gold">The solicitation, in plain English</p>
           <h2 className="mt-1 font-display text-2xl font-normal text-foreground">Bid Brief</h2>
         </div>
         {documents.length > 0 && (
@@ -68,27 +85,50 @@ export function BidBrief({
       </div>
 
       <div className="space-y-7 px-6 py-6">
-        {/* Recommendation — always visible */}
-        {has(analysis.pursue_recommendation) && (
-          <div className="border-l-2 border-gold pl-4">
-            <p className="eyebrow-gold">Recommendation</p>
-            <p className="mt-2 font-display text-xl leading-snug text-foreground sm:text-2xl">
-              {analysis.pursue_recommendation}
-            </p>
-          </div>
-        )}
-
-        {/* Key facts — always visible */}
+        {/* The recommendation is not repeated here: the page states it directly
+            above this card, and saying it twice is what made the brief feel
+            like a document rather than an answer. */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
           <Fact label="Bid due" value={fmtDate(analysis.due_date)} strong />
           <Fact label="Estimated value" value={analysis.estimated_value} />
           <Fact label="Location" value={analysis.location} />
-          <Fact label="Submission" value={analysis.submission_method} />
+          <Fact label="How to submit" value={analysis.submission_method} />
         </div>
 
-        {has(analysis.project_overview) && (
-          <Section title="Project overview">
-            <ScannableText text={analysis.project_overview} className="text-slate-800" />
+        {(has(analysis.project_overview) || has(analysis.scope_plain_language)) && (
+          <Section title="What this job is">
+            {has(analysis.project_overview) && (
+              <ScannableText text={analysis.project_overview} className="text-slate-800" />
+            )}
+            {has(analysis.scope_plain_language) && (
+              <div className={has(analysis.project_overview) ? "mt-3" : ""}>
+                <ScannableText
+                  text={analysis.scope_plain_language}
+                  className="text-slate-800"
+                />
+              </div>
+            )}
+          </Section>
+        )}
+
+        {/* The centre of the brief: everything required to bid, classified, with
+            the fatal items first. Previously this lived inside a collapsed
+            block, or nowhere at all in the case of the compliance matrix. */}
+        <BidRequirements brief={requirements} />
+
+        {analysis.key_dates?.length > 0 && (
+          <Section title="Dates that matter">
+            <ul className="divide-y divide-border">
+              {analysis.key_dates.map((d, i) => (
+                <li
+                  key={i}
+                  className="flex items-baseline justify-between gap-4 py-1.5 text-sm"
+                >
+                  <span className="text-slate-700">{d.label}</span>
+                  <span className="num text-slate-900">{fmtDate(d.date)}</span>
+                </li>
+              ))}
+            </ul>
           </Section>
         )}
 
@@ -139,7 +179,7 @@ export function BidBrief({
                 <div>
                   <p className="eyebrow">More from the solicitation</p>
                   <p className="mt-0.5 text-sm text-slate-600">
-                    Scope, qualifications, meetings, forms, and contacts
+                    How bids are scored, the amendment log, and who to contact
                   </p>
                 </div>
                 <span
@@ -151,76 +191,13 @@ export function BidBrief({
               </div>
             </summary>
             <div className="space-y-7 border-t border-border px-4 py-5">
-              {has(analysis.scope_plain_language) && (
-                <Section title="Scope of work">
-                  <ScannableText
-                    text={analysis.scope_plain_language}
-                    className="text-slate-800"
-                  />
-                </Section>
-              )}
-
-              {Object.values(q).some((v) => Array.isArray(v) && v.length > 0) && (
-                <Section title="Required qualifications">
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <List label="Certifications" items={q.certifications} />
-                    <List label="Licenses" items={q.licenses} />
-                    <List label="Insurance" items={q.insurance} />
-                    <List label="Bonding" items={q.bonding} />
-                    <List label="Experience" items={q.experience} />
-                    <List label="Other" items={q.other} />
-                  </div>
-                </Section>
-              )}
-
-              {(analysis.prebid_meeting || analysis.site_visit) && (
-                <Section title="Pre-bid meeting & site visit">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Meeting label="Pre-bid meeting" info={analysis.prebid_meeting} />
-                    <Meeting label="Site visit" info={analysis.site_visit} />
-                  </div>
-                </Section>
-              )}
-
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                {analysis.submission_requirements?.length > 0 && (
-                  <Section title="Submission requirements">
-                    <Bullets items={analysis.submission_requirements} />
-                  </Section>
-                )}
-                {analysis.evaluation_criteria?.length > 0 && (
-                  <Section title="Evaluation criteria">
-                    <Bullets items={analysis.evaluation_criteria} />
-                  </Section>
-                )}
-              </div>
-
-              {analysis.required_forms?.length > 0 && (
-                <Section title="Required forms & documents">
-                  <ul className="space-y-1.5 text-sm">
-                    {analysis.required_forms.map((f, i) => (
-                      <li key={i} className="flex flex-wrap items-baseline gap-x-2">
-                        <span className="font-medium text-slate-900">{f.name}</span>
-                        {f.note && <span className="text-slate-500">· {f.note}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                </Section>
-              )}
-
-              {analysis.key_dates?.length > 0 && (
-                <Section title="Key dates & milestones">
-                  <ul className="divide-y divide-border">
-                    {analysis.key_dates.map((d, i) => (
-                      <li
-                        key={i}
-                        className="flex items-baseline justify-between gap-4 py-1.5 text-sm"
-                      >
-                        <span className="text-slate-700">{d.label}</span>
-                        <span className="num text-slate-900">{fmtDate(d.date)}</span>
-                      </li>
-                    ))}
-                  </ul>
+              {analysis.evaluation_criteria?.length > 0 && (
+                <Section title="How bids are scored">
+                  <p className="mb-2 text-xs text-slate-500">
+                    What the agency weighs when comparing offers. Useful for deciding how
+                    much effort to spend, but nothing here can disqualify a bid.
+                  </p>
+                  <Bullets items={analysis.evaluation_criteria} />
                 </Section>
               )}
 
@@ -237,12 +214,6 @@ export function BidBrief({
                       </li>
                     ))}
                   </ul>
-                </Section>
-              )}
-
-              {analysis.special_requirements?.length > 0 && (
-                <Section title="Special requirements">
-                  <Bullets items={analysis.special_requirements} />
                 </Section>
               )}
 
@@ -367,40 +338,5 @@ function Bullets({ items }: { items: string[] }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-function List({ label, items }: { label: string; items?: string[] }) {
-  if (!items || items.length === 0) return null;
-  return (
-    <div>
-      <p className="mb-1 text-xs font-semibold text-slate-700">{label}</p>
-      <Bullets items={items} />
-    </div>
-  );
-}
-
-function Meeting({
-  label,
-  info,
-}: {
-  label: string;
-  info: { required: boolean; details?: string } | null;
-}) {
-  if (!info) return null;
-  return (
-    <div className="rounded-md border border-border p-3 text-sm">
-      <div className="flex items-center justify-between">
-        <p className="font-medium text-slate-900">{label}</p>
-        <span
-          className={`badge ${
-            info.required ? "bg-review/15 text-review" : "bg-surface-raised text-slate-600"
-          }`}
-        >
-          {info.required ? "Required" : "Optional"}
-        </span>
-      </div>
-      {info.details && <p className="mt-1.5 leading-relaxed text-slate-700">{info.details}</p>}
-    </div>
   );
 }

@@ -201,12 +201,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
     analysis?.pursue_recommendation?.trim() ||
     breakdown?.summary?.trim() ||
     "Fit details appear once scoring and analysis finish.";
-  const whyBody =
-    analysis?.project_overview?.trim() && analysis.project_overview !== NA_TEXT
-      ? analysis.project_overview
-      : analysis?.scope_plain_language?.trim() && analysis.scope_plain_language !== NA_TEXT
-        ? analysis.scope_plain_language
-        : "Open Requirements for identity details, Coverage for trades, and Pricing when quotes are ready.";
+  /**
+   * The verdict lives here; the description of the job lives in the Bid Brief
+   * directly below. Previously this panel also printed project_overview, which
+   * the brief then printed again a few hundred pixels later.
+   */
+  const whySupport = analysis
+    ? null
+    : "Open Requirements for identity details, Coverage for trades, and Pricing when quotes are ready.";
 
   const matchBadges = buildMatchBadges({
     naics: opp.naics_code,
@@ -337,9 +339,11 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   <p className="mt-2 font-display text-2xl font-semibold leading-snug text-foreground sm:text-3xl">
                     {whyHeadline}
                   </p>
-                  <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-                    {whyBody}
-                  </p>
+                  {whySupport && (
+                    <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                      {whySupport}
+                    </p>
+                  )}
                   {matchBadges.length > 0 && (
                     <div className="mt-6 flex flex-wrap gap-2">
                       {matchBadges.map((b) => (
