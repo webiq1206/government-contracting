@@ -7,11 +7,17 @@
  * is still stored as a draft and flagged for a human to send. The worker's
  * scheduler handles the 48h follow-up by scanning communications.follow_up_at;
  * reply handling is done by the reply-poller (which enqueues Call Prep).
+ *
+ * When the account has turned calling off, the send is identical and no call
+ * card is queued: the opportunity advances straight to collecting quotes,
+ * since a sent email is the whole of the work at this step.
  */
 import { randomUUID } from "node:crypto";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
+import { areCallsEnabled } from "../app-settings";
+import { advancePastCallStep } from "../domain/advance-stage";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
 import { gatherTradeAttachments } from "../opportunity-attachments";
@@ -56,9 +62,36 @@ export const outreach: AgentDefinition = {
     );
     if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found` };
 
+    const callsEnabled = await areCallsEnabled();
+
     // Do not create dead-end draft emails for unreachable subs. Phone-only
-    // firms go straight to Call Prep; zero-pathway firms are held for a human.
+    // firms go straight to Call Prep (or are left out entirely when calling is
+    // off); zero-pathway firms are held for a human.
     if (!isEmailable(sub)) {
+      if (isCallable(sub) && !callsEnabled) {
+        // Reachable by phone only, on an email-only account. There is no work
+        // to hand anyone: recorded on the pairing and in the log, without a
+        // call task and without flagging the opportunity, so the rest of the
+        // trade's outreach carries on untouched.
+        await query(
+          `update opportunity_subs
+              set outreach_state = 'no_email'
+            where opportunity_id = $1 and subcontractor_id = $2`,
+          [opportunityId, subcontractorId]
+        );
+        await logAgent({
+          agent: "outreach",
+          action: "skip-phone-only",
+          level: "info",
+          opportunityId,
+          subcontractorId,
+          message: `${sub.company_name} has a phone number but no verified email, and calling is turned off, so they were left out of this solicitation.`,
+        });
+        return {
+          ok: true,
+          summary: `Skipped ${sub.company_name}: phone-only, and calling is turned off.`,
+        };
+      }
       if (isCallable(sub)) {
         return {
           ok: true,
@@ -422,17 +455,31 @@ export const outreach: AgentDefinition = {
     // Every sub we actually email becomes a call card so the operator can follow
     // up by phone; not everyone replies to email. A later reply upgrades this
     // same card from a cold follow-up to a warm one (see call-prep).
-    const enqueued: AgentResult["enqueued"] = sent
-      ? [
-          {
-            agent: "call-prep",
-            payload: { opportunityId, subcontractorId, trade, source: "outreach" },
-          },
-        ]
-      : [];
+    //
+    // With calling off there is no card and nothing to wait for: the email step
+    // is complete, so the opportunity advances to collecting quotes on the same
+    // beat it would otherwise have entered the call queue. The 48h follow-up is
+    // unaffected, it runs off communications.follow_up_at, not the stage.
+    const enqueued: AgentResult["enqueued"] =
+      sent && callsEnabled
+        ? [
+            {
+              agent: "call-prep",
+              payload: { opportunityId, subcontractorId, trade, source: "outreach" },
+            },
+          ]
+        : [];
+    if (sent && !callsEnabled) {
+      await advancePastCallStep(opportunityId, {
+        agent: "outreach",
+        reason: `Emailed ${sub.company_name}. Calling is turned off, so this moved straight to collecting quotes; their reply is captured automatically.`,
+      });
+    }
 
     const summary = sent
-      ? `Sent outreach to ${sub.company_name} <${sub.email}>; 48h follow-up scheduled, call card queued.`
+      ? `Sent outreach to ${sub.company_name} <${sub.email}>; 48h follow-up scheduled, ${
+          callsEnabled ? "call card queued" : "calling is off so no call card was created"
+        }.`
       : `Outreach to ${sub.company_name} stored as draft (${
           sub.email ? "no email transport available" : "no verified email"
         }); needs manual send.`;

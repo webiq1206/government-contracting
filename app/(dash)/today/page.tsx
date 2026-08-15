@@ -216,10 +216,13 @@ function PipelineHealthRail({
   stageCounts,
   totalActions,
   digestParts,
+  callsEnabled,
 }: {
   stageCounts: { stage: string; count: number }[];
   totalActions: number;
   digestParts: string[];
+  /** False on an email-only account: the call stage is not part of the path. */
+  callsEnabled: boolean;
 }) {
   const byStage = Object.fromEntries(stageCounts.map((s) => [s.stage, s.count]));
   const active = stageCounts.reduce((n, s) => n + s.count, 0);
@@ -249,7 +252,7 @@ function PipelineHealthRail({
     { key: "analysis", label: "Analysis" },
     { key: "sub_research", label: "Finding subs" },
     { key: "outreach", label: "Outreach" },
-    { key: "call_queue", label: "Calls" },
+    ...(callsEnabled ? [{ key: "call_queue", label: "Calls" }] : []),
     { key: "quote_entry", label: "Quotes" },
     { key: "bid_building", label: "Bid building" },
   ];
@@ -610,8 +613,10 @@ export default async function TodayPage() {
                   defaultOpen={firstOpen === "other"}
                 >
                   <p className="mb-2 text-sm text-foreground/45">
-                    Automated email and follow-up already went out. These still need a person,
-                    usually a quick call, before pricing can land.
+                    Automated email and follow-up already went out.{" "}
+                    {rules.calls_enabled
+                      ? "These still need a person, usually a quick call, before pricing can land."
+                      : "These have not answered yet. Open the opportunity to email them again or line up another sub for the trade."}
                   </p>
                   {data.subFollowUps.map((s) => (
                     <Link
@@ -625,7 +630,7 @@ export default async function TodayPage() {
                       <div className="min-w-0 flex-1">
                         <p className="eyebrow-gold">Coverage follow-up</p>
                         <p className="mt-1 truncate text-sm font-medium text-foreground">
-                          Call {s.company_name}
+                          {rules.calls_enabled ? "Call" : "Follow up with"} {s.company_name}
                           {s.trade ? ` about ${s.trade.toLowerCase()} pricing` : ""}
                         </p>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -891,7 +896,7 @@ export default async function TodayPage() {
                   </span>
                 </summary>
                 <div className="mt-4 space-y-4">
-                  <PipelineStrip counts={data.stageCounts} />
+                  <PipelineStrip counts={data.stageCounts} callsEnabled={rules.calls_enabled} />
                   {digestParts.length > 0 && (
                     <Link
                       href="/agents"
@@ -911,6 +916,7 @@ export default async function TodayPage() {
               stageCounts={data.stageCounts}
               totalActions={totalActions}
               digestParts={digestParts}
+              callsEnabled={rules.calls_enabled}
             />
           </div>
         </div>

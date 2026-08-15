@@ -33,6 +33,15 @@ export interface AutomationRules {
    * never auto-deleted regardless of this setting.
    */
   retention_days: number;
+  /**
+   * Whether the pipeline includes the phone-call step at all.
+   *
+   * False = email-only: no call card is ever prepared, the call stage is
+   * skipped, and an opportunity advances the moment its outreach email is
+   * sent. Emails, follow-ups, and reply capture are untouched. Defaults to
+   * true so an existing install keeps the calling workflow it already has.
+   */
+  calls_enabled: boolean;
 }
 
 export const DEFAULT_RULES: AutomationRules = {
@@ -41,6 +50,7 @@ export const DEFAULT_RULES: AutomationRules = {
   approaching_days: 7,
   urgent_days: 3,
   retention_days: 30,  // 30 days; set to 0 in Settings to keep archived records forever
+  calls_enabled: true, // calling is part of the pipeline unless the operator turns it off
 };
 
 /** Merge a stored partial config over the defaults, clamping nonsense. */
@@ -55,6 +65,9 @@ export function normalizeRules(v: Partial<AutomationRules> | null | undefined): 
     approaching_days: num(v?.approaching_days, DEFAULT_RULES.approaching_days, 1),
     urgent_days: num(v?.urgent_days, DEFAULT_RULES.urgent_days, 1),
     retention_days: num(v?.retention_days, DEFAULT_RULES.retention_days),
+    // Only an explicit false turns calling off. A stored config written before
+    // this setting existed has no key at all, and must keep its calls.
+    calls_enabled: v?.calls_enabled !== false,
   };
   // "Urgent" must be inside "approaching", or the badge tiers stop nesting.
   if (r.urgent_days > r.approaching_days) r.urgent_days = r.approaching_days;

@@ -10,6 +10,7 @@ import { DeadlineBadge } from "@/components/deadline-badge";
 import { EstimatedValue } from "@/components/estimated-value";
 import { getAutomationRules } from "@/lib/app-settings";
 import { laneFor, type LaneKey } from "@/lib/domain/pipeline-lanes";
+import { CALL_STAGE } from "@/lib/domain/call-step";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
 
@@ -68,8 +69,16 @@ export default async function PipelinePage({
 }) {
   const [opps, rules] = await Promise.all([pipelineOpportunities(), getAutomationRules()]);
   const view = searchParams?.view === "stages" ? "stages" : "lanes";
+  // An email-only account has no call step, so the board does not draw a
+  // column for it. The column comes back if any record is actually still in
+  // that stage, because a board that hides a record is worse than a board
+  // with an extra column.
+  const stillCalling = opps.some((o) => o.stage === CALL_STAGE);
+  const stages = PIPELINE_STAGES.filter(
+    (s) => rules.calls_enabled || stillCalling || s.key !== CALL_STAGE
+  );
   const byStage = new Map<string, Opportunity[]>();
-  for (const s of PIPELINE_STAGES) byStage.set(s.key, []);
+  for (const s of stages) byStage.set(s.key, []);
   for (const o of opps) {
     if (!byStage.has(o.stage)) byStage.set(o.stage, []);
     byStage.get(o.stage)!.push(o);
@@ -148,7 +157,7 @@ export default async function PipelinePage({
       {/* Desktop: horizontal kanban across all stages. */}
       <div className="scroll-thin hidden flex-1 overflow-x-auto p-4 lg:block">
         <div className="flex h-full gap-3" style={{ minWidth: "max-content" }}>
-          {PIPELINE_STAGES.map((stage) => {
+          {stages.map((stage) => {
             const cards = byStage.get(stage.key) ?? [];
             return (
               <div key={stage.key} className="flex w-72 flex-col">
@@ -180,7 +189,7 @@ export default async function PipelinePage({
       {/* Mobile: one simple vertical list, grouped by stage, empty stages hidden.
           No sideways scrolling, tap a card to open it, tap its menu to move it. */}
       <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-4 lg:hidden">
-        {PIPELINE_STAGES.filter((s) => (byStage.get(s.key)?.length ?? 0) > 0).map((stage) => {
+        {stages.filter((s) => (byStage.get(s.key)?.length ?? 0) > 0).map((stage) => {
           const cards = byStage.get(stage.key) ?? [];
           return (
             <section key={stage.key}>

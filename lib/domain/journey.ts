@@ -11,6 +11,8 @@
  * DB, no I/O, fully unit-tested.
  */
 
+import { CALL_STAGE, STAGE_AFTER_CALLS, withoutCallStage } from "./call-step";
+
 /** Who is expected to move the opportunity forward right now. */
 export type Party = "system" | "you" | "subs" | "agency";
 
@@ -33,8 +35,6 @@ export const JOURNEY_STAGES = [
   "bid_building",
   "submitted",
 ] as const;
-
-const STAGE_INDEX = new Map<string, number>(JOURNEY_STAGES.map((s, i) => [s, i]));
 
 export interface JourneyStep {
   stage: string;
@@ -84,19 +84,33 @@ export function stageLabel(stage: string | null | undefined): string {
 /**
  * The step-tracker model for one opportunity. Terminal stages (won/lost/
  * dismissed) return the full path marked done up to where the record exited.
+ *
+ * With calling turned off the call step is dropped from the path entirely: a
+ * tracker that keeps showing "Calls to make" as a step promises work that will
+ * never be created, and marks the journey as one step short forever.
  */
-export function journeySteps(stage: string): JourneyStep[] {
+export function journeySteps(
+  stage: string,
+  opts: { callsEnabled?: boolean } = {}
+): JourneyStep[] {
+  const callsEnabled = opts.callsEnabled !== false;
+  const stages = withoutCallStage(JOURNEY_STAGES, callsEnabled);
+  const stageIndex = new Map<string, number>(stages.map((s, i) => [s, i]));
   // Terminal stages: won exits after submitted; lost too; dismissed can exit
   // anywhere, without a recorded exit point we show the whole path as done
   // only for won/lost (they necessarily passed through submission).
   const isTerminal = stage === "won" || stage === "lost" || stage === "dismissed";
+  // A record still sitting on the call stage after calling was turned off is
+  // read as being at the step that replaced it, so it is never marked current
+  // on a step the tracker no longer draws.
+  const at = !callsEnabled && stage === CALL_STAGE ? STAGE_AFTER_CALLS : stage;
   const idx = isTerminal
     ? stage === "dismissed"
       ? -1 // unknown exit point; show nothing as current
-      : JOURNEY_STAGES.length // won/lost: every step completed
-    : (STAGE_INDEX.get(stage) ?? 0);
+      : stages.length // won/lost: every step completed
+    : (stageIndex.get(at) ?? 0);
 
-  return JOURNEY_STAGES.map((s, i) => {
+  return stages.map((s, i) => {
     const status: JourneyStep["status"] =
       i < idx ? "done" : i === idx ? "current" : "upcoming";
     return {
@@ -197,6 +211,12 @@ export interface StepInput {
   outreachDraftOnly?: boolean;
   /** Opportunity risk_flags (for stalled_* and similar). */
   riskFlags?: string[] | null;
+  /**
+   * Whether this account's pipeline includes phone calls (Settings →
+   * Automation Rules → Calls). Undefined means yes, so every existing call
+   * site keeps its current copy.
+   */
+  callsEnabled?: boolean;
 }
 
 export interface NextStep {
@@ -293,7 +313,10 @@ export function deriveStep(s: StepInput): NextStep {
 
   // Truth-in-advertising overrides: "Brost Co is working on it" copy is a
   // lie when the operator paused automation or the stage has visibly stalled.
-  if (step.waitingOn === "system" || (s.stage === "outreach" && step.waitingOn === "subs")) {
+  // "Waiting on subs" is as much a claim about running automation as "Brost Co
+  // is working on it": with the master switch off nothing polls for their
+  // replies, so an email-only record parked at quote entry must say so too.
+  if (step.waitingOn === "system" || step.waitingOn === "subs") {
     if (s.automationPaused)
       return {
         title: "Paused, this will not move until you resume automation",
@@ -310,7 +333,11 @@ export function deriveStep(s: StepInput): NextStep {
         title: "This looks stuck, check the automation log",
         why:
           STALL_REASONING[s.stage] ??
-          `No activity for over ${STALL_HOURS[s.stage]} hours in a stage that normally completes sooner. The responsible agent may have hit an error or a missing API key.`,
+          (STALL_HOURS[s.stage] != null
+            ? `No activity for over ${STALL_HOURS[s.stage]} hours in a stage that normally completes sooner. The responsible agent may have hit an error or a missing API key.`
+            : // A stalled_* flag can outlive the stage that earned it, and not
+              // every stage has an expected window to quote back.
+              "No activity for longer than this stage normally takes. The responsible agent may have hit an error or a missing API key."),
         after: "The log shows the last run and its reasoning; Run now retries the agent immediately.",
         cta: "Open automation log",
         href: `/agents${STAGE_AGENT[s.stage] ? `?agent=${STAGE_AGENT[s.stage]}` : ""}`,
@@ -382,7 +409,10 @@ function deriveStageStep(s: StepInput): NextStep {
       return {
         title: "No action required. Brost Co is finding subcontractors",
         why: "Brost Co is finding and verifying local subs for each required trade. They will be emailed automatically.",
-        after: "Replies create call cards for you; a 48-hour follow-up goes out on its own.",
+        after:
+          s.callsEnabled === false
+            ? "A 48-hour follow-up goes out on its own, and prices that come back by email are captured for you."
+            : "Replies create call cards for you; a 48-hour follow-up goes out on its own.",
         cta: "View trade coverage",
         anchor: "#coverage",
         tone: "info",
@@ -409,6 +439,17 @@ function deriveStageStep(s: StepInput): NextStep {
           anchor: "#coverage",
           tone: "action",
           waitingOn: "you",
+        };
+      }
+      if (s.callsEnabled === false) {
+        return {
+          title: "Nothing to do, waiting on subcontractor replies",
+          why: "Outreach emails are out, with an automatic 48-hour follow-up. Calling is turned off for this account, so nothing here is waiting on a phone call. Prices that come back by email are read and saved to the record on their own.",
+          after: "Each quote that arrives is captured automatically; when every required trade is priced, Bid Builder assembles the package.",
+          cta: "View trade coverage",
+          anchor: "#coverage",
+          tone: "info",
+          waitingOn: "subs",
         };
       }
       return {
@@ -441,6 +482,18 @@ function deriveStageStep(s: StepInput): NextStep {
           anchor: "#coverage",
           tone: "action",
           waitingOn: "you",
+        };
+      }
+      if (s.callsEnabled === false) {
+        // Left over from before calling was turned off. Never ask for the call.
+        return {
+          title: "Nothing to do, waiting on subcontractor replies",
+          why: "Calling is turned off for this account, so this record no longer waits on a phone call. Their emailed prices are read and saved automatically.",
+          after: "When every required trade is priced, Bid Builder assembles the package for your review.",
+          cta: "View trade coverage",
+          anchor: "#coverage",
+          tone: "info",
+          waitingOn: "subs",
         };
       }
       return {
@@ -478,6 +531,20 @@ function deriveStageStep(s: StepInput): NextStep {
           anchor: "#coverage",
           tone: "action",
           waitingOn: "you",
+        };
+      }
+      // Email-only accounts arrive here the moment outreach sends, before any
+      // sub has had a chance to answer. Asking them to type in quotes nobody
+      // has sent yet would be the manual interruption the setting removes.
+      if (s.callsEnabled === false && tradesQuoted === 0 && !s.hasBid) {
+        return {
+          title: "Nothing to do, waiting on subcontractor replies",
+          why: "The outreach emails are out and a 48-hour follow-up is scheduled. Prices that come back by email are read and saved to this record automatically. You can still enter a quote yourself at any time.",
+          after: "When every required trade is priced, Bid Builder assembles the package for your review.",
+          cta: "Open quotes",
+          anchor: "#quotes",
+          tone: "info",
+          waitingOn: "subs",
         };
       }
       return {

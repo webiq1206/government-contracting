@@ -19,7 +19,7 @@ export default async function RulesPage() {
         help={PAGE_HELP["rules"]}
         title="Automation Rules"
         status="Pipeline guardrails"
-        subtitle="Deadline warnings, minimum lead-time intake, and archive retention. Changes apply everywhere the moment you save."
+        subtitle="Deadline warnings, minimum lead-time intake, whether the pipeline includes phone calls, and archive retention. Changes apply everywhere the moment you save."
       />
       <AutomationRulesForm initial={rules} />
     </>

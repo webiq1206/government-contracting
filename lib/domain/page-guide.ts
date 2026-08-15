@@ -445,7 +445,12 @@ function setupStep(item: SetupItem): GuideStep {
   };
 }
 
-function stepFromNext(ns: NextStep, opportunityId: string, stage: string): GuideStep {
+function stepFromNext(
+  ns: NextStep,
+  opportunityId: string,
+  stage: string,
+  callsEnabled = true
+): GuideStep {
   const target = ns.anchor?.replace(/^#/, "") || undefined;
   let kind: GuideActionKind = "none";
   let adapter: GuideStep["adapter"];
@@ -467,7 +472,9 @@ function stepFromNext(ns: NextStep, opportunityId: string, stage: string): Guide
   ) {
     kind = "enter-quote";
     adapter = "quote";
-  } else if (stage === "call_queue" || ns.href === "/call-queue") {
+  } else if (callsEnabled && (stage === "call_queue" || ns.href === "/call-queue")) {
+    // With calling off there is no call to open, not even for a record left
+    // on the call stage from before the preference changed.
     kind = "open-call";
     adapter = "call";
   } else if (ns.href) kind = "link";
@@ -756,7 +763,11 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
 > {
   const opp = input.opportunity!;
   const ns = deriveStep(opp.stepInput);
-  const journey = journeySteps(opp.stage);
+  // Same preference the banner reads, so the guide never walks the operator to
+  // a call step the account has turned off.
+  const journey = journeySteps(opp.stage, {
+    callsEnabled: opp.stepInput.callsEnabled !== false,
+  });
   const completed = journey.filter((j) => j.status === "done").map((j) => j.label);
   const current = journey.find((j) => j.status === "current");
 
@@ -765,7 +776,7 @@ function buildOpportunityGuide(input: GuideContextInput): Omit<
   const steps: GuideStep[] = [];
 
   if (ns) {
-    const g = stepFromNext(ns, opp.id, opp.stage);
+    const g = stepFromNext(ns, opp.id, opp.stage, opp.stepInput.callsEnabled !== false);
     if (g.owner === "you") {
       needsAttention.push(ns.title);
       steps.push(g);

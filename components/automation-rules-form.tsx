@@ -9,6 +9,8 @@ interface Preview {
   past_due_open: number;
   below_lead_time: number;
   past_retention: number;
+  /** Calls waiting plus opportunities parked on the call stage. */
+  queued_calls: number;
 }
 
 /**
@@ -96,6 +98,14 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
             retention rule
             {form.retention_days === 0 ? " (retention is set to keep forever)" : ""}.
           </li>
+          {!form.calls_enabled && (
+            <li>
+              <span className="num font-semibold">{preview.queued_calls}</span> queued call
+              {preview.queued_calls === 1 ? "" : "s"} and opportunit
+              {preview.queued_calls === 1 ? "y" : "ies"} waiting on a call would be cleared and
+              moved on to collecting quotes.
+            </li>
+          )}
         </ul>
       )}
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -124,6 +134,8 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
         "lead-time": "lead-time",
         archive: "archive",
         retention: "archive",
+        calls: "calls",
+        calling: "calls",
       }}
       tabs={[
         {
@@ -237,6 +249,48 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
           ),
         },
         {
+          id: "calls",
+          label: "Calls",
+          content: (
+            <div className="mx-auto w-full max-w-4xl space-y-4 px-5 py-6 sm:px-6">
+              <section className="card">
+                <h2 className="font-display text-xl text-foreground">Phone calls</h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                  By default every sub you email also gets a prepared call card, so you can
+                  follow up by phone. If you would rather run everything by email, turn calling
+                  off: no call cards are created, the call step is removed from the pipeline,
+                  and an opportunity moves straight from its outreach email to collecting
+                  quotes.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <Choice
+                    name="calls_enabled"
+                    checked={form.calls_enabled}
+                    onChange={() => setForm((f) => ({ ...f, calls_enabled: true }))}
+                    label="Email and phone (default)"
+                    hint="Each emailed sub becomes a call card in the Call Queue, and replies are prepared with a script and question list."
+                  />
+                  <Choice
+                    name="calls_enabled"
+                    checked={!form.calls_enabled}
+                    onChange={() => setForm((f) => ({ ...f, calls_enabled: false }))}
+                    label="Email only, never ask me to call"
+                    hint="No call cards, no call step, nothing waiting on a phone call. Outreach emails, 48-hour follow-ups, and automatic quote capture from replies all keep running."
+                  />
+                </div>
+                {!form.calls_enabled && (
+                  <p className="mt-4 rounded-md border border-accent/40 bg-accent-soft/40 p-3 text-sm text-slate-700">
+                    Saving this also empties the Call Queue you have now. Calls already logged
+                    stay on the record as history; anything still waiting is cleared, and any
+                    opportunity parked on the call step moves on to collecting quotes.
+                  </p>
+                )}
+              </section>
+              {saveBar}
+            </div>
+          ),
+        },
+        {
           id: "archive",
           label: "Archive",
           content: (
@@ -270,6 +324,44 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
         },
       ]}
     />
+  );
+}
+
+/**
+ * A radio pair reads better than a switch here: both halves of the choice are
+ * spelled out, so "off" cannot be mistaken for "calls are broken".
+ */
+function Choice({
+  name,
+  checked,
+  onChange,
+  label,
+  hint,
+}: {
+  name: string;
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer gap-3 rounded-md border p-3 transition ${
+        checked ? "border-accent bg-accent-soft/30" : "border-border/55 hover:border-accent/50"
+      }`}
+    >
+      <input
+        type="radio"
+        name={name}
+        className="mt-1 h-4 w-4 shrink-0 accent-accent"
+        checked={checked}
+        onChange={onChange}
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-slate-900">{label}</span>
+        <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{hint}</span>
+      </span>
+    </label>
   );
 }
 

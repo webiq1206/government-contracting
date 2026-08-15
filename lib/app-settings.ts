@@ -141,3 +141,14 @@ export async function setAutomationRules(
   await setSetting(RULES_KEY, normalized, by);
   return normalized;
 }
+
+/**
+ * Whether the phone-call step is part of this org's pipeline.
+ *
+ * Read by every path that would otherwise prepare a call: the failure mode is
+ * `true` (calls on), because normalizeRules already treats a missing key as
+ * on, and a DB hiccup must not silently switch a customer's workflow.
+ */
+export async function areCallsEnabled(): Promise<boolean> {
+  return (await getAutomationRules()).calls_enabled;
+}

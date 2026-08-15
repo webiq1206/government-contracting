@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
-import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
+import {
+  areCallsEnabled,
+  AUTOMATION_PAUSED_ERROR,
+  isAutomationPaused,
+} from "@/lib/app-settings";
+import { CALL_STAGE, STAGE_AFTER_CALLS, withoutCallStage } from "@/lib/domain/call-step";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
@@ -146,7 +151,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   if (action === "send_back") {
-    const idx = STAGE_ORDER.indexOf(opp.stage);
+    // Calling off means the call stage is not part of this account's pipeline,
+    // so stepping back through it would park the record in a stage nothing
+    // will ever pick up. Step over it to the stage before instead.
+    const callsEnabled = await areCallsEnabled();
+    const stageOrder = withoutCallStage(STAGE_ORDER, callsEnabled);
+    // A record left in the call stage from before calling was turned off is
+    // treated as if it were already at the stage that replaced it.
+    const from =
+      !callsEnabled && opp.stage === CALL_STAGE ? STAGE_AFTER_CALLS : opp.stage;
+    const idx = stageOrder.indexOf(from);
     // Clamp to "scoring" (index 1); never fall back into cron-driven monitoring.
     if (idx <= 1) {
       return NextResponse.json(
@@ -154,7 +168,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         { status: 400 }
       );
     }
-    const prev = STAGE_ORDER[idx - 1];
+    const prev = stageOrder[idx - 1];
     const agents = STAGE_AGENTS[prev] ?? [];
     await query(
       `update opportunities

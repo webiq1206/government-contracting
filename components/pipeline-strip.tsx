@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { stageMode } from "@/lib/stage-meta";
+import { CALL_STAGE } from "@/lib/domain/call-step";
 
 /**
  * The pipeline progress rail on the Today page. A connected stepper: each stage
@@ -68,12 +69,24 @@ function StageNode({
   );
 }
 
-export function PipelineStrip({ counts }: { counts: { stage: string; count: number }[] }) {
+export function PipelineStrip({
+  counts,
+  callsEnabled = true,
+}: {
+  counts: { stage: string; count: number }[];
+  /** False on an email-only account: the call node is not part of the rail. */
+  callsEnabled?: boolean;
+}) {
   const byStage = new Map(counts.map((c) => [c.stage, c.count]));
   const value = (k: string) => byStage.get(k) ?? 0;
-  const total = STAGES.reduce((a, s) => a + value(s.key), 0);
+  // Drop the call node when calling is off, unless something is still sitting
+  // in that stage: a rail that hides live work would undercount "in play".
+  const stages = STAGES.filter(
+    (s) => callsEnabled || s.key !== CALL_STAGE || value(s.key) > 0
+  );
+  const total = stages.reduce((a, s) => a + value(s.key), 0);
   let lastActive = -1;
-  STAGES.forEach((s, i) => {
+  stages.forEach((s, i) => {
     if (value(s.key) > 0) lastActive = i;
   });
 
@@ -96,7 +109,7 @@ export function PipelineStrip({ counts }: { counts: { stage: string; count: numb
 
       {/* Mobile: wrapped grid — no sideways scroll. */}
       <div className="grid grid-cols-3 gap-x-2 gap-y-4 sm:hidden">
-        {STAGES.map((s) => {
+        {stages.map((s) => {
           const count = value(s.key);
           return (
             <StageNode
@@ -113,7 +126,7 @@ export function PipelineStrip({ counts }: { counts: { stage: string; count: numb
       {/* sm+: connected horizontal rail (scrolls only if the viewport is tight). */}
       <div className="scroll-thin hidden overflow-x-auto sm:block">
         <div className="flex min-w-max items-start">
-          {STAGES.map((s, i) => {
+          {stages.map((s, i) => {
             const count = value(s.key);
             const active = count > 0;
             const needsYou = stageMode(s.key) === "you";
@@ -123,7 +136,7 @@ export function PipelineStrip({ counts }: { counts: { stage: string; count: numb
                 <div className="w-[76px]">
                   <StageNode s={s} count={count} active={active} needsYou={needsYou} />
                 </div>
-                {i < STAGES.length - 1 && (
+                {i < stages.length - 1 && (
                   <span
                     aria-hidden
                     className={`mt-[21px] h-0.5 w-6 rounded-full ${

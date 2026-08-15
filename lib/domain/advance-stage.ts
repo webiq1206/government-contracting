@@ -9,6 +9,7 @@
  */
 import { query } from "../db";
 import { logAgent } from "../logger";
+import { PRE_QUOTE_STAGES, STAGE_AFTER_CALLS } from "./call-step";
 
 export interface TradeCoverage {
   trade: string;
@@ -103,6 +104,45 @@ export async function assessQuoteCompleteness(
   }
 
   return { canAdvance: holds.length === 0, holds, trades, pendingReview };
+}
+
+/**
+ * Move an opportunity past the call step because calling is turned off.
+ *
+ * Conditional on the current stage inside the statement, like every other
+ * advance here, so two agents finishing outreach at the same moment cannot
+ * both claim the move. The human-action flag is cleared with it: the flag's
+ * only meaning at this point in the pipeline is "somebody has to make a
+ * call", and leaving it set would park the record on Today asking for the
+ * one thing this account has said it does not do.
+ */
+export async function advancePastCallStep(
+  opportunityId: string,
+  opts: { agent?: string; reason?: string } = {}
+): Promise<boolean> {
+  const moved = await query<{ id: string; stage: string }>(
+    `update opportunities
+        set stage = $2, human_action_required = false, updated_at = now()
+      where id = $1 and stage = any($3)
+      returning id, stage`,
+    [opportunityId, STAGE_AFTER_CALLS, PRE_QUOTE_STAGES]
+  ).catch(() => []);
+
+  if (moved.length === 0) return false;
+
+  await logAgent({
+    agent: opts.agent ?? "operator",
+    action: "call-step-skipped",
+    opportunityId,
+    level: "info",
+    message:
+      opts.reason ??
+      "Calling is turned off, so this moved straight to collecting quotes after its outreach email.",
+    reasoning:
+      "Calls are disabled in Automation Rules; the call stage is skipped and no call card is prepared.",
+  });
+
+  return true;
 }
 
 export interface AdvanceResult {

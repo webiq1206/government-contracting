@@ -25,7 +25,7 @@ import { requestClarification, describeGap } from "../domain/reply-clarify";
 import { readReplyAttachments, combineReplyText } from "../domain/reply-attachments";
 import { advanceIfQuotesComplete } from "../domain/advance-stage";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
-import { getAutomationRules } from "../app-settings";
+import { areCallsEnabled, getAutomationRules } from "../app-settings";
 import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import { getProfileJson } from "../ai/companyProfile";
@@ -888,6 +888,9 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     if (!(await gmail.isConnected(orgId))) {
       return { ok: true, summary: "Inbox not connected, skipped." };
     }
+    // Read once per sweep: with calling off, a reply is captured and priced
+    // exactly as it is today, it just never produces a call card.
+    const callsEnabled = await areCallsEnabled();
     const sinceSec = Math.floor(Date.now() / 1000) - 3600; // last hour
     const { replies, disabled } = await gmail.fetchReplies(sinceSec, orgId);
     if (disabled) return { ok: true, summary: "Inbox unavailable, skipped." };
@@ -1051,7 +1054,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         }
       }
 
-      if (subId && !declined) {
+      if (subId && !declined && callsEnabled) {
         enqueued.push({
           agent: "call-prep",
           payload: {
@@ -1072,13 +1075,15 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         continue;
       }
 
-      // Tell the operator exactly what happened and what changed.
+      // Tell the operator exactly what happened and what changed. The wording
+      // never points at a call the account has turned off.
+      const confirmWhere = callsEnabled ? "confirm it on the call" : "confirm it on the record";
       const priceNote = quoteSaved
-        ? ` Their quote of $${extracted.quoteAmount!.toLocaleString()} was saved to the record; confirm it on the call.`
+        ? ` Their quote of $${extracted.quoteAmount!.toLocaleString()} was saved to the record; ${confirmWhere}.`
         : quoteSkippedExisting
           ? ` Their email quotes $${extracted.quoteAmount!.toLocaleString()}, but a quote already exists for this sub on this job, review and update it manually if needed.`
           : mentionedPrice != null
-            ? ` Their email mentions $${mentionedPrice.toLocaleString()}, confirm it on the call.`
+            ? ` Their email mentions $${mentionedPrice.toLocaleString()}, ${confirmWhere}.`
             : "";
       await logAgent({
         agent: "reply-poll",
@@ -1086,7 +1091,9 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         opportunityId: comm.opportunity_id,
         subcontractorId: subId ?? undefined,
         level: "success",
-        message: `${companyName ?? fromEmail} replied about "${comm.opportunity_title ?? "an opportunity"}". Marked responsive; their reply is saved on the record and a call card is being prepared for Today.${priceNote}`,
+        message: `${companyName ?? fromEmail} replied about "${comm.opportunity_title ?? "an opportunity"}". Marked responsive; their reply is saved on the record${
+          callsEnabled ? " and a call card is being prepared for Today" : ""
+        }.${priceNote}`,
         reasoning: `Reply excerpt: ${replyText.slice(0, 300)}`,
       });
       notifyLines.push(
@@ -1100,7 +1107,9 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
                   ? ` Mentions <strong>$${mentionedPrice.toLocaleString()}</strong>.`
                   : ""
           }` +
-          ` Updated: marked ${OUTCOME_LABEL[decision.outcome].toLowerCase()}, reply saved, call card queued.` +
+          ` Updated: marked ${OUTCOME_LABEL[decision.outcome].toLowerCase()}, reply saved${
+            callsEnabled ? ", call card queued" : ""
+          }.` +
           `${clarified ? ` We asked them for ${gaps.map(describeGap).join(", ")}.` : ""}` +
           `<br/><span style="color:#6B6560">&ldquo;${r.snippet.slice(0, 200)}&rdquo;</span></li>`
       );
