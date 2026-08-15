@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push supersedes the run in flight for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # package.json engines: node >= 20.
+          node-version: 20
+          cache: npm
+
+      # Installs from the lockfile exactly, optional dependencies included:
+      # they are optional at runtime (bullmq and ioredis back the queue only
+      # when REDIS_URL is set) but lib/queue/bullmq.ts still needs their types
+      # to typecheck, so --omit=optional fails the next step. Playwright's
+      # browser download is skipped instead, which is the part that is slow;
+      # nothing here drives a browser.
+      - name: Install
+        run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The integration suites skip themselves when DATABASE_URL is unset,
+      # which it is here: they need a seeded two-tenant database, and a CI
+      # Postgres that silently drifts from the migrations would be worse than
+      # honest skips. The ~940 unit tests do run.
+      - name: Test
+        run: npm test
+
+      # Catches what tsc cannot: a client component importing server-only code,
+      # a bad route export, a build-time failure in a page module.
+      - name: Build
+        run: npm run build
