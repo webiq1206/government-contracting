@@ -36,6 +36,7 @@ import {
 import { useToast } from "@/components/toaster";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import { CallAnswer, type AnswerValue } from "@/components/call-answer";
+import { ScannableText } from "@/components/scannable-text";
 
 type Attachment = { name?: string; url?: string; storage_path?: string } & Record<
   string,
@@ -407,7 +408,7 @@ export function CallWorkspace({
               <div className="space-y-3 border-t border-border px-3 py-3 text-sm">
                 {subWork.work && (
                   <Block label="What we need them to do">
-                    <p className="leading-relaxed text-foreground">{subWork.work}</p>
+                    <ScannableText text={subWork.work} className="text-foreground" />
                   </Block>
                 )}
                 <div className="grid gap-3 sm:grid-cols-2">

@@ -1,4 +1,5 @@
 import { InfoTip } from "@/components/info-tip";
+import { ScannableText } from "@/components/scannable-text";
 import type { SubWorkDescription } from "@/lib/domain/sub-work";
 
 /**
@@ -56,9 +57,7 @@ export function SubWorkNeeded({
             " This is the overall job scope; a trade-specific summary was not available yet."}
         </InfoTip>
       </div>
-      <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-slate-800">
-        {work.work}
-      </p>
+      <ScannableText text={work.work} className="mt-2 text-slate-800" />
       {work.trade && !work.tradeSpecific && (
         <p className="mt-2 text-xs text-slate-500">
           Focus the conversation on the <span className="font-medium">{work.trade}</span>{" "}
