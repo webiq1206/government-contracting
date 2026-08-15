@@ -7,7 +7,14 @@ import { journeySteps, PARTY_LABEL } from "@/lib/domain/journey";
  * opportunity page so the operator sees "how far along is this, and whose
  * turn is it" before reading anything else.
  */
-export function OpportunityJourney({ stage }: { stage: string }) {
+export function OpportunityJourney({
+  stage,
+  callsEnabled = true,
+}: {
+  stage: string;
+  /** False on an email-only account: the call step is not drawn at all. */
+  callsEnabled?: boolean;
+}) {
   if (stage === "dismissed") {
     return (
       <p className="text-xs text-slate-500">
@@ -15,7 +22,7 @@ export function OpportunityJourney({ stage }: { stage: string }) {
       </p>
     );
   }
-  const steps = journeySteps(stage);
+  const steps = journeySteps(stage, { callsEnabled });
   const outcome = stage === "won" ? "won" : stage === "lost" ? "lost" : null;
 
   return (

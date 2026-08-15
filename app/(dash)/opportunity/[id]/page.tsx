@@ -293,7 +293,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 <p className="mb-1.5 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   Where this stands
                 </p>
-                <OpportunityJourney stage={opp.stage} />
+                <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
               </div>
               <div id="next" data-guide-target="next-step">
                 <NextStepBanner
@@ -317,6 +317,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   hasQuotes={quotesEntered > 0}
                   outreachDraftOnly={outreachDraftOnly}
                   riskFlags={opp.risk_flags}
+                  callsEnabled={rules.calls_enabled}
                 />
               </div>
               <AttentionStrip readiness={readiness} opportunityId={opp.id} />
@@ -839,7 +840,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 >
                   Same tracker as the top banner. Use Next step for the action to take now.
                 </SectionHeading>
-                <OpportunityJourney stage={opp.stage} />
+                <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
                 <a href="#next-step" className="btn-ghost text-xs">
                   Jump to Next step
                 </a>

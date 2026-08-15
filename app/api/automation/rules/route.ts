@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { query, queryOne } from "@/lib/db";
+import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
 import { getAutomationRules, setAutomationRules } from "@/lib/app-settings";
 import { normalizeRules, type AutomationRules } from "@/lib/domain/intake";
+import { CALL_STAGE } from "@/lib/domain/call-step";
+import { clearCallWorkForOrg, type ClearCallWorkResult } from "@/lib/skip-call";
+import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { logAgent } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -12,8 +16,8 @@ export const dynamic = "force-dynamic";
  * Live counts of what each rule would touch RIGHT NOW, shown next to the
  * settings form so the operator can preview a change before saving it.
  */
-async function previewCounts(rules: AutomationRules) {
-  const [pastDue, belowLead, pastRetention] = await Promise.all([
+async function previewCounts(rules: AutomationRules, orgId: string | null) {
+  const [pastDue, belowLead, pastRetention, queuedCalls] = await Promise.all([
     queryOne<{ n: number }>(
       `select count(*)::int as n from opportunities
         where status='open' and stage not in ('submitted','won','lost')
@@ -43,11 +47,30 @@ async function previewCounts(rules: AutomationRules) {
           [rules.retention_days]
         )
       : Promise.resolve({ n: 0 }),
+    // What turning calling off would clear right now: the queue as the Call
+    // Queue page counts it, plus records parked on the call stage. Scoped to
+    // the caller's own organization, since it is their queue being described.
+    orgId
+      ? queryOne<{ n: number }>(
+          `select (
+                    select count(*) from call_cards cc
+                      join opportunities o on o.id = cc.opportunity_id
+                      join subcontractors s on s.id = cc.subcontractor_id
+                     where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}
+                  )
+                + (
+                    select count(*) from opportunities
+                     where org_id = $1 and status = 'open' and stage = $2
+                  ) as n`,
+          [orgId, CALL_STAGE]
+        )
+      : Promise.resolve({ n: 0 }),
   ]);
   return {
     past_due_open: pastDue?.n ?? 0,
     below_lead_time: belowLead?.n ?? 0,
     past_retention: pastRetention?.n ?? 0,
+    queued_calls: queuedCalls?.n ?? 0,
   };
 }
 
@@ -56,7 +79,8 @@ export async function GET() {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
   const rules = await getAutomationRules();
-  return NextResponse.json({ rules, preview: await previewCounts(rules) });
+  const orgId = await tryResolveTenantOrgId();
+  return NextResponse.json({ rules, preview: await previewCounts(rules, orgId) });
 }
 
 /**
@@ -71,15 +95,32 @@ export async function POST(req: Request) {
     preview_only?: boolean;
   };
   const normalized = normalizeRules(body);
+  const orgId = await tryResolveTenantOrgId();
   if (body.preview_only) {
-    return NextResponse.json({ rules: normalized, preview: await previewCounts(normalized) });
+    return NextResponse.json({
+      rules: normalized,
+      preview: await previewCounts(normalized, orgId),
+    });
   }
+  const before = await getAutomationRules();
   const saved = await setAutomationRules(normalized, auth.email);
+
+  // Turning calling off has to clear the call work already on the books, or
+  // the queue the setting exists to empty stays exactly as full as it was.
+  let cleared: ClearCallWorkResult | null = null;
+  if (before.calls_enabled && !saved.calls_enabled && orgId) {
+    cleared = await clearCallWorkForOrg(orgId);
+  }
+
   await logAgent({
     agent: "operator",
     action: "automation-rules-updated",
     level: "info",
-    message: `Automation rules updated by ${auth.email}: min lead ${saved.min_lead_days}d (${saved.lead_action}), deadline badges at ${saved.approaching_days}d/${saved.urgent_days}d, retention ${saved.retention_days === 0 ? "keep forever" : `${saved.retention_days}d`}.`,
+    message: `Automation rules updated by ${auth.email}: min lead ${saved.min_lead_days}d (${saved.lead_action}), deadline badges at ${saved.approaching_days}d/${saved.urgent_days}d, retention ${saved.retention_days === 0 ? "keep forever" : `${saved.retention_days}d`}, calls ${saved.calls_enabled ? "on" : "off (email-only workflow)"}.`,
   });
-  return NextResponse.json({ rules: saved, preview: await previewCounts(saved) });
+  return NextResponse.json({
+    rules: saved,
+    preview: await previewCounts(saved, orgId),
+    ...(cleared ? { cleared } : {}),
+  });
 }

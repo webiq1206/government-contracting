@@ -6,13 +6,20 @@
  * when the sub has no project history on file. The card is upserted into
  * call_cards, the sub is marked responsive, and the opportunity moves into the
  * call_queue with a human-action flag so the operator picks up the call.
+ *
+ * Does nothing at all when the account has turned calling off: it advances the
+ * opportunity past the call stage instead, so an email-only workflow never
+ * accumulates call work it will not do.
  */
 import { z } from "zod";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
+import { areCallsEnabled } from "../app-settings";
 import { isCallable } from "../domain/sub-contactability";
+import { advancePastCallStep } from "../domain/advance-stage";
+import { CALLS_DISABLED_REASON } from "../domain/call-step";
 import { resolveSubWork } from "../domain/sub-work";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
@@ -41,6 +48,25 @@ export const callPrep: AgentDefinition = {
     const replied = source === "reply";
     if (!opportunityId || !subcontractorId)
       return { ok: false, summary: "missing opportunityId or subcontractorId in payload" };
+
+    // The one place a call card is ever written, so the preference is enforced
+    // here as well as at every enqueue site: a job queued before the operator
+    // turned calling off must not produce a card when it finally runs.
+    if (!(await areCallsEnabled())) {
+      const advanced = await advancePastCallStep(opportunityId, {
+        agent: "call-prep",
+        reason: `${CALLS_DISABLED_REASON} This opportunity moved on to collecting quotes.`,
+      });
+      return {
+        ok: true,
+        summary: advanced
+          ? "Calling is off; skipped the call card and moved this on to collecting quotes."
+          : "Calling is off; skipped the call card.",
+        reasoning: CALLS_DISABLED_REASON,
+        data: { callsEnabled: false, advanced },
+        humanActionRequired: false,
+      };
+    }
 
     const sub = await queryOne<Subcontractor>(
       `select * from subcontractors where id = $1`,

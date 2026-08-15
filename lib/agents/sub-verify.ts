@@ -18,6 +18,7 @@ import { scrapeWebsiteEmail, domainHasMx } from "../integrations/email-scrape";
 import { findWebsiteBysearch } from "../integrations/website-finder";
 import { sam } from "../integrations/sam";
 import { hasContactPathway, isEmailable } from "../domain/sub-contactability";
+import { areCallsEnabled } from "../app-settings";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Subcontractor } from "../types";
 
@@ -309,15 +310,21 @@ export const subVerify: AgentDefinition = {
       route = "outreach queued";
     } else if (passes && phone) {
       // Phone but no verified email: skip dead-end draft emails; queue a call.
-      enqueued.push({
-        agent: "call-prep",
-        payload: { opportunityId, subcontractorId, trade, source: "outreach" },
-        opts: {
-          singletonKey: `callprep:${opportunityId}:${subcontractorId}`,
-          singletonSeconds: 3600,
-        },
-      });
-      route = "call queued (phone only, no verified email)";
+      // On an email-only account there is no call to queue, so the pairing is
+      // recorded as unreachable and nothing is handed to the operator.
+      if (await areCallsEnabled()) {
+        enqueued.push({
+          agent: "call-prep",
+          payload: { opportunityId, subcontractorId, trade, source: "outreach" },
+          opts: {
+            singletonKey: `callprep:${opportunityId}:${subcontractorId}`,
+            singletonSeconds: 3600,
+          },
+        });
+        route = "call queued (phone only, no verified email)";
+      } else {
+        route = "skipped (phone only, no verified email, calling is off)";
+      }
       await query(
         `update opportunity_subs
             set outreach_state = 'no_email'

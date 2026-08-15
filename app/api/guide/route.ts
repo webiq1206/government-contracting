@@ -5,7 +5,7 @@ import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { integrationStatus } from "@/lib/config";
 import { computeSetupChecklist } from "@/lib/domain/setup";
-import { getAutomationState } from "@/lib/app-settings";
+import { areCallsEnabled, getAutomationState } from "@/lib/app-settings";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import {
@@ -40,13 +40,16 @@ export async function GET(req: Request) {
 
   await hydrateIntegrationEnv().catch(() => undefined);
 
-  const [profile, automation, actionsRaw, experienceRow, pulseRow] = await Promise.all([
+  const [profile, automation, callsEnabled, actionsRaw, experienceRow, pulseRow] =
+    await Promise.all([
     getActiveProfile().catch(() => null),
     getAutomationState().catch(() => ({
       paused: false,
       changed_at: null,
       changed_by: null,
     })),
+    // Calling off means the guide must stop routing people to the Call Queue.
+    areCallsEnabled().catch(() => true),
     actionCenter().catch(() => null),
     queryOne<{ submitted: number; open: number }>(
       `select
@@ -202,6 +205,7 @@ export async function GET(req: Request) {
           outcome: bid?.outcome ?? null,
           pastPerfBlocked: opp.past_perf_classification === "prime_only",
           automationPaused: automation.paused,
+          callsEnabled,
           hoursSinceUpdate,
           expired:
             opp.status === "archived" && (opp.risk_flags ?? []).includes("expired"),
