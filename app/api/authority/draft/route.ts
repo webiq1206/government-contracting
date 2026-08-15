@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
-import { query, queryOne } from "@/lib/db";
+import { requireOrgContext } from "@/lib/org-guard";
+import { queryOne } from "@/lib/db";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { complete, ClaudeNotConfiguredError } from "@/lib/ai/claude";
 import { logAgent } from "@/lib/logger";
@@ -18,8 +18,9 @@ export const dynamic = "force-dynamic";
  * configured; otherwise a safe white-hat template is used.
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
-  if (auth instanceof NextResponse) return auth;
+  const ctx = await requireOrgContext();
+  if (ctx instanceof NextResponse) return ctx;
+  const { orgId } = ctx;
   const body = (await req.json().catch(() => ({}))) as { prospectId?: string };
   if (!body.prospectId) {
     return NextResponse.json({ error: "prospectId is required." }, { status: 400 });
@@ -32,8 +33,9 @@ export async function POST(req: Request) {
     tier: string | null;
     contact_json: unknown;
   }>(
-    `select id, domain, opportunity_type, tier, contact_json from backlink_prospects where id = $1`,
-    [body.prospectId]
+    `select id, domain, opportunity_type, tier, contact_json
+       from backlink_prospects where id = $1 and org_id = $2`,
+    [body.prospectId, orgId]
   );
   if (!prospect) return NextResponse.json({ error: "Prospect not found." }, { status: 404 });
   if (prospect.tier === "reject") {
@@ -42,8 +44,9 @@ export async function POST(req: Request) {
 
   // Don't stack duplicate pending drafts for the same prospect.
   const pending = await queryOne<{ id: string }>(
-    `select id from backlink_outreach where prospect_id = $1 and approval_status = 'pending' limit 1`,
-    [prospect.id]
+    `select id from backlink_outreach
+      where prospect_id = $1 and org_id = $2 and approval_status = 'pending' limit 1`,
+    [prospect.id, orgId]
   );
   if (pending) {
     return NextResponse.json({ ok: true, id: pending.id, existing: true });
@@ -102,10 +105,13 @@ export async function POST(req: Request) {
     // Template draft stands.
   }
 
+  // The organization is written on the row, not inferred later: the approvals
+  // list, the send path and the pending count are all scoped, so a draft
+  // without one is a draft nobody can ever see or approve.
   const row = await queryOne<{ id: string }>(
-    `insert into backlink_outreach (prospect_id, channel, subject, body, approval_status)
-     values ($1,'email',$2,$3,'pending') returning id`,
-    [prospect.id, draft.subject, draft.body]
+    `insert into backlink_outreach (org_id, prospect_id, channel, subject, body, approval_status)
+     values ($4,$1,'email',$2,$3,'pending') returning id`,
+    [prospect.id, draft.subject, draft.body, orgId]
   );
   return NextResponse.json({ ok: true, id: row?.id, subject: draft.subject, body: draft.body });
 }

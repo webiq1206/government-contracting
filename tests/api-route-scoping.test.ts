@@ -53,23 +53,13 @@ const EXEMPT = new Set([
 ]);
 
 /**
- * Known unscoped routes this guard is pinned against. NOT exemptions: these
- * are bugs, listed so the check can run today and refuse the next one, rather
- * than being deleted until someone has time for them.
+ * Known unscoped routes this guard is pinned against. NOT exemptions: an entry
+ * here is a bug, listed so the check can run today and refuse the next one
+ * rather than being deleted until someone has time.
  *
- *   scoring-weights approve - takes a proposal id from any organization, and
- *     `update scoring_weights set is_active=false where is_active=true`
- *     deactivates every organization's active rubric, not just the caller's.
- *   authority draft - reads a prospect by bare id and writes the outreach row
- *     with no organization, so the draft lands outside the approvals list it
- *     was meant to appear in.
- *
- * Shrink this list. Do not grow it.
+ * Empty, and meant to stay that way. Shrink this list. Do not grow it.
  */
-const KNOWN_UNSCOPED = new Set([
-  "app/api/scoring-weights/[id]/approve/route.ts",
-  "app/api/authority/draft/route.ts",
-]);
+const KNOWN_UNSCOPED = new Set<string>([]);
 
 function routeFiles(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -90,6 +80,32 @@ interface Route {
   tables: string[];
 }
 
+/**
+ * Naming the column, or handing the lookup to the org guard's findOrgRecord,
+ * which does the scoping for you. requireOrgContext deliberately does not
+ * count: it resolves the organization, it does not apply it.
+ */
+function isScoped(r: Route): boolean {
+  return /org_id|findOrgRecord/.test(r.src);
+}
+
+/**
+ * Checked per file, but the escape hatch is narrow on purpose.
+ *
+ * The first cut passed any file that merely mentioned requireOrgContext, and
+ * that is not scoping: resolving the caller's organization and then querying
+ * without it is precisely the bug this exists to catch. Stripping org_id out
+ * of a fixed route sailed through it. So requireOrgContext no longer counts;
+ * a route has to name org_id or use findOrgRecord.
+ *
+ * A per-statement rule was tried next and is too strict to be useful here:
+ * these routes prove ownership once with a scoped lookup, 404 if it misses,
+ * then act on the verified id, so their later statements legitimately carry no
+ * org_id. That means this check is a floor, not a proof. It catches the route
+ * that never scopes anything, which is the shape every instance of this bug
+ * has taken so far. It cannot catch a route that scopes one query and forgets
+ * another; only reading the route can.
+ */
 function routesTouchingTenantTables(): Route[] {
   return routeFiles(API_DIR)
     .map((path) => {
@@ -114,11 +130,7 @@ describe("tenant scoping in API routes", () => {
   it("scopes every route that reads a tenant-owned table", () => {
     const unscoped = routesTouchingTenantTables()
       .filter((r) => !EXEMPT.has(r.rel) && !KNOWN_UNSCOPED.has(r.rel))
-      // findOrgRecord / requireOrgContext scope through lib/org-guard rather
-      // than by naming the column in this file.
-      .filter(
-        (r) => !/org_id|findOrgRecord|requireOrgContext|currentOrg/.test(r.src)
-      )
+      .filter((r) => !isScoped(r))
       .map((r) => `${r.rel} (reads ${r.tables.join(", ")})`);
 
     expect(
@@ -146,9 +158,7 @@ describe("tenant scoping in API routes", () => {
     // route silently keeps its licence to regress.
     const stillUnscoped = new Set(
       routesTouchingTenantTables()
-        .filter(
-          (r) => !/org_id|findOrgRecord|requireOrgContext|currentOrg/.test(r.src)
-        )
+        .filter((r) => !isScoped(r))
         .map((r) => r.rel)
     );
     for (const rel of KNOWN_UNSCOPED) {
