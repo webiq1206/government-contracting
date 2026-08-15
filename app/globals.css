@@ -521,6 +521,18 @@ body {
   background: rgb(255 255 255 / 0.18);
 }
 
+/* A rail the user drives with a thumb, not a scrollbar: the stage chips above
+   the mobile pipeline. The bar itself would sit under the content and add
+   nothing, since position is already shown by which chip is lit. */
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  overscroll-behavior-x: contain;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* When the dash (or account) app shell is mounted, lock the document so
    mobile overscroll cannot continue past the fixed chrome / tab bar. */
 html:has([data-app-shell]),

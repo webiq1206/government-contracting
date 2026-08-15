@@ -107,18 +107,21 @@ export function PipelineStrip({
         </div>
       </div>
 
-      {/* Mobile: wrapped grid — no sideways scroll. */}
-      <div className="grid grid-cols-3 gap-x-2 gap-y-4 sm:hidden">
+      {/* Mobile: the same left-to-right pipeline, swiped. A wrapped grid put
+          Submitted underneath Watching, which reads as a second pipeline
+          rather than the end of the first one. */}
+      <div className="hide-scrollbar -mx-1 flex gap-1 overflow-x-auto px-1 sm:hidden">
         {stages.map((s) => {
           const count = value(s.key);
           return (
-            <StageNode
-              key={s.key}
-              s={s}
-              count={count}
-              active={count > 0}
-              needsYou={stageMode(s.key) === "you"}
-            />
+            <div key={s.key} className="w-[68px] shrink-0">
+              <StageNode
+                s={s}
+                count={count}
+                active={count > 0}
+                needsYou={stageMode(s.key) === "you"}
+              />
+            </div>
           );
         })}
       </div>

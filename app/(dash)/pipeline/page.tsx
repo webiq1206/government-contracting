@@ -11,6 +11,7 @@ import { EstimatedValue } from "@/components/estimated-value";
 import { getAutomationRules } from "@/lib/app-settings";
 import { laneFor, type LaneKey } from "@/lib/domain/pipeline-lanes";
 import { CALL_STAGE } from "@/lib/domain/call-step";
+import { SwipeRail } from "@/components/swipe-rail";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
 
@@ -119,9 +120,40 @@ export default async function PipelinePage({
       </PageHeader>
       {opps.length === 0 && <PipelineOnboarding />}
 
-      {/* Simple view: four owner lanes, no horizontal scrolling on desktop. */}
+      {/* Simple view: four owner lanes. A grid from md up; on a phone the same
+          four lanes stay side by side and are swiped between, because a lane
+          is a place in the pipeline and stacking them loses that. */}
       {view === "lanes" && opps.length > 0 && (
-        <div className="scroll-thin flex-1 overflow-y-auto p-4">
+        <div className="flex min-h-0 flex-1 flex-col md:hidden">
+          <SwipeRail
+            ariaLabel="Pipeline lanes"
+            items={LANES.map((lane) => ({
+              key: lane.key,
+              label: lane.label,
+              count: (byLane.get(lane.key) ?? []).length,
+              attention: lane.key === "you",
+            }))}
+          >
+            {LANES.map((lane) => {
+              const cards = byLane.get(lane.key) ?? [];
+              return (
+                <MobileColumn
+                  key={lane.key}
+                  title={lane.label}
+                  blurb={lane.blurb}
+                  count={cards.length}
+                >
+                  {cards.map((o) => (
+                    <PipelineCard key={o.id} o={o} rules={rules} />
+                  ))}
+                </MobileColumn>
+              );
+            })}
+          </SwipeRail>
+        </div>
+      )}
+      {view === "lanes" && opps.length > 0 && (
+        <div className="scroll-thin hidden flex-1 overflow-y-auto p-4 md:block">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {LANES.map((lane) => {
               const cards = byLane.get(lane.key) ?? [];
@@ -186,39 +218,94 @@ export default async function PipelinePage({
         </div>
       </div>
 
-      {/* Mobile: one simple vertical list, grouped by stage, empty stages hidden.
-          No sideways scrolling, tap a card to open it, tap its menu to move it. */}
-      <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-4 lg:hidden">
-        {stages.filter((s) => (byStage.get(s.key)?.length ?? 0) > 0).map((stage) => {
-          const cards = byStage.get(stage.key) ?? [];
-          return (
-            <section key={stage.key}>
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-slate-800">{stage.label}</span>
-                <span className="badge bg-slate-200 text-slate-600">{cards.length}</span>
-                {stageMode(stage.key) === "you" ? (
-                  <span className="badge bg-review/15 text-review">Needs you</span>
-                ) : (
-                  <span className="badge bg-muted text-muted-foreground">Automatic</span>
-                )}
-              </div>
-              <div className="space-y-3">
+      {/* Mobile: the same board, swiped rather than stacked. Every stage is
+          kept, in order, so the pipeline still reads as a pipeline and the
+          chip rail can jump to the far end in one tap. */}
+      <div className="flex min-h-0 flex-1 flex-col lg:hidden">
+        <SwipeRail
+          ariaLabel="Pipeline"
+          items={stages.map((stage) => ({
+            key: stage.key,
+            label: stage.label,
+            count: (byStage.get(stage.key) ?? []).length,
+            attention: stageMode(stage.key) === "you",
+          }))}
+        >
+          {stages.map((stage) => {
+            const cards = byStage.get(stage.key) ?? [];
+            return (
+              <MobileColumn
+                key={stage.key}
+                title={stage.label}
+                blurb={NEXT_ACTION[stage.key]}
+                count={cards.length}
+                badge={
+                  stageMode(stage.key) === "you"
+                    ? "bg-review/15 text-review"
+                    : "bg-muted text-muted-foreground"
+                }
+                badgeLabel={stageMode(stage.key) === "you" ? "Needs you" : "Automatic"}
+              >
                 {cards.map((o) => (
                   <PipelineCard key={o.id} o={o} rules={rules} />
                 ))}
-              </div>
-            </section>
-          );
-        })}
-        {opps.length > 0 && (
-          <p className="pt-2 text-center text-xs text-slate-500">
-            That&rsquo;s every active opportunity.
-          </p>
-        )}
+              </MobileColumn>
+            );
+          })}
+        </SwipeRail>
       </div>
       </>
       )}
     </div>
+  );
+}
+
+/**
+ * One column of the mobile rail.
+ *
+ * The heading sits outside the scrolling list rather than inside it, so the
+ * stage stays named while its cards scroll, and the cards scroll within the
+ * column instead of growing the page. An empty stage still gets a column: a
+ * gap in the pipeline is information, and hiding it would make the swipe order
+ * differ from the board's.
+ */
+function MobileColumn({
+  title,
+  blurb,
+  count,
+  badge,
+  badgeLabel,
+  children,
+}: {
+  title: string;
+  blurb?: string;
+  count: number;
+  badge?: string;
+  badgeLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="mb-2 shrink-0 pb-1">
+        <div className="flex items-baseline gap-2">
+          <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
+          <span className="num text-xs text-muted-foreground">{count}</span>
+          {badgeLabel && <span className={`badge ml-auto ${badge}`}>{badgeLabel}</span>}
+        </div>
+        {blurb && (
+          <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{blurb}</p>
+        )}
+      </div>
+      <div className="scroll-thin min-h-0 flex-1 space-y-2 overflow-y-auto pb-2">
+        {count === 0 ? (
+          <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+            Nothing here right now.
+          </p>
+        ) : (
+          children
+        )}
+      </div>
+    </>
   );
 }
 
