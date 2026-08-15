@@ -16,6 +16,7 @@ import { config } from "../config";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
+import { tightenAnalysisProse } from "../domain/analysis-prose";
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
 import { extractValueFromText } from "../domain/value-extract";
@@ -312,10 +313,17 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '- "team_accepted": past performance may be satisfied by the team, including subcontractor experience.',
     '- "prime_only": past performance must be the prime\'s OWN performance and cannot rely on subs.',
     "",
+    "HOW TO WRITE THE LONG-FORM FIELDS. Every one of these is read on a screen by somebody looking for one fact inside it, often mid-phone-call. Write for scanning, not for reading end to end:",
+    "  - No paragraphs. One item per line, newline separated. No bullet glyphs, no numbering, the display adds those.",
+    "  - No preamble. Never open with 'This solicitation is for' or 'The contractor shall'. Start with the thing itself.",
+    "  - One idea per line, and keep a line under about 20 words.",
+    "  - Say the specific thing. 'Replace 14 rooftop units on buildings 3 and 4' beats 'perform HVAC work as specified'.",
+    "  - No jargon, no form numbers, no contracting-officer contact details in any field a subcontractor might be read.",
+    "",
     "Return ONE JSON object with EXACTLY these keys (use the \"Not specified\" string or [] where the documents are silent):",
     "{",
-    '  "project_overview": string,               // 2-4 sentences: what this project is, for whom, and why',
-    '  "scope_plain_language": string,           // the scope of work in plain English (can be a few paragraphs)',
+    '  "project_overview": string,               // TWO sentences at most: what the job is and who it is for. Not a summary of the whole document.',
+    '  "scope_plain_language": string,           // the work itself, one task per line, newline separated. Never paragraphs. Each line is one deliverable a person could tick off.',
     '  "location": string,                       // full place of performance (address/city/state/base)',
     '  "estimated_value": string,                // e.g. "$120,000" or a range, or "Not specified..."',
     '  "due_date": string,                       // full bid due date AND time AND timezone, verbatim',
@@ -333,14 +341,14 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '  "qa_addenda": [{ "label": string, "summary": string, "date": string }],  // amendments/addenda and Q&A if present',
     '  "special_requirements": string[],         // wage determinations, Buy American, security, environmental, small-biz subcontracting, etc.',
     '  "attention_items": string[],              // risks / unusual clauses (liquidated damages, tight timeline, high bonding, prime-only past perf) a human should note',
-    '  "pursue_recommendation": string,          // 1-3 sentences: should we pursue, and the single biggest reason for/against',
+    '  "pursue_recommendation": string,          // ONE sentence: pursue or not, and the single biggest reason. No hedging both ways.',
     '  "required_trades": string[],              // trades we would need subcontractors for',
-    '  "trade_scopes": [{ "trade": string, "work": string }],  // REQUIRED for each required_trades entry: 2-5 plain-English sentences a non-expert can read aloud on a phone call, exactly what THAT trade must do on this job (tasks, locations, materials, frequency). No jargon, no government form numbers, no contracting-officer contact info.',
+    '  "trade_scopes": [{ "trade": string, "work": string }],  // REQUIRED for each required_trades entry. `work` is what THAT trade does on THIS job: 2-4 short lines, newline separated, one task each, naming locations, materials and quantities where the documents give them. It is read aloud to a subcontractor who has never seen the solicitation, so no jargon, no form numbers, no contracting-officer contact info.',
     '  "geographic_area": string,                // area to source subs from',
     '  "risk_flags": string[],                   // short machine-ish flags, e.g. "liquidated_damages", "high_bonding"',
     '  "past_perf_classification": "not_required"|"team_accepted"|"prime_only",',
-    '  "questions_for_subs": string[],           // specific questions to ask each subcontractor',
-    '  "draft_sow": string,                      // concise overall scope we can hand to a subcontractor when trade_scopes is thin',
+    '  "questions_for_subs": string[],           // AT MOST 4, and only things specific to THIS job. The call form already captures, with its own field, whether they can do the work, whether they are interested, their price, firm or estimate, start date, availability, insurance, bonding, licenses, certifications and past projects. Never ask any of those. Each question under 12 words, phrased to be said out loud.',
+    '  "draft_sow": string,                      // overall scope to hand a subcontractor when trade_scopes is thin. Same format: one task per line, newline separated.',
     '  "set_aside": string | null,',
     '  "compliance_matrix": [                     // EVERY item the bid package must include to be responsive',
     '     {',
@@ -442,7 +450,10 @@ export const solicitationAnalyst: AgentDefinition = {
         maxTokens: 8192,
       });
       // Hard rule: strip em dashes from all AI text before it is stored or shown.
-      analysis = deepNoEmDash(data);
+      // Then put the long-form fields into the one-item-per-line shape the
+      // prompt asks for, since compliance with that varies run to run and the
+      // fix belongs in one place rather than at each display and email site.
+      analysis = tightenAnalysisProse(deepNoEmDash(data));
       await logAgent({
         agent: "solicitation-analyst",
         action: "analyze",
