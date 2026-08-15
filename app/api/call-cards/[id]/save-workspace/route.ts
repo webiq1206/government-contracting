@@ -29,6 +29,15 @@ interface CallResponse {
   outcome?: string;
   assumptions?: string;
   notes?: string;
+  /**
+   * Answers to the job-specific questions the call guide assembled for this
+   * card, keyed by question id. Kept apart from the fixed fields above: those
+   * are read by quotes, coverage and the reply pipeline, while these vary per
+   * opportunity and are only ever read back as a record of the call.
+   */
+  answers?: Record<string, string | number | boolean | null>;
+  /** The questions actually put to this sub, so the answers stay legible. */
+  questions_asked?: { id: string; ask: string }[];
 }
 
 /**
@@ -83,7 +92,22 @@ export async function POST(
       `Quote: $${quoteAmountNum.toLocaleString()}${response.price_type ? ` (${response.price_type})` : ""}`
     );
   if (response.recommendation) summaryLines.push(`Rec: ${response.recommendation}`);
-  const callBody = [summaryLines.join(" · "), response.notes]
+
+  // Job-specific answers go into the logged call record in the operator's own
+  // terms. Without the question text a reader six weeks later finds a bare
+  // "yes" against a key nobody remembers.
+  const askedById = new Map(
+    (response.questions_asked ?? []).map((q) => [q.id, q.ask])
+  );
+  const answerLines = Object.entries(response.answers ?? {})
+    .filter(([, v]) => v != null && v !== "" && v !== false)
+    .map(([id, v]) => `${askedById.get(id) ?? id} ${v === true ? "Yes" : v}`);
+
+  const callBody = [
+    summaryLines.join(" · "),
+    answerLines.length ? answerLines.join("\n") : "",
+    response.notes,
+  ]
     .filter(Boolean)
     .join("\n\n");
 
