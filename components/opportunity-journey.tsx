@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import { journeySteps, PARTY_LABEL } from "@/lib/domain/journey";
 
 /**
@@ -15,6 +18,25 @@ export function OpportunityJourney({
   /** False on an email-only account: the call step is not drawn at all. */
   callsEnabled?: boolean;
 }) {
+  const rail = useRef<HTMLOListElement>(null);
+
+  // On a phone the path is wider than the screen, and the step that matters is
+  // the current one, not the first. Bring it into view rather than making the
+  // reader swipe to find out where they are.
+  //
+  // Above the dismissed early-return on purpose: a hook that runs only for
+  // some values of `stage` is a hook that changes order between renders.
+  useEffect(() => {
+    const el = rail.current?.querySelector<HTMLElement>("[data-current='true']");
+    el?.scrollIntoView({
+      behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [stage]);
+
   if (stage === "dismissed") {
     return (
       <p className="text-xs text-slate-500">
@@ -26,9 +48,16 @@ export function OpportunityJourney({
   const outcome = stage === "won" ? "won" : stage === "lost" ? "lost" : null;
 
   return (
-    <ol className="flex flex-wrap items-center gap-y-2 text-xs">
+    <ol
+      ref={rail}
+      className="hide-scrollbar flex flex-nowrap items-center overflow-x-auto text-xs sm:flex-wrap sm:gap-y-2 sm:overflow-visible"
+    >
       {steps.map((step, i) => (
-        <li key={step.stage} className="flex items-center">
+        <li
+          key={step.stage}
+          data-current={step.status === "current"}
+          className="flex shrink-0 items-center"
+        >
           {i > 0 && (
             <span
               aria-hidden
