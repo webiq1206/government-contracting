@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { queryOne } from "@/lib/db";
+import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
+import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { integrationStatus } from "@/lib/config";
@@ -13,6 +15,12 @@ export const dynamic = "force-dynamic";
 /**
  * Cheap Guide Me badge + fingerprint. Avoids full actionCenter + opportunity
  * detail so the FAB can stay fresh without a heavy load on every route change.
+ *
+ * Every count is scoped to the caller's organization. Unscoped, the badge on
+ * the Guide button was a live readout of how much work the whole platform had
+ * outstanding, and the per-opportunity lookup answered for any UUID at all,
+ * which told a prober whether another tenant's record exists and what stage it
+ * is in.
  */
 export async function GET(req: Request) {
   const auth = await requireUser();
@@ -23,29 +31,40 @@ export async function GET(req: Request) {
 
   await hydrateIntegrationEnv().catch(() => undefined);
 
+  const orgId = await tryResolveTenantOrgId();
+
   const [pulse, profile, oppHint] = await Promise.all([
-    queryOne<Record<string, unknown>>(
-      `select
-         (select count(*) from opportunities
-           where status='open' and human_action_required=true)::int as needs_you,
-         (select count(*) from call_cards
-           where status='pending'
-             and (snoozed_until is null or snoozed_until <= now()))::int as calls,
-         (select count(*) from compliance_items
-           where coalesce(status_override, status) in ('warning','critical','blocked'))::int as compliance,
-         (select count(*) from scoring_weights
-           where approved_at is null and proposed_by='learning-loop')::int as weights,
-         (select count(*) from backlink_outreach where approval_status='pending')::int as backlinks,
-         (select coalesce(max(extract(epoch from updated_at))::bigint, 0)
-            from opportunities) as opp_stamp`
-    ).catch(() => null),
+    orgId
+      ? queryOne<Record<string, unknown>>(
+          `select
+             (select count(*) from opportunities
+               where org_id = $1 and status='open' and human_action_required=true)::int as needs_you,
+             -- Counted as the Call Queue counts it, so the badge cannot
+             -- advertise calls that page will not list.
+             (select count(*) from call_cards cc
+                join opportunities o on o.id = cc.opportunity_id
+                join subcontractors s on s.id = cc.subcontractor_id
+               where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL})::int as calls,
+             (select count(*) from compliance_items
+               where org_id = $1
+                 and coalesce(status_override, status) in ('warning','critical','blocked'))::int as compliance,
+             (select count(*) from scoring_weights
+               where org_id = $1 and approved_at is null and proposed_by='learning-loop')::int as weights,
+             (select count(*) from backlink_outreach
+               where org_id = $1 and approval_status='pending')::int as backlinks,
+             (select coalesce(max(extract(epoch from updated_at))::bigint, 0)
+                from opportunities where org_id = $1) as opp_stamp`,
+          [orgId]
+        ).catch(() => null)
+      : Promise.resolve(null),
     getActiveProfile().catch(() => null),
     (async () => {
       const id = opportunityIdFromPath(pathname);
-      if (!id) return null;
+      if (!id || !orgId) return null;
       return queryOne<{ human_action_required: boolean; stage: string }>(
-        `select human_action_required, stage from opportunities where id=$1`,
-        [id]
+        `select human_action_required, stage from opportunities
+          where id=$1 and org_id=$2`,
+        [id, orgId]
       ).catch(() => null);
     })(),
   ]);

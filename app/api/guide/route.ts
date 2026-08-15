@@ -21,6 +21,8 @@ import {
 import { buildGuideAdapters } from "@/lib/guide/build-adapters";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 import { query, queryOne } from "@/lib/db";
+import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
+import { tryResolveTenantOrgId } from "@/lib/tenant";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +42,11 @@ export async function GET(req: Request) {
 
   await hydrateIntegrationEnv().catch(() => undefined);
 
+  // Every raw count below is this organization's own. The guide reads them
+  // back as "what needs you", so unscoped they described the whole platform's
+  // workload to whoever opened the panel.
+  const orgId = await tryResolveTenantOrgId();
+
   const [profile, automation, callsEnabled, actionsRaw, experienceRow, pulseRow] =
     await Promise.all([
     getActiveProfile().catch(() => null),
@@ -51,27 +58,44 @@ export async function GET(req: Request) {
     // Calling off means the guide must stop routing people to the Call Queue.
     areCallsEnabled().catch(() => true),
     actionCenter().catch(() => null),
-    queryOne<{ submitted: number; open: number }>(
-      `select
-         (select count(*)::int from opportunities where status <> 'open' or stage in ('submitted','won','lost')) as submitted,
-         (select count(*)::int from opportunities where status = 'open') as open`
-    ).catch(() => null),
-    queryOne<Record<string, unknown>>(
-      `select
-         (select count(*) from opportunities
-           where status='open' and human_action_required=true)::int as needs_you,
-         (select count(*) from opportunities where status='open')::int as open_count,
-         (select coalesce(max(extract(epoch from updated_at))::bigint, 0)
-            from opportunities) as opp_stamp,
-         (select count(*) from call_cards
-           where status='pending'
-             and (snoozed_until is null or snoozed_until <= now()))::int as calls,
-         (select count(*) from compliance_items
-           where coalesce(status_override, status) in ('warning','critical','blocked'))::int as compliance,
-         (select count(*) from scoring_weights
-           where approved_at is null and proposed_by='learning-loop')::int as weights,
-         (select count(*) from backlink_outreach where approval_status='pending')::int as backlinks`
-    ).catch(() => null),
+    orgId
+      ? queryOne<{ submitted: number; open: number }>(
+          // Decides whether the operator is new to the product, so it has to
+          // count THEIR history. Platform-wide, one established customer made
+          // every brand-new account look experienced and skipped its onboarding.
+          `select
+             (select count(*)::int from opportunities
+               where org_id = $1 and (status <> 'open' or stage in ('submitted','won','lost'))) as submitted,
+             (select count(*)::int from opportunities
+               where org_id = $1 and status = 'open') as open`,
+          [orgId]
+        ).catch(() => null)
+      : Promise.resolve(null),
+    orgId
+      ? queryOne<Record<string, unknown>>(
+          `select
+             (select count(*) from opportunities
+               where org_id = $1 and status='open' and human_action_required=true)::int as needs_you,
+             (select count(*) from opportunities
+               where org_id = $1 and status='open')::int as open_count,
+             (select coalesce(max(extract(epoch from updated_at))::bigint, 0)
+                from opportunities where org_id = $1) as opp_stamp,
+             -- Counted as the Call Queue counts it, so the guide cannot offer
+             -- a call the queue will not list.
+             (select count(*) from call_cards cc
+                join opportunities o on o.id = cc.opportunity_id
+                join subcontractors s on s.id = cc.subcontractor_id
+               where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL})::int as calls,
+             (select count(*) from compliance_items
+               where org_id = $1
+                 and coalesce(status_override, status) in ('warning','critical','blocked'))::int as compliance,
+             (select count(*) from scoring_weights
+               where org_id = $1 and approved_at is null and proposed_by='learning-loop')::int as weights,
+             (select count(*) from backlink_outreach
+               where org_id = $1 and approval_status='pending')::int as backlinks`,
+          [orgId]
+        ).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
   const integrations = integrationStatus();
@@ -279,13 +303,16 @@ export async function GET(req: Request) {
       company_name: string;
       trade: string | null;
     }>(
+      // opportunity_subs carries no org_id of its own, so it is scoped
+      // through its opportunity, the same way lib/data.ts scopes it.
       `select os.subcontractor_id, s.company_name, os.trade
          from opportunity_subs os
          join subcontractors s on s.id = os.subcontractor_id
-        where os.opportunity_id = $1
+         join opportunities o on o.id = os.opportunity_id
+        where os.opportunity_id = $1 and o.org_id = $2
         order by os.trade nulls last, s.company_name
         limit 100`,
-      [quoteOppId]
+      [quoteOppId, orgId]
     ).catch(() => []);
     opportunitySubs = rows;
   }
