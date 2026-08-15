@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
-import { query, queryOne } from "@/lib/db";
+import { queryOne } from "@/lib/db";
 import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
 import { getAutomationRules, setAutomationRules } from "@/lib/app-settings";
 import { normalizeRules, type AutomationRules } from "@/lib/domain/intake";
@@ -12,59 +12,80 @@ import { logAgent } from "@/lib/logger";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const EMPTY_PREVIEW = {
+  past_due_open: 0,
+  below_lead_time: 0,
+  past_retention: 0,
+  queued_calls: 0,
+};
+
 /**
  * Live counts of what each rule would touch RIGHT NOW, shown next to the
  * settings form so the operator can preview a change before saving it.
+ *
+ * Every count is scoped to the caller's own organization. These rules are
+ * per-org and the sweeps that enforce them run per-org, so an unscoped count
+ * was both a disclosure (one customer reading the size of everyone else's
+ * pipeline) and simply the wrong number: the retention line claimed to say
+ * what the sweep would delete while counting records the sweep would never
+ * touch on this customer's window.
  */
 async function previewCounts(rules: AutomationRules, orgId: string | null) {
+  // No resolvable organization means there are no records to describe. Better
+  // an honest zero than a platform-wide total attributed to this account.
+  if (!orgId) return EMPTY_PREVIEW;
+
   const [pastDue, belowLead, pastRetention, queuedCalls] = await Promise.all([
     queryOne<{ n: number }>(
       `select count(*)::int as n from opportunities
-        where status='open' and stage not in ('submitted','won','lost')
-          and deadline is not null and deadline < now()`
+        where org_id = $1
+          and status='open' and stage not in ('submitted','won','lost')
+          and deadline is not null and deadline < now()`,
+      [orgId]
     ),
     rules.min_lead_days > 0
       ? queryOne<{ n: number }>(
           `select count(*)::int as n from opportunities
-            where status='open' and stage in ('monitoring','scoring')
+            where org_id = $1
+              and status='open' and stage in ('monitoring','scoring')
               and deadline is not null
-              and deadline < now() + make_interval(days => $1)`,
-          [rules.min_lead_days]
+              and deadline < now() + make_interval(days => $2)`,
+          [orgId, rules.min_lead_days]
         )
       : Promise.resolve({ n: 0 }),
     rules.retention_days > 0
       ? queryOne<{ n: number }>(
           // Mirror the retentionSweep predicate exactly so the preview count
-          // matches what the sweep will actually delete.
+          // matches what the sweep will actually delete. The sweep runs one
+          // organization at a time on that organization's own window, so the
+          // org filter is part of the predicate being mirrored.
           // Uses deadline (falls back to updated_at) and includes the quotes guard.
           `select count(*)::int as n from opportunities o
-            where o.status='archived'
+            where o.org_id = $1
+              and o.status='archived'
               and coalesce(o.deadline, o.updated_at::date)::timestamptz
-                  < now() - make_interval(days => $1)
+                  < now() - make_interval(days => $2)
               and not exists (select 1 from bids      b where b.opportunity_id = o.id)
               and not exists (select 1 from contracts c where c.opportunity_id = o.id)
               and not exists (select 1 from quotes    q where q.opportunity_id = o.id)`,
-          [rules.retention_days]
+          [orgId, rules.retention_days]
         )
       : Promise.resolve({ n: 0 }),
     // What turning calling off would clear right now: the queue as the Call
-    // Queue page counts it, plus records parked on the call stage. Scoped to
-    // the caller's own organization, since it is their queue being described.
-    orgId
-      ? queryOne<{ n: number }>(
-          `select (
-                    select count(*) from call_cards cc
-                      join opportunities o on o.id = cc.opportunity_id
-                      join subcontractors s on s.id = cc.subcontractor_id
-                     where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}
-                  )
-                + (
-                    select count(*) from opportunities
-                     where org_id = $1 and status = 'open' and stage = $2
-                  ) as n`,
-          [orgId, CALL_STAGE]
-        )
-      : Promise.resolve({ n: 0 }),
+    // Queue page counts it, plus records parked on the call stage.
+    queryOne<{ n: number }>(
+      `select (
+                select count(*) from call_cards cc
+                  join opportunities o on o.id = cc.opportunity_id
+                  join subcontractors s on s.id = cc.subcontractor_id
+                 where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}
+              )
+            + (
+                select count(*) from opportunities
+                 where org_id = $1 and status = 'open' and stage = $2
+              ) as n`,
+      [orgId, CALL_STAGE]
+    ),
   ]);
   return {
     past_due_open: pastDue?.n ?? 0,
