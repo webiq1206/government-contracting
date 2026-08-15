@@ -111,6 +111,8 @@ export function Nav({
   const [isMobile, setIsMobile] = useState(false);
   const [localPaused, setLocalPaused] = useState(automationPaused);
   const [togglingAutomation, setTogglingAutomation] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const counts = { review: reviewCount, calls: callCount };
 
   useEffect(() => {
@@ -144,9 +146,29 @@ export function Nav({
   }, [open]);
 
   async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
+    if (loggingOut) return;
+    setLoggingOut(true);
+    setLogoutError(null);
+    try {
+      const res = await fetch("/api/auth/logout", { method: "POST" });
+      // Navigating on a failed request is the worst outcome: the session is
+      // still live but the screen says otherwise, so the next visit silently
+      // lands back in the app as a user who believes they signed out.
+      if (!res.ok) {
+        setLogoutError("Could not sign out. Check your connection and try again.");
+        return;
+      }
+      // Close the drawer with everything else it holds: on a phone the nav is
+      // a full-screen overlay, and leaving it mounted over the login page is
+      // how a half-finished sign-out looks like a broken app.
+      setOpen(false);
+      router.push("/login");
+      router.refresh();
+    } catch {
+      setLogoutError("Could not sign out. Check your connection and try again.");
+    } finally {
+      setLoggingOut(false);
+    }
   }
 
   async function handleToggleAutomation() {
@@ -448,6 +470,11 @@ export function Nav({
           </Link>
         )}
 
+        {/* The account menu, and the only place sign-out lives on a phone.
+            It used to be a muted 12px text link tucked under the email, which
+            is present without being findable: reachable only by opening the
+            drawer, scrolling past every link, and spotting grey-on-grey text.
+            Now it is a real control with a thumb-sized target. */}
         <div className="shrink-0 space-y-3 border-t border-border/55 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10">
           {/* Desktop: theme lives in the sidebar. Mobile header already has the toggle. */}
           <ThemeToggle className="hidden w-full justify-stretch md:inline-flex [&>button]:flex-1" />
@@ -456,15 +483,26 @@ export function Nav({
               {initials}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-xs text-muted-foreground">{email}</p>
-              <button
-                onClick={logout}
-                className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-              >
-                Sign out
-              </button>
+              <p className="text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground">
+                Signed in as
+              </p>
+              <p className="truncate text-xs text-foreground">{email}</p>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={logout}
+            disabled={loggingOut}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md border border-border/55 px-3 text-sm text-foreground transition-colors hover:border-border-strong hover:bg-surface disabled:opacity-60 dark:border-white/10"
+          >
+            <span aria-hidden>⏻</span>
+            {loggingOut ? "Signing out…" : "Sign out"}
+          </button>
+          {logoutError && (
+            <p role="alert" className="text-xs text-risk">
+              {logoutError}
+            </p>
+          )}
         </div>
       </nav>
     </>
