@@ -393,7 +393,8 @@ export default async function SubDetailPage({
               {quotes.length === 0 ? (
                 <p className="text-sm text-slate-500">No quotes on file.</p>
               ) : (
-                <table className="w-full">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[28rem]">
                   <thead>
                     <tr>
                       <th className="th">Opportunity</th>
@@ -429,6 +430,7 @@ export default async function SubDetailPage({
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </Collapsible>
           </div>
