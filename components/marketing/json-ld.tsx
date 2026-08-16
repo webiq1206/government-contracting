@@ -113,7 +113,7 @@ export function JsonLd({
             priceCurrency: "USD",
             category: "Subscription",
             description:
-              "Limited founding rate locked for the life of an active subscription. Includes a free 7-day trial; then billed monthly unless canceled.",
+              "Limited founding rate locked for the life of an active subscription. Starts with a free 7-day trial, no card required; billing begins only when you choose a plan.",
             priceValidUntil: promoEndsAt ?? undefined,
             url: `${SITE_URL}/signup?plan=founding`,
           },
@@ -124,7 +124,7 @@ export function JsonLd({
             priceCurrency: "USD",
             category: "Subscription",
             description:
-              "Standard monthly subscription with a free 7-day trial; then billed monthly unless canceled.",
+              "Standard monthly subscription. Starts with a free 7-day trial, no card required; billing begins only when you choose a plan.",
             url: `${SITE_URL}/signup?plan=standard`,
           },
         ]
@@ -136,15 +136,15 @@ export function JsonLd({
             priceCurrency: "USD",
             category: "Subscription",
             description:
-              "Standard monthly subscription with a free 7-day trial; then billed monthly unless canceled.",
+              "Standard monthly subscription. Starts with a free 7-day trial, no card required; billing begins only when you choose a plan.",
             url: `${SITE_URL}/signup?plan=standard`,
           },
         ],
   };
 
   const pricingAnswer = promoActive
-    ? `Standard pricing is $${standardMonthly} per month. Founding customers who join during the launch window lock in $${foundingMonthly} per month for as long as they remain subscribed. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`
-    : `Brost Co is $${standardMonthly} per month. Every plan starts with a free 7-day trial. After the trial, your card is charged automatically unless you cancel.`;
+    ? `Standard pricing is $${standardMonthly} per month. Founding customers who join during the launch window lock in $${foundingMonthly} per month for as long as they remain subscribed. Every plan starts with a free 7-day trial that needs no credit card. Nothing is charged unless you choose a plan before the trial ends.`
+    : `Brost Co is $${standardMonthly} per month. Every plan starts with a free 7-day trial that needs no credit card. Nothing is charged unless you choose a plan before the trial ends.`;
 
   const faq = {
     "@context": "https://schema.org",

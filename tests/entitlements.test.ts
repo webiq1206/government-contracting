@@ -63,8 +63,16 @@ describe("who gets in", () => {
     ).toBe("none");
   });
 
-  it("locks out every failed or absent billing state", () => {
-    for (const status of ["past_due", "unpaid", "canceled", "incomplete", "none", ""]) {
+  it("keeps a past_due customer working while Stripe retries their card", () => {
+    // A renewal decline is usually an expired card, not a departure. Stripe
+    // bounds the state itself: dunning exhausting moves the subscription to
+    // unpaid or canceled, and access ends there. Locking at past_due stopped
+    // a paying customer's agents mid-bid over a recoverable decline.
+    expect(accessLevel({ subscription_status: "past_due" }, NOW)).toBe("full");
+  });
+
+  it("locks out every exhausted or absent billing state", () => {
+    for (const status of ["unpaid", "canceled", "incomplete", "none", ""]) {
       expect(accessLevel({ subscription_status: status }, NOW)).toBe("none");
     }
   });
@@ -223,7 +231,9 @@ describe("what the customer is told", () => {
   });
 
   it("distinguishes a failed payment from a cancellation", () => {
-    expect(accessBlockedReason({ subscription_status: "past_due" }, NOW)).toContain("card");
+    // unpaid is the state where dunning has exhausted and access actually ends;
+    // past_due no longer blocks, so the message is asserted on the state that does.
+    expect(accessBlockedReason({ subscription_status: "unpaid" }, NOW)).toContain("card");
     expect(accessBlockedReason({ subscription_status: "canceled" }, NOW)).toContain("cancelled");
   });
 

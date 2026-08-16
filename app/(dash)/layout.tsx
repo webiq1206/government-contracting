@@ -13,6 +13,7 @@ import { accessLevel, entitlementOf, trialDaysLeft } from "@/lib/billing/entitle
 import { isPlatformAdmin } from "@/lib/platform-admin";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { TrialBanner } from "@/components/trial-banner";
+import { PaymentFailedBanner } from "@/components/payment-failed-banner";
 import { TrialExpiredModal } from "@/components/trial-expired-modal";
 import { allQuotaStates } from "@/lib/billing/trial-limits";
 
@@ -77,6 +78,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           {access === "trial" && (
             <TrialBanner daysLeft={trialDaysLeft(entitlementOf(user))} quotas={quotas} />
           )}
+          {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
           {children}
         </main>
       </div>
