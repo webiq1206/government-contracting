@@ -8,6 +8,7 @@ import { gmail } from "@/lib/integrations/gmail";
 import { ConversationThreads } from "@/components/conversation-threads";
 import { PageHeader } from "@/components/badges";
 import { SubNotes } from "@/components/sub-notes";
+import { RecordActions } from "@/components/record-actions";
 import { SubEditor } from "@/components/sub-editor";
 import { SubCompliancePanel } from "@/components/sub-compliance-panel";
 import { subComplianceView } from "@/lib/sub-compliance-store";
@@ -113,6 +114,37 @@ export default async function SubDetailPage({
       </PageHeader>
 
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
+        {/* Every way to reach this company, one tap from the name. Dimmed
+            rather than hidden when a channel is missing, so the row doubles
+            as a contact-data health check. */}
+        <RecordActions
+          actions={[
+            {
+              key: "call",
+              label: "Call",
+              glyph: "\u260F",
+              href: sub.phone ? `tel:${sub.phone.replace(/[^\d+]/g, "")}` : null,
+              missing: "No phone on file",
+            },
+            {
+              key: "email",
+              label: "Email",
+              glyph: "\u2709",
+              href: sub.email ? `mailto:${sub.email}` : null,
+              missing: "No email on file",
+            },
+            {
+              key: "website",
+              label: "Website",
+              glyph: "\u2197",
+              href: sub.website || null,
+              missing: "No website on file",
+              external: true,
+            },
+            { key: "note", label: "Note", glyph: "\u270E", href: "#notes" },
+          ]}
+        />
+
         {/* Contact metrics — live totals from saved communications */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
           <Stat
@@ -413,8 +445,8 @@ export default async function SubDetailPage({
             </div>
           </div>
 
-          <div className="lg:col-span-1">
-            <div className="card sticky top-4">
+          <div className="lg:col-span-1" id="notes">
+            <div className="card sticky top-4 scroll-mt-4">
               <h2 className="mb-3 text-sm font-semibold text-slate-900">Permanent Notes</h2>
               <p className="mb-3 text-xs text-slate-500">
                 Editable after every call. Saved permanently to this sub.
