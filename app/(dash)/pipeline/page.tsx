@@ -13,6 +13,7 @@ import { getAutomationRules } from "@/lib/app-settings";
 import { laneFor, type LaneKey } from "@/lib/domain/pipeline-lanes";
 import { CALL_STAGE } from "@/lib/domain/call-step";
 import { SwipeRail } from "@/components/swipe-rail";
+import { CardPreview } from "@/components/card-preview";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
 
@@ -324,6 +325,7 @@ function MobileColumn({
 /** One opportunity card, shared by the desktop kanban and the mobile list. */
 function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules }) {
   return (
+    <CardPreview opportunityId={o.id}>
     <Link
       href={`/opportunity/${o.id}`}
       className={`card card-hover block ${
@@ -353,6 +355,7 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
         <span className="ml-1 font-medium text-gold">Open ↗</span>
       </p>
     </Link>
+    </CardPreview>
   );
 }
 
