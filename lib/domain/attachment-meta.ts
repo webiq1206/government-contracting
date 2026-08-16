@@ -231,3 +231,34 @@ export function filenameFromResponse(input: {
 
   return input.fallback;
 }
+
+/**
+ * Turn a PDF's metadata Title into a usable filename, or refuse.
+ *
+ * Titles come from authoring tools, so the common shapes are "Microsoft Word
+ * - Statement of Work.doc", a bare filename, real prose, or junk like
+ * "untitled". The junk must be refused rather than cleaned: a wrong-but-
+ * plausible name on a bid document is worse than a generic one.
+ */
+export function filenameFromPdfTitle(title: string | null | undefined): string | null {
+  if (!title) return null;
+  let t = title.trim();
+  // Authoring-tool prefixes: "Microsoft Word - X", "PowerPoint Presentation - X".
+  t = t.replace(/^(microsoft\s+(word|excel|powerpoint)|libreoffice\s+\w+)\s*[-\u2013:]\s*/i, "");
+  // A title that is itself a filename: keep the stem, the caller re-extensions.
+  t = t.replace(/\.(docx?|xlsx?|pptx?|pdf|rtf|txt)$/i, "");
+  // Punctuation the filename sanitizer would turn into underscores; a title
+  // reads better without it than with "Work_ Building".
+  t = t.replace(/[,;:]/g, "").replace(/\s{2,}/g, " ").trim();
+  if (t.length < 6) return null;
+  // "Document1", "untitled 2", "draft" and friends: placeholder titles the
+  // authoring tool invented, not names. [\s\d]* rather than \b because
+  // "Document1" has no word boundary before the digit.
+  if (/^(untitled|document|new document|blank|draft|temp|scan|final)[\s\d]*$/i.test(t)) {
+    return null;
+  }
+  // Titles are prose-ish; anything absurdly long is an abstract, not a name.
+  if (t.length > 120) t = `${t.slice(0, 117).trimEnd()}...`;
+  const safe = sanitizeAttachmentFilename(t);
+  return safe === "attachment" ? null : safe;
+}
