@@ -87,3 +87,42 @@ describe("filenameFromResponse", () => {
     expect(name).not.toContain("..");
   });
 });
+
+import { filenameFromPdfTitle } from "@/lib/domain/attachment-meta";
+
+/**
+ * The last-resort naming source, used when the download link has expired: the
+ * PDF's own metadata Title. Junk must be refused, not cleaned, because a
+ * wrong-but-plausible name on a bid document is worse than a generic one.
+ */
+describe("filenameFromPdfTitle", () => {
+  it("uses a real document title", () => {
+    expect(filenameFromPdfTitle("Statement of Work, Building 400 Chiller Replacement")).toBe(
+      "Statement of Work Building 400 Chiller Replacement"
+    );
+  });
+
+  it("strips the authoring-tool prefix Word bakes in", () => {
+    expect(filenameFromPdfTitle("Microsoft Word - Wage Determination 2025-0042.docx")).toBe(
+      "Wage Determination 2025-0042"
+    );
+  });
+
+  it("refuses junk titles rather than cleaning them", () => {
+    for (const junk of ["untitled", "Document1", "  ", "", "draft", "scan"]) {
+      expect(filenameFromPdfTitle(junk)).toBeNull();
+    }
+    expect(filenameFromPdfTitle(null)).toBeNull();
+  });
+
+  it("keeps a long but real title, truncated", () => {
+    const long = "Performance Work Statement for Grounds Maintenance ".repeat(4);
+    const out = filenameFromPdfTitle(long);
+    expect(out).not.toBeNull();
+    expect(out!.length).toBeLessThanOrEqual(124);
+  });
+
+  it("refuses a title that sanitizes away to nothing", () => {
+    expect(filenameFromPdfTitle("///???///")).toBeNull();
+  });
+});

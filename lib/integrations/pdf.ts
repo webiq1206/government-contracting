@@ -55,3 +55,24 @@ export function looksLikePdfBytes(data: Uint8Array | Buffer): boolean {
     data[4] === 0x2d // -
   );
 }
+
+/**
+ * The document's own title, from PDF metadata.
+ *
+ * Last resort for naming: used when the download URL has expired so the
+ * server can no longer say the filename, but the bytes are already in
+ * storage. Returns the raw Title string or null; deciding whether it makes a
+ * usable filename is filenameFromPdfTitle's job, which is pure and tested.
+ */
+export async function extractPdfTitle(data: Uint8Array | Buffer): Promise<string | null> {
+  try {
+    const { getMeta, getDocumentProxy } = await import("unpdf");
+    const bytes =
+      data.constructor === Uint8Array ? (data as Uint8Array) : new Uint8Array(data);
+    const meta = await getMeta(await getDocumentProxy(bytes));
+    const title = (meta?.info as { Title?: unknown } | undefined)?.Title;
+    return typeof title === "string" && title.trim() ? title.trim() : null;
+  } catch {
+    return null;
+  }
+}
