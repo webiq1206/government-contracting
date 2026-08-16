@@ -17,15 +17,17 @@
   /* Surfaces */
   --background: 241 236 227; /* paper #f1ece3 */
   --foreground: 23 23 19; /* ink */
-  --surface: 246 242 235;
-  --surface-raised: 251 250 247;
+  /* Lifted further off the paper background: at 246-on-241 a card
+     read as the same color and sections blurred together. */
+  --surface: 249 246 240;
+  --surface-raised: 254 253 251;
   --muted: 232 225 214;
   --muted-foreground: 107 100 88;
   --border: 205 195 181; /* #cdc3b5 */
   --border-strong: 180 168 150;
 
   /* Chrome (sidebar / elevated panels) — light theme stays on paper family */
-  --shell: 246 242 235;
+  --shell: 249 246 240;
   --shell-border: 205 195 181;
 
   /* Brand ink stays dark in both themes (gold CTAs, marketing night). */
@@ -69,14 +71,16 @@
 
   --background: 9 10 9; /* night */
   --foreground: 246 242 235;
-  --surface: 23 24 19; /* #171813 */
-  --surface-raised: 30 31 28;
+  /* 23-on-9 made cards a rumor; sections need to be planes, not
+     tints. Raised in step so hover still has somewhere to go. */
+  --surface: 28 29 25;
+  --surface-raised: 38 39 35;
   --muted: 36 37 33;
   --muted-foreground: 186 176 160;
   --border: 255 255 255;
   --border-strong: 255 255 255;
 
-  --shell: 23 24 19;
+  --shell: 28 29 25;
   --shell-border: 255 255 255;
 
   --ink: 23 23 19;
@@ -229,10 +233,10 @@ body {
 
   /* Surfaces */
   .card {
-    @apply rounded-sm border border-border/55 bg-surface p-4 sm:p-5 shadow-none;
+    @apply rounded-sm border border-border/75 bg-surface p-4 sm:p-5 shadow-none;
   }
   .dark .card {
-    @apply border-white/12 bg-shell;
+    @apply border-white/[0.17] bg-shell;
   }
   .card-hover {
     @apply transition-colors hover:border-border-strong hover:bg-surface-raised;

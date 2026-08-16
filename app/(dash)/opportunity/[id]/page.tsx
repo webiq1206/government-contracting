@@ -22,6 +22,7 @@ import { PricingCompsCard } from "@/components/pricing-comps-card";
 import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
 import { AttentionStrip } from "@/components/attention-strip";
 import { TradeCoverageStrip } from "@/components/trade-coverage-strip";
+import { TradeRequirementSummary } from "@/components/trade-requirement-summary";
 import { SubWorkNeeded } from "@/components/sub-work-needed";
 import { InfoTip } from "@/components/info-tip";
 import { SectionHeading } from "@/components/section-heading";
@@ -320,6 +321,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 </p>
                 <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
               </div>
+              <TradeRequirementSummary coverage={coverage} />
               <div id="next" data-guide-target="next-step">
                 <NextStepBanner
                   opportunityId={opp.id}
