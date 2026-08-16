@@ -30,6 +30,9 @@ import { ActivityTimeline } from "@/components/activity-timeline";
 import { OpportunityWorkspace } from "@/components/opportunity-workspace";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
+import { buildGuidedPlan } from "@/lib/domain/guided-plan";
+import { GuidedPlanPanel } from "@/components/guided-plan";
+import { openAuditBlockers } from "@/lib/domain/package";
 import { termTip } from "@/lib/domain/glossary";
 import { resolveSubWork } from "@/lib/domain/sub-work";
 import { buildActivityTimeline } from "@/lib/domain/activity-timeline";
@@ -61,7 +64,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
     getAutomationRules(),
   ]);
   if (!detail) notFound();
-  const { opp, quotes, subs, documents, logs, competitors, subComms } = detail;
+  const { opp, quotes, subs, documents, logs, competitors, subComms, pendingCalls } = detail;
   const hoursSinceUpdate = opp.updated_at
     ? (Date.now() - new Date(opp.updated_at).getTime()) / 3_600_000
     : null;
@@ -181,6 +184,42 @@ export default async function OpportunityPage({ params }: { params: { id: string
     logs,
     communications: subComms,
     limit: 40,
+  });
+
+  const complianceRows = bid?.compliance_matrix ?? [];
+  const expired =
+    opp.status === "archived" && (opp.risk_flags ?? []).includes("expired");
+  const plan = buildGuidedPlan({
+    stage: opp.stage,
+    tier: opp.tier,
+    humanActionRequired: opp.human_action_required,
+    pastPerfBlocked,
+    expired,
+    score: opp.score,
+    hasAnalysis: Boolean(analysis),
+    missingInfo: (analysis?.completeness?.missing ?? [])
+      .filter((m) => m.critical)
+      .map((m) => ({ what: m.what, how: m.resolution })),
+    coverage: {
+      trades: coverage.trades.filter((t) =>
+        (analysis?.required_trades ?? []).includes(t.trade)
+      ),
+    },
+    quotesEntered,
+    outreachDraftOnly,
+    callsEnabled: rules.calls_enabled,
+    pendingCalls,
+    hasBid,
+    bidAmount: bid?.bid_amount ?? null,
+    packageReady: bid?.package_ready ?? null,
+    packageBlockers: [
+      ...(bid?.validation_json?.blockers ?? []),
+      ...openAuditBlockers(bid?.audit_findings).map((f) => f.finding),
+    ],
+    needsSignature: complianceRows.filter((r) => r.status === "needs_signature").length,
+    needsProvide: complianceRows.filter((r) => r.status === "needs_operator").length,
+    bidSubmitted,
+    outcome: bid?.outcome ?? null,
   });
 
   const place =
@@ -315,12 +354,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
         <OpportunityWorkspace
           banner={
             <div className="space-y-3 px-5 pt-4 sm:px-6">
-              <div className="rounded-md border border-border/55 bg-surface/80 px-3 py-2.5 dark:border-white/10">
-                <p className="mb-1.5 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                  Where this stands
-                </p>
-                <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
-              </div>
+              <GuidedPlanPanel plan={plan} />
               <TradeRequirementSummary coverage={coverage} />
               <div id="next" data-guide-target="next-step">
                 <NextStepBanner
@@ -338,9 +372,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   pastPerfBlocked={pastPerfBlocked}
                   automationPaused={automation.paused}
                   hoursSinceUpdate={hoursSinceUpdate}
-                  expired={
-                    opp.status === "archived" && (opp.risk_flags ?? []).includes("expired")
-                  }
+                  expired={expired}
                   hasQuotes={quotesEntered > 0}
                   outreachDraftOnly={outreachDraftOnly}
                   riskFlags={opp.risk_flags}
