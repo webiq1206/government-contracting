@@ -86,7 +86,13 @@ export function buildActivityTimeline(input: {
       kind: channelKind(channel),
       title: subject ?? `${channel}${dirLabel ? ` ${dirLabel}` : ""}`,
       detail: body && body !== subject ? body.slice(0, 280) : null,
-      actor: direction === "inbound" ? "Subcontractor" : "Brost Co",
+      // Outbound email is the platform's doing; notes and calls are a person's.
+      actor:
+        direction === "inbound"
+          ? "Subcontractor"
+          : channel === "email"
+            ? "Brost Co"
+            : "You",
     });
   }
 
