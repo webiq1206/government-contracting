@@ -1730,3 +1730,89 @@ export async function backlinkChanges(): Promise<{ recent: BacklinkChange[]; los
   const live = await queryOne<{ n: string }>(`select count(*)::text as n from backlinks where lost_at is null`);
   return { recent: recent.map(map), lost: lost.map(map), liveCount: Number(live?.n ?? 0) };
 }
+
+/**
+ * The unified work queue: everything waiting on the operator, as one list.
+ *
+ * Feeds the queue-first Today. Each source maps to a WorkItem whose href is
+ * the one place the item is completed. Org-scoped the same way reviewQueue
+ * is; an unresolvable tenant yields an empty queue rather than the founding
+ * org's work.
+ */
+export async function workQueue(): Promise<import("./domain/work-queue").WorkItem[]> {
+  const { sortWorkItems } = await import("./domain/work-queue");
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
+
+  const [decisions, calls, actionable] = await Promise.all([
+    query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null }>(
+      `select id, title, deadline, review_expires_at from opportunities
+        where org_id=$1 and tier='review' and human_action_required=true and status='open'`,
+      [orgId]
+    ),
+    query<{ id: string; company_name: string; trade: string | null; opp_title: string | null; deadline: string | null }>(
+      `select cc.id, s.company_name, cc.trade, o.title as opp_title, o.deadline
+         from call_cards cc
+         join opportunities o on o.id = cc.opportunity_id
+         join subcontractors s on s.id = cc.subcontractor_id
+        where o.org_id=$1 and cc.status='pending' and o.status='open'`,
+      [orgId]
+    ),
+    query<{ id: string; title: string | null; stage: string; deadline: string | null }>(
+      `select id, title, stage, deadline from opportunities
+        where org_id=$1 and human_action_required=true and status='open'
+          and not (tier='review' and stage='scoring')`,
+      [orgId]
+    ),
+  ]);
+
+  const items = [
+    ...decisions.map((d) => ({
+      key: `decide:${d.id}`,
+      kind: "decide" as const,
+      title: `Pursue or pass: ${d.title ?? "untitled opportunity"}`,
+      context: "Borderline score",
+      due: d.deadline,
+      expiresAt: d.review_expires_at,
+      href: `/opportunity/${d.id}#next`,
+      actionLabel: "Decide",
+    })),
+    ...calls.map((c) => ({
+      key: `call:${c.id}`,
+      kind: "call" as const,
+      title: `Call ${c.company_name}${c.trade ? ` about ${c.trade}` : ""}`,
+      context: c.opp_title ?? "",
+      due: c.deadline,
+      href: `/call-queue`,
+      actionLabel: "Open call",
+    })),
+    ...actionable.map((o) => ({
+      key: `act:${o.id}`,
+      kind:
+        o.stage === "bid_building"
+          ? ("review_bid" as const)
+          : o.stage === "quote_entry"
+            ? ("enter_quote" as const)
+            : ("fix_blocker" as const),
+      title:
+        o.stage === "bid_building"
+          ? `Review & submit bid: ${o.title ?? "untitled"}`
+          : o.stage === "quote_entry"
+            ? `Enter quotes: ${o.title ?? "untitled"}`
+            : `Resolve blocker: ${o.title ?? "untitled"}`,
+      context: o.stage.replace(/_/g, " "),
+      due: o.deadline,
+      href:
+        o.stage === "bid_building"
+          ? `/opportunity/${o.id}#submission`
+          : o.stage === "quote_entry"
+            ? `/opportunity/${o.id}#quotes`
+            : `/opportunity/${o.id}#next`,
+      actionLabel:
+        o.stage === "bid_building" ? "Review bid" : o.stage === "quote_entry" ? "Enter quote" : "Resolve",
+    })),
+  ];
+  return sortWorkItems(items);
+}
