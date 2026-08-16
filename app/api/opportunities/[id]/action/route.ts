@@ -52,17 +52,53 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 
-  const { action } = await req.json().catch(() => ({}));
+  const { action, stage: targetStage } = await req.json().catch(() => ({}));
   const opp = await queryOne<{ id: string; stage: string }>(
     `select id, stage from opportunities where id=$1 and org_id=$2`,
     [params.id, orgId]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  if (action === "pursue" || action === "rerun" || action === "send_back") {
+  if (action === "pursue" || action === "rerun" || action === "send_back" || action === "move") {
     if (await isAutomationPaused()) {
       return NextResponse.json({ error: AUTOMATION_PAUSED_ERROR }, { status: 409 });
     }
+  }
+
+
+  /**
+   * Drag-and-drop and the card menu's "Move to". The operator overrides the
+   * pipeline's own routing, so the move re-runs the target stage's agents:
+   * dropping a card on Analysis re-analyzes it, dropping it on Outreach
+   * re-runs outreach for its paired subs. Stages with no agent (quote entry,
+   * submitted) flag for the human work they exist for. Guardrails live in
+   * resolveManualMove; agents keep their own (bid-builder refuses a $0 bid,
+   * outreach refuses an incomplete brief), so a hopeful drop degrades to a
+   * named blocker rather than a bad artifact.
+   */
+  if (action === "move") {
+    const { resolveManualMove } = await import("@/lib/domain/stage-move");
+    const callsEnabled = await areCallsEnabled();
+    const resolved = resolveManualMove(opp.stage, String(targetStage ?? ""), callsEnabled);
+    if (!resolved.ok || !resolved.stage) {
+      return NextResponse.json({ error: resolved.error ?? "That move is not allowed." }, { status: 400 });
+    }
+    const agents = STAGE_AGENTS[resolved.stage] ?? [];
+    await query(
+      `update opportunities
+          set stage=$2, status='open', human_action_required=$3, review_expires_at=null
+        where id=$1`,
+      [params.id, resolved.stage, agents.length === 0]
+    );
+    for (const a of agents) await enqueue(a, { opportunityId: params.id });
+    await logAgent({
+      agent: "operator",
+      action: "move",
+      opportunityId: params.id,
+      level: "info",
+      message: `Operator ${auth.email} moved opportunity from ${opp.stage.replace(/_/g, " ")} to ${resolved.stage.replace(/_/g, " ")}${agents.length ? ` (${agents.join(", ")} queued)` : ""}.`,
+    });
+    return NextResponse.json({ ok: true, stage: resolved.stage, requeued: agents });
   }
 
   if (action === "pursue") {

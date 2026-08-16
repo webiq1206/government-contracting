@@ -2,6 +2,7 @@ import Link from "next/link";
 import { pipelineOpportunities, PIPELINE_STAGES } from "@/lib/data";
 import { PageHeader, ScoreBadge } from "@/components/badges";
 import { PipelineCardMenu } from "@/components/pipeline-card-menu";
+import { DraggableCard, StageDropColumn } from "@/components/pipeline-dnd";
 import { stageMode } from "@/lib/stage-meta";
 import { PAGE_HELP } from "@/lib/help-content";
 import { integrationStatus } from "@/lib/config";
@@ -204,14 +205,21 @@ export default async function PipelinePage({
                                         <span className="badge mt-1 bg-muted text-muted-foreground">Automatic</span>
                   )}
                 </div>
+                {/* Drop target wraps the scroll area so an empty column is
+                    still droppable. Dragging is pointer-only; touch uses the
+                    card menu's Move-to chips, one code path server-side. */}
+                <StageDropColumn stage={stage.key}>
                 <div className="scroll-thin flex-1 space-y-2 overflow-y-auto pr-1">
                   {cards.map((o) => (
-                    <PipelineCard key={o.id} o={o} rules={rules} />
+                    <DraggableCard key={o.id} opportunityId={o.id}>
+                      <PipelineCard o={o} rules={rules} />
+                    </DraggableCard>
                   ))}
                   {cards.length === 0 && (
                     <p className="px-1 py-4 text-center text-xs text-slate-500">-</p>
                   )}
                 </div>
+                </StageDropColumn>
               </div>
             );
           })}

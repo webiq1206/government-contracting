@@ -10,6 +10,17 @@ import { useRouter } from "next/navigation";
  * handler stops propagation and prevents the default navigation.
  */
 
+const MOVE_TARGETS: { key: string; label: string }[] = [
+  { key: "scoring", label: "Scoring" },
+  { key: "analysis", label: "Analysis" },
+  { key: "sub_research", label: "Sub research" },
+  { key: "outreach", label: "Outreach" },
+  { key: "call_queue", label: "Calls" },
+  { key: "quote_entry", label: "Quotes" },
+  { key: "bid_building", label: "Bid building" },
+  { key: "submitted", label: "Submitted" },
+];
+
 // Stages that a machine agent produces, so "re-run this stage" is meaningful.
 const AGENT_STAGES = new Set([
   "scoring",
@@ -32,7 +43,7 @@ const STAGE_ORDER = [
   "submitted",
 ];
 
-type Action = "pursue" | "dismiss" | "rerun" | "send_back";
+type Action = "pursue" | "dismiss" | "rerun" | "send_back" | "move";
 
 export function PipelineCardMenu({
   opportunityId,
@@ -63,7 +74,12 @@ export function PipelineCardMenu({
     e.stopPropagation();
   }
 
-  async function run(e: React.MouseEvent, action: Action, confirmText?: string) {
+  async function run(
+    e: React.MouseEvent,
+    action: Action,
+    confirmText?: string,
+    targetStage?: string
+  ) {
     stop(e);
     if (confirmText && !window.confirm(confirmText)) return;
     setBusy(true);
@@ -72,7 +88,7 @@ export function PipelineCardMenu({
       const res = await fetch(`/api/opportunities/${opportunityId}/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify(targetStage ? { action, stage: targetStage } : { action }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -141,6 +157,25 @@ export function PipelineCardMenu({
               </span>
             </MenuItem>
           )}
+          {/* Move to any stage: touch-friendly parity with drag-and-drop.
+              The route redirects the call stage when calling is off and
+              re-runs the target stage's agents, same as a drop. */}
+          <div className="border-t border-border px-3 pb-1 pt-2 text-[0.65rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            Move to
+          </div>
+          <div className="flex flex-wrap gap-1 px-3 pb-2">
+            {MOVE_TARGETS.filter((t) => t.key !== stage).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                disabled={busy}
+                onClick={(e) => run(e, "move", undefined, t.key)}
+                className="rounded border border-border px-2 py-1 text-xs text-foreground transition-colors hover:border-gold hover:bg-gold/10 disabled:opacity-40"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           <MenuItem
             disabled={busy}
             danger

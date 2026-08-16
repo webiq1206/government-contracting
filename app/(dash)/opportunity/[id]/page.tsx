@@ -359,7 +359,16 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
                     Why this fits
                   </h2>
-                  <p className="mt-2 font-display text-2xl font-semibold leading-snug text-foreground sm:text-3xl">
+                  {/* Display type only when the verdict is actually verdict-
+                      sized. Older analyses carry a paragraph here, and a
+                      paragraph set at 3xl serif is a wall, not a headline. */}
+                  <p
+                    className={`mt-2 font-semibold text-foreground ${
+                      whyHeadline.length <= 90
+                        ? "font-display text-2xl leading-snug sm:text-3xl"
+                        : "text-base leading-relaxed"
+                    }`}
+                  >
                     {whyHeadline}
                   </p>
                   {whySupport && (
