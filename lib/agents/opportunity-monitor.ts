@@ -309,21 +309,35 @@ export const opportunityMonitor: AgentDefinition = {
     const enqueued: AgentResult["enqueued"] = [];
     const naicsAll = new Set<string>();
 
+    let orgErrors = 0;
     for (const org of orgs) {
-      const result = await monitorForOrg(org.id);
-      ingested += result.ingested;
-      sourcesSought += result.sourcesSought;
-      ingestErrors += result.ingestErrors;
-      skippedDisabled = skippedDisabled || result.skippedDisabled;
-      enqueued.push(...(result.enqueued ?? []));
-      for (const n of result.naics) naicsAll.add(n);
+      // Fault-isolate each org the way each notice is isolated inside one:
+      // a tenant whose run throws (bad profile JSON, a DB hiccup mid-batch)
+      // must not stop every tenant after it in the list from being polled.
+      try {
+        const result = await monitorForOrg(org.id);
+        ingested += result.ingested;
+        sourcesSought += result.sourcesSought;
+        ingestErrors += result.ingestErrors;
+        skippedDisabled = skippedDisabled || result.skippedDisabled;
+        enqueued.push(...(result.enqueued ?? []));
+        for (const n of result.naics) naicsAll.add(n);
+      } catch (err) {
+        orgErrors++;
+        await logAgent({
+          agent: "opportunity-monitor",
+          action: "org-run-failed",
+          level: "error",
+          message: `Ingestion failed for org ${org.id}: ${(err as Error).message}. Other orgs continue; this org is retried on the next scheduled run.`,
+        }).catch(() => undefined);
+      }
     }
 
     const summary = skippedDisabled
       ? `Ingestion partial (SAM disabled). ${ingested} new from other sources across ${orgs.length} org(s).`
       : `Ingested ${ingested} new opportunities across ${orgs.length} org(s) (${sourcesSought} sources-sought), triggered scoring.${
           ingestErrors > 0 ? ` Skipped ${ingestErrors} malformed notice(s).` : ""
-        }`;
+        }${orgErrors > 0 ? ` ${orgErrors} org(s) failed and will retry next run.` : ""}`;
     return {
       ok: true,
       summary,

@@ -170,3 +170,64 @@ export function normalizeAttachmentMeta(input: {
     "application/octet-stream";
   return { kind: "unknown", filename: rawName, mime };
 }
+
+/**
+ * Recover the real filename of a downloaded attachment.
+ *
+ * SAM's notice JSON lists resourceLinks as bare API URLs with no name, so
+ * ingest labels every one of them "attachment" and, until this existed, that
+ * label became the stored document name. The blast radius was wider than
+ * cosmetics: trade prioritisation ranks documents by name, so identical names
+ * meant no ranking; official-form linking matches "SF-1449" against document
+ * names, so it could never match; and a subcontractor received files literally
+ * called attachment.pdf.
+ *
+ * The server does say the name, in Content-Disposition, which is where this
+ * looks first (RFC 5987 filename*= before plain filename=). Failing that, a
+ * URL whose last path segment carries an extension is trusted. Failing both,
+ * the caller's label stands and byte-sniffing still corrects the extension.
+ */
+export function filenameFromResponse(input: {
+  contentDisposition?: string | null;
+  url?: string | null;
+  fallback: string;
+}): string {
+  const cd = input.contentDisposition ?? "";
+
+  // filename*=UTF-8''...  (RFC 5987; may be quoted, percent-encoded)
+  const ext = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(cd);
+  if (ext?.[1]) {
+    try {
+      const decoded = decodeURIComponent(ext[1].trim().replace(/^"|"$/g, ""));
+      const safe = sanitizeAttachmentFilename(decoded);
+      if (safe !== "attachment") return safe;
+    } catch {
+      /* malformed percent-encoding: fall through */
+    }
+  }
+
+  // filename="..." or filename=...
+  const plain = /filename\s*=\s*("([^"]+)"|[^;]+)/.exec(cd);
+  const plainName = plain?.[2] ?? (plain?.[1] && !plain[1].startsWith('"') ? plain[1] : null);
+  if (plainName) {
+    const safe = sanitizeAttachmentFilename(plainName.trim());
+    if (safe !== "attachment") return safe;
+  }
+
+  // Last URL segment, only when it looks like a real file (has an extension).
+  if (input.url) {
+    try {
+      const segment = decodeURIComponent(
+        new URL(input.url).pathname.split("/").pop() ?? ""
+      );
+      if (segment && extensionOf(segment)) {
+        const safe = sanitizeAttachmentFilename(segment);
+        if (safe !== "attachment") return safe;
+      }
+    } catch {
+      /* not a parseable URL */
+    }
+  }
+
+  return input.fallback;
+}

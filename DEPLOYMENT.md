@@ -98,9 +98,11 @@ Postgres-backed queue (pg-boss), **no Redis needed**.
 ### Deployments (always-on)
 
 For 24/7 operation, use **Replit Deployments**. The included `.replit`
-`[deployment]` block builds with `npm run db:setup && npm run build` and runs
-`npm run start`. If you prefer to run web and worker as two separate services
-(web-facing + background), set `RUN_WORKER=false` on the web service and run
+`[deployment]` block builds with `npm run build` (the build never touches the
+database) and runs `npm run start`. Pending migrations are applied by the
+worker at boot (`lib/migrate.ts`), even on instances with `RUN_WORKER=false`.
+If you prefer to run web and worker as two separate services (web-facing +
+background), set `RUN_WORKER=false` on the web service and run
 `npm run worker` on the second.
 
 ---
