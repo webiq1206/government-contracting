@@ -5,6 +5,8 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { areCallsEnabled } from "@/lib/app-settings";
 import { BulkCallQueue } from "@/components/bulk-call-queue";
 import { EmptyState } from "@/components/empty-state";
+import { buildCallQueueGuide } from "@/lib/domain/call-queue-guide";
+import { GuidedPlanPanel } from "@/components/guided-plan";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +60,26 @@ export default async function CallQueuePage({
             }
           />
         ) : (
-          <BulkCallQueue cards={cards} openId={openId} />
+          <div className="space-y-4">
+            {/* Which call to make first and what opening it does, before the
+                list asks anyone to choose. Hidden when a card is already open
+                via deep link; the workspace is the guide from there. */}
+            {!openId && (
+              <GuidedPlanPanel
+                eyebrow="How calling works"
+                plan={buildCallQueueGuide({
+                  first: {
+                    id: cards[0].id,
+                    companyName: cards[0].company_name,
+                    trade: cards[0].trade ?? null,
+                    fromReply: cards[0].source === "reply",
+                  },
+                  queueLength: cards.length,
+                })}
+              />
+            )}
+            <BulkCallQueue cards={cards} openId={openId} />
+          </div>
         )}
       </div>
     </div>

@@ -18,53 +18,20 @@
  */
 
 import type { TradeCoverageSummary } from "./trade-coverage";
+import type {
+  PlanBlocker,
+  PlanOwner,
+  PlanStatus,
+  PlanStep,
+  StepPlan,
+} from "./step-plan";
 
-export type PlanStatus = "done" | "current" | "blocked" | "upcoming";
-export type PlanOwner = "you" | "brost" | "subs" | "agency";
-
-export const PLAN_OWNER_LABEL: Record<PlanOwner, string> = {
-  you: "You do this",
-  brost: "Brost Co does this",
-  subs: "Waiting on subcontractors",
-  agency: "Waiting on the agency",
-};
-
-export interface PlanBlocker {
-  /** What is wrong, stated plainly. */
-  what: string;
-  /** How to fix it, stated as an instruction. */
-  how: string;
-  /** Where the fix happens. */
-  href?: string;
-}
-
-export interface PlanStep {
-  key: string;
-  /** 1-based position in the plan. */
-  n: number;
-  title: string;
-  /** One plain sentence saying what this step means. */
-  plain: string;
-  status: PlanStatus;
-  owner: PlanOwner;
-  /** Present-state progress, e.g. "1 of 2 trades priced". */
-  detail?: string;
-  /** The one button that moves this step, for current/blocked steps. */
-  action?: { label: string; href: string };
-  blockers?: PlanBlocker[];
-}
-
-export interface GuidedPlan {
-  steps: PlanStep[];
-  done: number;
-  total: number;
-  /** The live step (stage-anchored); absent when the record is closed. */
-  active?: PlanStep;
-  /** "Step 8 of 13: Collect the prices" / "All 13 steps are done". */
-  headline: string;
-  /** Set instead of an active step when the record left the pipeline. */
-  closed?: { label: string; note: string };
-}
+// The generic step-plan shape lives in step-plan.ts and is shared with the
+// sub, contract, and call-queue plans; these re-exports keep existing
+// opportunity-plan call sites working unchanged.
+export { PLAN_OWNER_LABEL } from "./step-plan";
+export type { PlanBlocker, PlanOwner, PlanStatus, PlanStep } from "./step-plan";
+export type GuidedPlan = StepPlan;
 
 export interface GuidedPlanInput {
   stage: string;

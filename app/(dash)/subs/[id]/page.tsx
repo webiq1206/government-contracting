@@ -22,6 +22,8 @@ import {
   outreachLabel,
 } from "@/lib/domain/sub-contact";
 import { stageLabel } from "@/lib/domain/journey";
+import { buildSubPlan } from "@/lib/domain/sub-plan";
+import { GuidedPlanPanel } from "@/components/guided-plan";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import type { ProjectHistoryItem } from "@/lib/types";
 
@@ -73,6 +75,18 @@ export default async function SubDetailPage({
     : [];
   const contactLabel = contactStatusLabel(sub.contact_status);
   const openPairings = pairings.filter((p) => p.status === "open").length;
+  const plan = buildSubPlan({
+    hasEmail: Boolean(sub.email),
+    hasPhone: Boolean(sub.phone),
+    emailVerified: Boolean(sub.email_verified),
+    contactStatus: sub.contact_status ?? null,
+    samExcluded: Boolean(sub.sam_excluded),
+    touches: stats.touches,
+    openPairings,
+    totalPairings: pairings.length,
+    quoteCount: quotes.length,
+    compliance: compliance.assessment,
+  });
 
   return (
     <div className="flex page-shell">
@@ -115,6 +129,10 @@ export default async function SubDetailPage({
       </PageHeader>
 
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
+        {/* The readiness story first: what stands between this listing and a
+            company you can send work to, with the fix for each gap. */}
+        <GuidedPlanPanel plan={plan} eyebrow="Getting this sub job-ready" />
+
         {/* Every way to reach this company, one tap from the name. Dimmed
             rather than hidden when a channel is missing, so the row doubles
             as a contact-data health check. */}

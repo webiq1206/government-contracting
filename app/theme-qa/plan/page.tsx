@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { GuidedPlanPanel } from "@/components/guided-plan";
 import { buildGuidedPlan, type GuidedPlanInput } from "@/lib/domain/guided-plan";
+import { buildSubPlan } from "@/lib/domain/sub-plan";
+import { buildContractPlan } from "@/lib/domain/contract-plan";
+import { buildCallQueueGuide } from "@/lib/domain/call-queue-guide";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +122,60 @@ const STATES: { label: string; plan: ReturnType<typeof buildGuidedPlan> }[] = [
   },
 ];
 
+/** The sibling plans that reuse the same panel. */
+const SIBLINGS: {
+  label: string;
+  eyebrow: string;
+  plan: ReturnType<typeof buildGuidedPlan>;
+}[] = [
+  {
+    label: "Sub record: paperwork missing",
+    eyebrow: "Getting this sub job-ready",
+    plan: buildSubPlan({
+      hasEmail: true,
+      hasPhone: true,
+      emailVerified: true,
+      contactStatus: "verified",
+      samExcluded: false,
+      touches: 4,
+      openPairings: 1,
+      totalPairings: 2,
+      quoteCount: 1,
+      compliance: {
+        clearedForAward: false,
+        missing: ["w9"],
+        expired: ["coi_general_liability"],
+        awaitingVerification: [],
+      },
+    }),
+  },
+  {
+    label: "Contract: no backup sub, one overdue milestone",
+    eyebrow: "Running this contract",
+    plan: buildContractPlan({
+      completed: false,
+      hasBackupSub: false,
+      milestones: [
+        { name: "Mobilize", due: "2026-07-01", status: "complete" },
+        { name: "Rough-in", due: "2026-08-01", status: "in_progress" },
+      ],
+      coordinationCount: 2,
+      nonSsPct: 46,
+      cparsStatus: "not_started",
+      cparsDue: null,
+      now: "2026-08-16T12:00:00Z",
+    }),
+  },
+  {
+    label: "Call queue: 3 waiting, top from a reply",
+    eyebrow: "How calling works",
+    plan: buildCallQueueGuide({
+      first: { id: "demo", companyName: "Rivera Mechanical", trade: "HVAC", fromReply: true },
+      queueLength: 3,
+    }),
+  },
+];
+
 export default function PlanLab() {
   if (process.env.NODE_ENV === "production") notFound();
   return (
@@ -130,6 +187,12 @@ export default function PlanLab() {
           <div key={s.label}>
             <p className="label mb-2">{s.label}</p>
             <GuidedPlanPanel plan={s.plan} />
+          </div>
+        ))}
+        {SIBLINGS.map((s) => (
+          <div key={s.label}>
+            <p className="label mb-2">{s.label}</p>
+            <GuidedPlanPanel plan={s.plan} eyebrow={s.eyebrow} />
           </div>
         ))}
       </div>

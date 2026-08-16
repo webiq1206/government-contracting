@@ -1,8 +1,8 @@
 import {
   PLAN_OWNER_LABEL,
-  type GuidedPlan,
+  type StepPlan,
   type PlanStep,
-} from "@/lib/domain/guided-plan";
+} from "@/lib/domain/step-plan";
 
 /**
  * The guided plan, rendered: "you are on step 8 of 13, here is the button".
@@ -15,7 +15,21 @@ import {
  * Server-rendered on purpose: the plan is a picture of stored state, so
  * there is nothing here for a client bundle to do.
  */
-export function GuidedPlanPanel({ plan }: { plan: GuidedPlan }) {
+export function GuidedPlanPanel({
+  plan,
+  eyebrow = "Your path to submission",
+  headerAction = true,
+}: {
+  plan: StepPlan;
+  /** Panel label naming the journey, e.g. "Getting this sub job-ready". */
+  eyebrow?: string;
+  /**
+   * Show the live step's button in the always-visible header. Turn off only
+   * when another element right next to the panel already carries the same
+   * action (the opportunity page's Next-step banner).
+   */
+  headerAction?: boolean;
+}) {
   if (plan.closed) {
     return (
       <div className="rounded-md border border-border/75 bg-surface px-3 py-2.5 dark:border-white/[0.17]">
@@ -33,7 +47,7 @@ export function GuidedPlanPanel({ plan }: { plan: GuidedPlan }) {
       <div className="px-3 pb-2.5 pt-3">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <p className="text-[0.65rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-            Your path to submission
+            {eyebrow}
           </p>
           <p className="num text-xs text-muted-foreground">
             {plan.done} of {plan.total} steps done
@@ -66,6 +80,16 @@ export function GuidedPlanPanel({ plan }: { plan: GuidedPlan }) {
               {PLAN_OWNER_LABEL[plan.active.owner]}.
             </span>
           </p>
+        )}
+        {/* The live step's button belongs on screen, not one tap inside the
+            checklist; a guide that hides its own button is a map, not a guide. */}
+        {headerAction && plan.active?.action && (
+          <a
+            href={plan.active.action.href}
+            className="btn-primary mt-2.5 inline-flex text-xs"
+          >
+            {plan.active.action.label}
+          </a>
         )}
         {problems.length > 0 && (
           <p className="mt-1 text-xs font-medium text-risk">

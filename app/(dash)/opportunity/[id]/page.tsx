@@ -354,7 +354,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
         <OpportunityWorkspace
           banner={
             <div className="space-y-3 px-5 pt-4 sm:px-6">
-              <GuidedPlanPanel plan={plan} />
+              <GuidedPlanPanel plan={plan} headerAction={false} />
               <TradeRequirementSummary coverage={coverage} />
               <div id="next" data-guide-target="next-step">
                 <NextStepBanner
