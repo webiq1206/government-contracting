@@ -4,6 +4,7 @@ import { PipelineStrip } from "@/components/pipeline-strip";
 import { AutomationPausedBanner } from "@/components/automation-control";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
 import { SetupChecklist } from "@/components/setup-checklist";
+import { workQueue } from "@/lib/data";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { integrationStatus } from "@/lib/config";
@@ -21,6 +22,7 @@ import { SnoozeButton } from "@/components/snooze-button";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
 import { TodayLive } from "@/components/today-live";
 import { TodayGreeting } from "@/components/today-greeting";
+import { WorkQueue } from "@/components/work-queue";
 import { EmptyState } from "@/components/empty-state";
 import type { AutomationRules } from "@/lib/domain/intake";
 import { currency, shortDate, timeAgo } from "@/lib/format";
@@ -342,12 +344,13 @@ function PipelineHealthRail({
 
 export default async function TodayPage() {
   const rules = await getAutomationRules();
-  const [data, profile, automation, digest, engine] = await Promise.all([
+  const [data, profile, automation, digest, engine, queueItems] = await Promise.all([
     actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
     getAutomationState(),
     dailyDigest(),
     engineStatus(),
+    workQueue().catch(() => []),
   ]);
   const engineDown =
     !automation.paused &&
@@ -458,6 +461,11 @@ export default async function TodayPage() {
                   <SetupChecklist checklist={setup} />
                 </div>
               )}
+
+              {/* The one list of everything waiting on a person, above the
+                  themed sections. The sections stay for context; this answers
+                  "what should I do next" before any of them are opened. */}
+              {queueItems.length > 0 && <WorkQueue items={queueItems} limit={6} />}
 
               {clear && (
                 <EmptyState
