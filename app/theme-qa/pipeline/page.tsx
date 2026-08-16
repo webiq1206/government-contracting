@@ -119,7 +119,7 @@ export default function MobilePipelineLab() {
                 badgeLabel={stageMode(stage.key) === "you" ? "Needs you" : "Automatic"}
               >
                 {cards.map((c) => (
-                  <Card key={c.id} fixture={c} />
+                  <Card key={c.id} fixture={c} stageKey={stage.key} />
                 ))}
               </Column>
             );
@@ -171,8 +171,14 @@ function Column({
   );
 }
 
-/** Mirrors PipelineCard without the routing and menu. */
-function Card({ fixture }: { fixture: Fixture }) {
+/**
+ * Mirrors PipelineCard without the routing and menu.
+ *
+ * Including the next-action line matters: the production card's whole job is
+ * telling the operator whose turn it is and what happens next, and a fixture
+ * without it made screenshots understate the product during visual QA.
+ */
+function Card({ fixture, stageKey }: { fixture: Fixture; stageKey: string }) {
   return (
     <div
       className={`card block ${
@@ -187,6 +193,10 @@ function Card({ fixture }: { fixture: Fixture }) {
         <span className="num">${fixture.value.toLocaleString()}</span>
         <DeadlineBadge deadline={fixture.deadline} />
       </div>
+      <p className="mt-2 text-xs font-semibold text-accent-strong">
+        {NEXT_ACTION[stageKey] ?? stageKey}
+        <span className="ml-1 font-medium text-gold">Open ↗</span>
+      </p>
     </div>
   );
 }
