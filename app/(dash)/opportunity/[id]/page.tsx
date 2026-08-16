@@ -27,6 +27,7 @@ import { SubWorkNeeded } from "@/components/sub-work-needed";
 import { InfoTip } from "@/components/info-tip";
 import { SectionHeading } from "@/components/section-heading";
 import { ActivityTimeline } from "@/components/activity-timeline";
+import { ActivityLogActions } from "@/components/activity-log-actions";
 import { OpportunityWorkspace } from "@/components/opportunity-workspace";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
@@ -888,6 +889,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 >
                   Automation, emails, calls, and your decisions in one timeline.
                 </SectionHeading>
+                <ActivityLogActions opportunityId={opp.id} />
                 <div className="card">
                   <ActivityTimeline events={activity} />
                 </div>
@@ -903,6 +905,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
             <p className="mt-0.5 text-xs text-muted-foreground">
               Everything the system and you have done on this opportunity.
             </p>
+            <div className="mt-2">
+              <ActivityLogActions opportunityId={opp.id} />
+            </div>
           </div>
           <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
             <ActivityTimeline events={activity} />

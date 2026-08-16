@@ -35,6 +35,48 @@ describe("buildActivityTimeline", () => {
     expect(events.some((e) => e.kind === "system")).toBe(true);
   });
 
+  it("credits outbound notes and calls to the person, email to the platform", () => {
+    const events = buildActivityTimeline({
+      communications: [
+        {
+          id: "n1",
+          channel: "note",
+          direction: "outbound",
+          subject: "Note",
+          body: "Spoke at the site walk",
+          created_at: "2026-08-12T09:00:00.000Z",
+        },
+        {
+          id: "k1",
+          channel: "call",
+          direction: "outbound",
+          subject: "Call logged",
+          body: "They can start in March",
+          created_at: "2026-08-12T10:00:00.000Z",
+        },
+        {
+          id: "e1",
+          channel: "email",
+          direction: "outbound",
+          subject: "Quote request",
+          created_at: "2026-08-12T11:00:00.000Z",
+        },
+        {
+          id: "e2",
+          channel: "email",
+          direction: "inbound",
+          subject: "Re: Quote request",
+          created_at: "2026-08-12T12:00:00.000Z",
+        },
+      ],
+    });
+    const byId = new Map(events.map((e) => [e.id, e]));
+    expect(byId.get("comm-n1")?.actor).toBe("You");
+    expect(byId.get("comm-k1")?.actor).toBe("You");
+    expect(byId.get("comm-e1")?.actor).toBe("Brost Co");
+    expect(byId.get("comm-e2")?.actor).toBe("Subcontractor");
+  });
+
   it("respects the limit", () => {
     const events = buildActivityTimeline({
       logs: Array.from({ length: 10 }, (_, i) => ({
