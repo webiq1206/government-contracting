@@ -22,6 +22,7 @@ import { PricingCompsCard } from "@/components/pricing-comps-card";
 import { OpportunitySubsPanel } from "@/components/opportunity-subs-panel";
 import { AttentionStrip } from "@/components/attention-strip";
 import { TradeCoverageStrip } from "@/components/trade-coverage-strip";
+import { TradeRequirementSummary } from "@/components/trade-requirement-summary";
 import { SubWorkNeeded } from "@/components/sub-work-needed";
 import { InfoTip } from "@/components/info-tip";
 import { SectionHeading } from "@/components/section-heading";
@@ -320,6 +321,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 </p>
                 <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
               </div>
+              <TradeRequirementSummary coverage={coverage} />
               <div id="next" data-guide-target="next-step">
                 <NextStepBanner
                   opportunityId={opp.id}
@@ -359,7 +361,16 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
                     Why this fits
                   </h2>
-                  <p className="mt-2 font-display text-2xl font-semibold leading-snug text-foreground sm:text-3xl">
+                  {/* Display type only when the verdict is actually verdict-
+                      sized. Older analyses carry a paragraph here, and a
+                      paragraph set at 3xl serif is a wall, not a headline. */}
+                  <p
+                    className={`mt-2 font-semibold text-foreground ${
+                      whyHeadline.length <= 90
+                        ? "font-display text-2xl leading-snug sm:text-3xl"
+                        : "text-base leading-relaxed"
+                    }`}
+                  >
                     {whyHeadline}
                   </p>
                   {whySupport && (
