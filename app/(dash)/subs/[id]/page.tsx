@@ -8,6 +8,7 @@ import { gmail } from "@/lib/integrations/gmail";
 import { ConversationThreads } from "@/components/conversation-threads";
 import { PageHeader } from "@/components/badges";
 import { SubNotes } from "@/components/sub-notes";
+import { Collapsible } from "@/components/collapsible";
 import { RecordActions } from "@/components/record-actions";
 import { SubEditor } from "@/components/sub-editor";
 import { SubCompliancePanel } from "@/components/sub-compliance-panel";
@@ -188,11 +189,8 @@ export default async function SubDetailPage({
           />
         </div>
 
-        <div className="card" id="pairings">
-          <h2 className="mb-1 text-sm font-semibold text-slate-900">
-            Opportunities paired{" "}
-            <span className="font-normal text-slate-500">({pairings.length})</span>
-          </h2>
+        <div id="pairings">
+        <Collapsible title="Opportunities paired" meta={pairings.length} defaultOpen>
           <p className="mb-3 text-xs text-slate-500">
             Every job Brost Co has associated this company with, including outreach
             and quote status. Reuse this relationship instead of treating them as new.
@@ -246,6 +244,7 @@ export default async function SubDetailPage({
               })}
             </ul>
           )}
+        </Collapsible>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
@@ -287,11 +286,7 @@ export default async function SubDetailPage({
               }}
             />
 
-            <div className="card">
-              <h2 className="mb-3 text-sm font-semibold text-slate-900">
-                Project History{" "}
-                <span className="font-normal text-slate-500">({projects.length})</span>
-              </h2>
+            <Collapsible title="Project History" meta={projects.length}>
               {projects.length === 0 ? (
                 <p className="text-sm text-slate-500">No project history on file.</p>
               ) : (
@@ -316,13 +311,10 @@ export default async function SubDetailPage({
                   ))}
                 </div>
               )}
-            </div>
+            </Collapsible>
 
-            <div className="card" id="conversations">
-              <h2 className="mb-1 text-sm font-semibold text-slate-900">
-                Email conversations{" "}
-                <span className="font-normal text-slate-500">({conversations.length})</span>
-              </h2>
+            <div id="conversations">
+            <Collapsible title="Email conversations" meta={conversations.length} defaultOpen>
               <p className="mb-3 text-xs text-slate-500">
                 Read and reply right here. Messages go out from your own address and stay in
                 the same thread, so you never have to open Gmail.
@@ -333,13 +325,11 @@ export default async function SubDetailPage({
                 conversations={conversations}
                 savedDrafts={savedDrafts}
               />
+            </Collapsible>
             </div>
 
-            <div className="card" id="communications">
-              <h2 className="mb-1 text-sm font-semibold text-slate-900">
-                Full history{" "}
-                <span className="font-normal text-slate-500">({communications.length})</span>
-              </h2>
+            <div id="communications">
+            <Collapsible title="Full history" meta={communications.length}>
               <p className="mb-3 text-xs text-slate-500">
                 Every email, reply, call, skip, and note is saved here automatically
                 as work happens across opportunities.
@@ -396,12 +386,10 @@ export default async function SubDetailPage({
                   })}
                 </div>
               )}
+            </Collapsible>
             </div>
 
-            <div className="card">
-              <h2 className="mb-3 text-sm font-semibold text-slate-900">
-                Quotes <span className="font-normal text-slate-500">({quotes.length})</span>
-              </h2>
+            <Collapsible title="Quotes" meta={quotes.length}>
               {quotes.length === 0 ? (
                 <p className="text-sm text-slate-500">No quotes on file.</p>
               ) : (
@@ -442,7 +430,7 @@ export default async function SubDetailPage({
                   </tbody>
                 </table>
               )}
-            </div>
+            </Collapsible>
           </div>
 
           <div className="lg:col-span-1" id="notes">
