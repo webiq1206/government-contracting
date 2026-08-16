@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { GuidedPlanPanel } from "@/components/guided-plan";
+import { OpportunityTaskList } from "@/components/opportunity-task-list";
 import { buildGuidedPlan, type GuidedPlanInput } from "@/lib/domain/guided-plan";
 import { buildSubPlan } from "@/lib/domain/sub-plan";
 import { buildContractPlan } from "@/lib/domain/contract-plan";
@@ -193,6 +194,14 @@ export default function PlanLab() {
           <div key={s.label}>
             <p className="label mb-2">{s.label}</p>
             <GuidedPlanPanel plan={s.plan} eyebrow={s.eyebrow} />
+          </div>
+        ))}
+
+        {/* The side-panel task list, at the width it actually renders in. */}
+        {STATES.filter((s) => !s.plan.closed).map((s) => (
+          <div key={`tasks-${s.label}`} className="max-w-sm">
+            <p className="label mb-2">Task list: {s.label}</p>
+            <OpportunityTaskList plan={s.plan} />
           </div>
         ))}
       </div>

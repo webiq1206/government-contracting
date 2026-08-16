@@ -28,6 +28,7 @@ import { InfoTip } from "@/components/info-tip";
 import { SectionHeading } from "@/components/section-heading";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { ActivityLogActions } from "@/components/activity-log-actions";
+import { OpportunityTaskList } from "@/components/opportunity-task-list";
 import { OpportunityWorkspace } from "@/components/opportunity-workspace";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
@@ -883,6 +884,11 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   Same tracker as the top banner. Use Next step for the action to take now.
                 </SectionHeading>
                 <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
+                {/* Below xl there is no side panel, so the same live task list
+                    lives here rather than only on wide screens. */}
+                <div className="pt-2 xl:hidden">
+                  <OpportunityTaskList plan={plan} />
+                </div>
                 <a href="#next-step" className="btn-ghost text-xs">
                   Jump to Next step
                 </a>
@@ -907,17 +913,31 @@ export default async function OpportunityPage({ params }: { params: { id: string
         </div>
 
         <aside className="hidden w-96 shrink-0 flex-col border-l border-border xl:flex">
-          <div className="shrink-0 border-b border-border px-4 py-3">
-            <p className="eyebrow">Activity</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Everything the system and you have done on this opportunity.
-            </p>
-            <div className="mt-2">
-              <ActivityLogActions opportunityId={opp.id} />
+          {/* What is live comes before what has happened. This column used to
+              open on "No activity yet" and a screen of empty space, which is
+              the least useful thing a record can say about itself. */}
+          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
+            <div className="border-b border-border px-4 py-3">
+              <p className="eyebrow">Right now</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Who is holding this opportunity, and what comes next.
+              </p>
+              <div className="mt-2.5">
+                <OpportunityTaskList plan={plan} />
+              </div>
             </div>
-          </div>
-          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            <ActivityTimeline events={activity} />
+            <div className="px-4 py-3">
+              <p className="eyebrow">Activity</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Everything the system and you have done on this opportunity.
+              </p>
+              <div className="mt-2">
+                <ActivityLogActions opportunityId={opp.id} />
+              </div>
+              <div className="mt-4">
+                <ActivityTimeline events={activity} />
+              </div>
+            </div>
           </div>
         </aside>
       </div>
