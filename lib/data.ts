@@ -976,7 +976,7 @@ export async function opportunityDetail(id: string) {
   if (!opp) return null;
   // Independent lookups run in parallel; every list is bounded so an aged
   // opportunity can't balloon the page render.
-  const [bid, quotes, subs, documents, logs, competitors, subComms] = await Promise.all([
+  const [bid, quotes, subs, documents, logs, competitors, subComms, callRow] = await Promise.all([
     queryOne(`select * from bids where opportunity_id=$1 order by created_at desc limit 1`, [id]),
     query(
       `select q.*, s.company_name from quotes q left join subcontractors s on s.id=q.subcontractor_id
@@ -1027,8 +1027,22 @@ export async function opportunityDetail(id: string) {
         limit 400`,
       [id]
     ),
+    queryOne<{ n: number }>(
+      `select count(*)::int as n from call_cards where opportunity_id=$1 and status='pending'`,
+      [id]
+    ),
   ]);
-  return { opp, bid, quotes, subs, documents, logs, competitors, subComms };
+  return {
+    opp,
+    bid,
+    quotes,
+    subs,
+    documents,
+    logs,
+    competitors,
+    subComms,
+    pendingCalls: callRow?.n ?? 0,
+  };
 }
 
 export async function pricingSummaryFor(opp: Opportunity): Promise<Record<string, unknown> | null> {
