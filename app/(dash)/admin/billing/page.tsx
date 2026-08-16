@@ -62,7 +62,10 @@ export default async function AdminBillingPage() {
         subtitle="Plan, trial, discount, subscription status, and payment health for every account."
       />
 
-      <div className="space-y-4">
+      {/* page-main is overflow-hidden: every page owns its scroll. Without
+          this wrapper the customer table clipped at the viewport and the page
+          could not scroll at all once real rows accumulated. */}
+      <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
         {!config.ok && (
           <div className="card border-risk/40 bg-risk/5 text-sm text-risk">
             Billing is not fully configured, so nobody can subscribe. Missing:{" "}
