@@ -36,7 +36,12 @@ export function TodayGreeting({
     setParts(partsFor(new Date()));
   }, []);
 
-  const estimated = Math.max(5, actionCount * 6);
+  // No time estimate here on purpose. It used to read "N decisions. M
+  // minutes.", where M was only ever actionCount * 6: a constant wearing the
+  // costume of a measurement, printed to the minute. On a real queue that
+  // rendered as "2556 minutes", which is both invented and demoralising.
+  // The count is the honest number; the queue below is already in the order
+  // to work it.
   // Nothing to work yet, but setup is unfinished: the honest headline is the
   // setup, not an empty queue.
   const settingUp = actionCount === 0 && setupRemaining > 0;
@@ -64,8 +69,7 @@ export function TodayGreeting({
           ) : (
             <>
               <span className="num">{actionCount}</span>{" "}
-              {actionCount === 1 ? "decision" : "decisions"}.{" "}
-              <span className="num">{estimated}</span> minutes.
+              {actionCount === 1 ? "decision" : "decisions"}.
             </>
           )}
         </h1>

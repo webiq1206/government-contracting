@@ -99,7 +99,7 @@ export function OpportunitySubsPanel({
                 trade,
                 analysis,
                 description,
-                maxChars: 420,
+
               });
               return (
               <div key={trade}>

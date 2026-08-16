@@ -39,7 +39,7 @@ export function CallCard({
     trade: c.trade,
     analysis: c.solicitation_analysis,
     description: c.description,
-    maxChars: 280,
+
   });
 
   return (

@@ -8,6 +8,20 @@ interface Row {
   subcontractorId: string;
   quote_amount: string;
   payment_terms: string;
+  /** Operator chose "Other", so the trade is typed rather than picked. */
+  custom: boolean;
+}
+
+const OTHER = "__other";
+
+function emptyRow(trade = ""): Row {
+  return {
+    trade,
+    subcontractorId: "",
+    quote_amount: "",
+    payment_terms: "",
+    custom: false,
+  };
 }
 
 interface SubOption {
@@ -27,17 +41,33 @@ export function QuoteEntryForm({
   subs,
   layout = "wide",
   onSaved,
+  requiredTrades = [],
+  quotedTrades = [],
 }: {
   opportunityId: string;
   subs: SubOption[];
   layout?: "wide" | "stacked";
   /** Called after a successful save (Guide Me uses this to reevaluate). */
   onSaved?: () => void;
+  /**
+   * The trades this solicitation actually needs priced. When present the trade
+   * field becomes a picker instead of a free-text box: coverage matches quotes
+   * to required trades by their exact name, so a typed "HVAC" against a
+   * required "Heating, ventilation and air conditioning" left the trade
+   * looking unpriced forever, and on a two-trade job there was nothing telling
+   * the operator which half of the work they were entering a price for.
+   */
+  requiredTrades?: string[];
+  /** Required trades that already have a price, marked in the picker. */
+  quotedTrades?: string[];
 }) {
   const router = useRouter();
-  const [rows, setRows] = useState<Row[]>([
-    { trade: "", subcontractorId: "", quote_amount: "", payment_terms: "" },
-  ]);
+  const priced = new Set(quotedTrades.map((t) => t.trim().toLowerCase()));
+  const firstUnpriced =
+    requiredTrades.find((t) => !priced.has(t.trim().toLowerCase())) ?? "";
+  // Open on the work that still needs a price, so the common case is one
+  // glance and a number rather than a decision about what to call the trade.
+  const [rows, setRows] = useState<Row[]>([emptyRow(firstUnpriced)]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -121,14 +151,52 @@ export function QuoteEntryForm({
           )}
           <div className={fieldGrid}>
             <label className="block">
-              <span className="label mb-1.5 block">Trade (type of work)</span>
-              <input
-                className="input"
-                placeholder="e.g. HVAC"
-                value={row.trade}
-                onChange={(e) => update(i, { trade: e.target.value })}
-                list="trades"
-              />
+              <span className="label mb-1.5 block">
+                {requiredTrades.length > 0
+                  ? "Which part of the work"
+                  : "Trade (type of work)"}
+              </span>
+              {requiredTrades.length > 0 ? (
+                <>
+                  <select
+                    className="input"
+                    value={row.custom ? OTHER : row.trade}
+                    onChange={(e) =>
+                      update(
+                        i,
+                        e.target.value === OTHER
+                          ? { custom: true, trade: "" }
+                          : { custom: false, trade: e.target.value }
+                      )
+                    }
+                  >
+                    <option value="">Choose the trade…</option>
+                    {requiredTrades.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                        {priced.has(t.trim().toLowerCase()) ? " (already priced)" : ""}
+                      </option>
+                    ))}
+                    <option value={OTHER}>Something else (type it in)</option>
+                  </select>
+                  {row.custom && (
+                    <input
+                      className="input mt-2"
+                      placeholder="Name the trade"
+                      value={row.trade}
+                      onChange={(e) => update(i, { trade: e.target.value })}
+                    />
+                  )}
+                </>
+              ) : (
+                <input
+                  className="input"
+                  placeholder="e.g. HVAC"
+                  value={row.trade}
+                  onChange={(e) => update(i, { trade: e.target.value })}
+                  list="trades"
+                />
+              )}
             </label>
             <label className="block">
               <span className="label mb-1.5 block">Subcontractor (optional)</span>
@@ -196,10 +264,19 @@ export function QuoteEntryForm({
         <button
           className="btn-ghost"
           onClick={() =>
-            setRows((r) => [
-              ...r,
-              { trade: "", subcontractorId: "", quote_amount: "", payment_terms: "" },
-            ])
+            setRows((r) => {
+              // Offer the next piece of work that still has no price, rather
+              // than a blank the operator has to name themselves.
+              const taken = new Set(
+                r.map((row) => row.trade.trim().toLowerCase()).filter(Boolean)
+              );
+              const next =
+                requiredTrades.find((t) => {
+                  const key = t.trim().toLowerCase();
+                  return !priced.has(key) && !taken.has(key);
+                }) ?? "";
+              return [...r, emptyRow(next)];
+            })
           }
         >
           + Add another trade
