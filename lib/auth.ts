@@ -115,7 +115,15 @@ export async function hasAnyOperator(): Promise<boolean> {
     const row = await queryOne<{ n: string }>(`select count(*)::text as n from users`);
     return Number(row?.n ?? 0) > 0;
   } catch {
-    return false;
+    // Fail closed. This answer decides whether /login bounces to first-run
+    // setup and whether the bootstrap endpoint will mint an operator, so a
+    // database blip must read as "operators exist", not "fresh install":
+    // the old `false` sent real customers to the create-the-first-account
+    // screen whenever the database hiccuped. The cost is only that a
+    // genuinely fresh deployment with a broken database shows the login
+    // page until the database works, which is when setup could proceed
+    // anyway.
+    return true;
   }
 }
 

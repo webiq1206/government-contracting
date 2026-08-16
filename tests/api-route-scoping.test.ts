@@ -169,3 +169,40 @@ describe("tenant scoping in API routes", () => {
     }
   });
 });
+
+/**
+ * Server components read tenant tables too, and the same bug reached them by
+ * a different door: the Content Library page selected templates with no org
+ * filter, so the tenant with the most saved versions supplied everyone
+ * else's editor, and the Profile page listed every tenant's pending scoring
+ * proposals. Pages that import the db module directly get the same floor as
+ * API routes: name org_id somewhere, or fetch through the scoped helpers in
+ * lib/data.ts and friends instead.
+ */
+describe("pages that query tenant tables directly", () => {
+  const APP_DIR = join(process.cwd(), "app");
+
+  function pageFiles(dir: string, acc: string[] = []): string[] {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) pageFiles(full, acc);
+      else if (entry === "page.tsx") acc.push(full);
+    }
+    return acc;
+  }
+
+  it("every page importing lib/db names org_id", () => {
+    const offenders = pageFiles(APP_DIR)
+      .map((path) => ({
+        rel: path.slice(process.cwd().length + 1),
+        src: readFileSync(path, "utf8"),
+      }))
+      .filter((p) => /from ["']@\/lib\/db["']/.test(p.src))
+      .filter((p) => TABLE_RE.test(p.src))
+      .filter((p) => !/org_id/.test(p.src));
+    expect(
+      offenders.map((o) => o.rel),
+      "these pages query tenant tables without naming org_id"
+    ).toEqual([]);
+  });
+});
