@@ -57,6 +57,51 @@ export interface StepPlan {
   closed?: { label: string; note: string };
 }
 
+export interface PlanTaskList {
+  /** Running on its own right now, nobody is waiting on the operator. */
+  running: PlanStep[];
+  /** Live work the operator owns, plus anything stuck behind a problem. */
+  needsYou: PlanStep[];
+  /** Sitting with a subcontractor or the agency. */
+  waitingOn: PlanStep[];
+  /** The next few steps, so what is coming is never a surprise. */
+  next: PlanStep[];
+  /** True when nothing anywhere is live: the plan is finished or closed. */
+  idle: boolean;
+}
+
+/**
+ * The plan split by who is holding it right now.
+ *
+ * The full checklist answers "what is the shape of this job"; this answers
+ * the question an operator actually opens a record with, "is anything waiting
+ * on me, or is the machine still working". Blocked steps count as the
+ * operator's whatever their nominal owner is, because a blocker never clears
+ * itself.
+ */
+export function planTaskList(plan: StepPlan, opts: { nextCount?: number } = {}): PlanTaskList {
+  const live = plan.steps.filter(
+    (s) => s.status === "current" || s.status === "blocked"
+  );
+  const needsYou = live.filter((s) => s.status === "blocked" || s.owner === "you");
+  const running = live.filter((s) => s.status === "current" && s.owner === "brost");
+  const waitingOn = live.filter(
+    (s) => s.status === "current" && (s.owner === "subs" || s.owner === "agency")
+  );
+  const firstUpcoming = plan.steps.findIndex((s) => s.status === "upcoming");
+  const next =
+    firstUpcoming === -1
+      ? []
+      : plan.steps.slice(firstUpcoming, firstUpcoming + (opts.nextCount ?? 3));
+  return {
+    running,
+    needsYou,
+    waitingOn,
+    next,
+    idle: live.length === 0,
+  };
+}
+
 /**
  * Assemble a StepPlan from computed steps: counts done, finds the active
  * step, and writes the headline. `activeKey` pins the live step (pass null
