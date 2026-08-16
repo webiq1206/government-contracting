@@ -71,7 +71,7 @@ export function TradeCoverageStrip({
         />
       </div>
 
-      <ul className="mt-4 divide-y divide-border rounded-md border border-border">
+      <ul className="mt-4 divide-y divide-border panel-inset">
         {trades.map((t) => {
           const lines = subs.filter(
             (s) => (s.trade?.trim() || "General") === t.trade

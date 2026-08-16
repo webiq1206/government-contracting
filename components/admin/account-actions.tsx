@@ -385,7 +385,7 @@ export function AccountActions({
         )}
       </Card>
 
-      <div className="rounded-lg border-2 border-risk/50 p-4">
+      <div className="rounded-lg border-2 border-risk/50 bg-risk/5 p-4">
         <h3 className="font-semibold text-risk">Delete this account</h3>
         <p className="pt-1 text-sm text-muted-foreground">
           Removes the organization and every opportunity, subcontractor, quote,
@@ -423,7 +423,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <div className="panel-inset p-4">
       <h3 className="font-semibold">{title}</h3>
       <p className="pt-1 text-sm text-muted-foreground">{body}</p>
       <div className="pt-3">{children}</div>

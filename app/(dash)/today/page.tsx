@@ -189,7 +189,11 @@ function Section({
   defaultOpen?: boolean;
 }) {
   return (
-    <details id={id} open={defaultOpen} className="group scroll-mt-12">
+    /* A section is a surface, not a heading with content loose underneath it.
+       These used to render straight onto the page background, so a list of
+       calls and the page it sat on were the same colour and the section had
+       no edges at all. */
+    <details id={id} open={defaultOpen} className="panel group scroll-mt-12 px-4 py-3 sm:px-5 sm:py-4">
       <summary className="flex cursor-pointer list-none items-end justify-between gap-3 border-b border-border/55 dark:border-white/15 pb-3 [&::-webkit-details-marker]:hidden">
         <div>
           <p className="eyebrow-gold">{eyebrow}</p>

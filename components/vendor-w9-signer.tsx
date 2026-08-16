@@ -130,7 +130,7 @@ export function VendorW9Signer({
           {preview}
         </pre>
 
-        <div className="rounded-md border border-border p-3">
+        <div className="panel-inset p-3">
           <p className="text-xs font-semibold text-slate-900">{W9_CERTIFICATION_HEADING}</p>
           <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-slate-700">
             {W9_CERTIFICATION.map((clause, i) => (
@@ -297,7 +297,7 @@ export function VendorW9Signer({
         />
       </div>
 
-      <fieldset className="rounded-md border border-border p-3">
+      <fieldset className="panel-inset p-3">
         <legend className="label px-1">Taxpayer identification number</legend>
         <div className="space-y-1.5">
           {(["ssn", "ein"] as TinType[]).map((t) => (

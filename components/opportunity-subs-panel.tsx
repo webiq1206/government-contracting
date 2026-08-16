@@ -112,7 +112,7 @@ export function OpportunitySubsPanel({
                     <SubWorkNeeded work={tradeWork} variant="compact" />
                   </div>
                 )}
-                <ul className="divide-y divide-border rounded-md border border-border">
+                <ul className="divide-y divide-border panel-inset">
                   {rows.map((s) => {
                     const history = bySub.get(s.subcontractor_id) ?? [];
                     const contactLabel = contactStatusLabel(s.contact_status);

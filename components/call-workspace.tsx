@@ -523,7 +523,7 @@ export function CallWorkspace({
               <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {section.title}
               </h3>
-              <div className="divide-y divide-border rounded-md border border-border px-3">
+              <div className="divide-y divide-border panel-inset px-3">
                 {section.questions.map((q: CallQuestion) => (
                   <CallAnswer
                     key={q.id}
@@ -543,7 +543,7 @@ export function CallWorkspace({
             <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               After you hang up
             </h3>
-            <div className="space-y-3 rounded-md border border-border p-3">
+            <div className="space-y-3 panel-inset p-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Outcome">
                   <select

@@ -345,7 +345,7 @@ export default function HowItWorksPage() {
               </p>
             </div>
             <ul className="space-y-4">
-              <li className="rounded-md border border-border px-4 py-3">
+              <li className="panel-inset px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Today stays current
@@ -362,7 +362,7 @@ export default function HowItWorksPage() {
                   so you do not have to open every opportunity to find them.
                 </p>
               </li>
-              <li className="rounded-md border border-border px-4 py-3">
+              <li className="panel-inset px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Stay eligible to bid
@@ -381,7 +381,7 @@ export default function HowItWorksPage() {
                   . Brost Co warns before something lapses; renewing is your job.
                 </p>
               </li>
-              <li className="rounded-md border border-border px-4 py-3">
+              <li className="panel-inset px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Learn from every outcome
@@ -394,7 +394,7 @@ export default function HowItWorksPage() {
                   decisions improve over time.
                 </p>
               </li>
-              <li className="rounded-md border border-border px-4 py-3">
+              <li className="panel-inset px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="font-display text-base font-semibold text-foreground">
                     Watch the automation when something stalls

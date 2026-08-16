@@ -269,7 +269,7 @@ export function ConversationThreads({
         const flags = warnings[c.key] ?? [];
         const written = inboundId != null && hasDraft[inboundId] === true;
         return (
-          <div key={c.key} id={`thread-${c.key}`} className="rounded-md border border-border">
+          <div key={c.key} id={`thread-${c.key}`} className="panel-inset">
             <button
               type="button"
               className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left"

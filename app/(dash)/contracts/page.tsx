@@ -195,7 +195,7 @@ function ContractCard({ c, completed = false }: { c: Record<string, unknown>; co
             {milestones.map((m, i) => (
               <li
                 key={i}
-                className="flex items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
+                className="flex items-center justify-between gap-2 panel-inset px-3 py-2"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm text-slate-800">
@@ -233,7 +233,7 @@ function ContractCard({ c, completed = false }: { c: Record<string, unknown>; co
               return (
                 <li
                   key={i}
-                  className="flex items-start gap-2 rounded-md border border-border px-3 py-2"
+                  className="flex items-start gap-2 panel-inset px-3 py-2"
                 >
                   <span className={done ? "text-pursue" : "text-slate-500"}>
                     {done ? "☑" : "☐"}

@@ -238,6 +238,22 @@ body {
   .dark .card {
     @apply border-white/[0.17] bg-shell;
   }
+  /* The surface ladder, so nothing floats on the page background.
+     background → panel → panel-inset, each step visibly lighter (dark) or
+     brighter (light). `.card` sits alongside `.panel`; `.panel-inset` is for
+     rows and sub-blocks that sit INSIDE a card or panel and would otherwise
+     be the same colour as their parent.
+
+     Bordered containers with no fill were the single most common way a
+     section disappeared into the page: a hairline border on an identical
+     background reads as nothing at all, especially in dark mode where the
+     border is 17% white on near-black. */
+  .panel {
+    @apply rounded-md border border-border/75 bg-surface dark:border-white/[0.17];
+  }
+  .panel-inset {
+    @apply rounded-md border border-border/75 bg-surface-raised dark:border-white/[0.17];
+  }
   .card-hover {
     @apply transition-colors hover:border-border-strong hover:bg-surface-raised;
   }

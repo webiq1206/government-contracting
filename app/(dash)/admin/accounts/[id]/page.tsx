@@ -95,7 +95,7 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
           )}
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-border p-4 text-sm sm:grid-cols-3">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 panel-inset p-4 text-sm sm:grid-cols-3">
           <Field label="Plan" value={org.plan_key ?? "-"} />
           <Field label="Stripe status" value={org.subscription_status ?? "-"} />
           <Field
@@ -109,7 +109,7 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
 
         <section className="space-y-2">
           <h2 className="text-sm font-semibold">People ({members.length})</h2>
-          <ul className="divide-y divide-border/60 rounded-lg border border-border text-sm">
+          <ul className="divide-y divide-border/60 panel-inset text-sm">
             {members.map((m) => (
               <li key={m.user_id} className="flex flex-wrap items-baseline gap-x-2 px-4 py-2">
                 <span className="font-medium">{m.email}</span>
@@ -153,7 +153,7 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
 
         <section className="space-y-2">
           <h2 className="text-sm font-semibold">Admin history for this account</h2>
-          <div className="rounded-lg border border-border">
+          <div className="panel-inset">
             {audit.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">
                 No administrator has touched this account.

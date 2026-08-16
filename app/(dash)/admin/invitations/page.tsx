@@ -65,7 +65,7 @@ export default async function AdminInvitationsPage() {
             A link is good for {INVITATION_DAYS} days and works once. Sending a
             new link replaces the old one.
           </p>
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="overflow-x-auto panel-inset">
             <table className="w-full min-w-[52rem] text-left text-sm">
               <thead className="bg-surface text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
