@@ -24,6 +24,7 @@ import {
   selectQuotesForBid,
   isOutOfRange,
 } from "../domain/pricing";
+import { benchmarkFor } from "../domain/comp-reliability";
 import { resolveRequirements, buildManifest, validatePackage, computeReady } from "../domain/package";
 import { checkEligibility } from "../domain/eligibility";
 import { competitivePositioningBrief } from "../domain/competition";
@@ -647,7 +648,9 @@ function buildQaChecklist(i: QaInputs): QaChecklistItem[] {
     items.push({
       item: "Bid within pricing comps",
       ok: !anyOutOfRange,
-      note: anyOutOfRange ? "one or more quotes flagged out of range" : "no comps",
+      note: anyOutOfRange
+        ? "one or more quotes flagged out of range"
+        : "no comparable awards to price against",
     });
   }
 
@@ -722,15 +725,28 @@ function extractCompBenchmark(opp: Opportunity): number | null {
   const raw = opp.raw_json as Record<string, unknown> | null;
   const summary = raw?.pricing_summary as Record<string, unknown> | undefined;
   if (!summary) return null;
-  const stats = summary.comp_stats as Record<string, unknown> | undefined;
-  const candidate =
-    stats?.median ??
-    stats?.average ??
-    summary.median ?? // tolerate a flat shape too
-    summary.average ??
-    summary.sub_cost_proxy_estimate;
-  const n = Number(candidate);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const stats = (summary.comp_stats ?? summary) as Record<string, unknown>;
+  const num = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+  const incumbent = summary.incumbent as { last_award_amount?: unknown } | null | undefined;
+  /**
+   * Only benchmark against comps that describe comparable work. The median of
+   * a NAICS bucket spanning a $12k inspection and a $2M overhaul would fail
+   * every honest bid against a ±25% tolerance, so benchmarkFor withholds it
+   * and offers the incumbent's award on this recompete instead.
+   */
+  return benchmarkFor(
+    {
+      count: num(stats.count ?? summary.comp_count),
+      average: num(stats.average),
+      median: num(stats.median),
+      p25: num(stats.p25),
+      p75: num(stats.p75),
+    },
+    { incumbentLastAward: num(incumbent?.last_award_amount) || null }
+  );
 }
 
 /** Required trades from the solicitation analysis, if present. */

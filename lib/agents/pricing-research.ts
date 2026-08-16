@@ -17,6 +17,7 @@ import { logAgent } from "../logger";
 import { usaspending } from "../integrations/usaspending";
 import { bls } from "../integrations/bls";
 import { bidForTargetMargin, compStats, round2 } from "../domain/pricing";
+import { readCompReliability } from "../domain/comp-reliability";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
 
@@ -121,6 +122,14 @@ export const pricingResearch: AgentDefinition = {
     const incumbent = state ? await usaspending.findIncumbent(naics, state) : null;
 
     // 5) Target bid ranges per margin scenario, using median comp as sub-cost proxy.
+    //
+    // The proxy is only meaningful when the awards behind it describe the same
+    // kind of work. Read that first so the summary can carry the verdict to
+    // everything downstream (the comps card, the out-of-range flags, the QA
+    // gate) instead of each caller trusting the median on sight.
+    const reliability = readCompReliability(stats, {
+      incumbentLastAward: incumbent ? round2(incumbent.award_amount) : null,
+    });
     const marginScenarios = profile.pricing_rules?.margin_scenarios ?? [];
     const subCostProxy = stats.median; // rough baseline, an ESTIMATE, not a quote
     const targetBidRanges = marginScenarios.map((marginPct) => ({
@@ -160,8 +169,17 @@ export const pricingResearch: AgentDefinition = {
       comp_count: stats.count,
       comp_stats: stats,
       sub_cost_proxy_estimate: subCostProxy,
-      sub_cost_proxy_note:
-        "Sub-cost proxy uses the median CPI-adjusted historical award as a baseline; target bids are ESTIMATES pending real subcontractor quotes.",
+      comp_reliability: {
+        level: reliability.level,
+        spread_ratio: reliability.spreadRatio,
+        skew_ratio: reliability.skewRatio,
+        usable_as_benchmark: reliability.usableAsBenchmark,
+        verdict: reliability.verdict,
+        guidance: reliability.guidance,
+      },
+      sub_cost_proxy_note: reliability.usableAsBenchmark
+        ? "Sub-cost proxy uses the median CPI-adjusted historical award as a baseline; target bids are ESTIMATES pending real subcontractor quotes."
+        : `${reliability.verdict} ${reliability.guidance} The target bids below are arithmetic on that median, so treat them as unfounded until real subcontractor quotes land.`,
       target_bid_ranges: targetBidRanges,
       incumbent: incumbent
         ? {

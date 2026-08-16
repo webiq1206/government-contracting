@@ -10,6 +10,13 @@ import {
   type CompPositionTone,
 } from "@/lib/domain/pricing-comps-explain";
 import { termTip } from "@/lib/domain/glossary";
+import { readCompReliability, type CompReliability } from "@/lib/domain/comp-reliability";
+
+const RELIABILITY_CLASS: Record<CompReliability, string> = {
+  usable: "border-pursue/40 bg-pursue/10",
+  wide: "border-review/40 bg-review/10",
+  unusable: "border-risk/40 bg-risk/10",
+};
 
 const TONE_CLASS: Record<CompPositionTone, string> = {
   below_band: "bg-review/15 text-review",
@@ -81,6 +88,17 @@ export function PricingCompsCard({
     );
   }
 
+  /**
+   * The verdict on whether these awards are comparable at all, before any of
+   * the numbers below get read as a price. A NAICS bucket can hold a $12k
+   * inspection and a $2M overhaul; their median describes neither.
+   */
+  const incumbent = pricing.incumbent as { last_award_amount?: unknown } | null | undefined;
+  const incumbentLastAward = Number(incumbent?.last_award_amount);
+  const reliability = readCompReliability(band, {
+    incumbentLastAward: Number.isFinite(incumbentLastAward) ? incumbentLastAward : null,
+  });
+
   const position = positionInCompBand(compareAmount ?? null, band);
   const showMarker = position.markerPct != null && compareAmount != null && compareAmount > 0;
 
@@ -112,12 +130,28 @@ export function PricingCompsCard({
           {state ? ` in ${state}` : ""}
         </span>
         , inflated to {year ?? "current"} dollars so older wins compare fairly.
-        Use the band below to see whether your price looks low, typical, or high.
         <InfoTip label="What are pricing comps?">
           {termTip("pricing_comps") ??
             "Comparable past awards Brost Co pulls to estimate what similar jobs have paid."}
         </InfoTip>
       </p>
+
+      {/* The read on the numbers comes before the numbers. A NAICS code is a
+          billing category, not a scope, so the first thing to say is whether
+          these awards describe the same kind of work at all. */}
+      <div
+        className={`mb-4 rounded-md border px-3 py-2.5 ${RELIABILITY_CLASS[reliability.level]}`}
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground/80">
+          {reliability.level === "usable"
+            ? "These comps are usable"
+            : reliability.level === "wide"
+              ? "Treat these comps loosely"
+              : "These comps cannot price this job"}
+        </p>
+        <p className="mt-1 text-sm leading-relaxed text-foreground">{reliability.verdict}</p>
+        <p className="mt-1 text-sm leading-relaxed text-slate-700">{reliability.guidance}</p>
+      </div>
 
       <div className="space-y-2">
         <MetricRow
