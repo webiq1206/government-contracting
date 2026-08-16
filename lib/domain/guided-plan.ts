@@ -34,6 +34,8 @@ export type { PlanBlocker, PlanOwner, PlanStatus, PlanStep } from "./step-plan";
 export type GuidedPlan = StepPlan;
 
 export interface GuidedPlanInput {
+  /** Scopes the call-queue link to this bid's calls when known. */
+  opportunityId?: string;
   stage: string;
   tier: string | null;
   humanActionRequired: boolean;
@@ -367,7 +369,12 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
           : { label: "Open trade coverage", href: "#coverage" };
       case "prices":
         if (input.callsEnabled && input.pendingCalls > 0)
-          return { label: "Start calling", href: "/call-queue" };
+          return {
+            label: "Start calling",
+            href: input.opportunityId
+              ? `/call-queue?opportunity=${encodeURIComponent(input.opportunityId)}`
+              : "/call-queue",
+          };
         return { label: "Enter quotes", href: "#quotes" };
       case "checklist":
         return { label: "Open the checklist", href: "#submission" };

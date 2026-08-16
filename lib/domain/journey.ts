@@ -217,6 +217,20 @@ export interface StepInput {
    * site keeps its current copy.
    */
   callsEnabled?: boolean;
+  /**
+   * When known, call-queue links narrow to this opportunity's calls. Sending
+   * an operator who asked to price one bid into the entire queue makes them
+   * pick their own job out of a list, which is the work the step was meant
+   * to remove.
+   */
+  opportunityId?: string;
+}
+
+/** The Call Queue, scoped to one bid when we know which bid asked. */
+function callQueueHref(s: { opportunityId?: string }): string {
+  return s.opportunityId
+    ? `/call-queue?opportunity=${encodeURIComponent(s.opportunityId)}`
+    : "/call-queue";
 }
 
 export interface NextStep {
@@ -457,7 +471,7 @@ function deriveStageStep(s: StepInput): NextStep {
         why: "Outreach emails are out, with an automatic 48-hour follow-up. Replies create call cards automatically. You can also call subs directly from the Call Queue.",
         after: "Each reply becomes a prepared call card with a script and quote capture.",
         cta: "Open Call Queue",
-        href: "/call-queue",
+        href: callQueueHref(s),
         tone: "info",
         waitingOn: "subs",
       };
@@ -501,7 +515,7 @@ function deriveStageStep(s: StepInput): NextStep {
         why: "Subs are ready to be called. Each call card opens a guided workspace that captures their price and answers in one pass.",
         after: "Saving a call's quote immediately re-prices the bid, no separate data entry.",
         cta: "Start calling",
-        href: "/call-queue",
+        href: callQueueHref(s),
         tone: "action",
         waitingOn: "you",
       };

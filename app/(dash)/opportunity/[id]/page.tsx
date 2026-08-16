@@ -191,6 +191,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const expired =
     opp.status === "archived" && (opp.risk_flags ?? []).includes("expired");
   const plan = buildGuidedPlan({
+    opportunityId: opp.id,
     stage: opp.stage,
     tier: opp.tier,
     humanActionRequired: opp.human_action_required,
@@ -673,7 +674,6 @@ export default async function OpportunityPage({ params }: { params: { id: string
                             trade,
                             analysis,
                             description: opp.description,
-                            maxChars: 280,
                           });
                           if (!work.work) return null;
                           return (
@@ -686,7 +686,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     )}
 
                     <div className="mt-4">
-                      <QuoteEntryForm opportunityId={opp.id} subs={subOptions} />
+                      <QuoteEntryForm
+                        opportunityId={opp.id}
+                        subs={subOptions}
+                        requiredTrades={analysis?.required_trades ?? []}
+                        quotedTrades={coverage.trades
+                          .filter((t) => t.quotes > 0)
+                          .map((t) => t.trade)}
+                      />
                     </div>
 
                     {quotesEntered > 0 && (

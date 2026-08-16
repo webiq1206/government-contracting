@@ -13,12 +13,27 @@ export const dynamic = "force-dynamic";
 export default async function CallQueuePage({
   searchParams,
 }: {
-  searchParams?: { open?: string };
+  searchParams?: { open?: string; opportunity?: string };
 }) {
-  const [cards, callsEnabled] = await Promise.all([callQueue(), areCallsEnabled()]);
+  const [allCards, callsEnabled] = await Promise.all([callQueue(), areCallsEnabled()]);
   // Deep link support: /call-queue?open=<cardId> opens that card's workspace
   // immediately (used by the Today page so one click lands in the call).
   const openId = searchParams?.open;
+  /**
+   * /call-queue?opportunity=<id> narrows to one bid's calls. "Start calling"
+   * on an opportunity used to drop the operator into the whole queue, where
+   * finding the three subs for the job they were just looking at meant
+   * reading every card. Scoped here, the page opens on exactly the trades
+   * this bid needs priced.
+   */
+  const focusId = searchParams?.opportunity;
+  const cards = focusId
+    ? allCards.filter((c) => c.opportunity_id === focusId)
+    : allCards;
+  const focusTitle = focusId ? (cards[0]?.opportunity_title ?? null) : null;
+  // A filter that matches nothing must say so rather than look like an empty
+  // queue: the calls may have been made already, or belong to another bid.
+  const focusEmpty = Boolean(focusId) && cards.length === 0 && allCards.length > 0;
 
   return (
     <div className="flex page-shell">
@@ -33,11 +48,19 @@ export default async function CallQueuePage({
               : `${cards.length} call${cards.length === 1 ? "" : "s"} ready`
         }
         subtitle={
-          callsEnabled
-            ? "Soonest deadline first. Select several to skip or snooze together, or open a card to start the guided call."
-            : "This account runs on email only, so nothing is queued here and no opportunity is waiting on a call."
+          !callsEnabled
+            ? "This account runs on email only, so nothing is queued here and no opportunity is waiting on a call."
+            : focusTitle
+              ? `Just the subs for ${focusTitle}, one card per trade. Open a card to start the guided call.`
+              : "Soonest deadline first. Select several to skip or snooze together, or open a card to start the guided call."
         }
-      />
+      >
+        {focusId && (
+          <Link href="/call-queue" className="btn-ghost text-xs">
+            Show all calls ({allCards.length})
+          </Link>
+        )}
+      </PageHeader>
       <div className="scroll-thin flex-1 overflow-y-auto p-5" data-guide-target="call-queue">
         {!callsEnabled ? (
           <EmptyState
@@ -46,6 +69,16 @@ export default async function CallQueuePage({
             action={
               <Link href="/settings/rules#calls" className="btn-ghost text-sm">
                 Open call settings
+              </Link>
+            }
+          />
+        ) : focusEmpty ? (
+          <EmptyState
+            title="No calls waiting for this opportunity"
+            description="Every prepared call for this bid has been made, skipped, or snoozed. Other opportunities still have calls in the queue."
+            action={
+              <Link href="/call-queue" className="btn-ghost text-sm">
+                Show all calls ({allCards.length})
               </Link>
             }
           />

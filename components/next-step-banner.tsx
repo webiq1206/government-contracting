@@ -13,7 +13,8 @@ import { deriveStep, PARTY_LABEL, type StepInput } from "@/lib/domain/journey";
  */
 export function NextStepBanner(props: StepInput & { opportunityId: string }) {
   const { opportunityId, ...input } = props;
-  const step = deriveStep(input);
+  // The id travels into the step so call-queue links land on this bid's calls.
+  const step = deriveStep({ ...input, opportunityId });
   const hasLink = Boolean(step.cta && (step.href || step.anchor));
   const linkClass = `${step.decision ? "btn-ghost" : "btn-primary"} text-xs`;
   const waitingBadge =
