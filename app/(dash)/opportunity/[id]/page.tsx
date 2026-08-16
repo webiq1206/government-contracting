@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { opportunityDetail } from "@/lib/data";
 import { ScoreBadge, TierBadge } from "@/components/badges";
@@ -241,10 +242,23 @@ export default async function OpportunityPage({ params }: { params: { id: string
       {/* Thin utility bar stays pinned; hero scrolls with content. */}
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2 sm:px-6">
         <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Opportunity
-            {opp.solicitation_number ? ` · ${opp.solicitation_number}` : ""}
-          </p>
+          {/* The record-page back affordance: every detail page names the
+              collection it belongs to and takes you back in one tap. On a
+              phone this bar is the only persistent "where am I" once the
+              hero scrolls away, and it used to be a dead label. Always
+              /pipeline rather than history: arriving from Today or Review
+              still leaves you knowing where opportunities live. */}
+          <Link
+            href="/pipeline"
+            className="flex min-h-11 shrink-0 items-center gap-1 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground md:min-h-0"
+          >
+            <span aria-hidden>←</span> Opportunities
+          </Link>
+          {opp.solicitation_number && (
+            <p className="truncate text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
+              · {opp.solicitation_number}
+            </p>
+          )}
           <HelpPopover help={PAGE_HELP["opportunity"]} />
         </div>
         {/* Stage only. The tier is a TierBadge in the header a few pixels below,
@@ -254,7 +268,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
         </div>
       </div>
 
-      <div className="scroll-thin flex-1 overflow-y-auto">
+      {/* Wide screens get the record two-pane: the workspace scrolls on the
+          left, and what has already happened stays visible on the right. The
+          timeline had lived only under the More tab, which put the first
+          question anyone has about a record, "what happened here", two
+          clicks deep. Below xl the panel hides and the More tab remains the
+          timeline's home. */}
+      <div className="flex min-h-0 flex-1">
+        <div className="scroll-thin min-w-0 flex-1 overflow-y-auto">
         <header className="border-b border-border px-4 py-4 sm:px-6 sm:py-8">
           <div className="flex flex-wrap items-start justify-between gap-4 sm:gap-6">
             <div className="min-w-0 max-w-3xl flex-1">
@@ -831,6 +852,19 @@ export default async function OpportunityPage({ params }: { params: { id: string
             </div>
           }
         />
+        </div>
+
+        <aside className="hidden w-96 shrink-0 flex-col border-l border-border xl:flex">
+          <div className="shrink-0 border-b border-border px-4 py-3">
+            <p className="eyebrow">Activity</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Everything the system and you have done on this opportunity.
+            </p>
+          </div>
+          <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            <ActivityTimeline events={activity} />
+          </div>
+        </aside>
       </div>
 
       <datalist id="trades">

@@ -4,15 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * Fixed bottom tabs on phones for the pages an operator lives in. One thumb
- * reach to Today / Calls / Opportunities / Review, with live counts, instead of
- * opening the hamburger for every hop. Hidden on md+ where the sidebar rules.
+ * Fixed bottom tabs on phones for the pages an operator lives in. Hidden on
+ * md+ where the sidebar rules.
+ *
+ * Re-slotted around the unified work queue: Today carries the queue, so its
+ * badge is the whole count of pending work (calls and review decisions
+ * included), and the records an operator reaches for daily, opportunities
+ * and subcontractors, take the middle slots. Calls keeps a tab because
+ * batch-calling is a real work mode, with the queue as the other door in.
+ * Review left the bar: decisions surface in the queue and the drawer still
+ * links the page, so nothing breaks, it just stops costing a permanent slot
+ * for the least-frequent destination.
  */
-const TABS: { href: string; label: string; icon: string; countKey?: "review" | "calls" }[] = [
-  { href: "/today", label: "Today", icon: "☀︎" },
-  { href: "/call-queue", label: "Calls", icon: "☏", countKey: "calls" },
+const TABS: { href: string; label: string; icon: string; countKey?: "queue" | "calls" }[] = [
+  { href: "/today", label: "Today", icon: "☀︎", countKey: "queue" },
   { href: "/pipeline", label: "Opportunities", icon: "▤" },
-  { href: "/review", label: "Review", icon: "✓", countKey: "review" },
+  { href: "/subs", label: "Subs", icon: "☰" },
+  { href: "/call-queue", label: "Calls", icon: "☏", countKey: "calls" },
 ];
 
 export function MobileTabBar({
@@ -23,7 +31,8 @@ export function MobileTabBar({
   callCount: number;
 }) {
   const pathname = usePathname();
-  const counts = { review: reviewCount, calls: callCount };
+  // The Today badge is the queue total: everything pending, not one slice.
+  const counts = { queue: reviewCount + callCount, calls: callCount };
 
   return (
     <nav
