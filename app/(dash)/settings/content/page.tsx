@@ -4,21 +4,29 @@ import { ContentLibraryManager } from "@/components/content-library-manager";
 import { EmailTemplateEditor, type EmailTemplate } from "@/components/email-template-editor";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { contentLibrary } from "@/lib/data";
-import { query } from "@/lib/db";
+import { activeTemplates } from "@/lib/domain/template-store";
+import { tryResolveTenantOrgId } from "@/lib/tenant";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * The caller's own template copies, falling back to the platform defaults.
+ *
+ * This used to select DISTINCT ON (slug) ... ORDER BY version DESC with no
+ * org filter, which across tenants means "whoever has saved the most versions
+ * wins": a customer opening their Content Library could be shown, and start
+ * editing from, another tenant's outreach wording. activeTemplates() is the
+ * same resolution the Outreach agent uses, so the editor now shows exactly
+ * what would be sent.
+ */
 async function activeOutreachTemplates(): Promise<EmailTemplate[]> {
-  const rows = await query<EmailTemplate>(
-    `SELECT DISTINCT ON (slug) id, slug, version, subject, body, description
-       FROM templates
-      WHERE slug IN ('template_1_outreach', 'template_2_followup') AND is_active = true
-      ORDER BY slug, version DESC`
+  const orgId = await tryResolveTenantOrgId();
+  const rows = await activeTemplates(
+    ["template_1_outreach", "template_2_followup"],
+    orgId
   );
   // Sort: outreach first, followup second.
-  return rows.sort((a: EmailTemplate, b: EmailTemplate) =>
-    a.slug.localeCompare(b.slug)
-  );
+  return rows.sort((a, b) => a.slug.localeCompare(b.slug));
 }
 
 export default async function ContentLibraryPage() {

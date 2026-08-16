@@ -26,7 +26,7 @@ import {
 } from "../domain/solicitation-completeness";
 import { storage } from "../integrations/storage";
 import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
-import { normalizeAttachmentMeta } from "../domain/attachment-meta";
+import { filenameFromResponse, normalizeAttachmentMeta } from "../domain/attachment-meta";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -142,7 +142,8 @@ async function processAttachment(
   att: Attachment,
   index: number
 ): Promise<{ context: string; parsedChars: number; outcome: AttachmentFetchOutcome }> {
-  const label = att.name || `attachment-${index + 1}`;
+  const ingestLabel = att.name || `attachment-${index + 1}`;
+  let label = ingestLabel;
   if (!att.url) {
     return {
       context: `- ${label} (no url)`,
@@ -165,6 +166,16 @@ async function processAttachment(
       };
     }
     const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+    // SAM's notice JSON names every resourceLink "attachment"; the server's
+    // Content-Disposition carries the real filename ("Wage Determination.pdf").
+    // Recover it here so document names mean something everywhere downstream:
+    // the Files tab, trade prioritisation, official-form linking, and the
+    // filenames a subcontractor sees on the outreach email.
+    label = filenameFromResponse({
+      contentDisposition: res.headers.get("content-disposition"),
+      url: att.url,
+      fallback: label,
+    });
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.byteLength > MAX_ATTACH_BYTES) {
       return {
@@ -187,10 +198,13 @@ async function processAttachment(
       mime: ct || null,
       content: buf,
     });
-    // Keep the storage key stable across re-runs (do not bake corrected
-    // extensions into the path). Openability comes from documents.name/mime
-    // and send-time normalization, plus Content-Type on /api/files.
-    const safeKeyStem = label.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "attachment";
+    // Keep the storage key stable across re-runs: derived from the INGEST
+    // label, never the header-recovered one. A re-run then computes the same
+    // path, finds the existing document row, and the update below renames it
+    // in place; keying on the recovered name would store the same bytes twice
+    // under two names. Openability comes from documents.name/mime and
+    // send-time normalization, plus Content-Type on /api/files.
+    const safeKeyStem = ingestLabel.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "attachment";
     const key = `solicitations/${opportunityId}/${index + 1}_${safeKeyStem}`;
     let stored = false;
     try {

@@ -1,5 +1,6 @@
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { query } from "@/lib/db";
+import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { PageHeader } from "@/components/badges";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -32,11 +33,18 @@ export default async function ProfilePage() {
   await hydrateIntegrationEnv();
   const samConnected = (await orgIntegrationStatus()).sam;
 
+  // Scoped to the caller's org: unfiltered, this listed every tenant's
+  // pending proposals, including their rationale text. The approve route was
+  // already org-scoped, so the buttons 404'd on foreign rows, which made the
+  // leak look like a bug ("approve does nothing") instead of what it was.
+  const orgId = await tryResolveTenantOrgId();
   const proposed = await query<ProposedWeightRow>(
     `select id, version, rationale, proposed_at
        from scoring_weights
       where approved_at is null and proposed_by = 'learning-loop'
-      order by proposed_at desc`
+        and org_id = $1
+      order by proposed_at desc`,
+    [orgId]
   );
 
   const approvalsPanel =

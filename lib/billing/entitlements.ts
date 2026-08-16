@@ -45,8 +45,21 @@ export const TRIAL_STATUS = "trial";
 /** Our cardless trial, after it lapses without an upgrade. */
 export const TRIAL_EXPIRED_STATUS = "trial_expired";
 
-/** Statuses that grant unmetered access. */
-const FULL = new Set(["active", "trialing"]);
+/**
+ * Statuses that grant unmetered access.
+ *
+ * past_due is deliberately in this set. It means a renewal charge failed and
+ * Stripe is retrying, and the most common cause is an expired card, not a
+ * customer leaving. Locking the product here stopped a paying customer's
+ * agents mid-bid over a decline that Stripe's own retries usually recover
+ * within days, which for a deadline-driven product turns a card hiccup into a
+ * missed federal submission. The state is bounded by Stripe itself: when
+ * dunning exhausts, the subscription moves to 'unpaid' or 'canceled', neither
+ * of which is in this set, and access ends then. While past_due, the customer
+ * is emailed (notifyPaymentFailed) and shown an in-app banner pointing at the
+ * billing portal.
+ */
+const FULL = new Set(["active", "trialing", "past_due"]);
 
 export interface EntitlementInput {
   subscription_status: string | null | undefined;

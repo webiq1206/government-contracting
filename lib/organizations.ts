@@ -105,7 +105,10 @@ export async function listActiveOrganizations(): Promise<Organization[]> {
       where suspended_at is null
         and (
           billing_exempt
-          or subscription_status in ('active','trialing')
+          -- past_due matches accessLevel(): the customer keeps working while
+          -- Stripe retries their card; dunning exhausting moves the status to
+          -- unpaid/canceled and the org drops out of this list then.
+          or subscription_status in ('active','trialing','past_due')
           or (subscription_status = 'trial' and trial_ends_at > now())
         )
       order by created_at asc`

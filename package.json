@@ -26,7 +26,8 @@
     "test:watch": "vitest",
     "postinstall": "node scripts/postinstall.mjs",
     "stripe:setup": "tsx scripts/stripe-setup.ts",
-    "stripe:verify": "tsx scripts/stripe-setup.ts --verify"
+    "stripe:verify": "tsx scripts/stripe-setup.ts --verify",
+    "backfill:doc-names": "tsx scripts/backfill-doc-names.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

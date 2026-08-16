@@ -44,11 +44,12 @@ export default function TermsPage() {
             Standard subscription pricing is ${STANDARD_MONTHLY_USD.toLocaleString()} per month
             unless a different rate is agreed in writing. During the limited founding promotion,
             new subscribers may lock in ${FOUNDING_MONTHLY_USD.toLocaleString()} per month for the
-            life of that active subscription. New subscriptions include a free 7-day trial. After
-            the trial ends, your payment method is charged automatically for the selected plan
-            unless you cancel before the trial ends. If the subscription is canceled and later
+            life of that active subscription. New accounts start with a free 7-day trial that
+            requires no payment method; nothing is charged during the trial. Paid access begins
+            only when you select a plan and complete checkout, at which point billing recurs
+            automatically each period until you cancel. If the subscription is canceled and later
             renewed after the promotion ends, standard pricing applies. Prices are billed in
-            advance via Stripe after any trial. Taxes may apply.
+            advance via Stripe. Taxes may apply.
           </p>
           <h2 className="font-display text-2xl text-foreground">Cancellation</h2>
           <p>
