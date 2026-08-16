@@ -1,5 +1,9 @@
 import { currency, shortDate } from "@/lib/format";
-import { competitionRead, type FieldTone } from "@/lib/domain/competition";
+import {
+  competitionRead,
+  competitiveVerdict,
+  type FieldTone,
+} from "@/lib/domain/competition";
 import type { CompetitorRow } from "@/lib/data";
 
 /** Field-intensity tone → the app's semantic text color. */
@@ -7,6 +11,13 @@ const TONE_CLASS: Record<FieldTone, string> = {
   risk: "text-risk",
   open: "text-pursue",
   neutral: "text-slate-600",
+};
+
+/** Same tones as a panel treatment for the verdict block. */
+const VERDICT_CLASS: Record<FieldTone, string> = {
+  risk: "border-risk/40 bg-risk/10",
+  open: "border-pursue/40 bg-pursue/10",
+  neutral: "border-border bg-surface",
 };
 
 /** The incumbent block folded into raw_json.pricing_summary by Pricing Research. */
@@ -40,6 +51,17 @@ export function CompetitiveLandscape({
   const isRecompete = Boolean(pricing?.is_recompete);
   const incumbent = (pricing?.incumbent as IncumbentInfo | null) ?? null;
 
+  /**
+   * The answer, before the evidence. Firm counts and win totals are the
+   * working, not the conclusion: what the operator needs is whether to bid,
+   * who they are really up against, and where to aim the price.
+   */
+  const verdict = competitiveVerdict(competitors, {
+    incumbentName: incumbent?.recipient_name ?? null,
+    incumbentLastAward: incumbent?.last_award_amount ?? null,
+    isRecompete,
+  });
+
   const topFirms = competitors.slice(0, 6);
 
   return (
@@ -48,6 +70,22 @@ export function CompetitiveLandscape({
         Competitive landscape · <span className="num">{firmCount}</span>{" "}
         {firmCount === 1 ? "firm" : "firms"}
       </p>
+
+      {verdict && (
+        <div className={`mb-3 rounded-md border px-3 py-2.5 ${VERDICT_CLASS[verdict.tone]}`}>
+          <p className="text-sm font-semibold leading-snug text-foreground">
+            {verdict.headline}
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-slate-700">
+            {verdict.whatItMeans}
+          </p>
+          <p className="mt-1.5 text-sm leading-relaxed text-slate-700">
+            <span className="font-medium text-foreground">What to do: </span>
+            {verdict.priceGuidance}
+          </p>
+          <p className="mt-1.5 text-xs text-slate-500">{verdict.confidenceNote}</p>
+        </div>
+      )}
 
       {/* Recompete / incumbent headline, the single most useful fact here. */}
       {isRecompete && incumbent?.recipient_name && (
@@ -59,14 +97,20 @@ export function CompetitiveLandscape({
             {incumbent.last_award_amount != null && incumbent.last_award_amount > 0
               ? currency(incumbent.last_award_amount)
               : "amount unlisted"}
-            {incumbent.last_action_date ? ` · ${shortDate(incumbent.last_action_date)}` : ""}. Beating
-            an incumbent usually takes a sharper price or a clear discriminator.
+            {incumbent.last_action_date ? ` · ${shortDate(incumbent.last_action_date)}` : ""}
           </p>
         </div>
       )}
 
       {/* Repeat winners, ranked by how often they win this NAICS + state. */}
-      <p className="label mb-1.5">Who wins this work</p>
+      {/* The evidence behind the verdict. The dollar figure is each firm's
+          typical award, which read as an unexplained number before. */}
+      <p className="label mb-1.5">
+        Who wins this work
+        <span className="ml-1 font-normal normal-case tracking-normal text-slate-500">
+          (wins, and what they typically win for)
+        </span>
+      </p>
       <ul className="divide-y divide-border">
         {topFirms.map((c) => (
           <li key={c.recipient_name} className="flex items-center justify-between gap-2 py-2">
