@@ -5,6 +5,8 @@ import { EmptyState } from "@/components/empty-state";
 import { ActionButton } from "@/components/action-button";
 import { PAGE_HELP } from "@/lib/help-content";
 import { currency, shortDate, pct } from "@/lib/format";
+import { buildContractPlan } from "@/lib/domain/contract-plan";
+import { GuidedPlanPanel } from "@/components/guided-plan";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +90,18 @@ function ContractCard({ c, completed = false }: { c: Record<string, unknown>; co
   const coordination = (c.coordination_log as CoordinationEntry[] | null) ?? [];
   const nonSsPct = Number(c.non_ss_sub_pct ?? 0);
   const cparsStatus = (c.cpars_status as string | null) ?? "not_started";
+  const plan = completed
+    ? null
+    : buildContractPlan({
+        completed,
+        hasBackupSub: Boolean(c.backup_sub_name),
+        milestones,
+        coordinationCount: coordination.length,
+        nonSsPct,
+        cparsStatus,
+        cparsDue: (c.cpars_due_at as string | null) ?? null,
+        now: new Date().toISOString(),
+      });
 
   return (
     <div className={`card space-y-5 ${completed ? "opacity-80" : ""}`}>
@@ -118,6 +132,8 @@ function ContractCard({ c, completed = false }: { c: Record<string, unknown>; co
           </ActionButton>
         </div>
       </div>
+
+      {plan && <GuidedPlanPanel plan={plan} eyebrow="Running this contract" />}
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
         <div>
