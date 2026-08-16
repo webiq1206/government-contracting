@@ -142,7 +142,7 @@ export function BidBrief({
               {analysis.trade_scopes!.map((ts) => (
                 <li
                   key={ts.trade}
-                  className="rounded-md border border-border px-3 py-2.5"
+                  className="panel-inset px-3 py-2.5"
                 >
                   <p className="text-sm font-medium text-slate-900">{ts.trade}</p>
                   <ScannableText text={ts.work} className="mt-1 text-slate-700" />
@@ -173,7 +173,7 @@ export function BidBrief({
         )}
 
         {hasSecondary && (
-          <details className="group rounded-md border border-border">
+          <details className="group panel-inset">
             <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -221,7 +221,7 @@ export function BidBrief({
                 <Section title="Contacts">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {analysis.contacts.map((c, i) => (
-                      <div key={i} className="rounded-md border border-border p-3 text-sm">
+                      <div key={i} className="panel-inset p-3 text-sm">
                         <p className="font-medium text-slate-900">{c.name ?? "Contact"}</p>
                         {c.role && <p className="text-xs text-slate-500">{c.role}</p>}
                         {c.email && (

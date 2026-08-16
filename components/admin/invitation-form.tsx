@@ -71,7 +71,7 @@ export function InvitationForm() {
   }
 
   return (
-    <form onSubmit={submit} className="space-y-4 rounded-lg border border-border p-4">
+    <form onSubmit={submit} className="space-y-4 panel-inset p-4">
       <div>
         <h2 className="font-semibold">Invite somebody</h2>
         <p className="pt-1 text-sm text-muted-foreground">

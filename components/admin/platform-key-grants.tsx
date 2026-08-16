@@ -87,7 +87,7 @@ export function PlatformKeyGrants({
         </p>
       )}
 
-      <ul className="divide-y divide-border/60 rounded-lg border border-border">
+      <ul className="divide-y divide-border/60 panel-inset">
         {states.map((s) => {
           const active = Boolean(s.grantedAt) && !s.expired;
           const trialBorrowing = !active && isTrial && s.lendableDuringTrial && !s.hasOwnKey;

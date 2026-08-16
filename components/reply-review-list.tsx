@@ -87,7 +87,7 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
       {rows.map((r) => {
         const expanded = open === r.id;
         return (
-          <div key={r.id} className="rounded-md border border-border p-3">
+          <div key={r.id} className="panel-inset p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">

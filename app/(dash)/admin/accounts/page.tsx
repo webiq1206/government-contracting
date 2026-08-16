@@ -53,7 +53,7 @@ export default async function AdminAccountsPage() {
           <Stat label="Suspended" value={suspended} tone={suspended ? "text-risk" : undefined} />
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-x-auto panel-inset">
           <table className="w-full min-w-[54rem] text-left text-sm">
             <thead className="bg-surface text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -128,7 +128,7 @@ export default async function AdminAccountsPage() {
             Everything administrators have done to other people&apos;s accounts. Kept
             even after an account is deleted.
           </p>
-          <div className="rounded-lg border border-border">
+          <div className="panel-inset">
             {audit.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">
                 Nothing yet.
@@ -156,7 +156,7 @@ export default async function AdminAccountsPage() {
 
 function Stat({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
-    <div className="rounded-lg border border-border p-3">
+    <div className="panel-inset p-3">
       <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={`text-2xl font-semibold ${tone ?? ""}`}>{value}</div>
     </div>
