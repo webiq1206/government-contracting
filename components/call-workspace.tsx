@@ -164,6 +164,23 @@ export function CallWorkspace({
     description: card.description,
   });
 
+  /**
+   * What has actually passed between us, read from the record rather than
+   * assumed from why the card exists. A card is created when outreach is
+   * queued, but the email can stay a draft or fail to send, and opening with
+   * "I sent you an email recently" to somebody who never got one is exactly
+   * how a call starts badly.
+   */
+  const priorContact: "replied" | "emailed" | "none" = communications.some(
+    (c) => c.direction === "inbound"
+  )
+    ? "replied"
+    : card.source === "reply"
+      ? "replied"
+      : communications.some((c) => c.direction === "outbound" && c.channel === "email")
+        ? "emailed"
+        : "none";
+
   const guide = useMemo(
     () =>
       buildCallGuide({
@@ -178,6 +195,7 @@ export function CallWorkspace({
           [card.opportunity_location, card.location_state].filter(Boolean).join(", ") ||
           null,
         source: card.source,
+        priorContact,
         work: subWork.work,
         requires: {
           // Insurance is asked unless the guide is told otherwise: federal
@@ -197,7 +215,7 @@ export function CallWorkspace({
       }),
     // The guide is derived from the card, which only changes on a contact edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [card, data.caller]
+    [card, data.caller, priorContact]
   );
 
   const progress = guideProgress(guide, answers);

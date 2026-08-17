@@ -78,6 +78,36 @@ describe("the spoken opener", () => {
       /I sent you an email recently .* and wanted to follow up/
     );
   });
+
+  it("claims no prior email when nothing actually reached them", () => {
+    const o = buildCallGuide(input({ source: "outreach", priorContact: "none" })).opener;
+    // Outreach can sit as a draft or fail to send; the card exists either way.
+    expect(o).not.toMatch(/sent you an email|getting back to me|replying/i);
+    expect(o).toMatch(/I'm calling about the .* work in Kings Point, NY/);
+    expect(o).toMatch(/Is that something you'd have capacity for\?$/);
+  });
+
+  it("prefers the real contact history over why the card was created", () => {
+    // Card says outreach, but they had in fact written back.
+    expect(
+      buildCallGuide(input({ source: "outreach", priorContact: "replied" })).opener
+    ).toMatch(/Thanks for getting back to me/);
+  });
+
+  it("keeps every prior-contact variant free of placeholders and leaks", () => {
+    for (const priorContact of ["replied", "emailed", "none"] as const) {
+      for (const caller of [
+        { callerName: "Todd", callerCompany: "Brost Co" },
+        { callerName: null, callerCompany: "Brost Co" },
+        { callerName: null, callerCompany: null },
+      ]) {
+        const o = buildCallGuide(input({ priorContact, ...caller })).opener;
+        expect(o, o).not.toMatch(/\[|\]|undefined|null/);
+        expect(o, o).not.toMatch(/if we win|solicitation|government|award/i);
+        expect(o.endsWith("?"), o).toBe(true);
+      }
+    }
+  });
 });
 
 describe("never leading with the government contract", () => {

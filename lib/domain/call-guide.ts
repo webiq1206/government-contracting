@@ -89,6 +89,15 @@ export interface CallGuideInput {
   locationLabel?: string | null;
   /** 'reply' = they answered our email; 'outreach' = cold follow-up. */
   source?: string | null;
+  /**
+   * What has actually passed between us, which is not the same as what the
+   * card was created for. A card exists because outreach was queued, but the
+   * email may have stayed a draft or bounced, and opening with "I sent you an
+   * email recently" to somebody who never received one is the fastest way to
+   * sound like a script. Derived from the real communications history when
+   * the caller can see it; falls back to `source` when it cannot.
+   */
+  priorContact?: "replied" | "emailed" | "none";
   /** Plain-English description of the work, already resolved for this trade. */
   work?: string | null;
   /** Requirements this solicitation actually imposes. */
@@ -309,7 +318,9 @@ export function buildOpener(input: {
   /** Their first name, when we happen to have it. Usually we do not. */
   who?: string;
   trade?: string;
+  /** @deprecated Pass priorContact; kept so older call sites still compile. */
   replied?: boolean;
+  priorContact?: "replied" | "emailed" | "none";
   callerName?: string | null;
   callerCompany?: string | null;
   locationLabel?: string | null;
@@ -337,11 +348,23 @@ export function buildOpener(input: {
 
   const work = trade ? `the ${trade} work` : "some work";
   const where = place ? ` in ${place}` : "";
-  const reason = input.replied
-    ? `Thanks for getting back to me about ${work}${where}.`
-    : `I sent you an email recently about ${work}${where}, and wanted to follow up.`;
+  const contact =
+    input.priorContact ?? (input.replied ? "replied" : "emailed");
+  const reason =
+    contact === "replied"
+      ? `Thanks for getting back to me about ${work}${where}.`
+      : contact === "emailed"
+        ? `I sent you an email recently about ${work}${where}, and wanted to follow up.`
+        : // Nothing has actually reached them, so claim nothing. This is the
+          // shape a genuine first call takes.
+          `I'm calling about ${work}${where} that we're looking to line up.`;
 
-  return `${lead} ${reason} Do you have a couple of minutes?`;
+  const ask =
+    contact === "none"
+      ? "Is that something you'd have capacity for?"
+      : "Do you have a couple of minutes?";
+
+  return `${lead} ${reason} ${ask}`;
 }
 
 /**
@@ -363,7 +386,7 @@ export function buildCallGuide(input: CallGuideInput): CallGuide {
     // The trade as written, not lower-cased: "hvac work" read wrong on a
     // card an operator is about to say out loud.
     trade: (input.trade ?? "").trim(),
-    replied,
+    priorContact: input.priorContact ?? (replied ? "replied" : "emailed"),
     callerName: input.callerName,
     callerCompany: input.callerCompany,
     locationLabel: input.locationLabel,
