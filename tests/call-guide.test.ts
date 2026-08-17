@@ -180,8 +180,12 @@ describe("buildCallGuide", () => {
   });
 
   it("opens differently for a reply than for a cold follow-up", () => {
-    expect(buildCallGuide(input({ source: "reply" })).opener).toMatch(/Thanks for replying/);
-    expect(buildCallGuide(input({ source: "outreach" })).opener).toMatch(/I emailed you/);
+    expect(buildCallGuide(input({ source: "reply" })).opener).toMatch(
+      /Thanks for getting back to me/
+    );
+    expect(buildCallGuide(input({ source: "outreach" })).opener).toMatch(
+      /I sent you an email recently/
+    );
   });
 
   it("keeps the opener and closer to a single line each", () => {

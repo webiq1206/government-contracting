@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext, findOrgRecord, notFoundResponse } from "@/lib/org-guard";
 import { callCardById, callCardHistory } from "@/lib/data";
+import { getProfileJson } from "@/lib/ai/companyProfile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,10 +25,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "Call card not found." }, { status: 404 });
   }
 
-  const { communications, quotes } = await callCardHistory(
-    card.subcontractor_id,
-    card.opportunity_id
-  );
+  const [{ communications, quotes }, profile] = await Promise.all([
+    callCardHistory(card.subcontractor_id, card.opportunity_id),
+    // Who the operator says they are on the call. Same fields the outreach
+    // emails sign off with, so the sub hears the name they already read.
+    getProfileJson().catch(() => null),
+  ]);
 
-  return NextResponse.json({ card, communications, quotes });
+  const caller = {
+    name: profile?.outreach_display_name?.trim() || profile?.owner_name?.trim() || null,
+    company: profile?.dba?.trim() || profile?.legal_name?.trim() || null,
+  };
+
+  return NextResponse.json({ card, communications, quotes, caller });
 }

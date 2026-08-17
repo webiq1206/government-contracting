@@ -66,6 +66,8 @@ export interface CallWorkspaceData {
   card: CallCardRow;
   communications: Comm[];
   quotes: Quote[];
+  /** Who the operator is, for the spoken opener. Absent on a bare profile. */
+  caller?: { name: string | null; company: string | null } | null;
 }
 
 /** Answers whose ids are also columns the rest of the platform reads. */
@@ -167,6 +169,8 @@ export function CallWorkspace({
       buildCallGuide({
         companyName: card.company_name,
         ownerName: card.owner_name,
+        callerName: data.caller?.name ?? null,
+        callerCompany: data.caller?.company ?? null,
         trade: card.trade,
         opportunityTitle: card.opportunity_title,
         agency: card.agency,
@@ -193,7 +197,7 @@ export function CallWorkspace({
       }),
     // The guide is derived from the card, which only changes on a contact edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [card]
+    [card, data.caller]
   );
 
   const progress = guideProgress(guide, answers);

@@ -361,7 +361,7 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '  "geographic_area": string,                // area to source subs from',
     '  "risk_flags": string[],                   // short machine-ish flags, e.g. "liquidated_damages", "high_bonding"',
     '  "past_perf_classification": "not_required"|"team_accepted"|"prime_only",',
-    '  "questions_for_subs": string[],           // AT MOST 4, and only things specific to THIS job. The call form already captures, with its own field, whether they can do the work, whether they are interested, their price, firm or estimate, start date, availability, insurance, bonding, licenses, certifications and past projects. Never ask any of those. Each question under 12 words, phrased to be said out loud.',
+    '  "questions_for_subs": string[],           // AT MOST 4, and only things specific to THIS job. The call form already captures, with its own field, whether they can do the work, whether they are interested, their price, firm or estimate, start date, availability, insurance, bonding, licenses, certifications and past projects. Never ask any of those. Each question under 12 words, phrased to be said out loud. Never reveal that this is a government solicitation: no mention of the agency, an award, a bid, winning, or asking whether they have bid it themselves. Write them as a contractor pricing a job, not as a bidder.',
     '  "draft_sow": string,                      // overall scope to hand a subcontractor when trade_scopes is thin. Same format: one task per line, newline separated.',
     '  "set_aside": string | null,',
     '  "compliance_matrix": [                     // EVERY item the bid package must include to be responsive',
