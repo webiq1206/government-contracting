@@ -31,6 +31,9 @@ export type AdminAction =
   | "invitation_resent"
   | "invitation_revoked"
   | "invitation_accepted"
+  // Terms that were agreed but never landed, put right after the fact. Worth
+  // its own entry: the money changed without an admin pressing anything.
+  | "invitation_terms_repaired"
   // Lending a platform credential spends our money under someone else's
   // account, so who did it and why is part of the record, not a note.
   | "platform_key_granted"

@@ -384,6 +384,61 @@ export async function resendInvitation(input: {
  * changing plan is an ordinary thing to want to do and they do it through the
  * billing portal.
  */
+/**
+ * Put right an invitation that was accepted but whose terms never landed.
+ *
+ * Migration 048 records this state deliberately, and until now fixing it meant
+ * an admin noticing the flag on the invitations list and re-granting the
+ * concession by hand. Nobody watches a list for a row that looks normal, so
+ * the customer found out on an invoice instead.
+ *
+ * The write is the same transaction acceptance uses, so it is the terms and
+ * the stamp together or neither, and the `terms_applied_at is null` guard in
+ * the statement means two sweeps racing cannot apply a concession twice.
+ * Deciding WHETHER to repair is not this function's job: concession-integrity
+ * owns that, because the dangerous cases (an account that has since started
+ * paying, one that already has a discount) must be refused, not guessed at.
+ */
+export async function repairInvitedTerms(input: {
+  id: string;
+  actorEmail: string;
+}): Promise<AdminActionResult> {
+  const row = await queryOne<InvitationRow>(`${INVITATION_SELECT} where id = $1`, [
+    input.id,
+  ]);
+  if (!row) return { ok: false, error: "That invitation no longer exists." };
+  if (!row.accepted_at || !row.accepted_org_id) {
+    return { ok: false, error: "That invitation was never accepted." };
+  }
+  if (row.terms_applied_at) {
+    return { ok: false, error: "Those terms are already on the account." };
+  }
+
+  const terms = describeConcession({
+    kind: row.concession_kind as ConcessionKind,
+    percent: row.concession_percent,
+    months: row.concession_months,
+  });
+
+  await applyInvitedTermsAtomically(row, row.accepted_org_id, terms);
+  await recordAdminAction({
+    adminEmail: input.actorEmail,
+    action: "invitation_terms_repaired",
+    orgId: row.accepted_org_id,
+    detail: {
+      invitation_id: row.id,
+      email: row.email,
+      terms,
+      invited_by: row.invited_by_email,
+    },
+  }).catch(() => undefined);
+
+  return {
+    ok: true,
+    message: `Applied ${terms} to ${row.email}'s account.`,
+  };
+}
+
 export async function invitedTermsForOrg(
   orgId: string
 ): Promise<{ plan: "founding" | "standard"; interval: "month" | "year" } | null> {

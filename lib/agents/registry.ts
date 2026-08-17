@@ -40,6 +40,7 @@ import {
 import { complianceSweep } from "./compliance-sweep";
 import { subOnboarding } from "./sub-onboarding";
 import { trialSweep } from "./trial-sweep";
+import { concessionSweep } from "./concession-sweep";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -71,6 +72,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   retentionSweep,
   complianceSweep,
   trialSweep,
+  concessionSweep,
   logRetentionSweep,
   backlinkOutreachSweep,
   contactRecheckSweep,
@@ -105,6 +107,9 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     // Hourly: the gates already refuse a lapsed trial, so this only needs to
     // keep stored state honest and get warnings out on the right day.
     { agent: trialSweep, cron: "10 * * * *" }, // hourly at :10
+    // Daily, mid-morning: a stranded discount is worth fixing the same day,
+    // and an invitation reminder should not arrive at 4am.
+    { agent: concessionSweep, cron: "40 9 * * *" }, // daily at 09:40
     // Just after the sweep, so it acts on statuses the sweep has just brought
     // up to date rather than yesterday's.
     { agent: subOnboarding, cron: "35 6 * * *" }, // daily at 06:35
