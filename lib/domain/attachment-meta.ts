@@ -240,6 +240,75 @@ export function filenameFromResponse(input: {
  * "untitled". The junk must be refused rather than cleaned: a wrong-but-
  * plausible name on a bid document is worse than a generic one.
  */
+/**
+ * A name taken from what the document says at the top of page one.
+ *
+ * Last resort before giving up on a real name. A scanned or exported
+ * solicitation attachment frequently carries no Title metadata at all, which
+ * is how ten documents survived two backfills still called "attachment", but
+ * the page itself almost always announces what it is: "STATEMENT OF WORK",
+ * "Wage Determination", "Past Performance Questionnaire".
+ *
+ * The filtering is the whole job. The first lines of a federal PDF are mostly
+ * furniture, page numbers, dates, bare form numbers, agency codes, and any of
+ * them would make a worse name than "attachment" does.
+ */
+export function filenameFromPdfHeading(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const lines = text
+    .split("\n")
+    .slice(0, 40)
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    // Page furniture: "Page 1 of 12", "1", "Rev. 3", a bare date.
+    if (/^page\s+\d+(\s+of\s+\d+)?$/i.test(line)) continue;
+    if (/^\d{1,4}$/.test(line)) continue;
+    if (/^rev(ision)?\.?\s*\d/i.test(line)) continue;
+    if (/^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}$/.test(line)) continue;
+    // A bare form or solicitation number is an identifier, not a name.
+    if (/^[A-Z0-9][A-Z0-9.\-_/ ]{2,}$/.test(line) && !/[a-z]/.test(line)) {
+      const words = line.split(" ").filter((w) => /[A-Z]{3,}/.test(w));
+      // "SOLICITATION OFFER AND AWARD" is upper case and a real heading;
+      // "FA524026Q0021" and "SF 1449" are not.
+      if (words.length < 2) continue;
+    }
+    // Too short to mean anything, or an abstract rather than a heading.
+    if (line.length < 8 || line.length > 120) continue;
+    const letters = line.replace(/[^A-Za-z]/g, "").length;
+    if (letters < 6) continue;
+    if (line.split(" ").length < 2) continue;
+
+    const named = filenameFromPdfTitle(line);
+    if (named) return named;
+  }
+  return null;
+}
+
+/**
+ * The name a document gets when nothing in it or about it will say.
+ *
+ * Not a recovered name, a manufactured one, and deliberately so: "attachment"
+ * tells the operator nothing and looks identical to every other unnamed file,
+ * while the solicitation number and a position at least say which bid it
+ * belongs to and distinguishes it from its siblings. Used only after the URL,
+ * the PDF title, and the page heading have all failed.
+ */
+export function filenameFromSolicitation(input: {
+  solicitationNumber?: string | null;
+  opportunityTitle?: string | null;
+  index: number;
+  mime?: string | null;
+}): string | null {
+  const ref =
+    input.solicitationNumber?.trim() ||
+    (input.opportunityTitle?.trim() ? input.opportunityTitle.trim().slice(0, 60) : "");
+  if (!ref) return null;
+  const stem = `${ref} attachment ${input.index}`;
+  return normalizeAttachmentMeta({ filename: stem, mime: input.mime ?? null }).filename;
+}
+
 export function filenameFromPdfTitle(title: string | null | undefined): string | null {
   if (!title) return null;
   let t = title.trim();
@@ -252,9 +321,17 @@ export function filenameFromPdfTitle(title: string | null | undefined): string |
   t = t.replace(/[,;:]/g, "").replace(/\s{2,}/g, " ").trim();
   if (t.length < 6) return null;
   // "Document1", "untitled 2", "draft" and friends: placeholder titles the
-  // authoring tool invented, not names. [\s\d]* rather than \b because
-  // "Document1" has no word boundary before the digit.
-  if (/^(untitled|document|new document|blank|draft|temp|scan|final)[\s\d]*$/i.test(t)) {
+  // authoring tool invented, not names. Two optional halves so the common
+  // two-word forms are caught as well: the previous pattern anchored a single
+  // word followed by digits, so "Untitled document", which is what Word calls
+  // every file nobody named, sailed through and became a filename.
+  // [\s\d]* rather than \b because "Document1" has no word boundary before
+  // the digit.
+  if (
+    /^(untitled|new|blank|draft|temp|scan|final|copy)?[\s\d]*(document|doc|presentation|workbook|spreadsheet|file|scan)?[\s\d]*$/i.test(
+      t
+    )
+  ) {
     return null;
   }
   // Titles are prose-ish; anything absurdly long is an abstract, not a name.
