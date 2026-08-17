@@ -23,6 +23,7 @@ import { StopClickPropagation } from "@/components/stop-click-propagation";
 import { TodayLive } from "@/components/today-live";
 import { TodayGreeting } from "@/components/today-greeting";
 import { WorkQueue } from "@/components/work-queue";
+import { focusCount } from "@/lib/domain/pipeline-focus";
 import { EmptyState } from "@/components/empty-state";
 import type { AutomationRules } from "@/lib/domain/intake";
 import { currency, shortDate, timeAgo } from "@/lib/format";
@@ -218,6 +219,44 @@ function Section({
   );
 }
 
+/**
+ * One count in the health rail. A number nobody can act on is decoration, so
+ * every row that has anything behind it opens the place that holds it. Zero
+ * stays plain text: a link to an empty board teaches the operator that the
+ * links lie.
+ */
+function StatRow({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: number;
+  href: string;
+}) {
+  if (value <= 0) {
+    return (
+      <li className="flex justify-between py-2.5">
+        <span>{label}</span>
+        <span className="num text-foreground">{value}</span>
+      </li>
+    );
+  }
+  return (
+    <li>
+      <Link
+        href={href}
+        className="group flex min-h-11 items-center justify-between py-2.5 transition-colors hover:text-foreground md:min-h-0"
+      >
+        <span className="group-hover:underline group-hover:decoration-gold group-hover:underline-offset-4">
+          {label}
+        </span>
+        <span className="num text-foreground group-hover:text-gold">{value}</span>
+      </Link>
+    </li>
+  );
+}
+
 function PipelineHealthRail({
   stageCounts,
   totalActions,
@@ -232,18 +271,11 @@ function PipelineHealthRail({
 }) {
   const byStage = Object.fromEntries(stageCounts.map((s) => [s.stage, s.count]));
   const active = stageCounts.reduce((n, s) => n + s.count, 0);
-  const strongFits =
-    (byStage.analysis ?? 0) +
-    (byStage.sub_research ?? 0) +
-    (byStage.outreach ?? 0) +
-    (byStage.quote_entry ?? 0) +
-    (byStage.bid_building ?? 0);
-  const inPursuit =
-    (byStage.outreach ?? 0) +
-    (byStage.call_queue ?? 0) +
-    (byStage.quote_entry ?? 0) +
-    (byStage.bid_building ?? 0);
-  const packagesReady = byStage.bid_building ?? 0;
+  // Counted from the same stage lists the board filters on, so clicking a
+  // number lands on exactly that number of cards.
+  const strongFits = focusCount("in_capture", byStage);
+  const inPursuit = focusCount("in_pursuit", byStage);
+  const packagesReady = focusCount("packages_ready", byStage);
   /**
    * Real stage distribution, not decoration.
    *
@@ -278,21 +310,40 @@ function PipelineHealthRail({
               Live
             </span>
           </div>
-          <p className="mt-4 font-display text-5xl text-foreground">
-            <span className="num">{active}</span>
-          </p>
-          <p className="mt-1 text-sm text-foreground/45">active opportunities</p>
+          {/* Every number here is a door. A count you cannot act on is a
+              poster; these each open the board filtered to exactly what was
+              counted. */}
+          <Link href="/pipeline" className="group mt-4 block">
+            <p className="font-display text-5xl text-foreground transition-colors group-hover:text-gold">
+              <span className="num">{active}</span>
+            </p>
+            <p className="mt-1 text-sm text-foreground/45 group-hover:text-foreground/70">
+              active opportunities
+            </p>
+          </Link>
 
           {active > 0 ? (
             <div className="mt-6 flex h-24 items-end gap-1.5">
-              {bars.map((b) => (
-                <div
-                  key={b.key}
-                  className="flex-1 rounded-sm bg-gradient-to-t from-gold/25 to-gold/85"
-                  style={{ height: `${b.h}%` }}
-                  title={`${b.label}: ${b.count}`}
-                />
-              ))}
+              {bars.map((b) =>
+                b.count > 0 ? (
+                  <Link
+                    key={b.key}
+                    href={`/pipeline?stage=${b.key}`}
+                    aria-label={`${b.label}: ${b.count}`}
+                    title={`${b.label}: ${b.count}`}
+                    className="flex-1 rounded-sm bg-gradient-to-t from-gold/25 to-gold/85 transition-opacity hover:opacity-80"
+                    style={{ height: `${b.h}%` }}
+                  />
+                ) : (
+                  // Nothing at this stage: a link would lead to an empty board.
+                  <div
+                    key={b.key}
+                    className="flex-1 rounded-sm bg-gradient-to-t from-gold/25 to-gold/85"
+                    style={{ height: `${b.h}%` }}
+                    title={`${b.label}: 0`}
+                  />
+                )
+              )}
             </div>
           ) : (
             <p className="mt-6 border border-dashed border-border/55 px-3 py-4 text-center text-xs leading-relaxed text-muted-foreground">
@@ -301,36 +352,48 @@ function PipelineHealthRail({
             </p>
           )}
 
-          <ul className="mt-6 divide-y divide-border/55 dark:divide-white/10 text-sm text-muted-foreground">
-            <li className="flex justify-between py-2.5">
-              <span>Needs you</span>
-              <span className="num text-foreground">{totalActions}</span>
-            </li>
-            <li className="flex justify-between py-2.5">
-              <span>In capture</span>
-              <span className="num text-foreground">{strongFits}</span>
-            </li>
-            <li className="flex justify-between py-2.5">
-              <span>In pursuit</span>
-              <span className="num text-foreground">{inPursuit}</span>
-            </li>
-            <li className="flex justify-between py-2.5">
-              <span>Packages ready</span>
-              <span className="num text-foreground">{packagesReady}</span>
-            </li>
+          <ul className="mt-6 divide-y divide-border/55 text-sm text-muted-foreground dark:divide-white/10">
+            {/* "Needs you" is the action-centre count, which is this page's
+                own queue, so it goes to the queue rather than the board. */}
+            <StatRow label="Needs you" value={totalActions} href="#queue" />
+            <StatRow
+              label="In capture"
+              value={strongFits}
+              href="/pipeline?focus=in_capture"
+            />
+            <StatRow
+              label="In pursuit"
+              value={inPursuit}
+              href="/pipeline?focus=in_pursuit"
+            />
+            <StatRow
+              label="Packages ready"
+              value={packagesReady}
+              href="/pipeline?focus=packages_ready"
+            />
           </ul>
         </div>
 
-        <div className="border border-gold/28 bg-surface-raised px-4 py-3">
-          <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
-            Automation activity
-          </p>
-          <p className="mt-1 text-sm font-medium text-gold">
-            {totalActions > 0
-              ? `${totalActions} action${totalActions === 1 ? "" : "s"} waiting`
-              : "Queue clear"}
-          </p>
-        </div>
+        {totalActions > 0 ? (
+          <Link
+            href="#queue"
+            className="block border border-gold/28 bg-surface-raised px-4 py-3 transition-colors hover:border-gold/60"
+          >
+            <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
+              Automation activity
+            </p>
+            <p className="mt-1 text-sm font-medium text-gold">
+              {totalActions} action{totalActions === 1 ? "" : "s"} waiting
+            </p>
+          </Link>
+        ) : (
+          <div className="border border-gold/28 bg-surface-raised px-4 py-3">
+            <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
+              Automation activity
+            </p>
+            <p className="mt-1 text-sm font-medium text-gold">Queue clear</p>
+          </div>
+        )}
 
         {digestParts.length > 0 && (
           <Link
@@ -469,7 +532,11 @@ export default async function TodayPage() {
               {/* The one list of everything waiting on a person, above the
                   themed sections. The sections stay for context; this answers
                   "what should I do next" before any of them are opened. */}
-              {queueItems.length > 0 && <WorkQueue items={queueItems} limit={6} />}
+              {queueItems.length > 0 && (
+                <div id="queue" className="scroll-mt-6">
+                  <WorkQueue items={queueItems} limit={6} />
+                </div>
+              )}
 
               {clear && (
                 <EmptyState
