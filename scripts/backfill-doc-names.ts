@@ -23,11 +23,13 @@
 import { query } from "../lib/db";
 import { closePool } from "../lib/db";
 import {
+  filenameFromPdfHeading,
   filenameFromPdfTitle,
   filenameFromResponse,
+  filenameFromSolicitation,
   normalizeAttachmentMeta,
 } from "../lib/domain/attachment-meta";
-import { extractPdfTitle } from "../lib/integrations/pdf";
+import { extractPdfText, extractPdfTitle } from "../lib/integrations/pdf";
 import { storage } from "../lib/integrations/storage";
 
 /** "attachment", "attachment.pdf", "attachment-3.pdf", "attachment_2" ... */
@@ -41,12 +43,17 @@ async function main() {
     source_url: string | null;
     storage_path: string | null;
     storage_backend: string | null;
+    opportunity_id: string | null;
+    solicitation_number: string | null;
+    opportunity_title: string | null;
   }>(
-    `select id, name, mime, meta->>'source_url' as source_url,
-            storage_path, storage_backend
-       from documents
-      where kind = 'solicitation'
-        and meta->>'source_url' is not null`
+    `select d.id, d.name, d.mime, d.meta->>'source_url' as source_url,
+            d.storage_path, d.storage_backend, d.opportunity_id,
+            o.solicitation_number, o.title as opportunity_title
+       from documents d
+       left join opportunities o on o.id = d.opportunity_id
+      where d.kind = 'solicitation'
+        and d.meta->>'source_url' is not null`
   );
 
   const generic = rows.filter((r) => GENERIC_NAME.test(r.name.trim()));
@@ -54,6 +61,9 @@ async function main() {
     `${rows.length} solicitation document(s) with a source URL; ${generic.length} generically named.`
   );
 
+  // Position within its own opportunity, so two unnamed files on one bid do
+  // not both become "...attachment 1".
+  const perOpportunity = new Map<string, number>();
   let renamed = 0;
   let unchanged = 0;
   let failed = 0;
@@ -90,9 +100,37 @@ async function main() {
           if (fromTitle) {
             recovered = fromTitle;
             via = "pdf title";
+          } else {
+            // No Title metadata, which is normal for a scanned or exported
+            // attachment. The page itself usually announces what it is.
+            const { text } = await extractPdfText(bytes, 4000);
+            const fromHeading = filenameFromPdfHeading(text);
+            if (fromHeading) {
+              recovered = fromHeading;
+              via = "page heading";
+            }
           }
         } catch {
           /* storage read failed; fall through to the ordinary skip */
+        }
+      }
+
+      // Nothing will say what this document is called. A name built from the
+      // solicitation is not a recovered name, but it beats leaving every
+      // unnamed file on a bid looking identical.
+      if (recovered === row.name || GENERIC_NAME.test(recovered)) {
+        const key = row.opportunity_id ?? "none";
+        const next = (perOpportunity.get(key) ?? 0) + 1;
+        perOpportunity.set(key, next);
+        const fromSolicitation = filenameFromSolicitation({
+          solicitationNumber: row.solicitation_number,
+          opportunityTitle: row.opportunity_title,
+          index: next,
+          mime: row.mime,
+        });
+        if (fromSolicitation) {
+          recovered = fromSolicitation;
+          via = "solicitation";
         }
       }
 
