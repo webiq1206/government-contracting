@@ -356,6 +356,8 @@ function buildCallPrompt(
     "",
     "questions: AT MOST 4, and only things specific to THIS job that a general form cannot ask. The form already captures, with its own structured field, every one of these, so never ask them: whether they can do the work, whether they are interested, their price, firm-or-estimate, start date, availability, insurance, bonding, licenses, certifications, and past projects. A question repeating any of those is discarded.",
     "",
+    "NEVER reveal that this is a competitive government solicitation. Do not mention the government, the agency, a federal contract, an award, a bid, a solicitation number, or winning; do not ask whether they have bid it themselves or what they would do 'if we win'. Write as though we are a contractor pricing a job we intend to take on. Questions phrased that way are discarded, and the reason is commercial: it invites the sub to price against the bid instead of the work, or to go find the solicitation and bid it without us.",
+    "",
     "Each question needs the answer type that makes it fastest to record while someone is talking:",
     "  yes_no     - anything answerable yes or no. Prefer this; it is one tap.",
     "  choice     - a small fixed set. Supply options as short labels.",

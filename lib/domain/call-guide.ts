@@ -74,12 +74,30 @@ export interface CallGuide {
 export interface CallGuideInput {
   companyName: string;
   ownerName?: string | null;
+  /**
+   * Who is placing the call, and for whom. Both come from the company
+   * profile's subcontractor-facing fields, because the opener used to read
+   * "this is [your name] with [your company]" out loud: the operator was
+   * expected to silently substitute two placeholders while a stranger waited
+   * on the line.
+   */
+  callerName?: string | null;
+  callerCompany?: string | null;
   trade?: string | null;
   opportunityTitle?: string | null;
   agency?: string | null;
   locationLabel?: string | null;
   /** 'reply' = they answered our email; 'outreach' = cold follow-up. */
   source?: string | null;
+  /**
+   * What has actually passed between us, which is not the same as what the
+   * card was created for. A card exists because outreach was queued, but the
+   * email may have stayed a draft or bounced, and opening with "I sent you an
+   * email recently" to somebody who never received one is the fastest way to
+   * sound like a script. Derived from the real communications history when
+   * the caller can see it; falls back to `source` when it cannot.
+   */
+  priorContact?: "replied" | "emailed" | "none";
   /** Plain-English description of the work, already resolved for this trade. */
   work?: string | null;
   /** Requirements this solicitation actually imposes. */
@@ -132,6 +150,34 @@ const COVERED_BY_CORE: { topic: string; patterns: RegExp[] }[] = [
 /** True when a generated question repeats something the form already captures. */
 export function duplicatesCoreQuestion(ask: string): boolean {
   return COVERED_BY_CORE.some((c) => c.patterns.some((p) => p.test(ask)));
+}
+
+/**
+ * Wording that tells the subcontractor this is a competitive government
+ * solicitation.
+ *
+ * The core questions are written to avoid it, but the job-specific ones are
+ * generated, and a model asked for questions about a federal job will
+ * cheerfully produce "would you be available if we are awarded the
+ * contract?". One such question undoes the rest: it invites the sub to price
+ * against the bid rather than the work, or to go and find the solicitation
+ * and bid it themselves. Prompting alone cannot guarantee this, so the guide
+ * drops them on the way in.
+ */
+const LEAKS_BID_CONTEXT: RegExp[] = [
+  /\bif (we|you) (win|are awarded|get the award)\b/i,
+  /\bwe win\b/i,
+  /\baward(ed|ing)?\b/i,
+  /\bsolicitation|rfq|rfp|ifb\b/i,
+  /\bgovernment|federal|agency|sam\.gov\b/i,
+  /\b(prime|sub)contract(or)?\s+(award|bid)\b/i,
+  /\bhave you (already )?bid\b/i,
+  /\bbid(ding)? (this|the) (project|job|work)\b/i,
+  /\bcontract (award|vehicle)\b/i,
+];
+
+export function leaksBidContext(ask: string): boolean {
+  return LEAKS_BID_CONTEXT.some((p) => p.test(ask));
 }
 
 /**
@@ -255,6 +301,73 @@ function firstName(name?: string | null): string {
 }
 
 /**
+ * The opening line, spoken.
+ *
+ * Three rules it has to satisfy at once. It must contain no placeholder,
+ * because whatever is written here gets read aloud. It must not assume we
+ * know who picked up: an emailed subcontractor is usually a shared inbox or
+ * a front desk, so a greeting built around their name reads as a script the
+ * moment it is wrong. And it must not open with the fact that this is a
+ * government solicitation, which turns a straightforward "can you price
+ * this" into a conversation about the bid.
+ *
+ * What is left is what a person would actually say: who I am, why I am
+ * calling, and is now a good time.
+ */
+export function buildOpener(input: {
+  /** Their first name, when we happen to have it. Usually we do not. */
+  who?: string;
+  trade?: string;
+  /** @deprecated Pass priorContact; kept so older call sites still compile. */
+  replied?: boolean;
+  priorContact?: "replied" | "emailed" | "none";
+  callerName?: string | null;
+  callerCompany?: string | null;
+  locationLabel?: string | null;
+}): string {
+  const who = (input.who ?? "").trim();
+  const name = (input.callerName ?? "").trim();
+  const company = (input.callerCompany ?? "").trim();
+  const trade = (input.trade ?? "").trim();
+  const place = (input.locationLabel ?? "").trim();
+
+  // With no name on file the phrasing changes shape rather than leaving a
+  // gap: "I'm calling from Acme" is something people say. With neither name
+  // nor company the introduction is dropped entirely, because the reason for
+  // calling already says who we are; stitching in a filler clause produced
+  // "I'm following up on an email I sent. Thanks for getting back to me",
+  // which is two openings in a row.
+  const intro = name
+    ? company
+      ? `this is ${name} with ${company}.`
+      : `this is ${name}.`
+    : company
+      ? `I'm calling from ${company}.`
+      : "";
+  const lead = intro ? `${who ? `Hi ${who}` : "Hi"}, ${intro}` : `${who ? `Hi ${who}` : "Hi"}.`;
+
+  const work = trade ? `the ${trade} work` : "some work";
+  const where = place ? ` in ${place}` : "";
+  const contact =
+    input.priorContact ?? (input.replied ? "replied" : "emailed");
+  const reason =
+    contact === "replied"
+      ? `Thanks for getting back to me about ${work}${where}.`
+      : contact === "emailed"
+        ? `I sent you an email recently about ${work}${where}, and wanted to follow up.`
+        : // Nothing has actually reached them, so claim nothing. This is the
+          // shape a genuine first call takes.
+          `I'm calling about ${work}${where} that we're looking to line up.`;
+
+  const ask =
+    contact === "none"
+      ? "Is that something you'd have capacity for?"
+      : "Do you have a couple of minutes?";
+
+  return `${lead} ${reason} ${ask}`;
+}
+
+/**
  * Assemble the guide for one call.
  *
  * Section order is the order a call actually goes: confirm they can and want
@@ -268,14 +381,28 @@ export function buildCallGuide(input: CallGuideInput): CallGuide {
   const replied = input.source === "reply";
   const requires = input.requires ?? {};
 
-  const opener =
-    `Hi${who ? ` ${who}` : ""}, this is [your name] with [your company]. ` +
-    (replied
-      ? `Thanks for replying about the ${trade || "work"}`
-      : `I emailed you about a ${trade || ""} job we're bidding`) +
-    `${input.locationLabel ? ` in ${input.locationLabel}` : ""}. ` +
-    `We win the contract and you do the work at your price. Two minutes?`;
+  const opener = buildOpener({
+    who,
+    // The trade as written, not lower-cased: "hvac work" read wrong on a
+    // card an operator is about to say out loud.
+    trade: (input.trade ?? "").trim(),
+    priorContact: input.priorContact ?? (replied ? "replied" : "emailed"),
+    callerName: input.callerName,
+    callerCompany: input.callerCompany,
+    locationLabel: input.locationLabel,
+  });
 
+  /**
+   * What we need to know, without announcing what the work is for.
+   *
+   * The first call is a stranger deciding in five seconds whether this is
+   * worth their time. "Would you want it if we win?" and "Have you already
+   * bid this project yourselves?" both open with the fact that this is a
+   * competitive government solicitation, which invites the sub to price
+   * against that rather than price the work, or to go around us entirely.
+   * The same information arrives from asking whether they want the work and
+   * what they would charge.
+   */
   const fit: CallQuestion[] = [
     {
       id: "can_perform",
@@ -285,15 +412,9 @@ export function buildCallGuide(input: CallGuideInput): CallGuide {
     },
     {
       id: "interested",
-      ask: "Would you want it if we win?",
+      ask: "Is this something you'd want to take on?",
       type: "yes_no",
       key: true,
-    },
-    {
-      id: "bid_submitted",
-      ask: "Have you already bid this project yourselves?",
-      type: "yes_no",
-      note: "Catches a collision before we price them in.",
     },
   ];
 
@@ -304,6 +425,7 @@ export function buildCallGuide(input: CallGuideInput): CallGuide {
     const norm = q.ask.toLowerCase().replace(/\s+/g, " ").trim();
     if (seen.has(norm)) return false;
     seen.add(norm);
+    if (leaksBidContext(q.ask)) return false;
     return !duplicatesCoreQuestion(q.ask);
   });
 
@@ -340,7 +462,9 @@ export function buildCallGuide(input: CallGuideInput): CallGuide {
   ];
 
   const schedule: CallQuestion[] = [
-    { id: "start_date", ask: "If we win, when could you start?", type: "date" },
+    // Not "if we win": the whole guide avoids framing the job as a contest
+    // the sub is being priced into.
+    { id: "start_date", ask: "How soon could you start?", type: "date" },
     {
       id: "availability",
       ask: "Anything on the calendar that could get in the way?",
@@ -386,9 +510,11 @@ export function buildCallGuide(input: CallGuideInput): CallGuide {
     ...(quals.length ? [{ id: "quals", title: "Paperwork", questions: quals }] : []),
   ];
 
+  // The agency's name used to close the call, which told the sub exactly who
+  // the customer is and where to find the solicitation.
   const closer =
-    `That's everything, thank you. I'll price your number into our bid` +
-    `${input.agency ? ` to ${input.agency}` : ""} and email you either way.`;
+    "That's everything, thank you. I'll get your number worked in and come " +
+    "back to you either way.";
 
   return { opener, sections, closer };
 }

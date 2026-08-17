@@ -66,6 +66,8 @@ export interface CallWorkspaceData {
   card: CallCardRow;
   communications: Comm[];
   quotes: Quote[];
+  /** Who the operator is, for the spoken opener. Absent on a bare profile. */
+  caller?: { name: string | null; company: string | null } | null;
 }
 
 /** Answers whose ids are also columns the rest of the platform reads. */
@@ -162,11 +164,30 @@ export function CallWorkspace({
     description: card.description,
   });
 
+  /**
+   * What has actually passed between us, read from the record rather than
+   * assumed from why the card exists. A card is created when outreach is
+   * queued, but the email can stay a draft or fail to send, and opening with
+   * "I sent you an email recently" to somebody who never got one is exactly
+   * how a call starts badly.
+   */
+  const priorContact: "replied" | "emailed" | "none" = communications.some(
+    (c) => c.direction === "inbound"
+  )
+    ? "replied"
+    : card.source === "reply"
+      ? "replied"
+      : communications.some((c) => c.direction === "outbound" && c.channel === "email")
+        ? "emailed"
+        : "none";
+
   const guide = useMemo(
     () =>
       buildCallGuide({
         companyName: card.company_name,
         ownerName: card.owner_name,
+        callerName: data.caller?.name ?? null,
+        callerCompany: data.caller?.company ?? null,
         trade: card.trade,
         opportunityTitle: card.opportunity_title,
         agency: card.agency,
@@ -174,6 +195,7 @@ export function CallWorkspace({
           [card.opportunity_location, card.location_state].filter(Boolean).join(", ") ||
           null,
         source: card.source,
+        priorContact,
         work: subWork.work,
         requires: {
           // Insurance is asked unless the guide is told otherwise: federal
@@ -193,7 +215,7 @@ export function CallWorkspace({
       }),
     // The guide is derived from the card, which only changes on a contact edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [card]
+    [card, data.caller, priorContact]
   );
 
   const progress = guideProgress(guide, answers);

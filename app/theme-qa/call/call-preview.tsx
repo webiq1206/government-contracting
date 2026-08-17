@@ -98,5 +98,12 @@ const DATA: CallWorkspaceData = {
 
 export function CallPreview() {
   // onClose is a no-op: the slide-over is the whole point of the page.
-  return <CallWorkspace data={DATA} onClose={() => {}} />;
+  // The caller identity is what the workspace endpoint supplies from the
+  // company profile, so the opener renders exactly as an operator hears it.
+  return (
+    <CallWorkspace
+      data={{ ...DATA, caller: { name: "Todd", company: "Brost Co" } }}
+      onClose={() => {}}
+    />
+  );
 }
