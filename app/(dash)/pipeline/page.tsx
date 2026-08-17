@@ -11,6 +11,7 @@ import { DeadlineBadge } from "@/components/deadline-badge";
 import { EstimatedValue } from "@/components/estimated-value";
 import { getAutomationRules } from "@/lib/app-settings";
 import { laneFor, type LaneKey } from "@/lib/domain/pipeline-lanes";
+import { focusSet } from "@/lib/domain/pipeline-focus";
 import { CALL_STAGE } from "@/lib/domain/call-step";
 import { SwipeRail } from "@/components/swipe-rail";
 import { CardPreview } from "@/components/card-preview";
@@ -68,10 +69,29 @@ const NEXT_ACTION: Record<string, string> = {
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams?: { view?: string };
+  searchParams?: { view?: string; focus?: string; stage?: string };
 }) {
-  const [opps, rules] = await Promise.all([pipelineOpportunities(), getAutomationRules()]);
+  const [allOpps, rules] = await Promise.all([pipelineOpportunities(), getAutomationRules()]);
   const view = searchParams?.view === "stages" ? "stages" : "lanes";
+  /**
+   * Counts elsewhere in the product are clickable, and they land here. The
+   * slice comes either from a named set (the Today rail's "In pursuit") or a
+   * single stage (its bar chart), and both filter to exactly what was
+   * counted, because the stage lists live in one module.
+   */
+  const focus = focusSet(searchParams?.focus);
+  const focusStage =
+    searchParams?.stage && PIPELINE_STAGES.some((s) => s.key === searchParams.stage)
+      ? searchParams.stage
+      : null;
+  const focusStages = focus ? focus.stages : focusStage ? [focusStage] : null;
+  const opps = focusStages ? allOpps.filter((o) => focusStages.includes(o.stage)) : allOpps;
+  const focusLabel = focus
+    ? focus.label
+    : focusStage
+      ? (PIPELINE_STAGES.find((s) => s.key === focusStage)?.label ?? focusStage)
+      : null;
+  const focusBlurb = focus?.blurb ?? null;
   // An email-only account has no call step, so the board does not draw a
   // column for it. The column comes back if any record is actually still in
   // that stage, because a board that hides a record is worse than a board
@@ -95,16 +115,26 @@ export default async function PipelinePage({
         help={PAGE_HELP["pipeline"]}
         title="Opportunities"
         status={
-          opps.length === 0
-            ? "Empty"
-            : `${opps.length} active · ${(byLane.get("you") ?? []).length} need you`
+          focusLabel
+            ? `${focusLabel}: ${opps.length}`
+            : opps.length === 0
+              ? "Empty"
+              : `${opps.length} active · ${(byLane.get("you") ?? []).length} need you`
         }
         subtitle={
-          view === "lanes"
-            ? "Grouped by whose turn it is. Start with Needs you."
-            : "Full stage board. Amber cards wait on you; the rest run automatically."
+          focusLabel
+            ? (focusBlurb ??
+              `Only opportunities at the ${focusLabel.toLowerCase()} stage.`)
+            : view === "lanes"
+              ? "Grouped by whose turn it is. Start with Needs you."
+              : "Full stage board. Amber cards wait on you; the rest run automatically."
         }
       >
+        {focusLabel && (
+          <Link href="/pipeline" className="btn-ghost text-xs">
+            Show all ({allOpps.length})
+          </Link>
+        )}
         <div className="flex gap-1 rounded-md border border-border p-0.5">
           <Link
             href="/pipeline"

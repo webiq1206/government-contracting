@@ -33,20 +33,40 @@ function s(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
+/**
+ * A count with somewhere to go. Tiles that summarise a section on this page
+ * link to it; a number the operator can only look at is decoration. Tiles
+ * with nothing behind them (a date, an empty count) stay inert rather than
+ * promising a destination that turns out to be blank.
+ */
 function Stat({
   label,
   value,
   hint,
+  href,
 }: {
   label: string;
   value: React.ReactNode;
   hint?: string;
+  href?: string;
 }) {
-  return (
-    <div className="card" title={hint}>
+  const body = (
+    <>
       <div className="label">{label}</div>
       <div className="mt-1 text-lg font-semibold text-slate-900">{value}</div>
-    </div>
+    </>
+  );
+  if (!href) {
+    return (
+      <div className="card" title={hint}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <a href={href} className="card card-hover block" title={hint}>
+      {body}
+    </a>
   );
 }
 
@@ -169,16 +189,19 @@ export default async function SubDetailPage({
           <Stat
             label="Emails sent"
             hint="Outbound emails saved on this sub's record across every opportunity."
+            href={stats.emails_sent > 0 ? "#communications" : undefined}
             value={<span className="num">{stats.emails_sent}</span>}
           />
           <Stat
             label="Replies"
             hint="Inbound emails captured for this sub."
+            href={stats.emails_in > 0 ? "#communications" : undefined}
             value={<span className="num">{stats.emails_in}</span>}
           />
           <Stat
             label="Calls logged"
             hint="Completed call workspace saves recorded as call history."
+            href={stats.calls_logged > 0 ? "#communications" : undefined}
             value={<span className="num">{stats.calls_logged}</span>}
           />
           <Stat
@@ -189,6 +212,7 @@ export default async function SubDetailPage({
           <Stat
             label="Touches"
             hint="All communications: emails, calls, notes, and skips."
+            href={stats.touches > 0 ? "#communications" : undefined}
             value={<span className="num">{stats.touches}</span>}
           />
           <Stat
@@ -203,6 +227,7 @@ export default async function SubDetailPage({
           <Stat
             label="Open jobs"
             hint="Active opportunities this sub is currently paired to."
+            href={pairings.length > 0 ? "#pairings" : undefined}
             value={<span className="num">{openPairings}</span>}
           />
         </div>
