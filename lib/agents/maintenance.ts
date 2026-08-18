@@ -13,7 +13,17 @@ import { sms } from "../integrations/twilio";
 import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
 import { logAgent } from "../logger";
-import { runWithOrg } from "../tenant-context";
+import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
+
+/**
+ * Active organization ids for a cron sweep that must run per tenant. Falls
+ * back to the founding org so a pre-migration single-tenant install still
+ * sweeps. Every unscoped sweep uses this so no statement spans tenants.
+ */
+async function activeOrgIds(): Promise<string[]> {
+  const orgs = await listActiveOrganizations().catch(() => []);
+  return orgs.length ? orgs.map((o) => o.id) : [LEGACY_ORG_ID];
+}
 import { listActiveOrganizations } from "../organizations";
 import {
   applyOutcomeToSolicitation,
@@ -485,24 +495,39 @@ export const reviewExpirySweep: AgentDefinition = {
   description: "Auto-dismisses review-tier opportunities not actioned within the timer.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const expired = await query<{ id: string; title: string | null }>(
-      `update opportunities
-          set stage='dismissed', status='archived', human_action_required=false
-        where tier='review' and human_action_required=true
-          and review_expires_at is not null and review_expires_at <= now()
-        returning id, title`
-    );
-    for (const o of expired) {
-      await logAgent({
-        agent: "review-expiry-sweep",
-        action: "auto-dismiss",
-        opportunityId: o.id,
-        level: "info",
-        message: `Auto-dismissed review-tier item "${o.title ?? o.id}" (timer expired).`,
-        reasoning: "Review-tier opportunities auto-dismiss if not actioned within the configured window.",
-      });
+    // Per organization: the UPDATE and its audit log both stay inside one
+    // tenant. A single platform-wide statement would touch every tenant's
+    // opportunities at once and log each auto-dismiss with no org, so the
+    // customer whose opportunity vanished would never see why in their own
+    // Automation Log.
+    const orgs = await activeOrgIds();
+    let total = 0;
+    for (const orgId of orgs) {
+      const expired = await runWithOrg(orgId, () =>
+        query<{ id: string; title: string | null }>(
+          `update opportunities
+              set stage='dismissed', status='archived', human_action_required=false
+            where org_id = $1 and tier='review' and human_action_required=true
+              and review_expires_at is not null and review_expires_at <= now()
+            returning id, title`,
+          [orgId]
+        )
+      );
+      for (const o of expired) {
+        await runWithOrg(orgId, () =>
+          logAgent({
+            agent: "review-expiry-sweep",
+            action: "auto-dismiss",
+            opportunityId: o.id,
+            level: "info",
+            message: `Auto-dismissed review-tier item "${o.title ?? o.id}" (timer expired).`,
+            reasoning: "Review-tier opportunities auto-dismiss if not actioned within the configured window.",
+          })
+        );
+      }
+      total += expired.length;
     }
-    return { ok: true, summary: `Auto-dismissed ${expired.length} expired review item(s).` };
+    return { ok: true, summary: `Auto-dismissed ${total} expired review item(s).` };
   },
 };
 
@@ -520,8 +545,11 @@ export const stalledPipelineSweep: AgentDefinition = {
     //   still stuck on a later sweep    -> flag for the operator.
     // Nothing is ever silently abandoned, and humans are only pulled in when
     // an automatic retry didn't fix it.
+    // Per organization, so no single statement flags or rescues across
+    // tenants and every audit-log line lands in the owning tenant's log.
     let rescued = 0;
-    const stalled: { id: string; title: string | null; stage: string; hours: number }[] = [];
+    const stalled: { id: string; title: string | null; stage: string; hours: number; orgId: string }[] = [];
+    for (const sweepOrgId of await activeOrgIds()) {
     for (const [stage, hours] of Object.entries(STALL_HOURS)) {
       if (hours == null) continue;
       // bid_building only counts as a system stall while no bid exists yet;
@@ -536,17 +564,18 @@ export const stalledPipelineSweep: AgentDefinition = {
       // Strike 1: stuck, no retry attempted yet, and we know which agent to
       // re-run -> rescue automatically instead of bothering the operator.
       if (agent) {
-        const rescuable = await query<{ id: string; title: string | null }>(
+        const rescuable = await runWithOrg(sweepOrgId, () =>
+          query<{ id: string; title: string | null }>(
           `update opportunities
               set risk_flags = coalesce(risk_flags, '{}') || array[$3::text]
-            where status = 'open' and human_action_required = false
+            where org_id = $4 and status = 'open' and human_action_required = false
               and stage = $1
               and updated_at < now() - make_interval(hours => $2)
               and not ($3 = any(coalesce(risk_flags, '{}')))
               ${bidGuard}
             returning id, title`,
-          [stage, hours, retryMarker]
-        );
+          [stage, hours, retryMarker, sweepOrgId]
+        ));
         for (const o of rescuable) {
           // The strike-1 marker was already written by the UPDATE above. If
           // the enqueue fails, that marker is a lie (no retry is running), so
@@ -561,52 +590,60 @@ export const stalledPipelineSweep: AgentDefinition = {
                 where id = $1`,
               [o.id, retryMarker]
             ).catch(() => {});
-            await logAgent({
-              agent: "stalled-pipeline-sweep",
-              action: "auto-retry",
-              opportunityId: o.id,
-              level: "error",
-              status: "error",
-              message: `Could not queue the automatic retry for "${o.title ?? o.id}" (${(e as Error).message}). It stays marked stuck and will be retried on the next sweep.`,
-            });
+            await runWithOrg(sweepOrgId, () =>
+              logAgent({
+                agent: "stalled-pipeline-sweep",
+                action: "auto-retry",
+                opportunityId: o.id,
+                level: "error",
+                status: "error",
+                message: `Could not queue the automatic retry for "${o.title ?? o.id}" (${(e as Error).message}). It stays marked stuck and will be retried on the next sweep.`,
+              })
+            );
           });
           if (!queued) continue;
           rescued++;
-          await logAgent({
-            agent: "stalled-pipeline-sweep",
-            action: "auto-retry",
-            opportunityId: o.id,
-            level: "info",
-            message: `"${o.title ?? o.id}" sat in ${stage.replace(/_/g, " ")} past its ${hours}h window; re-running ${agent} automatically. You'll only be asked to step in if this retry doesn't move it.`,
-          });
+          await runWithOrg(sweepOrgId, () =>
+            logAgent({
+              agent: "stalled-pipeline-sweep",
+              action: "auto-retry",
+              opportunityId: o.id,
+              level: "info",
+              message: `"${o.title ?? o.id}" sat in ${stage.replace(/_/g, " ")} past its ${hours}h window; re-running ${agent} automatically. You'll only be asked to step in if this retry doesn't move it.`,
+            })
+          );
         }
       }
 
       // Strike 2: still stuck after a rescue (or no agent to rescue with) ->
       // the operator's judgment is genuinely needed.
-      const rows = await query<{ id: string; title: string | null; stage: string }>(
+      const rows = await runWithOrg(sweepOrgId, () =>
+        query<{ id: string; title: string | null; stage: string }>(
         `update opportunities
             set human_action_required = true,
                 risk_flags = coalesce(risk_flags, '{}') || array['stalled_' || stage]
-          where status = 'open' and human_action_required = false
+          where org_id = $5 and status = 'open' and human_action_required = false
             and stage = $1
             and updated_at < now() - make_interval(hours => $2)
             and ($3::text is null or $4 = any(coalesce(risk_flags, '{}')))
             ${bidGuard}
           returning id, title, stage`,
-        [stage, hours, agent ?? null, `auto_retried_${stage}`]
-      );
-      stalled.push(...rows.map((r) => ({ ...r, hours })));
+        [stage, hours, agent ?? null, `auto_retried_${stage}`, sweepOrgId]
+      ));
+      stalled.push(...rows.map((r) => ({ ...r, hours, orgId: sweepOrgId })));
+    }
     }
     for (const o of stalled) {
-      await logAgent({
-        agent: "stalled-pipeline-sweep",
-        action: "flag-stalled",
-        opportunityId: o.id,
-        level: "warn",
-        message: `Flagged stalled opportunity "${o.title ?? o.id}" (no progress in ${o.stage.replace(/_/g, " ")} for over ${o.hours}h, automatic retry did not move it).`,
-        reasoning: STALL_REASONING[o.stage] ?? "No progress beyond the stage's expected window.",
-      });
+      await runWithOrg(o.orgId, () =>
+        logAgent({
+          agent: "stalled-pipeline-sweep",
+          action: "flag-stalled",
+          opportunityId: o.id,
+          level: "warn",
+          message: `Flagged stalled opportunity "${o.title ?? o.id}" (no progress in ${o.stage.replace(/_/g, " ")} for over ${o.hours}h, automatic retry did not move it).`,
+          reasoning: STALL_REASONING[o.stage] ?? "No progress beyond the stage's expected window.",
+        })
+      );
     }
     return {
       ok: true,
@@ -622,39 +659,53 @@ export const deadlineMonitor: AgentDefinition = {
     "Warns the operator when a live opportunity's bid deadline is under 48 hours away and no bid has been submitted.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
+    // Per organization. The old single statement flagged every tenant's
+    // opportunities at once and, worse, sms.alert resolves the alert NUMBER
+    // from the ambient org, so every tenant's opportunity TITLES were texted
+    // to the founding org's phone. Each org's flag, log, and SMS now stay
+    // inside that org.
+    const orgs = await activeOrgIds();
+    let flagged = 0;
+    for (const orgId of orgs) {
     // Flag once per opportunity: the deadline_soon risk flag excludes it from
     // the next sweep so the operator isn't re-alerted every 6 hours.
-    const urgent = await query<{ id: string; title: string | null; deadline: string; stage: string }>(
+    const urgent = await runWithOrg(orgId, () =>
+      query<{ id: string; title: string | null; deadline: string; stage: string }>(
       `update opportunities
           set human_action_required = true,
               risk_flags = coalesce(risk_flags, '{}') || array['deadline_soon']
-        where status = 'open'
+        where org_id = $1 and status = 'open'
           and stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
           and deadline is not null
           and deadline > now()
           and deadline <= now() + interval '48 hours'
           and not ('deadline_soon' = any(coalesce(risk_flags, '{}')))
-        returning id, title, deadline, stage`
-    );
+        returning id, title, deadline, stage`,
+      [orgId]
+    ));
+    flagged += urgent.length;
     for (const o of urgent) {
       const hoursLeft = Math.max(
         0,
         (new Date(o.deadline).getTime() - Date.now()) / 3_600_000
       ).toFixed(0);
       const msg = `Bid due in ${hoursLeft}h: "${o.title ?? o.id}" is still in ${o.stage.replace(/_/g, " ")}. Submit or dismiss before the deadline.`;
-      await logAgent({
-        agent: "deadline-monitor",
-        action: "deadline-warning",
-        opportunityId: o.id,
-        level: "warn",
-        message: msg,
-      });
-      // Best-effort SMS; silently skipped when Twilio is not configured.
-      await sms.alert(msg).catch(() => undefined);
+      await runWithOrg(orgId, () =>
+        logAgent({
+          agent: "deadline-monitor",
+          action: "deadline-warning",
+          opportunityId: o.id,
+          level: "warn",
+          message: msg,
+        })
+      );
+      // Best-effort SMS to THIS org's configured number; skipped when unset.
+      await runWithOrg(orgId, () => sms.alert(msg)).catch(() => undefined);
+    }
     }
     return {
       ok: true,
-      summary: `Deadline check: ${urgent.length} opportunit${urgent.length === 1 ? "y" : "ies"} due within 48h flagged.`,
+      summary: `Deadline check: ${flagged} opportunit${flagged === 1 ? "y" : "ies"} due within 48h flagged.`,
     };
   },
 };
@@ -1453,8 +1504,17 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
 
     // One notification email per poll (not per reply), best-effort: silently
     // skipped when the platform inbox isn't connected; Today + the log still
-    // surface it either way.
-    if (notifyLines.length > 0 && config.systemMail.digestTo && (await systemMail.enabled())) {
+    // surface it either way. Gated to the founding org, because digestTo is a
+    // single platform address (DIGEST_EMAIL_TO): sending it for every tenant
+    // put every customer's subcontractor names, opportunity titles, and quote
+    // amounts in the founding org's inbox. Each tenant still sees its replies
+    // on Today and in its own Automation Log.
+    if (
+      orgId === LEGACY_ORG_ID &&
+      notifyLines.length > 0 &&
+      config.systemMail.digestTo &&
+      (await systemMail.enabled())
+    ) {
       await systemMail
         .send({
           to: config.systemMail.digestTo,
@@ -1492,34 +1552,46 @@ export const unresponsiveSweep: AgentDefinition = {
     "Marks opportunity×sub pairings as unresponsive when follow-up email got no reply within 72 hours and no quote was entered.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const rows = await query<{ id: string }>(
-      `update opportunity_subs os
-          set outreach_state = 'unresponsive'
-        where os.outreach_state = 'followed_up'
-          and os.responded_at is null
-          and not exists (
-                select 1 from quotes q
-                 where q.opportunity_id = os.opportunity_id
-                   and q.subcontractor_id = os.subcontractor_id
-                   and q.quote_amount is not null
-                   and q.quote_amount > 0
-              )
-          and exists (
-                select 1 from communications c
-                 where c.opportunity_id = os.opportunity_id
-                   and c.subcontractor_id = os.subcontractor_id
-                   and c.channel = 'email'
-                   and c.direction = 'outbound'
-                   and c.created_at <= now() - interval '72 hours'
-              )
-        returning os.id, os.opportunity_id`
-    );
+    // Per organization via the join to opportunities, so no tenant's pairings
+    // are marked by a statement scanning another tenant's rows.
+    const rows: { id: string; opportunity_id: string }[] = [];
+    for (const orgId of await activeOrgIds()) {
+      const marked = await runWithOrg(orgId, () =>
+        query<{ id: string; opportunity_id: string }>(
+          `update opportunity_subs os
+              set outreach_state = 'unresponsive'
+             from opportunities o
+            where o.id = os.opportunity_id
+              and o.org_id = $1
+              and os.outreach_state = 'followed_up'
+              and os.responded_at is null
+              and not exists (
+                    select 1 from quotes q
+                     where q.opportunity_id = os.opportunity_id
+                       and q.subcontractor_id = os.subcontractor_id
+                       and q.quote_amount is not null
+                       and q.quote_amount > 0
+                  )
+              and exists (
+                    select 1 from communications c
+                     where c.opportunity_id = os.opportunity_id
+                       and c.subcontractor_id = os.subcontractor_id
+                       and c.channel = 'email'
+                       and c.direction = 'outbound'
+                       and c.created_at <= now() - interval '72 hours'
+                  )
+            returning os.id, os.opportunity_id`,
+          [orgId]
+        )
+      );
+      rows.push(...marked);
+    }
 
     // Going unresponsive can be the last answer outstanding: with every other
     // sub already negative, this solicitation is now exhausted and should be
     // re-sourced or closed rather than waiting forever.
     const enqueued: AgentResult["enqueued"] = [];
-    const touched = new Set((rows as unknown as { opportunity_id: string }[]).map((r) => r.opportunity_id));
+    const touched = new Set(rows.map((r) => r.opportunity_id));
     for (const opportunityId of touched) {
       const exhaustion = await closeIfSubsExhausted(opportunityId).catch(() => null);
       if (exhaustion?.action === "resourced" && exhaustion.enqueue) {
@@ -1544,17 +1616,27 @@ export const contactRecheckSweep: AgentDefinition = {
     // Clear historical call cards that can never be dialed so Today / Call
     // Queue stay actionable.
     const orgs = await listActiveOrganizations().catch(() => []);
-    const cleared = await query<{ id: string }>(
-      `update call_cards cc
-          set status = 'skipped',
-              response_json = coalesce(cc.response_json, '{}'::jsonb)
-                || jsonb_build_object('skip_reason', 'no_phone')
-        from subcontractors s
-       where s.id = cc.subcontractor_id
-         and cc.status = 'pending'
-         and nullif(btrim(coalesce(s.phone, '')), '') is null
-       returning cc.id`
-    );
+    // Per organization: this used to run once unscoped and skip uncallable
+    // call cards across every tenant in a single statement.
+    const cleared: { id: string }[] = [];
+    for (const org of orgs) {
+      const skipped = await runWithOrg(org.id, () =>
+        query<{ id: string }>(
+          `update call_cards cc
+              set status = 'skipped',
+                  response_json = coalesce(cc.response_json, '{}'::jsonb)
+                    || jsonb_build_object('skip_reason', 'no_phone')
+            from subcontractors s
+           where s.id = cc.subcontractor_id
+             and cc.org_id = $1
+             and cc.status = 'pending'
+             and nullif(btrim(coalesce(s.phone, '')), '') is null
+           returning cc.id`,
+          [org.id]
+        )
+      );
+      cleared.push(...skipped);
+    }
 
     // No gate on keys or an existing website: website discovery is now
     // key-free (web-search finder + own-site scrape), so every sub without an

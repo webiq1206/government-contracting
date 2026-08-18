@@ -5,6 +5,7 @@ import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
 import { skipCallCard } from "@/lib/skip-call";
+import { findOrgRecord } from "@/lib/org-guard";
 import {
   resolveSnoozeUntil,
   type SnoozeUntilChoice,
@@ -58,6 +59,12 @@ export async function POST(req: Request) {
     const errors: string[] = [];
     for (const id of ids) {
       try {
+        // Ownership first: skipCallCard looks a card up by bare id, so without
+        // this a subscriber could skip another tenant's queued calls by
+        // POSTing their UUIDs. Silently ignore ids that are not this org's,
+        // exactly as the pursue/dismiss loop does.
+        const owned = await findOrgRecord("call_cards", id, auth.organizationId!, "id");
+        if (!owned) continue;
         await skipCallCard(id, { reason: "Skipped in bulk by operator." });
         ok += 1;
       } catch (err) {
@@ -92,9 +99,9 @@ export async function POST(req: Request) {
       const result = await query<{ id: string }>(
         `update call_cards
             set snoozed_until = $2
-          where id = any($1::uuid[])
+          where id = any($1::uuid[]) and org_id = $3
       returning id`,
-        [ids, untilIso]
+        [ids, untilIso, auth.organizationId]
       );
       await logAgent({
         agent: "operator",
@@ -119,9 +126,9 @@ export async function POST(req: Request) {
                 then $2::timestamptz + interval '4 hours'
                 else review_expires_at
               end
-        where id = any($1::uuid[])
+        where id = any($1::uuid[]) and org_id = $3
     returning id`,
-      [ids, untilIso]
+      [ids, untilIso, auth.organizationId]
     );
     await logAgent({
       agent: "operator",

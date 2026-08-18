@@ -26,7 +26,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const opp = await queryOne<Opportunity>(
     `select id, title, solicitation_number from opportunities where id=$1 and org_id=$2`,
-    [params.id]
+    [params.id, orgId]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
