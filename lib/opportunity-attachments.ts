@@ -128,7 +128,12 @@ async function materializeDocs(
         content: bytes,
         mime: meta.mime,
       });
-    } catch {
+    } catch (err) {
+      // Degraded, not dropped: the sub still gets a link. But a storage
+      // outage silently converting every packet to links is worth a trace.
+      console.error(
+        `[attachments] could not download "${d.name}" (${d.storage_path}): ${(err as Error).message}; sending as a link instead`
+      );
       const meta = normalizeAttachmentMeta({ filename: d.name, mime: d.mime });
       links.push({
         name: meta.filename,
@@ -162,7 +167,10 @@ async function materializeDocs(
           url: publicDocUrl({ k: "s", v: a.storage_path, n: meta.filename }),
         });
         continue;
-      } catch {
+      } catch (err) {
+        console.error(
+          `[attachments] could not download "${name}" (${a.storage_path}): ${(err as Error).message}; sending as a link instead`
+        );
         const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
         links.push({
           name: meta.filename,

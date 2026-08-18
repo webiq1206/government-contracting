@@ -167,12 +167,27 @@ export async function applyOutcomeToSolicitation(input: {
 }): Promise<void> {
   const state = OUTREACH_STATE[input.outcome];
   if (!state) return;
+  // A null trade used to fall open and stamp every trade line for the pair.
+  // Resolve it first: when the pair has exactly one trade, that is the trade
+  // this reply is about. A genuinely multi-trade pair with no named trade
+  // still applies to all its lines, deliberately: "we can't take this on"
+  // and "we're in" are answers about the job, and a reply that priced ONE of
+  // several trades reaches here with the trade named from the comm's meta.
+  let trade = input.trade ?? null;
+  if (trade == null) {
+    const rows = await query<{ trade: string | null }>(
+      `select distinct trade from opportunity_subs
+        where opportunity_id = $1 and subcontractor_id = $2`,
+      [input.opportunityId, input.subcontractorId]
+    ).catch(() => []);
+    if (rows.length === 1) trade = rows[0].trade;
+  }
   await query(
     `update opportunity_subs
         set outreach_state = $4, responded_at = now()
       where opportunity_id = $1 and subcontractor_id = $2
-        and ($3::text is null or trade = $3)`,
-    [input.opportunityId, input.subcontractorId, input.trade ?? null, state]
+        and ($3::text is null or coalesce(trade, '') = coalesce($3, ''))`,
+    [input.opportunityId, input.subcontractorId, trade, state]
   );
 }
 

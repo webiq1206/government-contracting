@@ -59,7 +59,7 @@ export const googleMaps = {
     trade: string;
     location: string;
     limit?: number;
-  }): Promise<{ disabled?: boolean; results: Contractor[] }> {
+  }): Promise<{ disabled?: boolean; error?: string; results: Contractor[] }> {
     const apiKey = await orgApiKey("GOOGLE_MAPS_API_KEY");
     if (!apiKey) return { disabled: true, results: [] };
     const { trade, location, limit = 12 } = params;
@@ -77,9 +77,11 @@ export const googleMaps = {
       // or rate-limited key yields empty results that look like "no contractors."
       // Surface it so the misconfig isn't silent.
       if (data.status && !["OK", "ZERO_RESULTS"].includes(data.status)) {
-        console.error(
-          `[googleMaps] Places status ${data.status}${data.error_message ? ": " + data.error_message : ""}`
-        );
+        const detail = `Places status ${data.status}${data.error_message ? ": " + data.error_message : ""}`;
+        console.error(`[googleMaps] ${detail}`);
+        // A denied or over-quota key returns empty results in a 200; without
+        // this, that reads as "no contractors in this area".
+        return { results: [], error: detail };
       }
       const results: Contractor[] = (data.results ?? [])
         .slice(0, limit)
@@ -91,8 +93,8 @@ export const googleMaps = {
           address: r.formatted_address,
         }));
       return { results };
-    } catch {
-      return { results: [] };
+    } catch (err) {
+      return { results: [], error: (err as Error).message };
     }
   },
 

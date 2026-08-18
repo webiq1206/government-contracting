@@ -229,12 +229,21 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   }
 
   // Trade context (from the opportunity_subs link when we know the sub).
-  const osRow = comm.subcontractor_id
-    ? await queryOne<{ trade: string | null }>(
-        `select trade from opportunity_subs where opportunity_id=$1 and subcontractor_id=$2 limit 1`,
+  // The trade this reply is about: the outbound email's own trade first (it
+  // is stamped in the comm's meta at send time), then the pairing row, but
+  // only when the pair has exactly ONE trade. An unordered `limit 1` over a
+  // multi-trade pair picked an arbitrary trade and the outcome landed on it.
+  const pairTrades = comm.subcontractor_id
+    ? await query<{ trade: string | null }>(
+        `select distinct trade from opportunity_subs where opportunity_id=$1 and subcontractor_id=$2`,
         [comm.opportunity_id, comm.subcontractor_id]
-      )
-    : null;
+      ).catch(() => [])
+    : [];
+  const osRow: { trade: string | null } | null = comm.trade
+    ? { trade: comm.trade }
+    : pairTrades.length === 1
+      ? pairTrades[0]
+      : null;
 
   const extracted = await extract(replyText, {
     opportunityTitle: comm.opportunity_title,

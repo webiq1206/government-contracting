@@ -276,7 +276,14 @@ async function checkForOrg(
   }
 
   // --- 6) FAR changes (best-effort RSS). ---
-  const farTitles = await fetchFarTitles().catch(() => [] as string[]);
+  let farFetchFailed = false;
+  const farTitles = await fetchFarTitles().catch((err) => {
+    // Unchecked is not unchanged: without this, an RSS outage counted the
+    // FAR-change check as clean in the daily summary.
+    farFetchFailed = true;
+    console.error(`[compliance-monitor] FAR feed fetch failed: ${(err as Error).message}`);
+    return [] as string[];
+  });
   if (farTitles.length > 0) {
     let detailText: string;
     try {
@@ -310,6 +317,18 @@ async function checkForOrg(
       },
     });
     tally("ok");
+  } else if (farFetchFailed) {
+    await upsertItem({
+      orgId,
+      category: "far_change",
+      label: "FAR / acquisition.gov updates",
+      status: "warning",
+      detail: {
+        summary:
+          "The acquisition.gov feed could not be fetched, so regulation changes were NOT checked this run. Retries on the next scheduled run.",
+      },
+    });
+    tally("warning");
   }
 
   // --- Bundle a single SMS alert for critical/blocked items. ---

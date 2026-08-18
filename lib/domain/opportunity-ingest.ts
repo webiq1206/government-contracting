@@ -157,7 +157,14 @@ export async function ingestOpportunity(
       payload,
       sourceId,
       solicitationNumber
-    ).catch(() => undefined);
+    ).catch((err) =>
+      // A dropped refresh silently loses an AMENDED bid deadline: the record
+      // keeps the old date and the operator plans around a deadline that has
+      // moved. The ingest run continues; the failure does not.
+      console.error(
+        `[ingest] refresh of existing opportunity failed: ${(err as Error).message}`
+      )
+    );
     return {
       inserted: false,
       id: existing.id,
@@ -222,7 +229,11 @@ export async function ingestOpportunity(
         payload,
         sourceId,
         solicitationNumber
-      ).catch(() => undefined);
+      ).catch((err) =>
+        console.error(
+          `[ingest] refresh of raced opportunity failed: ${(err as Error).message}`
+        )
+      );
       return {
         inserted: false,
         id: raced.id,

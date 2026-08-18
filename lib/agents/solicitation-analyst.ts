@@ -234,8 +234,13 @@ async function processAttachment(
         );
       }
       stored = true;
-    } catch {
-      /* storage/documents are best-effort; continue with extraction */
+    } catch (err) {
+      // Extraction continues (analysis still needs the text), but a document
+      // that is not stored will not be attached to any outreach email, so
+      // the failure has to be visible, not "best-effort" silence.
+      console.error(
+        `[solicitation-analyst] failed to store ${att.url}: ${(err as Error).message}`
+      );
     }
 
     // Trust the actual bytes over SAM's (usually generic/wrong) headers.
@@ -248,8 +253,12 @@ async function processAttachment(
           outcome: {
             name: label,
             url: att.url,
-            status: stored ? "fetched" : "fetched",
-            detail: `${pages} pages`,
+            // "failed" when the store failed: the text was read for analysis,
+            // but with no documents row the file cannot ride on outreach, and
+            // reporting "fetched" here hid exactly that. (This ternary used to
+            // read `stored ? "fetched" : "fetched"`.)
+            status: stored ? "fetched" : "failed",
+            detail: stored ? `${pages} pages` : `${pages} pages read, but the file could not be stored`,
           },
         };
       }

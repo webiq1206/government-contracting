@@ -94,7 +94,12 @@ async function getRefreshToken(orgId: string): Promise<string | null> {
   const row = await queryOne<{ data: { refresh_token?: string } }>(
     `select data from integration_tokens where provider = 'gmail' and org_id = $1`,
     [orgId]
-  ).catch(() => null);
+  ).catch((err) => {
+    // A DB blip here reads as "inbox not connected" downstream; leave a trace
+    // so a run of held drafts is attributable to the outage, not the user.
+    console.error(`[gmail] token read failed for org ${orgId}: ${(err as Error).message}`);
+    return null;
+  });
   if (row?.data?.refresh_token) return row.data.refresh_token;
   // Headless escape hatch, founding tenant only. Handing this env token to any
   // other org would let them send from the platform's own mailbox.
@@ -446,6 +451,13 @@ export const gmail = {
     orgId?: string
   ): Promise<{
     disabled?: boolean;
+    /**
+     * The poll FAILED; the empty reply list is not "nobody wrote back".
+     * Callers must treat this as an outage: a revoked grant that only ever
+     * surfaced here once read as "0 matched" for weeks while quotes piled up
+     * unread in the inbox.
+     */
+    error?: string;
     replies: {
       threadId: string;
       from: string;
@@ -489,7 +501,13 @@ export const gmail = {
       }
       return { replies };
     } catch (err) {
-      return { replies: [], error: (err as { message?: string }).message } as never;
+      const message = (err as { message?: string }).message ?? "Gmail poll failed";
+      // Record the failure on the connection the same way a failed SEND does,
+      // so a revoked grant flips integration_tokens.status and the settings
+      // page (and the pipeline pulse) tell the operator to reconnect.
+      const org = await resolveOrg(orgId);
+      if (org) await markConnectionError(org, message);
+      return { replies: [], error: message };
     }
   },
 };

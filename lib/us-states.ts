@@ -113,6 +113,62 @@ export function serviceAreaStateCodes(serviceAreas: string[] | null | undefined)
   return codes.size > 0 ? codes : null;
 }
 
+
+/**
+ * The USPS state/territory code inside a Google-style formatted address, or
+ * null when none can be found.
+ *
+ * Google formats US addresses as "123 Main St, Yigo, GU 96929, United States"
+ * (sometimes without the zip, sometimes without the country). The code is
+ * matched as its own comma-separated token so "ID" inside a street name can
+ * never read as Idaho.
+ */
+export function stateCodeFromAddress(address: string | null | undefined): string | null {
+  const a = (address ?? "").trim();
+  if (!a) return null;
+  // ", ST 12345" / ", ST 12345-6789" / ", ST," / ", ST" at the end.
+  const m =
+    a.match(/,\s*([A-Z]{2})\s+\d{5}(?:-\d{4})?(?:\s*,|\s*$)/) ??
+    a.match(/,\s*([A-Z]{2})\s*(?:,\s*(?:USA|United States).*)?$/);
+  const code = m?.[1]?.toUpperCase() ?? null;
+  return code && VALID_CODES.has(code) ? code : null;
+}
+
+/**
+ * The one state a free-text place clearly names, or null.
+ *
+ * Used for analysis text like "Andersen AFB, Guam" when the structured
+ * place-of-performance state is missing. Returns null when the text names no
+ * state or names more than one: a multi-state area is not a single target and
+ * guessing between them is how work lands in the wrong one.
+ */
+export function stateCodeFromText(text: string | null | undefined): string | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+  const found = new Set<string>();
+  // Full names first ("New Mexico" before "Mexico"-style confusion is avoided
+  // by matching against the fixed name list on word boundaries).
+  // Longest names first, consuming each match, so "West Virginia" cannot also
+  // read as "Virginia".
+  let lower = t.toLowerCase();
+  const byLength = Object.entries(STATE_NAME_TO_CODE).sort(
+    (a, b) => b[0].length - a[0].length
+  );
+  for (const [name, code] of byLength) {
+    const re = new RegExp(`(^|[^a-z])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z])`);
+    if (re.test(lower)) {
+      found.add(code);
+      lower = lower.replace(re, "$1$2");
+    }
+  }
+  // Bare codes as their own tokens ("Yigo, GU" / "Yigo GU 96929").
+  for (const m of t.matchAll(/(?:^|[\s,])([A-Z]{2})(?=$|[\s,.\d])/g)) {
+    const code = m[1];
+    if (VALID_CODES.has(code)) found.add(code);
+  }
+  return found.size === 1 ? [...found][0] : null;
+}
+
 /** Common federal small-business / socioeconomic certifications. */
 export const FEDERAL_CERTIFICATIONS: string[] = [
   "Small Business",

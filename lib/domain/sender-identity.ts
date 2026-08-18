@@ -18,6 +18,13 @@ export interface OutreachSender {
   replyTo: string;
   /** False when no inbox is connected and nothing can actually be sent. */
   connected: boolean;
+  /**
+   * True when the lookup itself failed, so "not connected" is unknown rather
+   * than established. The transport refuses to send in that state: falling
+   * back to a platform address would put the wrong From on a customer's
+   * email and strand the sub's reply in a mailbox nobody polls for them.
+   */
+  unknown?: boolean;
 }
 
 /**
@@ -77,7 +84,7 @@ export async function resolveOutreachSender(orgId: string): Promise<OutreachSend
       [orgId]
     );
   } catch {
-    return { from: "", replyTo: "", connected: false };
+    return { from: "", replyTo: "", connected: false, unknown: true };
   }
 
   const row = rows[0];

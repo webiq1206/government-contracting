@@ -60,9 +60,13 @@ export const usaspending = {
   /**
    * Search prime awards (contract types A/B/C/D) by NAICS, state, and date
    * window. Defaults to the last 36 months when no dates are supplied.
-   * Returns { results: [] } on any failure.
+   * A failure comes back as { results: [], error }: an outage that read as
+   * "no award history" once fed zeroed comp stats and $0 target bids into
+   * live pricing guidance.
    */
-  async searchAwards(params: SearchAwardsParams = {}): Promise<{ results: UsaAward[] }> {
+  async searchAwards(
+    params: SearchAwardsParams = {}
+  ): Promise<{ results: UsaAward[]; error?: string }> {
     const { naics, state, fromDate, toDate, limit = 100 } = params;
     const now = new Date();
     const start = fromDate ?? isoDate(new Date(now.getTime() - 36 * 30 * 86_400_000));
@@ -110,8 +114,8 @@ export const usaspending = {
         award_id: toStr(r["Award ID"]),
       }));
       return { results };
-    } catch {
-      return { results: [] };
+    } catch (err) {
+      return { results: [], error: (err as Error).message };
     }
   },
 

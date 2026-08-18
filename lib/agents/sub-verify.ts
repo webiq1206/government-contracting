@@ -74,6 +74,46 @@ export const subVerify: AgentDefinition = {
     const notes: string[] = [];
     const verification: Record<string, unknown> = {};
 
+    // --- Geography gate, before any enrichment spends an API call ---
+    // A firm recorded in a different state than the work cannot mobilize for
+    // it, and emailing them anyway burns the org's credibility and the quote
+    // window. Pairings created before Sub Finder verified addresses can still
+    // carry wrong-area firms; this is where they stop. Unknown sub state
+    // passes through: absence of data is not evidence of distance.
+    const oppState = await queryOne<{ location_state: string | null }>(
+      `select location_state from opportunities where id = $1`,
+      [opportunityId]
+    );
+    const workState = (oppState?.location_state ?? "").trim().toUpperCase();
+    const subState = (sub.state ?? "").trim().toUpperCase();
+    if (workState && subState && workState !== subState) {
+      await query(
+        `update opportunity_subs
+            set verified = false,
+                outreach_state = 'not_a_fit',
+                verification_json = coalesce(verification_json, '{}'::jsonb)
+                  || jsonb_build_object('geography', $3::text)
+          where opportunity_id = $1 and subcontractor_id = $2`,
+        [
+          opportunityId,
+          subcontractorId,
+          `Firm is in ${subState}; the work is in ${workState}.`,
+        ]
+      );
+      await logAgent({
+        agent: "sub-verify",
+        action: "geography-mismatch",
+        level: "warn",
+        opportunityId,
+        subcontractorId,
+        message: `${sub.company_name} is in ${subState} but this work is in ${workState}, so they were ruled out for this solicitation. They stay on the roster for work in their own area.`,
+      });
+      return {
+        ok: true,
+        summary: `${sub.company_name} ruled out: located in ${subState}, work is in ${workState}.`,
+      };
+    }
+
     // --- Website + phone enrichment via Google Place Details ---
     // Nearly all subs arrive from Places text search with a place_id but no
     // website; Place Details is the one call that recovers both website and
@@ -119,15 +159,30 @@ export const subVerify: AgentDefinition = {
         const ds = await hunter.domainSearch(domain);
         if (ds.disabled) {
           notes.push("Hunter disabled, skipping Hunter email discovery.");
+        } else if (ds.error) {
+          // Unknown, not negative: a failed lookup must never be recorded as
+          // "no contact email exists".
+          notes.push(`Hunter lookup failed (${ds.error}); email discovery is unknown, not exhausted.`);
+          await logAgent({
+            agent: "sub-verify",
+            action: "hunter-error",
+            level: "error",
+            opportunityId,
+            subcontractorId,
+            message: `Hunter domain search failed for ${domain}: ${ds.error}. If this repeats, test the Hunter key in Settings, then Integrations.`,
+          });
         } else {
           const best = pickBestEmail(ds.emails);
           if (best) {
             email = best.value;
             emailSource = "hunter";
             const v = await hunter.verifyEmail(best.value);
+            if (v.error) {
+              notes.push(`Hunter could not verify ${best.value} (${v.error}); left unverified.`);
+            }
             emailVerified = v.status === "valid";
             verification.email_confidence = best.confidence;
-            verification.email_status = v.status ?? null;
+            verification.email_status = v.status ?? (v.error ? "verify_failed" : null);
           }
         }
       } else {
@@ -157,7 +212,7 @@ export const subVerify: AgentDefinition = {
         // the sub itself asks to be contacted there. Free-mail / off-domain
         // or MX-missing finds stay unverified drafts for operator approval.
         const v = await hunter.verifyEmail(scraped.email);
-        if (!v.disabled) {
+        if (!v.disabled && !v.error) {
           emailVerified = v.status === "valid";
           verification.email_status = v.status ?? null;
         } else {

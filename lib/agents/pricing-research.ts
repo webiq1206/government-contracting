@@ -61,11 +61,27 @@ export const pricingResearch: AgentDefinition = {
     }
 
     // 1) Last 36 months of awards for this NAICS (+ state when known).
-    const { results: awards } = await usaspending.searchAwards({
+    const { results: awards, error: awardsError } = await usaspending.searchAwards({
       naics,
       state: state ?? undefined,
       limit: 100,
     });
+    if (awardsError) {
+      // Do NOT write pricing built on a failed lookup: zero comps from an
+      // outage produces median $0 and $0 target bids that look like data.
+      await logAgent({
+        agent: "pricing-research",
+        action: "comps",
+        opportunityId,
+        level: "error",
+        status: "error",
+        message: `USASpending could not be reached (${awardsError}), so no comps were pulled. Pricing was left untouched rather than written as zeros; it retries on the next run.`,
+      });
+      return {
+        ok: false,
+        summary: `Pricing research failed: USASpending unavailable (${awardsError}).`,
+      };
+    }
 
     // 2) CPI series for inflation adjustment.
     const currentYear = new Date().getFullYear();

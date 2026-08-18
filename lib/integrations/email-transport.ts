@@ -164,6 +164,20 @@ export async function sendOutreachEmail(
   const sender = orgId
     ? await resolveOutreachSender(orgId)
     : { from: OUTREACH_SENDER, replyTo: OUTREACH_EMAIL, connected: true };
+  const { LEGACY_ORG_ID } = await import("../tenant-context");
+  if (sender.unknown && orgId !== LEGACY_ORG_ID) {
+    // The identity lookup failed for a NON-founding tenant. gmail.isConnected
+    // passed a moment ago, so the send could go out, but only under the
+    // platform's From header, and the sub's reply would then land where this
+    // tenant's poller never looks. A held email is recoverable; one sent as
+    // somebody else is not. The founding org is exempt: the platform address
+    // IS its identity, so the fallback below is correct there.
+    return {
+      provider: null,
+      error:
+        "Could not resolve this account's sender identity (temporary database error). The email was held rather than sent from the wrong address; it will be retried.",
+    };
+  }
   const from = sender.connected && sender.from ? sender.from : OUTREACH_SENDER;
   const replyTo = sender.connected && sender.replyTo ? sender.replyTo : OUTREACH_EMAIL;
 
