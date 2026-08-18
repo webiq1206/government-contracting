@@ -15,7 +15,7 @@ import { applyMigrations } from "../lib/migrate";
 import { ensureOperatorFromEnv } from "../lib/operator-bootstrap";
 import { hydrateIntegrationEnv } from "../lib/integration-settings";
 import { ALL_AGENTS } from "../lib/agents/registry";
-import { runAgent } from "../lib/agents/runner";
+import { runAgent, shouldQueueRetry } from "../lib/agents/runner";
 import { startScheduler } from "./scheduler";
 import { closeScraperBrowser } from "../lib/integrations/scrapers";
 
@@ -97,7 +97,11 @@ async function main() {
       // and a single transient failure (Claude 429, DB blip) would strand the
       // record forever: nothing ever re-enqueues a consumed job. Rethrow so
       // the queue retries; the runner has already logged the details.
-      if (!result.ok) throw new Error(result.summary);
+      //
+      // Unless the runner has told us retrying is pointless, which it does
+      // when the record the job was about has been deleted. Retrying that is
+      // three more attempts at nothing.
+      if (shouldQueueRetry(result)) throw new Error(result.summary);
     });
   }
   console.log(`[worker] registered ${ALL_AGENTS.length} handlers`);

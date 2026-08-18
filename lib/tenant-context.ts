@@ -23,3 +23,23 @@ export function requireContextOrgId(): string {
   if (!id) throw new Error("Organization context is not set for this operation.");
   return id;
 }
+
+/**
+ * The organization we are acting on behalf of right now, from either source.
+ *
+ * A job gets its context from the runner. Work done while serving a request
+ * has no context set, so fall back to the signed-in user. The auth import is
+ * lazy because the worker has no request to read, and importing it eagerly
+ * would pull request plumbing into a process that has none.
+ */
+export async function actingOrgId(): Promise<string | null> {
+  const fromAls = currentOrgId();
+  if (fromAls) return fromAls;
+  try {
+    const { currentUser } = await import("./auth");
+    const user = await currentUser().catch(() => null);
+    return user?.organizationId ?? null;
+  } catch {
+    return null;
+  }
+}

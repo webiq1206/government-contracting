@@ -131,12 +131,18 @@ d("agent runner tenant context (integration)", () => {
     expect(seen[0].orgId).toBeNull();
   });
 
-  it("leaves an unknown or malformed id alone rather than guessing", async () => {
+  it("does not guess an organization for an unknown or malformed id", async () => {
+    // These used to run with no context, on the grounds that guessing a tenant
+    // is worse than having none. They now stop before the handler instead:
+    // an id with no record behind it is work that cannot be done, so it is
+    // abandoned rather than retried. See the abandoned-record tests.
     seen.length = 0;
-    await runAgent(probeAgent(), "queue", { opportunityId: "not-a-uuid" });
-    await runAgent(probeAgent(), "queue", { opportunityId: randomUUID() });
-    expect(seen[0].orgId).toBeNull();
-    expect(seen[1].orgId).toBeNull();
+    const malformed = await runAgent(probeAgent(), "queue", { opportunityId: "not-a-uuid" });
+    const unknown = await runAgent(probeAgent(), "queue", { opportunityId: randomUUID() });
+
+    expect(seen.length).toBe(0);
+    expect(malformed.permanent).toBe(true);
+    expect(unknown.permanent).toBe(true);
   });
 
   it("reports a payload that names two organizations", async () => {

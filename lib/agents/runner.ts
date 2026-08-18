@@ -8,14 +8,20 @@ import { randomUUID } from "node:crypto";
 import { claudeEnabled } from "../ai/claude";
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
-import { enqueue } from "../queue";
+import { enqueue, ENQUEUED_BY_ORG_KEY } from "../queue";
 import { config } from "../config";
 import { runWithOrg } from "../tenant-context";
+import {
+  isPermanentlyGone,
+  lookupPayloadRecords,
+  type PayloadRecord,
+} from "./payload-records";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
 /**
- * How a job payload names the organization it belongs to.
+ * The organization this job belongs to, and any record it can no longer work
+ * on.
  *
  * A queue job carries a payload and nothing else: no session, no tenant. So
  * every agent that asked who the tenant was got the same answer, the founding
@@ -24,39 +30,25 @@ import type { AgentResult } from "../types";
  * to do it, and there is nothing to remind them. Resolving it here means the
  * default is right and an agent has to opt out rather than opt in.
  *
- * Each entry is a full statement rather than a table name spliced into one, so
- * this list cannot become a place where a string reaches SQL. To support a new
- * payload key, add its lookup here.
- */
-const ORG_OF_PAYLOAD: { key: string; sql: string }[] = [
-  // Order is priority. The opportunity is what the work is about, so when a
-  // payload names several records it decides.
-  { key: "opportunityId", sql: `select org_id from opportunities where id = $1` },
-  { key: "subcontractorId", sql: `select org_id from subcontractors where id = $1` },
-];
-
-/**
- * The organization this job belongs to, or null when the payload names no
- * record.
- *
- * Null means leave the context alone rather than guess. A cron sweep has no
- * payload and does its own per-organization loop; a manual run from the UI
+ * A null org means leave the context alone rather than guess. A cron sweep has
+ * no payload and does its own per-organization loop; a manual run from the UI
  * already resolves the signed-in user's org. Substituting a default here would
  * quietly overrule both.
+ *
+ * The same lookup is how we learn a record still exists. A record that is gone
+ * or was never a valid id is permanent, and the job is abandoned rather than
+ * retried. A lookup the database could not answer is ambiguous, and the safe
+ * reading of ambiguity is to let the job run and fail on its own terms.
  */
 async function payloadOrgId(
   agentName: string,
   payload: Record<string, unknown>
-): Promise<string | null> {
+): Promise<{ orgId: string | null; missing: PayloadRecord[] }> {
   let resolved = typeof payload.orgId === "string" && payload.orgId ? payload.orgId : null;
+  const records = await lookupPayloadRecords(payload);
+  const missing = records.filter(isPermanentlyGone);
 
-  for (const { key, sql } of ORG_OF_PAYLOAD) {
-    const id = payload[key];
-    if (typeof id !== "string" || !id) continue;
-    // A malformed id is not a uuid and the lookup throws. That is the agent's
-    // problem to report, not the runner's; it just means no context.
-    const row = await queryOne<{ org_id: string | null }>(sql, [id]).catch(() => null);
-    const orgId = row?.org_id ?? null;
+  for (const { key, orgId } of records) {
     if (!orgId) continue;
     if (!resolved) {
       resolved = orgId;
@@ -84,7 +76,43 @@ async function payloadOrgId(
     }
   }
 
-  return resolved;
+  /**
+   * Nothing named an organization, so fall back to whoever queued the work.
+   *
+   * This is the deleted-record case above all: once the opportunity is gone
+   * there is no record left to ask, and without this the line explaining the
+   * abandonment would be filed against no organization, which is the same as
+   * not showing it to the operator at all. A record always wins over this,
+   * because the record is what the work is about.
+   */
+  if (!resolved) {
+    const queuedBy = payload[ENQUEUED_BY_ORG_KEY];
+    if (typeof queuedBy === "string" && queuedBy) resolved = queuedBy;
+  }
+
+  return { orgId: resolved, missing };
+}
+
+/**
+ * Whether the queue should retry after this result.
+ *
+ * The queue's rethrow lives in the worker, but the rule belongs next to the
+ * runner that produces the result, where it can be read against the isolation
+ * comment above it and tested on its own.
+ */
+export function shouldQueueRetry(result: AgentResult): boolean {
+  return !result.ok && !result.permanent;
+}
+
+/** Plain sentence naming the records a job can no longer work on. */
+function describeMissing(missing: PayloadRecord[]): string {
+  return missing
+    .map((m) =>
+      m.state === "malformed"
+        ? `the ${m.label} id "${m.id}" is not a valid id`
+        : `the ${m.label} it was for no longer exists (${m.id})`
+    )
+    .join(", and ");
 }
 
 export async function runAgent(
@@ -112,7 +140,7 @@ export async function runAgent(
    * an operator reaching for it expects. Wrapping it would turn a global kill
    * switch into a per-customer one, which is a decision, not a bug fix.
    */
-  const orgId = await payloadOrgId(def.name, payload);
+  const { orgId, missing } = await payloadOrgId(def.name, payload);
   const inOrg = <T>(fn: () => Promise<T>): Promise<T> =>
     orgId === null ? fn() : runWithOrg(orgId, fn);
 
@@ -122,6 +150,41 @@ export async function runAgent(
     `insert into job_runs (agent, trigger, status) values ($1,$2,'running') returning id`,
     [def.name, trigger]
   ).catch(() => null);
+
+  /**
+   * The record this job was about is gone, so stop here.
+   *
+   * Opportunities are deleted routinely, by the expiry sweep and by hand, and
+   * anything already queued against one outlives it. Left alone, the agent
+   * reports "not found", the worker reads that as a failure worth retrying,
+   * and the same dead record is worked three times with backoff before the
+   * queue gives up. The operator sees churn and no explanation.
+   *
+   * Deciding it here rather than in each agent means the ten or so agents that
+   * open with a "not found" guard all get the same behaviour, and the next
+   * agent someone writes gets it without having to know to ask.
+   *
+   * It runs after the job_runs row is opened so the abandonment is recorded in
+   * the same place as every other outcome, rather than being the one result
+   * that leaves no trace.
+   */
+  if (missing.length > 0) {
+    const summary = `${def.name} abandoned: ${describeMissing(missing)}. Nothing to do, so it was not retried.`;
+    await inOrg(() =>
+      logAgent({
+        agent: def.name,
+        action: "abandoned",
+        level: "warn",
+        status: "skipped",
+        message: summary,
+        // Deliberately not carrying the ids into the reference columns: they
+        // point at rows that are gone. They are named in the message instead.
+        input: payload,
+      })
+    );
+    await finishJobRun(jobRun?.id, "error", { ok: false, summary }, Date.now() - started, summary);
+    return { ok: false, permanent: true, summary };
+  }
 
   try {
     // Inside the org, like everything else that reads a credential. Outside
@@ -164,9 +227,16 @@ export async function runAgent(
       })
     );
 
-    // Enqueue downstream work declared by the agent.
+    // Enqueue downstream work declared by the agent. The org is passed in
+    // rather than inherited from the context, because this loop deliberately
+    // runs outside it: enqueue() reads the automation pause switch, which is
+    // per organization, and wrapping the loop would change whose switch that
+    // check reads. An agent that names an org itself keeps it.
     for (const next of result.enqueued ?? []) {
-      await enqueue(next.agent, next.payload, next.opts).catch((e) =>
+      await enqueue(next.agent, next.payload, {
+        ...next.opts,
+        ...(orgId ? { orgId } : {}),
+      }).catch((e) =>
         console.error(`[runner] enqueue ${next.agent} failed:`, (e as Error).message)
       );
     }

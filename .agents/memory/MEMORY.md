@@ -9,5 +9,6 @@
 - [Login email aliases](login-aliases.md) — one address across users + aliases, enforced by triggers under an advisory lock; sessions keep the canonical address.
 - [AI drafts a human sends](ai-drafts-for-humans.md) — scrub every model-bound source, not just our own block; commitment checks warn instead of blocking; generate on demand and keep it.
 - [Negotiated terms](negotiated-terms.md) — free months are a 100% coupon, a free account is our own flag; claim an invitation before creating anything; bind invited checkout.
+- [Queue jobs](queue-jobs.md) — a payload never names the tenant (the run endpoint is public); a deleted record is permanent, not retryable; keep the log line, drop the dead link.
 - [Production topology](production-topology.md) — worker "connection timeout" = sleeping scale-to-zero instance, not a busy DB; dev/prod must not share a database.
 - [Landing product film](product-film.md) — rendered frame-by-frame, not live; phone downscale sets a hard type floor; public assets need a middleware prefix or logged-out visitors get redirected.

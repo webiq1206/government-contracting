@@ -521,6 +521,14 @@ export interface QaChecklistItem {
 export interface AgentResult {
   ok: boolean;
   summary: string;
+  /**
+   * The work can never succeed, so retrying it is pointless. Set when the
+   * record a job was about no longer exists. The queue abandons the job
+   * instead of retrying it three times against a record that is not coming
+   * back. A transient failure (a rate limit, a database blip) must leave this
+   * unset so the retry still happens.
+   */
+  permanent?: boolean;
   reasoning?: string;
   data?: Record<string, unknown>;
   enqueued?: {

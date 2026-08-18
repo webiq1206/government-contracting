@@ -16,6 +16,17 @@ export interface EnqueueOptions {
   singletonKey?: string; // dedupe: at most one active job with this key
   singletonSeconds?: number; // dedupe window (pg-boss), hold the key this long
   priority?: number;
+  /**
+   * The organization this work belongs to, for a caller that knows it while
+   * the ambient context does not (the runner enqueueing an agent's downstream
+   * work, outside the tenant context on purpose).
+   *
+   * It is an option rather than a payload field so that it cannot arrive from
+   * a request body. The manual-run endpoint spreads whatever JSON it is given
+   * into the payload, so a payload is caller-controlled and can never be
+   * trusted to say which tenant anything belongs to.
+   */
+  orgId?: string;
 }
 
 export interface Queue {
@@ -52,7 +63,39 @@ export async function enqueue(
     return null;
   }
   const q = await getQueue();
-  return q.enqueue(name, payload, opts);
+  return q.enqueue(name, await withEnqueuingOrg(payload, opts?.orgId), opts);
+}
+
+/**
+ * Stamp the payload with the organization that queued the work.
+ *
+ * A job payload names records, and a record can be deleted while the job is
+ * still in the queue. When that happens the runner has nothing left to resolve
+ * the tenant from, so the line explaining why the job was abandoned would be
+ * filed against no organization and the customer whose job it was would never
+ * see it on their Automation Log.
+ *
+ * This is provenance, not an instruction: it says who queued the work, and the
+ * runner only falls back to it when no named record answers the question. It
+ * deliberately does not use the `orgId` key, which asserts the tenant outright
+ * and would override the record the job is actually about.
+ *
+ * The queue owns this field completely. Whatever the caller put there is
+ * discarded and replaced, because the manual-run endpoint spreads a request
+ * body straight into the payload: a signed-in customer could otherwise name
+ * another organization, and a job with no live record to correct it would run
+ * and log in that organization's context.
+ */
+export const ENQUEUED_BY_ORG_KEY = "enqueuedByOrgId";
+
+async function withEnqueuingOrg(
+  payload: JobPayload,
+  fromCaller?: string
+): Promise<JobPayload> {
+  const { [ENQUEUED_BY_ORG_KEY]: _discarded, ...rest } = payload;
+  const { actingOrgId } = await import("../tenant-context");
+  const orgId = fromCaller ?? (await actingOrgId());
+  return orgId ? { ...rest, [ENQUEUED_BY_ORG_KEY]: orgId } : rest;
 }
 
 export async function stopQueue(): Promise<void> {
