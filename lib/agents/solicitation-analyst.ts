@@ -26,6 +26,7 @@ import {
 } from "../domain/solicitation-completeness";
 import { storage } from "../integrations/storage";
 import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
+import { ocrPdf } from "../integrations/pdf-ocr";
 import { filenameFromResponse, normalizeAttachmentMeta } from "../domain/attachment-meta";
 import type { AgentDefinition } from "./types";
 import type {
@@ -270,14 +271,37 @@ async function processAttachment(
           },
         };
       }
+      // No text layer means a scan. Read it anyway: send the pages to Claude
+      // for transcription rather than shrugging and letting the analysis be
+      // built from the portal blurb. The transcript is labelled so nothing
+      // downstream, and nobody reading the brief, mistakes a machine reading
+      // of a photocopy for the document's own text.
+      const ocr = await ocrPdf(buf, { label, model: config.claude.modelSmart });
+      if (ocr.text) {
+        const truncNote = ocr.truncated
+          ? `\n[only the first ${ocr.pagesRead} of ${ocr.pagesTotal} pages were transcribed]`
+          : "";
+        return {
+          context: `- ${label} (${ocr.pagesTotal} pp, SCANNED DOCUMENT, transcribed from the page images; anything marked [illegible] was not readable and must not be guessed):\n${ocr.text}${truncNote}`,
+          parsedChars: ocr.text.length,
+          outcome: {
+            name: label,
+            url: att.url,
+            status: stored ? "fetched" : "failed",
+            detail: stored
+              ? `${ocr.pagesRead} of ${ocr.pagesTotal} pages transcribed from a scan`
+              : `${ocr.pagesRead} pages transcribed, but the file could not be stored`,
+          },
+        };
+      }
       return {
-        context: `- ${label}, PDF stored but no extractable text (likely scanned/image-only).`,
+        context: `- ${label}, scanned PDF stored but it could not be read (${ocr.error ?? "no readable text"}). Do NOT assume anything about its contents.`,
         parsedChars: 0,
         outcome: {
           name: label,
           url: att.url,
           status: stored ? "no_text" : "failed",
-          detail: "PDF had no extractable text",
+          detail: ocr.error ?? "PDF had no extractable text",
         },
       };
     }
@@ -412,7 +436,8 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '- "from_profile": it is standard company information (company identifiers, capability statement, small-business status, standard certifications).',
     '- "operator_signature": the platform can prefill it but a person must sign it (SF-1449, reps & certifications, signed forms).',
     '- "operator_provided": only the offeror can supply it (bid bond, notarized document, insurance certificate, wet-ink or agency-portal-only forms).',
-    "If the documents do not enumerate submission contents, infer the standard mandatory items for this vehicle (e.g. a signed offer form, a completed pricing schedule, reps & certifications, and acknowledgment of any amendments) and mark their source \"Standard requirement for this solicitation type\".",
+    "Every entry must come from something the documents actually say. If the material below does not enumerate the submission contents, return an EMPTY compliance_matrix. Do NOT fall back to the items a solicitation like this usually requires: a package assembled against a checklist nobody read is worse than no checklist, because it looks complete. An empty matrix is handled correctly downstream, it stops the package and asks a person to supply the requirements.",
+    "Where a document was transcribed from a scan, treat [illegible] as unknown. Never fill in a form number, page limit, date or amount that was marked unreadable.",
     "IMPORTANT, official forms: whenever the solicitation requires a SPECIFIC government or agency form or fillable worksheet (any Standard Form like SF-1449/SF-33/SF-18/SF-1442, an agency-provided pricing/bid schedule, a portal-only form), set `official_form` to that exact identifier. These cannot be substituted with a generic document, so be precise. Also capture format constraints (page limits, font/size, number of copies, required file types, submission portal) in `format` and in `submission_requirements`.",
   ].join("\n");
 }

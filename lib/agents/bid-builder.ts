@@ -25,7 +25,13 @@ import {
   isOutOfRange,
 } from "../domain/pricing";
 import { benchmarkFor } from "../domain/comp-reliability";
-import { resolveRequirements, buildManifest, validatePackage, computeReady } from "../domain/package";
+import {
+  resolveRequirements,
+  buildManifest,
+  validatePackage,
+  computeReady,
+  confirmedKeys,
+} from "../domain/package";
 import { checkEligibility } from "../domain/eligibility";
 import { competitivePositioningBrief } from "../domain/competition";
 import { opportunityCompetitors } from "../data";
@@ -313,11 +319,10 @@ export const bidBuilder: AgentDefinition = {
       `select compliance_matrix from bids where opportunity_id = $1 order by created_at desc limit 1`,
       [opportunityId]
     );
-    const confirmed = new Set(
-      (priorBid?.compliance_matrix ?? [])
-        .filter((r) => r.operator_confirmed)
-        .map((r) => r.id)
-    );
+    // Keyed by every identity the requirement had, not just the model's slug:
+    // a re-analysis regenerates those slugs, and matching on the slug alone
+    // threw away confirmations the operator had already made.
+    const confirmed = confirmedKeys(priorBid?.compliance_matrix ?? []);
     const hasIdentifiers = Boolean(profile.uei || profile.cage_code);
     const resolved = resolveRequirements(requirements, {
       confirmed,

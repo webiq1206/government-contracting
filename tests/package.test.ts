@@ -5,6 +5,7 @@ import {
   validatePackage,
   computeReady,
   openAuditBlockers,
+  confirmedKeys,
   type ResolveContext,
 } from "../lib/domain/package";
 import type { ComplianceRequirement, AuditFinding, PackageValidation } from "../lib/types";
@@ -35,7 +36,7 @@ describe("resolveRequirements", () => {
     const r = resolveRequirements(
       [
         req({ id: "price", category: "pricing", satisfied_by: "auto_generated" }),
-        req({ id: "cover", category: "narrative", satisfied_by: "auto_generated" }),
+        req({ id: "cover", title: "Cover letter", category: "narrative", satisfied_by: "auto_generated" }),
         req({ id: "cap", title: "Capability statement", category: "attachment", satisfied_by: "from_profile" }),
       ],
       ctx
@@ -45,6 +46,90 @@ describe("resolveRequirements", () => {
     expect(r[1].artifact_kind).toBe("cover_letter");
     // A requirement that names a capability statement still gets one.
     expect(r[2].artifact_kind).toBe("capability_statement");
+  });
+
+  it("does not answer a written volume with the transmittal letter", () => {
+    // A technical approach is scored against the evaluation factors and is
+    // usually page limited. Satisfying it with the cover letter produced a
+    // package that looked complete and was unresponsive.
+    const r = resolveRequirements(
+      [
+        req({
+          id: "tech",
+          title: "Technical approach",
+          category: "narrative",
+          satisfied_by: "auto_generated",
+        }),
+        req({
+          id: "mgmt",
+          title: "Management plan",
+          category: "narrative",
+          satisfied_by: "auto_generated",
+        }),
+      ],
+      ctx
+    );
+    expect(r.map((x) => x.status)).toEqual(["needs_operator", "needs_operator"]);
+    expect(r[0].artifact_kind).toBeUndefined();
+    expect(r[1].artifact_kind).toBeUndefined();
+  });
+
+  it("stops calling an item done when a format rule has not been checked", () => {
+    const r = resolveRequirements(
+      [
+        req({
+          id: "price",
+          title: "Pricing schedule",
+          category: "pricing",
+          satisfied_by: "auto_generated",
+          format: "Submit on the agency Excel worksheet, Attachment 3",
+        }),
+        req({
+          id: "cover",
+          title: "Cover letter",
+          category: "narrative",
+          satisfied_by: "auto_generated",
+          format: "2 pages maximum",
+        }),
+        req({
+          id: "plain",
+          title: "Capability statement",
+          category: "attachment",
+          satisfied_by: "from_profile",
+          format: "PDF",
+        }),
+      ],
+      ctx
+    );
+    expect(r[0].status).toBe("needs_operator");
+    expect(r[0].note).toContain("Attachment 3");
+    expect(r[1].status).toBe("needs_operator");
+    expect(r[1].note).toContain("2 pages maximum");
+    // A plain "PDF" is a rule we do meet, so it must not block anything.
+    expect(r[2].status).toBe("satisfied");
+  });
+
+  it("keeps a confirmation when re-analysis regenerates the requirement id", () => {
+    // The model invents the slug each run. Matching on it alone threw away
+    // the operator's signed-and-uploaded confirmations on every re-analysis.
+    const before = resolveRequirements(
+      [req({ id: "sf1449", title: "Signed SF-1449 offer form", official_form: "SF-1449" })],
+      { ...ctx, confirmed: new Set(["sf1449"]) }
+    );
+    expect(before[0].status).toBe("satisfied");
+    const keys = confirmedKeys(before);
+    const after = resolveRequirements(
+      [
+        req({
+          id: "signed_sf_1449_offer",
+          title: "SF-1449 offer form, signed",
+          official_form: "SF 1449",
+        }),
+      ],
+      { ...ctx, confirmed: keys }
+    );
+    expect(after[0].status).toBe("satisfied");
+    expect(after[0].operator_confirmed).toBe(true);
   });
 
   it("does not offer a generated document for a supporting attachment", () => {
