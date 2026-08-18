@@ -437,6 +437,21 @@ export async function setSuspended(input: {
 export async function purgeOrganization(orgId: string): Promise<void> {
   const { transaction } = await import("../db");
   await transaction(async (tx) => {
+    // File bytes first, while the documents that name them still exist. Legacy
+    // blobs were written with a null org_id, so path-join to this org's
+    // document rows catches them; the org_id match catches everything written
+    // since. Both run before the generic loop deletes documents below.
+    await tx.query(
+      `delete from file_blobs b
+        where b.org_id = $1
+           or b.path in (
+                select storage_path from documents where org_id = $1 and storage_path is not null
+                union
+                select storage_path from subcontractor_documents where org_id = $1 and storage_path is not null
+              )`,
+      [orgId]
+    ).catch(() => {});
+
     const tables = await tx.query<{ table_name: string }>(
       `select c.table_name
          from information_schema.columns c
