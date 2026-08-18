@@ -10,6 +10,17 @@ export interface ValidationResult {
   message: string;
 }
 
+/**
+ * Node's fetch would otherwise announce itself as `User-Agent: node` and ask
+ * for nothing in particular. Identifying the caller is ordinary manners toward
+ * a public API, and it means anything SAM.gov logs about us is traceable back
+ * here.
+ */
+export const SAM_HEADERS: Record<string, string> = {
+  Accept: "application/json",
+  "User-Agent": "BrostCo/1.0 (+https://brostco.com)",
+};
+
 async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise<Response> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
@@ -22,6 +33,46 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
 
 type Values = Record<string, string>;
 
+/**
+ * Strip anything that could carry the credential back out to the browser.
+ *
+ * The SAM key travels in the query string, so a gateway that quotes the
+ * offending request in its error body hands us the key inside the very text we
+ * were about to show the operator and write to `integration_settings`. An
+ * error message is not a place a secret should ever appear.
+ */
+function redactSecret(text: string, secret: string): string {
+  let out = text;
+  if (secret) {
+    for (const form of new Set([secret, encodeURIComponent(secret)])) {
+      out = out.split(form).join("[redacted]");
+    }
+  }
+  // Belt and braces: mask any api_key=... we did not match literally.
+  return out.replace(/((?:api[_-]?key|key|token)=)[^&\s"']+/gi, "$1[redacted]");
+}
+
+/**
+ * Pull the human-readable complaint out of a SAM.gov / api.data.gov error
+ * body, which comes back in several shapes depending on which layer answered.
+ */
+function apiErrorDetail(text: string): string {
+  if (!text.trim()) return "";
+  try {
+    const b = JSON.parse(text) as Record<string, unknown>;
+    const nested = b.error as { message?: string; code?: string } | undefined;
+    const msg =
+      nested?.message ??
+      (b.errorMessage as string | undefined) ??
+      (b.message as string | undefined) ??
+      (typeof b.error === "string" ? b.error : undefined);
+    if (msg) return String(msg).slice(0, 200);
+  } catch {
+    /* not JSON, fall through to the raw text */
+  }
+  return text.replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
 export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>> = {
   sam: async (v) => {
     const key = v.SAM_API_KEY;
@@ -31,13 +82,40 @@ export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>
     const fmt = (d: Date) =>
       `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
     const res = await timedFetch(
-      `https://api.sam.gov/opportunities/v2/search?api_key=${encodeURIComponent(key)}&limit=1&postedFrom=${fmt(from)}&postedTo=${fmt(today)}`
+      `https://api.sam.gov/opportunities/v2/search?api_key=${encodeURIComponent(key)}&limit=1&postedFrom=${fmt(from)}&postedTo=${fmt(today)}`,
+      { headers: SAM_HEADERS }
     );
     if (res.status === 401 || res.status === 403)
       return { ok: false, message: "SAM.gov rejected this key. Double-check it (keys also expire yearly)." };
     if (res.status === 429)
       return { ok: true, message: "Key looks valid, but you've hit today's SAM.gov rate limit." };
-    if (!res.ok) return { ok: false, message: `SAM.gov returned an error (HTTP ${res.status}).` };
+    if (!res.ok) {
+      const detail = redactSecret(apiErrorDetail(await res.text().catch(() => "")), key);
+      /*
+       * SAM.gov does not answer an unrecognized API key with 401 or 403. Its
+       * gateway drops the request before the application sees it and returns a
+       * bare 404 with an empty body, which is byte for byte what a dead URL
+       * looks like. Verified against the live API: a valid key returns 200 on
+       * this exact URL, while a well-formed but unknown key returns the empty
+       * 404. Reporting that as "SAM.gov returned an error (HTTP 404)" sent an
+       * operator looking for an outage while the real answer was that we were
+       * sending a key SAM had never heard of.
+       */
+      if (res.status === 404 && !detail) {
+        return {
+          ok: false,
+          message:
+            "SAM.gov did not recognize this key. Copy it again from your SAM.gov account, " +
+            "and check it is still active (keys expire yearly).",
+        };
+      }
+      return {
+        ok: false,
+        message: detail
+          ? `SAM.gov returned an error (HTTP ${res.status}): ${detail}`
+          : `SAM.gov returned an error (HTTP ${res.status}).`,
+      };
+    }
     return { ok: true, message: "Connected. SAM.gov accepted the key." };
   },
 

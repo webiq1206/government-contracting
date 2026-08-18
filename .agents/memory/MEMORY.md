@@ -2,7 +2,8 @@
 
 - [Dev environment quirks](dev-env-quirks.md) — NODE_ENV=production breaks next dev CSS & prunes devDeps; vitest 2.x is firewall-blocked, use 3.x.
 - [Outreach email transport rules](outreach-email-transport.md) — never scrub a rendered email (it censors our own phone); scrub inputs, remove silently, guard at the transport.
-- [Sub contact discovery](sub-contact-discovery.md) — MX-only emails stay unverified (no auto-send); SSRF guards for website scraping; api.sam.gov blocked in dev workspace; Hunter/Maps keys declined.
+- [Sub contact discovery](sub-contact-discovery.md) — MX-only emails stay unverified (no auto-send); SSRF guards for website scraping; Hunter/Maps keys declined.
+- [SAM.gov API quirks](sam-api-quirks.md) — an unknown api_key comes back as an empty 404, not 401/403; test a key the way the app resolves it, not from process.env.
 - [Entitlement gating](entitlement-gating.md) — one computed gate (suspended > comped > status/date); comp is its own column Stripe can't overwrite; worker org-selection drifts.
 - [Support sessions](support-sessions.md) — impersonation is a marked session row; admin is an env allowlist answering 404; guards must sit at every mail/money sink, at the top.
 - [Login email aliases](login-aliases.md) — one address across users + aliases, enforced by triggers under an advisory lock; sessions keep the canonical address.
