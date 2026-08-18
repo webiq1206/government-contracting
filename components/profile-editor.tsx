@@ -564,9 +564,16 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
         background, so they are not shown here. Nothing you leave untouched is lost.
       </p>
 
+      {/*
+       * sticky bottom-0: the app shell already reserves tab-bar space in
+       * .page-main (padding-bottom: 4rem on mobile). Adding bottom-16 here
+       * would count it twice and park the bar in the middle of the form.
+       * A solid background is needed in both states so form fields behind it
+       * are not readable through the bar when there are unsaved changes.
+       */}
       <div
-        className={`sticky bottom-16 z-10 flex flex-wrap items-center gap-3 border-t py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur md:bottom-0 ${
-          dirty ? "border-review/50 bg-review/5" : "border-border bg-background/95"
+        className={`sticky bottom-0 z-10 flex flex-wrap items-center gap-3 border-t py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur ${
+          dirty ? "border-review/40 bg-background/95" : "border-border bg-background/95"
         }`}
       >
         <button className="btn-primary" onClick={save} disabled={saving}>
