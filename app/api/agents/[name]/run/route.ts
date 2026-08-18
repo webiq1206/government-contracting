@@ -20,6 +20,8 @@ export async function POST(req: Request, { params }: { params: { name: string } 
   if (!def) return NextResponse.json({ error: `Unknown agent "${params.name}"` }, { status: 404 });
 
   const payload = await req.json().catch(() => ({}));
-  const id = await enqueue(def.name, { ...payload, trigger: "manual" });
+  // force: a person pressing "run" on an agent means run it, including the
+  // idempotency-guarded ones that would otherwise report "already done".
+  const id = await enqueue(def.name, { ...payload, trigger: "manual", force: true });
   return NextResponse.json({ ok: true, jobId: id, agent: def.name });
 }

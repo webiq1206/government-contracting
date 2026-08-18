@@ -110,9 +110,11 @@ describe("no requirement is dropped or invented", () => {
     const reqs = solicitationRequirements();
     const manifest = buildManifest(resolveRequirements(reqs, ctx), SOL);
 
-    // Same count, same ids, no duplicates, no extras.
-    expect(manifest).toHaveLength(reqs.length);
-    const manifestIds = manifest.map((m) => m.requirement_id).sort();
+    // The priced offer leads the package; every requirement follows it.
+    expect(manifest[0].document_kind).toBe("bid_pdf");
+    const reqItems = manifest.filter((m) => m.requirement_id !== "__bid_pdf");
+    expect(reqItems).toHaveLength(reqs.length);
+    const manifestIds = reqItems.map((m) => m.requirement_id).sort();
     expect(manifestIds).toEqual(reqs.map((r) => r.id).sort());
     expect(new Set(manifestIds).size).toBe(manifestIds.length);
   });
@@ -204,8 +206,9 @@ describe("an unextracted requirements matrix fails closed", () => {
     expect(v.passed).toBe(false);
     expect(v.blockers.join(" ")).toMatch(/have not been extracted/i);
     expect(computeReady(v, [])).toBe(false);
-    // And the package really would have been empty.
-    expect(buildManifest([], SOL)).toHaveLength(0);
+    // And the package would have carried nothing but the bid PDF: not one
+    // of the forms, certifications, or acknowledgments the agency asked for.
+    expect(buildManifest([], SOL).filter((m) => m.requirement_id !== "__bid_pdf")).toHaveLength(0);
   });
 
   it("does not fire that blocker once requirements exist", () => {

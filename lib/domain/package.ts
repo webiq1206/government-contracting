@@ -33,27 +33,49 @@ export interface ResolveContext {
   hasIdentifiers: boolean;
 }
 
-/** Map an auto/profile requirement to the artifact the platform generates for it. */
+/**
+ * Which document the platform can produce for a requirement.
+ *
+ * WHAT the requirement is decides this, not who is expected to satisfy it.
+ * Keying off satisfied_by put the wrong document in real packages: a signed
+ * bid schedule (category "pricing", satisfied_by "operator_signature") fell
+ * through to the reps and certs sheet, so the agency received a certifications
+ * data sheet named "Signed bid schedule" and no price document at all. A
+ * signed transmittal letter landed on the same sheet, giving two manifest
+ * items pointing at one file under two authoritative names.
+ *
+ * A generated document is only ever offered for a category the platform can
+ * genuinely produce. Supporting attachments (insurance certificates, licences,
+ * bonds) are the operator's: we cannot generate a certificate of insurance,
+ * and pretending otherwise shipped a capability statement in its place.
+ */
 function artifactFor(req: ComplianceRequirement): string {
   if (req.category === "acknowledgment") return ARTIFACT_KIND.amendmentAck;
-  if (req.satisfied_by === "auto_generated") {
-    if (req.category === "pricing") return ARTIFACT_KIND.pricingSchedule;
-    return ARTIFACT_KIND.coverLetter;
-  }
-  if (req.satisfied_by === "from_profile") {
-    if (req.category === "certification" || req.category === "form")
-      return ARTIFACT_KIND.repsCerts;
-    return ARTIFACT_KIND.capability;
-  }
-  // operator_signature items are prefilled onto the reps & certs data sheet.
-  if (req.satisfied_by === "operator_signature") return ARTIFACT_KIND.repsCerts;
-  return ""; // operator_provided: no artifact the platform can produce
+  if (req.category === "pricing") return ARTIFACT_KIND.pricingSchedule;
+  if (req.category === "certification" || req.category === "form")
+    return ARTIFACT_KIND.repsCerts;
+  // A capability statement is a real thing we build, but only when that is
+  // what was asked for; every other narrative is the transmittal letter.
+  if (/capabilit/i.test(req.title)) return ARTIFACT_KIND.capability;
+  if (req.category === "narrative") return ARTIFACT_KIND.coverLetter;
+  return ""; // attachment / other: only the operator can supply it
 }
 
 export function resolveRequirements(
   requirements: ComplianceRequirement[],
   ctx: ResolveContext
 ): ResolvedRequirement[] {
+  /**
+   * A generated document can stand in for exactly one requirement.
+   *
+   * Two requirements that map to the same artifact used to be marked
+   * satisfied by the same file, and the manifest then named that one PDF
+   * twice: a package could contain byte-identical capability statements
+   * called "Certificate of insurance" and "State contractor license". The
+   * first claimant keeps the document; anything after it is the operator's to
+   * supply, which is the truth.
+   */
+  const claimed = new Set<string>();
   return requirements.map((req) => {
     if (ctx.confirmed.has(req.id)) {
       return {
@@ -63,6 +85,16 @@ export function resolveRequirements(
         artifact_kind: artifactFor(req) || undefined,
       };
     }
+    const kind = artifactFor(req);
+    if (kind && claimed.has(kind) && !req.official_form) {
+      return {
+        ...req,
+        status: "needs_operator",
+        note: `Another requirement already uses the generated ${kind.replace(/_/g, " ")}, so this one needs a document from you.`,
+      };
+    }
+    if (kind) claimed.add(kind);
+
     // A required SPECIFIC agency form cannot be reproduced exactly, the
     // operator must complete the official form. Any generated document is only
     // a worksheet. This is always the operator's item until confirmed.
@@ -153,42 +185,68 @@ export function buildManifest(
     (a, b) => CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
   );
   const solTag = solNumber ? `_${slugify(solNumber)}` : "";
-  return sorted.map((r, i) => {
-    const order = i + 1;
-    const num = String(order).padStart(2, "0");
-    // When the real agency form was found in the attachments, that file IS the
-    // package item (the operator signs the actual form).
-    if (r.official_form_doc) {
+
+  /**
+   * The priced offer itself leads the package.
+   *
+   * artifactFor can only return the five requirement-shaped kinds, so nothing
+   * ever mapped a requirement to the bid PDF, and the manifest is what the
+   * download route zips. The document containing the price, the line items and
+   * the technical narrative was therefore generated, stored, and blocked on if
+   * missing, but never actually placed in the package the operator submits.
+   * It is not tied to any one requirement, so it is added here rather than
+   * through the resolver.
+   */
+  const items: PackageItem[] = [
+    {
+      order: 1,
+      filename: `01_bid${solTag}.pdf`,
+      requirement_id: "__bid_pdf",
+      category: "other",
+      source: "generated",
+      document_kind: ARTIFACT_KIND.bidPdf,
+      status: "satisfied",
+    },
+  ];
+
+  return items.concat(
+    sorted.map((r, i) => {
+      const order = i + 2;
+      const num = String(order).padStart(2, "0");
+      // When the real agency form was found in the attachments, that file IS
+      // the package item (the operator signs the actual form).
+      if (r.official_form_doc) {
+        return {
+          order,
+          filename: `${num}_${slugify(r.official_form ?? r.title)}${solTag}.pdf`,
+          requirement_id: r.id,
+          category: r.category,
+          source: "solicitation" as const,
+          document_path: r.official_form_doc.path,
+          status: r.status,
+        };
+      }
+      const ext = extFor(r.artifact_kind);
+      const source: PackageItem["source"] =
+        r.satisfied_by === "operator_provided"
+          ? "operator"
+          : r.artifact_kind
+            ? "generated"
+            : "operator";
+      const filename = ext
+        ? `${num}_${slugify(r.title)}${solTag}.${ext}`
+        : `${num}_${slugify(r.title)}${solTag}__PROVIDE_THIS.txt`;
       return {
         order,
-        filename: `${num}_${slugify(r.official_form ?? r.title)}${solTag}.pdf`,
+        filename,
         requirement_id: r.id,
         category: r.category,
-        source: "solicitation" as const,
-        document_path: r.official_form_doc.path,
+        source,
+        document_kind: r.artifact_kind,
         status: r.status,
       };
-    }
-    const ext = extFor(r.artifact_kind);
-    const source: PackageItem["source"] =
-      r.satisfied_by === "operator_provided"
-        ? "operator"
-        : r.artifact_kind
-          ? "generated"
-          : "operator";
-    const filename = ext
-      ? `${num}_${slugify(r.title)}${solTag}.${ext}`
-      : `${num}_${slugify(r.title)}${solTag}__PROVIDE_THIS.txt`;
-    return {
-      order,
-      filename,
-      requirement_id: r.id,
-      category: r.category,
-      source,
-      document_kind: r.artifact_kind,
-      status: r.status,
-    };
-  });
+    })
+  );
 }
 
 export interface ValidationInput {

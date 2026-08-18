@@ -149,6 +149,12 @@ export async function assemblePackageDocuments(args: {
     rows: resolved.map((r) => ({
       title: r.title,
       status: STATUS_LABEL[r.status],
+      // The checkbox reads this, not the label: the label is prose ("Included")
+      // and the box used to be ticked by looking for "satisf" inside it, which
+      // never matched, so every row on the cover page of every submitted
+      // package rendered unchecked, telling the contracting officer that not
+      // one requirement was complete.
+      complete: r.status === "satisfied",
       mandatory: r.mandatory,
       source: r.source,
       note: r.note,

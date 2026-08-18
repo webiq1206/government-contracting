@@ -305,7 +305,12 @@ export const bidBuilder: AgentDefinition = {
     }
     // Preserve operator confirmations (signed/uploaded) across rebuilds.
     const priorBid = await queryOne<{ compliance_matrix: ResolvedRequirement[] | null }>(
-      `select compliance_matrix from bids where opportunity_id = $1 order by created_at asc limit 1`,
+      // Newest, matching every reader (the download route, submit, preview,
+      // requirements, and the auditor all use desc). The builder used to read
+      // and write the OLDEST row, so on an opportunity with two bid rows (the
+      // prime_only path inserts one unconditionally) the manifest was written
+      // where nothing looks for it and the download reported "no package".
+      `select compliance_matrix from bids where opportunity_id = $1 order by created_at desc limit 1`,
       [opportunityId]
     );
     const confirmed = new Set(
@@ -449,7 +454,7 @@ export const bidBuilder: AgentDefinition = {
 
     // --- Upsert the bid (one bid per opportunity). ---
     const existing = await queryOne<{ id: string }>(
-      `select id from bids where opportunity_id = $1 order by created_at asc limit 1`,
+      `select id from bids where opportunity_id = $1 order by created_at desc limit 1`,
       [opportunityId]
     );
     if (existing) {

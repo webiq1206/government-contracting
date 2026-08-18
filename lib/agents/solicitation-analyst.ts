@@ -245,7 +245,15 @@ async function processAttachment(
 
     // Trust the actual bytes over SAM's (usually generic/wrong) headers.
     if (looksLikePdf(att.url, ct) || looksLikePdfBytes(buf)) {
-      const { text, pages } = await extractPdfText(buf);
+      // Read the WHOLE document. extractPdfText defaults to 14,000 characters,
+      // roughly five pages, so a real solicitation was cut off inside Section
+      // B or C and Sections L and M, where every submission instruction and
+      // evaluation factor lives, never reached the model at all. The prompt
+      // then falls back to inferring "standard" items, which is how a package
+      // gets built against a checklist nobody read. The per-attachment budget
+      // below decides what actually fits in the prompt; this decides what is
+      // available to choose from.
+      const { text, pages } = await extractPdfText(buf, 400_000);
       if (text) {
         return {
           context: `- ${label} (${pages} pp, extracted):\n${text}`,
@@ -305,6 +313,13 @@ async function processAttachment(
   }
 }
 
+/**
+ * Characters of attachment text the analysis prompt may carry. Sized so a
+ * real solicitation's instructions survive rather than being cut off after
+ * the first few pages of the first file.
+ */
+const ATTACHMENT_PROMPT_BUDGET = 240_000;
+
 function buildPrompt(opp: Opportunity, attachmentContext: string): string {
   return [
     "You are a government-procurement analyst. Read this solicitation and its attachments and produce a COMPLETE, plain-English bid brief so a busy contractor can understand the whole opportunity in a few minutes without reading hundreds of pages.",
@@ -326,10 +341,13 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     opp.contact_json ? `Point of contact (from portal): ${JSON.stringify(opp.contact_json)}` : "",
     "",
     "DESCRIPTION:",
-    (opp.description ?? "(no description provided)").slice(0, 8000),
+    // Combined Synopsis/Solicitation notices carry the ENTIRE solicitation,
+    // instructions to offerors included, in the description with no
+    // attachments at all, and they routinely run past 8,000 characters.
+    (opp.description ?? "(no description provided)").slice(0, 60_000),
     "",
     "ATTACHMENT TEXT (parsed from the actual bid documents, PRIMARY SOURCE, prefer this over the portal summary):",
-    (attachmentContext || "(no attachment text extracted)").slice(0, 60000),
+    (attachmentContext || "(no attachment text extracted)").slice(0, ATTACHMENT_PROMPT_BUDGET),
     "",
     "PAST-PERFORMANCE CLASSIFICATION, choose exactly one for past_perf_classification:",
     '- "not_required": the solicitation does not require past performance.',
@@ -418,11 +436,22 @@ export const solicitationAnalyst: AgentDefinition = {
     // Idempotency: a queue-triggered re-run must not re-download attachments and
     // re-bill a Claude analysis that already exists. Manual runs (or an explicit
     // force flag) re-analyze, e.g. after an amendment drops.
-    if (
-      opp.solicitation_analysis &&
-      ctx.trigger === "queue" &&
-      ctx.payload.force !== true
-    ) {
+    //
+    // The trigger is read from the PAYLOAD as well as the runner, because the
+    // worker hardcodes runAgent(def, "queue", ...) for every queued job, so
+    // ctx.trigger is always "queue" and the manual-run route's own
+    // {trigger:"manual"} lands in the payload where nothing looked at it. The
+    // effect was that re-analysis could never happen at all: once an
+    // opportunity had been analyzed, every retry button, re-pursue, and bulk
+    // re-run returned "skipped duplicate run", so an amendment's new
+    // requirements, or a solicitation PDF uploaded after the first pass, never
+    // reached the compliance matrix and the package kept being built against
+    // the original, stale requirements.
+    const forced =
+      ctx.payload.force === true ||
+      ctx.trigger === "manual" ||
+      ctx.payload.trigger === "manual";
+    if (opp.solicitation_analysis && !forced) {
       return {
         ok: true,
         summary: `Opportunity ${opportunityId} already analyzed; skipped duplicate run.`,
@@ -454,7 +483,27 @@ export const solicitationAnalyst: AgentDefinition = {
         .slice(0, MAX_ATTACHMENT_URLS)
         .map((att, i) => processAttachment(opportunityId, att, i))
     );
-    const attachmentContext = processed.map((p) => p.context).join("\n\n");
+    /**
+     * Share the prompt budget across attachments rather than spending it on
+     * whichever happened to be first.
+     *
+     * The joined text used to be sliced to a flat 60,000 characters, and SAM
+     * lists amendments and Q&A responses AFTER the base documents, so the
+     * files most likely to change the requirements were exactly the ones
+     * guaranteed to be cut. Each attachment now gets an equal share, and only
+     * the ones that exceed their share are trimmed.
+     */
+    const perAttachment = Math.max(
+      8_000,
+      Math.floor(ATTACHMENT_PROMPT_BUDGET / Math.max(1, processed.length))
+    );
+    const attachmentContext = processed
+      .map((p) =>
+        p.context.length > perAttachment
+          ? `${p.context.slice(0, perAttachment)}\n[... this document continues; trimmed to fit the analysis budget]`
+          : p.context
+      )
+      .join("\n\n");
     const parsedChars = processed.reduce((a, p) => a + p.parsedChars, 0);
     const attachmentOutcomes = processed.map((p) => p.outcome);
     await logAgent({

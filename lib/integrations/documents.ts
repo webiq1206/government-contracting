@@ -564,6 +564,8 @@ export interface ComplianceMatrixDoc {
   rows: Array<{
     title: string;
     status: string; // human label
+    /** True only when the requirement is genuinely done; drives the checkbox. */
+    complete: boolean;
     mandatory: boolean;
     source: string;
     note?: string;
@@ -589,7 +591,7 @@ async function buildComplianceMatrixPdf(data: ComplianceMatrixDoc): Promise<Buff
 
   w.heading("Required items");
   for (const r of data.rows) {
-    const box = r.status.toLowerCase().includes("satisf") ? "[x]" : "[ ]";
+    const box = r.complete ? "[x]" : "[ ]";
     w.text(`${box} ${r.title}${r.mandatory ? "" : "  (optional)"}`, { size: 11, bold: true });
     const detail = [r.status, r.source, r.note].filter(Boolean).join(" · ");
     if (detail) w.text(detail, { size: 9, indent: 18, color: [0.4, 0.4, 0.4] });
@@ -629,7 +631,11 @@ async function buildAmendmentAckPdf(data: AmendmentAckData): Promise<Buffer> {
       if (a.summary) w.text(a.summary, { size: 9, indent: 18, color: [0.4, 0.4, 0.4] });
     }
   } else {
-    w.text("No amendments were issued for this solicitation.", {
+    // Never a denial. This page is generated because the solicitation asked
+    // for an acknowledgment, so amendments almost certainly exist; an empty
+    // list means we failed to read them, and a signed page asserting none
+    // were issued is both false and a common rejection reason.
+    w.text("List every amendment for this solicitation here before signing.", {
       size: 11,
       color: [0.35, 0.35, 0.35],
     });

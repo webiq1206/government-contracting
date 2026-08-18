@@ -36,14 +36,45 @@ describe("resolveRequirements", () => {
       [
         req({ id: "price", category: "pricing", satisfied_by: "auto_generated" }),
         req({ id: "cover", category: "narrative", satisfied_by: "auto_generated" }),
-        req({ id: "cap", category: "attachment", satisfied_by: "from_profile" }),
+        req({ id: "cap", title: "Capability statement", category: "attachment", satisfied_by: "from_profile" }),
       ],
       ctx
     );
     expect(r.map((x) => x.status)).toEqual(["satisfied", "satisfied", "satisfied"]);
     expect(r[0].artifact_kind).toBe("pricing_schedule");
     expect(r[1].artifact_kind).toBe("cover_letter");
+    // A requirement that names a capability statement still gets one.
     expect(r[2].artifact_kind).toBe("capability_statement");
+  });
+
+  it("does not offer a generated document for a supporting attachment", () => {
+    // We cannot produce a certificate of insurance or a licence. Mapping
+    // these onto the capability statement gave two requirements the same
+    // file under two official-looking names.
+    const r = resolveRequirements(
+      [
+        req({ id: "coi", title: "Certificate of insurance", category: "attachment", satisfied_by: "from_profile" }),
+        req({ id: "lic", title: "State contractor licence", category: "attachment", satisfied_by: "from_profile" }),
+      ],
+      ctx
+    );
+    expect(r[0].artifact_kind).toBeUndefined();
+    expect(r[1].artifact_kind).toBeUndefined();
+  });
+
+  it("lets only one requirement claim a given generated document", () => {
+    const r = resolveRequirements(
+      [
+        req({ id: "a", title: "Pricing schedule", category: "pricing", satisfied_by: "auto_generated" }),
+        req({ id: "b", title: "Unit price breakdown", category: "pricing", satisfied_by: "auto_generated" }),
+      ],
+      ctx
+    );
+    expect(r[0].artifact_kind).toBe("pricing_schedule");
+    expect(r[0].status).toBe("satisfied");
+    // The second cannot be satisfied by the same file.
+    expect(r[1].artifact_kind).toBeUndefined();
+    expect(r[1].status).toBe("needs_operator");
   });
 
   it("flags signature and operator-provided items", () => {
@@ -132,10 +163,13 @@ describe("buildManifest", () => {
       ctx
     );
     const m = buildManifest(resolved, "W912-25-R-0001");
-    expect(m[0].category).toBe("narrative"); // cover letter first
+    // The priced offer itself leads every package.
+    expect(m[0].document_kind).toBe("bid_pdf");
     expect(m[0].order).toBe(1);
-    expect(m[0].filename).toMatch(/^01_cover_letter_w912_25_r_0001\.pdf$/);
-    expect(m[1].category).toBe("pricing");
+    expect(m[1].category).toBe("narrative"); // then the cover letter
+    expect(m[1].order).toBe(2);
+    expect(m[1].filename).toMatch(/^02_cover_letter_w912_25_r_0001\.pdf$/);
+    expect(m[2].category).toBe("pricing");
   });
 });
 
