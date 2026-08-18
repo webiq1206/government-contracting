@@ -386,6 +386,25 @@ export const gmail = {
   async send(
     params: SendEmailParams
   ): Promise<{ disabled?: boolean; messageId?: string; threadId?: string; error?: string }> {
+    // Nothing reaches a real inbox from a development process.
+    //
+    // This is the lowest point every sender passes through: tenant outreach,
+    // platform system mail (password resets, digests, alerts), and backlink
+    // outreach all end up here. Guarding a caller instead would protect one of
+    // them and quietly leave the others live, which is exactly what happened
+    // when the workspace shared production's database and its worker was
+    // emailing real subcontractors.
+    //
+    // No exemption for the test suite: tests that mock this module never reach
+    // this line, and a test that does reach it is attempting a real send.
+    if (config.database.isIsolatedDev && !config.email.allowRealSendsFromDev) {
+      return {
+        disabled: true,
+        error:
+          "Blocked: this is the development environment, which does not send real email. Set ALLOW_REAL_EMAIL_FROM_DEV to test delivery deliberately.",
+      };
+    }
+
     const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
     if (await isAutomationPaused()) {
       return { disabled: true, error: AUTOMATION_PAUSED_ERROR };

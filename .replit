@@ -12,11 +12,8 @@ NEXT_TELEMETRY_DISABLED = "1"
 
 [deployment]
 run = ["sh", "-c", "npm run start"]
-# Build does NOT touch the database. The worker applies pending migrations at
-# boot (lib/migrate.ts) and provisions the operator login from secrets, so the
-# cloud build stays hermetic and cannot fail on a transient DB issue.
 build = ["sh", "-c", "npm run build"]
-deploymentTarget = "cloudrun"
+deploymentTarget = "vm"
 
 [[ports]]
 localPort = 3000
@@ -49,3 +46,7 @@ timeoutMs = 120000
 
 [userenv.shared]
 PLATFORM_ADMIN_EMAILS = "brostcoholdings@gmail.com,info@brostco.com,hello@brostco.com"
+
+[userenv.development]
+RUN_WORKER = "false"
+USE_REPLIT_DEV_DB = "true"

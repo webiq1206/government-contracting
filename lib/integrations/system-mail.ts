@@ -61,7 +61,11 @@ export const systemMail = {
     });
 
     if (res.disabled) {
-      return { disabled: true, error: "Platform inbox is not connected." };
+      // Surface the transport's own reason when it gave one. "Not connected"
+      // is the usual cause but not the only one, and reporting it for every
+      // refusal sends whoever is debugging to reconnect an inbox that was
+      // never the problem.
+      return { disabled: true, error: res.error ?? "Platform inbox is not connected." };
     }
     return { error: res.error, messageId: res.messageId };
   },

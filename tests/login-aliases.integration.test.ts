@@ -175,8 +175,19 @@ d("an address can only belong to one account (integration)", () => {
 /**
  * The owner account this whole task exists for. Pinned so a future migration
  * or a hand-edit in production cannot quietly take his access away again.
+ *
+ * This is an assertion about real production data, so it only runs against the
+ * production database. The development database is deliberately a separate,
+ * empty one: the worker bootstraps the owner's login there from secrets, but
+ * his aliases are production history and were never copied across, so running
+ * this against development would only ever test the fixture.
  */
-d("the platform owner's own account (integration)", () => {
+const onProductionData =
+  hasDb &&
+  !["1", "true", "yes", "on"].includes((process.env.USE_REPLIT_DEV_DB ?? "").toLowerCase());
+const dProd = onProductionData ? describe : describe.skip;
+
+dProd("the platform owner's own account (integration)", () => {
   let queryOne: typeof import("../lib/db").queryOne;
   let accessLevel: typeof import("../lib/billing/entitlements").accessLevel;
 

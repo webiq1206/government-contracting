@@ -105,6 +105,40 @@ If you prefer to run web and worker as two separate services (web-facing +
 background), set `RUN_WORKER=false` on the web service and run
 `npm run worker` on the second.
 
+**Use a Reserved VM, not Autoscale.** Autoscale idles a few minutes after the
+last web request, but the shortest cron here runs every 10 minutes, so the
+instance is reliably asleep when its next job is due. Its pooled connections go
+stale while it sleeps, and the job wakes up into
+`Connection terminated due to connection timeout`. That is what a long run of
+those errors in the deployment log means: the worker was asleep, not the
+database overloaded. Do not respond to them by tuning the pool timeouts in
+`lib/db.ts`, which has already been tried and does not help. Scale-to-zero also
+saves nothing for this workload, because the worker has to be awake around the
+clock regardless and the web side sees only a handful of logins a day.
+
+### Development and production databases are separate
+
+The published app reads `DATABASE_URL`. That variable is managed by the
+platform and holds the same value in the workspace and in production, so it
+cannot simply be repointed per environment. Instead the workspace opts out:
+`USE_REPLIT_DEV_DB=true` is set in the **development** environment only, and
+`lib/config.ts` then resolves the connection to the repl's own built-in
+Postgres (the `PG*` variables). Production has no such flag and keeps reading
+`DATABASE_URL` unchanged.
+
+Keep it that way. When the two shared one database, the workspace worker
+executed real customer jobs against live data (including outbound email), every
+workspace restart killed work that was in flight, and two schedulers
+double-enqueued every cron. Two further guards back this up: development
+refuses to send real email unless `ALLOW_REAL_EMAIL_FROM_DEV` is set, and the
+app refuses to start if `USE_REPLIT_DEV_DB` resolves to the same host as
+`DATABASE_URL`, rather than pretending to be isolated when it is not.
+
+The development database starts empty and is built by the migration runner. The
+worker also creates the operator login from `OPERATOR_EMAIL` /
+`OPERATOR_PASSWORD` at boot, so you can sign in to the workspace preview
+without copying any customer data across.
+
 ---
 
 ## Row-Level Security (Supabase)

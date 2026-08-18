@@ -3,7 +3,7 @@
  * are thin wrappers so agents and API routes share one connection strategy.
  */
 import { Pool, types, type PoolClient, type QueryResultRow } from "pg";
-import { config } from "./config";
+import { config, pgSslFor } from "./config";
 
 // Postgres NUMERIC/DECIMAL comes through pg as a STRING by default (to preserve
 // arbitrary precision). Every call site that does `.toFixed()` / arithmetic on a
@@ -23,12 +23,10 @@ export function pool(): Pool {
       "DATABASE_URL is not set. Copy .env.example to .env and set your Postgres/Supabase URL."
     );
   }
+  const url = config.database.url;
   _pool = new Pool({
-    connectionString: config.database.url,
-    // Supabase requires TLS; allow self-signed in managed environments.
-    ssl: config.database.url.includes("localhost")
-      ? undefined
-      : { rejectUnauthorized: false },
+    connectionString: url,
+    ssl: pgSslFor(url),
     max: Number(process.env.PG_POOL_MAX ?? 10),
     // Recycle idle connections before Supabase's pooler closes them server-side
     // (which surfaced as intermittent "Connection terminated due to connection

@@ -109,6 +109,10 @@ export async function sendOutreachEmail(
     };
   }
 
+  // Note: the block on sending real email from a development process lives in
+  // the Gmail transport itself, not here, so that system mail and backlink
+  // outreach inherit it too.
+
   // Nothing leaves the building while an admin is signed in as this customer.
   // A support session exists to see what the customer sees; a message sent
   // from it lands in a real subcontractor's inbox, over the customer's name,

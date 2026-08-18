@@ -3,16 +3,14 @@
  * its own `pgboss` schema. No Redis required.
  */
 import PgBoss from "pg-boss";
-import { config } from "../config";
+import { config, pgSslFor } from "../config";
 import type { EnqueueOptions, JobHandler, JobPayload, Queue } from "./index";
 import { QUEUE_NAMES } from "./index";
 
 export async function createPgBossQueue(): Promise<Queue> {
   const boss = new PgBoss({
     connectionString: config.database.url,
-    ssl: config.database.url.includes("localhost")
-      ? undefined
-      : { rejectUnauthorized: false },
+    ssl: pgSslFor(config.database.url),
     // Keep completed job rows briefly for the dashboard, then archive.
     retentionDays: 7,
   });
