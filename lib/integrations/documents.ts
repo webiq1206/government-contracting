@@ -31,6 +31,8 @@ export interface CapabilityData {
   service_areas: string[];
   differentiators?: string[];
   contact?: string;
+  /** Real, verifiable projects. Omitted entirely when there are none. */
+  past_performance?: string[];
 }
 
 /* ------------------------------- helpers -------------------------------- */
@@ -220,20 +222,15 @@ async function buildBidPdf(data: BidDocData): Promise<Buffer> {
     w.heading("Pricing");
     w.row("Total Bid Amount", currency(data.bid_amount), { bold: true, size: 12 });
   }
-  w.row("Target Margin", `${data.margin_pct.toFixed(1)}%`, { bold: true });
+  // NOT the target margin, and NOT the internal QA checklist. This document
+  // is item one of the package the contracting officer receives, and it was
+  // printing our margin target in bold under the price, alongside a checklist
+  // of our own unresolved review items. Both are internal, both are visible
+  // in the app, neither belongs in an offer.
 
   if (data.narrative && data.narrative.trim()) {
     w.heading("Experience & Approach");
     w.text(data.narrative);
-  }
-
-  if (data.qa_checklist && data.qa_checklist.length > 0) {
-    w.heading("Quality Assurance Checklist");
-    for (const q of data.qa_checklist) {
-      const glyph = q.ok ? "[x]" : "[ ]";
-      const line = q.note ? `${glyph} ${q.item}, ${q.note}` : `${glyph} ${q.item}`;
-      w.text(line, { size: 11 });
-    }
   }
 
   const bytes = await w.save();
@@ -262,8 +259,14 @@ async function buildCapabilityStatementPdf(data: CapabilityData): Promise<Buffer
     for (const d of data.differentiators) w.text(`• ${d}`, { size: 11, indent: 8 });
   }
 
-  w.heading("Past Performance");
-  w.text("Available upon request.", { size: 11, color: [0.35, 0.35, 0.35] });
+  // Past performance is what a capability statement is read for, and
+  // "Available upon request" is what a contracting officer skips. Print the
+  // team's actual work when we have it; print nothing when we do not, rather
+  // than a line that says we have something we are not showing.
+  if (data.past_performance && data.past_performance.length > 0) {
+    w.heading("Past Performance");
+    for (const p of data.past_performance) w.text(`• ${p}`, { size: 11, indent: 8 });
+  }
 
   w.heading("Company Data");
   if (data.uei) w.row("UEI", data.uei);
@@ -340,12 +343,6 @@ async function buildBidDocx(rawData: BidDocData): Promise<Buffer> {
       ],
     })
   );
-  children.push(
-    new Paragraph({
-      children: [new TextRun({ text: `Target Margin: ${data.margin_pct.toFixed(1)}%`, bold: true })],
-    })
-  );
-
   if (data.narrative && data.narrative.trim()) {
     children.push(
       new Paragraph({
@@ -355,20 +352,6 @@ async function buildBidDocx(rawData: BidDocData): Promise<Buffer> {
     );
     for (const para of data.narrative.split("\n")) {
       children.push(new Paragraph({ children: [new TextRun({ text: para })] }));
-    }
-  }
-
-  if (data.qa_checklist && data.qa_checklist.length > 0) {
-    children.push(
-      new Paragraph({
-        heading: HeadingLevel.HEADING_2,
-        children: [new TextRun({ text: "Quality Assurance Checklist", bold: true })],
-      })
-    );
-    for (const q of data.qa_checklist) {
-      const glyph = q.ok ? "☒" : "☐";
-      const text = q.note ? `${glyph} ${q.item}, ${q.note}` : `${glyph} ${q.item}`;
-      children.push(new Paragraph({ children: [new TextRun({ text })] }));
     }
   }
 
@@ -486,7 +469,13 @@ export interface RepsAndCertsData {
   ein?: string;
   entity_state?: string;
   business_structure?: string;
-  small_business: boolean;
+  /**
+   * Tri-state on purpose. A profile saved before this field existed reads
+   * back undefined, and `undefined ? "Yes" : "No"` printed "No" on a document
+   * the owner signs certifying their size status. Certifying the wrong size
+   * is a false certification, so an unknown says unknown.
+   */
+  small_business?: boolean | null;
   certifications: string[];
   naics_codes: string[];
   owner_name?: string;
@@ -528,7 +517,14 @@ async function buildRepsAndCertsPdf(data: RepsAndCertsData): Promise<Buffer> {
   w.row("Business structure", data.business_structure || "-");
 
   w.heading("Size & Socioeconomic Status");
-  w.row("Small business", data.small_business ? "Yes" : "No");
+  w.row(
+    "Small business",
+    data.small_business == null
+      ? "NOT ON FILE, complete this before signing"
+      : data.small_business
+        ? "Yes"
+        : "No"
+  );
   w.row(
     "Certifications held",
     data.certifications.length ? data.certifications.join(", ") : "None on file"
@@ -564,6 +560,8 @@ export interface ComplianceMatrixDoc {
   rows: Array<{
     title: string;
     status: string; // human label
+    /** True only when the requirement is genuinely done; drives the checkbox. */
+    complete: boolean;
     mandatory: boolean;
     source: string;
     note?: string;
@@ -589,7 +587,7 @@ async function buildComplianceMatrixPdf(data: ComplianceMatrixDoc): Promise<Buff
 
   w.heading("Required items");
   for (const r of data.rows) {
-    const box = r.status.toLowerCase().includes("satisf") ? "[x]" : "[ ]";
+    const box = r.complete ? "[x]" : "[ ]";
     w.text(`${box} ${r.title}${r.mandatory ? "" : "  (optional)"}`, { size: 11, bold: true });
     const detail = [r.status, r.source, r.note].filter(Boolean).join(" · ");
     if (detail) w.text(detail, { size: 9, indent: 18, color: [0.4, 0.4, 0.4] });
@@ -629,7 +627,11 @@ async function buildAmendmentAckPdf(data: AmendmentAckData): Promise<Buffer> {
       if (a.summary) w.text(a.summary, { size: 9, indent: 18, color: [0.4, 0.4, 0.4] });
     }
   } else {
-    w.text("No amendments were issued for this solicitation.", {
+    // Never a denial. This page is generated because the solicitation asked
+    // for an acknowledgment, so amendments almost certainly exist; an empty
+    // list means we failed to read them, and a signed page asserting none
+    // were issued is both false and a common rejection reason.
+    w.text("List every amendment for this solicitation here before signing.", {
       size: 11,
       color: [0.35, 0.35, 0.35],
     });

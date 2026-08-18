@@ -17,7 +17,7 @@ import { completeJson, ClaudeNotConfiguredError, claudeEnabled } from "../ai/cla
 import { config } from "../config";
 import { logAgent } from "../logger";
 import { noEmDash } from "../sanitize";
-import { computeReady } from "../domain/package";
+import { computeReady, auditFindingKey } from "../domain/package";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -130,6 +130,13 @@ export const complianceAuditor: AgentDefinition = {
     // Deterministic eligibility findings (elig_*) are preserved across audits,
     // keeping their acknowledged state; the AI findings (af_*) are refreshed.
     const preserved = (bid.audit_findings ?? []).filter((f) => f.id.startsWith("elig_"));
+    // An acknowledgement belongs to the finding, not to its slot in the list.
+    // AI findings are renumbered af_1..af_n each run, so without this every
+    // re-audit handed the operator back the same sentences they had already
+    // reviewed, unacknowledged, and re-blocked the submission.
+    const acknowledged = new Set(
+      (bid.audit_findings ?? []).filter((f) => f.acknowledged).map(auditFindingKey)
+    );
     const profile = await getProfileJson();
     const solText = opp.solicitation_text ?? "";
 
@@ -172,7 +179,9 @@ export const complianceAuditor: AgentDefinition = {
         finding: noEmDash(f.finding),
         recommendation: noEmDash(f.recommendation),
         requirement_id: f.requirement_id,
-        acknowledged: false,
+        acknowledged: acknowledged.has(
+          auditFindingKey({ finding: noEmDash(f.finding), requirement_id: f.requirement_id })
+        ),
       }));
       // Deterministic eligibility findings first, then the AI findings.
       findings = [...preserved, ...aiFindings];

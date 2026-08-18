@@ -22,11 +22,19 @@ import {
   marginFromBid,
   markupForTargetMargin,
   selectQuotesForBid,
+  offerLineItems,
   isOutOfRange,
 } from "../domain/pricing";
 import { benchmarkFor } from "../domain/comp-reliability";
-import { resolveRequirements, buildManifest, validatePackage, computeReady } from "../domain/package";
+import {
+  resolveRequirements,
+  buildManifest,
+  validatePackage,
+  computeReady,
+  confirmedKeys,
+} from "../domain/package";
 import { checkEligibility } from "../domain/eligibility";
+import { matchOfficialForm } from "../domain/official-form";
 import { competitivePositioningBrief } from "../domain/competition";
 import { opportunityCompetitors } from "../data";
 import { retrieveRelevantContent, renderContentForPrompt } from "../ai/contentLibrary";
@@ -226,14 +234,15 @@ export const bidBuilder: AgentDefinition = {
     const failing = qaChecklist.filter((q) => !q.ok);
 
     // --- Line items. ---
-    const lineItems: Array<{ label: string; amount: number }> = pricedQuotes.map((q) => ({
+    // Cost basis, for the record and for internal review.
+    const costLineItems: Array<{ label: string; amount: number }> = pricedQuotes.map((q) => ({
       label: q.trade || "Subcontractor",
       amount: q.quote_amount,
     }));
-    lineItems.push({
-      label: `Markup ${markupPct.toFixed(1)}% (prices to ${profile.target_margin_pct}% target margin)`,
-      amount: markupAmount,
-    });
+    // What the agency sees: a price per scope. The markup is carried inside
+    // the scope lines rather than announced on its own line next to our
+    // target margin, which is what the submitted schedule used to do.
+    const lineItems = offerLineItems(costLineItems, bidAmount);
 
     // --- Documents. ---
     const docData: BidDocData = {
@@ -305,14 +314,18 @@ export const bidBuilder: AgentDefinition = {
     }
     // Preserve operator confirmations (signed/uploaded) across rebuilds.
     const priorBid = await queryOne<{ compliance_matrix: ResolvedRequirement[] | null }>(
-      `select compliance_matrix from bids where opportunity_id = $1 order by created_at asc limit 1`,
+      // Newest, matching every reader (the download route, submit, preview,
+      // requirements, and the auditor all use desc). The builder used to read
+      // and write the OLDEST row, so on an opportunity with two bid rows (the
+      // prime_only path inserts one unconditionally) the manifest was written
+      // where nothing looks for it and the download reported "no package".
+      `select compliance_matrix from bids where opportunity_id = $1 order by created_at desc limit 1`,
       [opportunityId]
     );
-    const confirmed = new Set(
-      (priorBid?.compliance_matrix ?? [])
-        .filter((r) => r.operator_confirmed)
-        .map((r) => r.id)
-    );
+    // Keyed by every identity the requirement had, not just the model's slug:
+    // a re-analysis regenerates those slugs, and matching on the slug alone
+    // threw away confirmations the operator had already made.
+    const confirmed = confirmedKeys(priorBid?.compliance_matrix ?? []);
     const hasIdentifiers = Boolean(profile.uei || profile.cage_code);
     const resolved = resolveRequirements(requirements, {
       confirmed,
@@ -328,11 +341,7 @@ export const bidBuilder: AgentDefinition = {
     );
     for (const r of resolved) {
       if (!r.official_form || !r.official_form_doc) {
-        const token = (r.official_form ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-        if (!token) continue;
-        const match = solDocs.find(
-          (d) => d.storage_path && d.name.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(token)
-        );
+        const match = matchOfficialForm(r.official_form, solDocs);
         if (match?.storage_path) {
           r.official_form_doc = { name: match.name, path: match.storage_path };
           r.note = `The agency's ${r.official_form} is attached to the solicitation, sign that form and include it.`;
@@ -417,11 +426,39 @@ export const bidBuilder: AgentDefinition = {
     const humanFlags = [
       ...(failing.length ? ["qa_failures"] : []),
       ...(validation.passed ? [] : ["package_incomplete"]),
+      ...(resolved.length === 0 ? ["requirements_missing"] : []),
     ];
+
+    // An unextracted requirements matrix is not a package problem to discover
+    // inside the package view; it means this bid cannot be assembled at all.
+    // Say so where the operator actually looks: on the opportunity, in the
+    // log, and by asking for a person.
+    if (resolved.length === 0) {
+      await query(
+        `update opportunities
+            set human_action_required = true,
+                risk_flags = (
+                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['requirements_missing']))
+                )
+          where id = $1`,
+        [opportunityId]
+      );
+      await logAgent({
+        agent: "bid-builder",
+        action: "requirements-missing",
+        opportunityId,
+        level: "error",
+        status: "error",
+        message:
+          "No submission requirements were extracted for this solicitation, so the package would have been empty. The bid is held: re-run the analysis, and if the documents are scans with no readable text, add the required items by hand.",
+        reasoning:
+          "solicitation_analysis.compliance_matrix was empty, which means the analysis never ran or could not read the documents, not that the solicitation asks for nothing.",
+      });
+    }
 
     // --- Upsert the bid (one bid per opportunity). ---
     const existing = await queryOne<{ id: string }>(
-      `select id from bids where opportunity_id = $1 order by created_at asc limit 1`,
+      `select id from bids where opportunity_id = $1 order by created_at desc limit 1`,
       [opportunityId]
     );
     if (existing) {

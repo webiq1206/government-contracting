@@ -73,6 +73,16 @@ export interface CompleteOptions {
   model?: string;
   /** Set false to skip Company Profile injection (rarely needed). */
   injectProfile?: boolean;
+  /**
+   * PDFs to send with the prompt as native document blocks.
+   *
+   * This is how a scanned, image-only solicitation gets read at all: there is
+   * no extractable text layer, so the bytes themselves have to reach the
+   * model. Each entry is base64 with NO newlines (the API rejects wrapped
+   * base64). Blocks are placed BEFORE the text block, which is what the API
+   * expects for document inputs.
+   */
+  documents?: { base64: string }[];
 }
 
 /**
@@ -104,11 +114,23 @@ export async function complete(
   // Built as a loose object so we can conditionally include params by model
   // family without fighting the (older) SDK's request types. The model string
   // itself is sent verbatim, so newer model ids work regardless of SDK version.
+  // Document blocks go ahead of the prompt text; a plain string is still sent
+  // when there are none so every existing call site is byte-for-byte unchanged.
+  const content = opts.documents?.length
+    ? [
+        ...opts.documents.map((d) => ({
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: d.base64 },
+        })),
+        { type: "text", text: prompt },
+      ]
+    : prompt;
+
   const body: Record<string, unknown> = {
     model,
     max_tokens: opts.maxTokens ?? 2048,
     system,
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content }],
   };
   if (modelAcceptsSampling(model)) {
     body.temperature = opts.temperature ?? 0.2;

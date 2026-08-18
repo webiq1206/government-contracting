@@ -212,9 +212,15 @@ export function evaluateSolicitationCompleteness(
     riskFlags.push("unverified_set_aside");
   }
 
+  // "no_text" is NOT a success. It means a document was downloaded and stored
+  // but nothing in it was ever read: a scan that even transcription could not
+  // recover. Counting it as fetched is how an opportunity reached sourcing
+  // with its instructions-to-offerors still unread, and the requirements
+  // silently coming from the portal summary instead.
   const fetchedOk = input.attachmentOutcomes.filter(
-    (o) => o.status === "fetched" || o.status === "no_text" || o.status === "unsupported"
+    (o) => o.status === "fetched" || o.status === "unsupported"
   ).length;
+  const unread = input.attachmentOutcomes.filter((o) => o.status === "no_text");
   const failed = input.attachmentOutcomes.filter(
     (o) => o.status === "failed" || o.status === "too_large" || o.status === "no_url"
   );
@@ -244,6 +250,21 @@ export function evaluateSolicitationCompleteness(
       critical: true,
     });
     riskFlags.push("missing_attachments");
+  }
+
+  if (unread.length > 0) {
+    missing.push({
+      key: "unreadable_documents",
+      what: "Documents that could not be read",
+      why: "These files are stored but nothing in them was ever read, so any requirement, form, page limit or deadline inside them is missing from this brief. Nothing here may be assumed.",
+      retrievable: "either",
+      resolution: `Could not read: ${unread
+        .map((f) => `${f.name}${f.detail ? ` (${f.detail})` : ""}`)
+        .join("; ")}. Upload a text-based copy, or enter the requirements from these documents by hand.`,
+      action: { label: "Upload documents", href: "#attachments", modal: "upload" },
+      critical: true,
+    });
+    riskFlags.push("unreadable_documents");
   }
 
   const hasSubmission =

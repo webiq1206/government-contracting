@@ -124,7 +124,12 @@ export async function runAgent(
   ).catch(() => null);
 
   try {
-    if (!(await claudeEnabled()) && !def.worksWithoutClaude) {
+    // Inside the org, like everything else that reads a credential. Outside
+    // it, claudeEnabled() resolved to the founding organization: a tenant with
+    // their own key had every AI agent skipped as "not set" whenever the
+    // founding org had none, and a tenant with no key was let through on
+    // somebody else's.
+    if (!(await inOrg(() => claudeEnabled())) && !def.worksWithoutClaude) {
       const result: AgentResult = {
         ok: true,
         summary: `${def.name} skipped: ANTHROPIC_API_KEY not set`,

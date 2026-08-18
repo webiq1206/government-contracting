@@ -26,6 +26,7 @@ import {
 } from "../domain/solicitation-completeness";
 import { storage } from "../integrations/storage";
 import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
+import { ocrPdf } from "../integrations/pdf-ocr";
 import { filenameFromResponse, normalizeAttachmentMeta } from "../domain/attachment-meta";
 import type { AgentDefinition } from "./types";
 import type {
@@ -40,7 +41,7 @@ const MAX_ATTACHMENT_URLS = 40;
 
 const NA = "Not specified in the provided documents";
 
-const AnalysisSchema = z.object({
+export const AnalysisSchema = z.object({
   project_overview: z.string().default(NA),
   scope_plain_language: z.string().default(NA),
   location: z.string().default(NA),
@@ -93,39 +94,88 @@ const AnalysisSchema = z.object({
     .default([]),
   geographic_area: z.string().default(NA),
   risk_flags: z.array(z.string()).default([]),
-  past_perf_classification: z.enum(["not_required", "team_accepted", "prime_only"]),
+  // No default and no coercion meant one unexpected word here threw away the
+  // whole analysis. Unrecognised now routes to prime_only, which blocks and
+  // asks a person, rather than silently sourcing subs for a bid whose past
+  // performance rules were never actually read.
+  past_perf_classification: z.unknown().transform(toPastPerf),
   questions_for_subs: z.array(z.string()).default([]),
   draft_sow: z.string().default(""),
   set_aside: z.string().nullable().default(null),
   compliance_matrix: z
     .array(
       z.object({
-        id: z.string(),
+        id: z.string().catch(""),
         title: z.string(),
-        category: z
-          .enum([
-            "form",
-            "pricing",
-            "narrative",
-            "certification",
-            "acknowledgment",
-            "attachment",
-            "other",
-          ])
-          .default("other"),
-        mandatory: z.boolean().default(true),
-        source: z.string().default(NA),
-        format: z.string().optional(),
-        signature_required: z.boolean().default(false),
-        satisfied_by: z
-          .enum(["auto_generated", "from_profile", "operator_signature", "operator_provided"])
-          .default("operator_provided"),
-        instructions: z.string().optional(),
-        official_form: z.string().optional(),
+        // Coerced, never rejected. `.default()` only fires on undefined, so a
+        // model that answered "certifications" instead of "certification"
+        // threw, and because the throw happens on the whole object, ONE
+        // out-of-enum word destroyed the entire analysis: scope, dates,
+        // trades, every requirement. The retry usually repeated it. Mapping
+        // the near miss keeps the other forty fields, and an unrecognised
+        // value lands on the safe side rather than nowhere.
+        category: z.unknown().transform(toCategory),
+        mandatory: z.boolean().catch(true),
+        source: z.string().catch(NA),
+        format: z.string().optional().catch(undefined),
+        signature_required: z.boolean().catch(false),
+        satisfied_by: z.unknown().transform(toSatisfiedBy),
+        instructions: z.string().optional().catch(undefined),
+        official_form: z.string().optional().catch(undefined),
       })
     )
     .default([]),
 });
+
+function toPastPerf(v: unknown): "not_required" | "team_accepted" | "prime_only" {
+  const s = String(v ?? "").toLowerCase().trim();
+  if (s === "not_required" || s === "team_accepted" || s === "prime_only") return s;
+  if (/not.?required|none|n\/a/.test(s)) return "not_required";
+  if (/team|sub|joint|partner/.test(s)) return "team_accepted";
+  return "prime_only";
+}
+
+const CATEGORY_VALUES = [
+  "form",
+  "pricing",
+  "narrative",
+  "certification",
+  "acknowledgment",
+  "attachment",
+  "other",
+] as const;
+type MatrixCategory = (typeof CATEGORY_VALUES)[number];
+
+function toCategory(v: unknown): MatrixCategory {
+  const s = String(v ?? "").toLowerCase().trim();
+  if ((CATEGORY_VALUES as readonly string[]).includes(s)) return s as MatrixCategory;
+  if (/certif|reps|represent/.test(s)) return "certification";
+  if (/acknowledg|amend|addend/.test(s)) return "acknowledgment";
+  if (/pric|cost|bid schedule|schedule of/.test(s)) return "pricing";
+  if (/narrative|technical|approach|letter|plan|volume|proposal/.test(s)) return "narrative";
+  if (/form|sf[- ]?\d/.test(s)) return "form";
+  if (/attach|exhibit|enclosure|supporting/.test(s)) return "attachment";
+  return "other";
+}
+
+const SATISFIED_VALUES = [
+  "auto_generated",
+  "from_profile",
+  "operator_signature",
+  "operator_provided",
+] as const;
+type SatisfiedBy = (typeof SATISFIED_VALUES)[number];
+
+function toSatisfiedBy(v: unknown): SatisfiedBy {
+  const s = String(v ?? "").toLowerCase().trim();
+  if ((SATISFIED_VALUES as readonly string[]).includes(s)) return s as SatisfiedBy;
+  if (/signature|sign/.test(s)) return "operator_signature";
+  if (/profile|company data/.test(s)) return "from_profile";
+  if (/auto|generat|platform/.test(s)) return "auto_generated";
+  // Anything unrecognised is the operator's. Guessing "we generate this" for
+  // a word we do not know would mark an item done with nothing behind it.
+  return "operator_provided";
+}
 
 const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25MB cap per file
 
@@ -245,7 +295,15 @@ async function processAttachment(
 
     // Trust the actual bytes over SAM's (usually generic/wrong) headers.
     if (looksLikePdf(att.url, ct) || looksLikePdfBytes(buf)) {
-      const { text, pages } = await extractPdfText(buf);
+      // Read the WHOLE document. extractPdfText defaults to 14,000 characters,
+      // roughly five pages, so a real solicitation was cut off inside Section
+      // B or C and Sections L and M, where every submission instruction and
+      // evaluation factor lives, never reached the model at all. The prompt
+      // then falls back to inferring "standard" items, which is how a package
+      // gets built against a checklist nobody read. The per-attachment budget
+      // below decides what actually fits in the prompt; this decides what is
+      // available to choose from.
+      const { text, pages } = await extractPdfText(buf, 400_000);
       if (text) {
         return {
           context: `- ${label} (${pages} pp, extracted):\n${text}`,
@@ -262,14 +320,37 @@ async function processAttachment(
           },
         };
       }
+      // No text layer means a scan. Read it anyway: send the pages to Claude
+      // for transcription rather than shrugging and letting the analysis be
+      // built from the portal blurb. The transcript is labelled so nothing
+      // downstream, and nobody reading the brief, mistakes a machine reading
+      // of a photocopy for the document's own text.
+      const ocr = await ocrPdf(buf, { label, model: config.claude.modelSmart });
+      if (ocr.text) {
+        const truncNote = ocr.truncated
+          ? `\n[only the first ${ocr.pagesRead} of ${ocr.pagesTotal} pages were transcribed]`
+          : "";
+        return {
+          context: `- ${label} (${ocr.pagesTotal} pp, SCANNED DOCUMENT, transcribed from the page images; anything marked [illegible] was not readable and must not be guessed):\n${ocr.text}${truncNote}`,
+          parsedChars: ocr.text.length,
+          outcome: {
+            name: label,
+            url: att.url,
+            status: stored ? "fetched" : "failed",
+            detail: stored
+              ? `${ocr.pagesRead} of ${ocr.pagesTotal} pages transcribed from a scan`
+              : `${ocr.pagesRead} pages transcribed, but the file could not be stored`,
+          },
+        };
+      }
       return {
-        context: `- ${label}, PDF stored but no extractable text (likely scanned/image-only).`,
+        context: `- ${label}, scanned PDF stored but it could not be read (${ocr.error ?? "no readable text"}). Do NOT assume anything about its contents.`,
         parsedChars: 0,
         outcome: {
           name: label,
           url: att.url,
           status: stored ? "no_text" : "failed",
-          detail: "PDF had no extractable text",
+          detail: ocr.error ?? "PDF had no extractable text",
         },
       };
     }
@@ -305,6 +386,13 @@ async function processAttachment(
   }
 }
 
+/**
+ * Characters of attachment text the analysis prompt may carry. Sized so a
+ * real solicitation's instructions survive rather than being cut off after
+ * the first few pages of the first file.
+ */
+const ATTACHMENT_PROMPT_BUDGET = 240_000;
+
 function buildPrompt(opp: Opportunity, attachmentContext: string): string {
   return [
     "You are a government-procurement analyst. Read this solicitation and its attachments and produce a COMPLETE, plain-English bid brief so a busy contractor can understand the whole opportunity in a few minutes without reading hundreds of pages.",
@@ -326,10 +414,13 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     opp.contact_json ? `Point of contact (from portal): ${JSON.stringify(opp.contact_json)}` : "",
     "",
     "DESCRIPTION:",
-    (opp.description ?? "(no description provided)").slice(0, 8000),
+    // Combined Synopsis/Solicitation notices carry the ENTIRE solicitation,
+    // instructions to offerors included, in the description with no
+    // attachments at all, and they routinely run past 8,000 characters.
+    (opp.description ?? "(no description provided)").slice(0, 60_000),
     "",
     "ATTACHMENT TEXT (parsed from the actual bid documents, PRIMARY SOURCE, prefer this over the portal summary):",
-    (attachmentContext || "(no attachment text extracted)").slice(0, 60000),
+    (attachmentContext || "(no attachment text extracted)").slice(0, ATTACHMENT_PROMPT_BUDGET),
     "",
     "PAST-PERFORMANCE CLASSIFICATION, choose exactly one for past_perf_classification:",
     '- "not_required": the solicitation does not require past performance.',
@@ -394,7 +485,8 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '- "from_profile": it is standard company information (company identifiers, capability statement, small-business status, standard certifications).',
     '- "operator_signature": the platform can prefill it but a person must sign it (SF-1449, reps & certifications, signed forms).',
     '- "operator_provided": only the offeror can supply it (bid bond, notarized document, insurance certificate, wet-ink or agency-portal-only forms).',
-    "If the documents do not enumerate submission contents, infer the standard mandatory items for this vehicle (e.g. a signed offer form, a completed pricing schedule, reps & certifications, and acknowledgment of any amendments) and mark their source \"Standard requirement for this solicitation type\".",
+    "Every entry must come from something the documents actually say. If the material below does not enumerate the submission contents, return an EMPTY compliance_matrix. Do NOT fall back to the items a solicitation like this usually requires: a package assembled against a checklist nobody read is worse than no checklist, because it looks complete. An empty matrix is handled correctly downstream, it stops the package and asks a person to supply the requirements.",
+    "Where a document was transcribed from a scan, treat [illegible] as unknown. Never fill in a form number, page limit, date or amount that was marked unreadable.",
     "IMPORTANT, official forms: whenever the solicitation requires a SPECIFIC government or agency form or fillable worksheet (any Standard Form like SF-1449/SF-33/SF-18/SF-1442, an agency-provided pricing/bid schedule, a portal-only form), set `official_form` to that exact identifier. These cannot be substituted with a generic document, so be precise. Also capture format constraints (page limits, font/size, number of copies, required file types, submission portal) in `format` and in `submission_requirements`.",
   ].join("\n");
 }
@@ -418,11 +510,22 @@ export const solicitationAnalyst: AgentDefinition = {
     // Idempotency: a queue-triggered re-run must not re-download attachments and
     // re-bill a Claude analysis that already exists. Manual runs (or an explicit
     // force flag) re-analyze, e.g. after an amendment drops.
-    if (
-      opp.solicitation_analysis &&
-      ctx.trigger === "queue" &&
-      ctx.payload.force !== true
-    ) {
+    //
+    // The trigger is read from the PAYLOAD as well as the runner, because the
+    // worker hardcodes runAgent(def, "queue", ...) for every queued job, so
+    // ctx.trigger is always "queue" and the manual-run route's own
+    // {trigger:"manual"} lands in the payload where nothing looked at it. The
+    // effect was that re-analysis could never happen at all: once an
+    // opportunity had been analyzed, every retry button, re-pursue, and bulk
+    // re-run returned "skipped duplicate run", so an amendment's new
+    // requirements, or a solicitation PDF uploaded after the first pass, never
+    // reached the compliance matrix and the package kept being built against
+    // the original, stale requirements.
+    const forced =
+      ctx.payload.force === true ||
+      ctx.trigger === "manual" ||
+      ctx.payload.trigger === "manual";
+    if (opp.solicitation_analysis && !forced) {
       return {
         ok: true,
         summary: `Opportunity ${opportunityId} already analyzed; skipped duplicate run.`,
@@ -454,7 +557,27 @@ export const solicitationAnalyst: AgentDefinition = {
         .slice(0, MAX_ATTACHMENT_URLS)
         .map((att, i) => processAttachment(opportunityId, att, i))
     );
-    const attachmentContext = processed.map((p) => p.context).join("\n\n");
+    /**
+     * Share the prompt budget across attachments rather than spending it on
+     * whichever happened to be first.
+     *
+     * The joined text used to be sliced to a flat 60,000 characters, and SAM
+     * lists amendments and Q&A responses AFTER the base documents, so the
+     * files most likely to change the requirements were exactly the ones
+     * guaranteed to be cut. Each attachment now gets an equal share, and only
+     * the ones that exceed their share are trimmed.
+     */
+    const perAttachment = Math.max(
+      8_000,
+      Math.floor(ATTACHMENT_PROMPT_BUDGET / Math.max(1, processed.length))
+    );
+    const attachmentContext = processed
+      .map((p) =>
+        p.context.length > perAttachment
+          ? `${p.context.slice(0, perAttachment)}\n[... this document continues; trimmed to fit the analysis budget]`
+          : p.context
+      )
+      .join("\n\n");
     const parsedChars = processed.reduce((a, p) => a + p.parsedChars, 0);
     const attachmentOutcomes = processed.map((p) => p.outcome);
     await logAgent({
@@ -477,6 +600,22 @@ export const solicitationAnalyst: AgentDefinition = {
       // prompt asks for, since compliance with that varies run to run and the
       // fix belongs in one place rather than at each display and email site.
       analysis = tightenAnalysisProse(deepNoEmDash(data));
+      // Every requirement needs a stable handle and a name a person can read.
+      // A blank id would collide with every other blank id when confirmations
+      // are matched; a blank title is not a requirement anybody can act on.
+      analysis.compliance_matrix = (analysis.compliance_matrix ?? [])
+        .filter((r) => r.title?.trim())
+        .map((r, i) => ({
+          ...r,
+          id:
+            r.id?.trim() ||
+            r.title
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "")
+              .slice(0, 40) ||
+            `requirement_${i + 1}`,
+        }));
       await logAgent({
         agent: "solicitation-analyst",
         action: "analyze",

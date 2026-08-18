@@ -49,6 +49,29 @@ describe("evaluateSolicitationCompleteness", () => {
     expect(result.missing.some((m) => m.key === "attachments")).toBe(true);
   });
 
+  it("blocks when a document was stored but never actually read", () => {
+    // "no_text" used to count as a successful fetch, so an opportunity whose
+    // only attachment was an unreadable scan advanced into sourcing with its
+    // instructions-to-offerors never read by anything.
+    const result = evaluateSolicitationCompleteness({
+      ...base,
+      storedDocumentCount: 1,
+      attachmentOutcomes: [
+        {
+          name: "Solicitation.pdf",
+          url: "https://example.com/s.pdf",
+          status: "no_text" as const,
+          detail: "nothing readable was transcribed",
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.riskFlags).toContain("unreadable_documents");
+    const item = result.missing.find((m) => m.key === "unreadable_documents");
+    expect(item?.critical).toBe(true);
+    expect(item?.resolution).toContain("Solicitation.pdf");
+  });
+
   it("blocks when scope is placeholder", () => {
     const result = evaluateSolicitationCompleteness({
       ...base,
