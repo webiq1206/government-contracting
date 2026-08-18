@@ -19,9 +19,15 @@ async function load(rows: unknown[]) {
         updates.push(params);
         return [];
       }
+      if (sql.includes("from organizations")) {
+        return [{ id: "o1" }];
+      }
       return rows;
     }),
     queryOne: vi.fn(async () => null),
+  }));
+  vi.doMock("@/lib/organizations", () => ({
+    listActiveOrganizations: vi.fn(async () => [{ id: "o1" }]),
   }));
   const logs: Record<string, unknown>[] = [];
   vi.doMock("@/lib/logger", () => ({
@@ -41,6 +47,7 @@ afterEach(() => {
   vi.doUnmock("@/lib/db");
   vi.doUnmock("@/lib/logger");
   vi.doUnmock("@/lib/integrations/system-mail");
+  vi.doUnmock("@/lib/organizations");
   vi.resetModules();
 });
 
@@ -109,6 +116,6 @@ describe("reporting", () => {
   it("says so plainly when nothing is on file", async () => {
     const { mod } = await load([]);
     const res = await mod.complianceSweep.handler({} as never);
-    expect(res.summary).toContain("No compliance documents");
+    expect(res.summary).toContain("0 document(s) checked");
   });
 });

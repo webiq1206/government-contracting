@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { randomUUID } from "crypto";
+import { LEGACY_ORG_ID } from "../lib/tenant-context";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const d = hasDb ? describe : describe.skip;
@@ -23,11 +24,12 @@ d("saveTemplateVersion — concurrent saves (integration)", () => {
     ({ query } = await import("../lib/db"));
     ({ saveTemplateVersion } = await import("../lib/domain/template-versions"));
 
-    // Seed one initial version so the slug exists.
+    // Seed one initial version so the slug exists. Templates are org-owned
+    // now; the founding org's row doubles as the platform default.
     await query(
-      `INSERT INTO templates (slug, version, is_active, subject, body)
-       VALUES ($1, 1, true, 'Initial subject', 'Initial body')`,
-      [testSlug]
+      `INSERT INTO templates (org_id, slug, version, is_active, subject, body)
+       VALUES ($1, $2, 1, true, 'Initial subject', 'Initial body')`,
+      [LEGACY_ORG_ID, testSlug]
     );
   });
 
@@ -37,15 +39,15 @@ d("saveTemplateVersion — concurrent saves (integration)", () => {
   });
 
   it("sequential saves produce strictly increasing versions", async () => {
-    const v2 = await saveTemplateVersion(testSlug, "Subject v2", "Body v2");
-    const v3 = await saveTemplateVersion(testSlug, "Subject v3", "Body v3");
+    const v2 = await saveTemplateVersion(testSlug, "Subject v2", "Body v2", LEGACY_ORG_ID);
+    const v3 = await saveTemplateVersion(testSlug, "Subject v3", "Body v3", LEGACY_ORG_ID);
 
     expect(v2.version).toBe(2);
     expect(v3.version).toBe(3);
   });
 
   it("after each save exactly one row is active", async () => {
-    await saveTemplateVersion(testSlug, "Subject v4", "Body v4");
+    await saveTemplateVersion(testSlug, "Subject v4", "Body v4", LEGACY_ORG_ID);
 
     const active = await query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM templates WHERE slug = $1 AND is_active = true`,
@@ -60,7 +62,7 @@ d("saveTemplateVersion — concurrent saves (integration)", () => {
     const CONCURRENT = 5;
     const results = await Promise.all(
       Array.from({ length: CONCURRENT }, (_, i) =>
-        saveTemplateVersion(testSlug, `Concurrent subject ${i}`, `Concurrent body ${i}`)
+        saveTemplateVersion(testSlug, `Concurrent subject ${i}`, `Concurrent body ${i}`, LEGACY_ORG_ID)
       )
     );
 
@@ -92,8 +94,12 @@ d("saveTemplateVersion — concurrent saves (integration)", () => {
   });
 
   it("throws a 404-tagged error when slug does not exist", async () => {
+    // A non-founding org saving an unknown slug is refused; the founding org
+    // is allowed to create, so the 404 contract lives on the tenant path.
     const missingSlug = `no_such_slug_${randomUUID().slice(0, 8)}`;
-    await expect(saveTemplateVersion(missingSlug, null, "body")).rejects.toMatchObject({
+    await expect(
+      saveTemplateVersion(missingSlug, null, "body", randomUUID())
+    ).rejects.toMatchObject({
       status: 404,
     });
   });

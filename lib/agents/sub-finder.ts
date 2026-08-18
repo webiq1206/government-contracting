@@ -313,7 +313,7 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
     }
 
     for (const { candidate } of ranked) {
-      const subId = await upsertSubcontractor(candidate, trade, orgId);
+      const subId = await upsertSubcontractor(candidate, trade, orgId, targetState);
       if (!subId) {
         skippedNoContact++;
         continue;
@@ -423,7 +423,9 @@ function cityFromAddress(address: string | null | undefined): string | null {
 async function upsertSubcontractor(
   c: Contractor,
   trade: string,
-  orgId: string
+  orgId: string,
+  /** The state the search targeted, for name-dedupe when the address gives none. */
+  targetState: string | null
 ): Promise<string | null> {
   const name = c.name?.trim();
   if (!name) return null;
@@ -450,12 +452,18 @@ async function upsertSubcontractor(
     );
   }
   if (!existing) {
+    // Same name, compatible state, same org = the same firm. "Compatible"
+    // means the roster row's state equals the candidate's own, or the state
+    // this search targeted, or is unknown; requiring strict equality here
+    // minted a duplicate row whenever Google returned no parseable address.
     existing = await queryOne(
       `select id, email, phone, website from subcontractors
-       where org_id = $3
+       where org_id = $2
          and lower(company_name) = lower($1)
-         and coalesce(state,'') = coalesce($2,'')`,
-      [name, state, orgId]
+         and (coalesce(state,'') = '' or upper(state) in ($3, $4))
+       order by (google_place_id is not null) desc, created_at asc
+       limit 1`,
+      [name, orgId, state ?? "", targetState ?? ""]
     );
   }
 

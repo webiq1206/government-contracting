@@ -15,12 +15,13 @@
  */
 import { query } from "../db";
 import { logAgent } from "../logger";
+import { listActiveOrganizations } from "../organizations";
+import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
 import {
   currentStatus,
   DOC_LABEL,
-  EXPIRING_SOON_DAYS,
   type ComplianceDoc,
   type DocType,
 } from "../domain/sub-compliance";
@@ -47,7 +48,7 @@ interface Row extends ComplianceDoc {
 }
 
 /** Documents on live subcontractors that could change state. */
-async function loadDocuments(): Promise<Row[]> {
+async function loadDocuments(orgId: string): Promise<Row[]> {
   return query<Row>(
     `select d.id, d.org_id, d.subcontractor_id, d.doc_type, d.status,
             d.expires_at::text as expires_at, d.signed_at::text as signed_at,
@@ -60,8 +61,9 @@ async function loadDocuments(): Promise<Row[]> {
             ) as on_active_contract
        from subcontractor_documents d
        join subcontractors s on s.id = d.subcontractor_id
-      where d.status <> 'rejected'
-      order by d.expires_at asc nulls last`
+      where d.org_id = $1 and d.status <> 'rejected'
+      order by d.expires_at asc nulls last`,
+    [orgId]
   ).catch(() => []);
 }
 
@@ -80,9 +82,42 @@ export const complianceSweep: AgentDefinition = {
     "Checks every subcontractor's W-9 and insurance certificates daily. Chases anything lapsing within 30 days while there is still time to fix it, flags anything already lapsed so no work goes out behind it, and keeps each document's status accurate.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const docs = await loadDocuments();
+    // Cron with no payload: nothing set a tenant context. Loop every active
+    // organization and sweep each inside its own, so one tenant's document
+    // rows, status writes, digest email, and audit log never span another's.
+    let orgs = await listActiveOrganizations().catch(() => []);
+    if (orgs.length === 0) {
+      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
+    }
+    let checked = 0;
+    let lapsed = 0;
+    let expiring = 0;
+    let humanAction = false;
+    for (const org of orgs) {
+      const r = await runWithOrg(org.id, () => sweepOrg(org.id)).catch(() => null);
+      if (!r) continue;
+      checked += r.checked;
+      lapsed += r.lapsed;
+      expiring += r.expiring;
+      humanAction = humanAction || r.humanAction;
+    }
+    return {
+      ok: true,
+      summary: `Compliance sweep across ${orgs.length} org(s): ${checked} document(s) checked, ${lapsed} newly lapsed, ${expiring} expiring.`,
+      humanActionRequired: humanAction,
+    };
+  },
+};
+
+async function sweepOrg(orgId: string): Promise<{
+  checked: number;
+  lapsed: number;
+  expiring: number;
+  humanAction: boolean;
+}> {
+    const docs = await loadDocuments(orgId);
     if (docs.length === 0) {
-      return { ok: true, summary: "No compliance documents on file yet." };
+      return { checked: 0, lapsed: 0, expiring: 0, humanAction: false };
     }
 
     const now = new Date();
@@ -155,7 +190,12 @@ export const complianceSweep: AgentDefinition = {
 
     // One digest per run rather than one email per document, so a bad week
     // does not bury the operator.
-    if (bySub.size > 0 && config.systemMail.digestTo && (await systemMail.enabled())) {
+    if (
+      orgId === LEGACY_ORG_ID &&
+      bySub.size > 0 &&
+      config.systemMail.digestTo &&
+      (await systemMail.enabled())
+    ) {
       // Subs who are actually on a job first. A digest read on a phone at
       // 06:30 gets skimmed, so the item that can stop work has to be at the
       // top rather than alphabetically wherever it fell.
@@ -191,17 +231,12 @@ export const complianceSweep: AgentDefinition = {
 
     const workingAndLapsing = [...bySub.values()].filter((e) => e.working).length;
 
+    // A lapsed certificate is a person-shaped problem: somebody has to ring
+    // the sub. Expiring alone usually is not, unless the sub is on a job.
     return {
-      ok: true,
-      summary: `Checked ${docs.length} document${docs.length === 1 ? "" : "s"}: ${justExpired.length} newly lapsed, ${expiringSoon.length} expiring within ${EXPIRING_SOON_DAYS} days, ${restatused} status${restatused === 1 ? "" : "es"} corrected.${
-        workingAndLapsing
-          ? ` ${workingAndLapsing} of them ${workingAndLapsing === 1 ? "is" : "are"} on a live contract.`
-          : ""
-      }`,
-      // A lapsed certificate is a person-shaped problem: somebody has to ring
-      // the sub. Expiring alone usually is not, since the chase can wait a day,
-      // unless the sub is already on a job, where the days are the whole point.
-      humanActionRequired: justExpired.length > 0 || workingAndLapsing > 0,
+      checked: docs.length,
+      lapsed: justExpired.length,
+      expiring: expiringSoon.length,
+      humanAction: justExpired.length > 0 || workingAndLapsing > 0,
     };
-  },
-};
+}
