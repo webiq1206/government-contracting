@@ -23,7 +23,7 @@ import {
 } from "../domain/reply-outcome";
 import { requestClarification, describeGap } from "../domain/reply-clarify";
 import { readReplyAttachments, combineReplyText } from "../domain/reply-attachments";
-import { advanceIfQuotesComplete } from "../domain/advance-stage";
+import { advanceIfQuotesComplete, closeIfSubsExhausted } from "../domain/advance-stage";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
 import { areCallsEnabled, getAutomationRules } from "../app-settings";
 import { enqueue } from "../queue";
@@ -59,14 +59,137 @@ export const outreachFollowup: AgentDefinition = {
     const orgs = await listActiveOrganizations().catch(() => []);
     let sentTotal = 0;
     let dueTotal = 0;
+    let lastCalls = 0;
     for (const org of orgs) {
       const res = await runWithOrg(org.id, () => followUpForOrg(org.id));
       sentTotal += res.sent;
       dueTotal += res.due;
+      lastCalls += await runWithOrg(org.id, () => lastCallForOrg(org.id)).catch(() => 0);
     }
-    return { ok: true, summary: `Sent ${sentTotal} follow-up(s) of ${dueTotal} due.` };
+    return {
+      ok: true,
+      summary: `Sent ${sentTotal} follow-up(s) of ${dueTotal} due${
+        lastCalls > 0 ? `, plus ${lastCalls} last-call nudge(s) before bid deadlines` : ""
+      }.`,
+    };
   },
 };
+
+/**
+ * The deadline-driven LAST follow-up.
+ *
+ * The 48-hour follow-up is polite persistence; this one is honesty about
+ * time. When the bid is due within four days and a trade is still unpriced,
+ * every sub who was approached for it and went quiet gets one final, short
+ * note saying when the door closes. One per sub per solicitation, ever:
+ * the dedupe is a communications row with meta.kind = 'final_nudge', so
+ * re-runs and restarts cannot turn a nudge into nagging.
+ *
+ * This exists because "waiting on quotes" used to end in silence: one
+ * follow-up, then the unresponsive mark, then nothing until the operator
+ * noticed the deadline themselves.
+ */
+async function lastCallForOrg(orgId: string): Promise<number> {
+  const due = await query<{
+    opportunity_id: string;
+    subcontractor_id: string;
+    trade: string | null;
+    email: string | null;
+    owner_name: string | null;
+    deadline: string | null;
+  }>(
+    `select os.opportunity_id, os.subcontractor_id, os.trade,
+            s.email, s.owner_name, o.deadline
+       from opportunity_subs os
+       join opportunities o on o.id = os.opportunity_id
+       join subcontractors s on s.id = os.subcontractor_id
+      where o.org_id = $1
+        and o.status = 'open'
+        and o.deadline is not null
+        and o.deadline > now()
+        and o.deadline <= now() + interval '4 days'
+        and os.outreach_state in ('followed_up', 'unresponsive')
+        and s.email is not null and s.email_verified
+        -- the trade is still unpriced; a priced trade needs no more chasing
+        and not exists (
+              select 1 from quotes q
+               where q.opportunity_id = os.opportunity_id
+                 and coalesce(q.trade, '') = coalesce(os.trade, '')
+                 and q.quote_amount is not null
+            )
+        -- one last call per sub per solicitation, ever
+        and not exists (
+              select 1 from communications c
+               where c.opportunity_id = os.opportunity_id
+                 and c.subcontractor_id = os.subcontractor_id
+                 and c.direction = 'outbound'
+                 and c.meta->>'kind' = 'final_nudge'
+            )
+      limit 25`,
+    [orgId]
+  ).catch(() => []);
+  if (due.length === 0) return 0;
+
+  const profile = await getProfileJson().catch(() => null);
+  const senderName = profile ? outreachDisplayName(profile) : "";
+  let sent = 0;
+
+  for (const row of due) {
+    const first = (row.owner_name ?? "").trim().split(/\s+/)[0] || "there";
+    const tradeClean = scrubGovtContacts(row.trade ?? "").sanitised.trim();
+    const when = formatDeadlineLabel(row.deadline);
+    const subject = tradeClean
+      ? `Last call: ${tradeClean} pricing needed by ${when}`
+      : `Last call: pricing needed by ${when}`;
+    const lines = [
+      `Hi ${first},`,
+      "",
+      `Quick heads up: we finalize our numbers on ${when}, so today is the last day I can take ${
+        tradeClean ? `a ${tradeClean} price` : "a price"
+      } for the job I emailed you about.`,
+      "",
+      "If you can still quote it, just reply with your number. If not, no problem at all, a quick \"we'll pass\" lets me close the file.",
+      "",
+      "Thanks either way,",
+      ...(senderName ? [senderName] : []),
+    ];
+    const text = lines.join("\n");
+    const res = await sendOutreachEmail({
+      to: row.email!,
+      subject,
+      html: plainToHtml(text),
+      text,
+      orgId,
+    });
+    if (res.disabled || res.error) continue;
+    sent++;
+    await query(
+      `insert into communications
+         (subcontractor_id, opportunity_id, channel, direction, subject, body,
+          gmail_message_id, provider, recipient_email, meta)
+       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8::jsonb)`,
+      [
+        row.subcontractor_id,
+        row.opportunity_id,
+        subject,
+        text,
+        res.messageId ?? null,
+        res.provider,
+        row.email,
+        JSON.stringify({ kind: "final_nudge", trade: row.trade ?? null }),
+      ]
+    );
+    await logAgent({
+      agent: "outreach-followup",
+      action: "last-call",
+      opportunityId: row.opportunity_id,
+      subcontractorId: row.subcontractor_id,
+      level: "info",
+      message: `Bid deadline is ${when} and their ${tradeClean || "trade"} price is still out, so they got one final nudge. No further emails will be sent for this solicitation.`,
+    });
+  }
+  return sent;
+}
 
 async function followUpForOrg(orgId: string): Promise<{ sent: number; due: number }> {
   // Template resolution is org-aware (own copy, else platform default) so a
@@ -112,7 +235,7 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
     [orgId]
   );
 
-  const senderName = profile ? outreachDisplayName(profile) : "your contact";
+  const senderName = profile ? outreachDisplayName(profile) : "";
   const companyName = profile?.legal_name ?? "";
   const phone = profile?.phone ?? "";
 
@@ -213,7 +336,102 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
   return { sent, due: due.length };
 }
 
+/**
+ * OUTREACH RECOVERY, every 30 minutes.
+ *
+ * An initial outreach email that could not send (no inbox connected, a
+ * revoked Google grant, a transient Gmail failure) is stored as a draft or
+ * marked send_failed, the opportunity is flagged, and there it sat: nothing
+ * ever retried it, so fixing the inbox fixed the future while the backlog
+ * stayed silent forever.
+ *
+ * This sweep is the other half of the fix. Once the organization's inbox is
+ * back, every stuck pairing on a still-open opportunity is re-enqueued
+ * through the normal outreach agent, which rebuilds the email from scratch
+ * (fresh attachments, current template, current profile) and re-runs every
+ * completeness and safety check. Singleton keys make re-runs within the
+ * window harmless.
+ *
+ * Deliberately does NOT touch email_unverified or no_email: those are not
+ * transport failures, and retrying them would loop.
+ */
+export const outreachRecoverySweep: AgentDefinition = {
+  name: "outreach-recovery-sweep",
+  label: "Outreach Recovery",
+  description:
+    "Re-sends initial outreach that failed or was stored as a draft, once the organization's inbox is connected again.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    const orgs = await listActiveOrganizations().catch(() => []);
+    const enqueued: AgentResult["enqueued"] = [];
+    let recovered = 0;
+    let waiting = 0;
+
+    for (const org of orgs) {
+      await runWithOrg(org.id, async () => {
+        const stuck = await query<{
+          opportunity_id: string;
+          subcontractor_id: string;
+          trade: string | null;
+          outreach_state: string;
+        }>(
+          `select os.opportunity_id, os.subcontractor_id, os.trade, os.outreach_state
+             from opportunity_subs os
+             join opportunities o on o.id = os.opportunity_id
+            where o.org_id = $1 and o.status = 'open'
+              and os.outreach_state in ('draft', 'send_failed')
+            order by os.created_at asc
+            limit 25`,
+          [org.id]
+        ).catch(() => []);
+        if (stuck.length === 0) return;
+
+        // Only retry when a send can actually succeed now. Retrying into a
+        // still-broken transport would mint one more draft row per sweep.
+        if (!(await gmail.isConnected(org.id))) {
+          waiting += stuck.length;
+          return;
+        }
+
+        for (const row of stuck) {
+          recovered++;
+          enqueued.push({
+            agent: "outreach",
+            payload: {
+              opportunityId: row.opportunity_id,
+              subcontractorId: row.subcontractor_id,
+              trade: row.trade ?? "",
+            },
+            opts: {
+              singletonKey: `outreach-recover:${row.opportunity_id}:${row.subcontractor_id}:${row.trade ?? ""}`,
+              singletonSeconds: 6 * 3600,
+            },
+          });
+        }
+        await logAgent({
+          agent: "outreach-recovery-sweep",
+          action: "recover",
+          level: "info",
+          message: `The inbox is connected again, so ${stuck.length} outreach email(s) that never went out are being re-sent through the normal outreach checks.`,
+        });
+      });
+    }
+
+    return {
+      ok: true,
+      summary:
+        recovered > 0
+          ? `Re-queued ${recovered} stuck outreach email(s) now that sending works again.`
+          : waiting > 0
+            ? `${waiting} outreach email(s) still waiting for an inbox connection.`
+            : "No stuck outreach emails.",
+      enqueued,
+    };
+  },
+};
+
 export const reviewExpirySweep: AgentDefinition = {
+
   name: "review-expiry-sweep",
   label: "Review Expiry Sweep",
   description: "Auto-dismisses review-tier opportunities not actioned within the timer.",
@@ -1125,6 +1343,20 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         notifyLines.push(
           `<li>All trades are now priced on &ldquo;${opportunityTitles.get(opportunityId) ?? "a solicitation"}&rdquo;. Moved to Bid Building automatically.</li>`
         );
+        continue;
+      }
+      // Not complete. If that is because everyone said no, escalate: source
+      // more subs once, and close with the reasoning when that too is spent.
+      const exhaustion = await closeIfSubsExhausted(opportunityId).catch(() => null);
+      if (exhaustion?.action === "resourced" && exhaustion.enqueue) {
+        enqueued.push(exhaustion.enqueue);
+        notifyLines.push(
+          `<li>Every sub approached for &ldquo;${opportunityTitles.get(opportunityId) ?? "a solicitation"}&rdquo; has declined. Searching for more candidates automatically.</li>`
+        );
+      } else if (exhaustion?.action === "closed") {
+        notifyLines.push(
+          `<li>&ldquo;${opportunityTitles.get(opportunityId) ?? "A solicitation"}&rdquo; was closed: no subcontractor can perform the work, even after a second search. The record says why.</li>`
+        );
       }
     }
 
@@ -1189,11 +1421,24 @@ export const unresponsiveSweep: AgentDefinition = {
                    and c.direction = 'outbound'
                    and c.created_at <= now() - interval '72 hours'
               )
-        returning os.id`
+        returning os.id, os.opportunity_id`
     );
+
+    // Going unresponsive can be the last answer outstanding: with every other
+    // sub already negative, this solicitation is now exhausted and should be
+    // re-sourced or closed rather than waiting forever.
+    const enqueued: AgentResult["enqueued"] = [];
+    const touched = new Set((rows as unknown as { opportunity_id: string }[]).map((r) => r.opportunity_id));
+    for (const opportunityId of touched) {
+      const exhaustion = await closeIfSubsExhausted(opportunityId).catch(() => null);
+      if (exhaustion?.action === "resourced" && exhaustion.enqueue) {
+        enqueued.push(exhaustion.enqueue);
+      }
+    }
     return {
       ok: true,
       summary: `Marked ${rows.length} pairing(s) unresponsive after follow-up with no reply.`,
+      enqueued,
     };
   },
 };

@@ -29,7 +29,10 @@ export interface AdvanceAssessment {
 }
 
 /** Outcomes that mean this sub will not be pricing this trade. */
-const NEGATIVE_STATES = ["declined", "unavailable", "not_a_fit", "no_response"];
+// "unresponsive" is what the sweep actually writes after a dead follow-up.
+// The old list said "no_response", which nothing writes, so a trade whose
+// subs all went quiet never read as exhausted and sat "waiting" forever.
+const NEGATIVE_STATES = ["declined", "unavailable", "not_a_fit", "unresponsive"];
 
 /**
  * Decide whether a solicitation's quotes are complete enough to build a bid.
@@ -143,6 +146,117 @@ export async function advancePastCallStep(
   });
 
   return true;
+}
+
+
+export interface ExhaustionResult {
+  /** What was done: nothing, another search queued, or the record closed. */
+  action: "none" | "resourced" | "closed";
+  exhaustedTrades: string[];
+  enqueue?: { agent: string; payload: Record<string, unknown>; opts?: Record<string, unknown> };
+}
+
+/** Flag recording that the automatic second sub search has been spent. */
+const RESOURCE_RETRY_FLAG = "sub_search_retried";
+/** Flag naming why a closed record closed, for lists and the log. */
+const NO_VIABLE_SUBS_FLAG = "no_viable_subs";
+
+/**
+ * Deal with a solicitation whose subcontractors have all said no.
+ *
+ * Escalation, in order, each step taken at most once:
+ *
+ *   1. Every approached sub for every trade is out and nothing is priced:
+ *      run Sub Finder again. Declines change the picture, the roster grows,
+ *      and a deeper search often has candidates the first pass ranked below
+ *      the cut. This is the step a person would take, so the platform takes
+ *      it first.
+ *   2. The retry already happened and everyone still said no: close the
+ *      record, with the reasoning written where the operator will read it.
+ *      Leaving it open teaches the operator that "open" means nothing.
+ *
+ * Deliberately does NOTHING while any trade still has a live approach or a
+ * quote: a partial exhaustion is a judgment call (bid without that scope?
+ * find one more sub?) and stays with the human via the existing holds.
+ */
+export async function closeIfSubsExhausted(
+  opportunityId: string
+): Promise<ExhaustionResult> {
+  const assessment = await assessQuoteCompleteness(opportunityId);
+  const trades = assessment.trades;
+  if (trades.length === 0) return { action: "none", exhaustedTrades: [] };
+
+  const exhausted = trades.filter((t) => t.exhausted).map((t) => t.trade);
+  const anyCovered = trades.some((t) => t.covered);
+  const allExhausted = exhausted.length === trades.length;
+  if (!allExhausted || anyCovered) return { action: "none", exhaustedTrades: exhausted };
+
+  const opp = await query<{ id: string; risk_flags: string[] | null; status: string }>(
+    `select id, risk_flags, status from opportunities where id = $1`,
+    [opportunityId]
+  ).catch(() => []);
+  const record = opp[0];
+  if (!record || record.status !== "open") {
+    return { action: "none", exhaustedTrades: exhausted };
+  }
+
+  const flags = record.risk_flags ?? [];
+  if (!flags.includes(RESOURCE_RETRY_FLAG)) {
+    await query(
+      `update opportunities
+          set risk_flags = (
+            select array(select distinct unnest(coalesce(risk_flags,'{}') || array[$2]))
+          )
+        where id = $1`,
+      [opportunityId, RESOURCE_RETRY_FLAG]
+    );
+    await logAgent({
+      agent: "reply-poll",
+      action: "resourcing-subs",
+      opportunityId,
+      level: "warn",
+      message: `Every subcontractor approached so far has declined or gone quiet (${exhausted.join(
+        ", "
+      )}). Running the sub search again automatically to find more candidates before giving up on this one.`,
+      reasoning: "All approached pairings are in a negative state and no quote exists for any trade.",
+    });
+    return {
+      action: "resourced",
+      exhaustedTrades: exhausted,
+      enqueue: {
+        agent: "sub-finder",
+        payload: { opportunityId },
+        opts: { singletonKey: `resub:${opportunityId}`, singletonSeconds: 24 * 3600 },
+      },
+    };
+  }
+
+  // The second search already ran and its candidates have also all said no.
+  const closed = await query<{ id: string }>(
+    `update opportunities
+        set stage = 'dismissed', status = 'archived', human_action_required = false,
+            risk_flags = (
+              select array(select distinct unnest(coalesce(risk_flags,'{}') || array[$2]))
+            ),
+            updated_at = now()
+      where id = $1 and status = 'open'
+      returning id`,
+    [opportunityId, NO_VIABLE_SUBS_FLAG]
+  ).catch(() => []);
+  if (closed.length === 0) return { action: "none", exhaustedTrades: exhausted };
+
+  await logAgent({
+    agent: "reply-poll",
+    action: "closed-no-subs",
+    opportunityId,
+    level: "warn",
+    message: `Closed: no subcontractor can perform this work. Every firm approached for ${exhausted.join(
+      ", "
+    )} declined, was unavailable, or never responded, including a second round of sourcing. Reopen it from the board if you find a sub yourself.`,
+    reasoning:
+      "All approached pairings are negative for every trade, no quotes exist, and the automatic re-sourcing pass has already been used.",
+  });
+  return { action: "closed", exhaustedTrades: exhausted };
 }
 
 export interface AdvanceResult {

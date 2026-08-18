@@ -1760,7 +1760,26 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
   if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
 
-  const [decisions, calls, actionable] = await Promise.all([
+  const [replies, decisions, calls, actionable] = await Promise.all([
+    // Unread subcontractor replies. These go to the very front of the queue:
+    // the reply-poll flags a reply it could not act on confidently, and until
+    // a person reads it, the solicitation it belongs to is stuck.
+    query<{
+      id: string;
+      company_name: string | null;
+      opp_id: string | null;
+      opp_title: string | null;
+      deadline: string | null;
+    }>(
+      `select e.id, s.company_name, o.id as opp_id, o.title as opp_title, o.deadline
+         from subcontractor_reply_events e
+         join subcontractors s on s.id = e.subcontractor_id
+         left join opportunities o on o.id = e.opportunity_id
+        where e.org_id=$1 and e.needs_review and e.reviewed_at is null
+        order by e.created_at desc
+        limit 20`,
+      [orgId]
+    ),
     query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null }>(
       `select id, title, deadline, review_expires_at from opportunities
         where org_id=$1 and tier='review' and human_action_required=true and status='open'`,
@@ -1783,6 +1802,15 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
   ]);
 
   const items = [
+    ...replies.map((r) => ({
+      key: `reply:${r.id}`,
+      kind: "read_reply" as const,
+      title: `Read reply from ${r.company_name ?? "a subcontractor"}`,
+      context: r.opp_title ?? "",
+      due: r.deadline,
+      href: "/today#reply-reviews",
+      actionLabel: "Read reply",
+    })),
     ...decisions.map((d) => ({
       key: `decide:${d.id}`,
       kind: "decide" as const,

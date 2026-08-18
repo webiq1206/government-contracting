@@ -18,6 +18,9 @@ export interface DeclineThankYouInput {
   companyName?: string | null;
   opportunityTitle?: string | null;
   trade?: string | null;
+  /** Who signs, from THIS organization's profile. Never a platform default. */
+  senderName?: string | null;
+  senderCompany?: string | null;
 }
 
 export interface DeclineThankYouEmail {
@@ -46,6 +49,13 @@ export function buildDeclineThankYouEmail(
   const tradeBit = tradeClean ? ` (${tradeClean})` : "";
 
   const subject = `Thank you, ${title}`;
+  // Sign as the organization that actually sent the outreach. The platform's
+  // own name in another customer's email is worse than no signature at all,
+  // so an empty profile just ends at "Best regards".
+  const signature = [
+    (input.senderName ?? "").trim(),
+    (input.senderCompany ?? "").trim(),
+  ].filter(Boolean);
   const text = [
     `Hi ${greeting},`,
     "",
@@ -54,7 +64,7 @@ export function buildDeclineThankYouEmail(
     "We will close out this request on our side and keep your note on file for future fits.",
     "",
     "Best regards,",
-    "BROSTCO",
+    ...signature,
   ].join("\n");
 
   const html = text
@@ -173,11 +183,18 @@ export async function closeOutDeclinedSub(
           if (!raw) return "there";
           return raw.split(/\s+/)[0] || "there";
         })();
+        // The sender identity comes from the tenant's own profile, resolved
+        // inside the org context this closeout runs in.
+        const { getProfileJson } = await import("../ai/companyProfile");
+        const { outreachDisplayName } = await import("./solicitation-completeness");
+        const profile = await getProfileJson().catch(() => null);
         const mail = buildDeclineThankYouEmail({
           firstName,
           companyName: sub?.company_name,
           opportunityTitle: opp?.title,
           trade,
+          senderName: profile ? outreachDisplayName(profile) : null,
+          senderCompany: profile?.legal_name ?? null,
         });
         const res = await sendEmail({
           to,

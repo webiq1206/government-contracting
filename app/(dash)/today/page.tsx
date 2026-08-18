@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { actionCenter, dailyDigest, engineStatus, type ActionOppRow } from "@/lib/data";
+import { actionCenter, dailyDigest, type ActionOppRow } from "@/lib/data";
+import { readPipelinePulse } from "@/lib/pipeline-pulse";
+import { PipelinePulse } from "@/components/pipeline-pulse";
 import { PipelineStrip } from "@/components/pipeline-strip";
 import { AutomationPausedBanner } from "@/components/automation-control";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
@@ -411,19 +413,14 @@ function PipelineHealthRail({
 
 export default async function TodayPage() {
   const rules = await getAutomationRules();
-  const [data, profile, automation, digest, engine, queueItems] = await Promise.all([
+  const [data, profile, automation, digest, queueItems, pulse] = await Promise.all([
     actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
     getAutomationState(),
     dailyDigest(),
-    engineStatus(),
     workQueue().catch(() => []),
+    readPipelinePulse().catch(() => []),
   ]);
-  const engineDown =
-    !automation.paused &&
-    ((engine.lastRunAt != null &&
-      Date.now() - new Date(engine.lastRunAt).getTime() > 2 * 3_600_000) ||
-      (engine.lastRunAt == null && engine.openCount > 0));
   const digestParts = [
     digest.found > 0 && `${digest.found} new opportunit${digest.found === 1 ? "y" : "ies"} found`,
     digest.autoPursued > 0 && `${digest.autoPursued} auto-pursued`,
@@ -501,27 +498,7 @@ export default async function TodayPage() {
             <div className="min-w-0 flex-1 space-y-10">
               <AutomationPausedBanner state={automation} />
 
-              {engineDown && (
-                <div className="rounded-md border border-risk/40 bg-risk/10 px-4 py-3 text-sm">
-                  <p className="font-semibold text-risk">
-                    The automation engine is not running.
-                  </p>
-                  <p className="mt-1 text-muted-foreground">
-                    {engine.lastRunAt
-                      ? `Nothing has run since ${timeAgo(engine.lastRunAt)}. `
-                      : "No automated work has ever run, though opportunities are waiting. "}
-                    Records will not move, be scored, or be monitored until it is back. On
-                    Replit this usually means the app is not running as an always-on
-                    deployment: open your Repl and press{" "}
-                    <span className="font-medium text-foreground">Run</span> (or use a Reserved-VM
-                    deployment for 24/7 operation). The{" "}
-                    <Link href="/agents" className="underline">
-                      Automation Log
-                    </Link>{" "}
-                    shows the moment it comes back.
-                  </p>
-                </div>
-              )}
+              {!automation.paused && <PipelinePulse findings={pulse} />}
 
               {!setup.complete && (
                 <div className="rounded-md border border-border/55 bg-surface p-4 dark:border-white/10">

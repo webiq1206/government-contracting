@@ -357,7 +357,8 @@ export function buildReplyDraftPrompt(input: {
         .join("\n\n")
     : "(no earlier messages on file)";
 
-  return `You are writing a reply on behalf of ${input.senderName}, who runs a general contracting firm, to ${
+  const sender = input.senderName.trim() || "the general contractor";
+  return `You are writing a reply on behalf of ${sender}, who runs a general contracting firm, to ${
     input.subCompany ?? "a subcontractor"
   } who just emailed back about a job we invited them to quote.
 
@@ -401,7 +402,7 @@ HOW IT SHOULD READ
 - No marketing voice, no "I hope this email finds you well", no "please do not
   hesitate", no "we are excited".
 - Plain text only. No markdown, no subject line, no placeholders in brackets.
-- Sign off with just: ${input.senderName}
+- Sign off with just: ${input.senderName.trim() || "a plain closing line, no name"}
 
 Write only the body of the email.`;
 }

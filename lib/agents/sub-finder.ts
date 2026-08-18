@@ -70,8 +70,12 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
     analysis?.required_trades?.length
       ? analysis.required_trades
       : profile.primary_trades ?? [];
+  // Where the work is, as specifically as we know it. City + state beats a
+  // bare state code in a Places query ("mowing contractor in Yigo, GU" finds
+  // local firms; "in GU" finds whoever ranks island-wide).
   const location =
-    analysis?.geographic_area || opp.location_state || "";
+    analysis?.geographic_area ||
+    [opp.location_text, opp.location_state].filter(Boolean).join(", ");
 
   if (!trades.length) {
     await query(
@@ -181,6 +185,26 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
     }
 
     const placesLimit = Math.max(perTrade - known.length, 4);
+
+    // Never search without a place. "electrical contractor in " returns
+    // whoever Google ranks anywhere, and every firm it finds would be in the
+    // wrong area; a wrong-area sub who quotes anyway poisons the pricing.
+    if (!location.trim()) {
+      await logAgent({
+        agent: "sub-finder",
+        action: "find-contractors",
+        level: "warn",
+        status: "skipped",
+        opportunityId,
+        message: `Trade "${trade}": no place of performance on this opportunity, so no new subs were searched for (a location-less search returns firms from anywhere). Add the location, or add local subs to the roster, then re-run Sub Finder.`,
+      });
+      if (contactableForTrade < 2) {
+        thinTrades.push(trade);
+        humanAction = true;
+      }
+      continue;
+    }
+
     const search = await googleMaps.findContractors({
       trade,
       location,
