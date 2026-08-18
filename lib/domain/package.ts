@@ -76,6 +76,30 @@ export function resolveRequirements(
         } from the solicitation, the generated draft is a worksheet only.`,
       };
     }
+    /**
+     * A signature can only be made by a person.
+     *
+     * The switch below treats "we generated it" and "we filled it from the
+     * profile" as satisfied, which is right for a document nobody has to sign.
+     * But the solicitation having said this item must be SIGNED is a fact
+     * about the item, not about who produced it: reps and certs are prefilled
+     * from the profile and still certified under penalty, and a generated
+     * cover letter can still require the offeror's signature. Before this,
+     * such an item was marked satisfied and went out unsigned, which is
+     * non-responsive, and nothing in the package ever asked anyone to sign it.
+     *
+     * So the signature outranks the satisfier. The generated artifact is still
+     * attached (that is what the operator signs), and an operator confirmation
+     * above still closes it.
+     */
+    if (req.signature_required) {
+      return {
+        ...req,
+        status: "needs_signature",
+        artifact_kind: artifactFor(req) || undefined,
+        note: "The solicitation requires this to be signed. Review the prefilled document, sign it, then mark it complete.",
+      };
+    }
     switch (req.satisfied_by) {
       case "auto_generated":
       case "from_profile":
@@ -187,6 +211,26 @@ export function validatePackage(input: ValidationInput): PackageValidation {
   const blockers: string[] = [];
   const warnings: string[] = [];
   const mandatory = input.resolved.filter((r) => r.mandatory);
+
+  /**
+   * No requirements at all is NOT an empty to-do list, it is a missing one.
+   *
+   * Every real solicitation asks for something: a signed offer form, a price,
+   * reps and certs. So an empty matrix never means "this one needs nothing",
+   * it means the analysis has not run, could not read the documents (a scanned
+   * PDF), or returned nothing usable. Before this check, that state produced
+   * an EMPTY package that validated as passed and displayed as ready to
+   * submit: every mandatory loop below iterates zero items, so nothing objects.
+   * The operator would send a package containing none of the forms the agency
+   * asked for and be found non-responsive.
+   *
+   * Absence of evidence is not evidence of absence, so this fails closed.
+   */
+  if (input.resolved.length === 0) {
+    blockers.push(
+      "The submission requirements for this solicitation have not been extracted, so there is no way to know what the package must contain. Re-run the analysis on this opportunity, and if its documents are scans with no readable text, add the required items by hand before submitting."
+    );
+  }
 
   for (const r of mandatory) {
     if (r.status === "satisfied") continue;

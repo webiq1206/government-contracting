@@ -417,7 +417,35 @@ export const bidBuilder: AgentDefinition = {
     const humanFlags = [
       ...(failing.length ? ["qa_failures"] : []),
       ...(validation.passed ? [] : ["package_incomplete"]),
+      ...(resolved.length === 0 ? ["requirements_missing"] : []),
     ];
+
+    // An unextracted requirements matrix is not a package problem to discover
+    // inside the package view; it means this bid cannot be assembled at all.
+    // Say so where the operator actually looks: on the opportunity, in the
+    // log, and by asking for a person.
+    if (resolved.length === 0) {
+      await query(
+        `update opportunities
+            set human_action_required = true,
+                risk_flags = (
+                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['requirements_missing']))
+                )
+          where id = $1`,
+        [opportunityId]
+      );
+      await logAgent({
+        agent: "bid-builder",
+        action: "requirements-missing",
+        opportunityId,
+        level: "error",
+        status: "error",
+        message:
+          "No submission requirements were extracted for this solicitation, so the package would have been empty. The bid is held: re-run the analysis, and if the documents are scans with no readable text, add the required items by hand.",
+        reasoning:
+          "solicitation_analysis.compliance_matrix was empty, which means the analysis never ran or could not read the documents, not that the solicitation asks for nothing.",
+      });
+    }
 
     // --- Upsert the bid (one bid per opportunity). ---
     const existing = await queryOne<{ id: string }>(
