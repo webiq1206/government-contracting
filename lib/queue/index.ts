@@ -82,6 +82,7 @@ export const QUEUE_NAMES = [
   "sub-onboarding",
   // maintenance jobs
   "outreach-followup",
+  "outreach-recovery-sweep",
   "review-expiry-sweep",
   "reply-poll",
   "stalled-pipeline-sweep",

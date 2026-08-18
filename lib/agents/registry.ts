@@ -25,6 +25,7 @@ import { backlinkScout } from "./backlink-scout";
 // Maintenance jobs (time-based plumbing).
 import {
   outreachFollowup,
+  outreachRecoverySweep,
   reviewExpirySweep,
   replyPoll,
   stalledPipelineSweep,
@@ -63,6 +64,7 @@ export const ROSTER: AgentDefinition[] = [
 
 export const MAINTENANCE: AgentDefinition[] = [
   outreachFollowup,
+  outreachRecoverySweep,
   reviewExpirySweep,
   replyPoll,
   stalledPipelineSweep,
@@ -96,6 +98,9 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
   // Maintenance jobs run on fixed internal schedules (not declared on the def).
   scheduled.push(
     { agent: outreachFollowup, cron: "*/15 * * * *" }, // every 15 min
+    // Half-hourly: a reconnected inbox should clear its backlog the same
+    // morning, and an idle run is two cheap queries per org.
+    { agent: outreachRecoverySweep, cron: "*/30 * * * *" },
     { agent: reviewExpirySweep, cron: "*/10 * * * *" }, // every 10 min
     { agent: replyPoll, cron: "*/15 * * * *" }, // every 15 min
     { agent: stalledPipelineSweep, cron: "0 */2 * * *" }, // every 2h (matches the tightest STALL_HOURS window)

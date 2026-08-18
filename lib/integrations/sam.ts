@@ -285,13 +285,30 @@ export const sam = {
 
   async searchOpportunities(
     params: SearchParams = {}
-  ): Promise<{ disabled?: boolean; total: number; items: SamOpportunity[] }> {
+  ): Promise<{
+    disabled?: boolean;
+    /** Why the call was refused before it was made. */
+    disabledReason?: "no_key" | "quota_exhausted";
+    /**
+     * SAM answered with an error (or never answered). The items are empty
+     * because the request FAILED, not because nothing was posted; callers that
+     * ingest must say so out loud. A swallowed 401 here once read as "no new
+     * opportunities" in production for days.
+     */
+    error?: string;
+    /** HTTP status behind `error`, when SAM answered at all. */
+    errorStatus?: number;
+    total: number;
+    items: SamOpportunity[];
+  }> {
     const apiKey = await orgApiKey("SAM_API_KEY");
-    if (!apiKey) return { disabled: true, total: 0, items: [] };
-    if (!(await reserveSamCall())) return { disabled: true, total: 0, items: [] };
+    if (!apiKey) return { disabled: true, disabledReason: "no_key", total: 0, items: [] };
+    if (!(await reserveSamCall()))
+      return { disabled: true, disabledReason: "quota_exhausted", total: 0, items: [] };
     const query = buildOpportunityQuery(params, apiKey);
-    // Never throw on a SAM outage / rate-limit (SAM keys are ~1000/day): the
-    // Opportunity Monitor's primary ingestion path must log a skip, not crash.
+    // Never throw on a SAM outage / rate-limit: the Opportunity Monitor's
+    // primary ingestion path must log a skip, not crash. But never pretend a
+    // failure was an empty result either — the error travels with the return.
     try {
       const data = await withRetry(() =>
         fetchJson<{ totalRecords: number; opportunitiesData: SamOpportunity[] }>(OPP_BASE, {
@@ -302,8 +319,20 @@ export const sam = {
         total: data.totalRecords ?? 0,
         items: data.opportunitiesData ?? [],
       };
-    } catch {
-      return { total: 0, items: [] };
+    } catch (err) {
+      const e = err as { status?: number; message?: string; body?: unknown };
+      const detail =
+        typeof e.body === "string"
+          ? e.body.slice(0, 200)
+          : e.body
+            ? JSON.stringify(e.body).slice(0, 200)
+            : "";
+      return {
+        total: 0,
+        items: [],
+        error: [e.message ?? "request failed", detail].filter(Boolean).join(": "),
+        errorStatus: e.status,
+      };
     }
   },
 

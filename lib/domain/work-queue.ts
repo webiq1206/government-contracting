@@ -14,6 +14,7 @@
  */
 
 export type WorkKind =
+  | "read_reply" // a sub answered and the reply needs a human's eyes
   | "decide" // pursue-or-pass on a borderline opportunity
   | "call" // a prepared call card
   | "enter_quote" // a sub replied or a trade needs pricing
@@ -38,11 +39,15 @@ export interface WorkItem {
 }
 
 const KIND_ORDER: Record<WorkKind, number> = {
-  review_bid: 0, // closest to money, always fewest in number
-  enter_quote: 1,
-  call: 2,
-  decide: 3,
-  fix_blocker: 4,
+  // A reply outranks everything, even the bid review: a subcontractor who
+  // answered is warm right now and cools by the hour, while the bid package
+  // holds still. Answering fast is also what earns the next reply.
+  read_reply: 0,
+  review_bid: 1, // closest to money, always fewest in number
+  enter_quote: 2,
+  call: 3,
+  decide: 4,
+  fix_blocker: 5,
 };
 
 /**
@@ -68,6 +73,7 @@ export function summarizeQueue(items: WorkItem[]): string {
   const counts = new Map<WorkKind, number>();
   for (const i of items) counts.set(i.kind, (counts.get(i.kind) ?? 0) + 1);
   const LABEL: Record<WorkKind, [string, string]> = {
+    read_reply: ["reply to read", "replies to read"],
     review_bid: ["bid to review", "bids to review"],
     enter_quote: ["quote to enter", "quotes to enter"],
     call: ["call", "calls"],

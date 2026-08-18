@@ -364,7 +364,10 @@ export function outreachDisplayName(profile: {
     const first = owner.split(/\s+/)[0];
     if (first) return first;
   }
-  return profile.legal_name?.trim() || "Brost Co";
+  // Empty rather than a made-up default: the platform's own name in another
+  // customer's email is worse than a dropped signature line, and the template
+  // renderer removes any clause left without its value.
+  return profile.legal_name?.trim() || "";
 }
 
 /** True when trade scope text is too thin to send to a subcontractor. */

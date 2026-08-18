@@ -117,6 +117,8 @@ async function monitorForOrg(orgId: string): Promise<{
   enqueued: AgentResult["enqueued"];
   naics: string[];
   scanned: number;
+  /** Short description of a SAM request failure, when one happened. */
+  samProblem: string | null;
 }> {
   return runWithOrg(orgId, async () => {
     const profile = await getProfileJson();
@@ -136,8 +138,14 @@ async function monitorForOrg(orgId: string): Promise<{
     const samItems: SamOpportunity[] = [];
     const seenNoticeIds = new Set<string>();
     let samDisabled = false;
+    let samNoKey = false;
+    let samQuotaExhausted = false;
     let samRequests = 0;
     let samCapped = false;
+    // First failure SAM reported this run. One 401 means every request 401s,
+    // so the first is the story; the count says how widespread it was.
+    let samErrorCount = 0;
+    let samError: { message: string; status?: number } | null = null;
 
     if (naics.length === 0) {
       // No NAICS on the profile means we can't target federal notices without
@@ -166,7 +174,17 @@ async function monitorForOrg(orgId: string): Promise<{
           samRequests++;
           if (res.disabled) {
             samDisabled = true;
+            samNoKey = res.disabledReason === "no_key";
+            samQuotaExhausted = res.disabledReason === "quota_exhausted";
             break naicsLoop;
+          }
+          if (res.error) {
+            // The request failed; the empty item list is NOT "nothing posted".
+            samErrorCount++;
+            if (!samError) samError = { message: res.error, status: res.errorStatus };
+            // 401/403 fails identically for every code; stop burning quota.
+            if (res.errorStatus === 401 || res.errorStatus === 403) break naicsLoop;
+            continue;
           }
           const items = res.items ?? [];
           for (const o of items) {
@@ -180,18 +198,39 @@ async function monitorForOrg(orgId: string): Promise<{
       }
     }
 
-    const search = { disabled: samDisabled, items: samItems };
-    if (search.disabled) {
-      skippedDisabled = true;
+    const search = { disabled: samDisabled && samNoKey, items: samItems };
+    if (samDisabled) {
+      skippedDisabled = samNoKey;
       await logAgent({
         agent: "opportunity-monitor",
         action: "poll-sam",
         level: "warn",
         status: "skipped",
-        message: "SAM_API_KEY not set, federal ingestion skipped.",
+        message: samQuotaExhausted
+          ? "Today's SAM.gov call budget is used up, so this run stopped early. Anything missed is picked up automatically once the budget resets at midnight UTC."
+          : "No SAM.gov API key is connected for this account, so federal ingestion was skipped. Add the key in Settings, then Integrations.",
       });
-    } else {
-      if (samCapped) {
+    }
+    if (samError) {
+      // Name the failure in words an operator can act on. Silence here is how
+      // "SAM key expired" once presented as weeks of "no new opportunities".
+      const status = samError.status;
+      const advice =
+        status === 401 || status === 403
+          ? "SAM.gov rejected the API key, so NO new federal opportunities are coming in. Keys expire yearly; open Settings, then Integrations, and use Test to confirm, then paste a fresh key from sam.gov."
+          : status === 429
+            ? "SAM.gov says this key is over its daily request limit, so this run came back empty-handed. Ingestion resumes when SAM resets the limit; if this repeats daily, the key's account tier allows fewer calls than the pipeline needs."
+            : "SAM.gov could not be reached or returned an error, so this run may have missed notices. It retries on the next scheduled run.";
+      await logAgent({
+        agent: "opportunity-monitor",
+        action: "poll-sam",
+        level: "error",
+        status: "error",
+        message: `${advice} (${samErrorCount} request(s) failed${status ? `, HTTP ${status}` : ""}: ${samError.message.slice(0, 200)})`,
+      });
+    }
+    {
+      if (samCapped && !samDisabled) {
         await logAgent({
           agent: "opportunity-monitor",
           action: "poll-sam",
@@ -281,6 +320,9 @@ async function monitorForOrg(orgId: string): Promise<{
       enqueued,
       naics,
       scanned: search.items?.length ?? 0,
+      samProblem: samError
+        ? `SAM request(s) failed${samError.status ? ` (HTTP ${samError.status})` : ""}`
+        : null,
     };
   });
 }
@@ -310,6 +352,7 @@ export const opportunityMonitor: AgentDefinition = {
     const naicsAll = new Set<string>();
 
     let orgErrors = 0;
+    const samProblems: string[] = [];
     for (const org of orgs) {
       // Fault-isolate each org the way each notice is isolated inside one:
       // a tenant whose run throws (bad profile JSON, a DB hiccup mid-batch)
@@ -322,6 +365,7 @@ export const opportunityMonitor: AgentDefinition = {
         skippedDisabled = skippedDisabled || result.skippedDisabled;
         enqueued.push(...(result.enqueued ?? []));
         for (const n of result.naics) naicsAll.add(n);
+        if (result.samProblem) samProblems.push(result.samProblem);
       } catch (err) {
         orgErrors++;
         await logAgent({
@@ -334,10 +378,12 @@ export const opportunityMonitor: AgentDefinition = {
     }
 
     const summary = skippedDisabled
-      ? `Ingestion partial (SAM disabled). ${ingested} new from other sources across ${orgs.length} org(s).`
+      ? `Ingestion partial (no SAM key connected). ${ingested} new from other sources across ${orgs.length} org(s).`
       : `Ingested ${ingested} new opportunities across ${orgs.length} org(s) (${sourcesSought} sources-sought), triggered scoring.${
           ingestErrors > 0 ? ` Skipped ${ingestErrors} malformed notice(s).` : ""
-        }${orgErrors > 0 ? ` ${orgErrors} org(s) failed and will retry next run.` : ""}`;
+        }${orgErrors > 0 ? ` ${orgErrors} org(s) failed and will retry next run.` : ""}${
+          samProblems.length > 0 ? ` SAM PROBLEM: ${samProblems[0]}, see the poll-sam log entry.` : ""
+        }`;
     return {
       ok: true,
       summary,
