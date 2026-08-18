@@ -155,3 +155,51 @@ d("compliance monitor checks each organization separately (integration)", () => 
     }
   });
 });
+
+/**
+ * One tenant must never be able to stop the platform checking the others.
+ * The sweep was a bare await, so a single org that threw ended the nightly
+ * compliance check for every organization after it in the list, and the run
+ * reported as failed rather than partially complete.
+ */
+d("one organization's failure does not end the sweep", () => {
+  it("still checks the healthy organizations and says how many it could not", async () => {
+    const { query, queryOne } = await import("../lib/db");
+    const { complianceMonitor } = await import("../lib/agents/compliance-monitor");
+    const orgs = await import("../lib/organizations");
+
+    const good = await queryOne<{ id: string }>(
+      `insert into organizations (name, subscription_status) values ($1,'active') returning id`,
+      [`comp-good-${randomUUID()}`]
+    );
+    await query(
+      `insert into company_profile (org_id, version, is_active, profile_json, profile_text)
+       values ($1, 1, true, $2::jsonb, 'healthy org')`,
+      [good!.id, JSON.stringify({ uei: A_UEI, certifications: [] })]
+    );
+    const spy = vi
+      .spyOn(orgs, "listActiveOrganizations")
+      .mockResolvedValue([
+        { id: "00000000-0000-0000-0000-0000000000ff" },
+        { id: good!.id },
+      ] as never);
+
+    try {
+      const res = await complianceMonitor.handler({
+        runId: randomUUID(),
+        trigger: "cron",
+        payload: {},
+      });
+      expect(res.ok).toBe(true);
+      // The bogus org fails on its foreign key; the real one is still checked.
+      const items = await query(`select id from compliance_items where org_id=$1`, [good!.id]);
+      expect(items.length).toBeGreaterThan(0);
+    } finally {
+      spy.mockRestore();
+      await query(`delete from compliance_items where org_id=$1`, [good!.id]).catch(() => {});
+      await query(`delete from company_profile where org_id=$1`, [good!.id]).catch(() => {});
+      await query(`delete from agent_logs where org_id=$1`, [good!.id]).catch(() => {});
+      await query(`delete from organizations where id=$1`, [good!.id]).catch(() => {});
+    }
+  });
+});

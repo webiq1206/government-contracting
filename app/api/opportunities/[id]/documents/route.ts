@@ -90,8 +90,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       orgId,
       requirementId,
       doc: { name: label, path: up.path, mime },
+      bytes: buf,
     });
-    if (!attached.ok) {
+    if (!attached.ok || attached.error) {
       // The file is stored either way; say plainly that it did not land on a
       // requirement rather than let the operator believe the item is closed.
       return NextResponse.json(

@@ -18,7 +18,9 @@ import {
   validatePackage,
   computeReady,
   requirementsFingerprint,
+  pageLimitFrom,
 } from "./domain/package";
+import { looksLikePdfBytes } from "./integrations/pdf";
 import type {
   AuditFinding,
   Bid,
@@ -77,7 +79,9 @@ export async function applyPackageChange(
   if (!next) return { ok: false, error: "Not found." };
 
   const opp = await queryOne<Opportunity>(
-    `select solicitation_number, solicitation_analysis from opportunities where id=$1 and org_id=$2`,
+    `select id, title, agency, naics_code, set_aside_type, location_text, location_state,
+            solicitation_number, solicitation_analysis
+       from opportunities where id=$1 and org_id=$2`,
     [opportunityId, orgId]
   );
   const profile = await getProfileJson();
@@ -113,6 +117,37 @@ export async function applyPackageChange(
   // the manifest is not in the package.
   const manifest = buildManifest(next.matrix, opp?.solicitation_number ?? null);
 
+  /**
+   * Refresh the one document that makes a claim about the package.
+   *
+   * The transmittal letter says "the following documents are enclosed", and
+   * what is enclosed just changed. Written once at build time and never
+   * revisited, it under-reported the package from the first attachment
+   * onward: the operator attaches their bid bond, the bond goes into the zip,
+   * and the signed letter next to it does not mention it. Only re-rendered
+   * when a letter already exists, and a failure here must not lose the state
+   * change that prompted it.
+   */
+  if (opp && profile && bidAmount != null) {
+    const hasLetter = docKinds.some((d) => d.kind === "cover_letter");
+    if (hasLetter) {
+      try {
+        const { renderCoverLetter } = await import("./agents/package-builder");
+        await renderCoverLetter({
+          opportunityId,
+          opp,
+          profile,
+          resolved: next.matrix,
+          bidAmount,
+        });
+      } catch (err) {
+        console.error(
+          `[package-state] cover letter refresh failed for ${opportunityId}: ${(err as Error).message}`
+        );
+      }
+    }
+  }
+
   await query(
     `update bids
         set compliance_matrix=$2, audit_findings=$3, package_ready=$4,
@@ -140,13 +175,51 @@ export async function attachToRequirement(args: {
   orgId: string;
   requirementId: string;
   doc: { name: string; path: string; mime?: string };
+  /** The file's bytes, so a page limit can actually be checked. */
+  bytes?: Buffer | Uint8Array;
 }): Promise<PackageChangeResult> {
-  const { opportunityId, orgId, requirementId, doc } = args;
-  return applyPackageChange(opportunityId, orgId, ({ matrix, findings }) => {
+  const { opportunityId, orgId, requirementId, doc, bytes } = args;
+
+  /**
+   * Count the pages BEFORE deciding the item is done.
+   *
+   * A page limit is the format rule most likely to make an otherwise good
+   * volume non-responsive, and it is the one rule a machine can actually
+   * verify: the file has a page count. An over-length document is still
+   * attached, because it is the operator's document and they may have a
+   * reason, but the requirement does NOT close and the note says what the
+   * solicitation allows and what was uploaded. They can still mark it
+   * complete themselves, with that in front of them.
+   */
+  let overLimit: { pages: number; limit: number } | null = null;
+  if (bytes && looksLikePdfBytes(bytes)) {
+    const pages = await pdfPageCount(bytes);
+    if (pages > 0) {
+      const current = await queryOne<{ compliance_matrix: ResolvedRequirement[] | null }>(
+        `select compliance_matrix from bids where opportunity_id=$1 and org_id=$2
+          order by created_at desc limit 1`,
+        [opportunityId, orgId]
+      );
+      const req = (current?.compliance_matrix ?? []).find((r) => r.id === requirementId);
+      const limit = pageLimitFrom(req?.format);
+      if (limit && pages > limit) overLimit = { pages, limit };
+    }
+  }
+
+  const result = await applyPackageChange(opportunityId, orgId, ({ matrix, findings }) => {
     let found = false;
     const next = matrix.map((r) => {
       if (r.id !== requirementId) return r;
       found = true;
+      if (overLimit) {
+        return {
+          ...r,
+          operator_doc: doc,
+          operator_confirmed: false,
+          status: "needs_operator" as const,
+          note: `"${doc.name}" is ${overLimit.pages} pages. The solicitation allows ${overLimit.limit}. Shorten it and upload again, or mark this complete yourself if the limit does not apply to the whole document.`,
+        };
+      }
       return {
         ...r,
         operator_doc: doc,
@@ -158,6 +231,29 @@ export async function attachToRequirement(args: {
     if (!found) return null;
     return { matrix: next, findings };
   });
+
+  if (result.ok && overLimit) {
+    return {
+      ...result,
+      error: `Attached, but not marked complete: "${doc.name}" is ${overLimit.pages} pages and the solicitation allows ${overLimit.limit}.`,
+    };
+  }
+  return result;
+}
+
+/** Pages in a PDF, or 0 when the bytes cannot be read as one. */
+async function pdfPageCount(bytes: Buffer | Uint8Array): Promise<number> {
+  try {
+    const { PDFDocument } = await import("pdf-lib");
+    const doc = await PDFDocument.load(
+      bytes.constructor === Uint8Array ? (bytes as Uint8Array) : new Uint8Array(bytes),
+      { ignoreEncryption: true }
+    );
+    return doc.getPageCount();
+  } catch (err) {
+    console.warn(`[package-state] could not count pages: ${(err as Error).message}`);
+    return 0;
+  }
 }
 
 /** Requirements the CURRENT analysis states, for drift detection. */

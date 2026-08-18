@@ -34,11 +34,12 @@ vi.mock("../lib/integrations/storage", () => ({
     download: vi.fn(async () => Buffer.from("x")),
   },
 }));
+const coverLetterCalls: unknown[] = [];
 vi.mock("../lib/integrations/documents", () => ({
   documents: {
     buildBidPdf: async () => Buffer.from("%PDF-1.4 bid"),
     buildBidDocx: async () => Buffer.from("docx"),
-    buildCoverLetterPdf: async () => Buffer.from("%PDF cover"),
+    buildCoverLetterPdf: (...args: unknown[]) => coverLetterCalls.push(args[0]) && Promise.resolve(Buffer.from("%PDF cover")),
     buildPricingSchedulePdf: async () => Buffer.from("%PDF pricing"),
     buildRepsAndCertsPdf: async () => Buffer.from("%PDF reps"),
     buildCapabilityStatementPdf: async () => Buffer.from("%PDF cap"),
@@ -88,6 +89,8 @@ const REQUIREMENTS: ComplianceRequirement[] = [
   { id: "bid_bond", title: "Bid bond at 20% of the offered price", category: "attachment", mandatory: true,
     source: "Section L.5", signature_required: false, satisfied_by: "operator_provided",
     instructions: "Obtain a bid bond from your surety." },
+  { id: "transmittal", title: "Transmittal letter", category: "narrative", mandatory: true,
+    source: "Section L.1", signature_required: false, satisfied_by: "auto_generated" },
 ];
 
 d("bid builder assembly (integration)", () => {
@@ -269,6 +272,54 @@ d("bid builder assembly (integration)", () => {
     expect(currentRequirementsFingerprint({ solicitation_analysis: amended as never })).not.toBe(
       before!.requirements_fingerprint
     );
+  });
+
+  it("will not close a page-limited item with an over-length document", async () => {
+    // Section L.3 allows 10 pages. A twelve-page technical approach is the
+    // single likeliest way an otherwise good volume becomes non-responsive,
+    // and it is the one format rule a machine can actually check.
+    const { PDFDocument } = await import("pdf-lib");
+    const doc = await PDFDocument.create();
+    for (let i = 0; i < 12; i++) doc.addPage([612, 792]);
+    const bytes = Buffer.from(await doc.save());
+
+    const { attachToRequirement } = await import("../lib/bid-package-state");
+    const res = await attachToRequirement({
+      opportunityId: opp.id,
+      orgId: org.id,
+      requirementId: "tech_approach",
+      doc: { name: "Technical Approach.pdf", path: "op/tech.pdf", mime: "application/pdf" },
+      bytes,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.error).toMatch(/12 pages and the solicitation allows 10/);
+
+    const bid = await bidRow();
+    const row = (bid!.compliance_matrix ?? []).find((r) => r.id === "tech_approach");
+    // Attached, because it is their document, but not done.
+    expect(row?.operator_doc?.path).toBe("op/tech.pdf");
+    expect(row?.status).toBe("needs_operator");
+    expect(row?.note).toContain("12 pages");
+    expect(bid!.package_ready).toBe(false);
+  });
+
+  it("refreshes the transmittal letter when what is enclosed changes", async () => {
+    coverLetterCalls.length = 0;
+    const { attachToRequirement } = await import("../lib/bid-package-state");
+    await attachToRequirement({
+      opportunityId: opp.id,
+      orgId: org.id,
+      requirementId: "bid_bond",
+      doc: { name: "Bid Bond signed.pdf", path: "op/bond.pdf", mime: "application/pdf" },
+    });
+    // The letter says "the following documents are enclosed". The bond just
+    // became enclosed, so the letter has to say so.
+    expect(coverLetterCalls.length).toBeGreaterThan(0);
+    const last = coverLetterCalls[coverLetterCalls.length - 1] as { contents: string[] };
+    expect(last.contents).toContain("Bid bond at 20% of the offered price");
+    expect(last.contents).toContain("Priced offer");
+    // And it never encloses itself or the internal checklist.
+    expect(last.contents.some((c) => /transmittal|checklist/i.test(c))).toBe(false);
   });
 
   it("holds the bid and flags the opportunity when NO requirements were extracted", async () => {

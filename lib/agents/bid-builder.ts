@@ -342,6 +342,7 @@ export const bidBuilder: AgentDefinition = {
       confirmed,
       hasNarrative: Boolean(narrative),
       hasIdentifiers,
+      agencyScheduleLines: analysis?.bid_schedule?.length ?? 0,
     });
 
     for (const r of resolved) {

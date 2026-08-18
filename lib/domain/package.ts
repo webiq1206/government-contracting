@@ -98,6 +98,14 @@ export interface ResolveContext {
   hasNarrative: boolean;
   /** Key company identifiers present (UEI/CAGE), affects reps&certs warnings. */
   hasIdentifiers: boolean;
+  /**
+   * How many priced line items the AGENCY's own bid schedule defines.
+   *
+   * Zero means the solicitation did not enumerate any and our own rollup is
+   * the offer's price presentation. More than one means the agency wants a
+   * price against each of its lines, which our trade rollup does not map onto.
+   */
+  agencyScheduleLines?: number;
 }
 
 /**
@@ -152,6 +160,50 @@ const COVER_LETTER_RE =
  * document against the rule before the package goes out; the rule is quoted
  * back verbatim so they can.
  */
+/**
+ * The page limit the solicitation set, as a number, when it set one.
+ *
+ * A page limit is the format rule most likely to make an otherwise excellent
+ * volume non-responsive, and it is the only one that can be checked
+ * mechanically: the file has a page count. Returns null when there is no
+ * limit to check, which includes the cases the wording is too loose to read
+ * confidently, because refusing a compliant document is as bad as accepting
+ * an over-length one.
+ */
+export function pageLimitFrom(format?: string | null): number | null {
+  const f = (format ?? "").trim();
+  if (!f) return null;
+  const words: Record<string, number> = {
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+    nine: 9, ten: 10, twelve: 12, fifteen: 15, twenty: 20, twentyfive: 25, thirty: 30,
+  };
+  // "10 pages maximum", "maximum of 10 pages", "no more than 10 pages",
+  // "not to exceed ten (10) pages", "10-page limit".
+  const patterns = [
+    // `[a-z]+` and not `\w+`: a greedy word class eats digits, so "no more
+    // than 20 pages" matched "2" as the spelled-out word and captured "0".
+    /\b(?:max(?:imum)?(?:\s+of)?|no\s+more\s+than|not\s+to\s+exceed|limit(?:ed)?\s+to|up\s+to)\s+(?:[a-z]+\s*)?\(?(\d{1,3})\)?\s*(?:-|\s)?pages?\b/i,
+    /\b(\d{1,3})\s*(?:-|\s)?pages?\b[^.]{0,20}\b(?:max(?:imum)?|limit|or\s+less|or\s+fewer)\b/i,
+    /\bpage\s*(?:limit|maximum|max)\s*(?:of|:)?\s*(\d{1,3})\b/i,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(f);
+    if (m) {
+      const n = Number(m[1]);
+      if (n > 0 && n < 1000) return n;
+    }
+  }
+  const wordy =
+    /\b(?:max(?:imum)?(?:\s+of)?|no\s+more\s+than|not\s+to\s+exceed|limit(?:ed)?\s+to)\s+([a-z]+)\s*(?:-|\s)?pages?\b/i.exec(
+      f
+    );
+  if (wordy) {
+    const n = words[wordy[1].toLowerCase()];
+    if (n) return n;
+  }
+  return null;
+}
+
 export function unmetFormatRule(format?: string | null): string | null {
   const f = (format ?? "").trim();
   if (!f) return null;
@@ -167,6 +219,11 @@ export function unmetFormatRule(format?: string | null): string | null {
     return "a required file format we do not produce";
   if (/\btab(?:bed|s)\b|\bbinder\b|\bsealed\b|\bwet\s*(?:-|\s)?ink\b|\bnotariz/i.test(f))
     return "physical assembly rules";
+  // Some agencies reject on the filename alone ("LastName_SolNo_VolI.pdf").
+  // We name files by requirement and solicitation, which is a sensible
+  // default and not their convention.
+  if (/\bfile\s*names?\b|\bnaming\s*convention\b|\bname\s+the\s+file\b|\bfilename\b/i.test(f))
+    return "a file naming rule";
   return null;
 }
 
@@ -226,6 +283,27 @@ function resolveOne(
     };
   }
   if (kind) claimed.add(kind);
+
+  /**
+   * The agency prices on its own schedule, and we cannot fill it in for them.
+   *
+   * Our pricing schedule is a rollup of subcontractor trades. When the
+   * solicitation enumerates its own priced line items, the offer belongs on
+   * THOSE lines, and spreading one trade-based total across CLINs nobody
+   * priced would be inventing numbers on a priced offer. The generated
+   * schedule still reproduces the agency's lines, so the operator is filling
+   * in the right document rather than writing one.
+   */
+  if (req.category === "pricing" && (ctx.agencyScheduleLines ?? 0) > 1) {
+    return {
+      ...req,
+      status: "needs_operator",
+      artifact_kind: kind || undefined,
+      note: `The solicitation prices this on its own schedule of ${ctx.agencyScheduleLines} line items. The generated schedule reproduces those lines; enter your price against each${
+        req.signature_required ? ", sign it," : ""
+      } then mark this complete.`,
+    };
+  }
 
   // A required SPECIFIC agency form cannot be reproduced exactly, the
   // operator must complete the official form. Any generated document is only
@@ -354,6 +432,7 @@ export function buildManifest(
       order: 1,
       filename: `01_bid${solTag}.pdf`,
       requirement_id: "__bid_pdf",
+      title: "Priced offer",
       category: "other",
       source: "generated",
       document_kind: ARTIFACT_KIND.bidPdf,
@@ -374,6 +453,7 @@ export function buildManifest(
           order,
           filename: `${num}_${slugify(r.title)}${solTag}${extOfUpload(r.operator_doc.name)}`,
           requirement_id: r.id,
+          title: r.title,
           category: r.category,
           source: "operator" as const,
           document_path: r.operator_doc.path,
@@ -387,6 +467,7 @@ export function buildManifest(
           order,
           filename: `${num}_${slugify(r.official_form ?? r.title)}${solTag}.pdf`,
           requirement_id: r.id,
+          title: r.title,
           category: r.category,
           source: "solicitation" as const,
           document_path: r.official_form_doc.path,
@@ -407,6 +488,7 @@ export function buildManifest(
         order,
         filename,
         requirement_id: r.id,
+        title: r.title,
         category: r.category,
         source,
         document_kind: r.artifact_kind,

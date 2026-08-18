@@ -303,6 +303,13 @@ export interface PackageItem {
   order: number;
   filename: string; // correctly-named per the solicitation
   requirement_id: string;
+  /**
+   * The requirement in the solicitation's own words. The archive's README
+   * listed generated filenames, so an operator read "03_bid_bond_at_20_of_
+   * the_offered_price_w912dy_26_r_0007__PROVIDE_THIS.txt" where they needed
+   * to read "Bid bond at 20% of the offered price".
+   */
+  title?: string;
   category: RequirementCategory;
   source: "generated" | "solicitation" | "operator";
   document_kind?: string; // documents.kind, when downloadable by kind
@@ -361,6 +368,13 @@ export interface SolicitationAnalysis {
   period_of_performance?: string;
   /** How long the offer must stay firm, verbatim (SF-1449 block 12 / 52.212-1). */
   offer_acceptance_period?: string;
+  /** The agency's own priced line items (CLIN table), transcribed verbatim. */
+  bid_schedule?: Array<{
+    clin?: string;
+    description: string;
+    quantity?: string;
+    unit?: string;
+  }>;
   submission_requirements: string[];
   evaluation_criteria: string[];
   required_forms: RequiredForm[];

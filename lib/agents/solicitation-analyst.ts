@@ -77,6 +77,27 @@ export const AnalysisSchema = z.object({
    */
   period_of_performance: z.string().default(NA),
   offer_acceptance_period: z.string().default(NA),
+  /**
+   * The agency's OWN schedule of items, verbatim.
+   *
+   * Federal solicitations price by CLIN: numbered line items with a
+   * description, a quantity and a unit, and the offer is expected on that
+   * structure. Our pricing schedule was a rollup of subcontractor trades
+   * ("Electrical", "Roofing"), which is not what the agency asked to be
+   * filled in, and nothing anywhere held the agency's structure so nothing
+   * could tell the difference. Empty when the solicitation does not enumerate
+   * line items; never reconstructed from the scope.
+   */
+  bid_schedule: z
+    .array(
+      z.object({
+        clin: z.string().optional().catch(undefined),
+        description: z.string(),
+        quantity: z.string().optional().catch(undefined),
+        unit: z.string().optional().catch(undefined),
+      })
+    )
+    .default([]),
   submission_requirements: z.array(z.string()).default([]),
   evaluation_criteria: z.array(z.string()).default([]),
   required_forms: z
@@ -460,6 +481,7 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '  "submission_method": string,              // how/where to submit: portal, email, hand-delivery, mailing address',
     '  "period_of_performance": string,          // how long the work runs, verbatim: a date range, a number of days after award, or a base-plus-options structure. "Not specified..." if the documents do not state it.',
     '  "offer_acceptance_period": string,        // how long the offer must remain valid, verbatim, e.g. "30 calendar days" or "60 days from the date of the offer" (SF-1449 block 12 / FAR 52.212-1). NEVER supply a customary default; "Not specified..." if the documents do not state it.',
+    '  "bid_schedule": [{ "clin": string, "description": string, "quantity": string, "unit": string }],  // the agency\'s OWN schedule of items / CLIN table, transcribed line by line in the order printed, with the item numbers (0001, 1001, Item 1, Base Bid, Alternate 1) exactly as written. Include base, option and alternate lines. This is a TRANSCRIPTION: copy what the schedule lists and nothing else. Return [] if the solicitation does not enumerate priced line items, and NEVER build lines out of the scope of work or out of the trades involved.',
     '  "submission_requirements": string[],      // page limits, format, copies, sealed-bid rules, labeling, etc.',
     '  "evaluation_criteria": string[],          // how bids are evaluated (LPTA, best value, factors + weights)',
     '  "required_forms": [{ "name": string, "note": string }],   // SF-1449, reps & certs, bid bond form, wage decs, etc.',

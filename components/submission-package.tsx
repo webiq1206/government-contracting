@@ -427,8 +427,17 @@ export function SubmissionPackage({
                           ? ` · ${SATISFIER_HINT[r.satisfied_by]}`
                           : ""}
                       </p>
-                      {r.instructions && needsAction && (
-                        <p className="mt-0.5 text-xs text-review">{r.instructions}</p>
+                      {/*
+                        The note is where the resolver explains what to do and
+                        why: that the agency prices on its own schedule of four
+                        lines, that an uploaded volume is twelve pages against a
+                        ten page limit, that another requirement already claimed
+                        the generated document. None of it was ever rendered, so
+                        the operator saw a status and no reason for it.
+                      */}
+                      {r.note && <p className="mt-0.5 text-xs text-review">{r.note}</p>}
+                      {r.instructions && needsAction && r.instructions !== r.note && (
+                        <p className="mt-0.5 text-xs text-slate-500">{r.instructions}</p>
                       )}
                       {r.format && (
                         <p className="mt-0.5 text-xs text-review">

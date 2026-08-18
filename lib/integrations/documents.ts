@@ -474,6 +474,18 @@ export interface PricingScheduleData {
   period_of_performance?: string;
   offer_acceptance_period?: string;
   amendments_acknowledged?: string[];
+  /**
+   * The agency's OWN schedule of priced items, transcribed from the
+   * solicitation. When present it replaces our trade rollup as the body of
+   * this document: the offer belongs on the lines the agency asked to be
+   * filled in, not on a summary of who we bought from.
+   */
+  agency_schedule?: Array<{
+    clin?: string;
+    description: string;
+    quantity?: string;
+    unit?: string;
+  }>;
 }
 
 /** Itemized pricing / bid schedule with a signature block. */
@@ -491,11 +503,38 @@ async function buildPricingSchedulePdf(data: PricingScheduleData): Promise<Buffe
   w.text(`Offeror: ${data.company_name}`, { size: 10, color: [0.35, 0.35, 0.35] });
   w.text(`Date: ${data.date ?? todayIso()}`, { size: 10, color: [0.35, 0.35, 0.35] });
 
-  w.heading("Itemized Pricing");
-  if (data.line_items.length > 0) {
-    for (const item of data.line_items) w.row(item.label, currency(item.amount));
+  const agency = data.agency_schedule ?? [];
+  if (agency.length > 0) {
+    w.heading("Schedule of Items");
+    w.text(
+      "Line items as stated in the solicitation. Enter your price for each line; the total below must equal the sum of the lines.",
+      { size: 9, color: [0.35, 0.35, 0.35] }
+    );
+    w.gap(4);
+    for (const item of agency) {
+      const label = [
+        item.clin ? `${item.clin}.` : "",
+        item.description,
+        item.quantity || item.unit
+          ? `(${[item.quantity, item.unit].filter(Boolean).join(" ")})`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+      // A single line is unambiguous: the whole offer is that line, and
+      // writing the number in is not an allocation, it is the price. Anything
+      // more and only the offeror can say which line carries what.
+      w.row(label, agency.length === 1 ? currency(data.bid_amount) : "$ ______________", {
+        size: 10,
+      });
+    }
   } else {
-    w.text("No line items provided.", { size: 11, color: [0.35, 0.35, 0.35] });
+    w.heading("Itemized Pricing");
+    if (data.line_items.length > 0) {
+      for (const item of data.line_items) w.row(item.label, currency(item.amount));
+    } else {
+      w.text("No line items provided.", { size: 11, color: [0.35, 0.35, 0.35] });
+    }
   }
   w.gap(4);
   w.row("TOTAL PROPOSED PRICE", currency(data.bid_amount), { bold: true, size: 13 });
