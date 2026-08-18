@@ -52,12 +52,20 @@ function buildAuditPrompt(
   matrix: ResolvedRequirement[],
   profile: CompanyProfileJson
 ): string {
+  // The id is on the line because the prompt asks for findings to reference a
+  // matrix item id, and the model was never shown one: every requirement_id it
+  // returned was invented, so findings could not be linked to the requirement
+  // they were about, in the UI or anywhere else. The captured format rule is
+  // here too, so a page limit or copy count can be checked against what the
+  // package holds rather than only re-derived from the text.
   const matrixLines = matrix
     .map(
       (r) =>
-        `- [${r.status}] ${r.title} (${r.category}${r.official_form ? `, official_form: ${r.official_form}` : ""}${
-          r.mandatory ? ", mandatory" : ", optional"
-        }), satisfied_by ${r.satisfied_by}`
+        `- id=${r.id} [${r.status}] ${r.title} (${r.category}${
+          r.official_form ? `, official_form: ${r.official_form}` : ""
+        }${r.mandatory ? ", mandatory" : ", optional"}), satisfied_by ${r.satisfied_by}${
+          r.format ? `, format rule: "${r.format}"` : ""
+        }`
     )
     .join("\n");
 
@@ -78,13 +86,20 @@ function buildAuditPrompt(
     "Do NOT invent requirements that are not supported by the solicitation text. If the text is silent on submission contents, say so as an info finding rather than guessing.",
     "",
     `OPPORTUNITY: ${opp.title ?? ""}, ${opp.agency ?? ""}, ${opp.solicitation_number ?? ""}`,
-    `BIDDER: ${profile.legal_name} (small_business=${profile.small_business}, certs=${(profile.certifications ?? []).join("/") || "none"}, UEI=${profile.uei ?? "MISSING"}, CAGE=${profile.cage_code ?? "MISSING"})`,
+    `BIDDER: ${profile.legal_name} (small_business=${
+      profile.small_business == null ? "NOT ON FILE" : String(profile.small_business)
+    }, certs=${(profile.certifications ?? []).join("/") || "none"}, UEI=${
+      profile.uei ?? "MISSING"
+    }, CAGE=${profile.cage_code ?? "MISSING"})`,
     "",
     "ASSEMBLED COMPLIANCE MATRIX / PACKAGE:",
     matrixLines || "(empty)",
     "",
     "SOLICITATION TEXT (authoritative, read carefully):",
-    solicitationText.slice(0, 90_000),
+    // The analyst stores 120,000 characters; reading only 90,000 of them threw
+    // away the tail of the packet, which on a combined synopsis is exactly
+    // where the instructions to offerors sit.
+    solicitationText.slice(0, 120_000),
     "",
     'Return JSON: { "findings": [{ "severity", "category", "finding", "recommendation", "requirement_id"? }], "overall": string }. requirement_id should reference a matrix item id when the finding is about one.',
   ].join("\n");

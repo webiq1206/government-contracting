@@ -3,6 +3,7 @@ import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { logAgent } from "@/lib/logger";
+import { currentRequirementsFingerprint } from "@/lib/bid-package-state";
 import type { Opportunity } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -24,13 +25,41 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     qa_checklist: { ok: boolean }[] | null;
     package_ready: boolean;
     validation_json: { blockers?: string[] } | null;
+    requirements_fingerprint: string | null;
     audit_findings: { severity: string; acknowledged?: boolean; finding: string }[] | null;
   }>(
-    `select id, human_flags, qa_checklist, package_ready, validation_json, audit_findings
+    `select id, human_flags, qa_checklist, package_ready, validation_json, audit_findings,
+            requirements_fingerprint
        from bids where opportunity_id=$1 order by created_at desc limit 1`,
     [params.id]
   );
   if (!bid) return NextResponse.json({ error: "No bid package to submit." }, { status: 400 });
+
+  /**
+   * The requirements must not have moved since the package was assembled.
+   *
+   * `package_ready` is a stored verdict. Re-running the analyst after an
+   * amendment rewrites the compliance matrix on the opportunity and never
+   * touches the bid, so nothing recomputed that verdict: the package stayed
+   * "ready" while the requirements underneath it changed, and submitting sent
+   * a package built against superseded instructions. Checked here rather than
+   * only in validation because this is the last gate before it goes out, and
+   * force must NOT override it: forcing past a known-outdated package is not
+   * a judgement call an operator can make from this screen.
+   */
+  const built = bid.requirements_fingerprint;
+  const current = currentRequirementsFingerprint(opp);
+  if (built && built !== current) {
+    return NextResponse.json(
+      {
+        error:
+          "This solicitation's requirements changed after the package was assembled, so the package no longer matches what is being asked for. Re-run the Bid Builder, review whatever it flags, then submit.",
+        needsForce: false,
+        blockers: ["Requirements changed after the package was built"],
+      },
+      { status: 409 }
+    );
+  }
 
   // Block prime_only per past-performance policy.
   if (opp.past_perf_classification === "prime_only") {

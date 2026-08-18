@@ -3,6 +3,7 @@ import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { storage } from "@/lib/integrations/storage";
 import { logAgent } from "@/lib/logger";
+import { attachToRequirement } from "@/lib/bid-package-state";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,17 +57,50 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const kindRaw = typeof form.get("kind") === "string" ? String(form.get("kind")).trim() : "";
   const kind = (kindRaw || "operator_upload").replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
 
+  /**
+   * Which requirement this file answers.
+   *
+   * Optional, but when it is given the upload stops being a loose attachment
+   * and becomes part of the submission: the requirement is marked complete
+   * with this file attached, and the manifest carries it, so the operator's
+   * signed offer form and their bid bond are actually inside the package they
+   * download. Before this, an upload lived on the opportunity and the zip
+   * still contained a "__PROVIDE_THIS.txt" placeholder in its place.
+   */
+  const requirementId =
+    typeof form.get("requirement_id") === "string"
+      ? String(form.get("requirement_id")).trim().slice(0, 120)
+      : "";
+
   const buf = Buffer.from(await file.arrayBuffer());
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "upload.bin";
   const key = `opportunities/${params.id}/operator/${Date.now()}-${safeName}`;
   const up = await storage.upload(key, buf, mime);
 
   const row = await queryOne<{ id: string }>(
-    `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime)
-     values ($1,$2,$3,$4,$5,$6)
+    `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, requirement_id)
+     values ($1,$2,$3,$4,$5,$6,$7)
      returning id`,
-    [params.id, kind, label, up.path, up.backend, mime]
+    [params.id, kind, label, up.path, up.backend, mime, requirementId || null]
   );
+
+  if (requirementId) {
+    const attached = await attachToRequirement({
+      opportunityId: params.id,
+      orgId,
+      requirementId,
+      doc: { name: label, path: up.path, mime },
+      bytes: buf,
+    });
+    if (!attached.ok || attached.error) {
+      // The file is stored either way; say plainly that it did not land on a
+      // requirement rather than let the operator believe the item is closed.
+      return NextResponse.json(
+        { ok: true, id: row?.id, path: up.path, name: label, requirement_error: attached.error },
+        { status: 200 }
+      );
+    }
+  }
 
   await logAgent({
     agent: "operator",
@@ -76,5 +110,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     message: `Operator ${auth.email} uploaded "${label}".`,
   });
 
-  return NextResponse.json({ ok: true, id: row?.id, path: up.path, name: label });
+  return NextResponse.json({
+    ok: true,
+    id: row?.id,
+    path: up.path,
+    name: label,
+    requirement_id: requirementId || undefined,
+  });
 }

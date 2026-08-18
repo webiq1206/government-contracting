@@ -25,7 +25,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const { orgId } = ctx;
 
   const opp = await queryOne<Opportunity>(
-    `select id, title, solicitation_number from opportunities where id=$1 and org_id=$2`,
+    `select id, title, solicitation_number, deadline, solicitation_analysis
+       from opportunities where id=$1 and org_id=$2`,
     [params.id, orgId]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -88,17 +89,84 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         }
       }
     }
-    if (item.status === "satisfied" && item.source === "generated") {
-      missingGenerated.push(item.filename);
+    // Anything the package CLAIMS to contain and could not produce bytes for
+    // is a hole, whoever was supposed to supply it. An operator-attached file
+    // whose storage object has gone missing is not a to-do item for them, it
+    // is a document that will be absent from a package their own checklist
+    // says is complete.
+    if (item.status === "satisfied") {
+      missingGenerated.push(item.title ?? item.filename);
     } else {
-      toProvide.push(`${item.filename}, ${item.status.replace(/_/g, " ")}`);
+      toProvide.push(`${item.title ?? item.filename} (${item.status.replace(/_/g, " ")})`);
     }
   }
+
+  /**
+   * The compliance checklist rides along, clearly marked, and is NOT part of
+   * the offer.
+   *
+   * It was generated on every build, stored, and then never appeared in the
+   * archive at all, because the manifest is built from requirements and no
+   * requirement maps to it. It is worth having, but it is an internal
+   * pre-flight page: its rows say things like "You must provide this", which
+   * is not something to hand a contracting officer. So it goes in under a
+   * name nobody could mistake for a submission document, and the README says
+   * to leave it out.
+   */
+  const checklist = byKind.get("compliance_checklist");
+  let checklistIncluded = false;
+  if (checklist?.storage_path) {
+    try {
+      const backend =
+        checklist.storage_backend === "supabase" || checklist.storage_backend === "local"
+          ? checklist.storage_backend
+          : undefined;
+      entries.push({
+        name: "00_INTERNAL_compliance_checklist_DO_NOT_SUBMIT.pdf",
+        data: await storage.download(checklist.storage_path, backend),
+      });
+      checklistIncluded = true;
+    } catch {
+      /* the README still lists what is outstanding */
+    }
+  }
+
+  /**
+   * How and when to submit, in the solicitation's own words.
+   *
+   * A package can be assembled perfectly and still lose because it went to
+   * the wrong place or arrived an hour late. The analysis captured the
+   * submission method and the due date verbatim, including its timezone, and
+   * neither ever reached the operator at the moment they are about to send.
+   * Printed only when actually stated, never reconstructed.
+   */
+  const analysis = opp.solicitation_analysis ?? null;
+  const stated = (v: string | null | undefined): string | null => {
+    const t = (v ?? "").trim();
+    return !t || /^not specified/i.test(t) || t === "-" ? null : t;
+  };
+  const dueDate = stated(analysis?.due_date);
+  const method = stated(analysis?.submission_method);
+  const submissionRules = (analysis?.submission_requirements ?? []).filter(
+    (r) => stated(r) !== null
+  );
+  const howToSubmit =
+    dueDate || method || submissionRules.length > 0
+      ? [
+          "HOW AND WHEN TO SUBMIT, as the solicitation states it:",
+          "",
+          dueDate ? `  Due: ${dueDate}` : "",
+          method ? `  Method: ${method}` : "",
+          ...submissionRules.map((r) => `  - ${r}`),
+          "",
+        ].filter(Boolean)
+      : [];
 
   const readme = [
     `SUBMISSION PACKAGE, ${opp.title ?? params.id}`,
     opp.solicitation_number ? `Solicitation: ${opp.solicitation_number}` : "",
     "",
+    ...howToSubmit,
     ...(missingGenerated.length
       ? [
           "THIS ARCHIVE IS INCOMPLETE. DO NOT SUBMIT IT AS IS.",
@@ -119,6 +187,14 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     ...(toProvide.length
       ? toProvide.map((t) => `  • ${t}`)
       : ["  (nothing, every item is either enclosed or already confirmed)"]),
+    "",
+    ...(checklistIncluded
+      ? [
+          "",
+          "00_INTERNAL_compliance_checklist_DO_NOT_SUBMIT.pdf is your own pre-flight",
+          "page. Read it, then leave it out of what you send.",
+        ]
+      : []),
     "",
     "Always confirm against the actual solicitation's instructions to offerors.",
   ]

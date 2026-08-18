@@ -95,6 +95,36 @@ export function SubmissionPackage({
   }
   const confirm = (reqId: string, confirmed: boolean) =>
     post({ requirement_id: reqId, confirmed }, reqId);
+
+  /**
+   * Attach the operator's own file to a requirement.
+   *
+   * "Mark complete" alone is a promise about a document that lives somewhere
+   * else: the submission archive is built from the manifest, so a bid bond or
+   * a signed offer form that was never attached here is simply not in the zip
+   * the operator downloads and sends. Uploading against the requirement puts
+   * the real file in the package.
+   */
+  async function attach(reqId: string, file: File) {
+    setBusyId(reqId);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      body.append("requirement_id", reqId);
+      body.append("kind", "requirement_document");
+      const res = await fetch(`/api/opportunities/${opportunityId}/documents`, {
+        method: "POST",
+        body,
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) setError(d.error ?? "Could not upload that file.");
+      else if (d.requirement_error) setError(d.requirement_error);
+      else router.refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
   const acknowledge = (findingId: string, confirmed: boolean) =>
     post({ finding_id: findingId, confirmed }, findingId);
 
@@ -397,8 +427,22 @@ export function SubmissionPackage({
                           ? ` · ${SATISFIER_HINT[r.satisfied_by]}`
                           : ""}
                       </p>
-                      {r.instructions && needsAction && (
-                        <p className="mt-0.5 text-xs text-review">{r.instructions}</p>
+                      {/*
+                        The note is where the resolver explains what to do and
+                        why: that the agency prices on its own schedule of four
+                        lines, that an uploaded volume is twelve pages against a
+                        ten page limit, that another requirement already claimed
+                        the generated document. None of it was ever rendered, so
+                        the operator saw a status and no reason for it.
+                      */}
+                      {r.note && <p className="mt-0.5 text-xs text-review">{r.note}</p>}
+                      {r.instructions && needsAction && r.instructions !== r.note && (
+                        <p className="mt-0.5 text-xs text-slate-500">{r.instructions}</p>
+                      )}
+                      {r.format && (
+                        <p className="mt-0.5 text-xs text-review">
+                          The solicitation&rsquo;s rule for this item: {r.format}
+                        </p>
                       )}
                       {r.official_form_doc && (
                         <a
@@ -410,23 +454,52 @@ export function SubmissionPackage({
                           Open the agency&rsquo;s form to sign →
                         </a>
                       )}
+                      {r.operator_doc && (
+                        <a
+                          href={`/api/files/${r.operator_doc.path}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-0.5 block text-xs text-accent hover:underline"
+                        >
+                          In the package: {r.operator_doc.name} →
+                        </a>
+                      )}
                     </div>
                     {!submitted && (needsAction || r.operator_confirmed) && (
-                      <button
-                        onClick={() => confirm(r.id, !r.operator_confirmed)}
-                        disabled={busyId === r.id}
-                        className={`shrink-0 text-xs ${
-                          r.operator_confirmed
-                            ? "text-slate-500 hover:text-slate-700"
-                            : "btn-ghost"
-                        }`}
-                      >
-                        {busyId === r.id
-                          ? "…"
-                          : r.operator_confirmed
-                            ? "Reopen"
-                            : "Mark complete"}
-                      </button>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <label
+                          className={`cursor-pointer text-xs ${
+                            busyId === r.id ? "text-slate-400" : "text-accent hover:underline"
+                          }`}
+                        >
+                          {r.operator_doc ? "Replace file" : "Attach file"}
+                          <input
+                            type="file"
+                            className="hidden"
+                            disabled={busyId === r.id}
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              e.target.value = "";
+                              if (f) void attach(r.id, f);
+                            }}
+                          />
+                        </label>
+                        <button
+                          onClick={() => confirm(r.id, !r.operator_confirmed)}
+                          disabled={busyId === r.id}
+                          className={`text-xs ${
+                            r.operator_confirmed
+                              ? "text-slate-500 hover:text-slate-700"
+                              : "btn-ghost"
+                          }`}
+                        >
+                          {busyId === r.id
+                            ? "…"
+                            : r.operator_confirmed
+                              ? "Reopen"
+                              : "Mark complete"}
+                        </button>
+                      </div>
                     )}
                   </div>
                 </li>

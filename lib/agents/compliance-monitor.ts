@@ -118,20 +118,50 @@ export const complianceMonitor: AgentDefinition = {
     }
 
     const summaries: string[] = [];
+    const failed: string[] = [];
     let humanAction = false;
     for (const org of orgs) {
-      const res = await runWithOrg(org.id, () => checkForOrg(org.id));
-      summaries.push(res.summary);
-      // One organization with a critical item is enough to need a human.
-      humanAction = humanAction || res.humanAction;
+      /**
+       * One tenant's failure must not end the sweep.
+       *
+       * This loop is the nightly compliance check for every organization on
+       * the platform, and it was a bare await: one org with a malformed
+       * profile, a deleted contract mid-run, or any other throw aborted the
+       * whole handler, so every tenant after it in the list was silently
+       * never checked. The run reported as failed, which reads as "the check
+       * did not happen" rather than "it happened for eleven of twelve".
+       */
+      try {
+        const res = await runWithOrg(org.id, () => checkForOrg(org.id));
+        summaries.push(res.summary);
+        // One organization with a critical item is enough to need a human.
+        humanAction = humanAction || res.humanAction;
+      } catch (err) {
+        failed.push(org.id);
+        humanAction = true;
+        console.error(
+          `[compliance-monitor] check failed for org ${org.id}: ${(err as Error).message}`
+        );
+        await logAgent({
+          agent: "compliance-monitor",
+          action: "daily-check",
+          level: "error",
+          status: "error",
+          message: `Compliance check failed for this organization: ${(err as Error).message}`,
+        }).catch(() => {});
+      }
     }
 
+    const failureNote = failed.length
+      ? ` ${failed.length} organization(s) could not be checked and need attention.`
+      : "";
     return {
       ok: true,
       summary:
-        summaries.length === 1
+        (summaries.length === 1 && failed.length === 0
           ? summaries[0]
-          : `Compliance check across ${summaries.length} organizations. ${summaries.join(" | ")}`,
+          : `Compliance check across ${summaries.length} of ${summaries.length + failed.length} organizations. ${summaries.join(" | ")}`) +
+        failureNote,
       humanActionRequired: humanAction,
     };
   },

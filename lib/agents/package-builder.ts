@@ -57,7 +57,6 @@ export function enclosureList(resolved: ResolvedRequirement[]): string[] {
     ...resolved
       .filter((r) => r.status === "satisfied" && r.artifact_kind !== ARTIFACT_KIND.coverLetter)
       .map((r) => r.title),
-    "Compliance checklist",
   ];
 }
 
@@ -76,22 +75,29 @@ export async function assemblePackageDocuments(args: {
   const title = opp.title ?? "(untitled opportunity)";
   const sol = opp.solicitation_number ?? undefined;
 
+  /**
+   * The facts about THIS solicitation that belong on the offer.
+   *
+   * `stated` is the guard: the analysis writes "Not specified in the provided
+   * documents" into a field it could not find, and printing that string on a
+   * document the agency reads is worse than leaving the line out. Nothing here
+   * has a fallback, because the alternative to a real value is silence, not a
+   * customary default.
+   */
+  const analysis = opp.solicitation_analysis ?? null;
+  const stated = statedValue;
+  const solicitationFacts = {
+    place_of_performance:
+      stated(analysis?.location) ??
+      stated([opp.location_text, opp.location_state].filter(Boolean).join(", ")),
+    period_of_performance: stated(analysis?.period_of_performance),
+    offer_acceptance_period: stated(analysis?.offer_acceptance_period),
+    amendments_acknowledged: amendments.map((a) => a.label).filter(Boolean),
+  };
+
   // Cover / transmittal letter (lists everything enclosed, in order).
   if (need.has(ARTIFACT_KIND.coverLetter)) {
-    const contents = enclosureList(resolved);
-    const buf = await documents.buildCoverLetterPdf({
-      company_name: profile.legal_name,
-      company_address: profile.physical_address,
-      company_contact: [profile.owner_name, profile.owner_title, profile.phone, profile.email]
-        .filter(Boolean)
-        .join(" · ") || undefined,
-      agency: opp.agency ?? undefined,
-      opportunity_title: title,
-      solicitation_number: sol,
-      bid_amount: bidAmount,
-      contents,
-    });
-    out.push(await storeDoc(opportunityId, ARTIFACT_KIND.coverLetter, "Cover letter", buf));
+    out.push(await renderCoverLetter({ opportunityId, opp, profile, resolved, bidAmount }));
   }
 
   // Pricing / bid schedule.
@@ -102,6 +108,8 @@ export async function assemblePackageDocuments(args: {
       solicitation_number: sol,
       line_items: lineItems,
       bid_amount: bidAmount,
+      agency_schedule: analysis?.bid_schedule ?? [],
+      ...solicitationFacts,
     });
     out.push(await storeDoc(opportunityId, ARTIFACT_KIND.pricingSchedule, "Pricing schedule", buf));
   }
@@ -177,6 +185,8 @@ export async function assemblePackageDocuments(args: {
       mandatory: r.mandatory,
       source: r.source,
       note: r.note,
+      format: r.format,
+      official_form: r.official_form,
     })),
   });
   out.push(
@@ -184,4 +194,62 @@ export async function assemblePackageDocuments(args: {
   );
 
   return out;
+}
+
+/**
+ * Render (or re-render) the transmittal letter on its own.
+ *
+ * The letter states what is enclosed, and what is enclosed changes AFTER the
+ * package is built: the operator attaches their bid bond, or reopens an item.
+ * The letter was written once at build time and never revisited, so it
+ * under-reported the package from the first attachment onward. Splitting it
+ * out means the one document that makes a claim about the package can be
+ * refreshed whenever the package changes, without re-running the whole
+ * builder (which prices the bid and calls the model for the narrative).
+ */
+export async function renderCoverLetter(args: {
+  opportunityId: string;
+  opp: Opportunity;
+  profile: CompanyProfileJson;
+  resolved: ResolvedRequirement[];
+  bidAmount: number;
+}): Promise<DocRow> {
+  const { opportunityId, opp, profile, resolved, bidAmount } = args;
+  const analysis = opp.solicitation_analysis ?? null;
+  const amendments = (analysis?.qa_addenda ?? []).map((a) => a.label).filter(Boolean);
+  const buf = await documents.buildCoverLetterPdf({
+    company_name: profile.legal_name,
+    company_address: profile.physical_address,
+    company_contact:
+      [profile.owner_name, profile.owner_title, profile.phone, profile.email]
+        .filter(Boolean)
+        .join(" · ") || undefined,
+    agency: opp.agency ?? undefined,
+    opportunity_title: opp.title ?? "(untitled opportunity)",
+    solicitation_number: opp.solicitation_number ?? undefined,
+    bid_amount: bidAmount,
+    contents: enclosureList(resolved),
+    uei: profile.uei,
+    cage_code: profile.cage_code,
+    naics_code: opp.naics_code ?? undefined,
+    set_aside: statedValue(opp.set_aside_type) ?? statedValue(analysis?.set_aside),
+    place_of_performance:
+      statedValue(analysis?.location) ??
+      statedValue([opp.location_text, opp.location_state].filter(Boolean).join(", ")),
+    period_of_performance: statedValue(analysis?.period_of_performance),
+    offer_acceptance_period: statedValue(analysis?.offer_acceptance_period),
+    amendments_acknowledged: amendments,
+  });
+  return storeDoc(opportunityId, ARTIFACT_KIND.coverLetter, "Cover letter", buf);
+}
+
+/**
+ * A value only counts when the documents actually stated it. The analysis
+ * writes "Not specified in the provided documents" into a field it could not
+ * find, and printing that on a page the agency reads is worse than silence.
+ */
+export function statedValue(v: string | null | undefined): string | undefined {
+  const t = (v ?? "").trim();
+  if (!t || /^not specified/i.test(t) || t === "-") return undefined;
+  return t;
 }

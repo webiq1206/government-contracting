@@ -243,9 +243,12 @@ describe("the transmittal letter's enclosure list", () => {
   it("names only what is actually in the envelope", () => {
     const resolved = resolveRequirements(solicitationRequirements(), ctx);
     const list = enclosureList(resolved);
-    // Always produced, always enclosed.
+    // The priced offer is always produced and always enclosed. The compliance
+    // checklist is NOT: it is an internal pre-flight page whose rows say
+    // things like "You must provide this", so it rides in the archive marked
+    // do-not-submit and must never be certified as enclosed.
     expect(list[0]).toBe("Priced offer");
-    expect(list[list.length - 1]).toBe("Compliance checklist");
+    expect(list.some((l) => /checklist/i.test(l))).toBe(false);
     // The bond is the operator's and is not in the package yet, so the letter
     // must not certify it as enclosed.
     const outstanding = resolved.filter((r) => r.status !== "satisfied").map((r) => r.title);

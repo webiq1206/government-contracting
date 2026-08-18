@@ -32,6 +32,8 @@ import {
   validatePackage,
   computeReady,
   confirmedKeys,
+  requirementKeys,
+  requirementsFingerprint,
 } from "../domain/package";
 import { checkEligibility } from "../domain/eligibility";
 import { matchOfficialForm } from "../domain/official-form";
@@ -326,12 +328,35 @@ export const bidBuilder: AgentDefinition = {
     // a re-analysis regenerates those slugs, and matching on the slug alone
     // threw away confirmations the operator had already made.
     const confirmed = confirmedKeys(priorBid?.compliance_matrix ?? []);
+    // The file the operator already uploaded for a requirement survives a
+    // rebuild too. Without this the rebuild kept their confirmation (matched
+    // above) but dropped the attachment, so the item read as done and the
+    // manifest pointed at nothing again.
+    const priorDocs = new Map<string, { name: string; path: string; mime?: string }>();
+    for (const r of priorBid?.compliance_matrix ?? []) {
+      if (!r.operator_doc) continue;
+      for (const k of requirementKeys(r)) priorDocs.set(k, r.operator_doc);
+    }
     const hasIdentifiers = Boolean(profile.uei || profile.cage_code);
     const resolved = resolveRequirements(requirements, {
       confirmed,
       hasNarrative: Boolean(narrative),
       hasIdentifiers,
+      agencyScheduleLines: analysis?.bid_schedule?.length ?? 0,
     });
+
+    for (const r of resolved) {
+      if (r.operator_doc) continue;
+      const doc = requirementKeys(r)
+        .map((k) => priorDocs.get(k))
+        .find(Boolean);
+      if (doc) {
+        r.operator_doc = doc;
+        r.operator_confirmed = true;
+        r.status = "satisfied";
+        r.note = `Your uploaded "${doc.name}" is included in the package for this item.`;
+      }
+    }
 
     // Link required official forms to the ACTUAL blank form when it's among the
     // solicitation attachments, so the operator signs the real agency document.
@@ -457,6 +482,11 @@ export const bidBuilder: AgentDefinition = {
     }
 
     // --- Upsert the bid (one bid per opportunity). ---
+    // What this package is being assembled from. Stored so a later re-analysis
+    // (an amendment, a scan finally transcribed) can be seen to have moved the
+    // requirements out from under an already-built package.
+    const builtFingerprint = requirementsFingerprint(requirements, amendments);
+
     const existing = await queryOne<{ id: string }>(
       `select id from bids where opportunity_id = $1 order by created_at desc limit 1`,
       [opportunityId]
@@ -468,7 +498,8 @@ export const bidBuilder: AgentDefinition = {
                 target_margin_pct=$6, qa_checklist=$7, narrative=$8, documents_json=$9,
                 human_flags=$10, outcome='pending',
                 compliance_matrix=$11, package_manifest=$12, package_ready=$13, validation_json=$14,
-                audit_findings=$15, audit_status='pending'
+                audit_findings=$15, audit_status='pending', requirements_fingerprint=$16,
+                updated_at=now()
           where id=$1`,
         [
           existing.id,
@@ -486,6 +517,7 @@ export const bidBuilder: AgentDefinition = {
           packageReady,
           JSON.stringify(validation),
           JSON.stringify(eligibilityFindings),
+          builtFingerprint,
         ]
       );
     } else {
@@ -494,8 +526,8 @@ export const bidBuilder: AgentDefinition = {
            (opportunity_id, sub_quote_total, markup_pct, bid_amount, margin_pct,
             target_margin_pct, qa_checklist, narrative, documents_json, human_flags, outcome,
             compliance_matrix, package_manifest, package_ready, validation_json,
-            audit_findings, audit_status)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14,$15,'pending')`,
+            audit_findings, audit_status, requirements_fingerprint)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14,$15,'pending',$16)`,
         [
           opportunityId,
           subQuoteTotal,
@@ -512,6 +544,7 @@ export const bidBuilder: AgentDefinition = {
           packageReady,
           JSON.stringify(validation),
           JSON.stringify(eligibilityFindings),
+          builtFingerprint,
         ]
       );
     }

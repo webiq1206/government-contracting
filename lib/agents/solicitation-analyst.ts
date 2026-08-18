@@ -17,6 +17,7 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { tightenAnalysisProse } from "../domain/analysis-prose";
+import { requirementsFingerprint } from "../domain/package";
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
 import { extractValueFromText } from "../domain/value-extract";
@@ -66,6 +67,37 @@ export const AnalysisSchema = z.object({
     .nullable()
     .default(null),
   submission_method: z.string().default(NA),
+  /**
+   * Two facts that belong ON the offer and were never extracted at all, so
+   * the transmittal letter and the pricing schedule could not state them:
+   * how long the work runs, and how long the price stands. A contracting
+   * officer looks for both, and an offer that omits the acceptance period can
+   * be treated as non-conforming. Verbatim from the documents or the "Not
+   * specified" string, never a customary default.
+   */
+  period_of_performance: z.string().default(NA),
+  offer_acceptance_period: z.string().default(NA),
+  /**
+   * The agency's OWN schedule of items, verbatim.
+   *
+   * Federal solicitations price by CLIN: numbered line items with a
+   * description, a quantity and a unit, and the offer is expected on that
+   * structure. Our pricing schedule was a rollup of subcontractor trades
+   * ("Electrical", "Roofing"), which is not what the agency asked to be
+   * filled in, and nothing anywhere held the agency's structure so nothing
+   * could tell the difference. Empty when the solicitation does not enumerate
+   * line items; never reconstructed from the scope.
+   */
+  bid_schedule: z
+    .array(
+      z.object({
+        clin: z.string().optional().catch(undefined),
+        description: z.string(),
+        quantity: z.string().optional().catch(undefined),
+        unit: z.string().optional().catch(undefined),
+      })
+    )
+    .default([]),
   submission_requirements: z.array(z.string()).default([]),
   evaluation_criteria: z.array(z.string()).default([]),
   required_forms: z
@@ -447,6 +479,9 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '  "prebid_meeting": { "required": boolean, "details": string } | null,   // date/time/location/registration if any',
     '  "site_visit": { "required": boolean, "details": string } | null,',
     '  "submission_method": string,              // how/where to submit: portal, email, hand-delivery, mailing address',
+    '  "period_of_performance": string,          // how long the work runs, verbatim: a date range, a number of days after award, or a base-plus-options structure. "Not specified..." if the documents do not state it.',
+    '  "offer_acceptance_period": string,        // how long the offer must remain valid, verbatim, e.g. "30 calendar days" or "60 days from the date of the offer" (SF-1449 block 12 / FAR 52.212-1). NEVER supply a customary default; "Not specified..." if the documents do not state it.',
+    '  "bid_schedule": [{ "clin": string, "description": string, "quantity": string, "unit": string }],  // the agency\'s OWN schedule of items / CLIN table, transcribed line by line in the order printed, with the item numbers (0001, 1001, Item 1, Base Bid, Alternate 1) exactly as written. Include base, option and alternate lines. This is a TRANSCRIPTION: copy what the schedule lists and nothing else. Return [] if the solicitation does not enumerate priced line items, and NEVER build lines out of the scope of work or out of the trades involved.',
     '  "submission_requirements": string[],      // page limits, format, copies, sealed-bid rules, labeling, etc.',
     '  "evaluation_criteria": string[],          // how bids are evaluated (LPTA, best value, factors + weights)',
     '  "required_forms": [{ "name": string, "note": string }],   // SF-1449, reps & certs, bid bond form, wage decs, etc.',
@@ -734,6 +769,43 @@ export const solicitationAnalyst: AgentDefinition = {
     } else {
       stage = "sub_research";
       enqueued.push({ agent: "sub-finder", payload: { opportunityId } });
+    }
+
+    /**
+     * A re-analysis that changed the requirements must rebuild the package.
+     *
+     * This agent rewrites the compliance matrix on the OPPORTUNITY. Nothing
+     * rebuilt the bid, so after an amendment the assembled package, its
+     * manifest and its validation stayed frozen at the pre-amendment
+     * requirements and kept reading as ready to submit. The submit gate now
+     * refuses a package whose requirements have moved; this is what clears
+     * that state without the operator having to know to press anything.
+     */
+    const existingBid = await queryOne<{
+      id: string;
+      requirements_fingerprint: string | null;
+    }>(
+      `select id, requirements_fingerprint from bids
+        where opportunity_id=$1 order by created_at desc limit 1`,
+      [opportunityId]
+    );
+    if (existingBid) {
+      const nowPrint = requirementsFingerprint(
+        analysis.compliance_matrix ?? [],
+        analysis.qa_addenda ?? []
+      );
+      if (existingBid.requirements_fingerprint !== nowPrint) {
+        enqueued.push({ agent: "bid-builder", payload: { opportunityId } });
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "requirements-changed",
+          opportunityId,
+          bidId: existingBid.id,
+          level: "warn",
+          message:
+            "The submission requirements changed for this solicitation, so the assembled bid package no longer matches them. Rebuilding the package.",
+        });
+      }
     }
 
     // Persist the parsed solicitation text (capped) so the independent
