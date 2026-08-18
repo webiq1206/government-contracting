@@ -196,6 +196,81 @@ d("bid builder assembly (integration)", () => {
     }
   });
 
+  it("puts the operator's own uploaded document into the package", async () => {
+    // The bid bond is the operator's; before the requirement link existed, the
+    // zip carried a "__PROVIDE_THIS.txt" placeholder in its place and their
+    // actual bond was never in the archive they submit.
+    const { attachToRequirement } = await import("../lib/bid-package-state");
+    await query(
+      `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, requirement_id)
+       values ($1,'operator_upload','Bid Bond signed.pdf','op/bond.pdf','local','application/pdf','bid_bond')`,
+      [opp.id]
+    );
+    const res = await attachToRequirement({
+      opportunityId: opp.id,
+      orgId: org.id,
+      requirementId: "bid_bond",
+      doc: { name: "Bid Bond signed.pdf", path: "op/bond.pdf", mime: "application/pdf" },
+    });
+    expect(res.ok).toBe(true);
+
+    const bid = await bidRow();
+    const row = (bid!.compliance_matrix ?? []).find((r) => r.id === "bid_bond");
+    expect(row?.status).toBe("satisfied");
+    expect(row?.operator_doc?.path).toBe("op/bond.pdf");
+    // And the manifest, which is exactly what the download route zips.
+    const item = (bid!.package_manifest ?? []).find((m) => m.requirement_id === "bid_bond");
+    expect(item?.document_path).toBe("op/bond.pdf");
+    expect(item?.source).toBe("operator");
+    expect(item?.filename).not.toMatch(/PROVIDE_THIS/);
+    // The bond no longer blocks; the signatures still do.
+    expect((bid!.validation_json?.blockers ?? []).join(" | ")).not.toContain("Bid bond");
+  });
+
+  it("keeps that upload attached when the package is rebuilt", async () => {
+    await run();
+    const bid = await bidRow();
+    const row = (bid!.compliance_matrix ?? []).find((r) => r.id === "bid_bond");
+    expect(row?.operator_doc?.path).toBe("op/bond.pdf");
+    expect(row?.status).toBe("satisfied");
+  });
+
+  it("refuses to submit once the requirements move under an assembled package", async () => {
+    const before = await queryOne<{ requirements_fingerprint: string | null }>(
+      `select requirements_fingerprint from bids where opportunity_id=$1 order by created_at desc limit 1`,
+      [opp.id]
+    );
+    expect(before?.requirements_fingerprint).toBeTruthy();
+
+    // An amendment adds a requirement nobody has answered yet.
+    const { currentRequirementsFingerprint } = await import("../lib/bid-package-state");
+    const opRow = await queryOne<{ solicitation_analysis: Record<string, unknown> }>(
+      `select solicitation_analysis from opportunities where id=$1`,
+      [opp.id]
+    );
+    const analysis = opRow!.solicitation_analysis as {
+      compliance_matrix: ComplianceRequirement[];
+    };
+    const amended = {
+      ...analysis,
+      compliance_matrix: [
+        ...analysis.compliance_matrix,
+        {
+          id: "wage_cert",
+          title: "Davis-Bacon wage rate certification",
+          category: "certification",
+          mandatory: true,
+          source: "Amendment 0002",
+          signature_required: true,
+          satisfied_by: "operator_signature",
+        },
+      ],
+    };
+    expect(currentRequirementsFingerprint({ solicitation_analysis: amended as never })).not.toBe(
+      before!.requirements_fingerprint
+    );
+  });
+
   it("holds the bid and flags the opportunity when NO requirements were extracted", async () => {
     // A second opportunity whose analysis produced no compliance matrix (the
     // documents were scans, or analysis never ran). The package would be

@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
-import { query, queryOne } from "@/lib/db";
-import { validatePackage, computeReady } from "@/lib/domain/package";
 import { logAgent } from "@/lib/logger";
-import type { Bid, AuditFinding, ResolvedRequirement } from "@/lib/types";
+import { applyPackageChange } from "@/lib/bid-package-state";
+import type { ResolvedRequirement } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,95 +29,61 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
-  const bid = await queryOne<
-    Pick<
-      Bid,
-      | "id"
-      | "compliance_matrix"
-      | "audit_findings"
-      | "bid_amount"
-      | "sub_quote_total"
-      | "markup_pct"
-    >
-  >(
-    `select id, compliance_matrix, audit_findings, bid_amount, sub_quote_total, markup_pct
-       from bids where opportunity_id=$1 and org_id=$2 order by created_at desc limit 1`,
-    [params.id, orgId]
-  );
-  if (!bid || !bid.compliance_matrix) {
-    return NextResponse.json({ error: "No package to update." }, { status: 400 });
-  }
-
   const confirmed = body.confirmed !== false;
-  let matrix: ResolvedRequirement[] = bid.compliance_matrix;
-  let findings: AuditFinding[] = bid.audit_findings ?? [];
   let label = "";
 
-  if (body.requirement_id) {
-    let found = false;
-    matrix = matrix.map((r) => {
-      if (r.id !== body.requirement_id) return r;
-      found = true;
-      if (confirmed) return { ...r, operator_confirmed: true, status: "satisfied" };
-      const status: ResolvedRequirement["status"] = r.official_form
-        ? "needs_operator"
-        : r.satisfied_by === "operator_signature"
-          ? "needs_signature"
-          : r.satisfied_by === "operator_provided"
-            ? "needs_operator"
-            : "satisfied";
-      return { ...r, operator_confirmed: false, status };
-    });
-    if (!found) {
-      return NextResponse.json({ error: "Requirement not found." }, { status: 404 });
+  const result = await applyPackageChange(params.id, orgId, ({ matrix, findings }) => {
+    if (body.requirement_id) {
+      let found = false;
+      matrix = matrix.map((r) => {
+        if (r.id !== body.requirement_id) return r;
+        found = true;
+        if (confirmed) return { ...r, operator_confirmed: true, status: "satisfied" };
+        // Un-confirming also detaches the uploaded file: leaving it attached
+        // would keep the document in the manifest for an item the operator
+        // just said is not done.
+        const { operator_doc: _dropped, ...rest } = r;
+        const status: ResolvedRequirement["status"] = r.official_form
+          ? "needs_operator"
+          : r.satisfied_by === "operator_signature"
+            ? "needs_signature"
+            : r.satisfied_by === "operator_provided"
+              ? "needs_operator"
+              : "satisfied";
+        return { ...rest, operator_confirmed: false, status };
+      });
+      if (!found) return null;
+      label = `requirement ${body.requirement_id}`;
     }
-    label = `requirement ${body.requirement_id}`;
-  }
 
-  if (body.finding_id) {
-    let found = false;
-    findings = findings.map((f) => {
-      if (f.id !== body.finding_id) return f;
-      found = true;
-      return { ...f, acknowledged: confirmed };
-    });
-    if (!found) {
-      return NextResponse.json({ error: "Finding not found." }, { status: 404 });
+    if (body.finding_id) {
+      let found = false;
+      findings = findings.map((f) => {
+        if (f.id !== body.finding_id) return f;
+        found = true;
+        return { ...f, acknowledged: confirmed };
+      });
+      if (!found) return null;
+      label = `audit finding ${body.finding_id}`;
     }
-    label = `audit finding ${body.finding_id}`;
-  }
 
-  const bidAmount = bid.bid_amount != null ? Number(bid.bid_amount) : null;
-  const subtotal = bid.sub_quote_total != null ? Number(bid.sub_quote_total) : 0;
-  const markup = bid.markup_pct != null ? Number(bid.markup_pct) : 0;
-  const docKinds = await query<{ kind: string }>(
-    `select distinct kind from documents where opportunity_id=$1`,
-    [params.id]
-  );
-  const validation = validatePackage({
-    resolved: matrix,
-    hasIdentifiers: true,
-    pricingReconciles:
-      bidAmount == null
-        ? false
-        : Math.abs(bidAmount - subtotal * (1 + markup / 100)) < Math.max(1, bidAmount * 0.02),
-    bidAmount,
-    nowIso: new Date().toISOString(),
-    presentDocKinds: new Set(docKinds.map((d) => d.kind)),
+    return { matrix, findings };
   });
-  const ready = computeReady(validation, findings);
 
-  await query(
-    `update bids
-        set compliance_matrix=$2, audit_findings=$3, package_ready=$4, validation_json=$5
-      where id=$1`,
-    [bid.id, JSON.stringify(matrix), JSON.stringify(findings), ready, JSON.stringify(validation)]
-  );
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error ?? "Could not update the package." },
+      { status: result.error === "No package to update." ? 400 : 404 }
+    );
+  }
+  const validation = result.validation!;
+  const ready = result.ready!;
+
   await logAgent({
     agent: "operator",
     action: "requirement-confirm",
     opportunityId: params.id,
-    bidId: bid.id,
+    bidId: result.bidId,
     level: "info",
     message: `${confirmed ? "Marked complete" : "Reopened"}: ${label}. Package ${
       ready ? "ready" : "not ready"

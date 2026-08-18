@@ -323,6 +323,12 @@ function extFor(kind?: string): string {
   return kind ? "pdf" : "";
 }
 
+/** Keep the uploaded file's own extension so the agency can open it. */
+function extOfUpload(name: string): string {
+  const m = /\.([a-z0-9]{1,8})$/i.exec(name.trim());
+  return m ? `.${m[1].toLowerCase()}` : ".pdf";
+}
+
 export function buildManifest(
   resolved: ResolvedRequirement[],
   solNumber?: string | null
@@ -359,6 +365,21 @@ export function buildManifest(
     sorted.map((r, i) => {
       const order = i + 2;
       const num = String(order).padStart(2, "0");
+      // What the operator actually uploaded outranks everything else. A signed
+      // SF-1449 is the deliverable; the blank agency form found in the
+      // attachments is only the thing they signed, and the generated draft is
+      // only a worksheet.
+      if (r.operator_doc) {
+        return {
+          order,
+          filename: `${num}_${slugify(r.title)}${solTag}${extOfUpload(r.operator_doc.name)}`,
+          requirement_id: r.id,
+          category: r.category,
+          source: "operator" as const,
+          document_path: r.operator_doc.path,
+          status: r.status,
+        };
+      }
       // When the real agency form was found in the attachments, that file IS
       // the package item (the operator signs the actual form).
       if (r.official_form_doc) {
@@ -395,6 +416,51 @@ export function buildManifest(
   );
 }
 
+/**
+ * A fingerprint of the requirements a package was assembled from.
+ *
+ * Re-running the analyst after an amendment rewrites the compliance matrix on
+ * the OPPORTUNITY. Nothing rebuilt the bid, so the package, its manifest and
+ * its validation stayed frozen at the pre-amendment requirements and kept
+ * displaying as ready to submit. The operator would send a package built
+ * against superseded instructions, which is exactly the failure the whole
+ * amendment workflow exists to prevent, and nothing anywhere said so.
+ *
+ * Deliberately covers only the fields that change what the package must
+ * CONTAIN. Reworded instructions or a re-sourced section reference do not
+ * invalidate an assembled package; a new requirement, a dropped one, a
+ * changed form number, or a new amendment do.
+ */
+export function requirementsFingerprint(
+  requirements: { id?: string; title?: string; mandatory?: boolean; official_form?: string }[],
+  amendments: { label?: string }[] = []
+): string {
+  const parts = requirements
+    .map((r) =>
+      [
+        (r.title ?? r.id ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(),
+        r.mandatory === false ? "opt" : "req",
+        (r.official_form ?? "").toLowerCase().replace(/[^a-z0-9]+/g, ""),
+      ].join(":")
+    )
+    .sort();
+  const amds = amendments
+    .map((a) => (a?.label ?? "").toLowerCase().replace(/[^a-z0-9]+/g, ""))
+    .filter(Boolean)
+    .sort();
+  return fnv1a([...parts, "|", ...amds].join("\n"));
+}
+
+/** FNV-1a, 32-bit. Pure, dependency-free, and stable across processes. */
+function fnv1a(input: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
 export interface ValidationInput {
   resolved: ResolvedRequirement[];
   hasIdentifiers: boolean;
@@ -409,6 +475,14 @@ export interface ValidationInput {
    * instead of silently shipping an incomplete package.
    */
   presentDocKinds?: Set<string> | null;
+  /**
+   * The requirements this package was assembled from, and the ones the
+   * solicitation states right now. A mismatch means the analysis moved (an
+   * amendment, a re-read of a scan) after the package was built, so what is
+   * assembled no longer answers what is being asked.
+   */
+  builtFingerprint?: string | null;
+  currentFingerprint?: string | null;
 }
 
 export function validatePackage(input: ValidationInput): PackageValidation {
@@ -433,6 +507,16 @@ export function validatePackage(input: ValidationInput): PackageValidation {
   if (input.resolved.length === 0) {
     blockers.push(
       "The submission requirements for this solicitation have not been extracted, so there is no way to know what the package must contain. Re-run the analysis on this opportunity, and if its documents are scans with no readable text, add the required items by hand before submitting."
+    );
+  }
+
+  if (
+    input.builtFingerprint &&
+    input.currentFingerprint &&
+    input.builtFingerprint !== input.currentFingerprint
+  ) {
+    blockers.push(
+      "The solicitation's requirements changed after this package was assembled, so the package no longer matches what is being asked for. Re-run the Bid Builder on this opportunity, then review the items it flags."
     );
   }
 

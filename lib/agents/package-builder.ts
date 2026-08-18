@@ -76,6 +76,30 @@ export async function assemblePackageDocuments(args: {
   const title = opp.title ?? "(untitled opportunity)";
   const sol = opp.solicitation_number ?? undefined;
 
+  /**
+   * The facts about THIS solicitation that belong on the offer.
+   *
+   * `stated` is the guard: the analysis writes "Not specified in the provided
+   * documents" into a field it could not find, and printing that string on a
+   * document the agency reads is worse than leaving the line out. Nothing here
+   * has a fallback, because the alternative to a real value is silence, not a
+   * customary default.
+   */
+  const analysis = opp.solicitation_analysis ?? null;
+  const stated = (v: string | null | undefined): string | undefined => {
+    const t = (v ?? "").trim();
+    if (!t || /^not specified/i.test(t) || t === "-") return undefined;
+    return t;
+  };
+  const solicitationFacts = {
+    place_of_performance:
+      stated(analysis?.location) ??
+      stated([opp.location_text, opp.location_state].filter(Boolean).join(", ")),
+    period_of_performance: stated(analysis?.period_of_performance),
+    offer_acceptance_period: stated(analysis?.offer_acceptance_period),
+    amendments_acknowledged: amendments.map((a) => a.label).filter(Boolean),
+  };
+
   // Cover / transmittal letter (lists everything enclosed, in order).
   if (need.has(ARTIFACT_KIND.coverLetter)) {
     const contents = enclosureList(resolved);
@@ -90,6 +114,11 @@ export async function assemblePackageDocuments(args: {
       solicitation_number: sol,
       bid_amount: bidAmount,
       contents,
+      uei: profile.uei,
+      cage_code: profile.cage_code,
+      naics_code: opp.naics_code ?? undefined,
+      set_aside: stated(opp.set_aside_type) ?? stated(analysis?.set_aside),
+      ...solicitationFacts,
     });
     out.push(await storeDoc(opportunityId, ARTIFACT_KIND.coverLetter, "Cover letter", buf));
   }
@@ -102,6 +131,7 @@ export async function assemblePackageDocuments(args: {
       solicitation_number: sol,
       line_items: lineItems,
       bid_amount: bidAmount,
+      ...solicitationFacts,
     });
     out.push(await storeDoc(opportunityId, ARTIFACT_KIND.pricingSchedule, "Pricing schedule", buf));
   }
@@ -177,6 +207,8 @@ export async function assemblePackageDocuments(args: {
       mandatory: r.mandatory,
       source: r.source,
       note: r.note,
+      format: r.format,
+      official_form: r.official_form,
     })),
   });
   out.push(

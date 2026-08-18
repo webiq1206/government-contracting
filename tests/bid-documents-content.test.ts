@@ -152,3 +152,98 @@ describe("the capability statement", () => {
     expect(text).not.toMatch(/available upon request/i);
   });
 });
+
+describe("solicitation-specific data on the offer", () => {
+  it("states the offeror, the work and how long the price stands", async () => {
+    const buf = await documents.buildCoverLetterPdf({
+      company_name: "Brost Co",
+      opportunity_title: "Reroof Building 4",
+      solicitation_number: "W912DY-26-R-0007",
+      agency: "US Army Corps of Engineers",
+      bid_amount: 122_000,
+      contents: ["Priced offer", "Compliance checklist"],
+      uei: "ABC123DEF456",
+      cage_code: "1A2B3",
+      naics_code: "238160",
+      set_aside: "Total Small Business Set-Aside",
+      place_of_performance: "Fort Devens, Ayer, MA",
+      period_of_performance: "180 calendar days after notice to proceed",
+      offer_acceptance_period: "30 calendar days",
+      amendments_acknowledged: ["Amendment 0001", "Amendment 0002"],
+    });
+    const text = await textOf(buf);
+    expect(text).toContain("ABC123DEF456");
+    expect(text).toContain("1A2B3");
+    expect(text).toContain("238160");
+    expect(text).toContain("Total Small Business Set-Aside");
+    expect(text).toContain("Fort Devens");
+    expect(text).toContain("180 calendar days after notice to proceed");
+    expect(text).toMatch(/firm and open for acceptance for 30 calendar days/);
+    expect(text).toMatch(/acknowledges receipt of the following amendments: Amendment 0001, Amendment 0002/);
+  });
+
+  it("prints no line at all for a fact the solicitation never stated", async () => {
+    const text = await textOf(
+      await documents.buildCoverLetterPdf({
+        company_name: "Brost Co",
+        opportunity_title: "Reroof Building 4",
+        bid_amount: 122_000,
+        contents: ["Priced offer"],
+      })
+    );
+    // Never a "Not specified" or an invented customary default.
+    expect(text).not.toMatch(/not specified/i);
+    expect(text).not.toMatch(/period of performance/i);
+    expect(text).not.toMatch(/firm and open for acceptance/i);
+    expect(text).not.toMatch(/60 days/);
+  });
+
+  it("carries the terms onto the pricing schedule too", async () => {
+    const text = await textOf(
+      await documents.buildPricingSchedulePdf({
+        company_name: "Brost Co",
+        opportunity_title: "Reroof Building 4",
+        line_items: [{ label: "Roofing", amount: 122_000 }],
+        bid_amount: 122_000,
+        period_of_performance: "180 calendar days after notice to proceed",
+        offer_acceptance_period: "30 calendar days",
+        amendments_acknowledged: ["Amendment 0001"],
+      })
+    );
+    expect(text).toMatch(/Period of performance/);
+    expect(text).toMatch(/Price firm for/);
+    expect(text).toMatch(/Amendment 0001/);
+  });
+});
+
+describe("the compliance checklist cover page", () => {
+  it("states the format rule and the required form on the page a person checks", async () => {
+    const text = await textOf(
+      await documents.buildComplianceMatrixPdf({
+        opportunity_title: "Reroof Building 4",
+        solicitation_number: "W912DY-26-R-0007",
+        company_name: "Brost Co",
+        rows: [
+          {
+            title: "Technical approach",
+            status: "You must provide this",
+            complete: false,
+            mandatory: true,
+            source: "Section L.3",
+            format: "10 pages maximum, 12 point Times New Roman",
+          },
+          {
+            title: "Offer form",
+            status: "Prefilled, needs signature",
+            complete: false,
+            mandatory: true,
+            source: "Section A",
+            official_form: "SF-1449",
+          },
+        ],
+      })
+    );
+    expect(text).toContain("10 pages maximum");
+    expect(text).toMatch(/Must be the official SF-1449/);
+  });
+});

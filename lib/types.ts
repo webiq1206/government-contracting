@@ -286,6 +286,16 @@ export interface ResolvedRequirement extends ComplianceRequirement {
    * a worksheet).
    */
   official_form_doc?: { name: string; path: string };
+  /**
+   * The file the operator actually uploaded for this requirement.
+   *
+   * Without it, "I have this covered" was only ever a checkbox: the document
+   * existed on the opportunity but the submission zip is assembled from the
+   * manifest, which could only resolve files the platform itself generated.
+   * The operator's signed offer form and their bid bond were never in the
+   * package they downloaded and sent.
+   */
+  operator_doc?: { name: string; path: string; mime?: string };
 }
 
 /** One file in the assembled, ordered submission package. */
@@ -347,6 +357,10 @@ export interface SolicitationAnalysis {
   prebid_meeting: MeetingInfo | null;
   site_visit: MeetingInfo | null;
   submission_method: string; // delivery method / portal / email / hand-delivery
+  /** How long the work runs, verbatim from the solicitation. */
+  period_of_performance?: string;
+  /** How long the offer must stay firm, verbatim (SF-1449 block 12 / 52.212-1). */
+  offer_acceptance_period?: string;
   submission_requirements: string[];
   evaluation_criteria: string[];
   required_forms: RequiredForm[];

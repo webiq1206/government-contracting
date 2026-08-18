@@ -374,6 +374,23 @@ export interface CoverLetterData {
   bid_amount: number;
   contents: string[]; // what's enclosed, in order
   date?: string;
+  /**
+   * Everything below comes from THIS solicitation and this offeror, and every
+   * field is optional because none of it may be invented. The letter used to
+   * carry only a title, a number and a price, so a contracting officer could
+   * not identify the offeror (no UEI or CAGE), see what was being offered
+   * against (no place or period of performance), confirm the offer stands
+   * long enough to award (no acceptance period), or see which amendments were
+   * accounted for. Each line is printed only when the value is real.
+   */
+  uei?: string;
+  cage_code?: string;
+  naics_code?: string;
+  set_aside?: string;
+  place_of_performance?: string;
+  period_of_performance?: string;
+  offer_acceptance_period?: string;
+  amendments_acknowledged?: string[];
 }
 
 /** Transmittal / cover letter that fronts the submission package. */
@@ -400,6 +417,36 @@ async function buildCoverLetterPdf(data: CoverLetterData): Promise<Buffer> {
     `${data.company_name} is pleased to submit the enclosed offer in response to the above solicitation. Our total proposed price is ${currency(data.bid_amount)}. We have reviewed the solicitation and its attachments and affirm our intent to perform in full accordance with its terms.`,
     { size: 11 }
   );
+
+  if (data.offer_acceptance_period) {
+    w.gap(6);
+    w.text(
+      `This offer remains firm and open for acceptance for ${data.offer_acceptance_period}.`,
+      { size: 11 }
+    );
+  }
+  if (data.amendments_acknowledged && data.amendments_acknowledged.length > 0) {
+    w.gap(6);
+    w.text(
+      `The offeror acknowledges receipt of the following amendments: ${data.amendments_acknowledged.join(", ")}.`,
+      { size: 11 }
+    );
+  }
+
+  const facts: Array<[string, string | undefined]> = [
+    ["UEI", data.uei],
+    ["CAGE code", data.cage_code],
+    ["NAICS", data.naics_code],
+    ["Set-aside", data.set_aside],
+    ["Place of performance", data.place_of_performance],
+    ["Period of performance", data.period_of_performance],
+  ];
+  const present = facts.filter(([, v]) => v && v.trim());
+  if (present.length > 0) {
+    w.gap(10);
+    for (const [k, v] of present) w.row(k, v!.trim(), { size: 10 });
+  }
+
   w.gap(6);
   w.text("The following documents are enclosed as part of this submission:", { size: 11 });
   w.gap(2);
@@ -422,6 +469,11 @@ export interface PricingScheduleData {
   line_items: Array<{ label: string; amount: number }>;
   bid_amount: number;
   date?: string;
+  /** From this solicitation; printed only when actually stated. */
+  place_of_performance?: string;
+  period_of_performance?: string;
+  offer_acceptance_period?: string;
+  amendments_acknowledged?: string[];
 }
 
 /** Itemized pricing / bid schedule with a signature block. */
@@ -447,6 +499,21 @@ async function buildPricingSchedulePdf(data: PricingScheduleData): Promise<Buffe
   }
   w.gap(4);
   w.row("TOTAL PROPOSED PRICE", currency(data.bid_amount), { bold: true, size: 13 });
+
+  const terms: Array<[string, string | undefined]> = [
+    ["Place of performance", data.place_of_performance],
+    ["Period of performance", data.period_of_performance],
+    ["Price firm for", data.offer_acceptance_period],
+    [
+      "Amendments acknowledged",
+      data.amendments_acknowledged?.length ? data.amendments_acknowledged.join(", ") : undefined,
+    ],
+  ];
+  const statedTerms = terms.filter(([, v]) => v && v.trim());
+  if (statedTerms.length > 0) {
+    w.heading("Terms");
+    for (const [k, v] of statedTerms) w.row(k, v!.trim(), { size: 10 });
+  }
 
   w.gap(24);
   w.text(
@@ -565,6 +632,15 @@ export interface ComplianceMatrixDoc {
     mandatory: boolean;
     source: string;
     note?: string;
+    /**
+     * The solicitation's own rule for this item: a page limit, a copy count,
+     * a required file format. It was extracted during analysis and then shown
+     * nowhere, so the one page a person actually reads before sealing the
+     * package did not carry the constraint they most need to check against.
+     */
+    format?: string;
+    /** The specific agency form required, when one is. */
+    official_form?: string;
   }>;
   date?: string;
 }
@@ -591,6 +667,13 @@ async function buildComplianceMatrixPdf(data: ComplianceMatrixDoc): Promise<Buff
     w.text(`${box} ${r.title}${r.mandatory ? "" : "  (optional)"}`, { size: 11, bold: true });
     const detail = [r.status, r.source, r.note].filter(Boolean).join(" · ");
     if (detail) w.text(detail, { size: 9, indent: 18, color: [0.4, 0.4, 0.4] });
+    const rules = [
+      r.official_form ? `Must be the official ${r.official_form}` : "",
+      r.format ? `Format: ${r.format}` : "",
+    ].filter(Boolean);
+    if (rules.length > 0) {
+      w.text(rules.join(" · "), { size: 9, indent: 18, bold: true, color: [0.7, 0.33, 0.03] });
+    }
   }
 
   return Buffer.from(await w.save());
