@@ -433,10 +433,14 @@ export const outreach: AgentDefinition = {
       ]
     );
 
+    // Exactly this trade's row. The old predicate fell open on an empty
+    // trade and stamped EVERY trade line for the pair, so one failed send
+    // could overwrite a sibling trade's successful "sent", and a stamp on
+    // never-emailed trades made them read as approached-and-dead.
     await query(
       `update opportunity_subs set outreach_state=$3
        where opportunity_id=$1 and subcontractor_id=$2
-         and ($4::text = '' or coalesce(trade,'') = $4)`,
+         and coalesce(trade,'') = $4`,
       [opportunityId, subcontractorId, outreachState, trade]
     );
 

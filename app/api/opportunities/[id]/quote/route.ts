@@ -105,15 +105,32 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       outOfRange = r.outOfRange;
       comparison = { comp_median: benchmark, projected_bid: bid, delta_pct: r.deltaPct };
     }
+    // The sub named on a quote must be the caller's own. The id arrives in
+    // the request body, and without this check a foreign or fabricated id is
+    // written straight onto the quote, then rendered and priced into the bid
+    // via joins that trust it.
+    let subcontractorId: string | null = q.subcontractorId ?? null;
+    if (subcontractorId != null) {
+      const owned = await queryOne<{ id: string }>(
+        `select id from subcontractors where id = $1 and org_id = $2`,
+        [subcontractorId, orgId]
+      ).catch(() => null);
+      if (!owned) {
+        warnings.push(
+          `${q.trade ?? "A quote"} named a subcontractor that is not on your roster; it was saved without one. Pick the sub on the quote form.`
+        );
+        subcontractorId = null;
+      }
+    }
     // One quote per (opportunity, sub, trade): update the existing row instead
     // of stacking duplicates, so the Call Workspace and this form stay in sync.
     const existing =
-      q.subcontractorId != null
+      subcontractorId != null
         ? await queryOne<{ id: string }>(
             `select id from quotes
               where opportunity_id=$1 and subcontractor_id=$2 and coalesce(trade,'')=coalesce($3,'')
               order by created_at desc limit 1`,
-            [params.id, q.subcontractorId, q.trade ?? null]
+            [params.id, subcontractorId, q.trade ?? null]
           )
         : null;
     if (existing) {
@@ -136,7 +153,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
          values ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [
           params.id,
-          q.subcontractorId ?? null,
+          subcontractorId,
           q.trade ?? null,
           amount,
           q.payment_terms ?? null,

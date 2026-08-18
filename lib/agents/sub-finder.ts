@@ -20,6 +20,7 @@ import {
   hasContactPathway,
 } from "../domain/sub-contactability";
 import { googleMaps, type Contractor } from "../integrations/googleMaps";
+import { stateCodeFromAddress, stateCodeFromText } from "../us-states";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
 
@@ -76,6 +77,13 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
   const location =
     analysis?.geographic_area ||
     [opp.location_text, opp.location_state].filter(Boolean).join(", ");
+  // The one state the work is in. Everything downstream keys off this: the
+  // roster reuse, the Places filter, and the address written onto new subs.
+  // Null means we genuinely do not know, and not knowing means not pairing:
+  // a sub sourced without a place is a sub from anywhere.
+  const targetState =
+    (opp.location_state ?? "").trim().toUpperCase() ||
+    stateCodeFromText(analysis?.geographic_area ?? null);
 
   if (!trades.length) {
     await query(
@@ -108,7 +116,11 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
     // straight into opportunity_subs, so an unscoped roster does not just
     // disclose another customer's subcontractor, it attaches them to this
     // customer's opportunity and sends them to Sub Verify and outreach.
-    const known = await query<{ id: string; company_name: string }>(
+    // Only subs recorded in the working state. The old clause fell open to
+    // EVERY state when the opportunity had none, which paired firms from
+    // anywhere in the country with a job they could never mobilize for.
+    const known = targetState
+      ? await query<{ id: string; company_name: string }>(
       `select id, company_name from subcontractors
         where org_id = $4
           and coalesce(blacklisted, false) = false
@@ -119,11 +131,7 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
                   where lower(t) = lower($1)
                )
           )
-          and (
-            coalesce(state,'') = coalesce($2,'')
-            or $2 is null
-            or $2 = ''
-          )
+          and upper(coalesce(state,'')) = $2
           and (
             nullif(btrim(coalesce(email, '')), '') is not null
             or nullif(btrim(coalesce(phone, '')), '') is not null
@@ -142,8 +150,9 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
                  coalesce(responsiveness_score, 0) desc,
                  company_name asc
         limit $3`,
-      [trade, opp.location_state ?? null, Math.min(perTrade, 8), orgId]
-    );
+      [trade, targetState, Math.min(perTrade, 8), orgId]
+    )
+      : [];
 
     let rank = 0;
     let contactableForTrade = 0;
@@ -186,17 +195,19 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
 
     const placesLimit = Math.max(perTrade - known.length, 4);
 
-    // Never search without a place. "electrical contractor in " returns
-    // whoever Google ranks anywhere, and every firm it finds would be in the
-    // wrong area; a wrong-area sub who quotes anyway poisons the pricing.
-    if (!location.trim()) {
+    // Never search without a known place AND a known state to check results
+    // against. "electrical contractor in " returns whoever Google ranks
+    // anywhere; and even with a location string, results cannot be verified
+    // as local without a state to compare their addresses to. A wrong-area
+    // sub who quotes anyway poisons the pricing.
+    if (!location.trim() || !targetState) {
       await logAgent({
         agent: "sub-finder",
         action: "find-contractors",
         level: "warn",
         status: "skipped",
         opportunityId,
-        message: `Trade "${trade}": no place of performance on this opportunity, so no new subs were searched for (a location-less search returns firms from anywhere). Add the location, or add local subs to the roster, then re-run Sub Finder.`,
+        message: `Trade "${trade}": the place of performance on this opportunity is missing or does not name a state, so no subs were paired (searching without one returns firms from anywhere in the country). Add the location, then re-run Sub Finder.`,
       });
       if (contactableForTrade < 2) {
         thinTrades.push(trade);
@@ -220,6 +231,25 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
         status: "skipped",
         opportunityId,
         message: `Google Places disabled, skipping Places for trade "${trade}".`,
+      });
+      if (contactableForTrade < 2) {
+        thinTrades.push(trade);
+        humanAction = true;
+      }
+      continue;
+    }
+
+    if (search.error) {
+      // The search FAILED; an empty result here is not "no contractors in
+      // this area", and blaming the local market for an API outage sends the
+      // operator hunting subs that the next run would have found itself.
+      await logAgent({
+        agent: "sub-finder",
+        action: "find-contractors",
+        level: "error",
+        status: "error",
+        opportunityId,
+        message: `Google Places search failed for trade "${trade}": ${search.error}. No conclusion about local coverage was drawn; test the Maps key in Settings, then Integrations, and re-run Sub Finder.`,
       });
       if (contactableForTrade < 2) {
         thinTrades.push(trade);
@@ -252,9 +282,20 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
       search.results.length
     );
 
+    // Drop firms whose own address puts them in a different state. Google
+    // treats "in <place>" as a preference, not a promise, and will happily
+    // pad thin local results with whoever ranks nationally. A firm with no
+    // parseable address is kept (many list only a service area), but one that
+    // SAYS it is somewhere else is out.
+    let skippedWrongArea = 0;
     const ranked = enriched
       .map((c) => ({ candidate: c, score: scoreCandidate(c) }))
       .filter(({ candidate }) => {
+        const candState = stateCodeFromAddress(candidate.address);
+        if (candState && candState !== targetState) {
+          skippedWrongArea++;
+          return false;
+        }
         if (hasContactPathway(candidate)) return true;
         skippedNoContact++;
         return false;
@@ -262,8 +303,17 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
       .sort((a, b) => b.score - a.score)
       .slice(0, placesLimit);
 
+    if (skippedWrongArea > 0) {
+      await logAgent({
+        agent: "sub-finder",
+        action: "find-contractors",
+        opportunityId,
+        message: `Trade "${trade}": dropped ${skippedWrongArea} search result(s) located outside ${targetState}. Only firms in the working area are approached.`,
+      });
+    }
+
     for (const { candidate } of ranked) {
-      const subId = await upsertSubcontractor(candidate, trade, opp, orgId);
+      const subId = await upsertSubcontractor(candidate, trade, orgId);
       if (!subId) {
         skippedNoContact++;
         continue;
@@ -358,15 +408,32 @@ async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult>
  * details, and pair it with this org's opportunity. Rosters are per customer
  * even when the underlying business is the same one.
  */
+/** The city segment of a Google formatted address ("... , Yigo, GU 96929, ..."). */
+function cityFromAddress(address: string | null | undefined): string | null {
+  const parts = (address ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  // The state+zip segment follows the city segment; find it and step back.
+  for (let i = parts.length - 1; i > 0; i--) {
+    if (/^[A-Z]{2}(\s+\d{5}(-\d{4})?)?$/.test(parts[i])) {
+      return parts[i - 1] || null;
+    }
+  }
+  return null;
+}
+
 async function upsertSubcontractor(
   c: Contractor,
   trade: string,
-  opp: Opportunity,
   orgId: string
 ): Promise<string | null> {
   const name = c.name?.trim();
   if (!name) return null;
-  const state = opp.location_state ?? null;
+  // The FIRM's own location, from its own address. This used to be the
+  // opportunity's state and city, which stamped the job's location onto the
+  // company record: a wrong-area firm Google slipped into the results was
+  // permanently recorded as local, and every future job in that state
+  // "reused" it from the roster.
+  const state = stateCodeFromAddress(c.address);
+  const city = cityFromAddress(c.address);
   const placeId = c.place_id?.trim() || null;
 
   let existing: {
@@ -400,6 +467,8 @@ async function upsertSubcontractor(
          google_rating = coalesce($4, google_rating),
          review_count = coalesce($5, review_count),
          google_place_id = coalesce(google_place_id, $6),
+         state = coalesce(nullif(state, ''), $8),
+         city = coalesce(nullif(city, ''), $9),
          trade_categories = (
            select array_agg(distinct x)
              from unnest(
@@ -416,6 +485,8 @@ async function upsertSubcontractor(
         c.review_count ?? null,
         placeId,
         trade,
+        state,
+        city,
       ]
     );
     const merged = {
@@ -446,7 +517,7 @@ async function upsertSubcontractor(
       name,
       [trade],
       state,
-      opp.location_text ?? null,
+      city,
       c.phone ?? null,
       c.website ?? null,
       c.rating ?? null,

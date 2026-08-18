@@ -49,7 +49,7 @@ export const hunter = {
   /** List discoverable emails for a domain. */
   async domainSearch(
     domain: string
-  ): Promise<{ disabled?: boolean; emails: HunterEmail[] }> {
+  ): Promise<{ disabled?: boolean; error?: string; emails: HunterEmail[] }> {
     const apiKey = await orgApiKey("HUNTER_API_KEY");
     if (!apiKey) return { disabled: true, emails: [] };
     try {
@@ -68,8 +68,10 @@ export const hunter = {
           position: e.position ?? undefined,
         }));
       return { emails };
-    } catch {
-      return { emails: [] };
+    } catch (err) {
+      // An expired key or a 429 is NOT "this domain has no emails"; callers
+      // must be able to tell an unknown answer from a negative one.
+      return { emails: [], error: (err as Error).message };
     }
   },
 
@@ -79,7 +81,7 @@ export const hunter = {
     first_name?: string;
     last_name?: string;
     company?: string;
-  }): Promise<{ disabled?: boolean; email?: string; score?: number }> {
+  }): Promise<{ disabled?: boolean; error?: string; email?: string; score?: number }> {
     const apiKey = await orgApiKey("HUNTER_API_KEY");
     if (!apiKey) return { disabled: true };
     try {
@@ -98,15 +100,15 @@ export const hunter = {
         email: data.data?.email ?? undefined,
         score: data.data?.score,
       };
-    } catch {
-      return {};
+    } catch (err) {
+      return { error: (err as Error).message };
     }
   },
 
   /** Verify deliverability of an email. status is e.g. "valid"/"invalid"/"accept_all". */
   async verifyEmail(
     email: string
-  ): Promise<{ disabled?: boolean; status?: string; score?: number }> {
+  ): Promise<{ disabled?: boolean; error?: string; status?: string; score?: number }> {
     const apiKey = await orgApiKey("HUNTER_API_KEY");
     if (!apiKey) return { disabled: true };
     try {
@@ -119,8 +121,8 @@ export const hunter = {
         status: data.data?.status,
         score: data.data?.score,
       };
-    } catch {
-      return {};
+    } catch (err) {
+      return { error: (err as Error).message };
     }
   },
 };

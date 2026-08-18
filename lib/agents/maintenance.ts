@@ -161,7 +161,24 @@ async function lastCallForOrg(orgId: string): Promise<number> {
       text,
       orgId,
     });
-    if (res.disabled || res.error) continue;
+    if (res.disabled || res.error) {
+      // This is the one chance to get a price before the deadline; a silent
+      // skip here means the bid goes out short a trade with no explanation.
+      await query(
+        `update opportunities set human_action_required = true where id = $1`,
+        [row.opportunity_id]
+      );
+      await logAgent({
+        agent: "outreach-followup",
+        action: "last-call",
+        level: "error",
+        status: "error",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: `The last-call nudge before the bid deadline could not be sent (${res.error ?? "no transport available"}). Their price is still missing; reach them another way or price without them.`,
+      });
+      continue;
+    }
     sent++;
     await query(
       `insert into communications
@@ -241,7 +258,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
 
   let sent = 0;
   for (const row of due) {
-    // Consume the follow-up marker regardless, so we don't loop on errors.
+    // Consume the follow-up marker up front so a crash mid-loop cannot spam;
+    // it is RESTORED below when the send fails with a retryable error.
     await query(`update communications set follow_up_at = null where id = $1`, [row.id]);
     if (!row.email || !row.email_verified) continue;
 
@@ -296,9 +314,20 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
     });
     if (!res.disabled && !res.error) {
       await query(
-        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider)
-         values ($1,$2,'email','outbound',$3,$4,$5,$6)`,
-        [row.subcontractor_id, row.opportunity_id, subject, html, res.messageId ?? null, res.provider]
+        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider, meta)
+         values ($1,$2,'email','outbound',$3,$4,$5,$6,$7::jsonb)`,
+        [
+          row.subcontractor_id,
+          row.opportunity_id,
+          subject,
+          html,
+          res.messageId ?? null,
+          res.provider,
+          // Same reason the initial outreach stamps it: a reply to THIS email
+          // must land its outcome on this trade line, not on every trade the
+          // sub was approached for.
+          JSON.stringify(row.trade ? { kind: "followup", trade: row.trade } : { kind: "followup" }),
+        ]
       );
       // Reflect the follow-up on the pairing + roster so Today / opp / sub
       // UIs show "Followed up" instead of permanently "Email sent".
@@ -314,8 +343,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       ]);
       sent++;
     } else if (res.blocked) {
-      // The follow-up marker was already consumed above, so this will not be
-      // retried automatically. Make sure a human sees that it never went out.
+      // Content was refused; a retry would refuse the same content, so the
+      // marker stays consumed and a human is flagged instead.
       if (row.opportunity_id) {
         await query(
           `update opportunities set human_action_required = true where id = $1`,
@@ -330,6 +359,25 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
         opportunityId: row.opportunity_id,
         subcontractorId: row.subcontractor_id,
         message: `Held follow-up email, nothing was sent. ${res.error}`,
+      });
+    } else {
+      // Transport failure (Gmail error or no transport). This branch used to
+      // fall through silently AFTER the marker was consumed, which quietly
+      // deleted the follow-up: the sub was later marked unresponsive as if
+      // they had ignored an email that never went out. Restore the marker so
+      // the next sweep retries, and say what happened.
+      await query(
+        `update communications set follow_up_at = now() + interval '15 minutes' where id = $1`,
+        [row.id]
+      );
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send",
+        level: "error",
+        status: "error",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: `Follow-up email could not be sent (${res.error ?? "no transport available"}). It will be retried on the next sweep.`,
       });
     }
   }
@@ -500,8 +548,30 @@ export const stalledPipelineSweep: AgentDefinition = {
           [stage, hours, retryMarker]
         );
         for (const o of rescuable) {
+          // The strike-1 marker was already written by the UPDATE above. If
+          // the enqueue fails, that marker is a lie (no retry is running), so
+          // roll it back and say so; otherwise the record would skip straight
+          // to strike 2, or sit forever, while the log claimed recovery ran.
+          let queued = true;
+          await enqueue(agent, { opportunityId: o.id, trigger: "rescue" }).catch(async (e) => {
+            queued = false;
+            await query(
+              `update opportunities
+                  set risk_flags = array_remove(coalesce(risk_flags,'{}'), $2)
+                where id = $1`,
+              [o.id, retryMarker]
+            ).catch(() => {});
+            await logAgent({
+              agent: "stalled-pipeline-sweep",
+              action: "auto-retry",
+              opportunityId: o.id,
+              level: "error",
+              status: "error",
+              message: `Could not queue the automatic retry for "${o.title ?? o.id}" (${(e as Error).message}). It stays marked stuck and will be retried on the next sweep.`,
+            });
+          });
+          if (!queued) continue;
           rescued++;
-          await enqueue(agent, { opportunityId: o.id, trigger: "rescue" }).catch(() => {});
           await logAgent({
             agent: "stalled-pipeline-sweep",
             action: "auto-retry",
@@ -1017,8 +1087,16 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
   let repliesMatched = 0;
   if (await gmail.isConnected(orgId)) {
     const sinceSec = Math.floor(Date.now() / 1000) - 3600;
-    const { replies, disabled } = await gmail.fetchReplies(sinceSec, orgId);
-    if (!disabled) {
+    const { replies, disabled, error } = await gmail.fetchReplies(sinceSec, orgId);
+    if (error) {
+      await logAgent({
+        agent: "backlink-outreach-sweep",
+        action: "poll-failed",
+        level: "error",
+        message: `Could not read the inbox for backlink replies: ${error}`,
+      });
+    }
+    if (!disabled && !error) {
       for (const r of replies) {
         const fromEmail = (r.from.match(/<([^>]+)>/)?.[1] ?? r.from).toLowerCase().trim();
         // Scoped for the same reason inbound subcontractor replies are: a
@@ -1110,8 +1188,21 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     // exactly as it is today, it just never produces a call card.
     const callsEnabled = await areCallsEnabled();
     const sinceSec = Math.floor(Date.now() / 1000) - 3600; // last hour
-    const { replies, disabled } = await gmail.fetchReplies(sinceSec, orgId);
+    const { replies, disabled, error } = await gmail.fetchReplies(sinceSec, orgId);
     if (disabled) return { ok: true, summary: "Inbox unavailable, skipped." };
+    if (error) {
+      // The poll FAILED. Zero replies from a failed poll must never read as
+      // "nobody wrote back": quotes pile up unread in the real inbox while
+      // every solicitation waits on them.
+      await logAgent({
+        agent: "reply-poll",
+        action: "poll-failed",
+        level: "error",
+        status: "error",
+        message: `Could not read the inbox for replies: ${error}. If this repeats, the Google connection needs to be reconnected in Settings, then Integrations.`,
+      });
+      return { ok: false, summary: `Inbox poll failed: ${error}` };
+    }
 
     const enqueued: AgentResult["enqueued"] = [];
     const notifyLines: string[] = [];

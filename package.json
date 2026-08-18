@@ -27,7 +27,8 @@
     "postinstall": "node scripts/postinstall.mjs",
     "stripe:setup": "tsx scripts/stripe-setup.ts",
     "stripe:verify": "tsx scripts/stripe-setup.ts --verify",
-    "backfill:doc-names": "tsx scripts/backfill-doc-names.ts"
+    "backfill:doc-names": "tsx scripts/backfill-doc-names.ts",
+    "repair:sub-locations": "tsx scripts/repair-sub-locations.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

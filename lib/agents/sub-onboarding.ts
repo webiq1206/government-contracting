@@ -22,6 +22,7 @@
  */
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
+import { runWithOrg } from "../tenant-context";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { subPortalUrl, PORTAL_TTL_SECONDS } from "../domain/sub-portal-link";
 import { DOC_LABEL, type DocType } from "../domain/sub-compliance";
@@ -150,7 +151,24 @@ export const subOnboarding: AgentDefinition = {
   worksWithoutClaude: true,
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string | undefined;
-    const candidates = await loadAwardCompliance({ opportunityId });
+    // Tenant scoping. With an opportunityId the runner has already set the
+    // owning org's context; the daily cron has no payload, so without an
+    // explicit per-org loop this read spanned EVERY organization's contracts
+    // and chased other tenants' subcontractors from whatever context was
+    // ambient. One org at a time, each inside its own context.
+    let candidates: Awaited<ReturnType<typeof loadAwardCompliance>> = [];
+    if (opportunityId) {
+      candidates = await loadAwardCompliance({ opportunityId });
+    } else {
+      const { listActiveOrganizations } = await import("../organizations");
+      const orgs = await listActiveOrganizations().catch(() => []);
+      for (const org of orgs) {
+        const rows = await runWithOrg(org.id, () =>
+          loadAwardCompliance({ orgId: org.id })
+        ).catch(() => []);
+        candidates.push(...rows);
+      }
+    }
     if (candidates.length === 0) {
       return {
         ok: true,
@@ -188,20 +206,24 @@ export const subOnboarding: AgentDefinition = {
       }
       if (await chasedRecently(row.subcontractorId)) continue;
 
-      const sent = await chase(row, needed);
+      const inRowOrg = <T,>(fn: () => Promise<T>): Promise<T> =>
+        row.orgId ? runWithOrg(row.orgId, fn) : fn();
+      const sent = await inRowOrg(() => chase(row, needed));
       if (sent) chased++;
       else unreachable.push(row.companyName);
 
-      await logAgent({
-        agent: "sub-onboarding",
-        action: "paperwork-requested",
-        subcontractorId: row.subcontractorId,
-        opportunityId: row.opportunityId,
-        level: "warn",
-        message: sent
-          ? `${row.companyName} is on won work without complete paperwork (${needed}). Sent them a link to put it right.`
-          : `${row.companyName} is on won work without complete paperwork (${needed}), and the email could not go out. Ring them.`,
-      });
+      await inRowOrg(() =>
+        logAgent({
+          agent: "sub-onboarding",
+          action: "paperwork-requested",
+          subcontractorId: row.subcontractorId,
+          opportunityId: row.opportunityId,
+          level: "warn",
+          message: sent
+            ? `${row.companyName} is on won work without complete paperwork (${needed}). Sent them a link to put it right.`
+            : `${row.companyName} is on won work without complete paperwork (${needed}), and the email could not go out. Ring them.`,
+        })
+      );
     }
 
     for (const line of undesignated) {
