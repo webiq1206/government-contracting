@@ -65,7 +65,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // Atomic: mark the bid won, close the opportunity, and create the contract in
     // one transaction so a partial failure can't leave a "won" bid with no
     // contract row (or an opportunity closed with no contract).
-    await transaction(async (c) => {
+    // Idempotent: the opportunity move is the claim. A double click or a
+    // retried request must not mint a second contract for the same win, which
+    // would double-count active revenue and the non-SS subcontracting cap.
+    // The stage guard inside the UPDATE makes the whole win exactly-once:
+    // only the transaction that actually flips the stage creates the contract.
+    const claimed = await transaction(async (c) => {
+      const moved = await c.query<{ id: string }>(
+        `update opportunities set stage='won', status='closed'
+          where id=$1 and stage <> 'won' returning id`,
+        [params.id]
+      );
+      if (moved.rows.length === 0) return false; // already recorded as won
       if (bid) {
         await c.query(`update bids set outcome=$2, award_amount=$3, loss_reason=$4 where id=$1`, [
           bid.id,
@@ -74,7 +85,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           lossReason,
         ]);
       }
-      await c.query(`update opportunities set stage='won', status='closed' where id=$1`, [params.id]);
       await c.query(
         `insert into contracts
            (bid_id, opportunity_id, contract_number, award_amount, start_date, end_date,
@@ -90,7 +100,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           endDate ? new Date(new Date(endDate).getTime() + 7 * 86_400_000).toISOString() : null,
         ]
       );
+      return true;
     });
+    if (!claimed) {
+      // Already won on a prior request; report success without side effects.
+      return NextResponse.json({ ok: true, outcome, alreadyRecorded: true });
+    }
     await logAgent({
       agent: "operator",
       action: "award-won",

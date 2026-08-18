@@ -161,6 +161,15 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       const customerId = asId(session.customer);
       if (!orgId || !subId) break;
 
+      // Ordering guard, same as the subscription events below. Stripe delivers
+      // at-least-once and unordered, so a delayed original checkout can arrive
+      // AFTER a cancellation for the same account. Without this, that stale
+      // checkout resurrected a canceled subscription and handed it full access
+      // for free. A genuine re-subscribe carries a newer timestamp and still
+      // passes (the check is >=, so a simultaneous subscription.created does
+      // not drop it either).
+      if (!(await isNewerThanApplied(orgId, event.created))) break;
+
       const sub = await stripe.subscriptions.retrieve(subId);
       const s = readSubscription(sub);
       const plan: PlanKey =

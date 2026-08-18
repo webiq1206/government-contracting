@@ -66,11 +66,23 @@ async function readLocal(key: string): Promise<Buffer> {
 }
 
 async function writeDb(key: string, data: Buffer, mime: string): Promise<void> {
+  // Stamp the owning org so account deletion and the retention sweep can clear
+  // the bytes. Without it, file_blobs.org_id was always null and a purged
+  // account's documents (W-9s, insurance certs, bids) survived forever.
+  let orgId: string | null = null;
+  try {
+    const { tryResolveTenantOrgId } = await import("../tenant");
+    orgId = await tryResolveTenantOrgId();
+  } catch {
+    orgId = null;
+  }
   await query(
-    `insert into file_blobs (path, mime, bytes)
-       values ($1, $2, $3)
-     on conflict (path) do update set mime = excluded.mime, bytes = excluded.bytes, created_at = now()`,
-    [key, mime, data]
+    `insert into file_blobs (path, mime, bytes, org_id)
+       values ($1, $2, $3, $4)
+     on conflict (path) do update set mime = excluded.mime, bytes = excluded.bytes,
+                                       org_id = coalesce(file_blobs.org_id, excluded.org_id),
+                                       created_at = now()`,
+    [key, mime, data, orgId]
   );
 }
 
