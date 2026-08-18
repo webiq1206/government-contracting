@@ -346,6 +346,41 @@ export const outreach: AgentDefinition = {
     const fullPlain = plainBody + detailsPlain;
     const html = plainToHtml(plainBody) + detailsHtml;
 
+    // Idempotency guard. pg-boss delivers at-least-once: a job whose handler
+    // sent the email but crashed before acking is redelivered, and a duplicate
+    // enqueue can slip past the singleton window. Either way, re-sending means
+    // a real subcontractor gets the same quote request twice. If an outbound
+    // email already exists for THIS opportunity+sub+trade, the send already
+    // happened, so skip it and report success rather than mailing again.
+    // `provider is not null` is the "actually sent" signal: a draft or a
+    // failed send stores a communications row with a null provider, and the
+    // outreach-recovery sweep legitimately re-runs outreach to send those, so
+    // this guard must NOT block them — only a genuine prior send.
+    const priorSend = await queryOne<{ id: string }>(
+      `select id from communications
+        where opportunity_id = $1 and subcontractor_id = $2
+          and channel = 'email' and direction = 'outbound'
+          and provider is not null
+          and coalesce(meta->>'trade', '') = $3
+          and coalesce(meta->>'kind', '') not in ('decline_thank_you', 'final_nudge')
+        limit 1`,
+      [opportunityId, subcontractorId, trade ?? ""]
+    ).catch(() => null);
+    if (priorSend) {
+      await logAgent({
+        agent: "outreach",
+        action: "skip-duplicate",
+        level: "info",
+        opportunityId,
+        subcontractorId,
+        message: `${sub.company_name} was already emailed for ${trade || "this work"}; skipping a duplicate send (job redelivered or re-enqueued).`,
+      });
+      return {
+        ok: true,
+        summary: `Already contacted ${sub.company_name} for ${trade || "this work"}; no duplicate email sent.`,
+      };
+    }
+
     const trackingId = randomUUID();
     const followUpAt = new Date(Date.now() + 48 * 3_600_000).toISOString();
 
