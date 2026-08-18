@@ -6,6 +6,7 @@ import {
   computeReady,
   openAuditBlockers,
   confirmedKeys,
+  auditFindingKey,
   type ResolveContext,
 } from "../lib/domain/package";
 import type { ComplianceRequirement, AuditFinding, PackageValidation } from "../lib/types";
@@ -376,5 +377,23 @@ describe("validatePackage", () => {
       nowIso: "2026-01-01T00:00:00Z",
     });
     expect(v.passed).toBe(true);
+  });
+});
+
+describe("auditFindingKey", () => {
+  it("identifies a finding by what it says, not by where it sits", () => {
+    // AI findings are renumbered af_1..af_n on every audit. Keying on the id
+    // meant an acknowledged finding came straight back unacknowledged after
+    // any rebuild, and re-blocked the submission.
+    const a = { id: "af_2", finding: "No bonding capacity is stated.", requirement_id: "bond" };
+    const b = { id: "af_5", finding: "no  bonding capacity is stated", requirement_id: "bond" };
+    expect(auditFindingKey(a)).toBe(auditFindingKey(b));
+    expect(auditFindingKey(a)).not.toBe(
+      auditFindingKey({ finding: "No insurance certificate.", requirement_id: "bond" })
+    );
+    // The same sentence about a different requirement is a different finding.
+    expect(auditFindingKey(a)).not.toBe(
+      auditFindingKey({ finding: "No bonding capacity is stated.", requirement_id: "insurance" })
+    );
   });
 });

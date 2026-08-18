@@ -495,6 +495,23 @@ export function validatePackage(input: ValidationInput): PackageValidation {
   };
 }
 
+/**
+ * Identity of an audit finding, independent of where it landed in the list.
+ *
+ * AI findings are renumbered af_1..af_n on every audit, so acknowledging
+ * "no bonding capacity stated for a bid bond of this size" and then rebuilding
+ * the bid brought the same sentence straight back as unacknowledged, under a
+ * different id, and re-blocked submission. The operator's decision belongs to
+ * the finding, not to its position in an array.
+ */
+export function auditFindingKey(f: { finding: string; requirement_id?: string | null }): string {
+  const text = (f.finding ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return `${(f.requirement_id ?? "").toLowerCase()}|${text}`;
+}
+
 /** Unresolved (unacknowledged) blocker findings from the independent audit. */
 export function openAuditBlockers(findings: AuditFinding[] | null | undefined): AuditFinding[] {
   return (findings ?? []).filter((f) => f.severity === "blocker" && !f.acknowledged);

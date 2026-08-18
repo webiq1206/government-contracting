@@ -41,7 +41,7 @@ const MAX_ATTACHMENT_URLS = 40;
 
 const NA = "Not specified in the provided documents";
 
-const AnalysisSchema = z.object({
+export const AnalysisSchema = z.object({
   project_overview: z.string().default(NA),
   scope_plain_language: z.string().default(NA),
   location: z.string().default(NA),
@@ -94,39 +94,88 @@ const AnalysisSchema = z.object({
     .default([]),
   geographic_area: z.string().default(NA),
   risk_flags: z.array(z.string()).default([]),
-  past_perf_classification: z.enum(["not_required", "team_accepted", "prime_only"]),
+  // No default and no coercion meant one unexpected word here threw away the
+  // whole analysis. Unrecognised now routes to prime_only, which blocks and
+  // asks a person, rather than silently sourcing subs for a bid whose past
+  // performance rules were never actually read.
+  past_perf_classification: z.unknown().transform(toPastPerf),
   questions_for_subs: z.array(z.string()).default([]),
   draft_sow: z.string().default(""),
   set_aside: z.string().nullable().default(null),
   compliance_matrix: z
     .array(
       z.object({
-        id: z.string(),
+        id: z.string().catch(""),
         title: z.string(),
-        category: z
-          .enum([
-            "form",
-            "pricing",
-            "narrative",
-            "certification",
-            "acknowledgment",
-            "attachment",
-            "other",
-          ])
-          .default("other"),
-        mandatory: z.boolean().default(true),
-        source: z.string().default(NA),
-        format: z.string().optional(),
-        signature_required: z.boolean().default(false),
-        satisfied_by: z
-          .enum(["auto_generated", "from_profile", "operator_signature", "operator_provided"])
-          .default("operator_provided"),
-        instructions: z.string().optional(),
-        official_form: z.string().optional(),
+        // Coerced, never rejected. `.default()` only fires on undefined, so a
+        // model that answered "certifications" instead of "certification"
+        // threw, and because the throw happens on the whole object, ONE
+        // out-of-enum word destroyed the entire analysis: scope, dates,
+        // trades, every requirement. The retry usually repeated it. Mapping
+        // the near miss keeps the other forty fields, and an unrecognised
+        // value lands on the safe side rather than nowhere.
+        category: z.unknown().transform(toCategory),
+        mandatory: z.boolean().catch(true),
+        source: z.string().catch(NA),
+        format: z.string().optional().catch(undefined),
+        signature_required: z.boolean().catch(false),
+        satisfied_by: z.unknown().transform(toSatisfiedBy),
+        instructions: z.string().optional().catch(undefined),
+        official_form: z.string().optional().catch(undefined),
       })
     )
     .default([]),
 });
+
+function toPastPerf(v: unknown): "not_required" | "team_accepted" | "prime_only" {
+  const s = String(v ?? "").toLowerCase().trim();
+  if (s === "not_required" || s === "team_accepted" || s === "prime_only") return s;
+  if (/not.?required|none|n\/a/.test(s)) return "not_required";
+  if (/team|sub|joint|partner/.test(s)) return "team_accepted";
+  return "prime_only";
+}
+
+const CATEGORY_VALUES = [
+  "form",
+  "pricing",
+  "narrative",
+  "certification",
+  "acknowledgment",
+  "attachment",
+  "other",
+] as const;
+type MatrixCategory = (typeof CATEGORY_VALUES)[number];
+
+function toCategory(v: unknown): MatrixCategory {
+  const s = String(v ?? "").toLowerCase().trim();
+  if ((CATEGORY_VALUES as readonly string[]).includes(s)) return s as MatrixCategory;
+  if (/certif|reps|represent/.test(s)) return "certification";
+  if (/acknowledg|amend|addend/.test(s)) return "acknowledgment";
+  if (/pric|cost|bid schedule|schedule of/.test(s)) return "pricing";
+  if (/narrative|technical|approach|letter|plan|volume|proposal/.test(s)) return "narrative";
+  if (/form|sf[- ]?\d/.test(s)) return "form";
+  if (/attach|exhibit|enclosure|supporting/.test(s)) return "attachment";
+  return "other";
+}
+
+const SATISFIED_VALUES = [
+  "auto_generated",
+  "from_profile",
+  "operator_signature",
+  "operator_provided",
+] as const;
+type SatisfiedBy = (typeof SATISFIED_VALUES)[number];
+
+function toSatisfiedBy(v: unknown): SatisfiedBy {
+  const s = String(v ?? "").toLowerCase().trim();
+  if ((SATISFIED_VALUES as readonly string[]).includes(s)) return s as SatisfiedBy;
+  if (/signature|sign/.test(s)) return "operator_signature";
+  if (/profile|company data/.test(s)) return "from_profile";
+  if (/auto|generat|platform/.test(s)) return "auto_generated";
+  // Anything unrecognised is the operator's. Guessing "we generate this" for
+  // a word we do not know would mark an item done with nothing behind it.
+  return "operator_provided";
+}
 
 const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25MB cap per file
 
@@ -551,6 +600,22 @@ export const solicitationAnalyst: AgentDefinition = {
       // prompt asks for, since compliance with that varies run to run and the
       // fix belongs in one place rather than at each display and email site.
       analysis = tightenAnalysisProse(deepNoEmDash(data));
+      // Every requirement needs a stable handle and a name a person can read.
+      // A blank id would collide with every other blank id when confirmations
+      // are matched; a blank title is not a requirement anybody can act on.
+      analysis.compliance_matrix = (analysis.compliance_matrix ?? [])
+        .filter((r) => r.title?.trim())
+        .map((r, i) => ({
+          ...r,
+          id:
+            r.id?.trim() ||
+            r.title
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "_")
+              .replace(/^_+|_+$/g, "")
+              .slice(0, 40) ||
+            `requirement_${i + 1}`,
+        }));
       await logAgent({
         agent: "solicitation-analyst",
         action: "analyze",

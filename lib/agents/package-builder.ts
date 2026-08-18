@@ -40,6 +40,27 @@ async function storeDoc(
   return { name: displayName, storage_path: up.path, kind };
 }
 
+/**
+ * What the transmittal letter may say is enclosed.
+ *
+ * "The following documents are enclosed as part of this submission" is a
+ * statement the owner signs. It used to list every requirement that merely
+ * HAD a generated artifact, so a bid bond the operator had not produced and a
+ * licence nobody had uploaded were both certified to the contracting officer
+ * as being in the envelope. Only what is actually in the package goes in the
+ * list; the two documents the platform always produces are named outright
+ * rather than inferred, and the letter does not enclose itself.
+ */
+export function enclosureList(resolved: ResolvedRequirement[]): string[] {
+  return [
+    "Priced offer",
+    ...resolved
+      .filter((r) => r.status === "satisfied" && r.artifact_kind !== ARTIFACT_KIND.coverLetter)
+      .map((r) => r.title),
+    "Compliance checklist",
+  ];
+}
+
 export async function assemblePackageDocuments(args: {
   opportunityId: string;
   opp: Opportunity;
@@ -57,9 +78,7 @@ export async function assemblePackageDocuments(args: {
 
   // Cover / transmittal letter (lists everything enclosed, in order).
   if (need.has(ARTIFACT_KIND.coverLetter)) {
-    const contents = resolved
-      .filter((r) => r.status === "satisfied" || r.artifact_kind)
-      .map((r) => r.title);
+    const contents = enclosureList(resolved);
     const buf = await documents.buildCoverLetterPdf({
       company_name: profile.legal_name,
       company_address: profile.physical_address,
@@ -70,7 +89,7 @@ export async function assemblePackageDocuments(args: {
       opportunity_title: title,
       solicitation_number: sol,
       bid_amount: bidAmount,
-      contents: contents.length ? contents : ["Priced offer", "Pricing schedule"],
+      contents,
     });
     out.push(await storeDoc(opportunityId, ARTIFACT_KIND.coverLetter, "Cover letter", buf));
   }

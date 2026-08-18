@@ -18,6 +18,7 @@ import {
   validatePackage,
   computeReady,
 } from "@/lib/domain/package";
+import { enclosureList } from "@/lib/agents/package-builder";
 import type { ComplianceRequirement } from "@/lib/types";
 
 const SOL = "W912DY-26-R-0007";
@@ -235,5 +236,21 @@ describe("generated documents must actually exist", () => {
     expect(v.passed).toBe(false);
     expect(v.blockers.join(" ")).toMatch(/missing from storage/i);
     expect(resolved).toHaveLength(reqs.length); // sanity
+  });
+});
+
+describe("the transmittal letter's enclosure list", () => {
+  it("names only what is actually in the envelope", () => {
+    const resolved = resolveRequirements(solicitationRequirements(), ctx);
+    const list = enclosureList(resolved);
+    // Always produced, always enclosed.
+    expect(list[0]).toBe("Priced offer");
+    expect(list[list.length - 1]).toBe("Compliance checklist");
+    // The bond is the operator's and is not in the package yet, so the letter
+    // must not certify it as enclosed.
+    const outstanding = resolved.filter((r) => r.status !== "satisfied").map((r) => r.title);
+    for (const title of outstanding) expect(list).not.toContain(title);
+    // And the letter does not enclose itself.
+    expect(list.filter((l) => /cover|transmittal/i.test(l))).toHaveLength(0);
   });
 });

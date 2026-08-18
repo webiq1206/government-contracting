@@ -22,6 +22,7 @@ import {
   marginFromBid,
   markupForTargetMargin,
   selectQuotesForBid,
+  offerLineItems,
   isOutOfRange,
 } from "../domain/pricing";
 import { benchmarkFor } from "../domain/comp-reliability";
@@ -33,6 +34,7 @@ import {
   confirmedKeys,
 } from "../domain/package";
 import { checkEligibility } from "../domain/eligibility";
+import { matchOfficialForm } from "../domain/official-form";
 import { competitivePositioningBrief } from "../domain/competition";
 import { opportunityCompetitors } from "../data";
 import { retrieveRelevantContent, renderContentForPrompt } from "../ai/contentLibrary";
@@ -232,14 +234,15 @@ export const bidBuilder: AgentDefinition = {
     const failing = qaChecklist.filter((q) => !q.ok);
 
     // --- Line items. ---
-    const lineItems: Array<{ label: string; amount: number }> = pricedQuotes.map((q) => ({
+    // Cost basis, for the record and for internal review.
+    const costLineItems: Array<{ label: string; amount: number }> = pricedQuotes.map((q) => ({
       label: q.trade || "Subcontractor",
       amount: q.quote_amount,
     }));
-    lineItems.push({
-      label: `Markup ${markupPct.toFixed(1)}% (prices to ${profile.target_margin_pct}% target margin)`,
-      amount: markupAmount,
-    });
+    // What the agency sees: a price per scope. The markup is carried inside
+    // the scope lines rather than announced on its own line next to our
+    // target margin, which is what the submitted schedule used to do.
+    const lineItems = offerLineItems(costLineItems, bidAmount);
 
     // --- Documents. ---
     const docData: BidDocData = {
@@ -338,11 +341,7 @@ export const bidBuilder: AgentDefinition = {
     );
     for (const r of resolved) {
       if (!r.official_form || !r.official_form_doc) {
-        const token = (r.official_form ?? "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-        if (!token) continue;
-        const match = solDocs.find(
-          (d) => d.storage_path && d.name.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(token)
-        );
+        const match = matchOfficialForm(r.official_form, solDocs);
         if (match?.storage_path) {
           r.official_form_doc = { name: match.name, path: match.storage_path };
           r.note = `The agency's ${r.official_form} is attached to the solicitation, sign that form and include it.`;

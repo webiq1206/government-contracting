@@ -179,3 +179,38 @@ export function selectQuotesForBid(quotes: QuoteForSelection[]): QuoteSelection 
 
   return { selected, alternates, contestedTrades };
 }
+
+/**
+ * The priced scope as the AGENCY sees it.
+ *
+ * The submitted pricing schedule listed each subcontractor quote at cost and
+ * then a separate line reading "Markup 18.5% (prices to 22% target margin)".
+ * That hands the contracting officer our cost basis, our markup, and our
+ * margin policy, on the document they use to evaluate price and negotiate.
+ * An offer states a price per scope, not a cost plus our fee.
+ *
+ * So the markup is distributed across the scope lines in proportion to their
+ * size, and the last line absorbs the rounding drift so the lines still add
+ * up to the bid amount exactly, to the cent. Callers keep the cost-basis
+ * lines for internal review; only what leaves the building comes through here.
+ */
+export function offerLineItems(
+  items: Array<{ label: string; amount: number }>,
+  bidAmount: number
+): Array<{ label: string; amount: number }> {
+  const subtotal = items.reduce((sum, i) => sum + i.amount, 0);
+  if (items.length === 0 || !(subtotal > 0) || !(bidAmount > 0)) {
+    return items.map((i) => ({ ...i }));
+  }
+  const out = items.map((i) => ({
+    label: i.label,
+    amount: Math.round((i.amount / subtotal) * bidAmount * 100) / 100,
+  }));
+  const drift =
+    Math.round((bidAmount - out.reduce((sum, i) => sum + i.amount, 0)) * 100) / 100;
+  if (drift !== 0) {
+    const last = out[out.length - 1];
+    last.amount = Math.round((last.amount + drift) * 100) / 100;
+  }
+  return out;
+}

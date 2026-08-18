@@ -51,6 +51,15 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   const entries: ZipEntry[] = [];
   const toProvide: string[] = [];
+  /**
+   * Documents the platform said it had produced and then could not put in the
+   * archive. These used to land in the same list as the bid bond and the
+   * insurance certificate, under a heading that reads "documents only you can
+   * supply", so a generation or storage failure was presented to the operator
+   * as their own to-do. They would tick it off, submit, and the package would
+   * be missing a document the compliance checklist swore was included.
+   */
+  const missingGenerated: string[] = [];
 
   for (const item of manifest) {
     // Explicit path (e.g. the real agency form pulled from the solicitation).
@@ -79,19 +88,37 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
         }
       }
     }
-    // Operator-provided or unavailable: note it in the README instead.
-    toProvide.push(`${item.filename}, ${item.status.replace(/_/g, " ")}`);
+    if (item.status === "satisfied" && item.source === "generated") {
+      missingGenerated.push(item.filename);
+    } else {
+      toProvide.push(`${item.filename}, ${item.status.replace(/_/g, " ")}`);
+    }
   }
 
   const readme = [
     `SUBMISSION PACKAGE, ${opp.title ?? params.id}`,
     opp.solicitation_number ? `Solicitation: ${opp.solicitation_number}` : "",
     "",
+    ...(missingGenerated.length
+      ? [
+          "THIS ARCHIVE IS INCOMPLETE. DO NOT SUBMIT IT AS IS.",
+          "",
+          "The following documents were supposed to be in here and could not be",
+          "read back from storage. This is a platform failure, not something for",
+          "you to write. Re-run the Bid Builder on this opportunity, then download",
+          "the package again:",
+          "",
+          ...missingGenerated.map((t) => `  ! ${t}`),
+          "",
+        ]
+      : []),
     "This archive contains the documents the platform generated, named and",
     "ordered for submission. Before you submit, complete the following items,",
     "which require your signature or documents only you can supply:",
     "",
-    ...(toProvide.length ? toProvide.map((t) => `  • ${t}`) : ["  (nothing, the package is complete)"]),
+    ...(toProvide.length
+      ? toProvide.map((t) => `  • ${t}`)
+      : ["  (nothing, every item is either enclosed or already confirmed)"]),
     "",
     "Always confirm against the actual solicitation's instructions to offerors.",
   ]
