@@ -462,7 +462,14 @@ export const gmail = {
 
   async send(
     params: SendEmailParams
-  ): Promise<{ disabled?: boolean; messageId?: string; threadId?: string; error?: string }> {
+  ): Promise<{
+    disabled?: boolean;
+    messageId?: string;
+    threadId?: string;
+    /** The real RFC822 Message-ID header, for In-Reply-To on later sends. */
+    rfc822MessageId?: string;
+    error?: string;
+  }> {
     // Nothing reaches a real inbox from a development process.
     //
     // This is the lowest point every sender passes through: tenant outreach,
@@ -500,7 +507,41 @@ export const gmail = {
         // own mailbox, which is what the in-app thread view reads back.
         requestBody: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
       });
-      return { messageId: res.data.id ?? undefined, threadId: res.data.threadId ?? undefined };
+
+      /**
+       * Read back the RFC822 Message-ID, which is NOT the Gmail API id.
+       *
+       * `res.data.id` is Gmail's internal handle ("18f2a3b..."). The
+       * In-Reply-To / References headers that make a RECIPIENT's mail client
+       * thread a follow-up must carry the real Message-ID
+       * ("<CAF...@mail.gmail.com>"), and Gmail assigns that itself at send
+       * time. Without it we can only thread inside our own mailbox: a
+       * subcontractor on Outlook would see every follow-up as a brand new,
+       * context-free email. One metadata read is cheap next to that.
+       */
+      let rfc822MessageId: string | undefined;
+      if (res.data.id) {
+        try {
+          const meta = await client.users.messages.get({
+            userId: "me",
+            id: res.data.id,
+            format: "metadata",
+            metadataHeaders: ["Message-ID"],
+          });
+          rfc822MessageId =
+            meta.data.payload?.headers?.find(
+              (h) => (h.name ?? "").toLowerCase() === "message-id"
+            )?.value ?? undefined;
+        } catch {
+          // The message is already sent; not knowing its Message-ID costs
+          // recipient-side threading on the NEXT follow-up, not this send.
+        }
+      }
+      return {
+        messageId: res.data.id ?? undefined,
+        threadId: res.data.threadId ?? undefined,
+        rfc822MessageId,
+      };
     } catch (err) {
       const message = (err as Error).message;
       if (org) await markConnectionError(org, message);

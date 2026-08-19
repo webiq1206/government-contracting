@@ -240,10 +240,15 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
     trade: string | null;
     location_state: string | null;
     deadline: string | null;
+    // Threading: what the follow-up must attach itself to.
+    orig_subject: string | null;
+    gmail_thread_id: string | null;
+    rfc822_message_id: string | null;
   }>(
     `select c.id, c.subcontractor_id, c.opportunity_id, c.tracking_id,
             s.email, s.email_verified, s.owner_name as sub_owner_name,
-            os.trade, o.location_state, o.deadline
+            os.trade, o.location_state, o.deadline,
+            c.subject as orig_subject, c.gmail_thread_id, c.rfc822_message_id
        from communications c
        join subcontractors s on s.id = c.subcontractor_id
        left join opportunities o on o.id = c.opportunity_id
@@ -315,17 +320,43 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
 
     // Named rather than inferred: this decides whose mailbox sends, whose
     // identity is on the From line, and whose quota is charged.
+    /**
+     * A follow-up belongs ON the original thread, not beside it.
+     *
+     * Sent standalone, it reached the subcontractor as a fresh, context-free
+     * email: none of the scope, the deadline or the attachments they were
+     * being asked to price sat above it, and it reads far more like cold mail
+     * than the third message in a conversation -- which costs replies and
+     * inbox placement both.
+     *
+     * Threading needs both halves. `threadId` groups it in OUR mailbox (what
+     * the in-app conversation view reads); `In-Reply-To` is what the
+     * RECIPIENT's client threads on, and Gmail additionally requires the
+     * subject to match the thread it is joining, so when we have a thread the
+     * original subject wins over the template's.
+     */
+    const threadSubject = row.orig_subject?.trim()
+      ? /^re:/i.test(row.orig_subject.trim())
+        ? row.orig_subject.trim()
+        : `Re: ${row.orig_subject.trim()}`
+      : null;
+    if (row.gmail_thread_id && threadSubject) subject = threadSubject;
+
     const res = await sendOutreachEmail({
       to: row.email,
       subject,
       html,
       trackingId: row.tracking_id ?? undefined,
       orgId,
+      threadId: row.gmail_thread_id ?? undefined,
+      inReplyTo: row.rfc822_message_id ?? undefined,
     });
     if (!res.disabled && !res.error) {
       await query(
-        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider, meta)
-         values ($1,$2,'email','outbound',$3,$4,$5,$6,$7::jsonb)`,
+        // gmail_thread_id + rfc822_message_id are carried forward so a SECOND
+        // follow-up chains onto this one rather than restarting the thread.
+        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider, meta, gmail_thread_id, rfc822_message_id)
+         values ($1,$2,'email','outbound',$3,$4,$5,$6,$7::jsonb,$8,$9)`,
         [
           row.subcontractor_id,
           row.opportunity_id,
@@ -337,6 +368,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
           // must land its outcome on this trade line, not on every trade the
           // sub was approached for.
           JSON.stringify(row.trade ? { kind: "followup", trade: row.trade } : { kind: "followup" }),
+          res.threadId ?? row.gmail_thread_id ?? null,
+          res.rfc822MessageId ?? null,
         ]
       );
       // Reflect the follow-up on the pairing + roster so Today / opp / sub

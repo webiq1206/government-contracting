@@ -68,6 +68,12 @@ export interface OutreachSendResult {
   error?: string;
   messageId?: string | null;
   threadId?: string | null;
+  /**
+   * The RFC822 Message-ID of what we just sent. Stored so a later follow-up
+   * can set In-Reply-To/References and thread on the RECIPIENT's side, not
+   * just in our own mailbox.
+   */
+  rfc822MessageId?: string | null;
 }
 
 /** Inject the open pixel and wrap links through the click tracker. */
@@ -218,5 +224,6 @@ export async function sendOutreachEmail(
     error: res.error,
     messageId: res.messageId ?? null,
     threadId: res.threadId ?? null,
+    rfc822MessageId: res.rfc822MessageId ?? null,
   };
 }
