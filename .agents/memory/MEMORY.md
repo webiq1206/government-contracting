@@ -6,6 +6,7 @@
 - [SAM.gov API quirks](sam-api-quirks.md) — an unknown api_key comes back as an empty 404, not 401/403; test a key the way the app resolves it, not from process.env.
 - [Entitlement gating](entitlement-gating.md) — one computed gate (suspended > comped > status/date); comp is its own column Stripe can't overwrite; worker org-selection drifts.
 - [Support sessions](support-sessions.md) — impersonation is a marked session row; admin is an env allowlist answering 404; guards must sit at every mail/money sink, at the top.
+- [Environment-driven accounts](env-driven-accounts.md) — provisioning from a secret creates, never overwrites (it locked the owner out); a test run must prove its database is disposable.
 - [Login email aliases](login-aliases.md) — one address across users + aliases, enforced by triggers under an advisory lock; sessions keep the canonical address.
 - [AI drafts a human sends](ai-drafts-for-humans.md) — scrub every model-bound source, not just our own block; commitment checks warn instead of blocking; generate on demand and keep it.
 - [Negotiated terms](negotiated-terms.md) — free months are a 100% coupon, a free account is our own flag; claim an invitation before creating anything; bind invited checkout.
