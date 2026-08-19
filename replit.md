@@ -61,6 +61,23 @@ NODE_ENV=test npx vitest run
 devDependencies. Restore them with `npm install --include=dev`. Tests refuse to
 run against a database that is not disposable.
 
+## Deployment type: Reserved VM is required
+
+The published app must run as a **Reserved VM**, not Autoscale. The background
+worker shares the same process as the web server (`npm run start` starts both via
+`concurrently`). Autoscale sleeps the instance a few minutes after the last web
+request, which kills the worker with it. The shortest scheduled job runs every
+10 minutes, so an Autoscale deployment is reliably asleep when each job is due.
+
+Signs that this has drifted back to Autoscale: the Today dashboard shows "The
+automation engine is not running" and the production `job_runs` table has a gap
+of hours with no activity despite earlier steady runs. The fix is to republish as
+a Reserved VM -- no code change needed.
+
+The `.replit` `[deployment]` block sets `deploymentTarget = "vm"`. If it ever
+reverts to `"cloudrun"` (which is Autoscale), treat that as a regression and
+change it back before the next publish.
+
 ## User preferences
 
 - No em dashes in user-visible strings.
