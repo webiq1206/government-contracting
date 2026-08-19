@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { queryOne } from "@/lib/db";
 import { storage } from "@/lib/integrations/storage";
+import { orgOwnsStorageKey } from "@/lib/domain/file-ownership";
 import { makeZip, type ZipEntry } from "@/lib/zip";
 import type { Bid, Opportunity, PackageItem } from "@/lib/types";
 
@@ -63,8 +64,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const missingGenerated: string[] = [];
 
   for (const item of manifest) {
-    // Explicit path (e.g. the real agency form pulled from the solicitation).
+    // Explicit path (e.g. the real agency form pulled from the solicitation,
+    // or a document the operator uploaded). These paths come from this org's
+    // own verified bid manifest and are server-generated, never client-set,
+    // so they are already safe. The ownership re-check is defense in depth:
+    // if a manifest ever carried a path outside this org, the file is skipped
+    // rather than served, and it costs one indexed lookup per item.
     if (item.document_path) {
+      if (!(await orgOwnsStorageKey(item.document_path, orgId))) {
+        toProvide.push(`${item.title ?? item.filename} (unavailable)`);
+        continue;
+      }
       try {
         const buf = await storage.download(item.document_path);
         entries.push({ name: item.filename, data: buf });

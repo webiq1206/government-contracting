@@ -386,6 +386,8 @@ export const outreach: AgentDefinition = {
 
     let messageId: string | null = null;
     let threadId: string | null = null;
+    // RFC822 Message-ID (not Gmail's API id): what In-Reply-To needs later.
+    let rfc822MessageId: string | null = null;
     let provider: string | null = null;
     let outreachState = "pending";
     let humanAction = false;
@@ -433,6 +435,7 @@ export const outreach: AgentDefinition = {
         provider = res.provider;
         messageId = res.messageId ?? null;
         threadId = res.threadId ?? null;
+        rfc822MessageId = res.rfc822MessageId ?? null;
       }
     } else {
       // No verified email, record a draft and require a human.
@@ -444,8 +447,8 @@ export const outreach: AgentDefinition = {
       `insert into communications
          (subcontractor_id, opportunity_id, channel, direction, subject, body,
           gmail_message_id, gmail_thread_id, tracking_id, follow_up_at, provider,
-          recipient_email, meta)
-       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
+          recipient_email, meta, rfc822_message_id)
+       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12)`,
       [
         subcontractorId,
         opportunityId,
@@ -465,6 +468,9 @@ export const outreach: AgentDefinition = {
         // right trade line instead of every trade this sub was approached for
         // on the same solicitation.
         JSON.stringify(trade ? { trade } : {}),
+        // The real Message-ID header, so the 48h follow-up can thread under
+        // this exact email in the subcontractor's own mail client.
+        rfc822MessageId,
       ]
     );
 

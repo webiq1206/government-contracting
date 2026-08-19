@@ -47,6 +47,17 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // HSTS: once a browser has seen this, it refuses to talk to the
+          // domain over plain HTTP for two years, closing the SSL-strip
+          // downgrade window. Safe because the app is HTTPS-only in
+          // production; harmless on localhost (browsers ignore HSTS without
+          // TLS). includeSubDomains + preload so app.* and the apex are both
+          // covered. Cheap to add, and the one security header most worth
+          // having for a platform holding billing and gov-contracting data.
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
         ],
       },
     ];

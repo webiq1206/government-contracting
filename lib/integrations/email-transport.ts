@@ -68,6 +68,12 @@ export interface OutreachSendResult {
   error?: string;
   messageId?: string | null;
   threadId?: string | null;
+  /**
+   * The RFC822 Message-ID of what we just sent. Stored so a later follow-up
+   * can set In-Reply-To/References and thread on the RECIPIENT's side, not
+   * just in our own mailbox.
+   */
+  rfc822MessageId?: string | null;
 }
 
 /** Inject the open pixel and wrap links through the click tracker. */
@@ -107,6 +113,29 @@ export async function sendOutreachEmail(
       blocked: true,
       error: describeEmailSafetyIssues(safetyIssues),
     };
+  }
+
+  /**
+   * Do-not-contact, at the one place every send passes through.
+   *
+   * Someone who asked to be taken off the list was closed out on that
+   * solicitation and then emailed again as soon as the next one matched their
+   * trade. Mail after an opt-out is what generates spam complaints, and
+   * complaints are what move the whole sending domain into the spam folder
+   * for every tenant at once -- so this is a deliverability control as much
+   * as a courtesy. Checked here rather than at the seven call sites, because
+   * the one that gets forgotten is the one that does the damage.
+   */
+  const suppressionOrg = params.orgId ?? (await tryResolveTenantOrgId().catch(() => null));
+  if (suppressionOrg && params.to) {
+    const { isSuppressed } = await import("../domain/email-suppression");
+    if (await isSuppressed(suppressionOrg, params.to)) {
+      return {
+        provider: null,
+        blocked: true,
+        error: `${params.to} asked not to be contacted, so nothing was sent.`,
+      };
+    }
   }
 
   // Note: the block on sending real email from a development process lives in
@@ -218,5 +247,6 @@ export async function sendOutreachEmail(
     error: res.error,
     messageId: res.messageId ?? null,
     threadId: res.threadId ?? null,
+    rfc822MessageId: res.rfc822MessageId ?? null,
   };
 }

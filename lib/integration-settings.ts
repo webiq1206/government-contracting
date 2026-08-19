@@ -57,10 +57,22 @@ export function isAllowedKey(key: string): key is AllowedEnvKey {
   return (ALLOWED_ENV_KEYS as readonly string[]).includes(key);
 }
 
+const DEFAULT_SECRET = "dev-insecure-secret-change-me";
+
 function encryptionKey(): Buffer {
   // Match config.auth.secret resolution (AUTH_SECRET, then SESSION_SECRET).
-  const secret =
-    process.env.AUTH_SECRET || process.env.SESSION_SECRET || "dev-insecure-secret-change-me";
+  const secret = process.env.AUTH_SECRET || process.env.SESSION_SECRET || DEFAULT_SECRET;
+  // In production the default secret is PUBLIC, so anything "encrypted" with a
+  // key derived from it is decryptable by anyone who reads this repo. That is
+  // strictly worse than refusing: it would store Gmail refresh tokens and API
+  // keys behind a lock whose key is published. Fail loudly so a misconfigured
+  // deploy cannot silently persist worthless ciphertext. (The health check
+  // already 503s on this same condition; this guards the write path itself.)
+  if (secret === DEFAULT_SECRET && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "AUTH_SECRET (or SESSION_SECRET) is not set in production. Refusing to encrypt secrets with the public default key. Set a real 64+ char secret."
+    );
+  }
   return createHash("sha256").update(`integration-settings:${secret}`).digest();
 }
 

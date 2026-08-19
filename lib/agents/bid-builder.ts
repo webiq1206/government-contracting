@@ -182,9 +182,15 @@ export const bidBuilder: AgentDefinition = {
       const humanFlags = ["prime_only"];
       const oppFlags = Array.from(new Set([...(opp.risk_flags ?? []), "prime_only"]));
       await query(
+        // One bid per opportunity: a re-run of the prime_only block updates the
+        // existing row's flags rather than stacking a second row (which the
+        // unique index would now reject anyway).
         `insert into bids
            (opportunity_id, sub_quote_total, human_flags, outcome)
-         values ($1,$2,$3,'pending')`,
+         values ($1,$2,$3,'pending')
+         on conflict (opportunity_id) do update set
+           sub_quote_total=excluded.sub_quote_total,
+           human_flags=excluded.human_flags, outcome='pending', updated_at=now()`,
         [opportunityId, subQuoteTotal, humanFlags]
       );
       await query(
@@ -522,12 +528,26 @@ export const bidBuilder: AgentDefinition = {
       );
     } else {
       await query(
+        // on conflict: if a concurrent build inserted the row between our read
+        // and this write, become an update instead of a second row. The unique
+        // index on opportunity_id (migration 058) is what makes this atomic;
+        // without the clause the second insert would raise instead.
         `insert into bids
            (opportunity_id, sub_quote_total, markup_pct, bid_amount, margin_pct,
             target_margin_pct, qa_checklist, narrative, documents_json, human_flags, outcome,
             compliance_matrix, package_manifest, package_ready, validation_json,
             audit_findings, audit_status, requirements_fingerprint)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14,$15,'pending',$16)`,
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14,$15,'pending',$16)
+         on conflict (opportunity_id) do update set
+           sub_quote_total=excluded.sub_quote_total, markup_pct=excluded.markup_pct,
+           bid_amount=excluded.bid_amount, margin_pct=excluded.margin_pct,
+           target_margin_pct=excluded.target_margin_pct, qa_checklist=excluded.qa_checklist,
+           narrative=excluded.narrative, documents_json=excluded.documents_json,
+           human_flags=excluded.human_flags, outcome='pending',
+           compliance_matrix=excluded.compliance_matrix, package_manifest=excluded.package_manifest,
+           package_ready=excluded.package_ready, validation_json=excluded.validation_json,
+           audit_findings=excluded.audit_findings, audit_status='pending',
+           requirements_fingerprint=excluded.requirements_fingerprint, updated_at=now()`,
         [
           opportunityId,
           subQuoteTotal,

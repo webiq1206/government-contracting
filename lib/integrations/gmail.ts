@@ -15,6 +15,34 @@ import { config } from "../config";
 import { queryOne, query } from "../db";
 import { tryResolveTenantOrgId } from "../tenant";
 import { LEGACY_ORG_ID } from "../tenant-context";
+import { encryptSecret, decryptSecret } from "../integration-settings";
+
+/**
+ * Gmail OAuth grants are the platform's single most sensitive stored secret:
+ * a refresh token is a standing, long-lived key to read and send from a
+ * customer's entire mailbox. Storing it as plaintext JSON meant anyone with a
+ * read of the integration_tokens table held live inbox access for every
+ * tenant. These two helpers wrap the token object so the refresh_token is
+ * AES-256-GCM encrypted at rest (same scheme as UI-managed API keys), while
+ * staying compatible with rows written before this change.
+ */
+function encryptTokenData(tokens: Record<string, unknown>): Record<string, unknown> {
+  const rt = tokens.refresh_token;
+  if (typeof rt === "string" && rt && !rt.startsWith("v1:")) {
+    return { ...tokens, refresh_token: encryptSecret(rt) };
+  }
+  return tokens;
+}
+
+/** Read a stored refresh_token, decrypting v1 rows and passing legacy plaintext through. */
+function readRefreshToken(data: { refresh_token?: string } | null | undefined): string | null {
+  const rt = data?.refresh_token;
+  if (!rt) return null;
+  // A row written before encryption shipped is plaintext; a decrypt attempt on
+  // it returns null, so fall back to the raw value. New rows start "v1:".
+  if (rt.startsWith("v1:")) return decryptSecret(rt);
+  return rt;
+}
 
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
@@ -79,7 +107,7 @@ export async function exchangeCode(
        status     = 'connected',
        last_error = null,
        updated_at = now()`,
-    [orgId, JSON.stringify(tokens), email ?? null]
+    [orgId, JSON.stringify(encryptTokenData(tokens as Record<string, unknown>)), email ?? null]
   );
 
   return { email };
@@ -100,7 +128,8 @@ async function getRefreshToken(orgId: string): Promise<string | null> {
     console.error(`[gmail] token read failed for org ${orgId}: ${(err as Error).message}`);
     return null;
   });
-  if (row?.data?.refresh_token) return row.data.refresh_token;
+  const stored = readRefreshToken(row?.data);
+  if (stored) return stored;
   // Headless escape hatch, founding tenant only. Handing this env token to any
   // other org would let them send from the platform's own mailbox.
   if (orgId === LEGACY_ORG_ID && config.gmail.refreshToken) {
@@ -408,7 +437,7 @@ export const gmail = {
         where provider = 'gmail' and org_id = $1`,
       [org]
     ).catch(() => null);
-    if (!row?.data?.refresh_token) {
+    if (!row || !readRefreshToken(row.data)) {
       return { connected: false, email: null, status: "none", lastError: null };
     }
     return {
@@ -433,7 +462,14 @@ export const gmail = {
 
   async send(
     params: SendEmailParams
-  ): Promise<{ disabled?: boolean; messageId?: string; threadId?: string; error?: string }> {
+  ): Promise<{
+    disabled?: boolean;
+    messageId?: string;
+    threadId?: string;
+    /** The real RFC822 Message-ID header, for In-Reply-To on later sends. */
+    rfc822MessageId?: string;
+    error?: string;
+  }> {
     // Nothing reaches a real inbox from a development process.
     //
     // This is the lowest point every sender passes through: tenant outreach,
@@ -471,7 +507,41 @@ export const gmail = {
         // own mailbox, which is what the in-app thread view reads back.
         requestBody: { raw, ...(params.threadId ? { threadId: params.threadId } : {}) },
       });
-      return { messageId: res.data.id ?? undefined, threadId: res.data.threadId ?? undefined };
+
+      /**
+       * Read back the RFC822 Message-ID, which is NOT the Gmail API id.
+       *
+       * `res.data.id` is Gmail's internal handle ("18f2a3b..."). The
+       * In-Reply-To / References headers that make a RECIPIENT's mail client
+       * thread a follow-up must carry the real Message-ID
+       * ("<CAF...@mail.gmail.com>"), and Gmail assigns that itself at send
+       * time. Without it we can only thread inside our own mailbox: a
+       * subcontractor on Outlook would see every follow-up as a brand new,
+       * context-free email. One metadata read is cheap next to that.
+       */
+      let rfc822MessageId: string | undefined;
+      if (res.data.id) {
+        try {
+          const meta = await client.users.messages.get({
+            userId: "me",
+            id: res.data.id,
+            format: "metadata",
+            metadataHeaders: ["Message-ID"],
+          });
+          rfc822MessageId =
+            meta.data.payload?.headers?.find(
+              (h) => (h.name ?? "").toLowerCase() === "message-id"
+            )?.value ?? undefined;
+        } catch {
+          // The message is already sent; not knowing its Message-ID costs
+          // recipient-side threading on the NEXT follow-up, not this send.
+        }
+      }
+      return {
+        messageId: res.data.id ?? undefined,
+        threadId: res.data.threadId ?? undefined,
+        rfc822MessageId,
+      };
     } catch (err) {
       const message = (err as Error).message;
       if (org) await markConnectionError(org, message);
