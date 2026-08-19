@@ -316,6 +316,10 @@ export interface EmailLogRow {
   replied_at: string | null;
   direction: string;
   responded: boolean;
+  /** What we actually know about delivery: sent | delivered | bounced | deferred | failed. */
+  delivery_state: string | null;
+  /** The provider's own words for a failure, e.g. a diagnostic code. */
+  delivery_detail: string | null;
   // sub
   subcontractor_id: string;
   company_name: string | null;
@@ -385,6 +389,7 @@ export async function emailLogPaged(opts: {
     query<EmailLogRow>(
       `select c.id, c.created_at, c.subject, c.body, c.provider,
               c.recipient_email, c.opened_at, c.clicked_at, c.replied_at, c.direction,
+              c.delivery_state, c.delivery_detail,
               ${EMAIL_LOG_RESPONDED} as responded,
               c.subcontractor_id, s.company_name,
               c.opportunity_id, o.title as opportunity_title

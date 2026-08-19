@@ -602,6 +602,9 @@ export const gmail = {
       messageId: string;
       body: string;
       attachments: GmailAttachmentRef[];
+      /** Subject + Content-Type, so a bounce can be told from a reply. */
+      subject: string;
+      contentType: string;
     }[];
   }> {
     const client = await gmailClient(orgId);
@@ -616,6 +619,8 @@ export const gmail = {
         messageId: string;
         body: string;
         attachments: GmailAttachmentRef[];
+        subject: string;
+        contentType: string;
       }[] = [];
       for (const m of list.data.messages ?? []) {
         // format:"full" so we get the real body (price extraction needs more
@@ -625,11 +630,18 @@ export const gmail = {
           id: m.id!,
           format: "full",
         });
-        const from =
-          msg.data.payload?.headers?.find((h) => h.name === "From")?.value ?? "";
+        const header = (name: string) =>
+          msg.data.payload?.headers?.find(
+            (h) => (h.name ?? "").toLowerCase() === name
+          )?.value ?? "";
+        const from = header("from");
         replies.push({
           threadId: msg.data.threadId ?? "",
           from,
+          // A delivery-status report is not a reply, and telling them apart
+          // needs the Content-Type report-type and the subject line.
+          subject: header("subject"),
+          contentType: header("content-type"),
           snippet: msg.data.snippet ?? "",
           messageId: msg.data.id ?? "",
           body: extractBodyText(msg.data.payload) || (msg.data.snippet ?? ""),

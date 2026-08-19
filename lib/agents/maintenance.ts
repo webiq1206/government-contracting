@@ -33,6 +33,7 @@ import {
 } from "../domain/reply-outcome";
 import { requestClarification, describeGap } from "../domain/reply-clarify";
 import { readsAsOptOut, suppressEmail } from "../domain/email-suppression";
+import { looksLikeBounce, parseBounce, type BounceReport } from "../domain/email-delivery";
 import { readReplyAttachments, combineReplyText } from "../domain/reply-attachments";
 import { advanceIfQuotesComplete, closeIfSubsExhausted } from "../domain/advance-stage";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
@@ -217,6 +218,94 @@ async function lastCallForOrg(orgId: string): Promise<number> {
     });
   }
   return sent;
+}
+
+/**
+ * Record a delivery failure against the message it belongs to.
+ *
+ * Correlation is tried strongest-first: the RFC822 Message-ID the DSN quotes
+ * is exact, the Gmail thread is next, and the failed recipient address is the
+ * fallback for reports that quote neither. Nothing is written when none of
+ * them match, because marking the wrong outreach bounced would send an
+ * operator chasing a contact who is perfectly reachable.
+ *
+ * A PERMANENT failure also suppresses the address. That is the point of
+ * bounce handling: continuing to mail a dead address is what builds the
+ * complaint rate that moves a whole sending domain into spam. A transient
+ * failure (full mailbox, greylisting) never suppresses -- it would lose a
+ * live subcontractor over one bad afternoon.
+ */
+async function recordBounce(input: {
+  orgId: string;
+  threadId: string;
+  report: BounceReport;
+}): Promise<void> {
+  const { orgId, threadId, report } = input;
+  const state = report.permanent ? "bounced" : "deferred";
+
+  const updated = await query<{ id: string; recipient_email: string | null }>(
+    `update communications
+        set delivery_state = $2, delivery_detail = $3, delivery_updated_at = now()
+      where id = (
+        select c.id from communications c
+         where c.org_id = $1
+           and c.direction = 'outbound'
+           and (
+             ($4::text is not null and c.rfc822_message_id = $4)
+             or ($5::text <> '' and c.gmail_thread_id = $5)
+             or ($6::text is not null and lower(c.recipient_email) = $6)
+           )
+         order by
+           -- exact Message-ID first, then thread, then address
+           (case when $4::text is not null and c.rfc822_message_id = $4 then 0
+                 when $5::text <> '' and c.gmail_thread_id = $5 then 1
+                 else 2 end),
+           c.created_at desc
+         limit 1
+      )
+      returning id, recipient_email`,
+    [
+      orgId,
+      state,
+      report.reason,
+      report.originalMessageId,
+      threadId ?? "",
+      report.recipient,
+    ]
+  ).catch((err) => {
+    console.error(`[maintenance] bounce write failed: ${(err as Error).message}`);
+    return [] as { id: string; recipient_email: string | null }[];
+  });
+
+  if (updated.length === 0) {
+    // Say so rather than dropping it: an unmatched bounce still means mail is
+    // failing somewhere, and silence here is how that stays invisible.
+    console.warn(
+      `[maintenance] unmatched bounce for org ${orgId} (${report.recipient ?? "unknown recipient"}): ${report.reason}`
+    );
+    return;
+  }
+
+  const address = report.recipient ?? updated[0].recipient_email;
+  if (report.permanent && address) {
+    await suppressEmail({
+      orgId,
+      email: address,
+      reason: `Hard bounce: ${report.reason}`,
+      source: "bounce",
+    }).catch((err) =>
+      console.error(`[maintenance] bounce suppression failed: ${(err as Error).message}`)
+    );
+  }
+
+  await logAgent({
+    agent: "maintenance",
+    action: "email-bounce",
+    level: report.permanent ? "warn" : "info",
+    message: report.permanent
+      ? `Email to ${address ?? "a subcontractor"} bounced permanently and the address was suppressed. ${report.reason}`
+      : `Email to ${address ?? "a subcontractor"} was delayed. ${report.reason}`,
+  }).catch(() => {});
 }
 
 async function followUpForOrg(orgId: string): Promise<{ sent: number; due: number }> {
@@ -1300,6 +1389,30 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // by sender email (weaker: an unrelated email from a known sub would also
       // match, so email-matched replies never auto-save quotes).
       const fromEmail = (r.from.match(/<([^>]+)>/)?.[1] ?? r.from).toLowerCase().trim();
+
+      /**
+       * A bounce is not a reply, and must be caught before reply handling.
+       *
+       * Left to fall through, a delivery-status report gets matched to a
+       * subcontractor by thread and read as though they had written back: a
+       * dead address then marks the outreach responsive and quietly satisfies
+       * trade coverage nobody actually has. Worse, the operator sees a
+       * "reply" and waits for a quote that can never come.
+       */
+      if (looksLikeBounce({
+        from: r.from,
+        subject: r.subject,
+        contentType: r.contentType,
+        body: r.body || r.snippet,
+      })) {
+        await recordBounce({
+          orgId,
+          threadId: r.threadId,
+          report: parseBounce(r.body || r.snippet),
+        });
+        continue;
+      }
+
       const { comm, strongMatch } = await matchInboundReply({
         orgId,
         threadId: r.threadId,

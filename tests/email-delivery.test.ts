@@ -1,0 +1,143 @@
+/**
+ * Delivery state: what we actually know about an email, and nothing more.
+ *
+ * The rule these tests hold: never claim a message reached somebody without
+ * evidence, and never let a bounce pass as a reply. Bounce bodies below are
+ * real-shaped DSNs from Gmail, Outlook and a bare SMTP relay, because the
+ * formatting varies and a parser that only handles Gmail's is a parser that
+ * silently misses two thirds of bounces.
+ */
+import { describe, it, expect } from "vitest";
+import {
+  looksLikeBounce,
+  parseBounce,
+  deliveryStateFor,
+  describeDeliveryState,
+} from "../lib/domain/email-delivery";
+
+const GMAIL_HARD = `Delivery to the following recipient failed permanently:
+
+     joe@deadcompany.com
+
+Technical details of permanent failure:
+Google tried to deliver your message, but it was rejected by the server for the recipient domain deadcompany.com.
+
+----- Original message -----
+Message-ID: <CAF7x9abc123@mail.gmail.com>
+
+Reporting-MTA: dns; googlemail.com
+Final-Recipient: rfc822; joe@deadcompany.com
+Action: failed
+Status: 5.1.1
+Diagnostic-Code: smtp; 550-5.1.1 The email account that you tried to reach does not exist.`;
+
+const OUTLOOK_SOFT = `Your message couldn't be delivered.
+
+Final-Recipient: rfc822; sarah@builderco.com
+Action: delayed
+Status: 4.2.2
+Diagnostic-Code: smtp; 452 4.2.2 The recipient's mailbox is full.`;
+
+const BARE_RELAY = `The following message could not be delivered:
+
+550 5.1.1 <mike@gone.example>: Recipient address rejected: User unknown in local recipient table`;
+
+describe("looksLikeBounce", () => {
+  it("recognises a bounce by report type, sender, subject, or DSN body", () => {
+    expect(looksLikeBounce({ contentType: 'multipart/report; report-type="delivery-status"' })).toBe(true);
+    expect(looksLikeBounce({ from: "Mail Delivery Subsystem <mailer-daemon@googlemail.com>" })).toBe(true);
+    expect(looksLikeBounce({ from: "postmaster@corp.example" })).toBe(true);
+    expect(looksLikeBounce({ subject: "Delivery Status Notification (Failure)" })).toBe(true);
+    expect(looksLikeBounce({ subject: "Undeliverable: Quote request" })).toBe(true);
+    expect(looksLikeBounce({ body: GMAIL_HARD })).toBe(true);
+  });
+
+  it("does not mistake a real subcontractor reply for a bounce", () => {
+    // The consequence of a false positive is a genuine quote being discarded.
+    expect(
+      looksLikeBounce({
+        from: "Sarah <sarah@builderco.com>",
+        subject: "Re: Quote request: electrical",
+        body: "We can do it for $42,000. Can start in March. Our mailbox for docs is docs@builderco.com.",
+      })
+    ).toBe(false);
+    // Mentions of failure in ordinary prose must not trip it either.
+    expect(
+      looksLikeBounce({
+        from: "mike@roofco.com",
+        subject: "Re: Roof replacement",
+        body: "Sorry for the delay, our last delivery failed to show up on site.",
+      })
+    ).toBe(false);
+  });
+});
+
+describe("parseBounce", () => {
+  it("reads a Gmail hard bounce in full", () => {
+    const r = parseBounce(GMAIL_HARD);
+    expect(r.recipient).toBe("joe@deadcompany.com");
+    expect(r.status).toBe("5.1.1");
+    expect(r.permanent).toBe(true);
+    expect(r.originalMessageId).toBe("<CAF7x9abc123@mail.gmail.com>");
+    expect(r.reason).toMatch(/does not exist/i);
+  });
+
+  it("treats a full mailbox as transient, not a dead address", () => {
+    // Suppressing on this would permanently lose a live subcontractor over a
+    // mailbox that was full for an afternoon.
+    const r = parseBounce(OUTLOOK_SOFT);
+    expect(r.recipient).toBe("sarah@builderco.com");
+    expect(r.status).toBe("4.2.2");
+    expect(r.permanent).toBe(false);
+    expect(r.reason).toMatch(/mailbox is full/i);
+  });
+
+  it("still extracts what it can from a bare SMTP relay bounce", () => {
+    const r = parseBounce(BARE_RELAY);
+    expect(r.permanent).toBe(true);
+    expect(r.status).toBe("5.1.1");
+    expect(r.reason).toMatch(/user unknown|rejected/i);
+  });
+
+  it("defaults to transient when the code cannot be read", () => {
+    // A parsing miss must never suppress a real address on a guess.
+    const r = parseBounce("Something went wrong delivering your message.");
+    expect(r.permanent).toBe(false);
+    expect(r.status).toBeNull();
+  });
+
+  it("honours an explicit delayed action over a permanent-looking code", () => {
+    const r = parseBounce(`Final-Recipient: rfc822; a@b.com\nAction: delayed\nStatus: 5.4.7`);
+    expect(r.permanent).toBe(false);
+  });
+});
+
+describe("deliveryStateFor", () => {
+  it("never promotes a plain send to delivered", () => {
+    // "The API did not throw" is not evidence anyone received it.
+    expect(deliveryStateFor({ delivery_state: "sent" })).toBe("sent");
+    expect(describeDeliveryState("sent").detail).toMatch(/not confirmation/i);
+  });
+
+  it("promotes to delivered only on evidence a human saw it", () => {
+    expect(deliveryStateFor({ delivery_state: "sent", opened_at: "2026-01-01" })).toBe("delivered");
+    expect(deliveryStateFor({ delivery_state: "sent", clicked_at: "2026-01-01" })).toBe("delivered");
+    expect(deliveryStateFor({ delivery_state: "sent", replied_at: "2026-01-01" })).toBe("delivered");
+  });
+
+  it("keeps a bounce bounced even if something registered an open", () => {
+    // An open can be a scanner or a proxy prefetch; the bounce is the fact the
+    // operator has to act on.
+    expect(
+      deliveryStateFor({ delivery_state: "bounced", opened_at: "2026-01-01" })
+    ).toBe("bounced");
+  });
+
+  it("flags exactly the states needing attention", () => {
+    expect(describeDeliveryState("bounced").attention).toBe(true);
+    expect(describeDeliveryState("deferred").attention).toBe(true);
+    expect(describeDeliveryState("failed").attention).toBe(true);
+    expect(describeDeliveryState("sent").attention).toBe(false);
+    expect(describeDeliveryState("delivered").attention).toBe(false);
+  });
+});

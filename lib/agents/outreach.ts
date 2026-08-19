@@ -447,8 +447,8 @@ export const outreach: AgentDefinition = {
       `insert into communications
          (subcontractor_id, opportunity_id, channel, direction, subject, body,
           gmail_message_id, gmail_thread_id, tracking_id, follow_up_at, provider,
-          recipient_email, meta, rfc822_message_id)
-       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12)`,
+          recipient_email, meta, rfc822_message_id, delivery_state)
+       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13)`,
       [
         subcontractorId,
         opportunityId,
@@ -471,6 +471,10 @@ export const outreach: AgentDefinition = {
         // The real Message-ID header, so the 48h follow-up can thread under
         // this exact email in the subcontractor's own mail client.
         rfc822MessageId,
+        // A draft or a failed send is NOT "sent". Recording it as sent is what
+        // let an outreach that never left the building look identical on
+        // screen to one that did.
+        sent ? "sent" : "failed",
       ]
     );
 

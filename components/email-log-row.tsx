@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { EmailLogRow } from "@/lib/data";
+import { deliveryStateFor, describeDeliveryState } from "@/lib/domain/email-delivery";
 
 /**
  * A single row in the Email Log. Clicking anywhere on the row expands the full
@@ -15,6 +16,20 @@ export function EmailLogRow({ row }: { row: EmailLogRow }) {
   const opened = !inbound && !!row.opened_at;
   const clicked = !inbound && !!row.clicked_at;
   const responded = inbound || row.responded || !!row.replied_at;
+
+  /**
+   * What we actually know about delivery.
+   *
+   * The row used to show a flat "sent" chip on every outbound email, which
+   * only ever meant "the API did not throw". An address that had been dead
+   * for a year looked exactly like one that was read, so an operator could
+   * wait on a quote that was never going to arrive. A failure now replaces
+   * that chip rather than sitting beside it, because "sent · bounced" reads
+   * as though something partly worked.
+   */
+  const delivery = deliveryStateFor(row);
+  const deliveryMeta = describeDeliveryState(delivery);
+  const failed = !inbound && deliveryMeta.attention;
 
   const ts = row.created_at
     ? new Date(row.created_at).toLocaleString("en-US", {
@@ -52,9 +67,21 @@ export function EmailLogRow({ row }: { row: EmailLogRow }) {
               </span>
             ) : (
               <>
-                <span className="badge bg-slate-200 text-slate-600 text-[10px] dark:bg-white/10 dark:text-foreground/70" title="Email sent">
-                  sent
-                </span>
+                {failed ? (
+                  <span
+                    className="badge bg-risk/15 text-risk text-[10px] font-semibold"
+                    title={row.delivery_detail ?? deliveryMeta.detail}
+                  >
+                    {deliveryMeta.label.toLowerCase()}
+                  </span>
+                ) : (
+                  <span
+                    className="badge bg-slate-200 text-slate-600 text-[10px] dark:bg-white/10 dark:text-foreground/70"
+                    title={deliveryMeta.detail}
+                  >
+                    sent
+                  </span>
+                )}
                 {opened && (
                   <span className="badge bg-review/15 text-review text-[10px]" title="Email opened">
                     opened
@@ -93,6 +120,16 @@ export function EmailLogRow({ row }: { row: EmailLogRow }) {
 
       {expanded && (
         <div className="border-t border-border bg-surface px-4 py-3">
+          {failed && (
+            // The provider's own words. "Bounced" tells the operator to act;
+            // "550 the account does not exist" tells them a typo'd address
+            // apart from a full mailbox apart from a block, which is the
+            // difference between fixing it and writing the sub off.
+            <p className="mb-2 rounded border border-risk/30 bg-risk/10 px-3 py-2 text-xs text-risk">
+              <span className="font-semibold">{deliveryMeta.label}.</span>{" "}
+              {row.delivery_detail ?? deliveryMeta.detail}
+            </p>
+          )}
           <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span>
               <span className="font-medium text-foreground">{inbound ? "From:" : "To:"}</span>{" "}
