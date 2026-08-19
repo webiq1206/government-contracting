@@ -32,6 +32,7 @@ import {
   OUTCOME_LABEL,
 } from "../domain/reply-outcome";
 import { requestClarification, describeGap } from "../domain/reply-clarify";
+import { readsAsOptOut, suppressEmail } from "../domain/email-suppression";
 import { readReplyAttachments, combineReplyText } from "../domain/reply-attachments";
 import { advanceIfQuotesComplete, closeIfSubsExhausted } from "../domain/advance-stage";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
@@ -1321,6 +1322,27 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         orgId,
       });
       const replyText = combineReplyText(r.body || r.snippet, docs.text);
+
+      /**
+       * "Take me off your list" has to actually take them off the list.
+       *
+       * Without this a request to stop was, at best, a decline on one
+       * solicitation: the next opportunity matching their trade emailed them
+       * again. Suppression is recorded before the rest of the capture so it
+       * holds even if anything downstream fails, and matching is deliberately
+       * narrow -- an ordinary "not interested in this one" is a decline, not
+       * an opt-out, and they should still hear about the next job.
+       */
+      if (fromEmail && readsAsOptOut(replyText)) {
+        await suppressEmail({
+          orgId,
+          email: fromEmail,
+          reason: "Asked to be removed in an email reply.",
+          source: "reply",
+        }).catch((err) =>
+          console.error(`[maintenance] suppression write failed: ${(err as Error).message}`)
+        );
+      }
       // Shared capture pipeline: resolves/creates the sub, records the reply,
       // marks responsive, and auto-saves the quote only under the safety rules
       // (strong correlation + sender ownership + AI-confirmed price + no

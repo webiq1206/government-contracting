@@ -115,6 +115,29 @@ export async function sendOutreachEmail(
     };
   }
 
+  /**
+   * Do-not-contact, at the one place every send passes through.
+   *
+   * Someone who asked to be taken off the list was closed out on that
+   * solicitation and then emailed again as soon as the next one matched their
+   * trade. Mail after an opt-out is what generates spam complaints, and
+   * complaints are what move the whole sending domain into the spam folder
+   * for every tenant at once -- so this is a deliverability control as much
+   * as a courtesy. Checked here rather than at the seven call sites, because
+   * the one that gets forgotten is the one that does the damage.
+   */
+  const suppressionOrg = params.orgId ?? (await tryResolveTenantOrgId().catch(() => null));
+  if (suppressionOrg && params.to) {
+    const { isSuppressed } = await import("../domain/email-suppression");
+    if (await isSuppressed(suppressionOrg, params.to)) {
+      return {
+        provider: null,
+        blocked: true,
+        error: `${params.to} asked not to be contacted, so nothing was sent.`,
+      };
+    }
+  }
+
   // Note: the block on sending real email from a development process lives in
   // the Gmail transport itself, not here, so that system mail and backlink
   // outreach inherit it too.
