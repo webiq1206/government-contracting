@@ -40,16 +40,26 @@ describe("connecting to a database from a test run", () => {
   });
 
   it("allows the repl's own built-in Postgres, which is disposable", async () => {
-    // This is how the suite normally runs; it must not be blocked. Asserted on
-    // the refusal specifically rather than on not throwing at all, so the case
-    // still means something in an environment that has no built-in Postgres
-    // provisioned (there, pool() fails for an unrelated, honest reason).
+    // This is how the suite normally runs; it must not be blocked. Set the
+    // isolated-dev environment explicitly rather than leaning on the ambient
+    // one: under GitHub Actions DATABASE_URL is present but USE_REPLIT_DEV_DB
+    // and the PG* dev vars are not, so relying on the ambient env made the
+    // guard (correctly) refuse and this assertion fail for the wrong reason.
+    // Here the built-in database is a genuinely different server from
+    // DATABASE_URL, which is exactly the case the guard is meant to allow.
+    delete process.env.REPLIT_DEPLOYMENT;
+    delete process.env.REPLIT_DEPLOYMENT_ID;
+    delete process.env.ALLOW_TESTS_AGAINST_DATABASE_URL;
+    process.env.USE_REPLIT_DEV_DB = "true";
+    process.env.DATABASE_URL = "postgres://user:pw@live.example.com:5432/app";
+    process.env.PGHOST = "127.0.0.1";
+    process.env.PGPORT = "5432";
+    process.env.PGDATABASE = "replit_dev";
+    process.env.PGUSER = "replit";
+    process.env.PGPASSWORD = "replit";
+
     const { pool } = await import("../lib/db");
-    try {
-      pool();
-    } catch (err) {
-      expect(String(err)).not.toMatch(/Refusing to run tests against this database/);
-    }
+    expect(() => pool()).not.toThrow();
   });
 
   it("allows an explicit override for a database the caller says is disposable", async () => {
