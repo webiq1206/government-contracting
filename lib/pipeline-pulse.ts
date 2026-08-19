@@ -9,13 +9,14 @@ import { orgHasKey } from "./integration-keys";
 import { samDailyUsage } from "./integrations/sam";
 import { gmail } from "./integrations/gmail";
 import { evaluatePulse, type PulseFinding } from "./domain/pipeline-pulse";
+import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { tryResolveTenantOrgId } from "./tenant";
 import { LEGACY_ORG_ID } from "./tenant-context";
 
 export async function readPipelinePulse(): Promise<PulseFinding[]> {
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
 
-  const [runs, open, samKeyPresent, samError, quota, connection, stuck] = await Promise.all([
+  const [runs, open, samKeyPresent, samError, quota, connection, heartbeat, stuck] = await Promise.all([
     queryOne<{ worker_last: string | null; monitor_last_ok: string | null }>(
       `select (select max(started_at) from job_runs) as worker_last,
               (select max(started_at) from job_runs
@@ -41,6 +42,10 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
     gmail
       .connection(orgId)
       .catch(() => ({ connected: false, email: null, status: "none", lastError: null })),
+    // Liveness straight from the worker process. Guarded like every other
+    // read here: a deployment whose schema predates the heartbeat table simply
+    // reports nothing and the reading falls back to job history.
+    readWorkerHeartbeat().catch(() => null),
     queryOne<{ send_failed: number; drafts: number }>(
       `select count(*) filter (where os.outreach_state = 'send_failed')::int as send_failed,
               count(*) filter (where os.outreach_state = 'draft')::int as drafts
@@ -54,6 +59,9 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
   return evaluatePulse({
     now: new Date(),
     workerLastRunAt: runs?.worker_last ?? null,
+    workerHeartbeatAt: heartbeat?.updatedAt ?? null,
+    workerPhase: heartbeat?.phase ?? null,
+    workerBootedAt: heartbeat?.bootedAt ?? null,
     openCount: open?.n ?? 0,
     samKeyPresent,
     monitorLastOkAt: runs?.monitor_last_ok ?? null,

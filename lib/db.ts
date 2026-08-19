@@ -2,8 +2,25 @@
  * Postgres access. A single shared pool (Supabase-compatible). All query helpers
  * are thin wrappers so agents and API routes share one connection strategy.
  */
-import { Pool, types, type PoolClient, type QueryResultRow } from "pg";
+import { Client, Pool, types, type PoolClient, type QueryResultRow } from "pg";
 import { config, pgSslFor } from "./config";
+
+/**
+ * No query may hang forever.
+ *
+ * A pooled connection whose socket dies mid-query does not fail: the promise
+ * simply never settles. The worker spent a night parked on exactly that, alive
+ * and doing nothing, with no error to log because no error was ever raised.
+ * `query_timeout` is the client-side stopwatch that turns that silence into a
+ * rejection; `statement_timeout` is the server side of the same deadline, so a
+ * genuinely long query is cancelled in Postgres instead of being abandoned
+ * while it keeps running.
+ *
+ * Two minutes is far above anything this application asks of a single query
+ * (the heaviest sweeps are well under a second) and far below "nobody notices
+ * until morning". Migrations get their own, longer budget: see lib/migrate.ts.
+ */
+const QUERY_TIMEOUT_MS = Number(process.env.PG_QUERY_TIMEOUT_MS ?? 120_000);
 
 // Postgres NUMERIC/DECIMAL comes through pg as a STRING by default (to preserve
 // arbitrary precision). Every call site that does `.toFixed()` / arithmetic on a
@@ -66,12 +83,44 @@ export function pool(): Pool {
     connectionTimeoutMillis: 10_000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10_000,
+    query_timeout: QUERY_TIMEOUT_MS,
+    statement_timeout: QUERY_TIMEOUT_MS,
   });
   _pool.on("error", (err) => {
     // Never crash the process on an idle client error.
     console.error("[db] idle client error:", err.message);
   });
   return _pool;
+}
+
+/**
+ * A connection of its own, outside the shared pool.
+ *
+ * For work that must not inherit the pool's deadlines, currently only the
+ * migration runner, which holds an advisory lock for the length of a deploy's
+ * schema changes and may legitimately run a single statement for minutes. It
+ * still goes through the same disposable-database guard, because a migration
+ * run is exactly as capable of writing to the live database as a test is.
+ *
+ * The caller owns the connection: connect it, end it.
+ */
+export function standaloneClient(opts: {
+  queryTimeoutMs: number;
+  applicationName: string;
+}): Client {
+  assertDisposableDatabaseUnderTest();
+  const url = config.database.url;
+  if (!url) throw new Error("DATABASE_URL is not set.");
+  return new Client({
+    connectionString: url,
+    ssl: pgSslFor(url),
+    connectionTimeoutMillis: 10_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
+    query_timeout: opts.queryTimeoutMs,
+    statement_timeout: opts.queryTimeoutMs,
+    application_name: opts.applicationName,
+  });
 }
 
 export async function query<T extends QueryResultRow = QueryResultRow>(

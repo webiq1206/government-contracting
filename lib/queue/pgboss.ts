@@ -63,6 +63,23 @@ export async function createPgBossQueue(): Promise<Queue> {
       });
     },
 
+    /**
+     * Ask the running boss instance itself, not the database in general. A
+     * plain "select 1" would answer yes while pg-boss sat stopped and no job
+     * was being picked up, which is exactly the state that looked healthy for
+     * an entire night.
+     */
+    async healthy() {
+      if (!started) return false;
+      try {
+        await boss.getQueueSize(QUEUE_NAMES[0]);
+        return true;
+      } catch (err) {
+        console.error("[pg-boss] health probe failed:", (err as Error).message);
+        return false;
+      }
+    },
+
     async stop() {
       started = false;
       await boss.stop({ graceful: true }).catch(() => {});

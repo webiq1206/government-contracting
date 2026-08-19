@@ -78,6 +78,29 @@ The `.replit` `[deployment]` block sets `deploymentTarget = "vm"`. If it ever
 reverts to `"cloudrun"` (which is Autoscale), treat that as a regression and
 change it back before the next publish.
 
+## Reading the worker's boot log
+
+The worker narrates every step it takes at startup: `database`, `migrations`,
+`operator-account`, `recover-interrupted-runs`, `queue`, `handlers`, then
+`ready`. Each line reports how long the step took, and each step has a timeout,
+so a step that never returns is logged as STALLED instead of leaving the process
+silent. If a deploy's log stops after one of those names, that step is the fault.
+
+The worker also writes a check-in row (`worker_heartbeat`) every 30 seconds with
+the step it is on. That is what the dashboard reads, so it can tell three states
+apart that used to look identical:
+
+- no check-in, or one that stopped: the engine is gone (usually the Autoscale
+  problem above)
+- checking in, phase is not `ready`: the engine is alive but stuck starting up
+- checking in as `ready` with an old job log: the engine is fine and nothing was
+  due, or automation is paused
+
+A queue connection that fails at boot is retried with backoff forever rather
+than left half-started, and runs that were in flight when the previous instance
+stopped are closed out on the next boot so the Automation Log stops showing work
+that is not happening.
+
 ## User preferences
 
 - No em dashes in user-visible strings.

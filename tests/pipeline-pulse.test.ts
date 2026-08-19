@@ -143,3 +143,55 @@ describe("the outreach leg", () => {
     expect(f.map((x) => x.key)).toEqual(["gmail_broken", "outreach_failing"]);
   });
 });
+
+describe("the worker's own check-in", () => {
+  const beat = (over: Partial<PulseInput> = {}) =>
+    input({ workerHeartbeatAt: hoursAgo(0.01), workerPhase: "ready", ...over });
+
+  it("stays quiet when the engine is beating and work is flowing", () => {
+    expect(evaluatePulse(beat())).toEqual([]);
+  });
+
+  it("calls a stuck boot what it is, not a dead engine", () => {
+    const f = evaluatePulse(
+      beat({
+        workerPhase: "queue",
+        workerBootedAt: hoursAgo(1),
+        workerLastRunAt: hoursAgo(9),
+      })
+    );
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ key: "worker_starting", severity: "down" });
+    expect(f[0].detail).toContain("queue");
+    // The deployment advice belongs to a dead worker; this one is alive.
+    expect(f[0].detail).not.toContain("Reserved VM");
+  });
+
+  it("does not blame the engine for a quiet log when it is provably up", () => {
+    const f = evaluatePulse(beat({ workerLastRunAt: hoursAgo(9) }));
+    expect(f[0]).toMatchObject({ key: "worker_idle", severity: "warn" });
+    expect(f[0].detail).toContain("automation is paused or nothing was due");
+  });
+
+  it("lets the other legs report while the engine is alive but idle", () => {
+    const f = evaluatePulse(
+      beat({ workerLastRunAt: hoursAgo(9), samErrorMessage: "SAM.gov returned 403" })
+    );
+    expect(f.map((x) => x.key)).toEqual(["worker_idle", "sam_failing"]);
+  });
+
+  it("treats a check-in that stopped as the engine being gone", () => {
+    const f = evaluatePulse(
+      beat({ workerHeartbeatAt: hoursAgo(3), workerLastRunAt: hoursAgo(5) })
+    );
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ key: "worker_down" });
+    expect(f[0].detail).toContain("last checked in");
+  });
+
+  it("reads exactly as before when there is no check-in to read", () => {
+    const f = evaluatePulse(input({ workerLastRunAt: hoursAgo(5) }));
+    expect(f[0]).toMatchObject({ key: "worker_down" });
+    expect(f[0].detail).not.toContain("last checked in");
+  });
+});

@@ -14,3 +14,5 @@
 - [Production topology](production-topology.md) — worker "connection timeout" = sleeping scale-to-zero instance, not a busy DB; dev/prod must not share a database.
 - [Diagnosing a lockout](lockout-diagnosis.md) — check whether the site can reach its database before believing a password is wrong; a guard that fails closed in production can outweigh the risk it prevents.
 - [Landing product film](product-film.md) — rendered frame-by-frame, not live; phone downscale sets a hard type floor; public assets need a middleware prefix or logged-out visitors get redirected.
+- [Worker boot that hangs](silent-boot-hang.md) — a dead socket never rejects; bound every query, narrate every boot step, never cache a failed start.
+- [Worker liveness](worker-liveness.md) — a job log cannot tell "gone" from "idle" from "stuck starting"; a phase-carrying heartbeat can.

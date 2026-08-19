@@ -57,6 +57,22 @@ export async function createBullQueue(): Promise<Queue> {
       handlers.set(name, handler);
     },
 
+    /**
+     * Redis has to answer and the consumer has to exist. A process that is up
+     * with a dead Redis connection is not serving the queue, and reporting it
+     * as healthy is how a silent outage lasts all night.
+     */
+    async healthy() {
+      if (!worker) return false;
+      try {
+        await connection.ping();
+        return worker.isRunning();
+      } catch (err) {
+        console.error("[bullmq] health probe failed:", (err as Error).message);
+        return false;
+      }
+    },
+
     async stop() {
       await worker?.close();
       await queue.close();

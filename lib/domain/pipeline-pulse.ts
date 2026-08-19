@@ -23,6 +23,8 @@ export type PulseSeverity = "down" | "warn";
 export interface PulseFinding {
   key:
     | "worker_down"
+    | "worker_starting"
+    | "worker_idle"
     | "monitor_stalled"
     | "sam_failing"
     | "sam_quota"
@@ -41,6 +43,17 @@ export interface PulseInput {
   now: Date;
   /** Most recent job_runs.started_at across every agent (platform-wide). */
   workerLastRunAt: string | null;
+  /**
+   * Last time the worker process checked in, and what it was doing.
+   *
+   * A job log alone cannot tell a dead worker from a busy-doing-nothing one,
+   * and it told the owner "not running" for a night when the truth was "stuck
+   * half-way through starting". Undefined means the caller has no heartbeat to
+   * offer (an older deployment), and the reading falls back to job history.
+   */
+  workerHeartbeatAt?: string | null;
+  workerPhase?: string | null;
+  workerBootedAt?: string | null;
   /** Open opportunities for this organization. */
   openCount: number;
   /** True when this org has a SAM key connected. */
@@ -70,29 +83,99 @@ function hoursSince(iso: string | null, now: Date): number | null {
 const MONITOR_STALL_HOURS = 7;
 /** Sweeps run every 10-20 min; hours of silence means the worker is down. */
 const WORKER_STALL_HOURS = 2;
+/**
+ * The worker beats every 30 seconds. Ten missed beats rides out a slow query
+ * or a restart without calling a healthy engine dead.
+ */
+const HEARTBEAT_STALE_MINUTES = 5;
+/** The phase name the worker reports once handlers are registered. */
+const READY_PHASE = "ready";
+/** Booted, but the queue backend stopped answering. */
+const DEGRADED_PHASE = "queue-unreachable";
+
+function minutesSince(iso: string | null | undefined, now: Date): number | null {
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  return (now.getTime() - t) / 60_000;
+}
+
+function ago(minutes: number): string {
+  if (minutes < 60) return `${Math.max(1, Math.floor(minutes))} minute(s)`;
+  return `${Math.floor(minutes / 60)} hour(s)`;
+}
 
 export function evaluatePulse(input: PulseInput): PulseFinding[] {
   const findings: PulseFinding[] = [];
   const workerAge = hoursSince(input.workerLastRunAt, input.now);
+  const beatAge = minutesSince(input.workerHeartbeatAt, input.now);
+  const beating = beatAge != null && beatAge <= HEARTBEAT_STALE_MINUTES;
+  const ready = (input.workerPhase ?? null) === READY_PHASE;
+
+  // Alive but never finished starting. This is its own fault with its own fix,
+  // and calling it "not running" sent the owner to the deployment settings for
+  // a problem that was not there.
+  if (beating && !ready) {
+    const bootAge = minutesSince(input.workerBootedAt, input.now);
+    const degraded = input.workerPhase === DEGRADED_PHASE;
+    findings.push({
+      key: "worker_starting",
+      severity: "down",
+      title: degraded
+        ? "The automation engine has lost its connection to the job queue."
+        : "The automation engine is stuck starting up.",
+      detail: degraded
+        ? "The engine is running and checking in, but the job queue is not answering it, so no work is being picked up. It keeps trying to reconnect. If this does not clear within a few minutes, restart the deployment."
+        : `The engine is alive and checking in, but it has not finished starting${
+            bootAge != null ? ` after ${ago(bootAge)}` : ""
+          }. It is waiting on the "${input.workerPhase}" step, so nothing is being found, emailed, or followed up yet. ` +
+          "It keeps retrying on its own. If this does not clear within a few minutes, restart the deployment.",
+      href: "/agents",
+      cta: "Open the Automation Log",
+    });
+    return findings;
+  }
+
   const workerDown =
-    (workerAge != null && workerAge > WORKER_STALL_HOURS) ||
-    (input.workerLastRunAt == null && input.openCount > 0);
+    !beating &&
+    ((workerAge != null && workerAge > WORKER_STALL_HOURS) ||
+      (input.workerLastRunAt == null && input.openCount > 0));
 
   if (workerDown) {
+    const lastSeen = beatAge != null ? ` The engine last checked in ${ago(beatAge)} ago.` : "";
     findings.push({
       key: "worker_down",
       severity: "down",
       title: "The automation engine is not running.",
       detail:
         input.workerLastRunAt == null
-          ? "No automated work has ever run, though opportunities are waiting. Nothing will be found, scored, emailed, or followed up until the background worker is running."
-          : `Nothing has run for ${Math.floor(workerAge!)} hour(s). New deals are not being found and no emails are going out. On Replit this means the app is not deployed as an always-on process: use a Reserved VM deployment (an Autoscale deployment sleeps between visits, which stops all background work).`,
+          ? "No automated work has ever run, though opportunities are waiting. Nothing will be found, scored, emailed, or followed up until the background worker is running." +
+            lastSeen
+          : `Nothing has run for ${Math.floor(workerAge!)} hour(s). New deals are not being found and no emails are going out. On Replit this means the app is not deployed as an always-on process: use a Reserved VM deployment (an Autoscale deployment sleeps between visits, which stops all background work).` +
+            lastSeen,
       href: "/agents",
       cta: "Open the Automation Log",
     });
     // Everything below depends on the worker; one alarm is a diagnosis,
     // four alarms with one cause is noise.
     return findings;
+  }
+
+  // Proven alive, but the job log is old. Not the same emergency: the engine
+  // is there to be asked, so this is "check what it is doing", not "it is
+  // gone". Other legs still get to report, because the worker is up to run
+  // them.
+  if (beating && ready && workerAge != null && workerAge > WORKER_STALL_HOURS) {
+    findings.push({
+      key: "worker_idle",
+      severity: "warn",
+      title: "The automation engine is running, but nothing has run recently.",
+      detail: `The engine checked in ${ago(beatAge!)} ago, so it is up. It has not run any work for ${Math.floor(
+        workerAge
+      )} hour(s), which usually means automation is paused or nothing was due.`,
+      href: "/agents",
+      cta: "Open the Automation Log",
+    });
   }
 
   // Discovery leg. Only meaningful once a key is connected; before that the

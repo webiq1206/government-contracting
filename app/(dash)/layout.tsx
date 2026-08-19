@@ -31,25 +31,38 @@ export default async function DashLayout({ children }: { children: React.ReactNo
 
   const [counts, engine, automation, quotas] = await Promise.all([
     queueCounts().catch(() => ({ review: 0, callQueue: 0 })),
-    engineStatus().catch(() => ({ lastRunAt: null, openCount: 0 })),
+    engineStatus().catch(() => ({ lastRunAt: null, openCount: 0, heartbeatAt: null, phase: null })),
     getAutomationState().catch(() => ({ paused: false, changed_at: null, changed_by: null })),
     // Only a trial has meters to show; a paid org pays for none of this work.
     access === "trial" ? allQuotaStates(user.organizationId).catch(() => []) : [],
   ]);
   // "Is the machine OK?" answered in the sidebar, so nobody has to remember to
-  // go check a log. Healthy = something ran within the last 2 hours (the
-  // sweeps run every 10-20 minutes). Master pause overrides the label.
-  const engineHealthy =
-    !automation.paused &&
+  // go check a log. The worker's own check-in answers it directly; the job log
+  // only says when work last ran, which reads as "down" on a quiet stretch.
+  // Falls back to the job log when there is no check-in to read (older
+  // deployment, or the worker never got far enough to write one). Master pause
+  // overrides the label.
+  const beating =
+    engine.heartbeatAt != null &&
+    Date.now() - new Date(engine.heartbeatAt).getTime() < 5 * 60_000;
+  const ranRecently =
     engine.lastRunAt != null &&
     Date.now() - new Date(engine.lastRunAt).getTime() < 2 * 3_600_000;
+  const engineHealthy =
+    !automation.paused && (engine.heartbeatAt != null ? beating && engine.phase === "ready" : ranRecently);
   const engineLabel = automation.paused
     ? "Everything paused · tap to resume"
-    : engine.lastRunAt
-      ? engineHealthy
-        ? `Running normally · ${timeAgo(engine.lastRunAt)}`
-        : `Not running · nothing since ${timeAgo(engine.lastRunAt)}`
-      : "Automation has not run yet";
+    : beating && engine.phase === "queue-unreachable"
+      ? "Trouble · reconnecting to the job queue"
+      : beating && engine.phase !== "ready"
+        ? `Starting up · ${engine.phase}`
+      : engine.lastRunAt
+        ? engineHealthy
+          ? `Running normally · ${timeAgo(engine.lastRunAt)}`
+          : `Not running · nothing since ${timeAgo(engine.lastRunAt)}`
+        : engineHealthy
+          ? "Running normally · no work due yet"
+          : "Automation has not run yet";
 
   return (
     <ToastProvider>

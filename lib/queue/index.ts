@@ -34,21 +34,75 @@ export interface Queue {
   enqueue(name: string, payload: JobPayload, opts?: EnqueueOptions): Promise<string | null>;
   work(name: string, handler: JobHandler): Promise<void>;
   stop(): Promise<void>;
+  /**
+   * Is this backend still able to serve the queue? A live process proves
+   * nothing about the consumer inside it: pg-boss can stop or lose its
+   * connection while the worker keeps happily reporting for duty.
+   */
+  healthy?(): Promise<boolean>;
 }
 
 let _queue: Queue | null = null;
+let _starting: Promise<Queue> | null = null;
+/**
+ * Bumped by every reset. A start that finishes after its generation was
+ * superseded belongs to nobody: it is stopped and discarded rather than
+ * published, so a retry can never be overwritten by the attempt it replaced.
+ */
+let _generation = 0;
 
+/**
+ * The singleton is only published once it has actually started, and only if it
+ * is still the current attempt.
+ *
+ * It used to be assigned before `start()` was awaited, so a start that failed
+ * or never returned left a half-built queue cached as if it were live: every
+ * later caller got it, no caller could retry, and the process stayed up
+ * enqueuing into nothing. A timed-out start is worse than a failed one, because
+ * the abandoned attempt is still running and can still succeed later, hence the
+ * generation check below.
+ */
 export async function getQueue(): Promise<Queue> {
   if (_queue) return _queue;
-  if (config.queue.backend === "bullmq") {
-    const { createBullQueue } = await import("./bullmq");
-    _queue = await createBullQueue();
-  } else {
-    const { createPgBossQueue } = await import("./pgboss");
-    _queue = await createPgBossQueue();
+  if (_starting) return _starting;
+  const generation = _generation;
+  const attempt = (async () => {
+    const created =
+      config.queue.backend === "bullmq"
+        ? await (await import("./bullmq")).createBullQueue()
+        : await (await import("./pgboss")).createPgBossQueue();
+    await created.start();
+    if (generation !== _generation) {
+      // Someone gave up on this attempt and started another one. Leaving this
+      // backend connected would leave a second consumer polling the queue.
+      await created.stop().catch(() => {});
+      throw new Error("queue start superseded by a newer attempt");
+    }
+    _queue = created;
+    return created;
+  })();
+  _starting = attempt;
+  try {
+    return await attempt;
+  } finally {
+    // Only clear the slot if it is still ours; a newer attempt owns it now.
+    if (_starting === attempt) _starting = null;
   }
-  await _queue.start();
-  return _queue;
+}
+
+/**
+ * Drop the current queue so the next `getQueue()` builds a fresh one, and
+ * invalidate any attempt still in flight.
+ *
+ * Used by the worker between connection attempts: retrying against a backend
+ * object whose own start half-completed reconnects nothing.
+ */
+export async function resetQueue(): Promise<void> {
+  _generation++;
+  const current = _queue;
+  _queue = null;
+  _starting = null;
+  if (current) await current.stop().catch(() => {});
 }
 
 /** Enqueue from anywhere (API routes, agents) without owning the worker. */
@@ -99,9 +153,12 @@ async function withEnqueuingOrg(
 }
 
 export async function stopQueue(): Promise<void> {
+  _generation++;
+  _starting = null;
   if (_queue) {
-    await _queue.stop();
+    const current = _queue;
     _queue = null;
+    await current.stop();
   }
 }
 

@@ -19,6 +19,7 @@ import {
   type AwardComplianceRow,
 } from "./sub-compliance-store";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
+import { readWorkerHeartbeat } from "./worker-heartbeat";
 import {
   emailLogStatusSql,
   type EmailLogStatusFilter,
@@ -1480,6 +1481,9 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
 export interface EngineStatus {
   lastRunAt: string | null;
   openCount: number;
+  /** Last check-in from the worker process itself, and the step it is on. */
+  heartbeatAt: string | null;
+  phase: string | null;
 }
 
 /**
@@ -1489,13 +1493,24 @@ export interface EngineStatus {
  * that strands every record at once (e.g. a web-only deployment).
  */
 export async function engineStatus(): Promise<EngineStatus> {
-  const row = await queryOne<{ last_run: string | null; open_count: number }>(
-    `select (select max(started_at) from job_runs) as last_run,
+  const [row, heartbeat] = await Promise.all([
+    queryOne<{ last_run: string | null; open_count: number }>(
+      `select (select max(started_at) from job_runs) as last_run,
             (select count(*)::int from opportunities
               where status='open' and org_id=$1) as open_count`,
-    [await currentOrg()]
-  );
-  return { lastRunAt: row?.last_run ?? null, openCount: row?.open_count ?? 0 };
+      [await currentOrg()]
+    ),
+    // The worker's own check-in. A job log can only say when work last ran,
+    // which reads as "dead" on a quiet afternoon and as "fine" when a run is
+    // wedged half-open. Tolerated as missing so an older schema still renders.
+    readWorkerHeartbeat().catch(() => null),
+  ]);
+  return {
+    lastRunAt: row?.last_run ?? null,
+    openCount: row?.open_count ?? 0,
+    heartbeatAt: heartbeat?.updatedAt ?? null,
+    phase: heartbeat?.phase ?? null,
+  };
 }
 
 export interface AgentHealth {
