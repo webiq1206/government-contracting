@@ -74,19 +74,49 @@ const SAFE_PG_PART = /^[A-Za-z0-9._-]+$/;
  * instead. Production never has that flag, so it keeps reading DATABASE_URL
  * exactly as it always has.
  */
+let warnedAboutDeployedDevDbFlag = false;
+
+/**
+ * True when the development-database flag is set AND this process is allowed to
+ * honor it. A deployed environment never is.
+ *
+ * The flag reaching a deployment used to throw. Refusing to start reads like the
+ * safe choice, but the flag does leak into deployments, and the result was a
+ * live site where every database call failed: the published app could not read
+ * its own users, sign-in answered "Invalid email or password" because the login
+ * route could not tell an outage from a bad password, and the owner was locked
+ * out of production with nothing on screen pointing at the cause.
+ *
+ * A deployment already carries the real DATABASE_URL, so which database it
+ * wants is never actually ambiguous. Ignore the flag, say so loudly in the
+ * logs, and serve production from production. The danger this guard exists to
+ * prevent (a live site quietly reading an empty development database) is
+ * avoided by ignoring the flag, not by crashing.
+ */
+function devDatabaseFlagActive(): boolean {
+  if (!bool("USE_REPLIT_DEV_DB")) return false;
+  // Either marker counts. Reading only one of them makes the whole guard rest
+  // on a single platform variable always being present.
+  if (str("REPLIT_DEPLOYMENT") !== "" || str("REPLIT_DEPLOYMENT_ID") !== "") {
+    if (!warnedAboutDeployedDevDbFlag) {
+      warnedAboutDeployedDevDbFlag = true;
+      console.warn(
+        "[config] USE_REPLIT_DEV_DB is set in a deployed environment. That flag belongs to the workspace only. Ignoring it and using DATABASE_URL. Remove it from the deployment's environment."
+      );
+    }
+    return false;
+  }
+  return true;
+}
+
+/** Test seam: lets a test observe the one-time deployment warning again. */
+export function __resetConfigWarnings(): void {
+  warnedAboutDeployedDevDbFlag = false;
+}
+
 function resolveDatabaseUrl(): string {
   const primary = str("DATABASE_URL");
-  if (!bool("USE_REPLIT_DEV_DB")) return primary;
-
-  // Fail closed if the flag ever reaches a deployed environment. It exists only
-  // to keep the workspace off live data; in production it would quietly serve
-  // customers from an empty development database, so not starting is by far
-  // the better outcome. This is the one failure mode worth crashing over.
-  if (str("REPLIT_DEPLOYMENT") !== "") {
-    throw new Error(
-      "USE_REPLIT_DEV_DB is set in a deployed environment. That flag belongs to the workspace only. Refusing to start rather than serving production traffic from the development database."
-    );
-  }
+  if (!devDatabaseFlagActive()) return primary;
 
   const host = str("PGHOST");
   const name = str("PGDATABASE");
@@ -171,7 +201,10 @@ export const config = {
      * a real subcontractor.
      */
     get isIsolatedDev(): boolean {
-      return bool("USE_REPLIT_DEV_DB");
+      // Same reading of the flag the connection uses. A deployment that
+      // answered true here would keep serving production traffic while
+      // silently refusing to send any real email.
+      return devDatabaseFlagActive();
     },
   },
 

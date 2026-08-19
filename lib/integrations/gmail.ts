@@ -127,6 +127,20 @@ async function markConnectionError(orgId: string, message: string): Promise<void
   ).catch(() => {});
 }
 
+/**
+ * Cached answer to "can this org's grant still produce an access token".
+ *
+ * Kept small and short-lived: this is asked on a public endpoint, so it must
+ * not turn into a Google call per request.
+ */
+const authProbeCache = new Map<string, { ok: boolean; at: number }>();
+const AUTH_PROBE_TTL_MS = 60 * 1000;
+
+/** Test seam: forget cached auth probes. */
+export function __resetAuthProbeCache(): void {
+  authProbeCache.clear();
+}
+
 /** Authorized Gmail client for one organization, or null if not connected. */
 async function gmailClient(orgId?: string) {
   if (!config.gmail.configured) return null;
@@ -339,6 +353,40 @@ export const gmail = {
 
   async isConnected(orgId?: string): Promise<boolean> {
     return (await gmailClient(orgId)) != null;
+  },
+
+  /**
+   * Whether the stored grant can still get an access token from Google.
+   *
+   * Unlike `isConnected`, which only says a row with a refresh token exists,
+   * this catches the common dead connection: a grant the user revoked, or one
+   * that expired. It asks Google directly and changes nothing here, neither the
+   * stored status nor anything else, which is what makes it usable as a public
+   * signal: no request, for any address, can move it. A failure recorded by a
+   * send is deliberately not consulted, because sends only happen for addresses
+   * that have accounts.
+   */
+  async canAuthenticate(orgId?: string): Promise<boolean> {
+    const org = await resolveOrg(orgId);
+    if (!org) return false;
+    const cached = authProbeCache.get(org);
+    if (cached && Date.now() - cached.at < AUTH_PROBE_TTL_MS) return cached.ok;
+
+    const refresh = await getRefreshToken(org);
+    let ok = false;
+    if (refresh) {
+      const client = oauthClient();
+      client.setCredentials({ refresh_token: refresh });
+      ok = await client
+        .getAccessToken()
+        .then((res) => Boolean(res?.token))
+        .catch((err) => {
+          console.error(`[gmail] auth probe failed for org ${org}: ${(err as Error).message}`);
+          return false;
+        });
+    }
+    authProbeCache.set(org, { ok, at: Date.now() });
+    return ok;
   },
 
   /** Connected address and health for one tenant, for the settings UI. */

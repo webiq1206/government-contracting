@@ -53,7 +53,28 @@ export async function POST(req: Request) {
       { status: 429 }
     );
   }
-  const user = await authenticate(String(email), String(password)).catch(() => null);
+  // An exception here is not a rejected password, it is authentication failing
+  // to run at all (the database being unreachable is the one that has actually
+  // happened). Reporting that as "Invalid email or password" sent the owner
+  // hunting for a password that was never wrong, while the real fault was a
+  // deployment that could not reach its database. Keep the two apart: a bad
+  // password is the user's problem to fix, an outage is ours, and only the
+  // former should count toward the lockout.
+  let authError: unknown = null;
+  const user = await authenticate(String(email), String(password)).catch((err) => {
+    authError = err;
+    return null;
+  });
+  if (authError) {
+    console.error("[login] sign-in could not be completed:", authError);
+    return NextResponse.json(
+      {
+        error:
+          "Sign-in is temporarily unavailable, so we could not check your password. This is a problem on our side, not with your login. Please try again in a few minutes.",
+      },
+      { status: 503 }
+    );
+  }
   if (!user) {
     recordFailure(key);
     return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });

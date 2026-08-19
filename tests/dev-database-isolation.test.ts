@@ -20,7 +20,7 @@ vi.mock("../lib/app-settings", () => ({
   AUTOMATION_PAUSED_ERROR: "Automation is fully paused.",
 }));
 
-import { config, pgSslFor } from "../lib/config";
+import { config, pgSslFor, __resetConfigWarnings } from "../lib/config";
 // Deliberately NOT mocked. The point of these tests is that the real transport
 // refuses, so a mock would assert nothing.
 import { gmail } from "../lib/integrations/gmail";
@@ -55,6 +55,9 @@ beforeEach(() => {
   delete process.env.USE_REPLIT_DEV_DB;
   delete process.env.ALLOW_REAL_EMAIL_FROM_DEV;
   delete process.env.REPLIT_DEPLOYMENT;
+  // The deployment warning fires once per process; clear it so each case sees
+  // the same starting state.
+  __resetConfigWarnings();
 });
 
 afterEach(() => {
@@ -110,14 +113,34 @@ describe("which database a process talks to", () => {
   });
 
   /**
-   * The catastrophic case: the flag escapes into the published app, which then
-   * serves real customers from an empty development database. Crashing is the
-   * mild outcome, so this must not be a warning.
+   * The flag escaping into the published app used to throw. It turned out the
+   * flag does reach deployments, and refusing to start was far worse than the
+   * problem: the live site could not read its own users, sign-in answered
+   * "Invalid email or password" for a correct password, and the owner was
+   * locked out of production. A deployment already holds the real DATABASE_URL,
+   * so the safe reading of the flag there is to ignore it.
    */
-  it("refuses to start if the development flag reaches a deployed environment", () => {
+  it("ignores the development flag in a deployed environment and stays on production", () => {
     process.env.USE_REPLIT_DEV_DB = "true";
     process.env.REPLIT_DEPLOYMENT = "1";
-    expect(() => config.database.url).toThrow(/deployed environment/i);
+    expect(config.database.url).toBe(PROD_URL);
+  });
+
+  it("does not claim development isolation in a deployed environment", () => {
+    // isIsolatedDev also gates outbound email. Left true in a deployment, the
+    // live site would silently stop sending to real recipients.
+    process.env.USE_REPLIT_DEV_DB = "true";
+    process.env.REPLIT_DEPLOYMENT = "1";
+    expect(config.database.isIsolatedDev).toBe(false);
+  });
+
+  it("says so in the logs when it ignores the flag, so the cause is findable", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    process.env.USE_REPLIT_DEV_DB = "true";
+    process.env.REPLIT_DEPLOYMENT = "1";
+    void config.database.url;
+    expect(warn.mock.calls.flat().join(" ")).toMatch(/USE_REPLIT_DEV_DB.*deployed/i);
+    warn.mockRestore();
   });
 
   it("refuses when it cannot parse production's connection to compare against", () => {

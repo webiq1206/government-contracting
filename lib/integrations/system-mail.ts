@@ -40,6 +40,27 @@ export const systemMail = {
     return gmail.isConnected(LEGACY_ORG_ID);
   },
 
+  /**
+   * Whether mail can actually go out right now, as opposed to whether an inbox
+   * is on file.
+   *
+   * `enabled()` only says a client can be built; a refresh token that Google
+   * has revoked passes it and then fails on every send. The difference matters
+   * wherever the answer is shown to someone: telling a locked-out user a reset
+   * link is on its way, when the inbox that would send it is dead, leaves them
+   * waiting on nothing.
+   *
+   * It asks Google whether our own grant still works, and reads nothing that a
+   * request can move: not the stored status a failed send writes, not any
+   * per-recipient outcome. Both of those are only observable for an address
+   * that has an account, so deriving a public answer from them would let
+   * someone learn which addresses those are. This answer is a fact about us,
+   * identical for every address and every instance.
+   */
+  async deliverable(): Promise<boolean> {
+    return gmail.canAuthenticate(LEGACY_ORG_ID).catch(() => false);
+  },
+
   async send(params: {
     to: string | string[];
     subject: string;

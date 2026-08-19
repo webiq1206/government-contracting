@@ -12,14 +12,45 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export async function requestPasswordReset(email: string): Promise<{ ok: true }> {
+/**
+ * Whether a reset link could be put on the wire at all.
+ *
+ * "unavailable" is deliberately a property of the mail transport and nothing
+ * else, so reporting it to whoever asked cannot reveal which addresses have
+ * accounts: it reads the same for an address that exists and one that does not.
+ * A send that fails for one specific recipient stays silent for that reason and
+ * is logged instead.
+ */
+export type PasswordResetDelivery = "sent" | "unavailable";
+
+export async function requestPasswordReset(
+  email: string
+): Promise<{ ok: true; delivery: PasswordResetDelivery }> {
+  // Answered before the account is looked up, so the result is account
+  // independent. Without this, a reset request during an email outage returned
+  // the same cheerful "check your email" as a working one, and the only way to
+  // discover nothing had been sent was to keep waiting for a link that was
+  // never coming.
+  const canDeliver = await systemMail.deliverable().catch(() => false);
+  // The whole answer, fixed here. Nothing learned later in this request is
+  // allowed to change it, because everything learned later depends on whether
+  // the address has an account.
+  const delivery: PasswordResetDelivery = canDeliver ? "sent" : "unavailable";
+  if (!canDeliver && config.isProd) {
+    // Stop before the account is touched. Minting a token nobody can receive
+    // just leaves a live credential lying in the table, and answering from
+    // here means a database that is itself down cannot turn this into a
+    // "check your email" that was never true.
+    return { ok: true, delivery: "unavailable" };
+  }
+
   // Accepts a login alias as well as the account's own address: someone whose
   // working address is an alias will type that one, and being told nothing
   // happened would be indistinguishable from the account not existing.
   const { findUserByLoginEmail } = await import("./auth");
   const user = await findUserByLoginEmail(email);
   // Always succeed to avoid account enumeration.
-  if (!user) return { ok: true };
+  if (!user) return { ok: true, delivery };
   // Send to the address that was entered, not the canonical one. The person
   // asking may only have access to the alias inbox, and mailing somewhere else
   // would look like the reset silently failed.
@@ -35,30 +66,34 @@ export async function requestPasswordReset(email: string): Promise<{ ok: true }>
   );
 
   const resetUrl = `${config.appUrl.replace(/\/$/, "")}/reset-password?token=${token}`;
-  await sendResetEmail(deliverTo, user.name, resetUrl);
+  // Deliberately not used for the answer. Everything this call learns is
+  // specific to an address that has an account, so letting it change the
+  // response is how the endpoint would become a way to test which addresses
+  // those are. It records the failure instead, and the next request (for any
+  // address, including one with no account) reports that nothing can be sent.
+  await sendResetEmail(deliverTo, user.name, resetUrl, canDeliver);
   await trackEvent({
     event: "password_reset_requested",
     userId: user.id,
     path: "/forgot-password",
   });
-  return { ok: true };
+  return { ok: true, delivery };
 }
 
 async function sendResetEmail(
   to: string,
   name: string | null,
-  resetUrl: string
-): Promise<void> {
-  if (!(await systemMail.enabled())) {
-    // Nothing can be delivered. Log the link in development so the flow is
-    // still testable, and stay silent in production rather than leaking a
-    // reset URL into the logs of a live system.
-    if (!config.isProd) {
-      console.info(`[password-reset] ${to}: ${resetUrl}`);
-    }
-    return;
+  resetUrl: string,
+  canDeliver: boolean
+): Promise<PasswordResetDelivery> {
+  if (!canDeliver) {
+    // Only reachable outside production, where the link is logged so the flow
+    // stays testable without a mail transport. A live system stays silent
+    // rather than putting a working reset URL in its logs.
+    console.info(`[password-reset] ${to}: ${resetUrl}`);
+    return "unavailable";
   }
-  await systemMail
+  const result = await systemMail
     .send({
       to,
       subject: "Reset your Brost Co password",
@@ -71,7 +106,23 @@ async function sendResetEmail(
         "If you did not request this, you can ignore this email.",
       ].join("\n"),
     })
-    .catch((err) => console.error("[password-reset] email failed", err));
+    .catch((err) => ({ error: err instanceof Error ? err.message : String(err) }));
+
+  // Logged, never returned to the caller. Anything learned here is known only
+  // for an address that has an account, so letting it reach the response would
+  // turn the endpoint into a way to test which addresses those are. When the
+  // cause is the inbox itself rather than this recipient, the transport records
+  // it against the connection, and the next request reads that instead.
+  const refused = "disabled" in result && result.disabled;
+  const failed = Boolean(result.error);
+  if (refused || failed) {
+    console.error(
+      `[password-reset] no link was sent (${refused ? "transport refused" : "send failed"}):`,
+      result.error
+    );
+    return "unavailable";
+  }
+  return "sent";
 }
 
 export async function resetPasswordWithToken(input: {

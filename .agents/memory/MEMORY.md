@@ -12,4 +12,5 @@
 - [Negotiated terms](negotiated-terms.md) — free months are a 100% coupon, a free account is our own flag; claim an invitation before creating anything; bind invited checkout.
 - [Queue jobs](queue-jobs.md) — a payload never names the tenant (the run endpoint is public); a deleted record is permanent, not retryable; keep the log line, drop the dead link.
 - [Production topology](production-topology.md) — worker "connection timeout" = sleeping scale-to-zero instance, not a busy DB; dev/prod must not share a database.
+- [Diagnosing a lockout](lockout-diagnosis.md) — check whether the site can reach its database before believing a password is wrong; a guard that fails closed in production can outweigh the risk it prevents.
 - [Landing product film](product-film.md) — rendered frame-by-frame, not live; phone downscale sets a hard type floor; public assets need a middleware prefix or logged-out visitors get redirected.
