@@ -16,8 +16,39 @@ types.setTypeParser(1700, (val) => (val == null ? null : Number(val)));
 
 let _pool: Pool | null = null;
 
+/**
+ * Refuse to let a test run open a connection to anything but the disposable
+ * development database.
+ *
+ * Integration tests here create real users, organizations and jobs. A run
+ * pointed at DATABASE_URL puts all of that in the live database, where it is
+ * indistinguishable from real signups until someone reads the user list. That
+ * has already happened once: dozens of `@example.test` accounts appeared in
+ * production in a single evening.
+ *
+ * Detection cannot rely on NODE_ENV alone: it is pinned to "production" for
+ * this repl, so a test run inherits that value. VITEST is set by the runner in
+ * every worker process and inherited by children, and NODE_ENV=test is accepted
+ * as a second signal for a child spawned with a rebuilt environment. A child
+ * given an environment that carries neither is not covered; test helpers that
+ * spawn processes must pass one of them through.
+ *
+ * Fails closed: without the development flag there is no proof the target is
+ * disposable, and the override has to be typed out deliberately.
+ */
+function assertDisposableDatabaseUnderTest(): void {
+  if (!process.env.VITEST && process.env.NODE_ENV !== "test") return;
+  if (config.database.isIsolatedDev) return;
+  if (process.env.ALLOW_TESTS_AGAINST_DATABASE_URL === "1") return;
+  throw new Error(
+    "Refusing to run tests against this database. USE_REPLIT_DEV_DB is not set, so DATABASE_URL is the target and that is the live database. " +
+      "Set USE_REPLIT_DEV_DB=true to use the repl's built-in Postgres, or set ALLOW_TESTS_AGAINST_DATABASE_URL=1 if this database really is disposable."
+  );
+}
+
 export function pool(): Pool {
   if (_pool) return _pool;
+  assertDisposableDatabaseUnderTest();
   if (!config.database.url) {
     throw new Error(
       "DATABASE_URL is not set. Copy .env.example to .env and set your Postgres/Supabase URL."

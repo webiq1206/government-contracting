@@ -3,8 +3,10 @@
  * mocked so the boot path is exercised without a live Postgres.
  *
  * Covers the security-relevant guarantees: the plaintext OPERATOR_PASSWORD is
- * never stored, re-running at boot is idempotent, a rotated secret rotates the
- * stored hash, and a too-short password is refused rather than accepted.
+ * never stored, re-running at boot is idempotent, provisioning is create-only
+ * so an existing account's password is never overwritten (including when the
+ * secret itself is rotated), and a too-short password is refused rather than
+ * accepted.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -75,16 +77,49 @@ describe("operator bootstrap from OPERATOR_EMAIL + OPERATOR_PASSWORD", () => {
     expect(calls.some((c) => /^update users/i.test(c))).toBe(false);
   });
 
-  it("rotates the hash when OPERATOR_PASSWORD changes", async () => {
+  it("never overwrites an existing account, so a password set in the app survives a restart", async () => {
+    // The owner is provisioned from the secret, then changes their password in
+    // the app. Every later boot must leave that new password alone: bootstrap
+    // used to force it back to the secret, which locked the owner out with no
+    // explanation the next time the worker restarted.
     process.env.OPERATOR_EMAIL = "owner@brostco.com";
     process.env.OPERATOR_PASSWORD = "correct-horse-battery";
     await ensureOperatorFromEnv();
+
+    const { hashPassword } = await import("../lib/auth");
+    users[0].password_hash = hashPassword("chosen-in-the-app");
+    calls.length = 0;
+
+    await ensureOperatorFromEnv();
+
+    expect(users).toHaveLength(1);
+    expect(verifyPassword("chosen-in-the-app", users[0].password_hash)).toBe(true);
+    expect(verifyPassword("correct-horse-battery", users[0].password_hash)).toBe(false);
+    expect(calls.some((c) => /^update users/i.test(c))).toBe(false);
+  });
+
+  it("still rotates nothing when the secret itself changes", async () => {
+    // A rotated secret is not a password reset. Provisioning is create-only, so
+    // the stored password stays whatever it already was.
+    process.env.OPERATOR_EMAIL = "owner@brostco.com";
+    process.env.OPERATOR_PASSWORD = "correct-horse-battery";
+    await ensureOperatorFromEnv();
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     process.env.OPERATOR_PASSWORD = "a-different-password";
     await ensureOperatorFromEnv();
 
     expect(users).toHaveLength(1);
-    expect(verifyPassword("a-different-password", users[0].password_hash)).toBe(true);
-    expect(verifyPassword("correct-horse-battery", users[0].password_hash)).toBe(false);
+    expect(verifyPassword("correct-horse-battery", users[0].password_hash)).toBe(true);
+    expect(verifyPassword("a-different-password", users[0].password_hash)).toBe(false);
+
+    // Silence here is what made the old behavior so hard to diagnose: say that
+    // the secret was ignored, without ever printing either password.
+    const logged = warn.mock.calls.flat().join(" ");
+    expect(logged).toContain("does not match OPERATOR_PASSWORD");
+    expect(logged).not.toContain("a-different-password");
+    expect(logged).not.toContain("correct-horse-battery");
+    warn.mockRestore();
   });
 
   it("does nothing when OPERATOR_PASSWORD is absent (hash-only config)", async () => {

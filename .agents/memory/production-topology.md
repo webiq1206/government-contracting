@@ -61,21 +61,16 @@ had its counts compared, not a dump file that exited zero.
 
 # A publish that dies mid-typecheck is memory, not a code error
 
-A failed build whose log stops inside `Checking validity of types ...` with no
-`Failed to compile` and no error text was killed, not rejected. Two other tells:
-it ends far sooner than a healthy build, and the same commit builds clean under
-the publisher's own conditions (production mode, dev dependencies pruned, empty
-`.next`).
+A build whose log stops inside the type-check step with no compiler error and
+no `Failed to compile` was killed, not rejected, and the build machine is small
+enough that this build peaks near its ceiling.
 
-**Why:** the build machine is small and this build peaks near its ceiling, with
-the platform's security scan running alongside it. Nothing is wrong with the
-code, so the first move is to publish again rather than to change anything.
+**Why:** a killed process prints nothing, so the absence of an error is the
+signal. Two tells confirm it: the build ends far sooner than a healthy one, and
+the same commit builds clean under the publisher's own conditions.
 
-**How to apply:** reproduce with a production-conditions build before touching
-config, and measure the peak instead of guessing at it. Two plausible-sounding
-remedies were measured and both were wrong: raising Node's
-`--max-old-space-size` *lifts* the heap ceiling on a small machine, since the
-default is already a fraction of total RAM, and splitting the type check into
-its own step ahead of the compile measured a higher peak, not a lower one. If a
-config change cannot be shown to help, revert it rather than shipping it as a
-guess.
+**How to apply:** publish again before changing anything. If tempted to tune the
+build, measure the peak first: raising Node's `--max-old-space-size` *lifts* the
+ceiling on a small machine rather than protecting it, and splitting the type
+check out ahead of the compile measured higher, not lower. Revert a config
+change that cannot be shown to help.
