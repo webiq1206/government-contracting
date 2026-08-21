@@ -13,6 +13,7 @@
  * stub. The database and every query below are real.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { purgeOrg } from "./helpers/purge-org";
 import { randomUUID } from "crypto";
 import type { SessionUser } from "../lib/auth";
 
@@ -115,16 +116,9 @@ d("cross-tenant attack surface (integration)", () => {
   afterAll(async () => {
     for (const o of [A, B]) {
       if (!o.org) continue;
-      await query(`delete from call_cards where org_id=$1`, [o.org]);
-      await query(`delete from communications where org_id=$1`, [o.org]);
-      await query(`delete from documents where org_id=$1`, [o.org]);
-      await query(`delete from quotes where org_id=$1`, [o.org]);
-      await query(`delete from opportunity_subs where opportunity_id=$1`, [o.opp]);
-      await query(`delete from agent_logs where org_id=$1`, [o.org]);
-      await query(`delete from subcontractors where org_id=$1`, [o.org]);
-      await query(`delete from opportunities where org_id=$1`, [o.org]);
-      await query(`delete from company_profile where org_id=$1`, [o.org]);
-      await query(`delete from organizations where id=$1`, [o.org]);
+      // Schema-driven cleanup: clears every org-scoped table, so a new one
+      // can never leave this org (or its compliance_items, etc.) behind.
+      await purgeOrg(o.org);
     }
     vi.restoreAllMocks();
   });
