@@ -53,8 +53,29 @@ const STEP_TIMEOUTS = {
 /** What the heartbeat reports right now. Read on every beat, not captured. */
 let phase = "starting";
 
+/**
+ * Set the phase AND write it out at once, rather than waiting for the next
+ * scheduled beat.
+ *
+ * The heartbeat ticks every 30 seconds, and its first beat lands immediately
+ * after the database check — before the first step has set a phase. So a boot
+ * that dies inside 30 seconds records "database" no matter how far it actually
+ * got, and every reading of that row points at the database step whether or
+ * not the database had anything to do with it. That is precisely the failure
+ * in front of us, and it was being described by a field that could not know.
+ *
+ * Writing on the transition costs one small upsert per boot step and makes the
+ * phase mean what it says: the step the worker was in when it stopped.
+ */
+function setPhase(next: string): void {
+  phase = next;
+  void recordHeartbeat(next).catch(() => {
+    // The scheduled beat will retry; a boot must not fail on its own telemetry.
+  });
+}
+
 function step<T>(name: string, timeoutMs: number, fn: () => Promise<T>): Promise<T> {
-  return bootStep(name, fn, { timeoutMs, onPhase: (p) => (phase = p) });
+  return bootStep(name, fn, { timeoutMs, onPhase: setPhase });
 }
 
 async function main() {
@@ -144,7 +165,7 @@ async function main() {
   // Load UI-managed integration credentials into the environment, and keep
   // them fresh so a key saved on the Integrations page reaches agents without
   // a restart.
-  await hydrateIntegrationEnv();
+  await step("hydrate-integrations", STEP_TIMEOUTS.operator, () => hydrateIntegrationEnv());
   const hydrateTimer = setInterval(() => void hydrateIntegrationEnv(), 5 * 60_000);
   hydrateTimer.unref?.();
 
@@ -202,7 +223,7 @@ async function main() {
   async function shutdown(signal: string) {
     console.log(`[worker] ${signal} received, shutting down...`);
     exitIsIntentional = true;
-    phase = "stopping";
+    setPhase("stopping");
     clearInterval(healthTimer);
     clearInterval(recoveryTimer);
     stopHeartbeat();
@@ -215,7 +236,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 
-  phase = READY_PHASE;
+  setPhase(READY_PHASE);
   console.log("[worker] ready");
 
   // "The process is alive" is not "the queue is being served". pg-boss can stop
