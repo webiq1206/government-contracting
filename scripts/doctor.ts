@@ -22,6 +22,7 @@ import { isAutomationPaused } from "../lib/app-settings";
 import { gmail } from "../lib/integrations/gmail";
 import { orgHasKey } from "../lib/integration-keys";
 import { scheduledAgents } from "../lib/agents/registry";
+import { looksLikeTestOrg } from "../lib/domain/test-org-match";
 
 type Status = "PASS" | "WARN" | "FAIL";
 const results: { status: Status; title: string; fix?: string }[] = [];
@@ -36,6 +37,12 @@ function hoursSince(iso: string | null | undefined): number | null {
 function minutesSince(iso: string | null | undefined): number | null {
   if (!iso) return null;
   return (Date.now() - new Date(iso).getTime()) / 60_000;
+}
+/** Timestamps are for comparing across runs, so print them short and sortable. */
+function isoOrRaw(value: string | Date | null | undefined): string {
+  if (!value) return "unknown";
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? String(value) : d.toISOString().replace(".000", "");
 }
 
 async function main() {
@@ -79,12 +86,44 @@ async function main() {
   );
 
   // ---- 5. Worker liveness (the process that runs every cron) ----
+  //
+  // RUN_WORKER is a foot-gun worth checking before the heartbeat, because a
+  // false value produces the *same* symptom as a dead process: the worker
+  // boots, disables its handlers and scheduler, stops the heartbeat, and idles.
+  // And "false" is easy to hit by accident -- anything that is not 1/true/yes/on
+  // reads as false, so `RUN_WORKER=0`, `False`, `no`, or a typo all disable the
+  // engine silently.
+  const runWorkerRaw = process.env.RUN_WORKER;
+  const runWorkerSet = runWorkerRaw != null && runWorkerRaw !== "";
+  if (runWorkerSet && !config.worker.enabled) {
+    check(
+      "FAIL",
+      `RUN_WORKER is set to "${runWorkerRaw}", which turns the engine off`,
+      "This instance runs NO jobs and NO scheduler, and stops its heartbeat, so it looks identical to a dead worker. Only 1/true/yes/on count as true. Unset RUN_WORKER (the default is on) and redeploy."
+    );
+  }
+
   const beat = await readWorkerHeartbeat().catch(() => null);
   const beatAge = minutesSince(beat?.updatedAt);
   if (!beat || beatAge == null) {
     check("FAIL", "The background worker has never checked in", "The worker process is not running. On Replit this must be a Reserved VM deployment (an Autoscale deployment sleeps and stops all background work). Confirm `npm run start` launches web AND worker.");
   } else if (beatAge > 5) {
-    check("FAIL", `The worker last checked in ${Math.round(beatAge)} min ago (stale)`, "The worker has stopped beating. Restart the deployment; if it recurs, check the Automation Log for a crash on boot.");
+    // A stale beat still carries the evidence for *why*, and throwing it away
+    // costs a diagnosis: the phase says whether the worker died mid-boot or
+    // long after a healthy one, and the instance/boot time say whether a
+    // restart has actually produced a new process. A heartbeat frozen at the
+    // same instance across a redeploy means the worker is not being launched
+    // at all -- which no amount of restarting will fix.
+    const stalled = (beat.phase ?? null) !== READY_PHASE;
+    check(
+      "FAIL",
+      `The worker last checked in ${Math.round(beatAge)} min ago (stale)`,
+      `Last beat: phase "${beat.phase}", instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}. ` +
+        (stalled
+          ? `It never finished starting -- it stopped during "${beat.phase}", so look for that step in the deployment log.`
+          : "It booted cleanly and then stopped, so look for a crash in the deployment log.") +
+        " Redeploy, then run this again: if the instance and boot time above are UNCHANGED, no new worker process ever started — check that the deployment's run command is `npm run start` (not a web-only command) and that RUN_WORKER is not set."
+    );
   } else if ((beat.phase ?? null) !== READY_PHASE) {
     check("FAIL", `The worker is stuck starting (phase: ${beat.phase})`, "It is alive but never finished booting, so no job runs. It retries on its own; if it does not clear in a few minutes, restart the deployment.");
   } else {
@@ -115,10 +154,28 @@ async function main() {
     check("FAIL", "No active organizations", "Automation runs per organization and none is active (every trial/subscription has lapsed). Nothing will run until at least one is active.");
     return finish();
   }
+  // Leaked test fixtures are not customers, and reporting them per-org buries
+  // the real ones: eight fixtures produce thirty-odd findings about missing
+  // keys and inboxes they were never meant to have. Name them once, with the
+  // command that removes them, and audit only the real orgs below.
+  const leaked = orgs.filter((o) => looksLikeTestOrg(o.name));
+  const realOrgs = orgs.filter((o) => !looksLikeTestOrg(o.name));
   check("PASS", `${orgs.length} active organization(s)`);
+  if (leaked.length > 0) {
+    check(
+      "WARN",
+      `${leaked.length} of those are leaked test fixtures, not customers`,
+      "They are counted as active, so the per-org agents loop over them every cycle. Remove them with `npm run purge-test-orgs` (dry run first), then `npm run purge-test-orgs -- --delete`. They are excluded from the per-org checks below."
+    );
+    for (const o of leaked) console.log(`\n  ── (skipped, test fixture) ${o.name}`);
+  }
+  if (realOrgs.length === 0) {
+    check("FAIL", "No real active organizations", "Every active organization is a leaked test fixture. Purge them and confirm a real account is active.");
+    return finish();
+  }
 
   // ---- 8. Per-org discovery + outreach readiness ----
-  for (const org of orgs) {
+  for (const org of realOrgs) {
     console.log(`\n  ── ${org.name} (${org.subscription_status}) ──`);
 
     const hasSam = await orgHasKey("SAM_API_KEY", org.id).catch(() => false);
