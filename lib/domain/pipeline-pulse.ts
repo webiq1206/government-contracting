@@ -30,7 +30,10 @@ export interface PulseFinding {
     | "sam_quota"
     | "gmail_broken"
     | "outreach_failing"
-    | "outreach_drafts";
+    | "outreach_drafts"
+    | "automation_paused"
+    | "claude_off"
+    | "no_active_orgs";
   severity: PulseSeverity;
   title: string;
   detail: string;
@@ -65,6 +68,19 @@ export interface PulseInput {
   samQuota: { used: number; cap: number };
   gmail: { connected: boolean; status: string; lastError: string | null };
   outreach: { sendFailed: number; drafts: number };
+  /**
+   * The master pause switch. When it is on, the scheduler stops enqueuing and
+   * every send is refused, so the whole engine goes quiet with no error to
+   * find. It is the most common reason for "nothing is happening", and the
+   * pulse never mentioned it.
+   */
+  automationPaused?: boolean;
+  /** Whether an Anthropic key is configured. Without it nothing gets scored,
+   *  analysed, or drafted, so discovery piles up and never advances. */
+  claudeConfigured?: boolean;
+  /** Active organizations the engine has to work for; zero means idle by
+   *  definition, not broken. */
+  activeOrgCount?: number;
 }
 
 const H = 3_600_000;
@@ -107,6 +123,48 @@ function ago(minutes: number): string {
 
 export function evaluatePulse(input: PulseInput): PulseFinding[] {
   const findings: PulseFinding[] = [];
+
+  // The master switch first: if automation is paused, every other quiet
+  // symptom below has the same one cause, and the fix is a single toggle.
+  if (input.automationPaused) {
+    findings.push({
+      key: "automation_paused",
+      severity: "down",
+      title: "Automation is paused, so nothing is running.",
+      detail:
+        "The master automation switch is off. No deals are being found, no emails are being sent, and no follow-ups are going out until it is turned back on. Nothing is broken, and turning it on resumes everything from where it left off.",
+      href: "/settings",
+      cta: "Resume automation",
+    });
+    return findings;
+  }
+
+  if (input.claudeConfigured === false) {
+    findings.push({
+      key: "claude_off",
+      severity: "down",
+      title: "The AI key is missing, so deals are found but never acted on.",
+      detail:
+        "Discovery still pulls opportunities from SAM.gov, but without an Anthropic API key nothing gets scored, analysed, or drafted, so opportunities pile up and no email is ever written. Set ANTHROPIC_API_KEY in the deployment and restart.",
+      href: "/settings/integrations",
+      cta: "Add the AI key",
+    });
+    // Not a hard return: the worker/SAM legs below still report, because they
+    // are independent failures worth seeing at the same time.
+  }
+
+  if (input.activeOrgCount === 0) {
+    findings.push({
+      key: "no_active_orgs",
+      severity: "warn",
+      title: "There are no active organizations for the engine to work for.",
+      detail:
+        "Automation runs per organization, and none is active (a lapsed trial or subscription pauses its work). Nothing will run until at least one is active.",
+      href: "/settings/billing",
+      cta: "Check the subscription",
+    });
+  }
+
   const workerAge = hoursSince(input.workerLastRunAt, input.now);
   const beatAge = minutesSince(input.workerHeartbeatAt, input.now);
   const beating = beatAge != null && beatAge <= HEARTBEAT_STALE_MINUTES;

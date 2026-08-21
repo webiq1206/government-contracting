@@ -29,7 +29,8 @@
     "stripe:verify": "tsx scripts/stripe-setup.ts --verify",
     "backfill:doc-names": "tsx scripts/backfill-doc-names.ts",
     "repair:sub-locations": "tsx scripts/repair-sub-locations.ts",
-    "queue:retire-dead-jobs": "tsx scripts/retire-dead-jobs.ts"
+    "queue:retire-dead-jobs": "tsx scripts/retire-dead-jobs.ts",
+    "doctor": "tsx scripts/doctor.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
