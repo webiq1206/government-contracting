@@ -92,13 +92,21 @@ async function main() {
   console.log(`  worker here : ${config.worker.enabled ? "enabled" : `disabled (RUN_WORKER="${process.env.RUN_WORKER ?? ""}")`}`);
   console.log("=".repeat(52));
 
-  if (!deployed) {
+  // What the findings are ABOUT is decided by the database, not by which shell
+  // this runs in: the heartbeat and the job history are rows, written by
+  // whichever worker owns that database. So the dev database is the thing that
+  // makes a report not-about-production -- being in the workspace is not.
+  if (devDb) {
     check(
       "WARN",
-      "This is the workspace, not the deployment — these findings are not about production",
-      devDb
-        ? "USE_REPLIT_DEV_DB is on, so this read the repl's built-in DEV database, not your live data. The workspace also sets RUN_WORKER=false, so an idle engine and a stale heartbeat are EXPECTED here and prove nothing about production. To diagnose the live system, open the deployment's shell (Deployments → your deployment → Shell) and run `npm run doctor` there."
-        : "This read DATABASE_URL (your live database) from the workspace, but the workspace sets RUN_WORKER=false, so the worker checks below describe this shell, not the deployed worker. Run `npm run doctor` in the deployment's shell for the live picture."
+      "This read the repl's built-in DEV database — these findings are not about production",
+      "USE_REPLIT_DEV_DB is on, so none of this describes your live data. Nothing beats against the dev database, so an idle engine and a stale heartbeat are EXPECTED here and prove nothing either way. DATABASE_URL carries the live value in the workspace too, so to read production from right here (read-only): `USE_REPLIT_DEV_DB=false npm run doctor`."
+    );
+  } else if (!deployed) {
+    check(
+      "WARN",
+      "Running from the workspace, but reading the LIVE database",
+      "The findings below are about production data. Note the split: the `worker here` line describes THIS shell (which deliberately runs no worker), while the heartbeat and job history are read from the database and so do describe the deployed worker."
     );
   }
 
@@ -169,13 +177,13 @@ async function main() {
     // same instance across a redeploy means the worker is not being launched
     // at all -- which no amount of restarting will fix.
     const stalled = (beat.phase ?? null) !== READY_PHASE;
-    // In the workspace this is the expected reading, not a fault: nothing here
-    // is supposed to be beating. Reporting it as a blocker sends someone to
-    // restart a production deployment that may be perfectly healthy.
+    // Against the dev database this is the expected reading, not a fault:
+    // nothing beats to it. Reporting it as a blocker sends someone to restart
+    // a production deployment that may be perfectly healthy.
     check(
-      deployed ? "FAIL" : "WARN",
+      devDb ? "WARN" : "FAIL",
       `The worker last checked in ${Math.round(beatAge)} min ago (stale)` +
-        (deployed ? "" : " — expected in the workspace, which runs no worker"),
+        (devDb ? " — expected against the dev database, which no worker beats to" : ""),
       `Last beat: phase "${beat.phase}", instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}. ` +
         (stalled
           ? `It never finished starting -- it stopped during "${beat.phase}", so look for that step in the deployment log.`
