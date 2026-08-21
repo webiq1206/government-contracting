@@ -6,7 +6,7 @@
  * match a name a customer could plausibly type. When in doubt, it must say no.
  */
 import { describe, it, expect } from "vitest";
-import { looksLikeTestOrg } from "../lib/domain/test-org-match";
+import { looksLikeTestOrg, hasGeneratedTag } from "../lib/domain/test-org-match";
 
 describe("looksLikeTestOrg — catches leaked fixtures", () => {
   it("matches the fixtures actually seen leaked in production", () => {
@@ -67,5 +67,60 @@ describe("looksLikeTestOrg — never touches a real org", () => {
     expect(looksLikeTestOrg(null)).toBe(false);
     expect(looksLikeTestOrg(undefined)).toBe(false);
     expect(looksLikeTestOrg("   ")).toBe(false);
+  });
+});
+
+describe("names seen leaked into the production database", () => {
+  // These are real names read out of the live organizations table. Every one of
+  // them must match, because each unmatched name is a fixture the cleanup
+  // silently leaves behind while the per-org agents keep looping over it.
+  const seenInProduction = [
+    "Doomed Org ac0633c8",
+    "Doomed Org 01d3a189",
+    "Reyes Builders 6a58b19c",
+    "Race Co A 6a58b19c",
+    "Race Co B ddf7d82e",
+    "Comped Co ebbd7e34",
+    "Typo Co 66205f2e",
+    "Existing Co 1256b147",
+    "Race Revoke Co 0b37975c",
+    "Applied Co e908c325",
+    "Bound Co ebaa598d",
+    "Unstamped Co 5d89b194",
+  ];
+  it.each(seenInProduction)("matches %s", (name) => {
+    expect(looksLikeTestOrg(name)).toBe(true);
+  });
+
+  it("still refuses the same names without their tag", () => {
+    // "Doomed Org" reached production unmatched, and widening the list is only
+    // safe because the tag is still required.
+    expect(looksLikeTestOrg("Doomed Org")).toBe(false);
+    expect(looksLikeTestOrg("Award Contracting")).toBe(false);
+    expect(looksLikeTestOrg("Bill's Excavating")).toBe(false);
+    expect(looksLikeTestOrg("Submittal Partners LLC")).toBe(false);
+  });
+});
+
+describe("hasGeneratedTag", () => {
+  it("sees a tag whatever the name starts with, so near misses can be reported", () => {
+    // The signal that would have caught "Doomed Org" before it was audited as
+    // a customer -- reported to a human, never acted on by itself.
+    expect(hasGeneratedTag("Weird Vendor Co 9f8e7d6c")).toBe(true);
+    expect(hasGeneratedTag("Doomed Org ac0633c8")).toBe(true);
+    expect(hasGeneratedTag("attack-51f226c0-33ad-4d28-9d31-a98b8a90c1ed")).toBe(true);
+  });
+
+  it("does not fire on ordinary company names", () => {
+    expect(hasGeneratedTag("Northgate Construction")).toBe(false);
+    expect(hasGeneratedTag("BROST CO")).toBe(false);
+    expect(hasGeneratedTag("")).toBe(false);
+    expect(hasGeneratedTag(null)).toBe(false);
+  });
+
+  it("is not on its own enough to delete anything", () => {
+    // The two-signal rule is what stands between cleanup and losing a customer.
+    expect(hasGeneratedTag("Northgate 1a2b3c4d")).toBe(true);
+    expect(looksLikeTestOrg("Northgate 1a2b3c4d")).toBe(false);
   });
 });

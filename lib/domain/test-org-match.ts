@@ -20,6 +20,8 @@ export const TEST_ORG_PREFIXES = [
   "applied co ", "unstamped co ", "bound co ", "comped co ", "existing co ",
   "gone co ", "late co ", "typo co ", "race co ", "race revoke co ",
   "reyes builders ", "alpha constructors", "bravo builders", "firm ",
+  "doomed org ", "admin test org ", "award-", "bill-", "del-", "del2-",
+  "sec-org-", "submit-",  "wf-",
 ];
 
 /**
@@ -41,4 +43,18 @@ export function looksLikeTestOrg(name: string | null | undefined): boolean {
   if (!TAG_SUFFIX.test(n)) return false;
   const lower = n.toLowerCase();
   return TEST_ORG_PREFIXES.some((p) => lower.startsWith(p));
+}
+
+/**
+ * True when a name ends in a generated tag, whatever it starts with.
+ *
+ * This is deliberately separate from the full match. A hand-kept prefix list
+ * always lags the suite -- "Doomed Org" reached production and was audited as
+ * a real customer because no prefix covered it -- so the callers use this to
+ * REPORT the near misses rather than act on them. Nothing is ever deleted on
+ * this signal alone; it exists so a fixture the list has not learned yet is
+ * visible instead of silent.
+ */
+export function hasGeneratedTag(name: string | null | undefined): boolean {
+  return TAG_SUFFIX.test((name ?? "").trim());
 }
