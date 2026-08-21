@@ -15,6 +15,8 @@
  * It reads only. It changes nothing.
  */
 import "../lib/env";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { config } from "../lib/config";
 import { query, queryOne, dbHealthy } from "../lib/db";
 import { readWorkerHeartbeat, READY_PHASE } from "../lib/worker-heartbeat";
@@ -191,9 +193,69 @@ async function main() {
         " Redeploy, then run this again: if the instance and boot time above are UNCHANGED, no new worker process ever started — check that the deployment's run command is `npm run start` (not a web-only command) and that RUN_WORKER is not set."
     );
   } else if ((beat.phase ?? null) !== READY_PHASE) {
-    check("FAIL", `The worker is stuck starting (phase: ${beat.phase})`, "It is alive but never finished booting, so no job runs. It retries on its own; if it does not clear in a few minutes, restart the deployment.");
+    // Alive but not ready has two very different causes, and they need
+    // opposite fixes: a process HUNG on one step, or a process crash-LOOPING
+    // so fast that a fresh first beat is always in the table. The row says
+    // which -- a loop gets a new instance id every restart -- so sample it
+    // twice rather than leave the operator to guess.
+    console.log(`\n  Worker is alive but not ready (phase: ${beat.phase}). Sampling again in 6s to tell a hang from a crash-loop...`);
+    await new Promise((r) => setTimeout(r, 6_000));
+    const again = await readWorkerHeartbeat().catch(() => null);
+    const looping = again != null && again.instanceId !== beat.instanceId;
+    // Compare by instant, not by reference: pg hands back timestamptz as a Date
+    // object, so two reads of an UNCHANGED row are still two distinct objects
+    // and `!==` is true every time -- which reports a dead worker as merely
+    // hung, the one pair this sampling exists to tell apart.
+    const beatMoved =
+      again != null &&
+      new Date(again.updatedAt).getTime() !== new Date(beat.updatedAt).getTime();
+
+    if (looping) {
+      check(
+        "FAIL",
+        `The worker is CRASH-LOOPING at boot (phase: ${beat.phase})`,
+        `Two different instances in six seconds (${beat.instanceId} → ${again!.instanceId}), each getting as far as "${beat.phase}" and dying. It is being restarted every few seconds, so no job ever runs. Restarting the deployment will NOT help — the next boot dies the same way. Open the deployment log and read the lines right after "[worker] database: reachable"; a crash prints "[worker] fatal:" with the reason.`
+      );
+    } else if (!beatMoved) {
+      check(
+        "FAIL",
+        `The worker is stuck starting and its heartbeat has stopped (phase: ${beat.phase})`,
+        `Instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}. The beat did not advance over six seconds, so the process is gone or wedged rather than looping. Restart the deployment and watch the log from "[worker] database: reachable" onward.`
+      );
+    } else {
+      check(
+        "FAIL",
+        `The worker is HUNG on one boot step (phase: ${beat.phase})`,
+        `Instance ${beat.instanceId} is still beating (so the process is alive) but has not left "${beat.phase}" — it is blocked inside that step, not crashing. Boot steps are bounded and will time out on their own; if it does not clear, the deployment log will name the step.`
+      );
+    }
   } else {
     check("PASS", `Worker alive and ready (beat ${Math.round(beatAge)} min ago)`);
+  }
+
+  // Migrations are the first thing the worker does after the database check,
+  // so when a boot dies at that point this is the evidence for which file it
+  // died on. Read-only: it reports, it never applies anything.
+  try {
+    const files = readdirSync(join(process.cwd(), "db", "migrations"))
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+    const applied = await query<{ name: string }>(`select name from _migrations order by name`);
+    const appliedNames = new Set(applied.map((r) => r.name));
+    const pending = files.filter((f) => !appliedNames.has(f));
+    if (pending.length === 0) {
+      check("PASS", `All ${files.length} migrations are applied`);
+    } else {
+      check(
+        "WARN",
+        `${pending.length} migration(s) are not applied`,
+        `Next pending: ${pending[0]}. The worker applies these at boot, right after the database check — so if the worker is stuck or looping at that point above, this is very likely the file it is dying on. Applying it by hand (\`npm run db:migrate\`) will show the actual error.`
+      );
+    }
+  } catch {
+    // No _migrations table, or the directory is not beside this process. Not
+    // worth a finding: it only means this check cannot speak, not that
+    // anything is wrong.
   }
 
   // ---- 6. Scheduler is actually enqueuing (job history) ----
