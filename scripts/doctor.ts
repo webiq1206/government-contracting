@@ -24,6 +24,7 @@ import { isAutomationPaused } from "../lib/app-settings";
 import { gmail } from "../lib/integrations/gmail";
 import { orgHasKey } from "../lib/integration-keys";
 import { scheduledAgents } from "../lib/agents/registry";
+import { listActiveOrganizations } from "../lib/organizations";
 import { looksLikeTestOrg, hasGeneratedTag } from "../lib/domain/test-org-match";
 
 type Status = "PASS" | "WARN" | "FAIL";
@@ -273,13 +274,22 @@ async function main() {
 
   console.log(`\n  ${scheduledAgents().length} agents are on a schedule (discovery every 3h, follow-ups every 15m, reply-poll every 15m).`);
 
-  // ---- 7. Active organizations ----
-  const orgs = await query<{ id: string; name: string; subscription_status: string }>(
-    `select id, name, subscription_status from organizations
-      where subscription_status in ('active','trial') order by created_at`
-  ).catch(() => []);
+  // ---- 7. The organizations the agents actually work for ----
+  //
+  // Ask the worker's own selector rather than re-deriving the rule. A
+  // status-only filter is wrong in BOTH directions and this report had it:
+  //
+  //   * it misses a comped organization, whose subscription_status reads
+  //     'canceled' by design and which the agents still work for. That is the
+  //     exact bug listActiveOrganizations() was written to end -- "access said
+  //     yes, the worker said no" -- and repeating it here reported a healthy
+  //     account as the cause of an outage.
+  //   * it counts a 'trial' whose date has passed, which the worker drops.
+  //
+  // Calling the function makes the two incapable of disagreeing again.
+  const orgs = await listActiveOrganizations().catch(() => []);
   if (orgs.length === 0) {
-    check("FAIL", "No active organizations", "Automation runs per organization and none is active (every trial/subscription has lapsed). Nothing will run until at least one is active.");
+    check("FAIL", "No organization is eligible for automation", "The agents work per organization and none qualifies: every account is suspended, lapsed, or cancelled without a comp. Nothing will run until one is active, comped, or on a live trial.");
     return finish();
   }
   // Leaked test fixtures are not customers, and reporting them per-org buries
@@ -288,7 +298,7 @@ async function main() {
   // command that removes them, and audit only the real orgs below.
   const leaked = orgs.filter((o) => looksLikeTestOrg(o.name));
   const realOrgs = orgs.filter((o) => !looksLikeTestOrg(o.name));
-  check("PASS", `${orgs.length} active organization(s)`);
+  check("PASS", `${orgs.length} organization(s) the agents will work for`);
   if (leaked.length > 0) {
     check(
       "WARN",
@@ -322,11 +332,31 @@ async function main() {
   // This has to be read BEFORE the early return below. "No real active
   // organizations" is precisely the moment the next question is "then where IS
   // the account?", and returning first left that unanswered.
-  const inactive = await query<{ name: string; subscription_status: string }>(
-    `select name, subscription_status from organizations
-      where subscription_status not in ('active','trial') order by created_at`
+  //
+  // The complement of the set above, by id rather than by re-testing the rule,
+  // so the two halves cannot drift apart the way the old status filter did.
+  // Each one says WHY it is excluded, because "canceled" alone is not a reason
+  // -- a canceled organization that is comped is worked for regardless.
+  const everyOrg = await query<{
+    id: string;
+    name: string;
+    subscription_status: string | null;
+    billing_exempt: boolean | null;
+    suspended_at: string | Date | null;
+    trial_ends_at: string | Date | null;
+  }>(
+    `select id, name, subscription_status, billing_exempt, suspended_at, trial_ends_at
+       from organizations order by created_at`
   ).catch(() => []);
-  const realInactive = inactive.filter((o) => !looksLikeTestOrg(o.name));
+  const workedIds = new Set(orgs.map((o) => o.id));
+  const excludedReason = (o: (typeof everyOrg)[number]): string => {
+    if (o.suspended_at) return "suspended";
+    if (o.subscription_status === "trial") return "trial expired";
+    return o.subscription_status ?? "no status";
+  };
+  const realInactive = everyOrg
+    .filter((o) => !workedIds.has(o.id) && !looksLikeTestOrg(o.name))
+    .map((o) => ({ name: o.name, subscription_status: excludedReason(o) }));
   const listInactive = (n: number) =>
     realInactive
       .slice(0, n)
@@ -335,20 +365,20 @@ async function main() {
   if (realInactive.length > 0) {
     check(
       "WARN",
-      `${realInactive.length} real organization(s) exist but are NOT active`,
-      `No automation runs for them at all — no discovery, no outreach, no follow-ups: ${listInactive(8)}. If one of these is the account you expect to be working, reactivating it is the fix.`
+      `${realInactive.length} real organization(s) the agents will NOT work for`,
+      `No automation runs for them at all — no discovery, no outreach, no follow-ups: ${listInactive(8)}. To bring one back, comp it (Admin → Accounts → the account → "Comp this account"), restart its trial, or put it on a paid plan. Note a comped account works even while its Stripe status reads cancelled, so the status alone is not the thing to fix.`
     );
   }
 
   if (realOrgs.length === 0) {
     check(
       "FAIL",
-      "No real active organizations",
+      "No real organization is eligible for automation",
       realInactive.length > 0
-        ? `Every ACTIVE organization is a leaked test fixture, and the real account(s) are not active: ${listInactive(
+        ? `Every eligible organization is a leaked test fixture, and no real account qualifies: ${listInactive(
             12
-          )}. Nothing runs for them, which is very likely why the engine is silent — reactivate the account before looking any further.`
-        : "Every active organization is a leaked test fixture, and no real organization exists in any other state either. Confirm this is the right database, then purge the fixtures."
+          )}. Nothing runs for them, which is very likely why the engine is silent. Comp the account (Admin → Accounts → the account → "Comp this account"), restart its trial, or put it on a paid plan.`
+        : "Every eligible organization is a leaked test fixture, and no real organization exists in any other state either. Confirm this is the right database, then purge the fixtures."
     );
     return finish();
   }
