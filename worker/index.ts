@@ -273,6 +273,24 @@ function startHealthServer(): http.Server {
   return server;
 }
 
+// A crash after boot is the failure that hurts most: `main()` has returned, the
+// timers and the queue handler are running, and then one stray rejection in a
+// callback takes the process down. Under `concurrently --kill-others-on-fail=false`
+// the web half keeps serving and the run command never exits, so on a Reserved
+// VM (which does not cycle on its own) nothing restarts the worker — it simply
+// stays dead until someone redeploys, which is exactly the "site up, engine
+// silent for days" state this is here to prevent. So name the crash loudly and
+// exit non-zero, deterministically, and let the supervisor (`--restart-tries`)
+// bring a fresh process back.
+process.on("unhandledRejection", (reason) => {
+  console.error("[worker] fatal: unhandled promise rejection:", reason);
+  process.exit(1);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[worker] fatal: uncaught exception:", err);
+  process.exit(1);
+});
+
 main().catch((err) => {
   console.error("[worker] fatal:", err);
   process.exit(1);
