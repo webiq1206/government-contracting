@@ -131,6 +131,21 @@ async function main() {
     return;
   }
 
+  // Decide whether this run is allowed BEFORE printing a single line about it.
+  // Printed after the listing, the refusal arrives on the far side of a hundred
+  // lines that each begin with the word DELETE, so an operator watching a live
+  // customer database scroll past has to reach the very end to learn that
+  // nothing happened. The answer is known before any of it is printed.
+  const refused = DELETE && candidates.length > MAX_DELETE && !FORCE;
+  if (refused) {
+    console.log(
+      `\nRefusing to delete ${candidates.length} organizations in one run (cap is ${MAX_DELETE}). NOTHING has been changed.\n` +
+        `Review the list first with a dry run (drop --delete). If ${candidates.length} is genuinely correct, re-run with --force.`
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const tables = await orgScopedTables();
   for (const o of candidates) {
     const fp = await footprint(o.id);
@@ -139,13 +154,24 @@ async function main() {
   }
 
   if (!DELETE) {
+    // At this scale the list is unreviewable line by line, and "review it" is
+    // the whole point of a dry run, so group it into something a person can
+    // actually check off against what they expect the suite to have created.
+    if (candidates.length > 20) {
+      const families = new Map<string, number>();
+      for (const o of candidates) {
+        const family = o.name.replace(/[\s-][0-9a-f]{8,}.*$/i, "").trim() || o.name;
+        families.set(family, (families.get(family) ?? 0) + 1);
+      }
+      console.log(`\n  By fixture family (${families.size} distinct):`);
+      for (const [family, n] of [...families].sort((a, b) => b[1] - a[1])) {
+        console.log(`    ${String(n).padStart(4)} x ${family}`);
+      }
+    }
     console.log(`\nDRY RUN — nothing was changed. Re-run with --delete to remove the ${candidates.length} organization(s) above.`);
-    return;
-  }
-
-  if (candidates.length > MAX_DELETE && !FORCE) {
-    console.log(`\nRefusing to delete ${candidates.length} organizations in one run (cap is ${MAX_DELETE}). If this is genuinely correct, re-run with --force.`);
-    process.exitCode = 1;
+    if (candidates.length > MAX_DELETE) {
+      console.log(`That is more than the ${MAX_DELETE}-org cap, so --delete will refuse unless you also pass --force.`);
+    }
     return;
   }
 
