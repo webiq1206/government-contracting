@@ -87,6 +87,7 @@ async function main() {
     console.error(
       "[worker] DATABASE_URL still unreachable after 60s. Handlers + scheduler disabled; health only."
     );
+    exitIsIntentional = true;
     process.on("SIGTERM", () => process.exit(0));
     process.on("SIGINT", () => process.exit(0));
     return;
@@ -154,6 +155,7 @@ async function main() {
     console.log("[worker] RUN_WORKER=false, job handlers + scheduler disabled; health only.");
     clearInterval(recoveryTimer);
     stopHeartbeat();
+    exitIsIntentional = true;
     process.on("SIGTERM", () => process.exit(0));
     process.on("SIGINT", () => process.exit(0));
     console.log("[worker] ready (idle)");
@@ -198,6 +200,7 @@ async function main() {
 
   async function shutdown(signal: string) {
     console.log(`[worker] ${signal} received, shutting down...`);
+    exitIsIntentional = true;
     phase = "stopping";
     clearInterval(healthTimer);
     clearInterval(recoveryTimer);
@@ -282,16 +285,66 @@ function startHealthServer(): http.Server {
 // silent for days" state this is here to prevent. So name the crash loudly and
 // exit non-zero, deterministically, and let the supervisor (`--restart-tries`)
 // bring a fresh process back.
+/**
+ * Set once the process has a reason to be ending: a signal, or a path that
+ * deliberately runs health-only. Anything else that reaches `exit` is a bug.
+ */
+let exitIsIntentional = false;
+
+/**
+ * Say why the process is ending, every single time.
+ *
+ * Production went quiet with the heartbeat frozen at its very first beat: one
+ * write, then nothing, and no restart for two hours. The log could have said
+ * which of "crashed", "was killed", or "returned cleanly" it was, and said
+ * none of them, because a process that simply ends leaves no trace at all.
+ *
+ * The exit code also decides whether the supervisor acts. `concurrently
+ * --restart-tries` only restarts a command that fails, so a worker exiting 0
+ * is left dead on purpose — which is right for a shutdown and completely wrong
+ * for a worker that fell out of boot. Unexpected exits therefore leave with a
+ * non-zero code so the restart actually fires.
+ */
+process.on("exit", (code) => {
+  if (exitIsIntentional) {
+    console.log(`[worker] process exiting with code ${code} (expected).`);
+  } else {
+    console.error(
+      `[worker] process is exiting with code ${code} and NOTHING asked it to. ` +
+        `Last phase: "${phase}". This is the bug to chase: the boot fell out ` +
+        `before "ready" without crashing.`
+    );
+  }
+});
+
 process.on("unhandledRejection", (reason) => {
   console.error("[worker] fatal: unhandled promise rejection:", reason);
+  exitIsIntentional = true;
   process.exit(1);
 });
 process.on("uncaughtException", (err) => {
   console.error("[worker] fatal: uncaught exception:", err);
+  exitIsIntentional = true;
   process.exit(1);
 });
 
-main().catch((err) => {
-  console.error("[worker] fatal:", err);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    // Reaching here is not "done". main() only returns after a deliberate
+    // health-only path, and those keep the process alive on the health server.
+    // If the event loop is empty enough for this to be the end, the worker
+    // dropped out of boot without throwing, and exiting 0 would tell the
+    // supervisor everything was fine and leave the engine dead. Fail loudly so
+    // it is restarted and so the log names the phase it fell out of.
+    if (phase === READY_PHASE || exitIsIntentional) return;
+    console.error(
+      `[worker] boot ended at phase "${phase}" without reaching "${READY_PHASE}" and without an error. Exiting non-zero so the supervisor restarts it.`
+    );
+    exitIsIntentional = true;
+    process.exit(1);
+  })
+  .catch((err) => {
+    console.error("[worker] fatal:", err);
+    exitIsIntentional = true;
+    process.exit(1);
+  });
