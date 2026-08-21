@@ -12,11 +12,13 @@ import { evaluatePulse, type PulseFinding } from "./domain/pipeline-pulse";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { tryResolveTenantOrgId } from "./tenant";
 import { LEGACY_ORG_ID } from "./tenant-context";
+import { isAutomationPaused } from "./app-settings";
+import { config } from "./config";
 
 export async function readPipelinePulse(): Promise<PulseFinding[]> {
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
 
-  const [runs, open, samKeyPresent, samError, quota, connection, heartbeat, stuck] = await Promise.all([
+  const [runs, open, samKeyPresent, samError, quota, connection, heartbeat, stuck, paused, activeOrgs] = await Promise.all([
     queryOne<{ worker_last: string | null; monitor_last_ok: string | null }>(
       `select (select max(started_at) from job_runs) as worker_last,
               (select max(started_at) from job_runs
@@ -54,6 +56,10 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
         where o.org_id = $1 and o.status = 'open'`,
       [orgId]
     ).catch(() => null),
+    isAutomationPaused().catch(() => false),
+    queryOne<{ n: number }>(
+      `select count(*)::int as n from organizations where subscription_status in ('active','trial')`
+    ).catch(() => null),
   ]);
 
   return evaluatePulse({
@@ -76,5 +82,8 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
       sendFailed: stuck?.send_failed ?? 0,
       drafts: stuck?.drafts ?? 0,
     },
+    automationPaused: paused,
+    claudeConfigured: config.claude.enabled,
+    activeOrgCount: activeOrgs?.n ?? undefined,
   });
 }

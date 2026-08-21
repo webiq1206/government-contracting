@@ -17,6 +17,9 @@ function input(over: Partial<PulseInput> = {}): PulseInput {
     samQuota: { used: 120, cap: 900 },
     gmail: { connected: true, status: "ok", lastError: null },
     outreach: { sendFailed: 0, drafts: 0 },
+    automationPaused: false,
+    claudeConfigured: true,
+    activeOrgCount: 1,
     ...over,
   };
 }
@@ -193,5 +196,38 @@ describe("the worker's own check-in", () => {
     const f = evaluatePulse(input({ workerLastRunAt: hoursAgo(5) }));
     expect(f[0]).toMatchObject({ key: "worker_down" });
     expect(f[0].detail).not.toContain("last checked in");
+  });
+});
+
+describe("the gates that silence the whole engine", () => {
+  it("names the master pause switch first, and stops there", () => {
+    // A paused engine has one cause and one fix; the worker/SAM legs below
+    // would all fire with the same root, which is noise.
+    const f = evaluatePulse(input({ automationPaused: true, workerLastRunAt: hoursAgo(9) }));
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ key: "automation_paused", severity: "down" });
+    expect(f[0].detail).toMatch(/resumes everything/i);
+  });
+
+  it("explains a missing AI key as found-but-not-acted-on", () => {
+    const f = evaluatePulse(input({ claudeConfigured: false }));
+    const claude = f.find((x) => x.key === "claude_off");
+    expect(claude?.severity).toBe("down");
+    expect(claude?.detail).toMatch(/ANTHROPIC_API_KEY/);
+    // Not a hard return: it does not suppress other independent legs.
+    const withWorker = evaluatePulse(input({ claudeConfigured: false, workerLastRunAt: hoursAgo(9) }));
+    expect(withWorker.some((x) => x.key === "claude_off")).toBe(true);
+    expect(withWorker.some((x) => x.key === "worker_down")).toBe(true);
+  });
+
+  it("flags zero active organizations as idle-by-definition, not broken", () => {
+    const f = evaluatePulse(input({ activeOrgCount: 0 }));
+    const none = f.find((x) => x.key === "no_active_orgs");
+    expect(none?.severity).toBe("warn");
+  });
+
+  it("says nothing about these when they are healthy", () => {
+    const f = evaluatePulse(input({ automationPaused: false, claudeConfigured: true, activeOrgCount: 2 }));
+    expect(f.some((x) => ["automation_paused", "claude_off", "no_active_orgs"].includes(x.key))).toBe(false);
   });
 });
