@@ -34,6 +34,7 @@ import {
   INSTANCE_ID,
   READY_PHASE,
   closeInterruptedRuns,
+  recordHeartbeat,
   startHeartbeat,
 } from "../lib/worker-heartbeat";
 
@@ -317,19 +318,45 @@ process.on("exit", (code) => {
   }
 });
 
+/**
+ * Leave the cause of death somewhere it can be read back.
+ *
+ * The console log is the natural place for this and it has not been enough:
+ * reaching a deployment's log is its own task, and by the time anyone does the
+ * process that wrote it is long gone. The heartbeat row is already read on
+ * every `npm run doctor`, already has a `detail` column that nothing has ever
+ * written, and survives the process. So the last thing a dying worker does is
+ * say why, in the one place the diagnosis already looks.
+ *
+ * Bounded and best-effort: a database that is unreachable is a plausible
+ * reason to be dying in the first place, and waiting on it would turn a crash
+ * into a hang. Five seconds, then go.
+ */
+async function recordCauseOfDeath(reason: string): Promise<void> {
+  try {
+    await withTimeout(recordHeartbeat(phase, reason.slice(0, 480)), 5_000, "record-cause-of-death");
+  } catch {
+    // Nothing useful left to try; the console line above is the fallback.
+  }
+}
+
 process.on("unhandledRejection", (reason) => {
   console.error("[worker] fatal: unhandled promise rejection:", reason);
   exitIsIntentional = true;
-  process.exit(1);
+  void recordCauseOfDeath(
+    `died at phase "${phase}": unhandled promise rejection: ${reason instanceof Error ? reason.message : String(reason)}`
+  ).finally(() => process.exit(1));
 });
 process.on("uncaughtException", (err) => {
   console.error("[worker] fatal: uncaught exception:", err);
   exitIsIntentional = true;
-  process.exit(1);
+  void recordCauseOfDeath(`died at phase "${phase}": uncaught exception: ${err.message}`).finally(
+    () => process.exit(1)
+  );
 });
 
 main()
-  .then(() => {
+  .then(async () => {
     // Reaching here is not "done". main() only returns after a deliberate
     // health-only path, and those keep the process alive on the health server.
     // If the event loop is empty enough for this to be the end, the worker
@@ -341,10 +368,16 @@ main()
       `[worker] boot ended at phase "${phase}" without reaching "${READY_PHASE}" and without an error. Exiting non-zero so the supervisor restarts it.`
     );
     exitIsIntentional = true;
+    await recordCauseOfDeath(
+      `boot ended at phase "${phase}" without reaching "${READY_PHASE}" and without an error`
+    );
     process.exit(1);
   })
-  .catch((err) => {
+  .catch(async (err) => {
     console.error("[worker] fatal:", err);
     exitIsIntentional = true;
+    await recordCauseOfDeath(
+      `died at phase "${phase}": ${err instanceof Error ? err.message : String(err)}`
+    );
     process.exit(1);
   });

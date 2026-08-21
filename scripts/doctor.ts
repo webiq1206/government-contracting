@@ -187,7 +187,8 @@ async function main() {
       devDb ? "WARN" : "FAIL",
       `The worker last checked in ${Math.round(beatAge)} min ago (stale)` +
         (devDb ? " — expected against the dev database, which no worker beats to" : ""),
-      `Last beat: phase "${beat.phase}", instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}. ` +
+      (beat.detail ? `The worker's own last words: "${beat.detail}". ` : "") +
+        `Last beat: phase "${beat.phase}", instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}. ` +
         (stalled
           ? `It never finished starting -- it stopped during "${beat.phase}", so look for that step in the deployment log.`
           : "It booted cleanly and then stopped, so look for a crash in the deployment log.") +
@@ -215,13 +216,13 @@ async function main() {
       check(
         "FAIL",
         `The worker is CRASH-LOOPING at boot (phase: ${beat.phase})`,
-        `Two different instances in six seconds (${beat.instanceId} → ${again!.instanceId}), each getting as far as "${beat.phase}" and dying. It is being restarted every few seconds, so no job ever runs. Restarting the deployment will NOT help — the next boot dies the same way. Open the deployment log and read the lines right after "[worker] database: reachable"; a crash prints "[worker] fatal:" with the reason.`
+        `${beat.detail ? `The worker's own last words: "${beat.detail}". ` : ""}Two different instances in six seconds (${beat.instanceId} → ${again!.instanceId}), each getting as far as "${beat.phase}" and dying. It is being restarted every few seconds, so no job ever runs. Restarting the deployment will NOT help — the next boot dies the same way. Open the deployment log and read the lines right after "[worker] database: reachable"; a crash prints "[worker] fatal:" with the reason.`
       );
     } else if (!beatMoved) {
       check(
         "FAIL",
         `The worker is stuck starting and its heartbeat has stopped (phase: ${beat.phase})`,
-        `Instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}. The beat did not advance over six seconds, so the process is gone or wedged rather than looping. Restart the deployment and watch the log from "[worker] database: reachable" onward.`
+        `${beat.detail ? `The worker's own last words: "${beat.detail}". ` : ""}Instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}. The beat did not advance over six seconds, so the process is gone or wedged rather than looping. Restart the deployment and watch the log from "[worker] database: reachable" onward.`
       );
     } else {
       check(
