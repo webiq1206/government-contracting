@@ -22,7 +22,7 @@ import { isAutomationPaused } from "../lib/app-settings";
 import { gmail } from "../lib/integrations/gmail";
 import { orgHasKey } from "../lib/integration-keys";
 import { scheduledAgents } from "../lib/agents/registry";
-import { looksLikeTestOrg } from "../lib/domain/test-org-match";
+import { looksLikeTestOrg, hasGeneratedTag } from "../lib/domain/test-org-match";
 
 type Status = "PASS" | "WARN" | "FAIL";
 const results: { status: Status; title: string; fix?: string }[] = [];
@@ -235,9 +235,45 @@ async function main() {
     );
     for (const o of leaked) console.log(`\n  ── (skipped, test fixture) ${o.name}`);
   }
+  // A prefix list cannot keep up with the suite, so say when something looks
+  // generated but is not matched. "Doomed Org <tag>" reached production and was
+  // audited here as a real customer for exactly this reason. Reported, never
+  // acted on: the purge still needs two signals.
+  const nearMisses = realOrgs.filter((o) => hasGeneratedTag(o.name));
+  if (nearMisses.length > 0) {
+    check(
+      "WARN",
+      `${nearMisses.length} organization(s) end in a generated tag but match no known fixture name`,
+      `Audited below as real customers, which they are probably not: ${nearMisses
+        .slice(0, 8)
+        .map((o) => o.name)
+        .join(", ")}${nearMisses.length > 8 ? ", …" : ""}. No real company name ends in a random hex tag. If these are fixtures, add their prefix to lib/domain/test-org-match.ts so the purge can see them; the purge will not touch them until you do.`
+    );
+  }
+
   if (realOrgs.length === 0) {
     check("FAIL", "No real active organizations", "Every active organization is a leaked test fixture. Purge them and confirm a real account is active.");
     return finish();
+  }
+
+  // Automation only runs for active/trial orgs, so a real account whose
+  // subscription has lapsed goes completely silent while everything here still
+  // reads healthy. That is invisible above, because the query only selects the
+  // active ones -- the lapsed customer is simply absent from the report.
+  const inactive = await query<{ name: string; subscription_status: string }>(
+    `select name, subscription_status from organizations
+      where subscription_status not in ('active','trial') order by created_at`
+  ).catch(() => []);
+  const realInactive = inactive.filter((o) => !looksLikeTestOrg(o.name));
+  if (realInactive.length > 0) {
+    check(
+      "WARN",
+      `${realInactive.length} real organization(s) exist but are NOT active`,
+      `No automation runs for them at all — no discovery, no outreach, no follow-ups: ${realInactive
+        .slice(0, 8)
+        .map((o) => `${o.name} (${o.subscription_status})`)
+        .join(", ")}${realInactive.length > 8 ? ", …" : ""}. If one of these is the account you expect to be working, reactivating it is the fix.`
+    );
   }
 
   // ---- 8. Per-org discovery + outreach readiness ----
