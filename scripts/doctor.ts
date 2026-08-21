@@ -233,7 +233,8 @@ async function main() {
       `${leaked.length} of those are leaked test fixtures, not customers`,
       "They are counted as active, so the per-org agents loop over them every cycle. Remove them with `npm run purge-test-orgs` (dry run first), then `npm run purge-test-orgs -- --delete`. They are excluded from the per-org checks below."
     );
-    for (const o of leaked) console.log(`\n  ── (skipped, test fixture) ${o.name}`);
+    for (const o of leaked.slice(0, 10)) console.log(`\n  ── (skipped, test fixture) ${o.name}`);
+    if (leaked.length > 10) console.log(`\n  ── …and ${leaked.length - 10} more test fixtures`);
   }
   // A prefix list cannot keep up with the suite, so say when something looks
   // generated but is not matched. "Doomed Org <tag>" reached production and was
@@ -251,29 +252,43 @@ async function main() {
     );
   }
 
-  if (realOrgs.length === 0) {
-    check("FAIL", "No real active organizations", "Every active organization is a leaked test fixture. Purge them and confirm a real account is active.");
-    return finish();
-  }
-
   // Automation only runs for active/trial orgs, so a real account whose
   // subscription has lapsed goes completely silent while everything here still
-  // reads healthy. That is invisible above, because the query only selects the
-  // active ones -- the lapsed customer is simply absent from the report.
+  // reads healthy: it is not failing, it is absent, because the query above
+  // only ever selected active orgs.
+  //
+  // This has to be read BEFORE the early return below. "No real active
+  // organizations" is precisely the moment the next question is "then where IS
+  // the account?", and returning first left that unanswered.
   const inactive = await query<{ name: string; subscription_status: string }>(
     `select name, subscription_status from organizations
       where subscription_status not in ('active','trial') order by created_at`
   ).catch(() => []);
   const realInactive = inactive.filter((o) => !looksLikeTestOrg(o.name));
+  const listInactive = (n: number) =>
+    realInactive
+      .slice(0, n)
+      .map((o) => `${o.name} (${o.subscription_status})`)
+      .join(", ") + (realInactive.length > n ? ", …" : "");
   if (realInactive.length > 0) {
     check(
       "WARN",
       `${realInactive.length} real organization(s) exist but are NOT active`,
-      `No automation runs for them at all — no discovery, no outreach, no follow-ups: ${realInactive
-        .slice(0, 8)
-        .map((o) => `${o.name} (${o.subscription_status})`)
-        .join(", ")}${realInactive.length > 8 ? ", …" : ""}. If one of these is the account you expect to be working, reactivating it is the fix.`
+      `No automation runs for them at all — no discovery, no outreach, no follow-ups: ${listInactive(8)}. If one of these is the account you expect to be working, reactivating it is the fix.`
     );
+  }
+
+  if (realOrgs.length === 0) {
+    check(
+      "FAIL",
+      "No real active organizations",
+      realInactive.length > 0
+        ? `Every ACTIVE organization is a leaked test fixture, and the real account(s) are not active: ${listInactive(
+            12
+          )}. Nothing runs for them, which is very likely why the engine is silent — reactivate the account before looking any further.`
+        : "Every active organization is a leaked test fixture, and no real organization exists in any other state either. Confirm this is the right database, then purge the fixtures."
+    );
+    return finish();
   }
 
   // ---- 8. Per-org discovery + outreach readiness ----
