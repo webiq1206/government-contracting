@@ -45,8 +45,62 @@ function isoOrRaw(value: string | Date | null | undefined): string {
   return Number.isNaN(d.getTime()) ? String(value) : d.toISOString().replace(".000", "");
 }
 
+/** Host and port only. A connection string carries a password; this report does not. */
+function dbTarget(url: string): string {
+  try {
+    const u = new URL(url);
+    const db = u.pathname.replace(/^\//, "") || "?";
+    // A unix-socket URL carries no hostname; the path lives in ?host=.
+    const host = u.hostname || u.searchParams.get("host") || "local socket";
+    return `${host}:${u.port || u.searchParams.get("port") || "5432"}/${db}`;
+  } catch {
+    // A unix-socket connection string ("postgres://user@/db?host=/tmp/sock")
+    // is not a valid URL at all, so fall back to reading it by shape. The
+    // userinfo group is matched only to discard it: no password reaches this
+    // report by any path.
+    const m = /^[a-z0-9+]+:\/\/(?:[^@/]*@)?([^/?#]*)\/?([^?#]*)/i.exec(url);
+    const socket = /[?&]host=([^&]+)/.exec(url)?.[1];
+    const port = /[?&]port=(\d+)/.exec(url)?.[1] ?? "5432";
+    return `${m?.[1] || socket || "local socket"}:${port}/${m?.[2] || "?"}`;
+  }
+}
+
+/**
+ * A deployed process, as opposed to the workspace shell. Either marker counts,
+ * matching lib/config so the two can never disagree about which world this is.
+ */
+function isDeployment(): boolean {
+  return (process.env.REPLIT_DEPLOYMENT ?? "") !== "" || (process.env.REPLIT_DEPLOYMENT_ID ?? "") !== "";
+}
+
 async function main() {
   console.log("\nBROSTCO doctor — why the engine may be quiet\n" + "=".repeat(52));
+
+  // ---- 0. WHERE AM I? ----
+  //
+  // Every finding below is about one specific database and one specific
+  // process, and the report used to name neither. That ambiguity is not
+  // cosmetic: the workspace deliberately runs with RUN_WORKER=false against
+  // the repl's own built-in database, so a frozen heartbeat and an idle engine
+  // are the CORRECT state there and say nothing whatsoever about production.
+  // Read without that context, a healthy workspace looks exactly like a
+  // production outage. So state the environment first, every time.
+  const deployed = isDeployment();
+  const devDb = config.database.isIsolatedDev;
+  console.log(`  environment : ${deployed ? "deployment (the published app)" : "workspace (development shell)"}`);
+  console.log(`  database    : ${devDb ? "the repl's built-in DEV database" : "DATABASE_URL"} → ${config.database.url ? dbTarget(config.database.url) : "(unset)"}`);
+  console.log(`  worker here : ${config.worker.enabled ? "enabled" : `disabled (RUN_WORKER="${process.env.RUN_WORKER ?? ""}")`}`);
+  console.log("=".repeat(52));
+
+  if (!deployed) {
+    check(
+      "WARN",
+      "This is the workspace, not the deployment — these findings are not about production",
+      devDb
+        ? "USE_REPLIT_DEV_DB is on, so this read the repl's built-in DEV database, not your live data. The workspace also sets RUN_WORKER=false, so an idle engine and a stale heartbeat are EXPECTED here and prove nothing about production. To diagnose the live system, open the deployment's shell (Deployments → your deployment → Shell) and run `npm run doctor` there."
+        : "This read DATABASE_URL (your live database) from the workspace, but the workspace sets RUN_WORKER=false, so the worker checks below describe this shell, not the deployed worker. Run `npm run doctor` in the deployment's shell for the live picture."
+    );
+  }
 
   // ---- 1. Database ----
   if (!config.database.url) {
@@ -95,11 +149,11 @@ async function main() {
   // engine silently.
   const runWorkerRaw = process.env.RUN_WORKER;
   const runWorkerSet = runWorkerRaw != null && runWorkerRaw !== "";
-  if (runWorkerSet && !config.worker.enabled) {
+  if (runWorkerSet && !config.worker.enabled && deployed) {
     check(
       "FAIL",
-      `RUN_WORKER is set to "${runWorkerRaw}", which turns the engine off`,
-      "This instance runs NO jobs and NO scheduler, and stops its heartbeat, so it looks identical to a dead worker. Only 1/true/yes/on count as true. Unset RUN_WORKER (the default is on) and redeploy."
+      `RUN_WORKER is set to "${runWorkerRaw}" in the deployment, which turns the engine off`,
+      "The deployed instance runs NO jobs and NO scheduler, and stops its heartbeat, so it looks identical to a dead worker. Only 1/true/yes/on count as true, so `0`, `False` or a typo all read as off. Remove RUN_WORKER from the deployment's environment (the default is on) and redeploy."
     );
   }
 
@@ -115,9 +169,13 @@ async function main() {
     // same instance across a redeploy means the worker is not being launched
     // at all -- which no amount of restarting will fix.
     const stalled = (beat.phase ?? null) !== READY_PHASE;
+    // In the workspace this is the expected reading, not a fault: nothing here
+    // is supposed to be beating. Reporting it as a blocker sends someone to
+    // restart a production deployment that may be perfectly healthy.
     check(
-      "FAIL",
-      `The worker last checked in ${Math.round(beatAge)} min ago (stale)`,
+      deployed ? "FAIL" : "WARN",
+      `The worker last checked in ${Math.round(beatAge)} min ago (stale)` +
+        (deployed ? "" : " — expected in the workspace, which runs no worker"),
       `Last beat: phase "${beat.phase}", instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}. ` +
         (stalled
           ? `It never finished starting -- it stopped during "${beat.phase}", so look for that step in the deployment log.`
