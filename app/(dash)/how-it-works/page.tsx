@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { PAGE_HELP } from "@/lib/help-content";
 
 // Must stay dynamic: this route lives under the auth dash layout, which reads
@@ -257,11 +257,11 @@ export default function HowItWorksPage() {
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["how-it-works"]}
         title="How it works"
         status={`${totalSteps} steps · 4 phases`}
-        subtitle="Brost Co runs the automatic steps. Today lists only what needs you."
+        explanation="Brost Co runs the automatic steps. Today lists only what needs you."
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <div className="mx-auto max-w-2xl">

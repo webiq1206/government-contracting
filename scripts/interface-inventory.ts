@@ -159,6 +159,24 @@ function main() {
     return;
   }
 
+  /*
+   * Three pages carry a frame of their own rather than the shared one, and
+   * each is deliberate:
+   *
+   *   /today            the greeting IS the frame -- date, role-aware
+   *                     headline, the workload sentence, the count. The
+   *                     audit specifies exactly that shape for this page.
+   *   /opportunity/[id] a sticky record header carrying the deadline, stage,
+   *                     score, confidence, owner and readiness, plus its own
+   *                     pinned "back to Opportunities" bar.
+   *   /settings         a redirect to the first tab. There is no page to
+   *                     frame.
+   *
+   * Named individually so a fourth one has to be argued for rather than
+   * quietly joining them.
+   */
+  const OWN_FRAME = new Set(["/today", "/opportunity/[id]", "/settings"]);
+
   const out: string[] = [];
   out.push("# Interface inventory");
   out.push("");
@@ -175,6 +193,7 @@ function main() {
   out.push("");
   out.push(
     "`Frame` is the shared PageFrame (breadcrumb, title, one-sentence explanation, one primary action). " +
+      "`own` means the page carries an equivalent frame of its own for a stated reason; see the script. " +
       "`States` lists the non-data states the page handles. A starred entry is inherited from an " +
       "ancestor route boundary rather than handled in the page itself, which catches the crash but " +
       "cannot say what failed."
@@ -184,7 +203,7 @@ function main() {
   out.push("| --- | --- | --- | --- | --- | --- | --- | --- |");
   for (const p of pages.filter((r) => r.group === "dash" || r.group === "account").sort((a, b) => a.route.localeCompare(b.route))) {
     out.push(
-      `| \`${p.route}\` | ${p.frame ? "yes" : "**no**"} | ${p.primaryAction ? "yes" : "no"} | ` +
+      `| \`${p.route}\` | ${p.frame ? "yes" : OWN_FRAME.has(p.route) ? "own" : "**no**"} | ${p.primaryAction ? "yes" : "no"} | ` +
         `${p.breadcrumbs ? "yes" : "no"} | ${p.states.join(", ") || "**none**"} | ` +
         `${p.tables.join(", ") || "-"} | ${p.drawer ? "yes" : "-"} | ${p.lines} |`
     );
@@ -221,14 +240,20 @@ function main() {
     `[inventory] ${pages.length} pages, ${apis.length} API routes -> docs/interface-inventory.md`
   );
 
-  const noFrame = pages.filter((p) => (p.group === "dash" || p.group === "account") && !p.frame);
+  const noFrame = pages.filter(
+    (p) => (p.group === "dash" || p.group === "account") && !p.frame && !OWN_FRAME.has(p.route)
+  );
   const noError = pages.filter(
     (p) =>
       (p.group === "dash" || p.group === "account") &&
       !p.states.includes("error") &&
       !p.states.includes("error*")
   );
-  if (noFrame.length) console.error(`[inventory] no PageFrame: ${noFrame.map((p) => p.route).join(", ")}`);
+  if (noFrame.length) {
+    console.error(`[inventory] no PageFrame: ${noFrame.map((p) => p.route).join(", ")}`);
+  } else {
+    console.error("[inventory] every operator page carries a frame.");
+  }
   if (noError.length) console.error(`[inventory] no error state: ${noError.map((p) => p.route).join(", ")}`);
 }
 

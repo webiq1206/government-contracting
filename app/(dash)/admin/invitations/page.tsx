@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { listInvitations, invitationState, INVITATION_DAYS } from "@/lib/admin/invitations";
 import { describeConcession } from "@/lib/billing/concessions";
@@ -49,10 +49,10 @@ export default async function AdminInvitationsPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Platform admin"
+      <PageFrame
+        breadcrumbs={[{ label: "Platform admin" }]}
         title="Invitations"
-        subtitle="Bring somebody onto the platform on terms you choose, instead of the public trial everyone else gets."
+        explanation="Bring somebody onto the platform on terms you choose, instead of the public trial everyone else gets."
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         <InvitationForm />

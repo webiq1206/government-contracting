@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { adminAccountRows, type AdminAccountRow } from "@/lib/admin/accounts";
 import { recentAdminActions } from "@/lib/admin/audit";
@@ -114,10 +114,10 @@ export default async function AdminAccountsPage({
 
   return (
     <>
-      <PageHeader
-        eyebrow="Platform admin"
+      <PageFrame
+        breadcrumbs={[{ label: "Platform admin" }]}
         title="All accounts"
-        subtitle="Every organization, who owns it, and whether it can use the product right now."
+        explanation="Every organization, who owns it, and whether it can use the product right now."
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

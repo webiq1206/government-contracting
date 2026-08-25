@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { adminBillingRows, summarise } from "@/lib/billing/admin";
 import { billingConfigured, isLiveMode } from "@/lib/billing/catalog";
@@ -56,10 +56,10 @@ export default async function AdminBillingPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Platform admin"
+      <PageFrame
+        breadcrumbs={[{ label: "Platform admin" }]}
         title="Customer billing"
-        subtitle="Plan, trial, discount, subscription status, and payment health for every account."
+        explanation="Plan, trial, discount, subscription status, and payment health for every account."
       />
 
       {/* page-main is overflow-hidden: every page owns its scroll. Without

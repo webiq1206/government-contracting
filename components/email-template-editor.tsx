@@ -239,7 +239,7 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
               className={`text-xs font-medium ${
                 restoreMsg.startsWith("Error:")
                   ? "text-risk"
-                  : "text-emerald-700"
+                  : "text-pursue"
               }`}
             >
               {restoreMsg.startsWith("Error:") ? "" : "✓ "}{restoreMsg}
@@ -795,12 +795,12 @@ export function EmailTemplateEditor({ template }: Props) {
           {testBusy ? "Sending…" : "Send test email"}
         </button>
         {savedVersion !== null && (
-          <span className="text-xs font-medium text-emerald-700">
+          <span className="text-xs font-medium text-pursue">
             ✓ Saved as version {savedVersion}
           </span>
         )}
         {testResult?.ok && (
-          <span className="text-xs font-medium text-emerald-700">
+          <span className="text-xs font-medium text-pursue">
             ✓ Test email sent to {testResult.email}
           </span>
         )}

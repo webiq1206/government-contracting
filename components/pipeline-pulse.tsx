@@ -16,7 +16,7 @@ export function PipelinePulse({ findings }: { findings: PulseFinding[] }) {
           className={
             f.severity === "down"
               ? "rounded-md border border-risk/40 bg-risk/10 px-4 py-3 text-sm"
-              : "rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm"
+              : "rounded-md border border-review/40 bg-review/10 px-4 py-3 text-sm"
           }
         >
           <p className={f.severity === "down" ? "font-semibold text-risk" : "font-semibold"}>

@@ -19,10 +19,10 @@ written in advance of the work.
 | --- | --- |
 | 1. Inventory and traceability | Done |
 | 2. Data truth: status, counts, scoring, activity | In progress. Automation health and account status done; scoring split and unified timeline landed earlier (see notes) |
-| 3. Roles, permissions, terminology, task model | In progress. Roles and permissions done; terminology library still to write |
-| 4. Navigation and shared design system | Partly done: sections and shared page framework landed earlier; the design system is not yet written down |
+| 3. Roles, permissions, terminology, task model | Done |
+| 4. Navigation and shared design system | Done. `docs/design-system.md`, with the statically checkable rules enforced |
 | 5. Desktop and mobile shells | Partly done |
-| 6-9. Page-by-page | Partly done |
+| 6-9. Page-by-page | Every operator page now carries a frame; deeper per-page work continues |
 | 10-12. Accessibility, performance, usability, release | Not started |
 
 ## Decisions
@@ -78,6 +78,26 @@ written in advance of the work.
 | Existing item | Decision | New location | Desktop | Mobile | Reason |
 | --- | --- | --- | --- | --- | --- |
 | `PageHeader` on Rules, Integrations, Profile, Content | Changed | `PageFrame` with breadcrumbs and a one-sentence explanation | Settings | Settings | Four settings pages more than one level deep with no way back but the browser button |
+
+### Terminology
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| "N decisions" on Today | Changed | "N actions need you" | Today | Today | The queue holds calls, deadlines, approvals and compliance renewals, none of which is a decision. The ledger already phrased it correctly everywhere except the largest text on the busiest screen |
+| "On track" on a compliance item with no expiry | Changed | "Cannot monitor" | Compliance | Compliance | A green badge asserting an item was fine when the system had nothing to check it against |
+| "no date set" | Changed | "No expiry date, so this cannot be tracked" | Compliance | Compliance | Says what the absence means, not just that it exists |
+| Deadline vocabulary | Kept, now named | `DEADLINE_TERMS` | - | - | A solicitation has two deadlines and calling both "the deadline" is how a subcontractor was handed the government's date as their own |
+| Markup / margin / gross profit | Kept, now named | `MONEY_TERMS` | - | - | 20% markup is a 16.7% margin. Quoting one as the other loses money on a won job |
+| `text-emerald-700`, `bg-amber-500` | Changed | `text-pursue`, `bg-review` | - | - | Raw palette colours cannot swap with the theme, so they survived the dark-mode toggle as stains |
+
+### Page frames, remainder
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| `PageHeader` on the three Platform Admin pages | Changed | `PageFrame`, eyebrow becomes a breadcrumb | Platform Admin | Platform Admin | "Platform admin" was already being said as an eyebrow without being a way back out of it |
+| `PageHeader` on How it works | Changed | `PageFrame` | Help | More | Consistency; it is a reference page and top level, so no crumbs |
+| Today's greeting | Kept | Its own frame | Today | Today | The audit specifies exactly this shape for Today: date, role-aware headline, workload sentence, count |
+| Opportunity workspace header | Kept | Its own sticky record header | Opportunity | Opportunity | Carries deadline, stage, score, confidence, owner and readiness, plus a pinned back bar |
 
 ## Not changed, deliberately
 
