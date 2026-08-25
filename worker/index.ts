@@ -193,7 +193,20 @@ async function main() {
     {
       baseDelayMs: 5_000,
       maxDelayMs: 60_000,
-      onRetry: () => resetQueue(),
+      // Retrying forever is right -- without the queue this process is a health
+      // endpoint with opinions -- but retrying forever in silence is how a
+      // worker spends days looking merely "not ready" while the same error
+      // repeats underneath. The console says it; the console has been the part
+      // nobody can reach. Put the actual reason where `npm run doctor` reads
+      // it, and keep it current on every attempt.
+      onRetry: async (attempt, err) => {
+        resetQueue();
+        await recordWorkerTrouble(
+          `stuck at phase "queue": attempt ${attempt} failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      },
     }
   );
 
@@ -340,7 +353,8 @@ process.on("exit", (code) => {
 });
 
 /**
- * Leave the cause of death somewhere it can be read back.
+ * Leave the reason -- for dying, or for being stuck -- somewhere it can be
+ * read back.
  *
  * The console log is the natural place for this and it has not been enough:
  * reaching a deployment's log is its own task, and by the time anyone does the
@@ -353,7 +367,7 @@ process.on("exit", (code) => {
  * reason to be dying in the first place, and waiting on it would turn a crash
  * into a hang. Five seconds, then go.
  */
-async function recordCauseOfDeath(reason: string): Promise<void> {
+async function recordWorkerTrouble(reason: string): Promise<void> {
   try {
     await withTimeout(recordHeartbeat(phase, reason.slice(0, 480)), 5_000, "record-cause-of-death");
   } catch {
@@ -364,14 +378,14 @@ async function recordCauseOfDeath(reason: string): Promise<void> {
 process.on("unhandledRejection", (reason) => {
   console.error("[worker] fatal: unhandled promise rejection:", reason);
   exitIsIntentional = true;
-  void recordCauseOfDeath(
+  void recordWorkerTrouble(
     `died at phase "${phase}": unhandled promise rejection: ${reason instanceof Error ? reason.message : String(reason)}`
   ).finally(() => process.exit(1));
 });
 process.on("uncaughtException", (err) => {
   console.error("[worker] fatal: uncaught exception:", err);
   exitIsIntentional = true;
-  void recordCauseOfDeath(`died at phase "${phase}": uncaught exception: ${err.message}`).finally(
+  void recordWorkerTrouble(`died at phase "${phase}": uncaught exception: ${err.message}`).finally(
     () => process.exit(1)
   );
 });
@@ -389,7 +403,7 @@ main()
       `[worker] boot ended at phase "${phase}" without reaching "${READY_PHASE}" and without an error. Exiting non-zero so the supervisor restarts it.`
     );
     exitIsIntentional = true;
-    await recordCauseOfDeath(
+    await recordWorkerTrouble(
       `boot ended at phase "${phase}" without reaching "${READY_PHASE}" and without an error`
     );
     process.exit(1);
@@ -397,7 +411,7 @@ main()
   .catch(async (err) => {
     console.error("[worker] fatal:", err);
     exitIsIntentional = true;
-    await recordCauseOfDeath(
+    await recordWorkerTrouble(
       `died at phase "${phase}": ${err instanceof Error ? err.message : String(err)}`
     );
     process.exit(1);
