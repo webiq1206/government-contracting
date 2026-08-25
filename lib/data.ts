@@ -1027,7 +1027,7 @@ export async function opportunityDetail(id: string) {
   if (!opp) return null;
   // Independent lookups run in parallel; every list is bounded so an aged
   // opportunity can't balloon the page render.
-  const [bid, quotes, subs, documents, logs, competitors, subComms, callRow] = await Promise.all([
+  const [bid, quotes, subs, documents, logs, competitors, subComms, callRow, callEvents] = await Promise.all([
     queryOne(`select * from bids where opportunity_id=$1 order by created_at desc limit 1`, [id]),
     query(
       `select q.*, s.company_name from quotes q left join subcontractors s on s.id=q.subcontractor_id
@@ -1082,6 +1082,24 @@ export async function opportunityDetail(id: string) {
       `select count(*)::int as n from call_cards where opportunity_id=$1 and status='pending'`,
       [id]
     ),
+    // Calls are part of the record too. The activity feed listed agent logs
+    // and emails only, so a solicitation whose history was a round of phone
+    // calls displayed the words "No activity" over work that had plainly
+    // happened.
+    query<{
+      id: string;
+      company_name: string | null;
+      trade: string | null;
+      status: string;
+      created_at: string;
+    }>(
+      `select cc.id, s.company_name, cc.trade, cc.status, cc.created_at
+         from call_cards cc
+         left join subcontractors s on s.id = cc.subcontractor_id
+        where cc.opportunity_id = $1
+        order by cc.created_at desc limit 100`,
+      [id]
+    ).catch(() => []),
   ]);
   return {
     opp,
@@ -1093,6 +1111,7 @@ export async function opportunityDetail(id: string) {
     competitors,
     subComms,
     pendingCalls: callRow?.n ?? 0,
+    callEvents,
   };
 }
 
@@ -1249,6 +1268,24 @@ export interface ActionCenterData {
   snoozedCount: number;
   /** Open-pipeline counts per stage for the progress strip. */
   stageCounts: { stage: string; count: number }[];
+  /**
+   * How much work there actually is, as opposed to how much was fetched.
+   *
+   * The lists above are capped at ten or twenty rows because they double as
+   * preview strips. Counting their length therefore reports the cap: an
+   * account with thirty borderline opportunities was told, in a headline
+   * number, that it had ten. These are unbounded counts of the same
+   * predicates, and they are what the work ledger adds up.
+   */
+  totals: {
+    triage: number;
+    bidWork: number;
+    urgent: number;
+    flagged: number;
+    subFollowUps: number;
+    quoteReviews: number;
+    replyReviews: number;
+  };
 }
 
 function actionOppSelect(orgId: string): string {
@@ -1262,6 +1299,41 @@ function actionOppSelect(orgId: string): string {
     from opportunities o
    where o.org_id = '${orgId}'`;
 }
+
+/** The same rows, counted rather than listed. See ACTION_OPP_WHERE below. */
+function actionOppCount(orgId: string): string {
+  if (!/^[0-9a-f-]{36}$/i.test(orgId)) throw new Error("Invalid organization id.");
+  return `select count(*)::int as n from opportunities o where o.org_id = '${orgId}'`;
+}
+
+/**
+ * The predicate behind each bucket, written once.
+ *
+ * Each of these tails is appended BOTH to the list query (capped, because the
+ * list is also a preview strip) and to the count query (uncapped, because a
+ * headline number must describe the work rather than the page size). Sharing
+ * the text is the point: when the two drifted, the list showed one set of
+ * opportunities and the number described another, and there was no way to
+ * tell from the screen which was wrong.
+ */
+const ACTION_OPP_WHERE = {
+  triage: `and o.status='open' and o.tier='review' and o.human_action_required=true
+           and (o.snoozed_until is null or o.snoozed_until <= now())`,
+  bidWork: `and o.status='open' and o.stage in ('quote_entry','bid_building')
+            and (o.snoozed_until is null or o.snoozed_until <= now())`,
+  awaitingOutcome: `and o.status='open' and o.stage='submitted'
+                    and (o.snoozed_until is null or o.snoozed_until <= now())`,
+  urgent: `and o.status='open'
+           and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
+           and o.deadline is not null and o.deadline > now()
+           and o.deadline <= now() + make_interval(days => $1)
+           and (o.snoozed_until is null or o.snoozed_until <= now())`,
+  // `is distinct from` so records without a tier yet (e.g. a flagged
+  // sources-sought notice racing its first scoring run) still surface.
+  flagged: `and o.status='open' and o.human_action_required=true
+            and o.tier is distinct from 'review'
+            and (o.snoozed_until is null or o.snoozed_until <= now())`,
+} as const;
 
 export async function actionCenter(opts?: { urgentDays?: number }): Promise<ActionCenterData> {
   // The "do this first" window matches the configurable red deadline badge, so
@@ -1288,11 +1360,10 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     stageCounts,
     replyReviews,
     awardComplianceRows,
+    totalsRow,
   ] = await Promise.all([
     query<ActionOppRow>(
-      `${ACTION_OPP_SELECT}
-            and o.status='open' and o.tier='review' and o.human_action_required=true
-            and (o.snoozed_until is null or o.snoozed_until <= now())
+      `${ACTION_OPP_SELECT} ${ACTION_OPP_WHERE.triage}
           order by (o.deadline is null), o.deadline asc limit 10`
     ),
     queryOne<{ count: number; soonest_deadline: string | null }>(
@@ -1322,34 +1393,20 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
       [orgId]
     ),
     query<ActionOppRow>(
-      `${ACTION_OPP_SELECT}
-            and o.status='open' and o.stage in ('quote_entry','bid_building')
-            and (o.snoozed_until is null or o.snoozed_until <= now())
+      `${ACTION_OPP_SELECT} ${ACTION_OPP_WHERE.bidWork}
           order by (o.deadline is null), o.deadline asc limit 10`
     ),
     query<ActionOppRow>(
-      `${ACTION_OPP_SELECT}
-            and o.status='open' and o.stage='submitted'
-            and (o.snoozed_until is null or o.snoozed_until <= now())
+      `${ACTION_OPP_SELECT} ${ACTION_OPP_WHERE.awaitingOutcome}
           order by o.updated_at asc limit 10`
     ),
     query<ActionOppRow>(
-      `${ACTION_OPP_SELECT}
-            and o.status='open'
-            and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
-            and o.deadline is not null and o.deadline > now()
-            and o.deadline <= now() + make_interval(days => $1)
-            and (o.snoozed_until is null or o.snoozed_until <= now())
+      `${ACTION_OPP_SELECT} ${ACTION_OPP_WHERE.urgent}
           order by o.deadline asc limit 10`,
       [urgentDays]
     ),
-    // `is distinct from` so records without a tier yet (e.g. a flagged
-    // sources-sought notice racing its first scoring run) still surface.
     query<ActionOppRow>(
-      `${ACTION_OPP_SELECT}
-            and o.status='open' and o.human_action_required=true
-            and o.tier is distinct from 'review'
-            and (o.snoozed_until is null or o.snoozed_until <= now())
+      `${ACTION_OPP_SELECT} ${ACTION_OPP_WHERE.flagged}
           order by o.updated_at asc limit 10`
     ),
     // After automated email + follow-up, surface human call/nudge work so
@@ -1475,6 +1532,37 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     // than SQL so Today, the onboarding agent, and the sub's own page all
     // apply exactly the same rules.
     loadAwardCompliance({ orgId }).catch(() => []),
+    /*
+     * The same predicates, uncapped. Built from ACTION_OPP_WHERE so a change
+     * to a bucket's meaning cannot move the list without moving the number.
+     */
+    queryOne<{
+      triage: number;
+      bid_work: number;
+      urgent: number;
+      flagged: number;
+      sub_follow_ups: number;
+      quote_reviews: number;
+      reply_reviews: number;
+    }>(
+      `select
+         (${actionOppCount(orgId)} ${ACTION_OPP_WHERE.triage}) as triage,
+         (${actionOppCount(orgId)} ${ACTION_OPP_WHERE.bidWork}) as bid_work,
+         (${actionOppCount(orgId)} ${ACTION_OPP_WHERE.urgent}) as urgent,
+         (${actionOppCount(orgId)} ${ACTION_OPP_WHERE.flagged}) as flagged,
+         (select count(*)::int from opportunity_subs os
+            join opportunities o on o.id = os.opportunity_id
+           where o.org_id = '${orgId}' and o.status='open'
+             and os.outreach_state in ('followed_up','unresponsive')) as sub_follow_ups,
+         (select count(*)::int from quotes q
+            join opportunities o on o.id = q.opportunity_id
+           where o.org_id = '${orgId}' and o.status='open' and q.is_out_of_range) as quote_reviews,
+         (select count(*)::int from subcontractor_reply_events e
+            left join opportunities o on o.id = e.opportunity_id
+           where e.needs_review and e.reviewed_at is null
+             and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))) as reply_reviews`,
+      [urgentDays]
+    ).catch(() => null),
   ]);
 
   const callsWithWork: ActionCallRow[] = callRows.map(
@@ -1525,6 +1613,20 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     snoozedCount: snoozedRow?.n ?? 0,
     stageCounts,
     replyReviews,
+    /*
+     * Fall back to the fetched lengths when the count query fails, rather
+     * than to zero: an understated number is a smaller lie than a screen
+     * claiming there is nothing to do while showing ten things to do.
+     */
+    totals: {
+      triage: totalsRow?.triage ?? triage.length,
+      bidWork: totalsRow?.bid_work ?? bidWork.length,
+      urgent: totalsRow?.urgent ?? urgent.length,
+      flagged: totalsRow?.flagged ?? flagged.length,
+      subFollowUps: totalsRow?.sub_follow_ups ?? followUpsWithWork.length,
+      quoteReviews: totalsRow?.quote_reviews ?? quoteReviews.length,
+      replyReviews: totalsRow?.reply_reviews ?? replyReviews.length,
+    },
   };
 }
 

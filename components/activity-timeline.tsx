@@ -7,6 +7,8 @@ const KIND_BADGE: Record<ActivityEvent["kind"], string> = {
   call: "bg-pursue/15 text-pursue",
   note: "bg-review/15 text-review",
   human: "bg-pursue/15 text-pursue-strong",
+  quote: "bg-gold/20 text-gold",
+  document: "bg-muted text-muted-foreground",
 };
 
 const KIND_LABEL: Record<ActivityEvent["kind"], string> = {
@@ -15,6 +17,8 @@ const KIND_LABEL: Record<ActivityEvent["kind"], string> = {
   call: "Call",
   note: "Note",
   human: "You",
+  quote: "Quote",
+  document: "Document",
 };
 
 /**

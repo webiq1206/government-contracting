@@ -245,19 +245,38 @@ export default async function AuthorityPage() {
         {/* Backlink changes. */}
         <section className="grid gap-4 md:grid-cols-2">
           <div>
-            <h2 className="label mb-2">Recently earned links</h2>
+            {/*
+              "Recently earned" claimed two things this list cannot support:
+              that we did something to get these, and that they are worth
+              having. It is a feed of newly-observed backlinks, and a scraper
+              farm appears in it exactly like a trade publication does --
+              which is how a page describing itself as quality-first came to
+              present junk domains as wins. Named for what it is, with the
+              ones that look like junk marked rather than blended in.
+            */}
+            <h2 className="label mb-2">New links detected</h2>
             {changes.recent.length === 0 ? (
               <EmptyState title="No backlinks recorded yet" />
             ) : (
               <div className="card divide-y divide-border p-0">
-                {changes.recent.map((b) => (
-                  <div key={b.source_domain} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="truncate text-foreground">{b.source_domain}</span>
-                    <span className="text-xs text-slate-500">
-                      DR {b.domain_rating ?? "-"} · {shortDate(b.first_seen_at)}
-                    </span>
-                  </div>
-                ))}
+                {changes.recent.map((b) => {
+                  // Ahrefs scores domain authority 0-100. Under ten is the
+                  // band where link farms and expired-domain networks sit; it
+                  // is not proof of anything, which is why this flags for a
+                  // look rather than hiding the row.
+                  const lowQuality = (b.domain_rating ?? 0) < 10;
+                  return (
+                    <div key={b.source_domain} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
+                      <span className="truncate text-foreground">{b.source_domain}</span>
+                      <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">
+                        {lowQuality && (
+                          <span className="badge bg-risk/15 text-risk">Check this</span>
+                        )}
+                        DR {b.domain_rating ?? "-"} · {shortDate(b.first_seen_at)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { query } from "@/lib/db";
+import { dedupeOpportunityHits, type OppHit } from "@/lib/domain/search-dedupe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,12 +13,6 @@ export interface SearchResult {
   href: string;
 }
 
-/**
- * Global search across the three record types an operator hunts for by name:
- * opportunities (title / solicitation # / agency), subcontractors (company /
- * owner), and contracts (contract #). Case-insensitive substring match,
- * capped per type, newest-relevant first. Powers the ⌘K palette.
- */
 export async function GET(req: Request) {
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
@@ -56,13 +51,17 @@ export async function GET(req: Request) {
   ]);
 
   const results: SearchResult[] = [
-    ...opps.map((o) => ({
+    ...dedupeOpportunityHits(opps).map((o) => ({
       kind: "opportunity" as const,
       title: o.title ?? "Untitled opportunity",
       subtitle: [
         o.agency,
         o.solicitation_number,
         o.status === "archived" ? "archived" : o.stage.replace(/_/g, " "),
+        // Say so rather than hide it. A folded duplicate is a data-quality
+        // fact the operator may want to act on, and silently showing one of
+        // three looks like the other two do not exist.
+        o.duplicates > 0 ? `+${o.duplicates} duplicate record${o.duplicates === 1 ? "" : "s"}` : null,
       ]
         .filter(Boolean)
         .join(" · "),

@@ -104,6 +104,9 @@ export async function GET(req: Request) {
     integrations,
   });
 
+  // actionsRaw carries `totals` (uncapped counts) and `awardCompliance`, so the
+  // guide's number is the same one Today shows rather than a second opinion
+  // assembled from page-sized lists.
   const actions = actionsRaw
     ? summarizeActions(actionsRaw)
     : {

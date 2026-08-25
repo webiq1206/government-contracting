@@ -185,7 +185,13 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const activity = buildActivityTimeline({
     logs,
     communications: subComms,
-    limit: 40,
+    // Quotes, files and calls are the record too. Leaving them out is what
+    // let this panel say "No activity" over an opportunity with a price on
+    // it, which is not an empty state but a false statement.
+    quotes: quotes as Record<string, unknown>[],
+    documents: documents as Record<string, unknown>[],
+    calls: detail.callEvents,
+    limit: 60,
   });
 
   const complianceRows = bid?.compliance_matrix ?? [];

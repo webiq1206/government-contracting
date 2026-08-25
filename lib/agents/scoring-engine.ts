@@ -21,6 +21,11 @@ import {
 } from "../domain/scoring";
 import { intakeChecks, intakeVerdict } from "../domain/intake";
 import { resolveEstimatedValue } from "../domain/value-extract";
+import {
+  assessDataConfidence,
+  capUnsupportedDimensions,
+  type ScoreFacts,
+} from "../domain/score-confidence";
 import { getAutomationRules } from "../app-settings";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
@@ -252,8 +257,53 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
     scoringIncomplete = true;
   }
 
+  /*
+   * What did we actually know before scoring this?
+   *
+   * The rubric is scored in full whether or not the notice supports it,
+   * because an omitted dimension silently understates the total. So the model
+   * returns a number for "Contract value inside your band" on a notice that
+   * publishes no value, writes a confident sentence under it, and the total
+   * comes out looking identical to one computed from a solicitation we had
+   * read cover to cover. Federal notices very often publish no value at all,
+   * so this was not an edge case: it was most of them.
+   */
+  const facts: ScoreFacts = {
+    valueKnown: opp.value_estimated != null,
+    naicsKnown: Boolean((opp.naics_code ?? "").trim()),
+    setAsideKnown: Boolean((opp.set_aside_type ?? "").trim()),
+    deadlineKnown: Boolean(opp.deadline),
+    locationKnown: Boolean((opp.location_state ?? "").trim()),
+    // A title is not a scope. The threshold is deliberately generous: enough
+    // prose to judge the work, not merely a sentence restating the title.
+    scopeKnown: ((opp.description ?? "").trim().length ?? 0) >= 400,
+    // Only true when the notice says either way. "Not mentioned" is unknown,
+    // and scoring it as "not required" is the optimistic reading that costs a
+    // newcomer a wasted pursuit.
+    pastPerformanceKnown: /past performance|previous experience|similar projects|references/i.test(
+      `${opp.title ?? ""} ${opp.description ?? ""}`
+    ),
+  };
+  const confidence = assessDataConfidence(facts);
+  const { dims: supportedDims, capped } = capUnsupportedDimensions(dims, facts);
+  dims = supportedDims;
+  if (capped.length > 0) {
+    await logAgent({
+      agent: "scoring-engine",
+      action: "cap-unsupported-dimensions",
+      opportunityId,
+      level: "info",
+      message:
+        `Capped ${capped.join(", ")} because the notice does not state the facts they score. ` +
+        `Data confidence ${confidence.percent}% (${confidence.level}).`,
+    });
+  }
+
   const exclusions = [...new Set([...structuralExclusions, ...claudeExclusions])];
-  const breakdown = buildScoreBreakdown(dims, exclusions, profile, summary);
+  const breakdown = {
+    ...buildScoreBreakdown(dims, exclusions, profile, summary),
+    data_confidence: confidence,
+  };
 
   // Non-dismiss review flags (e.g. value over $350K) + incomplete scoring both
   // downgrade an otherwise-pursue result to human review, never auto-pursue on

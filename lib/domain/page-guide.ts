@@ -9,6 +9,7 @@
 import type { HelpContent } from "@/components/help-popover";
 import { PAGE_HELP } from "@/lib/help-content";
 import { GLOSSARY } from "@/lib/domain/glossary";
+import { buildWorkLedger } from "@/lib/domain/work-ledger";
 import {
   deriveStep,
   journeySteps,
@@ -322,19 +323,48 @@ export function summarizeActions(data: {
   subFollowUps: unknown[];
   quoteReviews: unknown[];
   complianceAlerts: unknown[];
+  awardCompliance?: unknown[];
   proposedWeights: unknown[];
   backlinkApprovals: number;
+  /**
+   * Uncapped counts of the same buckets, when the caller has them. The lists
+   * above are page-sized; these are how much work there is.
+   */
+  totals?: {
+    triage: number;
+    bidWork: number;
+    urgent: number;
+    flagged: number;
+    subFollowUps: number;
+    quoteReviews: number;
+    replyReviews: number;
+  };
 }): ActionSummary {
   const approvals = data.proposedWeights.length + data.backlinkApprovals;
-  const totalActions =
-    data.urgent.length +
-    data.triage.length +
-    data.calls.count +
-    data.bidWork.length +
-    data.subFollowUps.length +
-    data.quoteReviews.length +
-    data.complianceAlerts.length +
-    approvals;
+  /*
+   * The total comes from the shared ledger, not from adding these lists up.
+   *
+   * This function summed its own eight buckets while Today summed a different
+   * eleven, so the guide panel and the page it floated over quoted different
+   * numbers for the same account -- 46 against 56 -- and neither was right,
+   * because several of these lists are capped at ten rows and were reporting
+   * the cap. `totals` carries the real counts when the caller has them.
+   */
+  const t = data.totals;
+  const ledger = buildWorkLedger({
+    urgent: t?.urgent ?? data.urgent.length,
+    replyReviews: t?.replyReviews ?? 0,
+    triage: t?.triage ?? data.triage.length,
+    calls: data.calls.count,
+    bidWork: t?.bidWork ?? data.bidWork.length,
+    quoteReviews: t?.quoteReviews ?? data.quoteReviews.length,
+    subFollowUps: t?.subFollowUps ?? data.subFollowUps.length,
+    compliance: data.complianceAlerts.length,
+    awardCompliance: data.awardCompliance?.length ?? 0,
+    flagged: t?.flagged ?? 0,
+    approvals,
+  });
+  const totalActions = ledger.total;
 
   let firstHref: string | undefined;
   let firstLabel: string | undefined;

@@ -76,15 +76,39 @@ export async function recordAdminAction(input: {
   ).catch((err) => console.error("[admin-audit] failed to record", input.action, err));
 }
 
-export async function recentAdminActions(limit = 50): Promise<AdminAuditEntry[]> {
-  return query<AdminAuditEntry>(
+export async function recentAdminActions(
+  limit = 50,
+  opts?: { includeTestAccounts?: boolean }
+): Promise<AdminAuditEntry[]> {
+  /*
+   * The audit log is append-only and keeps rows for accounts that no longer
+   * exist, which is the point -- deleting an account must not erase the
+   * evidence that it was deleted. The consequence is that every test
+   * organization ever created and torn down is still in here, and on a
+   * production admin screen that reads as real history: a reviewer scrolling
+   * "recent admin actions" saw suspensions and deletions of accounts that
+   * were never customers, mixed in with ones that were.
+   *
+   * Nothing is deleted to fix that. The rows are filtered out of the default
+   * view by the same matcher the purge tool uses, and `includeTestAccounts`
+   * brings them back for anyone who genuinely wants the raw log.
+   */
+  const rows = await query<AdminAuditEntry>(
     `select id, admin_email, action, target_org_id, target_org_name,
             target_user_id, detail, created_at
        from admin_audit_log
       order by created_at desc
       limit $1`,
-    [limit]
+    // Over-fetch so filtering does not leave a short page.
+    [opts?.includeTestAccounts ? limit : limit * 4]
   ).catch(() => []);
+
+  if (opts?.includeTestAccounts) return rows;
+
+  const { looksLikeTestOrg } = await import("../domain/test-org-match");
+  return rows
+    .filter((r) => !(r.target_org_name && looksLikeTestOrg(r.target_org_name)))
+    .slice(0, limit);
 }
 
 export async function adminActionsForOrg(
