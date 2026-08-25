@@ -7,15 +7,24 @@ import { query } from "./db";
 import { storage } from "./integrations/storage";
 import type { OutreachAttachment } from "./integrations/email-transport";
 import { normalizeAttachmentMeta } from "./domain/attachment-meta";
-import { publicDocUrl, isAllowedUpstream } from "./domain/doc-link";
+import { packageDocUrl, isAllowedUpstream } from "./domain/doc-link";
 
 /** Keep total attachment payload comfortably under Gmail's 25MB raw limit. */
 const MAX_TOTAL_BYTES = 15 * 1024 * 1024;
 
 export interface GatheredAttachments {
   files: OutreachAttachment[];
-  /** Documents we couldn't (or shouldn't) attach; include as links. */
-  links: { name: string; url: string }[];
+  /**
+   * Documents that could not ride along, offered as links.
+   *
+   * At most one entry: everything that did not fit is gathered into a single
+   * package link rather than a URL per file, because a solicitation with a
+   * full drawing set otherwise puts a wall of links in a quote request.
+   *
+   * `reachable` records whether the underlying files were read back
+   * successfully before the send. False stops the email.
+   */
+  links: { name: string; url: string; reachable?: boolean }[];
   /** True when stored docs or attachment URLs existed to try. */
   expected: boolean;
   /**
@@ -102,11 +111,13 @@ async function loadDocs(oppId: string): Promise<DocRow[]> {
 
 async function materializeDocs(
   docs: DocRow[],
-  opp: { id: string; attachments_json?: unknown }
+  opp: { id: string; title?: string | null; attachments_json?: unknown }
 ): Promise<GatheredAttachments> {
   const files: OutreachAttachment[] = [];
-  const links: { name: string; url: string }[] = [];
+  const links: { name: string; url: string; reachable?: boolean }[] = [];
   const undelivered: { name: string; reason: string }[] = [];
+  /** Files that did not fit, gathered into one link rather than many. */
+  const overflow: { k: "s" | "u"; v: string; n: string }[] = [];
   const seen = new Set<string>();
   let total = 0;
 
@@ -128,11 +139,12 @@ async function materializeDocs(
         content: bytes,
       });
       if (total + bytes.length > MAX_TOTAL_BYTES) {
-        // Too big to attach: link it on OUR domain, never a storage provider.
-        links.push({
-          name: meta.filename,
-          url: publicDocUrl({ k: "s", v: d.storage_path, n: meta.filename }),
-        });
+        /*
+         * Too big to attach. Held for the package link rather than linked on
+         * its own: a solicitation with a full drawing set produced a wall of
+         * URLs, one per file, in the middle of a quote request.
+         */
+        overflow.push({ k: "s", v: d.storage_path, n: meta.filename });
         continue;
       }
       total += bytes.length;
@@ -148,10 +160,7 @@ async function materializeDocs(
         `[attachments] could not download "${d.name}" (${d.storage_path}): ${(err as Error).message}; sending as a link instead`
       );
       const meta = normalizeAttachmentMeta({ filename: d.name, mime: d.mime });
-      links.push({
-        name: meta.filename,
-        url: publicDocUrl({ k: "s", v: d.storage_path, n: meta.filename }),
-      });
+      overflow.push({ k: "s", v: d.storage_path, n: meta.filename });
     }
   }
 
@@ -178,20 +187,14 @@ async function materializeDocs(
           files.push({ filename: meta.filename, content: bytes, mime: meta.mime });
           continue;
         }
-        links.push({
-          name: meta.filename,
-          url: publicDocUrl({ k: "s", v: a.storage_path, n: meta.filename }),
-        });
+        overflow.push({ k: "s", v: a.storage_path, n: meta.filename });
         continue;
       } catch (err) {
         console.error(
           `[attachments] could not download "${name}" (${a.storage_path}): ${(err as Error).message}; sending as a link instead`
         );
         const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
-        links.push({
-          name: meta.filename,
-          url: publicDocUrl({ k: "s", v: a.storage_path, n: meta.filename }),
-        });
+        overflow.push({ k: "s", v: a.storage_path, n: meta.filename });
         continue;
       }
     }
@@ -202,10 +205,7 @@ async function materializeDocs(
       // our own domain so the email only ever shows a brostco.com link, and
       // the recipient is not invited to go bid the job themselves.
       if (isAllowedUpstream(a.url)) {
-        links.push({
-          name: meta.filename,
-          url: publicDocUrl({ k: "u", v: a.url, n: meta.filename }),
-        });
+        overflow.push({ k: "u", v: a.url, n: meta.filename });
       }
     }
   }
@@ -218,6 +218,63 @@ async function materializeDocs(
       const row = a as AttachmentJsonEntry;
       return Boolean(row.url || row.storage_path);
     });
+
+  /*
+   * Everything that could not ride along becomes ONE link.
+   *
+   * A solicitation with a full drawing set used to put a separate URL in the
+   * email for every file that did not fit, which is a wall of links in the
+   * middle of a quote request. The recipient now gets a single address listing
+   * them all, on our own domain, opening without an account.
+   *
+   * The most important documents are still attached directly: the gatherer
+   * ranks trade-relevant files first, so they consume the byte budget before
+   * anything overflows.
+   */
+  if (overflow.length) {
+    /*
+     * Prove the link works before promising it.
+     *
+     * This is the one thing in the email nobody checks before it is sent, and
+     * it is the only route to the documents that did not fit. A dead link is
+     * worse than no link: the recipient believes the drawings were provided
+     * and blames themselves for not finding them.
+     *
+     * Checked by reading back the stored objects the package points at, which
+     * is the part that actually fails: storage evicted the file, the path was
+     * wrong, the bucket moved. Upstream entries are not fetched here, because
+     * that would mean pulling megabytes from SAM on every send to learn what
+     * the send itself will discover.
+     */
+    const stored = overflow.filter((o) => o.k === "s");
+    let reachable = true;
+    for (const entry of stored) {
+      const ok = await storage
+        .download(entry.v)
+        .then((b) => b.length > 0)
+        .catch(() => false);
+      if (!ok) {
+        reachable = false;
+        console.error(
+          `[attachments] package link would be dead: "${entry.n}" (${entry.v}) could not be read back`
+        );
+        break;
+      }
+    }
+
+    links.push({
+      reachable,
+      name:
+        overflow.length === 1
+          ? overflow[0].n
+          : `All ${overflow.length} bid documents`,
+      url: packageDocUrl({
+        opportunityId: opp.id,
+        title: opp.title?.trim() || "Bid documents",
+        documents: overflow,
+      }),
+    });
+  }
 
   return { files, links, expected, undelivered };
 }
@@ -236,7 +293,7 @@ export async function gatherOpportunityAttachments(opp: {
  * files consume the MIME size budget first; the rest become signed links.
  */
 export async function gatherTradeAttachments(
-  opp: { id: string; attachments_json?: unknown },
+  opp: { id: string; title?: string | null; attachments_json?: unknown },
   trade: string | null | undefined
 ): Promise<GatheredAttachments> {
   const docs = await loadDocs(opp.id);

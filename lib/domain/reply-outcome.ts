@@ -279,6 +279,36 @@ export async function applyOutcomeToSolicitation(input: {
         where id = $1`,
       [input.opportunityId]
     ).catch(() => {});
+
+    /*
+     * Go and find someone for the rest of it.
+     *
+     * Flagging alone leaves the gap sitting on Today waiting for a human to
+     * notice, and the whole point of the pipeline is that sourcing does not
+     * wait for that. Re-running Sub Finder for THIS trade adds candidates for
+     * the uncovered portion.
+     *
+     * Safe to repeat: the candidate insert upserts on
+     * (opportunity, subcontractor, trade), and outreach refuses to email a
+     * pairing it has already sent to, so nobody is contacted twice. The
+     * singleton key bounds it further, since several subcontractors can each
+     * come back partial on the same trade within a few minutes and there is no
+     * point sourcing three times over.
+     */
+    if (trade) {
+      const { enqueue } = await import("../queue");
+      await enqueue(
+        "sub-finder",
+        { opportunityId: input.opportunityId, trade, trigger: "partial_scope" },
+        {
+          singletonKey: `resource:${input.opportunityId}:${trade}`,
+          singletonSeconds: 3600,
+        }
+      ).catch(() => {
+        // Sourcing is the follow-up, not the outcome. A queue that refuses the
+        // job must not lose the status change that was the point of the call.
+      });
+    }
   }
 }
 

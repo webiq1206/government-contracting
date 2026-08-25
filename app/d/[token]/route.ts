@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { storage } from "@/lib/integrations/storage";
-import { decodeDocToken, isAllowedUpstream } from "@/lib/domain/doc-link";
+import {
+  decodeDocToken,
+  encodeDocToken,
+  isAllowedUpstream,
+} from "@/lib/domain/doc-link";
 import { normalizeAttachmentMeta } from "@/lib/domain/attachment-meta";
 
 export const runtime = "nodejs";
@@ -27,6 +31,46 @@ export async function GET(
       "This document link has expired or is not valid. Please reply to the email you received and we will send a fresh copy.",
       { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
     );
+  }
+
+  /*
+   * A package is a page, not a file.
+   *
+   * The email carries one link for everything too large to attach; this is
+   * what it opens. Each document keeps its own signed pointer, so the page
+   * grants nothing the individual links would not have, and the set is the one
+   * named in the token rather than whatever the opportunity holds now: the
+   * recipient sees exactly what they were told about.
+   */
+  if (p.k === "p") {
+    const rows = (p.d ?? [])
+      .map((entry) => {
+        const m = normalizeAttachmentMeta({ filename: entry.n });
+        const href = `/d/${encodeDocTokenForEntry(entry, p.e)}`;
+        return `<li><a href="${href}">${escapeHtml(m.filename)}</a></li>`;
+      })
+      .join("");
+    const html =
+      `<!doctype html><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<meta name="robots" content="noindex,nofollow">` +
+      `<title>${escapeHtml(p.n)} documents</title>` +
+      `<style>body{font:16px/1.5 system-ui,sans-serif;margin:2rem auto;max-width:42rem;padding:0 1rem;color:#242424}` +
+      `h1{font-size:1.25rem}li{margin:.4rem 0}a{color:#7a5c2e}</style>` +
+      `<h1>${escapeHtml(p.n)}</h1>` +
+      `<p>These are the bid documents for the work you were asked to price. ` +
+      `They were too large to attach to the email, so they are here instead. ` +
+      `No sign-in is needed.</p>` +
+      `<ul>${rows}</ul>` +
+      `<p>If a document will not open, reply to the email you received and we will send it directly.</p>`;
+    return new NextResponse(html, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "private, max-age=3600",
+        "X-Robots-Tag": "noindex, nofollow",
+      },
+    });
   }
 
   const meta = normalizeAttachmentMeta({ filename: p.n });
@@ -68,4 +112,25 @@ export async function GET(
       { status: 502, headers: { "Content-Type": "text/plain; charset=utf-8" } }
     );
   }
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * A per-file token for one entry of a package.
+ *
+ * It inherits the package's expiry rather than getting a fresh one, so opening
+ * the page cannot extend how long the documents stay reachable.
+ */
+function encodeDocTokenForEntry(
+  entry: { k: "s" | "u"; v: string; n: string },
+  expiry: number
+): string {
+  return encodeDocToken({ k: entry.k, v: entry.v, n: entry.n, e: expiry });
 }

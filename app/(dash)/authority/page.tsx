@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { isPlatformAdmin } from "@/lib/platform-admin";
 import { currentUser } from "@/lib/auth";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { ActionButton } from "@/components/action-button";
 import { OutreachApprovalCard } from "@/components/outreach-approval";
@@ -88,7 +88,7 @@ export default async function AuthorityPage() {
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         title="Site Authority"
         help={PAGE_HELP["authority"]}
         status={
@@ -98,17 +98,18 @@ export default async function AuthorityPage() {
               : `${prospects.length} prospect${prospects.length === 1 ? "" : "s"} qualified`
             : "Ahrefs not connected"
         }
-        subtitle="Autonomous backlink discovery and qualification. Outreach is drafted for you; you approve before anything sends."
-      >
-        {connected && (
-          <ActionButton
-            endpoint="/api/agents/backlink-scout/run"
-            className="btn-primary text-sm"
-          >
-            Run scan now
-          </ActionButton>
-        )}
-      </PageHeader>
+        explanation="Autonomous backlink discovery and qualification. Outreach is drafted for you; you approve before anything sends."
+        primaryAction={
+          connected ? (
+            <ActionButton
+              endpoint="/api/agents/backlink-scout/run"
+              className="btn-primary text-sm"
+            >
+              Run scan now
+            </ActionButton>
+          ) : undefined
+        }
+      />
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {!connected && (

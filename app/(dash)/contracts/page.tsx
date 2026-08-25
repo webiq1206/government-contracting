@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { activeContracts, completedContracts } from "@/lib/data";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { ActionButton } from "@/components/action-button";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -264,7 +264,7 @@ export default async function ContractsPage() {
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["contracts"]}
         title="Contracts"
         status={
@@ -272,7 +272,7 @@ export default async function ContractsPage() {
             ? "No active contracts"
             : `${contracts.length} active${past.length ? ` · ${past.length} completed` : ""}`
         }
-        subtitle="Awarded work under performance tracking: milestones, coordination proof, and non-small-business sub spend caps."
+        explanation="Awarded work under performance tracking: milestones, coordination proof, and non-small-business sub spend caps."
       />
       <div className="scroll-thin flex-1 space-y-8 overflow-y-auto p-4">
         <section className="mx-auto max-w-4xl">

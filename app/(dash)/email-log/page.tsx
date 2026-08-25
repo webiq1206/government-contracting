@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { emailLogPaged, EMAIL_LOG_PAGE_SIZE } from "@/lib/data";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { PageToolbar, PageToolbarChips } from "@/components/page-toolbar";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -58,7 +58,7 @@ export default async function EmailLogPage({
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["email-log"]}
         title="Email Log"
         status={
@@ -68,7 +68,7 @@ export default async function EmailLogPage({
                 q || status !== "all" ? " in this view" : ""
               }`
         }
-        subtitle="Every subcontractor email Brost Co sends or receives, with open, click, and response status."
+        explanation="Every subcontractor email Brost Co sends or receives, with open, click, and response status."
       />
 
       <PageToolbar>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { requirePlatformAdmin, isPlatformAdmin } from "@/lib/platform-admin";
 import { adminAccount, adminAccountMembers } from "@/lib/admin/accounts";
 import { adminActionsForOrg } from "@/lib/admin/audit";
@@ -60,17 +60,21 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
 
   return (
     <>
-      <PageHeader
-        eyebrow="Platform admin"
+      <PageFrame
+        breadcrumbs={[
+          { label: "Platform admin", href: "/admin" },
+          { label: "Accounts", href: "/admin/accounts" },
+          { label: org.name },
+        ]}
         title={org.name}
         status={org.suspended_at ? "Suspended" : (org.subscription_status ?? "no status")}
-        subtitle={org.owner_email ?? "No owner on this account."}
+        explanation={
+          org.owner_email
+            ? `Owned by ${org.owner_email}. Everything this account can currently do, and why.`
+            : "No owner on this account, which is worth fixing before anything else here."
+        }
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
-        <Link href="/admin/accounts" className="text-sm text-accent-strong hover:underline">
-          ← All accounts
-        </Link>
-
         <div
           className={`rounded-lg border p-4 ${
             org.access === "none"

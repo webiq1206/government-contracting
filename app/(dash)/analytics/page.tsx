@@ -6,7 +6,7 @@ import {
   customKpis,
   computeCustomKpi,
 } from "@/lib/data";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { KpiManager, KpiDeleteButton } from "@/components/kpi-manager";
@@ -172,7 +172,7 @@ export default async function AnalyticsPage() {
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["analytics"]}
         title="Analytics"
         status={
@@ -182,7 +182,7 @@ export default async function AnalyticsPage() {
               }`
             : `${extras.counts.open_opps} open opportunit${extras.counts.open_opps === 1 ? "y" : "ies"}`
         }
-        subtitle={
+        explanation={
           snap
             ? "Headline numbers are live. Breakdowns below are from the latest Analytics Engine run."
             : "Headline numbers are live. Deeper breakdowns appear after Analytics Engine runs."

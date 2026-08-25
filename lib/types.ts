@@ -172,6 +172,14 @@ export interface Opportunity {
   tier: Tier | null;
   is_sources_sought: boolean;
   solicitation_analysis: SolicitationAnalysis | null;
+  /**
+   * Hash of what the current analysis was computed from.
+   *
+   * Lets a forced re-analysis tell "an amendment landed" from "the button was
+   * pressed twice", so the largest Claude call in the system is not re-billed
+   * to produce an identical answer.
+   */
+  analysis_input_hash?: string | null;
   past_perf_classification: PastPerfClassification | null;
   risk_flags: string[];
   stage: PipelineStage;

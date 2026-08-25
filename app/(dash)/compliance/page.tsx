@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { complianceBoard } from "@/lib/data";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { AddComplianceItem } from "@/components/add-compliance-item";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -168,11 +168,11 @@ export default async function CompliancePage() {
   if (rows.length === 0) {
     return (
       <div className="flex page-shell">
-        <PageHeader
+        <PageFrame
           help={PAGE_HELP["compliance"]}
           title="Compliance Board"
           status="Not set up yet"
-          subtitle="Renewals, registrations, and contract deadlines in one place. Brost Co watches dates; renewing is your job."
+          explanation="Renewals, registrations, and contract deadlines in one place. Brost Co watches dates; renewing is your job."
         />
         <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
           <EmptyState
@@ -212,7 +212,7 @@ export default async function CompliancePage() {
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["compliance"]}
         title="Compliance Board"
         status={
@@ -222,10 +222,10 @@ export default async function CompliancePage() {
                 capRows.length ? ` · ${capRows.length} cap gauge${capRows.length === 1 ? "" : "s"}` : ""
               }`
         }
-        subtitle="Brost Co checks these daily and warns before anything lapses. Set renewal dates and links so countdowns work."
+        explanation="Brost Co checks these daily and warns before anything lapses. Set renewal dates and links so countdowns work."
       >
         <Legend />
-      </PageHeader>
+      </PageFrame>
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {/* How this board works: automatic tracking vs your job. */}

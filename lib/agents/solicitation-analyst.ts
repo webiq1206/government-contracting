@@ -16,6 +16,7 @@ import { config } from "../config";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
+import { analysisInputHash, inputsUnchanged } from "../domain/analysis-inputs";
 import { tightenAnalysisProse } from "../domain/analysis-prose";
 import { requirementsFingerprint } from "../domain/package";
 import { logAgent } from "../logger";
@@ -526,6 +527,54 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
   ].join("\n");
 }
 
+/**
+ * The fingerprint of everything this opportunity's analysis reads.
+ *
+ * Cheap on purpose: names, sizes, storage paths and timestamps, never file
+ * bytes. Reading every attachment to decide whether to read every attachment
+ * would cost most of what it saves, and these identifiers already separate the
+ * cases that matter -- a new amendment is a new row, a replaced file changes
+ * size or timestamp, an edited notice changes its text.
+ */
+async function computeAnalysisInputHash(
+  opportunityId: string,
+  opp: Opportunity
+): Promise<string> {
+  /*
+   * Not caught. A failure here must not quietly produce a hash computed from
+   * no documents at all: that hash would match the next run's, and a genuine
+   * amendment would be skipped as "nothing has changed". Letting it throw
+   * means the analysis runs, which costs one call and is the safe direction.
+   */
+  const docs = await query<{
+    id: string;
+    name: string;
+    storage_path: string | null;
+    version: number;
+    created_at: string;
+  }>(
+    `select id::text as id, name, storage_path, version, created_at::text as created_at
+       from documents
+      where opportunity_id = $1 and kind in ('solicitation','sow')
+      order by name asc`,
+    [opportunityId]
+  );
+
+  return analysisInputHash({
+    title: opp.title,
+    solicitationNumber: opp.solicitation_number,
+    description: opp.description,
+    documents: docs.map((d) => ({
+      name: d.name,
+      // The row id IS the strongest signal available: a replaced or amended
+      // document is a new row, so a changed id means changed content even
+      // when the filename is identical.
+      storagePath: `${d.id}:${d.storage_path ?? ""}:v${d.version}`,
+      updatedAt: d.created_at,
+    })),
+  });
+}
+
 export const solicitationAnalyst: AgentDefinition = {
   name: "solicitation-analyst",
   label: "Solicitation Analyst",
@@ -564,6 +613,41 @@ export const solicitationAnalyst: AgentDefinition = {
       return {
         ok: true,
         summary: `Opportunity ${opportunityId} already analyzed; skipped duplicate run.`,
+      };
+    }
+
+    /*
+     * A forced re-run still has to be worth its price.
+     *
+     * This is the largest Claude call the system makes, and most forced runs
+     * are asked for on an opportunity whose documents have not changed: a
+     * re-pursue, a bulk re-run, the button pressed twice. Re-reading an
+     * identical document set to produce an identical answer is pure waste.
+     *
+     * The distinction that must survive is between "an amendment landed" and
+     * "somebody pressed the button again", so this compares a hash of exactly
+     * the inputs that would change the answer. `force: "always"` remains, for
+     * the case where an operator wants the model run again regardless.
+     */
+    const currentInputHash = await computeAnalysisInputHash(opportunityId, opp);
+    if (
+      forced &&
+      opp.solicitation_analysis &&
+      ctx.payload.force !== "always" &&
+      inputsUnchanged(opp.analysis_input_hash, currentInputHash)
+    ) {
+      await logAgent({
+        agent: "solicitation-analyst",
+        action: "skip-unchanged",
+        level: "info",
+        opportunityId,
+        message:
+          "Re-analysis was requested but nothing has changed: the same documents, notice text and solicitation number as last time. The existing brief still applies, so the model was not run again.",
+      });
+      return {
+        ok: true,
+        summary:
+          "Nothing has changed since the last analysis, so the existing brief was kept and no new analysis was billed.",
       };
     }
 
@@ -834,7 +918,7 @@ export const solicitationAnalyst: AgentDefinition = {
     if (opp.value_estimated == null) {
       const fromAnalysis = extractValueFromText(analysis.estimated_value);
       if (fromAnalysis != null) {
-        valueUpdate = ", value_estimated = $8, value_estimated_source = 'analysis'";
+        valueUpdate = ", value_estimated = $9, value_estimated_source = 'analysis'";
         valueParams.push(fromAnalysis);
       }
     }
@@ -846,7 +930,10 @@ export const solicitationAnalyst: AgentDefinition = {
              risk_flags = $4,
              stage = $5,
              human_action_required = $6,
-             solicitation_text = $7
+             solicitation_text = $7,
+             -- What this analysis was computed from, so the next forced run
+             -- can tell an amendment from a repeated button press.
+             analysis_input_hash = $8
              ${valueUpdate}
        where id = $1`,
       [
@@ -857,6 +944,7 @@ export const solicitationAnalyst: AgentDefinition = {
         stage,
         humanAction,
         solicitationText,
+        currentInputHash,
         ...valueParams,
       ]
     );
