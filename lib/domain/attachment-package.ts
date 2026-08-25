@@ -31,9 +31,18 @@ export interface PackageFile {
 export interface PackageLink {
   name: string;
   url: string;
+  /**
+   * Whether the link was checked and found to work.
+   *
+   * Undefined means it was not checked, which is treated as fine: a caller
+   * that cannot verify should not be forced to block a send. Only an explicit
+   * false stops the email.
+   */
+  reachable?: boolean;
 }
 
 export type PackageProblemKind =
+  | "unreachable_link"
   | "empty_file"
   | "corrupt_file"
   | "password_protected"
@@ -237,6 +246,25 @@ export function assessAttachmentPackage(input: {
     if (seenNames.has(key)) continue;
     seenNames.add(key);
     deliveredNames.push(link.name);
+  }
+
+  /*
+   * A link is only delivery if it opens.
+   *
+   * The package link is the one thing in the email nobody checks before it is
+   * sent, and it is the only route to documents too large to attach. A dead
+   * one is worse than no link at all: the recipient believes the drawings
+   * exist and were provided, and blames themselves for not finding them.
+   */
+  for (const link of input.links) {
+    if (link.reachable === false) {
+      problems.push({
+        kind: "unreachable_link",
+        filename: link.name,
+        message: `The document link for "${link.name}" does not resolve, so the subcontractor would have no way to reach the documents it covers.`,
+        blocking: true,
+      });
+    }
   }
 
   for (const missing of input.undelivered ?? []) {

@@ -250,3 +250,45 @@ describe("assessAttachmentPackage", () => {
     );
   });
 });
+
+describe("the package link", () => {
+  it("blocks the send when the link does not resolve", () => {
+    /*
+     * The one thing in the email nobody checks before it goes, and the only
+     * route to documents too large to attach. A dead link is worse than none:
+     * the recipient believes the drawings were provided and blames themselves
+     * for not finding them.
+     */
+    const r = assessAttachmentPackage({
+      files: OK_FILES,
+      links: [
+        { name: "All 6 bid documents", url: "https://brostco.test/d/x", reachable: false },
+      ],
+      expected: true,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.problems[0].kind).toBe("unreachable_link");
+  });
+
+  it("accepts a link that was checked and works", () => {
+    expect(
+      assessAttachmentPackage({
+        files: [],
+        links: [{ name: "All 6 bid documents", url: "https://brostco.test/d/x", reachable: true }],
+        expected: true,
+      }).ok
+    ).toBe(true);
+  });
+
+  it("does not block a link nobody checked", () => {
+    // A caller that cannot verify should not be forced to hold a send; only
+    // an explicit failure stops the email.
+    expect(
+      assessAttachmentPackage({
+        files: [],
+        links: [{ name: "Full packet", url: "https://brostco.test/d/x" }],
+        expected: true,
+      }).ok
+    ).toBe(true);
+  });
+});

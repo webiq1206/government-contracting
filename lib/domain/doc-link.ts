@@ -21,14 +21,23 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export interface DocPointer {
-  /** "s" = stored key, "u" = upstream URL we proxy. */
-  k: "s" | "u";
-  /** Storage key or upstream URL. */
+  /** "s" = stored key, "u" = upstream URL we proxy, "p" = a package page. */
+  k: "s" | "u" | "p";
+  /** Storage key, upstream URL, or (for a package) the opportunity id. */
   v: string;
-  /** Filename shown to the recipient. */
+  /** Filename, or the package's title, shown to the recipient. */
   n: string;
   /** Expiry, seconds since epoch. */
   e: number;
+  /**
+   * For a package: the documents it lists.
+   *
+   * Carried in the token rather than looked up at open time, so the page shows
+   * exactly the set that was promised in the email. A document added to the
+   * opportunity afterwards is not silently included, and one deleted since
+   * does not silently vanish: the recipient sees what they were told about.
+   */
+  d?: { k: "s" | "u"; v: string; n: string }[];
 }
 
 /** Only these hosts may be proxied. Prevents the route becoming an open proxy. */
@@ -90,10 +99,20 @@ export function decodeDocToken(
   if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
   try {
     const p = JSON.parse(unb64url(payload).toString("utf8")) as DocPointer;
-    if (p.k !== "s" && p.k !== "u") return null;
+    if (p.k !== "s" && p.k !== "u" && p.k !== "p") return null;
     if (typeof p.v !== "string" || !p.v) return null;
     if (typeof p.e !== "number" || p.e <= nowSec) return null;
     if (p.k === "u" && !isAllowedUpstream(p.v)) return null;
+    if (p.k === "p") {
+      if (!Array.isArray(p.d) || p.d.length === 0) return null;
+      // Every entry is held to the same rules as a standalone pointer, so a
+      // package cannot become a way to smuggle an unapproved upstream host.
+      for (const entry of p.d) {
+        if (entry?.k !== "s" && entry?.k !== "u") return null;
+        if (typeof entry.v !== "string" || !entry.v) return null;
+        if (entry.k === "u" && !isAllowedUpstream(entry.v)) return null;
+      }
+    }
     return p;
   } catch {
     return null;
@@ -107,5 +126,40 @@ export function decodeDocToken(
 export function publicDocUrl(p: Omit<DocPointer, "e">, ttlSeconds = 30 * 24 * 3600): string {
   const base = (process.env.APP_URL || "https://brostco.com").replace(/\/+$/, "");
   const token = encodeDocToken({ ...p, e: Math.floor(Date.now() / 1000) + ttlSeconds });
+  return `${base}/d/${token}`;
+}
+
+/**
+ * One link for a set of documents too large to attach.
+ *
+ * The email used to carry a separate link per oversized file, which on a
+ * solicitation with a full drawing set meant a wall of URLs. This is a single
+ * address the recipient opens to find them all listed.
+ *
+ * A page rather than an archive, deliberately. A zip would need a hand-written
+ * implementation of the format in a bid-critical path, and would hand a
+ * subcontractor a 40MB download before they can see what is in it. A list lets
+ * them take the two drawings they need.
+ *
+ * Each entry keeps its own signed pointer, so the page grants no access the
+ * individual links would not have.
+ */
+export function packageDocUrl(
+  input: {
+    /** The opportunity, so the page can name the job it belongs to. */
+    opportunityId: string;
+    title: string;
+    documents: { k: "s" | "u"; v: string; n: string }[];
+  },
+  ttlSeconds = 30 * 24 * 3600
+): string {
+  const base = (process.env.APP_URL || "https://brostco.com").replace(/\/+$/, "");
+  const token = encodeDocToken({
+    k: "p",
+    v: input.opportunityId,
+    n: input.title,
+    d: input.documents,
+    e: Math.floor(Date.now() / 1000) + ttlSeconds,
+  });
   return `${base}/d/${token}`;
 }

@@ -57,20 +57,37 @@ export const subFinder: AgentDefinition = {
     // below still passes orgId explicitly; the context only reaches code that
     // resolves the tenant itself.
     const orgId = opp.org_id ?? LEGACY_ORG_ID;
-    return runWithOrg(orgId, () => sourceSubs(opp, orgId));
+    const onlyTrade =
+      typeof ctx.payload.trade === "string" ? ctx.payload.trade.trim() : "";
+    return runWithOrg(orgId, () => sourceSubs(opp, orgId, onlyTrade));
   },
 };
 
-async function sourceSubs(opp: Opportunity, orgId: string): Promise<AgentResult> {
+async function sourceSubs(
+  opp: Opportunity,
+  orgId: string,
+  onlyTrade = ""
+): Promise<AgentResult> {
   const opportunityId = opp.id;
   const profile = await getProfileJson();
   if (!profile) return { ok: false, summary: "no active Company Profile" };
 
   const analysis = opp.solicitation_analysis;
-  const trades =
+  /*
+   * One trade, when the caller asked for one.
+   *
+   * Re-sourcing after a subcontractor covered only part of a trade needs more
+   * firms for THAT trade, not a fresh sweep of every trade on the job. Without
+   * this the partial-coverage path would re-search trades that are already
+   * fully covered: harmless, because the candidate insert upserts and outreach
+   * refuses to email anyone twice, but it spends Places quota to learn what we
+   * already knew.
+   */
+  const allTrades =
     analysis?.required_trades?.length
       ? analysis.required_trades
       : profile.primary_trades ?? [];
+  const trades = onlyTrade ? [onlyTrade] : allTrades;
   // Where the work is, as specifically as we know it. City + state beats a
   // bare state code in a Places query ("mowing contractor in Yigo, GU" finds
   // local firms; "in GU" finds whoever ranks island-wide).

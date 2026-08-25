@@ -7,7 +7,7 @@
  * old rule recorded it as the trade being covered, and the email reads like a
  * complete quote. Nobody catches it until the bid is short a building.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   outcomeForIntent,
   decideReply,
@@ -171,5 +171,66 @@ describe("blockingGaps", () => {
 
   it("chases nothing on a decline", () => {
     expect(blockingGaps(reply({ intent: "decline" }), "declined")).toEqual([]);
+  });
+});
+
+describe("partial coverage starts sourcing the remainder", () => {
+  it("re-runs Sub Finder for that trade, once", async () => {
+    /*
+     * Flagging the opportunity alone leaves the gap waiting for a human to
+     * notice it, which is the one thing the pipeline exists to avoid. The
+     * singleton bound matters because several subcontractors can each come
+     * back partial on the same trade within minutes.
+     */
+    const enqueue = vi.fn(async () => "job-1");
+    vi.doMock("@/lib/queue", () => ({ enqueue }));
+    vi.doMock("@/lib/db", () => ({
+      query: vi.fn(async () => []),
+      queryOne: vi.fn(async () => null),
+    }));
+    vi.resetModules();
+
+    const { applyOutcomeToSolicitation } = await import("@/lib/domain/reply-outcome");
+    await applyOutcomeToSolicitation({
+      opportunityId: "opp-1",
+      subcontractorId: "sub-1",
+      trade: "HVAC",
+      outcome: "partial_scope",
+    });
+
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    const [agent, payload, opts] = enqueue.mock.calls[0] as unknown as [
+      string,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+    expect(agent).toBe("sub-finder");
+    expect(payload).toMatchObject({ opportunityId: "opp-1", trade: "HVAC" });
+    expect(opts.singletonKey).toBe("resource:opp-1:HVAC");
+    vi.doUnmock("@/lib/queue");
+    vi.doUnmock("@/lib/db");
+    vi.resetModules();
+  });
+
+  it("does not re-source for an outcome that settles the trade", async () => {
+    const enqueue = vi.fn(async () => "job-1");
+    vi.doMock("@/lib/queue", () => ({ enqueue }));
+    vi.doMock("@/lib/db", () => ({
+      query: vi.fn(async () => []),
+      queryOne: vi.fn(async () => null),
+    }));
+    vi.resetModules();
+
+    const { applyOutcomeToSolicitation } = await import("@/lib/domain/reply-outcome");
+    await applyOutcomeToSolicitation({
+      opportunityId: "opp-1",
+      subcontractorId: "sub-1",
+      trade: "HVAC",
+      outcome: "quoted",
+    });
+    expect(enqueue).not.toHaveBeenCalled();
+    vi.doUnmock("@/lib/queue");
+    vi.doUnmock("@/lib/db");
+    vi.resetModules();
   });
 });
