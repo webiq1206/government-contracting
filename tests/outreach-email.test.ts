@@ -97,8 +97,12 @@ describe("seed Template 1 render", () => {
     // the body alone would no longer describe what a subcontractor receives.
     const html = plainToHtml(filled) + renderOutreachBrief(previewBriefSections()).html;
     expect(html).toContain(">Statement of Work.pdf (attached)</li>");
-    expect(html).toContain("Scope we need priced");
-    expect(html).toContain("What to send back");
+    expect(html).toContain("Scope to price");
+    expect(html).toContain("What to include with your quote");
+    // Both dates, each labelled as whose it is. The preview has to show this
+    // because it is the pair an operator most needs to sanity-check.
+    expect(html).toContain("Your quote is due:");
+    expect(html).toContain("Our bid to the agency is due:");
     expect(html).not.toMatch(FAILURE_RE);
   });
 

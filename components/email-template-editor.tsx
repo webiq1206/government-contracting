@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
 import { plainToHtml, renderTemplate } from "@/lib/domain/template-render";
 import {
@@ -13,6 +13,7 @@ import {
   wrapSelection,
 } from "@/lib/domain/template-markup";
 import { renderOutreachBrief } from "@/lib/domain/outreach-email";
+import { validateTemplate } from "@/lib/domain/outreach-validation";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,8 +47,48 @@ function previewFilled(template: string): string {
 
 function humanSlug(slug: string): string {
   if (slug === "template_1_outreach") return "Initial outreach email";
-  if (slug === "template_2_followup") return "48-hour follow-up email";
+  if (slug === "template_2_followup") return "48-hour follow-up, reply in the thread";
+  if (slug === "template_2_followup_new_thread")
+    return "48-hour follow-up, new email (fallback)";
   return slug.replace(/_/g, " ");
+}
+
+/**
+ * When this template is used, and what rides along with it.
+ *
+ * The two follow-up bodies are the reason this exists. An operator looking at
+ * two similar-looking follow-ups has no way to know that one of them is only
+ * ever sent when threading fails, that one inherits its subject and the other
+ * does not, or that only one carries the attachments. Editing the wrong one is
+ * silent: the change simply never appears in any email anyone receives.
+ */
+function slugGuidance(slug: string): { when: string; subject: string; attachments: string } | null {
+  if (slug === "template_1_outreach") {
+    return {
+      when: "Sent once, when a subcontractor clears verification for a trade on a solicitation.",
+      subject: "Yours, as written below.",
+      attachments:
+        "Every bid document for this trade is attached. The project, scope, requirements, questions, quote checklist and document list are added automatically beneath your text.",
+    };
+  }
+  if (slug === "template_2_followup") {
+    return {
+      when: "Sent 48 hours later, as a reply inside the original conversation, when nobody has answered.",
+      subject:
+        "Inherited from the original email. There is no subject field here because a reply must keep the thread's subject to stay in it.",
+      attachments:
+        "None, and no scope. Both are directly above this message in the same conversation, so repeating them turns a short nudge into a wall of text.",
+    };
+  }
+  if (slug === "template_2_followup_new_thread") {
+    return {
+      when: "Used only when the original thread cannot be replied to, so this arrives as a separate email.",
+      subject: "Yours, as written below, because there is no thread to inherit one from.",
+      attachments:
+        "The full document package and all generated sections, because the recipient has nothing above this message to refer back to.",
+    };
+  }
+  return null;
 }
 
 function formatDate(iso: string): string {
@@ -296,6 +337,20 @@ interface Props {
 export function EmailTemplateEditor({ template }: Props) {
   const [subject, setSubject] = useState(template.subject ?? "");
   const [body, setBody] = useState(template.body);
+
+  /*
+   * Checked as they type, not only on save.
+   *
+   * A mistyped field name renders as literal "{{trade_name}}" in a real
+   * subcontractor's inbox, and the send path refuses it, which means the
+   * operator's next signal is an opportunity that quietly stops sending. The
+   * same check runs on the server; this one just moves the news forward to the
+   * moment the mistake is made.
+   */
+  const problems = useMemo(
+    () => validateTemplate({ subject, body }),
+    [subject, body]
+  );
   const [currentVersion, setCurrentVersion] = useState(template.version);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -499,13 +554,49 @@ export function EmailTemplateEditor({ template }: Props) {
         <p className="mt-1 text-xs text-slate-400">
           Currently on version {currentVersion}
         </p>
+        {(() => {
+          const g = slugGuidance(template.slug);
+          if (!g) return null;
+          return (
+            <dl className="mt-3 grid gap-2 rounded-md bg-muted/40 p-3 text-xs sm:grid-cols-3">
+              <div>
+                <dt className="font-medium text-foreground">When it is sent</dt>
+                <dd className="mt-0.5 text-muted-foreground">{g.when}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-foreground">Subject</dt>
+                <dd className="mt-0.5 text-muted-foreground">{g.subject}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-foreground">Scope and documents</dt>
+                <dd className="mt-0.5 text-muted-foreground">{g.attachments}</dd>
+              </div>
+            </dl>
+          );
+        })()}
       </div>
+
+      {problems.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-md border border-risk/40 bg-risk/10 px-3 py-2 text-xs text-risk"
+        >
+          <p className="font-medium">
+            This template cannot be saved or sent as written.
+          </p>
+          <ul className="mt-1 list-disc space-y-1 pl-4">
+            {problems.map((p, i) => (
+              <li key={i}>{p.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Token palette */}
       <TokenPalette onInsert={insertToken} />
 
       {/* Subject */}
-      <div>
+      <div className={template.slug === "template_2_followup" ? "hidden" : undefined}>
         <label className="label mb-1.5 block">Subject line</label>
         <input
           ref={subjectRef}
@@ -517,7 +608,7 @@ export function EmailTemplateEditor({ template }: Props) {
           }}
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDropSubject}
-          placeholder="e.g. {{trade}} Quote Request, {{location_state}}"
+          placeholder="e.g. Pricing request: {{trade}} | {{location_city_state}}"
         />
       </div>
 
@@ -556,17 +647,37 @@ export function EmailTemplateEditor({ template }: Props) {
           placeholder="Write your email here. Select text, then use Bold, Highlight, or Bullets. Click or drag a fill-in field above to insert it."
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
-          Highlight applies to each line (not a whole block). Leave{" "}
-          <span className="font-mono text-foreground">{"{{questions}}"}</span> on
-          its own line; it already becomes a bullet list. Fill-in fields look like{" "}
-          <span className="font-mono text-foreground">{"{{trade}}"}</span> and are
-          replaced when Brost Co sends the email.
+          Highlight applies to each line, not a whole block. Fill-in fields look
+          like <span className="font-mono text-foreground">{"{{trade}}"}</span> and
+          are replaced when Brost Co sends the email. You do not need to write the
+          scope, the requirements, the questions or the document list: those are
+          added automatically underneath what you write here.
         </p>
       </div>
 
+      {problems.length > 0 && (
+        <p className="text-xs text-risk">
+          {problems.length === 1
+            ? problems[0].message
+            : `${problems.length} fill-in field problems, listed at the top of this template.`}
+        </p>
+      )}
+
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-3">
-        <button className="btn-primary" onClick={save} disabled={busy}>
+        <button
+          className="btn-primary"
+          onClick={save}
+          // Blocked rather than allowed-and-rejected: the server refuses this
+          // too, and a button that fails is a worse explanation than one that
+          // says why it cannot be pressed.
+          disabled={busy || problems.length > 0}
+          title={
+            problems.length > 0
+              ? "Fix the fill-in field problems listed above first."
+              : undefined
+          }
+        >
           {busy ? "Saving…" : "Save template"}
         </button>
         <button
@@ -580,7 +691,12 @@ export function EmailTemplateEditor({ template }: Props) {
           className="btn-ghost"
           type="button"
           onClick={sendTestEmail}
-          disabled={testBusy}
+          disabled={testBusy || problems.length > 0}
+          title={
+            problems.length > 0
+              ? "Fix the fill-in field problems listed above first."
+              : undefined
+          }
         >
           {testBusy ? "Sending…" : "Send test email"}
         </button>

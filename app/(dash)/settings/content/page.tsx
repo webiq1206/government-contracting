@@ -22,11 +22,24 @@ export const dynamic = "force-dynamic";
 async function activeOutreachTemplates(): Promise<EmailTemplate[]> {
   const orgId = await tryResolveTenantOrgId();
   const rows = await activeTemplates(
-    ["template_1_outreach", "template_2_followup"],
+    [
+      "template_1_outreach",
+      "template_2_followup",
+      // The fallback body, shown next to the one it backs up. An operator
+      // editing follow-up wording needs to see both, because whichever one
+      // they miss is the one a subcontractor eventually reads.
+      "template_2_followup_new_thread",
+    ],
     orgId
   );
-  // Sort: outreach first, followup second.
-  return rows.sort((a, b) => a.slug.localeCompare(b.slug));
+  // Initial outreach first, then the in-thread follow-up, then its fallback:
+  // the order they occur in, which is also the order they matter in.
+  const ORDER = [
+    "template_1_outreach",
+    "template_2_followup",
+    "template_2_followup_new_thread",
+  ];
+  return rows.sort((a, b) => ORDER.indexOf(a.slug) - ORDER.indexOf(b.slug));
 }
 
 export default async function ContentLibraryPage() {
@@ -61,8 +74,17 @@ export default async function ContentLibraryPage() {
                   <p className="text-sm leading-relaxed text-muted-foreground">
                     These are the outreach and follow-up emails Brost Co sends when it
                     contacts subcontractors. Use fill-in fields for names, trades, and
-                    deadlines (they update per bid). Highlight applies to each line.
-                    Leave questions on their own line so they stay a clean bullet list.
+                    dates; they are filled per bid. Everything factual, the project,
+                    the scope, the requirements, the questions and the document list,
+                    is added automatically beneath what you write, so you do not need
+                    to paste any of it in.
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    There are two follow-up bodies because there are two situations.
+                    The first is a reply inside the original conversation, where the
+                    scope is already sitting above it. The second is used only when
+                    that conversation cannot be replied to, and has to stand on its
+                    own. Each one below says when it is used.
                   </p>
                 </div>
                 {templates.length === 0 ? (
