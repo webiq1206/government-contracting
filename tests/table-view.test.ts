@@ -19,6 +19,8 @@ import {
   activeChips,
   withoutFilter,
   isSameView,
+  sortRows,
+  pageRows,
   type FilterSpec,
 } from "@/lib/domain/table-view";
 
@@ -206,5 +208,69 @@ describe("isSameView", () => {
   it("does not confuse two different filters", () => {
     expect(isSameView("state=TX", "state=NM")).toBe(false);
     expect(isSameView("state=TX", "state=TX&preferred=1")).toBe(false);
+  });
+});
+
+describe("in-memory views", () => {
+  const rows = [
+    { id: "a", name: "Delta", score: 10 as number | null, seen: "2026-01-02" as string | null },
+    { id: "b", name: "Alpha", score: null as number | null, seen: null as string | null },
+    { id: "c", name: "Charlie", score: 30 as number | null, seen: "2026-03-04" as string | null },
+  ];
+  const at = {
+    name: (r: (typeof rows)[0]) => r.name,
+    score: (r: (typeof rows)[0]) => r.score,
+    seen: (r: (typeof rows)[0]) => r.seen,
+  };
+
+  it("sorts by the column the URL names", () => {
+    expect(sortRows(rows, { key: "name", direction: "asc" }, at).map((r) => r.id)).toEqual([
+      "b",
+      "c",
+      "a",
+    ]);
+    expect(sortRows(rows, { key: "score", direction: "desc" }, at).map((r) => r.id)).toEqual([
+      "c",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("keeps blanks last whichever way it is sorted", () => {
+    /*
+     * The bug this pins: sign-flipping a comparator that also encoded "blanks
+     * last" inverted the null handling too, so a descending sort opened with a
+     * screen of empty cells. Sorting by "last contacted" should show the
+     * extremes of what IS known.
+     */
+    expect(sortRows(rows, { key: "seen", direction: "asc" }, at).at(-1)!.id).toBe("b");
+    expect(sortRows(rows, { key: "seen", direction: "desc" }, at).at(-1)!.id).toBe("b");
+    expect(sortRows(rows, { key: "score", direction: "asc" }, at).at(-1)!.id).toBe("b");
+  });
+
+  it("leaves the natural order alone when nothing is sorted", () => {
+    expect(sortRows(rows, { key: null, direction: "asc" }, at)).toBe(rows);
+  });
+
+  it("leaves the natural order alone for a column with no accessor", () => {
+    // A page's deliberate default ordering beats an arbitrary one.
+    expect(sortRows(rows, { key: "mystery", direction: "asc" }, at)).toBe(rows);
+  });
+
+  it("does not reorder the array it was given", () => {
+    const before = rows.map((r) => r.id);
+    sortRows(rows, { key: "name", direction: "asc" }, at);
+    expect(rows.map((r) => r.id)).toEqual(before);
+  });
+
+  it("takes the slice the page state describes", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ id: String(i) }));
+    const p = parsePaging({ page: "2", per: "25" }, 10);
+    expect(pageRows(many, { ...p, perPage: 4, offset: 4 }).map((r) => r.id)).toEqual([
+      "4",
+      "5",
+      "6",
+      "7",
+    ]);
   });
 });

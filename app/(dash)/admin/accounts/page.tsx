@@ -1,18 +1,23 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/badges";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
-import { adminAccountRows } from "@/lib/admin/accounts";
+import { adminAccountRows, type AdminAccountRow } from "@/lib/admin/accounts";
 import { recentAdminActions } from "@/lib/admin/audit";
 import { shortDate } from "@/lib/format";
+import { FilterToolbar } from "@/components/filter-toolbar";
+import { AdminAccountsTable } from "@/components/admin-accounts-table";
+import {
+  parseFilters,
+  parseSort,
+  parsePaging,
+  serializeSort,
+  sortRows,
+  pageRows,
+  type FilterSpec,
+} from "@/lib/domain/table-view";
 
 export const dynamic = "force-dynamic";
 
-const ACCESS_LABEL: Record<string, { text: string; tone: string }> = {
-  full: { text: "Full access", tone: "bg-pursue/15 text-pursue" },
-  trial: { text: "On trial", tone: "bg-accent/15 text-accent-strong" },
-  none: { text: "Locked out", tone: "bg-risk/15 text-risk" },
-};
 
 /**
  * Every account on the platform, and what each one can actually do.
@@ -23,20 +28,89 @@ const ACCESS_LABEL: Record<string, { text: string; tone: string }> = {
  * comped account reads "canceled" in Stripe and "Full access" here, and that
  * gap is the entire reason this column exists.
  */
-export default async function AdminAccountsPage() {
+const SPECS: FilterSpec[] = [
+  { key: "q", label: "Search", kind: "text", placeholder: "Account or owner email" },
+  {
+    key: "access",
+    label: "Access",
+    kind: "select",
+    placeholder: "Any",
+    hint: "What the product will actually let them do right now.",
+    options: [
+      { value: "full", label: "Full access" },
+      { value: "trial", label: "Trial" },
+      { value: "none", label: "Locked out" },
+    ],
+  },
+  {
+    key: "billing",
+    label: "Billing",
+    kind: "select",
+    placeholder: "Any",
+    options: [
+      { value: "comped", label: "Comped" },
+      { value: "paying", label: "Paying" },
+      { value: "none", label: "No subscription" },
+    ],
+  },
+  { key: "suspended", label: "Suspended only", kind: "boolean" },
+  {
+    key: "noowner",
+    label: "No owner",
+    kind: "boolean",
+    hint: "An account nobody can sign in to administer. Always worth a look.",
+  },
+];
+
+const SORT_ACCESSORS: Record<string, (r: AdminAccountRow) => unknown> = {
+  name: (r) => r.name,
+  owner_email: (r) => r.owner_email,
+  access: (r) => r.access,
+  subscription_status: (r) => r.subscription_status,
+  plan_key: (r) => r.plan_key,
+  member_count: (r) => r.member_count,
+  created_at: (r) => r.created_at,
+};
+
+export default async function AdminAccountsPage({
+  searchParams,
+}: {
+  searchParams: Record<string, string | string[] | undefined>;
+}) {
   const auth = await requirePlatformAdmin();
   // 404 rather than 403 for a signed-in non-admin: naming the page confirms it
   // exists and is worth attacking.
   if (auth instanceof Response) notFound();
 
-  const [rows, audit] = await Promise.all([
+  const [all, audit] = await Promise.all([
     adminAccountRows(),
     recentAdminActions(15),
   ]);
 
-  const lockedOut = rows.filter((r) => r.access === "none").length;
-  const comped = rows.filter((r) => r.billing_exempt).length;
-  const suspended = rows.filter((r) => r.suspended_at).length;
+  // Headline counts describe the WHOLE platform, not the current filter. A
+  // number that moves when you type in a search box is not a fact about the
+  // business, and these are the four an admin opens this page to check.
+  const lockedOut = all.filter((r) => r.access === "none").length;
+  const comped = all.filter((r) => r.billing_exempt).length;
+  const suspended = all.filter((r) => r.suspended_at).length;
+
+  const values = parseFilters(SPECS, searchParams);
+  const needle = (values.q ?? "").toLowerCase();
+  const matched = all.filter((r) => {
+    if (needle && !`${r.name} ${r.owner_email ?? ""}`.toLowerCase().includes(needle)) return false;
+    if (values.access && r.access !== values.access) return false;
+    if (values.billing === "comped" && !r.billing_exempt) return false;
+    if (values.billing === "paying" && (r.billing_exempt || !r.subscription_status)) return false;
+    if (values.billing === "none" && r.subscription_status) return false;
+    if (values.suspended === "1" && !r.suspended_at) return false;
+    if (values.noowner === "1" && r.owner_email) return false;
+    return true;
+  });
+
+  const sort = parseSort(searchParams, Object.keys(SORT_ACCESSORS));
+  const paging = parsePaging(searchParams, matched.length);
+  const rows = pageRows(sortRows(matched, sort, SORT_ACCESSORS), paging);
+  const filtered = Object.keys(values).length > 0;
 
   return (
     <>
@@ -53,74 +127,32 @@ export default async function AdminAccountsPage() {
           <Stat label="Suspended" value={suspended} tone={suspended ? "text-risk" : undefined} />
         </div>
 
-        <div className="overflow-x-auto panel-inset">
-          <table className="w-full min-w-[54rem] text-left text-sm">
-            <thead className="bg-surface text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">Account</th>
-                <th className="px-4 py-2 font-medium">Owner</th>
-                <th className="px-4 py-2 font-medium">Access</th>
-                <th className="px-4 py-2 font-medium">Stripe status</th>
-                <th className="px-4 py-2 font-medium">Plan</th>
-                <th className="px-4 py-2 font-medium">Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const access = ACCESS_LABEL[r.access];
-                return (
-                  <tr key={r.id} className="border-t border-border/60 hover:bg-surface/60">
-                    <td className="px-4 py-2">
-                      <Link
-                        href={`/admin/accounts/${r.id}`}
-                        className="font-medium text-accent-strong hover:underline"
-                      >
-                        {r.name}
-                      </Link>
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {r.suspended_at && (
-                          <span className="rounded bg-risk/15 px-1.5 py-0.5 text-[11px] font-medium text-risk">
-                            Suspended
-                          </span>
-                        )}
-                        {r.billing_exempt && (
-                          <span className="rounded bg-pursue/15 px-1.5 py-0.5 text-[11px] font-medium text-pursue">
-                            Comped
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {r.owner_email ?? <span className="text-risk">no owner</span>}
-                      {r.member_count > 1 && (
-                        <span className="text-xs"> +{r.member_count - 1}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className={`rounded px-2 py-0.5 text-xs font-medium ${access.tone}`}>
-                        {access.text}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {r.subscription_status ?? "-"}
-                    </td>
-                    <td className="px-4 py-2 text-muted-foreground">{r.plan_key ?? "-"}</td>
-                    <td className="px-4 py-2 text-muted-foreground">
-                      {shortDate(r.created_at)}
-                    </td>
-                  </tr>
-                );
-              })}
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    No accounts yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <FilterToolbar
+          pathname="/admin/accounts"
+          specs={SPECS}
+          values={values}
+          sortParam={serializeSort(sort)}
+          perPage={paging.perPage}
+          viewsKey="brostco.admin.accounts.views"
+          resultLabel={
+            matched.length > 0
+              ? `Showing ${paging.from}-${paging.to} of ${matched.length}`
+              : undefined
+          }
+        />
+
+        <AdminAccountsTable
+          rows={rows}
+          total={matched.length}
+          filters={values}
+          sort={sort}
+          paging={paging}
+          emptyState={
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              {filtered ? "No accounts match these filters." : "No accounts yet."}
+            </p>
+          }
+        />
 
         <section className="space-y-2">
           <h2 className="text-sm font-semibold">Recent admin activity</h2>

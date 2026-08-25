@@ -266,3 +266,55 @@ export function isSameView(a: string, b: string): boolean {
   };
   return norm(a) === norm(b);
 }
+
+/**
+ * Sort an in-memory list the same way the URL says.
+ *
+ * For lists small and bounded enough that paging them in SQL is more machinery
+ * than the problem deserves -- the platform's own account list, say. The URL
+ * still decides, so these pages behave identically to the ones backed by a
+ * query and an operator never has to learn two sets of rules.
+ *
+ * Callers supply ACCESSORS, not comparators, and that is deliberate. A
+ * comparator has to encode both "which is bigger" and "where do blanks go",
+ * and the direction flip then inverts both -- so a descending sort put every
+ * empty cell at the top, which is the one place nobody wants them. Owning the
+ * comparison here means a caller cannot get that wrong.
+ *
+ * A key with no accessor leaves the order alone: the natural order a page
+ * chose is a better answer than an arbitrary one.
+ */
+export function sortRows<T>(
+  rows: T[],
+  sort: SortState,
+  accessors: Record<string, (row: T) => unknown>
+): T[] {
+  if (!sort.key) return rows;
+  const get = accessors[sort.key];
+  if (!get) return rows;
+  const sign = sort.direction === "desc" ? -1 : 1;
+  // Copied, not sorted in place: the caller may still be holding the original
+  // order, and an in-place sort of a shared array is the kind of bug that only
+  // shows up on the second render.
+  return [...rows].sort((a, b) => {
+    const av = get(a);
+    const bv = get(b);
+    const aEmpty = av == null || av === "";
+    const bEmpty = bv == null || bv === "";
+    /*
+     * Blanks last in BOTH directions. Sorting by "last contacted" should put
+     * the extremes of what is known at the top; a null is the absence of an
+     * answer, not an early or a late one.
+     */
+    if (aEmpty && bEmpty) return 0;
+    if (aEmpty) return 1;
+    if (bEmpty) return -1;
+    if (typeof av === "number" && typeof bv === "number") return sign * (av - bv);
+    return sign * String(av).localeCompare(String(bv));
+  });
+}
+
+/** The slice of an in-memory list that belongs on this page. */
+export function pageRows<T>(rows: T[], paging: PageState): T[] {
+  return rows.slice(paging.offset, paging.offset + paging.perPage);
+}

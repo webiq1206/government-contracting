@@ -116,6 +116,148 @@ export async function pipelineOpportunities(): Promise<Opportunity[]> {
   );
 }
 
+/**
+ * Sortable columns for the opportunities table, and the SQL each one means.
+ *
+ * A whitelist rather than interpolation: a sort key arrives from a query
+ * string, and a query string is a place a stranger can write.
+ */
+export const OPP_SORTS: Record<string, string> = {
+  title: "title",
+  agency: "agency nulls last",
+  stage: "stage",
+  deadline: "deadline nulls last",
+  score: "coalesce(score,0)",
+  value_estimated: "coalesce(value_estimated,0)",
+  location_state: "location_state nulls last",
+  updated_at: "updated_at",
+};
+
+export interface OppTableFilters {
+  q?: string;
+  stage?: string;
+  /** pursue | review | dismiss. */
+  tier?: string;
+  state?: string;
+  agency?: string;
+  naics?: string;
+  setAside?: string;
+  /** Only rows waiting on a person. */
+  needsMe?: boolean;
+  /** Deadline inside this many days. */
+  dueDays?: number;
+  minScore?: number;
+  /** "known" or "unknown": whether the contract value was ever published. */
+  value?: "known" | "unknown";
+  /** Include dismissed and archived records, hidden by default. */
+  includeClosed?: boolean;
+}
+
+function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
+  const where: string[] = [];
+  // The board's own scope. A dismissed record is history, not pipeline, and
+  // mixing it in makes every count on the page disagree with the board.
+  if (!f.includeClosed) where.push("stage <> 'dismissed' and status <> 'archived'");
+  if (f.stage) {
+    params.push(f.stage);
+    where.push(`stage = $${params.length}`);
+  }
+  if (f.tier) {
+    params.push(f.tier);
+    where.push(`tier = $${params.length}`);
+  }
+  if (f.state) {
+    params.push(f.state);
+    where.push(`location_state = $${params.length}`);
+  }
+  if (f.agency) {
+    params.push(`%${f.agency}%`);
+    where.push(`agency ilike $${params.length}`);
+  }
+  if (f.naics) {
+    params.push(f.naics);
+    where.push(`naics_code = $${params.length}`);
+  }
+  if (f.setAside) {
+    params.push(`%${f.setAside}%`);
+    where.push(`coalesce(set_aside_type,'') ilike $${params.length}`);
+  }
+  if (f.needsMe) where.push("human_action_required = true");
+  if (f.minScore != null) {
+    params.push(f.minScore);
+    where.push(`coalesce(score,0) >= $${params.length}`);
+  }
+  if (f.dueDays != null) {
+    params.push(f.dueDays);
+    where.push(
+      `deadline is not null and deadline > now() and deadline <= now() + make_interval(days => $${params.length})`
+    );
+  }
+  /*
+   * Whether the notice published a value at all. Worth filtering on in both
+   * directions: "unknown" is the queue of records whose score rests on a fact
+   * nobody has, and "known" is what you can actually plan revenue against.
+   */
+  if (f.value === "known") where.push("value_estimated is not null");
+  if (f.value === "unknown") where.push("value_estimated is null");
+  if (f.q) {
+    params.push(`%${f.q}%`);
+    where.push(
+      `(title ilike $${params.length} or coalesce(solicitation_number,'') ilike $${params.length} or coalesce(agency,'') ilike $${params.length})`
+    );
+  }
+  return where;
+}
+
+export async function opportunityTableCount(f: OppTableFilters = {}): Promise<number> {
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return 0;
+  const params: unknown[] = [orgId];
+  const where = oppTableWhere(f, params);
+  const row = await queryOne<{ n: number }>(
+    `select count(*)::int as n from opportunities
+      where org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}`,
+    params
+  );
+  return row?.n ?? 0;
+}
+
+export async function opportunityTable(
+  f: OppTableFilters = {},
+  page?: { sort?: string; direction?: "asc" | "desc"; limit?: number; offset?: number }
+): Promise<Opportunity[]> {
+  const { tryResolveTenantOrgId } = await import("./tenant");
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
+  const params: unknown[] = [orgId];
+  const where = oppTableWhere(f, params);
+
+  // Default: soonest deadline first, undated last. An explicit sort replaces
+  // it; id is always the final tiebreak so the ordering is total and a row
+  // cannot appear on two pages or neither.
+  const column = page?.sort ? OPP_SORTS[page.sort] : undefined;
+  const direction = page?.direction === "desc" ? "desc" : "asc";
+  const orderBy = column
+    ? `${column} ${direction}, id asc`
+    : "(deadline is null), deadline asc, id asc";
+
+  params.push(page?.limit ?? 100);
+  const limitAt = params.length;
+  params.push(page?.offset ?? 0);
+  const offsetAt = params.length;
+
+  return query<Opportunity>(
+    `select * from opportunities
+      where org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}
+      order by ${orderBy}
+      limit $${limitAt} offset $${offsetAt}`,
+    params
+  );
+}
+
 export async function reviewQueue(): Promise<Opportunity[]> {
   const { tryResolveTenantOrgId } = await import("./tenant");
   const { LEGACY_ORG_ID } = await import("./tenant-context");
@@ -437,6 +579,15 @@ export interface EmailLogCounts {
   opened: number;
   clicked: number;
   responded: number;
+  /*
+   * The failures. A chip with a number on it is the only way an operator
+   * learns these exist: "3 bounced" is a prompt to look, and a filter nobody
+   * knows about is a filter nobody uses.
+   */
+  bounced: number;
+  deferred: number;
+  failed: number;
+  inbound: number;
 }
 
 const EMAIL_LOG_RESPONDED = `(c.direction = 'inbound' or c.replied_at is not null or replies.inbound_at is not null)`;
@@ -512,13 +663,21 @@ export async function emailLogPaged(opts: {
       opened: string;
       clicked: string;
       responded: string;
+      bounced: string;
+      deferred: string;
+      failed: string;
+      inbound: string;
     }>(
       `select
          count(*)::text as all,
          count(*) filter (where c.direction = 'outbound')::text as sent,
          count(*) filter (where c.direction = 'outbound' and c.opened_at is not null)::text as opened,
          count(*) filter (where c.direction = 'outbound' and c.clicked_at is not null)::text as clicked,
-         count(*) filter (where ${EMAIL_LOG_RESPONDED})::text as responded
+         count(*) filter (where ${EMAIL_LOG_RESPONDED})::text as responded,
+         count(*) filter (where c.delivery_state = 'bounced')::text as bounced,
+         count(*) filter (where c.delivery_state = 'deferred')::text as deferred,
+         count(*) filter (where c.delivery_state = 'failed')::text as failed,
+         count(*) filter (where c.direction = 'inbound')::text as inbound
        ${from(1, countOrgIndex)}`,
       countParams
     ),
@@ -533,6 +692,10 @@ export async function emailLogPaged(opts: {
       sent: parseInt(c?.sent ?? "0", 10),
       opened: parseInt(c?.opened ?? "0", 10),
       clicked: parseInt(c?.clicked ?? "0", 10),
+      bounced: parseInt(c?.bounced ?? "0", 10),
+      deferred: parseInt(c?.deferred ?? "0", 10),
+      failed: parseInt(c?.failed ?? "0", 10),
+      inbound: parseInt(c?.inbound ?? "0", 10),
       responded: parseInt(c?.responded ?? "0", 10),
     },
   };
