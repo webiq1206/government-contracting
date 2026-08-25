@@ -5,6 +5,8 @@ import { PipelinePulse } from "@/components/pipeline-pulse";
 import { PipelineStrip } from "@/components/pipeline-strip";
 import { AutomationPausedBanner } from "@/components/automation-control";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
+import { automationHealth } from "@/lib/automation-status";
+import { AutomationBlockerBanner } from "@/components/automation-incidents";
 import { SetupChecklist } from "@/components/setup-checklist";
 import { workQueue } from "@/lib/data";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -423,13 +425,14 @@ function PipelineHealthRail({
 
 export default async function TodayPage() {
   const rules = await getAutomationRules();
-  const [data, profile, automation, digest, queueItems, pulse] = await Promise.all([
+  const [data, profile, automation, digest, queueItems, pulse, health] = await Promise.all([
     actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
     getAutomationState(),
     dailyDigest(),
     workQueue().catch(() => []),
     readPipelinePulse().catch(() => []),
+    automationHealth().catch(() => null),
   ]);
   const digestParts = [
     digest.found > 0 && `${digest.found} new opportunit${digest.found === 1 ? "y" : "ies"} found`,
@@ -512,6 +515,14 @@ export default async function TodayPage() {
           <div className="mb-2 flex justify-end">
             <HelpPopover help={PAGE_HELP["today"]} />
           </div>
+
+          {/*
+            Above the greeting on purpose. A day's work planned against a
+            system that is not running is a day wasted, so this is the one
+            thing that outranks "here is what needs you": the queue below is
+            not going to move until it is fixed.
+          */}
+          {health && <AutomationBlockerBanner health={health} />}
 
           <TodayGreeting
             clear={clear}

@@ -68,6 +68,20 @@ export const WORKABLE_CALL_CARD_SQL = `
   -- them going forward, and this keeps historical empties out of the count.
   and nullif(btrim(coalesce(s.phone, '')), '') is not null`;
 
+/**
+ * An opportunity waiting on a pursue-or-pass decision.
+ *
+ * Shared with actionCenter rather than restated, because it was restated and
+ * the two copies drifted: the sidebar badge omitted the snooze check, so
+ * snoozing a borderline opportunity removed it from Today and left it in the
+ * badge. The operator cleared their queue and the number beside "Review" did
+ * not move, which is precisely how a count stops being believed.
+ *
+ * Expects the opportunities table aliased as `o`.
+ */
+export const TRIAGE_WHERE_SQL = `o.status='open' and o.tier='review' and o.human_action_required=true
+  and (o.snoozed_until is null or o.snoozed_until <= now())`;
+
 export async function queueCounts(): Promise<{ review: number; callQueue: number }> {
   const { tryResolveTenantOrgId } = await import("./tenant");
   const { LEGACY_ORG_ID } = await import("./tenant-context");
@@ -77,8 +91,8 @@ export async function queueCounts(): Promise<{ review: number; callQueue: number
   }
   const row = await queryOne<{ review: string; call: string }>(
     `select
-       (select count(*) from opportunities
-         where org_id = $1 and tier='review' and human_action_required=true and status='open') as review,
+       (select count(*) from opportunities o
+         where o.org_id = $1 and ${TRIAGE_WHERE_SQL}) as review,
        (select count(*) from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
@@ -1583,8 +1597,7 @@ function actionOppCount(orgId: string): string {
  * tell from the screen which was wrong.
  */
 const ACTION_OPP_WHERE = {
-  triage: `and o.status='open' and o.tier='review' and o.human_action_required=true
-           and (o.snoozed_until is null or o.snoozed_until <= now())`,
+  triage: `and ${TRIAGE_WHERE_SQL}`,
   bidWork: `and o.status='open' and o.stage in ('quote_entry','bid_building')
             and (o.snoozed_until is null or o.snoozed_until <= now())`,
   awaitingOutcome: `and o.status='open' and o.stage='submitted'

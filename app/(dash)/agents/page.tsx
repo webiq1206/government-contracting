@@ -8,7 +8,12 @@ import {
   type AgentStatusRow,
 } from "@/lib/data";
 import { ROSTER } from "@/lib/agents/registry";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
+import {
+  AutomationStatusPanel,
+  AutomationIncidents,
+} from "@/components/automation-incidents";
+import { automationHealth } from "@/lib/automation-status";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
@@ -111,12 +116,13 @@ export default async function AgentsPage({
   const levelFilter = searchParams?.level;
   const q = searchParams?.q ?? "";
   const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
-  const [runs, paged, automation, health, statuses] = await Promise.all([
+  const [runs, paged, automation, health, statuses, live] = await Promise.all([
     jobRunsSummary() as Promise<Row[]>,
     agentLogsPaged({ agent: agentFilter, level: levelFilter, q, page }),
     getAutomationState(),
     agentHealth(),
     agentStatuses(),
+    automationHealth(),
   ]);
   const statusByAgent = new Map(statuses.map((s) => [s.agent, s]));
   const logs = paged.rows as Row[];
@@ -139,17 +145,11 @@ export default async function AgentsPage({
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["agents"]}
-        title="Automation Log"
-        status={
-          health.errors24h > 0
-            ? `${health.errors24h} error${health.errors24h === 1 ? "" : "s"} in the last 24 hours`
-            : health.runs24h > 0
-              ? "All agents healthy"
-              : "No runs in the last 24 hours"
-        }
-        subtitle={`${ROSTER.length} agents run this platform. See what each one did, filter the feed, or run one manually.`}
+        title="Automation Health"
+        explanation="Whether the automation is doing its work, what is stopping it, and how to fix it."
+        status={live.headline}
       />
 
       <div
@@ -158,40 +158,23 @@ export default async function AgentsPage({
         id="agent-log"
       >
         {/* Master switch: pause/resume all automation side effects. */}
-        <AutomationControl state={automation} />
+        <AutomationControl state={automation} healthy={live.state === "healthy"} />
 
-        {/* One-look health: is the machine OK? */}
-        {health.errors24h > 0 ? (
-          <Link
-            href={link({ level: "error", page: undefined })}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-risk/40 bg-risk/5 px-4 py-2.5 text-sm transition-colors hover:border-risk/70"
-          >
-            <span className="text-slate-800">
-              <span className="font-semibold text-risk">
-                {health.errors24h} of {health.runs24h} runs failed
-              </span>{" "}
-              in the last 24 hours
-              {health.worstAgent ? (
-                <>
-                  , most affected:{" "}
-                  <span className="font-mono text-xs">{health.worstAgent}</span>
-                </>
-              ) : null}
-              .
-            </span>
-            <span className="btn-ghost pointer-events-none text-xs">See the errors →</span>
-          </Link>
-        ) : health.runs24h > 0 ? (
-          <p className="rounded-md border border-pursue/30 bg-pursue/5 px-4 py-2.5 text-sm text-slate-700">
-            <span className="font-semibold text-pursue">✓ All agents healthy.</span>{" "}
-            {health.runs24h} run{health.runs24h === 1 ? "" : "s"} in the last 24 hours, no
-            failures. Last activity {timeAgo(health.lastRunAt)}.
-          </p>
-        ) : (
-          <p className="rounded-md border border-border bg-surface px-4 py-2.5 text-sm text-slate-600">
-            No agent runs in the last 24 hours. If automation is running (above), the next
-            scheduled job will appear here; you can also press &ldquo;Run now&rdquo; on any
-            agent below.
+        {/*
+          The state, then the causes, then the roster. The old order was a
+          failure COUNT, then a reverse-chronological feed of every one of
+          them, which put the single fixable cause on page nine underneath its
+          own symptoms.
+        */}
+        <AutomationStatusPanel health={live} />
+        <AutomationIncidents health={live} />
+
+        {health.errors24h > 0 && (
+          <p className="text-xs text-muted-foreground">
+            <Link href={link({ level: "error", page: undefined })} className="underline underline-offset-2">
+              See every failed run
+            </Link>{" "}
+            ({health.errors24h} of {health.runs24h} runs in the last 24 hours).
           </p>
         )}
 

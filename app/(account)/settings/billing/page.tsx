@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { currentUser } from "@/lib/auth";
 import { getOrganization } from "@/lib/organizations";
 import {
@@ -11,6 +11,9 @@ import { stripeEnabled } from "@/lib/billing/enabled";
 import { accessLevel, trialDaysLeft, isCardlessTrial } from "@/lib/billing/entitlements";
 import { allQuotaStates, TRIAL_METRIC_LABEL } from "@/lib/billing/trial-limits";
 import { TrialPlanPicker } from "@/components/trial-plan-picker";
+import { accountStatus } from "@/lib/domain/account-status";
+import { AccountStatusPanel } from "@/components/account-status-panel";
+import { getAutomationState } from "@/lib/app-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +73,24 @@ export default async function BillingSettingsPage({
   const quotas = org && access === "trial" ? await allQuotaStates(org.id).catch(() => []) : [];
 
   const status = org?.subscription_status ?? "none";
+  /*
+   * One model for the six facts, so the page cannot say "Canceled" in one
+   * place and "working" in another. The individual variables below still feed
+   * the plan, invoice and discount sections; what changed is that the STATUS
+   * a reader sees at the top now comes from a single decision rather than
+   * from whichever field that part of the page happened to read.
+   */
+  const automationState = await getAutomationState().catch(() => ({ paused: false }));
+  const accountFacts = accountStatus({
+    subscriptionStatus: org?.subscription_status ?? null,
+    trialEndsAt: org?.trial_ends_at ?? null,
+    billingExempt: org?.billing_exempt ?? null,
+    suspendedAt: org?.suspended_at ?? null,
+    stripeCustomerId: org?.stripe_customer_id ?? null,
+    amountCents: org?.stripe_amount_cents ?? org?.plan_amount_cents ?? null,
+    billingInterval: org?.billing_interval ?? null,
+    automationPaused: automationState.paused,
+  });
   // A comped account's Stripe status is usually 'canceled' or 'none', which is
   // true and completely misleading on this page. Say what is actually
   // happening instead, or the owner reads "Canceled" on an account that works
@@ -124,12 +145,15 @@ export default async function BillingSettingsPage({
 
   return (
     <>
-      <PageHeader
+      <PageFrame
         title="Billing"
-        status={statusLabel}
-        subtitle="Subscription, invoices, and cancellation for your organization."
+        explanation="What this account can do, what it is charged, and how to change either."
+        status={accountFacts.effective.value}
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
+        {/* The six facts first. Everything below is detail on one of them. */}
+        <AccountStatusPanel status={accountFacts} />
+
         {searchParams?.error === "support_session" ? (
           <div className="rounded-md border border-risk/40 bg-risk/5 px-4 py-3 text-sm text-risk">
             Billing cannot be changed from a support session. Return to your own
