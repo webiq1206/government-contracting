@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { callQueue } from "@/lib/data";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { PAGE_HELP } from "@/lib/help-content";
 import { areCallsEnabled } from "@/lib/app-settings";
 import { BulkCallQueue } from "@/components/bulk-call-queue";
@@ -37,9 +37,25 @@ export default async function CallQueuePage({
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["call-queue"]}
         title="Call Queue"
+        /*
+         * A scoped queue is a place you can be, so it gets a trail back. The
+         * only way out of "just this bid's calls" used to be the browser's
+         * Back button or noticing a link in the header.
+         */
+        breadcrumbs={
+          focusId
+            ? [
+                { label: "Call Queue", href: "/call-queue" },
+                // The title comes from the first card, so a scoped queue with
+                // no calls left has none. That is exactly when a way back
+                // matters most, so the crumb is keyed off the scope itself.
+                { label: focusTitle ?? "This opportunity" },
+              ]
+            : []
+        }
         status={
           !callsEnabled
             ? "Calling is off"
@@ -47,20 +63,21 @@ export default async function CallQueuePage({
               ? "No calls waiting"
               : `${cards.length} call${cards.length === 1 ? "" : "s"} ready`
         }
-        subtitle={
+        explanation={
           !callsEnabled
             ? "This account runs on email only, so nothing is queued here and no opportunity is waiting on a call."
             : focusTitle
               ? `Just the subs for ${focusTitle}, one card per trade. Open a card to start the guided call.`
               : "Soonest deadline first. Select several to skip or snooze together, or open a card to start the guided call."
         }
-      >
-        {focusId && (
-          <Link href="/call-queue" className="btn-ghost text-xs">
-            Show all calls ({allCards.length})
-          </Link>
-        )}
-      </PageHeader>
+        primaryAction={
+          focusId ? (
+            <Link href="/call-queue" className="btn-ghost text-xs">
+              Show all calls ({allCards.length})
+            </Link>
+          ) : undefined
+        }
+      />
       <div className="scroll-thin flex-1 overflow-y-auto p-5" data-guide-target="call-queue">
         {!callsEnabled ? (
           <EmptyState
