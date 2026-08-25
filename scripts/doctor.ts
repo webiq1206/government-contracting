@@ -170,6 +170,21 @@ async function main() {
 
   const beat = await readWorkerHeartbeat().catch(() => null);
   const beatAge = minutesSince(beat?.updatedAt);
+
+  // A worker that was told not to work looks exactly like a dead one from out
+  // here -- the beat stops, the phase freezes, the process never exits -- so
+  // when it has left that reason behind, say so first and stop reading the
+  // silence as a fault. This is not a stale heartbeat; it is an off switch.
+  if (beat?.detail?.startsWith("NOT RUNNING JOBS ON PURPOSE")) {
+    check(
+      "FAIL",
+      "The worker is deliberately not running jobs (RUN_WORKER is off)",
+      `${beat.detail} Nothing is broken and no restart will help: the process is healthy and idling by design. Last said so ${
+        beatAge == null ? "at an unknown time" : `${Math.round(beatAge)} min ago`
+      }, instance ${beat.instanceId}, booted ${isoOrRaw(beat.bootedAt)}.`
+    );
+    return finish();
+  }
   if (!beat || beatAge == null) {
     check("FAIL", "The background worker has never checked in", "The worker process is not running. On Replit this must be a Reserved VM deployment (an Autoscale deployment sleeps and stops all background work). Confirm `npm run start` launches web AND worker.");
   } else if (beatAge > 5) {
