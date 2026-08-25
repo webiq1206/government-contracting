@@ -404,6 +404,34 @@ async function main() {
     console.log(`\n  ── ${org.name} (${org.subscription_status}) ──`);
 
     const hasSam = await orgHasKey("SAM_API_KEY", org.id).catch(() => false);
+
+    // An account that has never been set up is not a broken account.
+    //
+    // Reporting "no SAM key" and "no inbox" as blocking problems for a signup
+    // that never finished onboarding is false, and worse than false: it pins
+    // the count above zero permanently, and a report that always says "4
+    // blocking problems" is one nobody reads closely enough to notice the
+    // fifth. Missing integrations only mean something is BROKEN once there is
+    // something to break -- so if the account has no keys, no inbox and has
+    // never held a single record, say that once and move on.
+    const footprint = await queryOne<{ n: number }>(
+      `select (select count(*) from opportunities where org_id=$1)
+            + (select count(*) from subcontractors where org_id=$1)
+            + (select count(*) from communications where org_id=$1) as n`,
+      [org.id]
+    ).catch(() => null);
+    const inbox = await gmail
+      .connection(org.id)
+      .catch(() => ({ connected: false, status: "none", lastError: null as string | null }));
+    if (!hasSam && !inbox.connected && Number(footprint?.n ?? 0) === 0) {
+      check(
+        "WARN",
+        `[${org.name}] has never been set up (${org.subscription_status})`,
+        "No SAM.gov key, no connected inbox, and not a single record of any kind — this account signed up and never finished onboarding. Nothing runs for it and nothing is broken; it starts working the moment someone completes setup. Suspending it would hide it from this report, but a returning prospect would then be told their account is suspended, so leaving it is the kinder default."
+      );
+      continue;
+    }
+
     if (!hasSam) {
       check("FAIL", `[${org.name}] No SAM.gov API key`, "Add the SAM key in Settings → Integrations. Without it, no federal opportunities are ever pulled — this alone stops all deal discovery.");
     } else {
@@ -430,7 +458,8 @@ async function main() {
       (discovered?.n ?? 0) > 0 ? undefined : "If this is zero with a working SAM key, the org's discovery filters (NAICS/state/keywords) may match nothing, or the monitor has not run. Run it now from the Agents page."
     );
 
-    const conn = await gmail.connection(org.id).catch(() => ({ connected: false, status: "none", lastError: null as string | null }));
+    // Already read above, where it decides whether this account was ever set up.
+    const conn = inbox;
     if (!conn.connected || conn.status === "revoked") {
       check("FAIL", `[${org.name}] Google inbox not connected (${conn.status})`, "Connect/reconnect the Google inbox in Settings → Integrations. Without it every outreach and follow-up is held as a draft and nothing is emailed.");
     } else if (conn.status === "error") {
