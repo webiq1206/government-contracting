@@ -173,6 +173,16 @@ export interface ClaudeUsage {
   input_tokens: number;
   output_tokens: number;
   model: string;
+  /**
+   * Tokens written to and read from the prompt cache.
+   *
+   * Reported so an operator can see whether caching is actually engaging.
+   * A run showing writes but never reads means the calls are too far apart
+   * for the cache window, and the 25% write premium is being paid for
+   * nothing; that is worth knowing rather than assuming.
+   */
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
 }
 
 export interface CompleteOptions {
@@ -205,13 +215,71 @@ function modelAcceptsSampling(model: string): boolean {
   return !/(sonnet-5|opus-4-[78]|fable)/.test(model);
 }
 
-async function buildSystem(opts: CompleteOptions): Promise<string> {
-  const parts: string[] = [];
+/**
+ * Roughly how many tokens a string is worth.
+ *
+ * Deliberately crude. It is only ever used to decide whether a block is big
+ * enough to be worth caching, and the API silently ignores a cache marker on a
+ * prefix below its minimum, so being wrong here costs nothing either way.
+ */
+function approxTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Smallest prefix any current model will cache.
+ *
+ * Haiku 4.5 needs 2048 tokens; Sonnet and Opus need 1024. Using the larger
+ * number for every model means a marker is only ever attached where it will
+ * definitely be honoured, which matters because a cache WRITE costs 25% more
+ * than ordinary input: marking a block that is too small to cache would be a
+ * pure loss on the write with no read to recover it.
+ */
+const MIN_CACHEABLE_TOKENS = 2048;
+
+type SystemBlock = {
+  type: "text";
+  text: string;
+  cache_control?: { type: "ephemeral" };
+};
+
+/**
+ * The system prompt, as blocks, with the stable part marked for caching.
+ *
+ * The Company Profile is injected into almost every call this system makes and
+ * is byte-identical every time: the same few thousand tokens, re-sent and
+ * re-billed on every scoring pass, every reply extraction, every compliance
+ * check. Agents work in bursts (many subcontractors per opportunity, many
+ * opportunities per run), so those calls land well inside the cache window and
+ * the profile is read from cache rather than re-processed.
+ *
+ * Order matters and is the whole trick: caching works on a PREFIX, so the
+ * stable profile goes first and carries the marker, and the per-call system
+ * text follows it uncached. Putting them the other way round would mean the
+ * prefix changed on every call and nothing was ever reused.
+ *
+ * Output is unaffected. The model sees exactly the same system prompt.
+ */
+async function buildSystem(opts: CompleteOptions): Promise<SystemBlock[]> {
+  const blocks: SystemBlock[] = [];
+
   if (opts.injectProfile !== false) {
-    parts.push(await getProfileSystemText());
+    const profile = await getProfileSystemText();
+    if (profile.trim()) {
+      const block: SystemBlock = { type: "text", text: profile };
+      if (approxTokens(profile) >= MIN_CACHEABLE_TOKENS) {
+        block.cache_control = { type: "ephemeral" };
+      }
+      blocks.push(block);
+    }
   }
-  if (opts.system) parts.push(opts.system);
-  return parts.join("\n\n---\n\n");
+
+  if (opts.system) {
+    // Separator kept so the assembled prompt reads exactly as it used to.
+    blocks.push({ type: "text", text: blocks.length ? `---\n\n${opts.system}` : opts.system });
+  }
+
+  return blocks;
 }
 
 export async function complete(
@@ -226,11 +294,24 @@ export async function complete(
   // itself is sent verbatim, so newer model ids work regardless of SDK version.
   // Document blocks go ahead of the prompt text; a plain string is still sent
   // when there are none so every existing call site is byte-for-byte unchanged.
+  /*
+   * Document blocks go ahead of the prompt text; a plain string is still sent
+   * when there are none so every existing call site is byte-for-byte unchanged.
+   *
+   * The LAST document carries the cache marker, so the whole run of documents
+   * becomes one cached prefix. A PDF is by far the largest input this system
+   * ever sends, and completeJson re-sends the identical set when a schema
+   * validation fails and it retries. That retry used to cost a second full
+   * upload; now it reads the documents back from cache.
+   */
   const content = opts.documents?.length
     ? [
-        ...opts.documents.map((d) => ({
+        ...opts.documents.map((d, i) => ({
           type: "document",
           source: { type: "base64", media_type: "application/pdf", data: d.base64 },
+          ...(i === opts.documents!.length - 1
+            ? { cache_control: { type: "ephemeral" } }
+            : {}),
         })),
         { type: "text", text: prompt },
       ]
@@ -282,6 +363,10 @@ export async function complete(
       input_tokens: res.usage.input_tokens,
       output_tokens: res.usage.output_tokens,
       model,
+      cache_creation_input_tokens: (res.usage as { cache_creation_input_tokens?: number })
+        .cache_creation_input_tokens,
+      cache_read_input_tokens: (res.usage as { cache_read_input_tokens?: number })
+        .cache_read_input_tokens,
     },
     stopReason: (res as { stop_reason?: string | null }).stop_reason ?? null,
   };
