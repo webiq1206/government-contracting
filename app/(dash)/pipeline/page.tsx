@@ -1,5 +1,20 @@
 import Link from "next/link";
-import { pipelineOpportunities, PIPELINE_STAGES } from "@/lib/data";
+import {
+  pipelineOpportunities,
+  PIPELINE_STAGES,
+  opportunityTable,
+  opportunityTableCount,
+  OPP_SORTS,
+} from "@/lib/data";
+import { FilterToolbar } from "@/components/filter-toolbar";
+import { OpportunitiesTable } from "@/components/opportunities-table";
+import {
+  parseFilters,
+  parseSort,
+  parsePaging,
+  serializeSort,
+  type FilterSpec,
+} from "@/lib/domain/table-view";
 import { PageHeader, ScoreBadge } from "@/components/badges";
 import { PipelineCardMenu } from "@/components/pipeline-card-menu";
 import { DraggableCard, StageDropColumn } from "@/components/pipeline-dnd";
@@ -52,6 +67,66 @@ const LANES: { key: LaneKey; label: string; blurb: string; badge: string }[] = [
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Filters for the table view.
+ *
+ * The board answers "what is the state of this job"; these answer the
+ * questions the board cannot: what is due this week, what have we got in
+ * Texas, which scores rest on a value nobody published.
+ */
+const TABLE_SPECS: FilterSpec[] = [
+  { key: "q", label: "Search", kind: "text", placeholder: "Title, number, or agency" },
+  {
+    key: "stage",
+    label: "Stage",
+    kind: "select",
+    placeholder: "Any",
+    options: PIPELINE_STAGES.map((s) => ({ value: s.key, label: s.label })),
+  },
+  {
+    key: "tier",
+    label: "Tier",
+    kind: "select",
+    placeholder: "Any",
+    options: [
+      { value: "pursue", label: "Pursue" },
+      { value: "review", label: "Review" },
+      { value: "dismiss", label: "Dismiss" },
+    ],
+  },
+  { key: "state", label: "State", kind: "text", placeholder: "TX", upper: true },
+  { key: "agency", label: "Agency", kind: "text", placeholder: "e.g. GSA" },
+  { key: "naics", label: "NAICS", kind: "text", placeholder: "238210" },
+  { key: "setAside", label: "Set-aside", kind: "text", placeholder: "e.g. SDVOSB" },
+  {
+    key: "due",
+    label: "Due within (days)",
+    kind: "min",
+    min: 1,
+    max: 365,
+    hint: "Only opportunities with a deadline inside this window.",
+  },
+  { key: "minScore", label: "Min score", kind: "min", min: 0, max: 100 },
+  {
+    key: "value",
+    label: "Contract value",
+    kind: "select",
+    placeholder: "Any",
+    hint: "Most federal notices publish no value. Unknown is not zero.",
+    options: [
+      { value: "known", label: "Published" },
+      { value: "unknown", label: "Not published" },
+    ],
+  },
+  { key: "needsMe", label: "Waiting on me", kind: "boolean" },
+  {
+    key: "closed",
+    label: "Include closed",
+    kind: "boolean",
+    hint: "Dismissed and archived records, hidden by default.",
+  },
+];
+
 const NEXT_ACTION: Record<string, string> = {
   monitoring: "Awaiting scoring",
   scoring: "Scoring in progress",
@@ -69,21 +144,56 @@ const NEXT_ACTION: Record<string, string> = {
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams?: { view?: string; focus?: string; stage?: string };
+  searchParams?: Record<string, string | string[] | undefined>;
 }) {
+  const rawView = typeof searchParams?.view === "string" ? searchParams.view : undefined;
+  const view = rawView === "stages" ? "stages" : rawView === "table" ? "table" : "lanes";
+
   const [allOpps, rules] = await Promise.all([pipelineOpportunities(), getAutomationRules()]);
-  const view = searchParams?.view === "stages" ? "stages" : "lanes";
+
+  /*
+   * The table is fetched separately, filtered and paged in SQL, rather than
+   * slicing the board's own five-hundred-row load. Past a hundred cards the
+   * board is already the wrong tool; sending five hundred rows so the browser
+   * can hide most of them would make the alternative no better.
+   */
+  const tableValues = view === "table" ? parseFilters(TABLE_SPECS, searchParams ?? {}) : {};
+  const tableSort = parseSort(searchParams ?? {}, Object.keys(OPP_SORTS));
+  const tableFilters = {
+    q: tableValues.q,
+    stage: tableValues.stage,
+    tier: tableValues.tier,
+    state: tableValues.state,
+    agency: tableValues.agency,
+    naics: tableValues.naics,
+    setAside: tableValues.setAside,
+    dueDays: tableValues.due != null ? Number(tableValues.due) : undefined,
+    minScore: tableValues.minScore != null ? Number(tableValues.minScore) : undefined,
+    value: tableValues.value as "known" | "unknown" | undefined,
+    needsMe: tableValues.needsMe === "1",
+    includeClosed: tableValues.closed === "1",
+  };
+  const tableTotal = view === "table" ? await opportunityTableCount(tableFilters) : 0;
+  const tablePaging = parsePaging(searchParams ?? {}, tableTotal);
+  const tableRows =
+    view === "table"
+      ? await opportunityTable(tableFilters, {
+          sort: tableSort.key ?? undefined,
+          direction: tableSort.direction,
+          limit: tablePaging.perPage,
+          offset: tablePaging.offset,
+        })
+      : [];
   /**
    * Counts elsewhere in the product are clickable, and they land here. The
    * slice comes either from a named set (the Today rail's "In pursuit") or a
    * single stage (its bar chart), and both filter to exactly what was
    * counted, because the stage lists live in one module.
    */
-  const focus = focusSet(searchParams?.focus);
+  const focus = focusSet(typeof searchParams?.focus === "string" ? searchParams.focus : undefined);
+  const rawStage = typeof searchParams?.stage === "string" ? searchParams.stage : undefined;
   const focusStage =
-    searchParams?.stage && PIPELINE_STAGES.some((s) => s.key === searchParams.stage)
-      ? searchParams.stage
-      : null;
+    rawStage && PIPELINE_STAGES.some((s) => s.key === rawStage) ? rawStage : null;
   const focusStages = focus ? focus.stages : focusStage ? [focusStage] : null;
   const opps = focusStages ? allOpps.filter((o) => focusStages.includes(o.stage)) : allOpps;
   const focusLabel = focus
@@ -148,9 +258,50 @@ export default async function PipelinePage({
           >
             All stages
           </Link>
+          <Link
+            href="/pipeline?view=table"
+            className={`inline-flex min-h-10 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "table" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+          >
+            Table
+          </Link>
         </div>
       </PageHeader>
-      {opps.length === 0 && <PipelineOnboarding />}
+      {view === "table" && (
+        <>
+          <FilterToolbar
+            pathname="/pipeline"
+            specs={TABLE_SPECS}
+            values={{ ...tableValues, view: "table" }}
+            sortParam={serializeSort(tableSort)}
+            perPage={tablePaging.perPage}
+            viewsKey="brostco.opportunities.views"
+            resultLabel={
+              tableTotal > 0
+                ? `Showing ${tablePaging.from}-${tablePaging.to} of ${tableTotal}`
+                : undefined
+            }
+          />
+          <div className="scroll-thin flex-1 overflow-auto p-4">
+            <OpportunitiesTable
+              rows={tableRows}
+              total={tableTotal}
+              filters={tableValues}
+              sort={tableSort}
+              paging={tablePaging}
+              rules={rules}
+              emptyState={
+                <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  {Object.keys(tableValues).length > 0
+                    ? "No opportunities match these filters."
+                    : "No opportunities yet."}
+                </p>
+              }
+            />
+          </div>
+        </>
+      )}
+
+      {view !== "table" && opps.length === 0 && <PipelineOnboarding />}
 
       {/* Simple view: four owner lanes. A grid from md up; on a phone the same
           four lanes stay side by side and are swiped between, because a lane
