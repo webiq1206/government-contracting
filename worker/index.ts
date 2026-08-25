@@ -176,6 +176,20 @@ async function main() {
   if (!config.worker.enabled) {
     console.log("[worker] RUN_WORKER=false, job handlers + scheduler disabled; health only.");
     clearInterval(recoveryTimer);
+
+    // Say so in the heartbeat BEFORE stopping it, because stopping it is
+    // exactly what makes this state indistinguishable from a dead worker.
+    //
+    // This branch cost six days. The engine was never broken: it was switched
+    // off, idling as a health endpoint on purpose, and every outward sign of
+    // that is also a sign of a crash -- the beat stops, the phase freezes on
+    // whatever ran last, the process never exits so nothing restarts it, and
+    // there is no error anywhere because nothing went wrong. The console said
+    // it plainly and the console was unreachable. The last beat is the one
+    // place already being read, so it has to carry the reason.
+    await recordWorkerTrouble(
+      `NOT RUNNING JOBS ON PURPOSE: RUN_WORKER is "${process.env.RUN_WORKER ?? ""}" in this environment, so job handlers and the scheduler are disabled and this process is health-only. Remove RUN_WORKER from the deployment's environment to turn the engine back on.`
+    );
     stopHeartbeat();
     exitIsIntentional = true;
     process.on("SIGTERM", () => process.exit(0));
