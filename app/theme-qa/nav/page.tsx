@@ -26,8 +26,9 @@ export default function NavLab() {
         email="brostcoholdings@example.test"
         reviewCount={3}
         callCount={2}
-        engineHealthy
-        engineLabel="last activity 2m ago"
+        automationState={"healthy" as const}
+        automationHeadline={"Running normally"}
+        automationDetail={"Automation is running and recent jobs have all succeeded."}
       />
       <main className="flex-1 p-6">
         <p className="eyebrow">Theme QA</p>

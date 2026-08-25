@@ -6,30 +6,48 @@ import { timeAgo } from "@/lib/format";
  * Master kill switch. Pausing stops scheduled runs, queue enqueue, agent
  * execution, and outbound email/SMS. Operator login, password reset, and
  * billing stay available.
+ *
+ * This control describes the SWITCH, not the outcome. It used to say
+ * "Automation is running -- agents run on schedule, move opportunities
+ * forward, and can send outreach and alerts", which is a claim about work
+ * getting done that a switch position cannot support. Sitting directly above
+ * the health panel, it produced the contradiction in miniature: green "running"
+ * two inches above red "blocked", on one screen. A switch can only honestly
+ * report which way it is set; whether anything happens as a result is the
+ * health model's question, and `healthy` lets this defer to it.
  */
-export function AutomationControl({ state }: { state: AutomationState }) {
+export function AutomationControl({
+  state,
+  /** False when the health model has found something wrong. */
+  healthy = true,
+}: {
+  state: AutomationState;
+  healthy?: boolean;
+}) {
   const { paused, changed_at, changed_by } = state;
   return (
     <div
       className={`card flex flex-wrap items-center justify-between gap-3 border-l-4 ${
-        paused ? "border-l-review" : "border-l-pursue"
+        paused || !healthy ? "border-l-review" : "border-l-pursue"
       }`}
     >
       <div className="flex items-center gap-3">
         <span
           aria-hidden
           className={`h-3 w-3 shrink-0 rounded-full ${
-            paused ? "bg-review" : "animate-pulse bg-pursue"
+            paused ? "bg-review" : healthy ? "animate-pulse bg-pursue" : "bg-review"
           }`}
         />
         <div>
           <p className="text-sm font-semibold text-slate-900">
-            {paused ? "Everything is paused" : "Automation is running"}
+            {paused ? "Everything is paused" : "Automation is switched on"}
           </p>
           <p className="text-xs text-slate-500">
             {paused
               ? "No agents, scheduled jobs, pipeline moves, outreach email, digests, or SMS will run until you resume."
-              : "Agents run on schedule, move opportunities forward, and can send outreach and alerts."}
+              : healthy
+                ? "Agents are allowed to run on schedule, move opportunities forward, and send outreach and alerts."
+                : "Agents are allowed to run, but something is stopping them. See the state below."}
             {changed_at && changed_by
               ? ` Last changed ${timeAgo(changed_at)} by ${changed_by}.`
               : ""}

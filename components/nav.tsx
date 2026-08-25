@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ThemeWordmark } from "./theme-wordmark";
 import { ThemeToggle } from "./theme-toggle";
 import { SearchButton } from "./command-palette";
+import type { AutomationState } from "@/lib/domain/automation-health";
 
 /**
  * Navigation as named sections rather than a short list plus a drawer.
@@ -86,7 +87,7 @@ const SECTIONS: Section[] = [
     label: "Performance",
     items: [
       { href: "/analytics", label: "Analytics" },
-      { href: "/agents", label: "Automation" },
+      { href: "/agents", label: "Automation Health", hint: "Whether the automation is working, and what is stopping it" },
     ],
   },
   {
@@ -132,22 +133,54 @@ const SECTIONS: Section[] = [
   },
 ];
 
+/**
+ * How each state looks. Deliberately five entries rather than a healthy/not
+ * pair: "paused" and "not set up" are not faults and must not wear the fault
+ * colour, or people learn to ignore the fault colour.
+ */
+const CHIP_STYLE: Record<AutomationState, string> = {
+  healthy:
+    "border-border/55 bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground dark:border-white/10",
+  degraded: "border-review/40 bg-review/10 text-foreground",
+  blocked: "border-risk/50 bg-risk/10 text-foreground",
+  paused: "border-review/40 bg-review/10 text-foreground",
+  not_configured:
+    "border-border/55 bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground dark:border-white/10",
+};
+
+const CHIP_GLYPH: Record<AutomationState, string> = {
+  healthy: "\u25CF",
+  degraded: "\u25B2",
+  blocked: "\u2715",
+  paused: "\u23F8",
+  not_configured: "\u25CB",
+};
+
 export function Nav({
   email,
   reviewCount,
   callCount,
-  engineHealthy,
-  engineLabel,
+  automationState,
+  automationHeadline,
+  automationDetail,
   automationPaused = false,
   isPlatformAdmin = false,
 }: {
   email: string;
   reviewCount: number;
   callCount: number;
-  /** Whether the background automation has run recently. */
-  engineHealthy?: boolean;
-  /** e.g. "last activity 2m ago" */
-  engineLabel?: string;
+  /**
+   * The one automation state, from lib/domain/automation-health. Not a
+   * boolean: "the worker is alive" and "the work is getting done" are
+   * different questions, and this chip used to answer the first while
+   * appearing to answer the second -- printing "Running normally" over an
+   * account whose every job was failing on an exhausted credit balance.
+   */
+  automationState?: AutomationState;
+  /** Six words. Whatever assessAutomation decided, verbatim. */
+  automationHeadline?: string;
+  /** The reason, for the title attribute and screen readers. */
+  automationDetail?: string;
   /** Master kill switch is on; nothing automated will run. */
   automationPaused?: boolean;
   /** Whether to show the platform-owner tools group. */
@@ -472,29 +505,30 @@ export function Nav({
           })}
         </div>
 
-        {engineLabel && (
+        {automationHeadline && (
           <Link
             href="/agents"
             onClick={() => setOpen(false)}
+            title={automationDetail}
             className={`mx-3 mb-2 shrink-0 rounded-md border px-3 py-3 text-xs transition-colors ${
-              localPaused
-                ? "border-review/40 bg-review/10 text-foreground"
-                : "border-border/55 bg-surface text-muted-foreground hover:border-border-strong hover:text-foreground dark:border-white/10"
+              CHIP_STYLE[automationState ?? "healthy"]
             }`}
           >
             <span className="flex items-center gap-2">
-              <span
-                aria-hidden
-                className={`inline-block h-2 w-2 shrink-0 rounded-full ${
-                  localPaused
-                    ? "bg-review"
-                    : engineHealthy
-                      ? "animate-pulse bg-pursue"
-                      : "bg-risk"
-                }`}
-              />
-              <span className="min-w-0 truncate">{engineLabel}</span>
+              {/*
+                Glyph and colour together, never colour alone. A red dot and an
+                amber dot are the same dot to a red-green colourblind operator,
+                and this chip is the one place the whole system reports whether
+                it is working.
+              */}
+              <span aria-hidden className="shrink-0 font-mono">
+                {CHIP_GLYPH[automationState ?? "healthy"]}
+              </span>
+              <span className="min-w-0 truncate">{automationHeadline}</span>
             </span>
+            {automationDetail && (
+              <span className="sr-only"> {automationDetail}</span>
+            )}
           </Link>
         )}
 
