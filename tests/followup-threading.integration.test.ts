@@ -40,9 +40,16 @@ vi.mock("../lib/ai/companyProfile", () => ({
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
-    files: [{ filename: "Statement of Work.pdf", mime: "application/pdf", content: Buffer.from("x") }],
+    files: [
+      {
+        filename: "Statement of Work.pdf",
+        mime: "application/pdf",
+        content: Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\n"),
+      },
+    ],
     links: [],
     expected: true,
+    undelivered: [],
   }),
 }));
 

@@ -40,9 +40,18 @@ vi.mock("../lib/ai/companyProfile", () => ({
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({
-    files: [{ filename: "Statement of Work.pdf", mime: "application/pdf", content: "x" }],
+    // Real PDF magic bytes: the package assessment checks that a file
+    // contains what its type claims, and "x" is not a PDF.
+    files: [
+      {
+        filename: "Statement of Work.pdf",
+        mime: "application/pdf",
+        content: Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\n"),
+      },
+    ],
     links: [],
     expected: true,
+    undelivered: [],
   }),
 }));
 vi.mock("../lib/app-settings", () => ({

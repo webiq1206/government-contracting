@@ -21,6 +21,10 @@ import { advancePastCallStep } from "../domain/advance-stage";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
 import { gatherTradeAttachments } from "../opportunity-attachments";
+import {
+  assessAttachmentPackage,
+  describePackageProblems,
+} from "../domain/attachment-package";
 import { isCallable, isEmailable } from "../domain/sub-contactability";
 import { buildOutreachSections } from "../domain/outreach-sections";
 import {
@@ -155,6 +159,58 @@ export const outreach: AgentDefinition = {
     // Trade-filtered official docs (unaltered PDFs). Generated copy is
     // scrubbed; source PDFs are not rewritten.
     const gathered = await gatherTradeAttachments(opp, trade);
+
+    /*
+     * Is what we gathered actually usable?
+     *
+     * The gatherer finds files and fits them under the size limit; it has no
+     * opinion on whether they open. An empty download, an HTML error page
+     * stored under a document's name, or a password-protected PDF all attach
+     * cleanly and all arrive useless, and the email looks complete either way.
+     */
+    const pkg = assessAttachmentPackage({
+      files: gathered.files,
+      links: gathered.links,
+      expected: gathered.expected,
+      undelivered: gathered.undelivered,
+    });
+    for (const soft of pkg.problems.filter((p) => !p.blocking)) {
+      await logAgent({
+        agent: "outreach",
+        action: "gap",
+        level: "info",
+        opportunityId,
+        subcontractorId,
+        message: soft.message,
+      });
+    }
+    if (!pkg.ok) {
+      const why = describePackageProblems(pkg.problems);
+      await query(
+        `update opportunities
+            set human_action_required = true,
+                risk_flags = (
+                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
+                )
+          where id = $1`,
+        [opportunityId]
+      );
+      await logAgent({
+        agent: "outreach",
+        action: "blocked",
+        level: "warn",
+        opportunityId,
+        subcontractorId,
+        message: `Refused to email ${sub.company_name}: the document package is not usable. ${why}`,
+        reasoning: pkg.problems.filter((p) => p.blocking).map((p) => p.kind).join(", "),
+      });
+      return {
+        ok: true,
+        summary: `Held outreach to ${sub.company_name}: ${why}`,
+        humanActionRequired: true,
+        data: { attachmentProblems: pkg.problems.filter((p) => p.blocking).map((p) => p.kind) },
+      };
+    }
 
     /**
      * Every variable this email needs, resolved in one place.
