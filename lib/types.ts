@@ -191,8 +191,15 @@ export interface Attachment {
 }
 
 export interface ScoreBreakdown {
+  /** How well this fits the company, given what we know. */
   total: number;
   tier: Tier;
+  /**
+   * How much we know. Absent on records scored before this existed, which is
+   * why it is optional: a missing confidence is "unmeasured", not "certain",
+   * and the UI must say so rather than imply a full reading.
+   */
+  data_confidence?: import("./domain/score-confidence").DataConfidence;
   hard_exclusions_triggered: string[];
   dimensions: {
     key: string;

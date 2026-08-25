@@ -1,9 +1,25 @@
 /**
- * Unified opportunity activity: agent automation + human communications in one
- * chronological feed so operators are not hunting across panels.
+ * Unified opportunity activity: everything that happened, in one feed.
+ *
+ * "Unified" was previously two sources, agent logs and communications, and an
+ * opportunity whose history was a quote, an uploaded document or a prepared
+ * call therefore rendered the words "No activity" over a record that plainly
+ * had some. That is worse than an empty panel: it is the page asserting
+ * something false about work the operator can see elsewhere on the same
+ * screen, and it teaches them not to believe the panel at all.
+ *
+ * The sources below are the ones the record is actually made of. Anything
+ * dated that a person or an agent did belongs here; nothing else does.
  */
 
-export type ActivityKind = "system" | "email" | "call" | "note" | "human";
+export type ActivityKind =
+  | "system"
+  | "email"
+  | "call"
+  | "note"
+  | "human"
+  | "quote"
+  | "document";
 
 export interface ActivityEvent {
   id: string;
@@ -47,9 +63,49 @@ function channelKind(channel: string | null): ActivityKind {
  * Merge agent logs and communications, newest first. Caps the result so the
  * opportunity page stays scannable.
  */
+/** A quote received from a subcontractor. */
+export interface ActivityQuoteInput {
+  id?: unknown;
+  company_name?: unknown;
+  trade?: unknown;
+  quote_amount?: unknown;
+  created_at?: unknown;
+}
+
+/** A document attached to the solicitation or produced for the bid. */
+export interface ActivityDocInput {
+  id?: unknown;
+  filename?: unknown;
+  doc_type?: unknown;
+  source?: unknown;
+  created_at?: unknown;
+}
+
+/** A prepared or completed call. */
+export interface ActivityCallInput {
+  id?: unknown;
+  company_name?: unknown;
+  trade?: unknown;
+  status?: unknown;
+  created_at?: unknown;
+}
+
+function num(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
+  return null;
+}
+
+function money(n: number): string {
+  return `$${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
+}
+
 export function buildActivityTimeline(input: {
   logs?: ActivityLogInput[] | null;
   communications?: ActivityCommInput[] | null;
+  quotes?: ActivityQuoteInput[] | null;
+  documents?: ActivityDocInput[] | null;
+  calls?: ActivityCallInput[] | null;
   limit?: number;
 }): ActivityEvent[] {
   const events: ActivityEvent[] = [];
@@ -93,6 +149,57 @@ export function buildActivityTimeline(input: {
           : channel === "email"
             ? "Brost Co"
             : "You",
+    });
+  }
+
+  // A price arriving is the single most consequential thing that happens on a
+  // solicitation, and it was the one event the feed did not carry.
+  for (const q of input.quotes ?? []) {
+    const at = str(q.created_at);
+    if (!at) continue;
+    const amount = num(q.quote_amount);
+    const who = str(q.company_name) ?? "A subcontractor";
+    const trade = str(q.trade);
+    events.push({
+      id: `quote-${str(q.id) ?? at}`,
+      at,
+      kind: "quote",
+      title: `Quote from ${who}${trade ? ` for ${trade}` : ""}`,
+      detail: amount != null ? money(amount) : null,
+      actor: who,
+    });
+  }
+
+  for (const d of input.documents ?? []) {
+    const at = str(d.created_at);
+    if (!at) continue;
+    const name = str(d.filename) ?? str(d.doc_type) ?? "a document";
+    // A file we pulled from the solicitation and a file a person uploaded are
+    // different facts about the record, and the feed should not blur them.
+    const fromUs = str(d.source) === "upload";
+    events.push({
+      id: `doc-${str(d.id) ?? at}`,
+      at,
+      kind: "document",
+      title: `${fromUs ? "Uploaded" : "Attached"} ${name}`,
+      detail: str(d.doc_type),
+      actor: fromUs ? "You" : "Brost Co",
+    });
+  }
+
+  for (const c of input.calls ?? []) {
+    const at = str(c.created_at);
+    if (!at) continue;
+    const who = str(c.company_name) ?? "a subcontractor";
+    const trade = str(c.trade);
+    const done = str(c.status) === "done";
+    events.push({
+      id: `call-${str(c.id) ?? at}`,
+      at,
+      kind: "call",
+      title: `${done ? "Called" : "Call prepared for"} ${who}${trade ? ` about ${trade}` : ""}`,
+      detail: null,
+      actor: "You",
     });
   }
 

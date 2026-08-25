@@ -1,5 +1,33 @@
 import type { ScoreBreakdown } from "@/lib/types";
+import type { DataConfidence } from "@/lib/domain/score-confidence";
 import { InfoTip } from "@/components/info-tip";
+
+const CONFIDENCE_TONE: Record<DataConfidence["level"], string> = {
+  high: "bg-pursue/15 text-pursue",
+  medium: "bg-review/15 text-review",
+  low: "bg-risk/15 text-risk",
+};
+
+const CONFIDENCE_LABEL: Record<DataConfidence["level"], string> = {
+  high: "Read in full",
+  medium: "Partly known",
+  low: "Mostly unknown",
+};
+
+function ConfidenceLine({ confidence }: { confidence?: DataConfidence }) {
+  // Scored before confidence was measured. Saying nothing is right: an absent
+  // measurement is not the same as a complete reading, and inventing "high"
+  // here would recreate the exact false certainty this exists to remove.
+  if (!confidence) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <span className={`badge shrink-0 ${CONFIDENCE_TONE[confidence.level]}`}>
+        {CONFIDENCE_LABEL[confidence.level]} · {confidence.percent}%
+      </span>
+      <p className="min-w-0 flex-1 text-xs text-muted-foreground">{confidence.summary}</p>
+    </div>
+  );
+}
 
 /**
  * Score dimensions with a tip on each row explaining why points were awarded
@@ -18,6 +46,19 @@ export function ScoreBreakdownCard({ breakdown }: { breakdown: ScoreBreakdown })
       <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
         Score breakdown
       </h2>
+
+      {/*
+        How much of this rests on facts we have.
+
+        The score answers "how well does this fit us". It was being read as if
+        it also answered "and we know what this job is", which it never did:
+        most federal notices publish no value, and some arrive as a title and
+        a link. A 78 on a solicitation read in full is a reason to bid; a 78
+        on a headline is a reason to go and read the notice. Same number,
+        opposite instruction.
+      */}
+      <ConfidenceLine confidence={breakdown.data_confidence} />
+
       <div className="mt-5 space-y-4">
         {positives.map((d) => {
           const pct = (d.points / Math.max(d.max_points, 1)) * 100;

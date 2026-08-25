@@ -15,6 +15,7 @@ import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { computeSetupChecklist } from "@/lib/domain/setup";
 import { flagSummary } from "@/lib/flag-labels";
+import { buildWorkLedger, ledgerHeadline, ledgerBreakdown } from "@/lib/domain/work-ledger";
 import { stageParty, PARTY_LABEL, STAGE_LABEL } from "@/lib/domain/journey";
 import { outreachLabel } from "@/lib/domain/sub-contact";
 import { DOC_LABEL } from "@/lib/domain/sub-compliance";
@@ -262,11 +263,16 @@ function StatRow({
 function PipelineHealthRail({
   stageCounts,
   totalActions,
+  actionHeadline,
+  actionBreakdown,
   digestParts,
   callsEnabled,
 }: {
   stageCounts: { stage: string; count: number }[];
   totalActions: number;
+  /** The ledger's own wording, so this rail cannot phrase the count its own way. */
+  actionHeadline: string;
+  actionBreakdown: string;
   digestParts: string[];
   /** False on an email-only account: the call stage is not part of the path. */
   callsEnabled: boolean;
@@ -384,9 +390,13 @@ function PipelineHealthRail({
             <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
               Automation activity
             </p>
-            <p className="mt-1 text-sm font-medium text-gold">
-              {totalActions} action{totalActions === 1 ? "" : "s"} waiting
-            </p>
+            <p className="mt-1 text-sm font-medium text-gold">{actionHeadline}</p>
+            {/* The number alone invites the question this answers: what ARE
+                they? Naming the biggest few costs one line and removes a
+                click. */}
+            {actionBreakdown && (
+              <p className="mt-0.5 text-xs text-muted-foreground">{actionBreakdown}</p>
+            )}
           </Link>
         ) : (
           <div className="border border-gold/28 bg-surface-raised px-4 py-3">
@@ -449,22 +459,37 @@ export default async function TodayPage() {
   const bidWork = data.bidWork.filter((o) => !urgentIds.has(o.id));
   const flagged = data.flagged.filter((o) => !urgentIds.has(o.id));
 
+  // Compliance alerts are their own ledger bucket now, so the ledger must not
+  // also receive them here or every renewal is counted twice in the one
+  // number. The section below still SHOWS them together, so it keeps its own
+  // count of what it renders.
   const approvalCount =
-    data.complianceAlerts.length +
-    data.proposedWeights.length +
-    (data.backlinkApprovals > 0 ? 1 : 0);
-  const totalActions =
-    data.urgent.length +
-    data.awardCompliance.length +
-    data.replyReviews.length +
-    data.triage.length +
-    data.calls.count +
-    data.subFollowUps.length +
-    data.quoteReviews.length +
-    bidWork.length +
-    data.awaitingOutcome.length +
-    flagged.length +
-    approvalCount;
+    data.proposedWeights.length + (data.backlinkApprovals > 0 ? 1 : 0);
+  const approvalSectionCount = approvalCount + data.complianceAlerts.length;
+  /*
+   * One ledger, shared with the Guide Me panel.
+   *
+   * This used to be eleven `.length`s added up here, while the guide added up
+   * a different eight of its own, and the work queue below listed a third
+   * set. One account was told it had 56 things to do, then 46, then shown a
+   * list of neither length -- on one screen. Two of those numbers were also
+   * counting query caps rather than work, and one was counting submitted bids
+   * that need nobody. buildWorkLedger is now the only place that decides.
+   */
+  const ledger = buildWorkLedger({
+    urgent: data.totals.urgent,
+    replyReviews: data.totals.replyReviews,
+    triage: data.totals.triage,
+    calls: data.calls.count,
+    bidWork: data.totals.bidWork,
+    quoteReviews: data.totals.quoteReviews,
+    subFollowUps: data.totals.subFollowUps,
+    compliance: data.complianceAlerts.length,
+    awardCompliance: data.awardCompliance.length,
+    flagged: data.totals.flagged,
+    approvals: approvalCount,
+  });
+  const totalActions = ledger.total;
 
   const firstOpen =
     data.urgent.length > 0
@@ -833,11 +858,11 @@ export default async function TodayPage() {
                 </Section>
               )}
 
-              {approvalCount > 0 && (
+              {approvalSectionCount > 0 && (
                 <Section
                   eyebrow="Approvals & renewals"
                   title="Sign-offs waiting on you"
-                  count={approvalCount}
+                  count={approvalSectionCount}
                 >
                   {data.complianceAlerts.map((c) => (
                     <Link key={c.id} href="/compliance" className={ROW}>
@@ -971,6 +996,8 @@ export default async function TodayPage() {
             <PipelineHealthRail
               stageCounts={data.stageCounts}
               totalActions={totalActions}
+              actionHeadline={ledgerHeadline(ledger)}
+              actionBreakdown={ledgerBreakdown(ledger)}
               digestParts={digestParts}
               callsEnabled={rules.calls_enabled}
             />
