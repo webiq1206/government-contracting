@@ -25,6 +25,20 @@ export type ReplyOutcome =
   | "unavailable"
   | "not_a_fit"
   | "needs_info"
+  /*
+   * Added because each was previously flattened into something that read as a
+   * settled answer when it was not.
+   */
+  /** Priced or offered PART of the scope. The rest still needs covering. */
+  | "partial_scope"
+  /** Wants to quote, needs longer than we gave them. */
+  | "needs_time"
+  /** Right company, wrong person. Nothing about the company is settled. */
+  | "wrong_contact"
+  /** Pointed us somewhere else. */
+  | "referred"
+  /** Does not work in this trade at all. */
+  | "does_not_perform_trade"
   | "none";
 
 /** opportunity_subs.outreach_state written for each outcome. */
@@ -36,6 +50,18 @@ const OUTREACH_STATE: Partial<Record<ReplyOutcome, string>> = {
   unavailable: "unavailable",
   not_a_fit: "not_a_fit",
   needs_info: "responded",
+  /*
+   * Partial coverage is a RESPONSE, not a completed quote. Writing "quoted"
+   * here is what let a bid be assembled around a hole: the trade line read as
+   * covered while a third of the work had no price against it.
+   */
+  partial_scope: "responded",
+  needs_time: "responded",
+  // Nothing about the COMPANY is settled by writing to the wrong person, so
+  // the pairing stays open for a corrected contact.
+  wrong_contact: "responded",
+  referred: "responded",
+  does_not_perform_trade: "not_a_fit",
 };
 
 /** Human-readable label used in history and notifications. */
@@ -46,11 +72,30 @@ export const OUTCOME_LABEL: Record<ReplyOutcome, string> = {
   unavailable: "Unavailable for This Solicitation",
   not_a_fit: "Not a Fit for This Scope",
   needs_info: "Asked a question",
+  partial_scope: "Quoted part of the scope",
+  needs_time: "Needs more time",
+  wrong_contact: "Wrong contact at this company",
+  referred: "Referred us elsewhere",
+  does_not_perform_trade: "Does not perform this trade",
   none: "No change",
 };
 
 /** Map the model's intent onto the outcome the workflow acts on. */
-export function outcomeForIntent(intent: ReplyIntent, isQuote: boolean): ReplyOutcome {
+export function outcomeForIntent(
+  intent: ReplyIntent,
+  isQuote: boolean,
+  /** False only when the reply says it is covering part of the work. */
+  coversFullScope?: boolean | null
+): ReplyOutcome {
+  /*
+   * Partial coverage beats a price.
+   *
+   * A subcontractor who prices two of three buildings has sent a real number,
+   * and the old rule ("if there is a price, it is a quote") recorded that as
+   * the trade being covered. The email reads like a complete quote, so nobody
+   * caught it until the bid was short a building.
+   */
+  if (intent === "partial_scope" || coversFullScope === false) return "partial_scope";
   if (isQuote) return "quoted";
   switch (intent) {
     case "quote":
@@ -67,6 +112,14 @@ export function outcomeForIntent(intent: ReplyIntent, isQuote: boolean): ReplyOu
       return "not_a_fit";
     case "question":
       return "needs_info";
+    case "needs_time":
+      return "needs_time";
+    case "wrong_contact":
+      return "wrong_contact";
+    case "referred":
+      return "referred";
+    case "does_not_perform_trade":
+      return "does_not_perform_trade";
     default:
       return "none";
   }
@@ -97,7 +150,11 @@ export function decideReply(
     unreadableAttachments?: string[];
   } = {}
 ): ReplyDecision {
-  const outcome = outcomeForIntent(extracted.intent, extracted.isQuote);
+  const outcome = outcomeForIntent(
+    extracted.intent,
+    extracted.isQuote,
+    extracted.coversFullScope
+  );
   const unread = opts.unreadableAttachments ?? [];
 
   if (extracted.method !== "ai") {
@@ -146,6 +203,18 @@ export function decideReply(
  * the sub for what is missing.
  */
 export function blockingGaps(extracted: ExtractedReply, outcome: ReplyOutcome): string[] {
+  /*
+   * Partial coverage is chased as hard as a full quote, because it is a real
+   * price against a scope we have to be able to describe. The one thing we
+   * must know is which part is NOT covered: without it, "partial" is a label
+   * on a record and nobody can act on it.
+   */
+  if (outcome === "partial_scope") {
+    const gaps: string[] = [];
+    if (!extracted.uncoveredScope) gaps.push("uncovered_scope");
+    if (extracted.quoteAmount == null) gaps.push("price");
+    return gaps;
+  }
   if (outcome !== "quoted") return [];
   const gaps: string[] = [];
   if (extracted.quoteAmount == null) gaps.push("price");
@@ -189,6 +258,28 @@ export async function applyOutcomeToSolicitation(input: {
         and ($3::text is null or coalesce(trade, '') = coalesce($3, ''))`,
     [input.opportunityId, input.subcontractorId, trade, state]
   );
+
+  /*
+   * A partly-covered trade still needs covering.
+   *
+   * The reply was a real price, and the pairing now reads "responded", which
+   * on every screen looks like progress. It is progress on part of the work,
+   * and the remainder has nobody against it. Flagging the opportunity is what
+   * turns "we got a quote" into "we still need the rest of this trade" on
+   * Today, so the gap is chased before the bid is assembled around it rather
+   * than discovered when the numbers do not add up.
+   */
+  if (input.outcome === "partial_scope") {
+    await query(
+      `update opportunities
+          set human_action_required = true,
+              risk_flags = (
+                select array(select distinct unnest(coalesce(risk_flags,'{}') || array['partial_scope_coverage']))
+              )
+        where id = $1`,
+      [input.opportunityId]
+    ).catch(() => {});
+  }
 }
 
 /**
