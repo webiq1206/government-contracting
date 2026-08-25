@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { subDatabase, subDatabaseCount, SUB_SORTS } from "@/lib/data";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { FilterToolbar } from "@/components/filter-toolbar";
@@ -129,7 +129,7 @@ export default async function SubsPage({
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["subs"]}
         title="Subcontractors"
         status={
@@ -137,7 +137,7 @@ export default async function SubsPage({
             ? "Empty"
             : `${total} on the roster${filtered ? " matching these filters" : ""}`
         }
-        subtitle="Firms Brost Co finds, verifies and reuses across bids. Preferred subs are contacted first on new work."
+        explanation="Firms Brost Co finds, verifies and reuses across bids. Preferred subs are contacted first on new work."
       />
 
       <FilterToolbar

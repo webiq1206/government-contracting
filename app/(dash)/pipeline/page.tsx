@@ -15,7 +15,8 @@ import {
   serializeSort,
   type FilterSpec,
 } from "@/lib/domain/table-view";
-import { PageHeader, ScoreBadge } from "@/components/badges";
+import { ScoreBadge } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { PipelineCardMenu } from "@/components/pipeline-card-menu";
 import { DraggableCard, StageDropColumn } from "@/components/pipeline-dnd";
 import { stageMode } from "@/lib/stage-meta";
@@ -221,7 +222,7 @@ export default async function PipelinePage({
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["pipeline"]}
         title="Opportunities"
         status={
@@ -231,7 +232,7 @@ export default async function PipelinePage({
               ? "Empty"
               : `${opps.length} active · ${(byLane.get("you") ?? []).length} need you`
         }
-        subtitle={
+        explanation={
           focusLabel
             ? (focusBlurb ??
               `Only opportunities at the ${focusLabel.toLowerCase()} stage.`)
@@ -239,7 +240,8 @@ export default async function PipelinePage({
               ? "Grouped by whose turn it is. Start with Needs you."
               : "Full stage board. Amber cards wait on you; the rest run automatically."
         }
-      >
+        primaryAction={
+          <>
         {focusLabel && (
           <Link href="/pipeline" className="btn-ghost text-xs">
             Show all ({allOpps.length})
@@ -265,7 +267,9 @@ export default async function PipelinePage({
             Table
           </Link>
         </div>
-      </PageHeader>
+          </>
+        }
+      />
       {view === "table" && (
         <>
           <FilterToolbar

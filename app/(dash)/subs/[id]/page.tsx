@@ -6,7 +6,7 @@ import { draftsForSubcontractor } from "@/lib/domain/reply-draft";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { gmail } from "@/lib/integrations/gmail";
 import { ConversationThreads } from "@/components/conversation-threads";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
 import { SubNotes } from "@/components/sub-notes";
 import { Collapsible } from "@/components/collapsible";
 import { RecordActions } from "@/components/record-actions";
@@ -110,43 +110,53 @@ export default async function SubDetailPage({
 
   return (
     <div className="flex page-shell">
-      <PageHeader
+      <PageFrame
+        breadcrumbs={[
+          { label: "Subcontractors", href: "/subs" },
+          { label: sub.company_name },
+        ]}
         title={sub.company_name}
-        status={
-          openPairings > 0
-            ? `${openPairings} open job${openPairings === 1 ? "" : "s"} · ${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`
-            : `${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`
-        }
-        subtitle={
+        explanation={
           [sub.owner_name, [sub.city, sub.state].filter(Boolean).join(", ")]
             .filter(Boolean)
-            .join(" · ") || "Location not on file"
+            .join(" \u00b7 ") || "Location not on file"
         }
-      >
-        {!compliance.assessment.clearedForAward && (
-          <a
-            href="#compliance"
-            className="badge bg-risk/15 text-risk"
-            title={compliance.assessment.blockReason ?? undefined}
-          >
-            Cannot be sent work
-          </a>
-        )}
-        {sub.is_preferred && (
-          <span className="badge bg-review/15 text-review">Preferred</span>
-        )}
-        {contactLabel && (
-          <span
-            className={`badge ${contactBadgeClass(sub.contact_status)}`}
-            title={contactStatusHint(sub.contact_status)}
-          >
-            {contactLabel}
+        /*
+         * These are states, not actions, so they sit with the status rather
+         * than competing with it as buttons. "Back to database" is gone: that
+         * is what the breadcrumb above is for, and having both meant two
+         * controls doing the same thing on every subcontractor page.
+         */
+        status={
+          <span className="flex flex-wrap items-center gap-2">
+            <span>
+              {openPairings > 0
+                ? `${openPairings} open job${openPairings === 1 ? "" : "s"} \u00b7 ${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`
+                : `${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`}
+            </span>
+            {!compliance.assessment.clearedForAward && (
+              <a
+                href="#compliance"
+                className="badge bg-risk/15 text-risk"
+                title={compliance.assessment.blockReason ?? undefined}
+              >
+                Cannot be sent work
+              </a>
+            )}
+            {sub.is_preferred && (
+              <span className="badge bg-review/15 text-review">Preferred</span>
+            )}
+            {contactLabel && (
+              <span
+                className={`badge ${contactBadgeClass(sub.contact_status)}`}
+                title={contactStatusHint(sub.contact_status)}
+              >
+                {contactLabel}
+              </span>
+            )}
           </span>
-        )}
-        <Link href="/subs" className="btn-ghost">
-          Back to database
-        </Link>
-      </PageHeader>
+        }
+      />
 
       <div className="scroll-thin flex-1 space-y-6 overflow-auto p-5">
         {/* The readiness story first: what stands between this listing and a
