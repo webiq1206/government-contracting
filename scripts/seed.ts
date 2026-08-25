@@ -11,6 +11,7 @@ import { query, queryOne, closePool } from "../lib/db";
 import { renderProfileText } from "../lib/ai/companyProfile";
 import { DEFAULT_PROFILE, DEFAULT_TEMPLATES } from "../db/seedData";
 import { config } from "../lib/config";
+import { LEGACY_ORG_ID } from "../lib/tenant-context";
 
 async function seedProfile() {
   const existing = await queryOne(`select id from company_profile where is_active = true`);
@@ -47,17 +48,27 @@ async function seedScoringWeights() {
 
 async function seedTemplates() {
   for (const t of DEFAULT_TEMPLATES) {
-    const existing = await queryOne(`select id from templates where slug = $1 and is_active = true`, [
-      t.slug,
-    ]);
+    const existing = await queryOne(
+      `select id from templates where slug = $1 and is_active = true and org_id = $2`,
+      [t.slug, LEGACY_ORG_ID]
+    );
     if (existing) {
       console.log(`= template ${t.slug} exists (skip)`);
       continue;
     }
     await query(
-      `insert into templates (slug, version, is_active, subject, body, description)
-       values ($1, 1, true, $2, $3, $4)`,
-      [t.slug, t.subject, t.body, t.description]
+      /*
+       * org_id is written explicitly, and must be.
+       *
+       * activeTemplate() resolves a template with `org_id in (yours, default)`,
+       * so a row seeded with a NULL org_id matches neither and is invisible to
+       * every organization including the founding one. A fresh install would
+       * migrate cleanly, seed cleanly, and then refuse every outreach send with
+       * "no active template_1_outreach template".
+       */
+      `insert into templates (org_id, slug, version, is_active, subject, body, description)
+       values ($5, $1, 1, true, $2, $3, $4)`,
+      [t.slug, t.subject, t.body, t.description, LEGACY_ORG_ID]
     );
     console.log(`+ seeded template ${t.slug}`);
   }

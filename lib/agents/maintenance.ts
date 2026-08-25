@@ -42,8 +42,15 @@ import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import { getProfileJson } from "../ai/companyProfile";
 import { outreachDisplayName } from "../domain/solicitation-completeness";
-import { scrubInternalFailureCopy } from "../domain/outreach-email";
-import { scrubGovtContacts } from "../integrations/scrub-contacts";
+import {
+  scrubInternalFailureCopy,
+  renderOutreachBrief,
+} from "../domain/outreach-email";
+import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
+import { resolveOutreachVars } from "../domain/outreach-vars";
+import { buildOutreachSections } from "../domain/outreach-sections";
+import { gatherTradeAttachments } from "../opportunity-attachments";
+import type { Opportunity } from "../types";
 import {
   renderTemplate,
   formatDeadlineLabel,
@@ -357,8 +364,9 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
   // Template resolution is org-aware (own copy, else platform default) so a
   // follow-up never goes out with another tenant's wording.
   const { activeTemplate } = await import("../domain/template-store");
-  const [tmpl, profile] = await Promise.all([
+  const [tmpl, fallbackTmpl, profile] = await Promise.all([
     activeTemplate("template_2_followup", orgId),
+    activeTemplate("template_2_followup_new_thread", orgId),
     getProfileJson(),
   ]);
 
@@ -379,11 +387,26 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
     orig_subject: string | null;
     gmail_thread_id: string | null;
     rfc822_message_id: string | null;
+    // Enough of the opportunity to rebuild a self-contained email if the
+    // original thread turns out to be unusable.
+    opp_title: string | null;
+    agency: string | null;
+    solicitation_number: string | null;
+    location_text: string | null;
+    description: string | null;
+    solicitation_analysis: unknown;
+    /** The quote date the recipient was actually given on the first email. */
+    orig_quote_due_label: string | null;
+    orig_quote_due_at: string | null;
   }>(
     `select c.id, c.subcontractor_id, c.opportunity_id, c.tracking_id,
             s.email, s.email_verified, s.owner_name as sub_owner_name,
             os.trade, o.location_state, o.deadline,
-            c.subject as orig_subject, c.gmail_thread_id, c.rfc822_message_id
+            c.subject as orig_subject, c.gmail_thread_id, c.rfc822_message_id,
+            o.title as opp_title, o.agency, o.solicitation_number,
+            o.location_text, o.description, o.solicitation_analysis,
+            c.meta->>'quote_due_label' as orig_quote_due_label,
+            c.meta->>'quote_due_at' as orig_quote_due_at
        from communications c
        join subcontractors s on s.id = c.subcontractor_id
        left join opportunities o on o.id = c.opportunity_id
@@ -468,85 +491,24 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
     ).catch(() => null);
     if ((answered?.n ?? 0) > 0) continue;
 
-    // Build the sub greeting the same way the initial outreach agent does.
-    const ownerFirst = (() => {
-      const raw = (row.sub_owner_name ?? "").trim();
-      if (!raw) return "there";
-      return raw.split(/\s+/)[0] || "there";
-    })();
-
-    let subject: string;
-    let html: string;
-
-    if (tmpl) {
-      const vars: Record<string, string> = {
-        owner_name: ownerFirst,
-        sender_name: senderName,
-        company_name: companyName,
-        phone,
-        // Solicitation-derived, and reachable from an operator-edited
-        // template via {{trade}} — scrub on the way in, never after render.
-        trade: scrubGovtContacts(row.trade ?? "").sanitised,
-        location_state: row.location_state ?? "",
-        deadline: formatDeadlineLabel(row.deadline),
-        // Tokens rarely used in the follow-up but available for custom templates.
-        opportunity_title: "",
-        solicitation_number: "",
-        agency: "",
-        scope_summary: "",
-        questions: "",
-      };
-      // Never scrub the assembled email — it would censor the operator's own
-      // phone number. The follow-up carries no solicitation-derived text.
-      const rawSubject = renderTemplate(tmpl.subject ?? "Re: our quote request", vars);
-      const rawBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
-      subject = rawSubject || "Re: our quote request";
-      html = plainToHtml(rawBody);
-    } else {
-      // Fallback: template not found — use a minimal safe copy.
-      subject = "Following up on our quote request";
-      html = `<p>Hi ${ownerFirst},</p><p>Just following up on my previous email. Happy to answer any questions or set up a quick call.</p><p>${senderName}</p>`;
-    }
-
-    // Named rather than inferred: this decides whose mailbox sends, whose
-    // identity is on the From line, and whose quota is charged.
-    /**
-     * A follow-up belongs ON the original thread, not beside it.
-     *
-     * Sent standalone, it reached the subcontractor as a fresh, context-free
-     * email: none of the scope, the deadline or the attachments they were
-     * being asked to price sat above it, and it reads far more like cold mail
-     * than the third message in a conversation -- which costs replies and
-     * inbox placement both.
-     *
-     * Threading needs both halves. `threadId` groups it in OUR mailbox (what
-     * the in-app conversation view reads); `In-Reply-To` is what the
-     * RECIPIENT's client threads on, and Gmail additionally requires the
-     * subject to match the thread it is joining, so when we have a thread the
-     * original subject wins over the template's.
-     */
-    const threadSubject = row.orig_subject?.trim()
-      ? /^re:/i.test(row.orig_subject.trim())
-        ? row.orig_subject.trim()
-        : `Re: ${row.orig_subject.trim()}`
-      : null;
-    if (row.gmail_thread_id && threadSubject) subject = threadSubject;
-
     /*
-     * Recover a missing Message-ID rather than send without one.
+     * Can this follow-up actually go INSIDE the original conversation?
      *
+     * This is decided first, because it decides which email gets written.
+     * Threading needs both halves: `threadId` groups it in OUR mailbox (what
+     * the in-app conversation view reads), and `In-Reply-To` is what the
+     * RECIPIENT's client threads on. Having only the first is the trap: the
+     * conversation view looks perfect while the subcontractor receives an
+     * unconnected email every time. That is the "follow-ups start new threads"
+     * report, and it is invisible from our side.
+     *
+     * Recover a missing Message-ID rather than send without one.
      * rfc822_message_id is read back from Gmail after the original send, and
      * that read can fail: a grant issued before gmail.readonly was requested
-     * cannot do it at all, and older rows predate the read entirely. The
-     * failure is invisible from our side -- threadId still groups the
-     * follow-up correctly in OUR mailbox, so the conversation view looks
-     * perfect -- while the subcontractor receives an unconnected email every
-     * single time. That is the "follow-ups start new threads" report, and no
-     * amount of care at send time fixes the rows already written.
-     *
-     * So when the column is empty and we know the thread, ask Gmail what our
-     * own last message in it was, and write the answer back so the next
-     * follow-up needs no repair at all.
+     * cannot do it at all, and older rows predate the read entirely. So when
+     * the column is empty and we know the thread, ask Gmail what our own last
+     * message in it was, and write the answer back so the next follow-up needs
+     * no repair.
      */
     let inReplyTo = row.rfc822_message_id ?? null;
     let references: string[] = [];
@@ -564,15 +526,146 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       }
     }
 
+    // Gmail also requires the subject to match the thread it is joining.
+    const threadSubject = row.orig_subject?.trim()
+      ? /^re:/i.test(row.orig_subject.trim())
+        ? row.orig_subject.trim()
+        : `Re: ${row.orig_subject.trim()}`
+      : null;
+
+    const canReplyInThread = Boolean(row.gmail_thread_id && inReplyTo && threadSubject);
+    const threadGap = !row.gmail_thread_id
+      ? "no Gmail thread was recorded for the original message"
+      : !inReplyTo
+        ? "the original message's RFC822 Message-ID could not be recovered, so the recipient's mail client would not attach the reply to the conversation"
+        : !threadSubject
+          ? "the original message had no subject to inherit"
+          : "";
+
+    /*
+     * Everything the email might need, resolved the same way the first one
+     * was. The follow-up used to build its own short vars map with
+     * opportunity_title, agency, scope_summary and questions hard-coded to
+     * empty strings, so any template referencing them silently lost the
+     * sentence containing them.
+     */
+    const resolved = resolveOutreachVars({
+      sub: { owner_name: row.sub_owner_name },
+      opportunity: {
+        title: row.opp_title,
+        agency: row.agency,
+        solicitation_number: row.solicitation_number,
+        location_state: row.location_state,
+        location_text: row.location_text,
+        deadline: row.deadline,
+      },
+      analysis: (row.solicitation_analysis ?? undefined) as never,
+      profile: profile ?? {},
+      trade: row.trade,
+      description: row.description,
+    });
+
+    const vars: Record<string, string> = Object.fromEntries(
+      Object.entries(resolved.vars).map(([k, v]) => [
+        k,
+        scrubInternalFailureCopy(scrubGovtContacts(rewriteSamUrls(v)).sanitised),
+      ])
+    );
+
+    /*
+     * Repeat the date they were given, do not recompute one.
+     *
+     * The quote deadline is derived from a clock, and this runs 48 hours after
+     * the first email. Recomputing it would move the date, and a chaser that
+     * quietly brings the deadline forward reads as either a mistake or a
+     * squeeze. The stored label is what the recipient has in writing.
+     */
+    if (row.orig_quote_due_label) vars.quote_due_date = row.orig_quote_due_label;
+
+    const useFallback = !canReplyInThread;
+    const chosen = useFallback ? (fallbackTmpl ?? tmpl) : tmpl;
+
+    let subject: string;
+    let html: string;
+    let plain: string;
+    let attachments: Awaited<ReturnType<typeof gatherTradeAttachments>>["files"] = [];
+    let attachedNames: string[] = [];
+
+    if (chosen) {
+      const renderedSubject = renderTemplate(
+        chosen.subject ?? "Re: our quote request",
+        vars
+      );
+      const body = scrubInternalFailureCopy(renderTemplate(chosen.body, vars));
+
+      if (useFallback) {
+        /*
+         * A new thread means the recipient has nothing above this email. It
+         * has to stand entirely on its own: the same scope, the same
+         * requirements, the same questions and the same document package the
+         * first email carried. A short chaser referring to "the original
+         * message below" when there is no message below is worse than not
+         * following up at all.
+         */
+        const opp = await queryOne<Opportunity>(
+          `select * from opportunities where id = $1`,
+          [row.opportunity_id]
+        ).catch(() => null);
+        const gathered = opp
+          ? await gatherTradeAttachments(opp, row.trade ?? "").catch(() => ({
+              files: [],
+              links: [],
+              expected: false,
+            }))
+          : { files: [], links: [], expected: false };
+        attachments = gathered.files;
+        attachedNames = gathered.files.map((f: { filename: string }) => f.filename);
+
+        const sections = buildOutreachSections({
+          vars,
+          scopeBoundary: resolved.scopeBoundary,
+          attachedNames,
+          links: gathered.links,
+        });
+        const details = renderOutreachBrief(sections);
+        subject = renderedSubject || "Following up on our quote request";
+        plain = body + details.plain;
+        html = plainToHtml(body) + details.html;
+
+        await logAgent({
+          agent: "outreach-followup",
+          action: "new-thread",
+          level: "warn",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          message: `Followed up with a new email rather than a reply because ${threadGap}. The full scope and ${attachedNames.length} document(s) were sent again so the message stands on its own.`,
+        });
+      } else {
+        subject = threadSubject!;
+        plain = body;
+        html = plainToHtml(body);
+      }
+    } else {
+      // No template at all. Minimal, and never pretending to be a reply.
+      const greeting = vars.owner_name || "there";
+      subject = threadSubject ?? "Following up on our quote request";
+      plain = `Hi ${greeting},\n\nJust following up on my previous email. Happy to answer any questions or set up a quick call.\n\n${vars.sender_name}`;
+      html = plainToHtml(plain);
+    }
+
     const res = await sendOutreachEmail({
       to: row.email,
       subject,
       html,
       trackingId: row.tracking_id ?? undefined,
       orgId,
-      threadId: row.gmail_thread_id ?? undefined,
-      inReplyTo: inReplyTo ?? undefined,
-      references,
+      // Only claim the thread when we can actually join it. Passing a threadId
+      // without an In-Reply-To groups the message in our mailbox and nowhere
+      // else, which is precisely the failure that looks fine from here.
+      threadId: canReplyInThread ? row.gmail_thread_id ?? undefined : undefined,
+      inReplyTo: canReplyInThread ? inReplyTo ?? undefined : undefined,
+      references: canReplyInThread ? references : [],
+      attachments: attachments.length ? attachments : undefined,
     });
     if (!res.disabled && !res.error) {
       await query(
@@ -590,7 +683,24 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
           // Same reason the initial outreach stamps it: a reply to THIS email
           // must land its outcome on this trade line, not on every trade the
           // sub was approached for.
-          JSON.stringify(row.trade ? { kind: "followup", trade: row.trade } : { kind: "followup" }),
+          /*
+           * Same reason the initial outreach stamps the trade: a reply to THIS
+           * email must land its outcome on this trade line, not on every trade
+           * the sub was approached for. `threaded` records which of the two
+           * follow-ups this was, so "why did they get a second full email"
+           * has an answer on the record rather than only in the log.
+           */
+          JSON.stringify({
+            kind: "followup",
+            ...(row.trade ? { trade: row.trade } : {}),
+            threaded: canReplyInThread,
+            ...(useFallback && threadGap ? { new_thread_reason: threadGap } : {}),
+            ...(attachedNames.length ? { attachments: attachedNames } : {}),
+            ...(row.orig_quote_due_at ? { quote_due_at: row.orig_quote_due_at } : {}),
+            ...(row.orig_quote_due_label
+              ? { quote_due_label: row.orig_quote_due_label }
+              : {}),
+          }),
           res.threadId ?? row.gmail_thread_id ?? null,
           // Fall back to what we just threaded under. If the read-back failed
           // again, the next follow-up would otherwise find another null and
@@ -599,6 +709,31 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
           res.rfc822MessageId ?? inReplyTo ?? null,
         ]
       );
+
+      /*
+       * Confirm, after the fact, that the reply actually joined the thread.
+       *
+       * Gmail can accept a send and still place it in a new conversation: a
+       * threadId belonging to a different mailbox, a subject that no longer
+       * matches, a thread that has since been deleted. Everything up to here
+       * checked what we INTENDED to send. This checks what Gmail did with it,
+       * which is the only claim worth making, and it is cheap because the
+       * answer is already in the response.
+       */
+      if (canReplyInThread && res.threadId && res.threadId !== row.gmail_thread_id) {
+        await logAgent({
+          agent: "outreach-followup",
+          action: "thread-broken",
+          level: "warn",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          message:
+            `The follow-up to ${row.email} was sent as a reply but Gmail placed it in a different conversation ` +
+            `(asked for ${row.gmail_thread_id}, got ${res.threadId}). The subcontractor will have received it ` +
+            `without the original scope above it. Check that the Gmail account still holds the original thread.`,
+        });
+      }
+
       // Reflect the follow-up on the pairing + roster so Today / opp / sub
       // UIs show "Followed up" instead of permanently "Email sent".
       await query(

@@ -36,6 +36,12 @@ const FULL_VARS: Record<string, string> = {
   phone: "(586) 555-0142",
   solicitation_number: "W912JC26Q2715",
   agency: "US Army Corps of Engineers",
+  location_city_state: "Detroit, Michigan",
+  quote_due_date: "August 11, 2026 at 3:00 PM EDT",
+  trade_scope_requirements: "- Place riprap along 1,200 linear feet of channel bank",
+  subcontractor_requirements: "- License: Michigan contractor license (required)",
+  estimated_start_date: "",
+  project_duration: "",
 };
 
 /** Everything that would read as broken or bureaucratic to a subcontractor. */
@@ -58,7 +64,6 @@ describe("the operator's own contact details survive rendering", () => {
   it("keeps Brost Co's phone number in the follow-up email", () => {
     const body = renderTemplate(followUpTemplate.body, FULL_VARS);
     expect(body).toContain("(586) 555-0142");
-    expect(body).toContain("You can also call me at (586) 555-0142.");
     expectReadsNaturally(body);
   });
 
@@ -74,14 +79,12 @@ describe("the operator's own contact details survive rendering", () => {
 // ---------------------------------------------------------------------------
 
 describe("a missing value removes its sentence, never leaves a stub", () => {
-  it("drops the whole 'call me' line when no phone is on file", () => {
+  it("drops the signature's phone line when no phone is on file", () => {
     const body = renderTemplate(followUpTemplate.body, { ...FULL_VARS, phone: "" });
 
-    expect(body).not.toContain("call me at");
+    expect(body).not.toContain("(586)");
     // The sentence before it is untouched and still carries the ask.
-    expect(body).toContain(
-      "If you can price it, reply with your quote (payment terms and exclusions included)."
-    );
+    expect(body).toContain("Can your team provide pricing by");
     expect(body).toContain("Hi Marcus,");
     expect(body).toContain("Todd");
     expectReadsNaturally(body);
@@ -92,21 +95,43 @@ describe("a missing value removes its sentence, never leaves a stub", () => {
     // "I'm Todd with ." would be worse than not introducing ourselves at all.
     expect(body).not.toContain("I'm Todd with");
     // The ask survives losing the introduction. The scope, dates and documents
-    // live in the brief the Outreach agent appends, not in this body.
-    expect(body).toContain("I'd like your price on that scope");
+    // live in the sections the Outreach agent appends, not in this body.
+    expect(body).toContain("Please review the complete scope");
     expect(body).toContain("Hi Marcus,");
     expectReadsNaturally(body);
   });
 
   it("keeps the outreach ask intact when there is no phone on file", () => {
     const body = renderTemplate(outreachTemplate.body, { ...FULL_VARS, phone: "" });
-    expect(body).not.toContain("call me at");
+    expect(body).not.toContain("(586)");
     // Losing the phone must not take the ask with it. An earlier draft of this
     // body carried {{location_state}} in the same sentence as the ask, so an
     // opportunity with no state on it lost the reason for the email entirely.
-    expect(body).toContain("I'd like your price on that scope");
-    expect(body).toContain("Reply here with any questions");
+    expect(body).toContain("Please review the complete scope");
+    expect(body).toContain("would like your pricing for the scope below");
     expectReadsNaturally(body);
+  });
+
+  it("does not rely on prose repair to save a missing quote deadline", () => {
+    /*
+     * Worth stating plainly, because the repair is not enough here.
+     *
+     * {{quote_due_date}} sits mid-sentence in the initial template, so losing
+     * it leaves "If your team can perform the complete trade scope,
+     * availability, payment terms, and exclusions." That has no stray
+     * punctuation and no visible hole, so every check in
+     * expectReadsNaturally passes it, and a subcontractor reads a request
+     * with no date in it.
+     *
+     * The repair is the wrong layer for this. The variable is declared
+     * required, so resolveOutreachVars reports it missing and the send is
+     * blocked before any of this prose is assembled. This test exists so that
+     * nobody later "fixes" the awkward sentence and concludes the case is
+     * handled.
+     */
+    const body = renderTemplate(outreachTemplate.body, { ...FULL_VARS, quote_due_date: "" });
+    expect(body).not.toContain("{{");
+    expect(body).not.toMatch(/reply by\s*[.,]/i);
   });
 
   it("handles several missing values at once", () => {
