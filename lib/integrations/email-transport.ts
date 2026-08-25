@@ -48,6 +48,8 @@ export interface OutreachSendParams {
   /** Reply inside an existing Gmail thread instead of starting a new one. */
   threadId?: string;
   inReplyTo?: string;
+  /** The conversation's full Message-ID chain, so a third message still threads. */
+  references?: string[];
   /** Which tenant is sending. Defaults to the ambient org context. */
   orgId?: string;
 }
@@ -236,6 +238,7 @@ export async function sendOutreachEmail(
     attachments,
     threadId: params.threadId,
     inReplyTo: params.inReplyTo,
+    references: params.references,
     orgId: orgId ?? undefined,
   });
 

@@ -70,6 +70,18 @@ export interface CaptureReplyInput {
   subject?: string | null;
   contentType?: string | null;
   /**
+   * The message envelope, stored verbatim on the recorded reply so the history
+   * is the email rather than our summary of it.
+   */
+  fromAddress?: string | null;
+  toAddresses?: string | null;
+  ccAddresses?: string | null;
+  /** The Date header as sent: when THEY wrote, not when we happened to poll. */
+  sentAt?: string | null;
+  attachmentNames?: string[];
+  /** The reply's own RFC822 Message-ID, so a later message can cite it. */
+  rfc822MessageId?: string | null;
+  /**
    * Attachments that looked like a quote but could not be read. Their contents
    * are unknown, not absent, so a reply carrying one is never acted on
    * automatically. Passed in because the caller reads the attachments.
@@ -172,6 +184,15 @@ export async function matchInboundReply(opts: {
   trackingToken?: string | null;
   /** Gmail thread ID. Strong match (Gmail transport only). */
   threadId?: string | null;
+  /**
+   * The message's own reference chain: In-Reply-To first, then References.
+   *
+   * The strongest correlation there is, and the only one that belongs to the
+   * message rather than to our copy of it. It names the exact email being
+   * answered, and it keeps working across forwarding, aliases, and a
+   * subcontractor who changes mail provider mid-solicitation.
+   */
+  referenceIds?: string[];
   fromEmail: string;
 }): Promise<{ comm: MatchedComm | null; strongMatch: boolean }> {
   const select = `select c.id, c.subcontractor_id, c.opportunity_id,
@@ -190,18 +211,66 @@ export async function matchInboundReply(opts: {
     );
     if (comm) return { comm, strongMatch: true };
   }
+  /*
+   * The reference chain, before thread or sender.
+   *
+   * In-Reply-To names one specific email. Ordered newest-first among the ids
+   * the message actually cites, so a long conversation attaches to its most
+   * recent message rather than to whichever ancestor happens to sort first.
+   */
+  if (opts.referenceIds?.length) {
+    const comm = await queryOne<MatchedComm>(
+      `${select}
+        and c.rfc822_message_id = any($2::text[]) and c.direction='outbound'
+        order by c.created_at desc limit 1`,
+      [opts.orgId, opts.referenceIds.filter(Boolean)]
+    );
+    if (comm) return { comm, strongMatch: true };
+  }
+
+  /*
+   * `replied_at is null` used to sit on both of the matches below, and it is
+   * why replies stopped registering.
+   *
+   * Read it literally: an outbound email may be matched to a reply only while
+   * it has never been replied to. So the FIRST reply on a thread matched and
+   * stamped replied_at, and every reply after it matched nothing and was
+   * dropped -- `if (!comm) continue` in the poller, no row, no log, no trace.
+   * That is the ordinary shape of a real negotiation: "can you send the
+   * drawings?", then the drawings, then the actual price. The condition threw
+   * away the message carrying the bid and kept the one asking for plans.
+   *
+   * It was there to stop the same reply being captured twice. It was never
+   * needed for that: captureReply keys idempotency on the provider's own
+   * message id, backed by a unique index, so a re-poll or a webhook retry is
+   * already a no-op. Removing it costs nothing and restores the rest of every
+   * conversation.
+   */
   if (opts.threadId) {
     const comm = await queryOne<MatchedComm>(
       `${select}
-        and c.gmail_thread_id = $2 and c.direction='outbound' and c.replied_at is null
+        and c.gmail_thread_id = $2 and c.direction='outbound'
         order by c.created_at desc limit 1`,
       [opts.orgId, opts.threadId]
     );
     if (comm) return { comm, strongMatch: true };
   }
+  /*
+   * Sender only, and deliberately time-boxed.
+   *
+   * This is the weakest signal: an address identifies a firm, not a
+   * conversation, so it cannot distinguish "answering the roofing package we
+   * sent on Tuesday" from "asking about something else entirely". Dropping
+   * replied_at above removed the accidental bound that used to keep it near
+   * the present, so an explicit one takes its place: without it, an unrelated
+   * note from a subcontractor we last emailed a year ago would attach itself
+   * to that year-old solicitation. Ninety days is far longer than any live
+   * bid cycle and far shorter than "forever".
+   */
   const comm = await queryOne<MatchedComm>(
     `${select}
-      and lower(s.email) = $2 and c.direction='outbound' and c.replied_at is null
+      and lower(s.email) = $2 and c.direction='outbound'
+      and c.created_at > now() - interval '90 days'
       order by c.created_at desc limit 1`,
     [opts.orgId, normalizeEmail(opts.fromEmail)]
   );
@@ -391,24 +460,49 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     tradesMentioned: extracted.tradesMentioned,
     isQuote: extracted.isQuote,
     quoteAmount: extracted.quoteAmount,
+    /*
+     * The envelope, kept alongside the reading of it.
+     *
+     * The row recorded who we thought wrote and what we thought they meant,
+     * and dropped the message itself: no recipients, no sent time, no
+     * filenames. So a disputed quote could not be traced back to the email it
+     * came from, and a thread with a second contact copied in looked like a
+     * private exchange. It costs nothing to keep, and it is the difference
+     * between a record and an opinion.
+     */
+    envelope: {
+      from: input.fromAddress ?? fromEmail,
+      to: input.toAddresses ?? null,
+      cc: input.ccAddresses ?? null,
+      sentAt: input.sentAt ?? null,
+      subject: input.subject ?? null,
+      attachments: input.attachmentNames ?? [],
+    },
   };
 
   // Record the inbound reply and mark the outbound as replied. The partial
   // unique index (migration 022) makes this race-safe under concurrent
   // webhook retries.
   await query(
-    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, replied_at, meta)
-     values ($8,$1,$2,'email','inbound',$3,$4,$5,$6, now(), $7::jsonb)
+    `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta)
+     values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb)
      on conflict do nothing`,
     [
       subId,
       comm.opportunity_id,
-      "Re: outreach",
+      // The real subject, not a placeholder. "Re: outreach" was written on
+      // every inbound row alike, so the conversation view could not tell one
+      // solicitation's thread from another's at a glance.
+      (input.subject ?? "").trim() || "Re: outreach",
       replyText.slice(0, 20_000),
       input.threadId ?? null,
       input.messageId ?? null,
-      JSON.stringify(meta),
+      // Stored so OUR next message in this conversation can cite theirs, and
+      // so a later reply naming it can be matched straight back here.
+      input.rfc822MessageId ?? null,
+      input.fromAddress ?? fromEmail,
       orgId,
+      JSON.stringify(meta),
     ]
   );
   await query(`update communications set replied_at = now() where id = $1`, [comm.id]);

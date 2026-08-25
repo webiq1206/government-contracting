@@ -207,7 +207,36 @@ export interface SendEmailParams {
   threadId?: string;
   /** Message-Id of the message being replied to. */
   inReplyTo?: string;
+  /**
+   * The conversation's full Message-ID chain, oldest first.
+   *
+   * References carried only the immediate parent. That is enough for a
+   * two-message exchange and stops being enough after it: a client that
+   * cannot see the whole chain -- Outlook conspicuously -- has no way to
+   * connect the third message to the first, so a second follow-up opened a
+   * new conversation even though In-Reply-To was set correctly.
+   */
+  references?: string[];
   attachments?: { filename: string; content: Buffer; mime?: string }[];
+}
+
+/**
+ * The References header value: the whole chain, oldest first, with the parent
+ * last and never duplicated.
+ *
+ * RFC 5322 asks for the parent's References plus the parent's own Message-ID,
+ * which is exactly what lets a client rebuild a conversation it has only seen
+ * part of. Sending just the parent worked until the third message and then
+ * quietly stopped working.
+ */
+export function referencesHeader(params: {
+  references?: string[];
+  inReplyTo?: string;
+}): string {
+  const chain = [...(params.references ?? []), ...(params.inReplyTo ? [params.inReplyTo] : [])]
+    .map((r) => r.trim())
+    .filter(Boolean);
+  return [...new Set(chain)].join(" ");
 }
 
 /** Build a raw RFC 2822 message (base64url) with tracking baked in. */
@@ -250,7 +279,7 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
       `To: ${params.to}`,
       params.replyTo ? `Reply-To: ${params.replyTo}` : "",
       params.inReplyTo ? `In-Reply-To: ${params.inReplyTo}` : "",
-      params.inReplyTo ? `References: ${params.inReplyTo}` : "",
+      referencesHeader(params) ? `References: ${referencesHeader(params)}` : "",
       `Subject: ${params.subject}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -264,7 +293,7 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
       `To: ${params.to}`,
       params.replyTo ? `Reply-To: ${params.replyTo}` : "",
       params.inReplyTo ? `In-Reply-To: ${params.inReplyTo}` : "",
-      params.inReplyTo ? `References: ${params.inReplyTo}` : "",
+      referencesHeader(params) ? `References: ${referencesHeader(params)}` : "",
       `Subject: ${params.subject}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/mixed; boundary="${mixed}"`,
@@ -305,6 +334,44 @@ type GmailPart = {
   body?: { data?: string | null; attachmentId?: string | null; size?: number | null } | null;
   parts?: GmailPart[] | null;
 };
+
+/**
+ * Most messages a poll can read in one run.
+ *
+ * High enough that no ordinary mailbox is ever truncated, low enough that a
+ * runaway backlog cannot hold the worker in the fetch loop while every other
+ * scheduled job waits behind it. Truncation is reported, never silent.
+ */
+export const REPLY_FETCH_CAP = 400;
+
+/**
+ * One inbound message, with everything needed to place it in a conversation.
+ *
+ * The reference chain (rfc822MessageId / inReplyTo / references) is carried
+ * because it is the only correlation signal that belongs to the message
+ * itself. A Gmail threadId describes how ONE mailbox chose to group things,
+ * and a sender address is shared by every conversation we have ever had with
+ * a firm; In-Reply-To names the exact email being answered, and survives
+ * forwarding, aliasing, and a change of mail provider.
+ */
+export interface GmailInboundMessage {
+  threadId: string;
+  from: string;
+  to: string;
+  cc: string;
+  /** The Date header as sent, so history shows when THEY wrote, not when we read. */
+  date: string;
+  subject: string;
+  contentType: string;
+  rfc822MessageId: string | null;
+  inReplyTo: string | null;
+  references: string[];
+  snippet: string;
+  /** Gmail's own API id for the message. */
+  messageId: string;
+  body: string;
+  attachments: GmailAttachmentRef[];
+}
 
 /** An attachment reference found on a message, before its bytes are fetched. */
 export interface GmailAttachmentRef {
@@ -532,9 +599,22 @@ export const gmail = {
             meta.data.payload?.headers?.find(
               (h) => (h.name ?? "").toLowerCase() === "message-id"
             )?.value ?? undefined;
-        } catch {
-          // The message is already sent; not knowing its Message-ID costs
-          // recipient-side threading on the NEXT follow-up, not this send.
+        } catch (err) {
+          /*
+           * The message is already sent, so this cannot be an error -- but it
+           * must not be silent either, which is what it was.
+           *
+           * A grant issued before gmail.readonly joined GMAIL_SCOPES cannot
+           * read the message back. The send succeeds, this throws, and the
+           * column is null forever: every later follow-up then goes out with
+           * no In-Reply-To, and the subcontractor sees a brand new
+           * conversation each time. Nothing anywhere reported it. Recorded
+           * now, and recovered at follow-up time by threadMessageId().
+           */
+          console.warn(
+            `[gmail] sent, but could not read back the Message-ID (${(err as Error).message}). ` +
+              "Recipient-side threading for later follow-ups will be recovered from the thread."
+          );
         }
       }
       return {
@@ -546,6 +626,61 @@ export const gmail = {
       const message = (err as Error).message;
       if (org) await markConnectionError(org, message);
       return { error: message };
+    }
+  },
+
+  /**
+   * Recover the RFC822 Message-ID and reference chain of OUR newest message in
+   * a thread.
+   *
+   * This is the repair for every conversation whose Message-ID was never
+   * captured at send time -- a grant issued before gmail.readonly was
+   * requested, a transient failure of the read-back, or a row written by an
+   * older version of this code. Without it those threads are permanently
+   * un-followable on the recipient's side: we know the Gmail threadId, so the
+   * follow-up groups correctly in OUR mailbox and looks fine to us, while the
+   * subcontractor receives an unconnected email every time.
+   *
+   * Returns nulls rather than throwing. A follow-up that cannot recover the
+   * chain is still worth sending; it just cannot thread perfectly.
+   */
+  async threadMessageId(
+    threadId: string,
+    orgId?: string
+  ): Promise<{ rfc822MessageId: string | null; references: string[] }> {
+    const empty = { rfc822MessageId: null, references: [] as string[] };
+    if (!threadId) return empty;
+    const client = await gmailClient(orgId);
+    if (!client) return empty;
+    try {
+      const res = await client.users.threads.get({
+        userId: "me",
+        id: threadId,
+        format: "metadata",
+        metadataHeaders: ["Message-ID", "References", "From"],
+      });
+      const messages = res.data.messages ?? [];
+      const chain: string[] = [];
+      let latestOurs: string | null = null;
+      for (const m of messages) {
+        const header = (name: string) =>
+          m.payload?.headers?.find((h) => (h.name ?? "").toLowerCase() === name)?.value ?? "";
+        const id = header("message-id");
+        if (id) chain.push(id);
+        // SENT labels our own messages reliably, including ones sent from the
+        // web client by a human rather than by this system.
+        if (id && (m.labelIds ?? []).includes("SENT")) latestOurs = id;
+      }
+      return {
+        // Prefer our own most recent message: a follow-up answers what WE last
+        // said, and threading under the subcontractor's reply instead would
+        // read as a reply to them that we never actually wrote.
+        rfc822MessageId: latestOurs ?? chain[chain.length - 1] ?? null,
+        references: [...new Set(chain)],
+      };
+    } catch (err) {
+      console.warn(`[gmail] could not read thread ${threadId}: ${(err as Error).message}`);
+      return empty;
     }
   },
 
@@ -595,60 +730,106 @@ export const gmail = {
      * unread in the inbox.
      */
     error?: string;
-    replies: {
-      threadId: string;
-      from: string;
-      snippet: string;
-      messageId: string;
-      body: string;
-      attachments: GmailAttachmentRef[];
-      /** Subject + Content-Type, so a bounce can be told from a reply. */
-      subject: string;
-      contentType: string;
-    }[];
+    /**
+     * This run hit the per-poll ceiling and there is more waiting. The replies
+     * returned are still real and must still be processed; the next run picks
+     * up the remainder from the same cursor.
+     */
+    truncated?: boolean;
+    replies: GmailInboundMessage[];
   }> {
     const client = await gmailClient(orgId);
     if (!client) return { disabled: true, replies: [] };
     try {
-      const q = `in:inbox newer_than:7d -from:me after:${sinceEpochSec}`;
-      const list = await client.users.messages.list({ userId: "me", q, maxResults: 50 });
-      const replies: {
-        threadId: string;
-        from: string;
-        snippet: string;
-        messageId: string;
-        body: string;
-        attachments: GmailAttachmentRef[];
-        subject: string;
-        contentType: string;
-      }[] = [];
-      for (const m of list.data.messages ?? []) {
-        // format:"full" so we get the real body (price extraction needs more
-        // than the ~200-char snippet).
-        const msg = await client.users.messages.get({
+      /*
+       * What this query has to be right about, and was not.
+       *
+       * `in:inbox` assumed every reply lands in the inbox. A tenant filter
+       * that labels-and-archives contractor mail, or a first-time sender that
+       * Gmail drops in spam, puts a real quote somewhere this never looked --
+       * and a reply we never fetch is a reply that does not exist. Matching
+       * still requires the sender to be a subcontractor we actually emailed,
+       * so widening the net cannot pull in strangers; it can only stop losing
+       * our own conversations. Sent, drafts, chats and trash are excluded
+       * because they are ours, unsent, not mail, and discarded respectively.
+       *
+       * `newer_than:7d` sat on top of the caller's own `after:` cursor and
+       * quietly overrode it. The cursor exists precisely so an engine that was
+       * down for a while catches up on what it missed; capping at seven days
+       * means an outage longer than that loses every reply in the gap
+       * permanently, with nothing to show it happened. The cursor is the
+       * authority on how far back to look.
+       */
+      const q = `-in:sent -in:draft -in:chats -in:trash -from:me after:${sinceEpochSec}`;
+      const replies: GmailInboundMessage[] = [];
+      /*
+       * And it read one page of fifty and stopped. Fifty is a quiet morning;
+       * a busy mailbox, or the first poll after any pause, exceeds it easily,
+       * and everything past the fiftieth message was dropped without a word.
+       * Paginate, with a ceiling so one enormous backlog cannot hold the
+       * worker in this loop forever -- and when the ceiling IS hit, say so,
+       * because a silent truncation here is indistinguishable from silence.
+       */
+      let pageToken: string | undefined;
+      let truncated = false;
+      do {
+        const list = await client.users.messages.list({
           userId: "me",
-          id: m.id!,
-          format: "full",
+          q,
+          maxResults: 100,
+          ...(pageToken ? { pageToken } : {}),
         });
-        const header = (name: string) =>
-          msg.data.payload?.headers?.find(
-            (h) => (h.name ?? "").toLowerCase() === name
-          )?.value ?? "";
-        const from = header("from");
-        replies.push({
-          threadId: msg.data.threadId ?? "",
-          from,
-          // A delivery-status report is not a reply, and telling them apart
-          // needs the Content-Type report-type and the subject line.
-          subject: header("subject"),
-          contentType: header("content-type"),
-          snippet: msg.data.snippet ?? "",
-          messageId: msg.data.id ?? "",
-          body: extractBodyText(msg.data.payload) || (msg.data.snippet ?? ""),
-          attachments: collectAttachments(msg.data.payload as GmailPart),
-        });
-      }
-      return { replies };
+        for (const m of list.data.messages ?? []) {
+          // format:"full" so we get the real body (price extraction needs more
+          // than the ~200-char snippet).
+          const msg = await client.users.messages.get({
+            userId: "me",
+            id: m.id!,
+            format: "full",
+          });
+          const header = (name: string) =>
+            msg.data.payload?.headers?.find(
+              (h) => (h.name ?? "").toLowerCase() === name
+            )?.value ?? "";
+          replies.push({
+            threadId: msg.data.threadId ?? "",
+            from: header("from"),
+            to: header("to"),
+            cc: header("cc"),
+            date: header("date"),
+            // A delivery-status report is not a reply, and telling them apart
+            // needs the Content-Type report-type and the subject line.
+            subject: header("subject"),
+            contentType: header("content-type"),
+            /*
+             * The reference chain. This is the only correlation signal that
+             * belongs to the MESSAGE rather than to our copy of it: Gmail's
+             * threadId is an artefact of one mailbox's grouping, and a sender
+             * address is shared by every conversation we have ever had with a
+             * firm. In-Reply-To names the exact email being answered.
+             */
+            rfc822MessageId: header("message-id") || null,
+            inReplyTo: header("in-reply-to") || null,
+            references: header("references")
+              ? header("references").split(/\s+/).filter(Boolean)
+              : [],
+            snippet: msg.data.snippet ?? "",
+            messageId: msg.data.id ?? "",
+            body: extractBodyText(msg.data.payload) || (msg.data.snippet ?? ""),
+            attachments: collectAttachments(msg.data.payload as GmailPart),
+          });
+        }
+        pageToken = list.data.nextPageToken ?? undefined;
+        if (replies.length >= REPLY_FETCH_CAP) {
+          truncated = Boolean(pageToken);
+          break;
+        }
+      } while (pageToken);
+
+      // Reported separately from `error`: the caller must still PROCESS the
+      // messages it did get. Folding this into `error` would have skipped
+      // them, turning a partial read into a total loss.
+      return truncated ? { replies, truncated: true } : { replies };
     } catch (err) {
       const message = (err as { message?: string }).message ?? "Gmail poll failed";
       // Record the failure on the connection the same way a failed SEND does,
