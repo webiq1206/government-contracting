@@ -10,12 +10,41 @@ import {
   previewBriefSections,
 } from "@/lib/domain/template-tokens";
 import { renderOutreachBrief } from "@/lib/domain/outreach-email";
+import { validateTemplate } from "@/lib/domain/outreach-validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Editable outreach template slugs (operators cannot create new slugs). */
-const EDITABLE_SLUGS = ["template_1_outreach", "template_2_followup"];
+const EDITABLE_SLUGS = [
+  "template_1_outreach",
+  "template_2_followup",
+  // The fallback body, used only when the original thread cannot be replied
+  // to. Editable for the same reason the others are: it is the email a
+  // subcontractor reads.
+  "template_2_followup_new_thread",
+];
+
+/**
+ * Refuse a template that would break at send time.
+ *
+ * Applied on save, on publish and on test send, deliberately at all three. A
+ * template with a bad variable in it is a defect that reaches a real
+ * subcontractor when the follow-up scheduler runs at 3am, and by then nobody
+ * is watching. Catching it while the operator is looking at the editor is the
+ * only moment they can do anything about it.
+ */
+function templateProblemResponse(input: { subject?: string | null; body: string }) {
+  const problems = validateTemplate(input);
+  if (!problems.length) return null;
+  return NextResponse.json(
+    {
+      error: problems.map((p) => p.message).join(" "),
+      problems,
+    },
+    { status: 422 }
+  );
+}
 
 /**
  * Return version history for a template slug.
@@ -83,6 +112,9 @@ export async function POST(
 
   const rawSubject = (typeof body.subject === "string" ? body.subject.trim() : "") || "(no subject)";
   const rawBody = body.body.trim();
+
+  const invalid = templateProblemResponse({ subject: rawSubject, body: rawBody });
+  if (invalid) return invalid;
 
   const renderedSubject = renderTemplate(rawSubject, TEMPLATE_TOKEN_SAMPLES);
   const renderedBodyPlain = renderTemplate(rawBody, TEMPLATE_TOKEN_SAMPLES);
@@ -155,6 +187,9 @@ export async function PATCH(
   const subject =
     typeof body.subject === "string" ? body.subject.trim() || null : null;
   const newBody = body.body.trim();
+
+  const invalid = templateProblemResponse({ subject, body: newBody });
+  if (invalid) return invalid;
 
   try {
     const inserted = await saveTemplateVersion(slug, subject, newBody, orgId);

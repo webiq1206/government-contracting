@@ -18,6 +18,15 @@ export interface GatheredAttachments {
   links: { name: string; url: string }[];
   /** True when stored docs or attachment URLs existed to try. */
   expected: boolean;
+  /**
+   * Documents we know about that reached the recipient in no form at all.
+   *
+   * A link still counts as delivery, so these are only the ones that failed to
+   * download AND could not be linked. They matter because a subcontractor
+   * cannot tell a document that was not sent from one that does not exist:
+   * they price what they can see and dispute the rest later.
+   */
+  undelivered: { name: string; reason: string }[];
 }
 
 type AttachmentJsonEntry = { name?: string; url?: string; storage_path?: string; mime?: string };
@@ -97,6 +106,7 @@ async function materializeDocs(
 ): Promise<GatheredAttachments> {
   const files: OutreachAttachment[] = [];
   const links: { name: string; url: string }[] = [];
+  const undelivered: { name: string; reason: string }[] = [];
   const seen = new Set<string>();
   let total = 0;
 
@@ -108,7 +118,10 @@ async function materializeDocs(
         d.storage_path,
         d.storage_backend === "supabase" ? "supabase" : undefined
       );
-      if (!bytes.length) continue;
+      if (!bytes.length) {
+        undelivered.push({ name: d.name, reason: "the stored file is empty" });
+        continue;
+      }
       const meta = normalizeAttachmentMeta({
         filename: d.name,
         mime: d.mime,
@@ -151,7 +164,10 @@ async function materializeDocs(
       seen.add(a.storage_path);
       try {
         const bytes = await storage.download(a.storage_path);
-        if (!bytes.length) continue;
+        if (!bytes.length) {
+          undelivered.push({ name, reason: "the stored file is empty" });
+          continue;
+        }
         const meta = normalizeAttachmentMeta({
           filename: name,
           mime: a.mime,
@@ -203,7 +219,7 @@ async function materializeDocs(
       return Boolean(row.url || row.storage_path);
     });
 
-  return { files, links, expected };
+  return { files, links, expected, undelivered };
 }
 
 /** All solicitation/SOW docs (legacy helper). */

@@ -97,21 +97,34 @@ describe("seed Template 1 render", () => {
     // the body alone would no longer describe what a subcontractor receives.
     const html = plainToHtml(filled) + renderOutreachBrief(previewBriefSections()).html;
     expect(html).toContain(">Statement of Work.pdf (attached)</li>");
-    expect(html).toContain("Scope we need priced");
-    expect(html).toContain("What to send back");
+    expect(html).toContain("Scope to price");
+    expect(html).toContain("What to include with your quote");
+    // Both dates, each labelled as whose it is. The preview has to show this
+    // because it is the pair an operator most needs to sanity-check.
+    expect(html).toContain("Your quote is due:");
+    expect(html).toContain("Our bid to the agency is due:");
     expect(html).not.toMatch(FAILURE_RE);
   });
 
-  it("says nothing twice between the body and the brief", () => {
-    // The old body restated the trade, the location, the deadline, the scope
-    // and the reply instructions that the brief already carried.
+  it("does not restate the facts the generated sections already carry", () => {
+    /*
+     * The old body repeated the trade, the location, the deadline and the
+     * whole scope that the sections below it already listed, so a
+     * subcontractor read every fact twice, once as prose and once as bullets.
+     *
+     * The one deliberate overlap is the ask itself: the body names price,
+     * availability, payment terms and exclusions in a sentence, and the
+     * checklist below spells the same things out as a list. That is a summary
+     * followed by its detail, not the same block twice, and losing the
+     * sentence would leave the opening paragraph asking for nothing in
+     * particular.
+     */
     const tmpl = DEFAULT_TEMPLATES.find((t) => t.slug === "template_1_outreach")!;
     const body = renderTemplate(tmpl.body, TEMPLATE_TOKEN_SAMPLES);
     const brief = renderOutreachBrief(previewBriefSections()).plain;
 
     expect(body).not.toContain(TEMPLATE_TOKEN_SAMPLES.deadline);
     expect(body).not.toContain(TEMPLATE_TOKEN_SAMPLES.scope_summary);
-    expect(body).not.toMatch(/payment terms|exclusions/i);
     expect(brief).toContain(TEMPLATE_TOKEN_SAMPLES.deadline);
     expect(brief).toMatch(/payment terms/i);
   });

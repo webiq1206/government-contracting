@@ -32,16 +32,38 @@ export function renderTemplate(
 
 /**
  * Format an ISO / date string for human-readable use in template bodies.
- * Falls back to the raw string if it cannot be parsed.
+ *
+ * A timezone is required rather than optional, and the format matches the one
+ * the quote deadline uses. Both dates appear in the same list in the generated
+ * Project section, and they used to render differently: "August 28, 2026 at
+ * 3:00 PM MDT" next to "Sep 4, 2026, 6:00 PM". The second had no zone at all
+ * and was rendered in the SERVER's timezone, which in production is UTC, so
+ * the bid deadline shown to a subcontractor was wrong by hours and gave no
+ * clue that it was.
+ *
+ * Falls back to the raw string if it cannot be parsed, because an unparseable
+ * date that a human wrote is more use to the reader than a blank.
  */
-export function formatDeadlineLabel(deadline: string | null): string {
+export function formatDeadlineLabel(
+  deadline: string | null,
+  timeZone = "America/New_York"
+): string {
   if (!deadline) return "the stated deadline";
   const d = new Date(deadline);
   if (Number.isNaN(d.getTime())) return deadline;
-  return d.toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
+  const date = d.toLocaleDateString("en-US", {
+    timeZone,
+    month: "long",
+    day: "numeric",
+    year: "numeric",
   });
+  const time = d.toLocaleTimeString("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  });
+  return `${date} at ${time}`;
 }
 
 function escapeHtml(plain: string): string {

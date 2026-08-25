@@ -151,7 +151,7 @@ export const DEFAULT_PROFILE: CompanyProfileJson = {
 
 export interface SeedTemplate {
   slug: string;
-  subject: string;
+  subject: string | null;
   body: string;
   description: string;
 }
@@ -165,36 +165,75 @@ export interface SeedTemplate {
 export const DEFAULT_TEMPLATES: SeedTemplate[] = [
   {
     slug: "template_1_outreach",
-    subject: "{{trade}} Quote Request, {{location_state}}",
-    description: "Template 1, initial subcontractor outreach (scannable quote request).",
+    subject: "Pricing request: {{trade}} | {{location_city_state}}",
+    description:
+      "Template 1, initial subcontractor outreach. The project, scope, requirements, questions, quote checklist and document list are appended automatically beneath this body.",
     // Intentionally short. Everything factual, the project, the scope, the
     // dates, what to send back and the document list, is appended by the
-    // Outreach agent as a structured brief. Repeating any of it here is how
+    // Outreach agent as structured sections. Repeating any of it here is how
     // the old version produced the same facts twice, once as prose and once
     // as bullets.
+    //
+    // Note {{quote_due_date}}, not {{deadline}}: the second is when OUR bid is
+    // due to the agency, and giving it to a subcontractor as their own date is
+    // how a quote arrives with no time left to price the job around it.
     body: [
       "Hi {{owner_name}},",
       "",
-      "I'm {{sender_name}} with {{company_name}}. We're bidding a project that needs {{trade}} work, and I'd like your price on that scope.",
+      "I'm {{sender_name}} with {{company_name}}. We're preparing a bid for {{trade}} work in {{location_city_state}} and would like your pricing for the scope below.",
       "",
-      "Everything you need is below. Reply here with any questions, or call me at {{phone}}.",
+      "Please review the complete scope, requirements, and attached bid documents. If your team can perform the complete trade scope, reply by {{quote_due_date}} with your price, availability, payment terms, and exclusions.",
       "",
+      'If you can perform only part of the scope, please explain exactly what you can and cannot provide. If you\'re not interested, a quick "pass" is helpful. If someone else handles estimates, please point me in the right direction.',
+      "",
+      "Thanks,",
       "{{sender_name}}",
       "{{company_name}}",
+      "{{phone}}",
     ].join("\n"),
   },
   {
     slug: "template_2_followup",
-    subject: "Re: {{trade}} Quote Request, {{location_state}}",
-    description: "Template 2, 48-hour follow-up (short, deadline-forward). One follow-up only; no third email.",
+    // No subject: a reply inherits the original one, and Gmail requires the
+    // subject to match the thread it is joining. An editable subject here
+    // would be a field that silently does nothing.
+    subject: null,
+    description:
+      "Template 2, 48-hour follow-up sent inside the original email thread. The subject is inherited from the original message. Scope and attachments are not repeated because they are already in the conversation.",
     body: [
       "Hi {{owner_name}},",
       "",
-      "Checking in on the {{trade}} work in {{location_state}}. The bid deadline is {{deadline}}, so I need to hear back soon.",
+      "I'm following up on the {{trade}} pricing request for {{opportunity_title}} in {{location_city_state}}.",
       "",
-      "If you can price it, reply with your quote (payment terms and exclusions included). You can also call me at {{phone}}.",
+      'Can your team provide pricing by {{quote_due_date}}? A quick "interested" or "pass" is enough for now. The complete scope, requirements, and documents are included in the original message below.',
       "",
+      "Thanks,",
       "{{sender_name}}",
+      "{{phone}}",
+    ].join("\n"),
+  },
+  {
+    // Used ONLY when the original thread cannot be replied to. The recipient
+    // has nothing above this message, so it carries the full scope,
+    // requirements and document package rather than referring to an email
+    // they cannot see.
+    slug: "template_2_followup_new_thread",
+    subject: "Follow-up: {{trade}} pricing request | {{location_city_state}}",
+    description:
+      "Template 2 fallback, used only when the original thread cannot be replied to. Carries the complete scope, requirements and document package.",
+    body: [
+      "Hi {{owner_name}},",
+      "",
+      "I'm following up on our request for {{trade}} pricing for {{opportunity_title}} in {{location_city_state}}.",
+      "",
+      "The complete scope, requirements, and bid documents are included again below and attached to this email. Please reply by {{quote_due_date}} with your price, availability, payment terms, and exclusions.",
+      "",
+      'If you can perform only part of the scope, please explain exactly what you can and cannot provide. If you\'re not interested, a quick "pass" is helpful.',
+      "",
+      "Thanks,",
+      "{{sender_name}}",
+      "{{company_name}}",
+      "{{phone}}",
     ].join("\n"),
   },
   {

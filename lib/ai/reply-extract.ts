@@ -15,7 +15,18 @@ export type ReplyIntent =
   | "unavailable"
   | "cant_fulfill"
   | "question"
-  | "other";
+  | "other"
+  /* --- Added because each was previously flattened into something wrong. --- */
+  /** They can do part of the scope, but not all of it. */
+  | "partial_scope"
+  /** Interested, but need longer than we gave them. */
+  | "needs_time"
+  /** We wrote to the wrong person at the right company. */
+  | "wrong_contact"
+  /** They pointed us at someone else, here or elsewhere. */
+  | "referred"
+  /** They do not work in this trade at all. */
+  | "does_not_perform_trade";
 
 export interface ExtractedReply {
   intent: ReplyIntent;
@@ -46,6 +57,26 @@ export interface ExtractedReply {
   availabilityNotes: string | null;
   /** How long they say the price holds. */
   quoteValidUntil: string | null;
+  /** True when they call it firm, false when they call it an estimate. */
+  priceIsFirm: boolean | null;
+  /** Whether tax is inside the number, when they say. */
+  taxesIncluded: boolean | null;
+  /** Optional prices they offer for doing it differently. */
+  alternates: string[];
+  /** The soonest they say they could start, in their own words. */
+  earliestStart: string | null;
+  /**
+   * Whether the price covers everything we asked for.
+   *
+   * The field that stops a bid being assembled from a hole: a sub who quotes
+   * two of the three buildings, and whose email reads like a complete quote,
+   * used to be recorded as fully covering the trade.
+   */
+  coversFullScope: boolean | null;
+  /** The part they are NOT covering, in their words. */
+  uncoveredScope: string | null;
+  /** Name, company or email they pointed us at. */
+  referredTo: string | null;
   /**
    * Bid fields a human would still have to chase. Drives the automatic
    * clarification email and blocks the workflow from advancing early.
@@ -74,6 +105,11 @@ const ReplySchema = z.object({
     "cant_fulfill",
     "question",
     "other",
+    "partial_scope",
+    "needs_time",
+    "wrong_contact",
+    "referred",
+    "does_not_perform_trade",
   ]),
   is_quote: z.boolean(),
   quote_amount: z.number().nullable(),
@@ -91,6 +127,13 @@ const ReplySchema = z.object({
   lead_time_days: z.number().nullable(),
   availability_notes: z.string().nullable(),
   quote_valid_until: z.string().nullable(),
+  price_is_firm: z.boolean().nullable(),
+  taxes_included: z.boolean().nullable(),
+  alternates: z.array(z.string()).nullable(),
+  earliest_start: z.string().nullable(),
+  covers_full_scope: z.boolean().nullable(),
+  uncovered_scope: z.string().nullable(),
+  referred_to: z.string().nullable(),
   missing_fields: z.array(z.string()).nullable(),
   conflicts: z.array(z.string()).nullable(),
   confidence: z.number(),
@@ -130,6 +173,13 @@ function emptyRegexResult(price: number | null): ExtractedReply {
     leadTimeDays: null,
     availabilityNotes: null,
     quoteValidUntil: null,
+    priceIsFirm: null,
+    taxesIncluded: null,
+    alternates: [],
+    earliestStart: null,
+    coversFullScope: null,
+    uncoveredScope: null,
+    referredTo: null,
     missingFields: [],
     conflicts: [],
     // A regex hit is a number in some text, not an understood reply. Zero
@@ -161,7 +211,14 @@ export async function extractReplyFromReply(
           "  - unavailable: they WOULD do this kind of work but cannot take THIS job now (busy, booked, capacity, timing). This is not a decline.",
           "  - cant_fulfill: they cannot perform the work (wrong trade, capacity, geography, licensing, etc.)",
           "  - question: they mainly ask clarifying questions",
+          "  - partial_scope: they can do PART of what we asked but not all of it (with or without a price)",
+          "  - needs_time: they want to quote but need longer than the deadline we gave",
+          "  - wrong_contact: right company, wrong person; they are not who handles this",
+          "  - referred: they point us at a different company or person to contact",
+          "  - does_not_perform_trade: they do not work in this trade at all",
           "  - other: anything else (acknowledgement, out-of-office, unclear)",
+          "Choose partial_scope over quote when they price only part of the work: the price is real,",
+          "but recording it as full coverage is how a bid gets assembled with a hole in it.",
           "- is_quote is true ONLY if the reply states a price for the work itself (not fees, not example figures, not questions about price).",
           "- quote_amount: total price in whole US dollars (never cents). If they give a range, use the midpoint. Null when no price.",
           "- payment_terms: any stated terms (e.g. 'net 30', '50% mobilization'), else null.",
@@ -177,6 +234,14 @@ export async function extractReplyFromReply(
           "- lead_time_days: whole days before they can start, converting weeks to days. Null when not stated.",
           "- availability_notes: their stated availability window when no clean number exists, else null.",
           "- quote_valid_until: how long the price holds, as they state it, else null.",
+          "- price_is_firm: true if they call it firm/fixed, false if they call it an estimate/budgetary/ROM. Null when they do not say.",
+          "- taxes_included: true/false only when they say whether tax is in the number, else null.",
+          "- alternates: optional prices for doing the work differently (a different product, a phased schedule). Empty array if none.",
+          "- earliest_start: the soonest they say they could start, in their words, else null.",
+          "- covers_full_scope: false ONLY when they say they are covering part of what we asked for.",
+          "  True when they say or clearly imply the whole scope. Null when they do not address it.",
+          "- uncovered_scope: the part they are NOT covering, in their words. Null unless covers_full_scope is false.",
+          "- referred_to: a person, company or email address they point us at instead of themselves, else null.",
           "- missing_fields: bid information a buyer would still need that this reply does not answer.",
           "  Use short field names such as: price, scope, lead_time, exclusions, payment_terms, bonding, insurance, licensing.",
           "  Empty array when the reply is complete for its intent.",
@@ -222,6 +287,19 @@ export async function extractReplyFromReply(
         materialCost: sanePositive(data.material_cost),
         exclusions: data.exclusions ?? [],
         qualifications: data.qualifications ?? [],
+        priceIsFirm: data.price_is_firm,
+        taxesIncluded: data.taxes_included,
+        alternates: data.alternates ?? [],
+        earliestStart: data.earliest_start,
+        /*
+         * Only a stated "no" counts as partial. An extractor guessing that a
+         * quote is incomplete would send us chasing coverage we already have,
+         * so silence here means "they did not say", not "they did not cover it".
+         */
+        coversFullScope:
+          intent === "partial_scope" ? false : data.covers_full_scope,
+        uncoveredScope: data.uncovered_scope,
+        referredTo: data.referred_to,
         leadTimeDays:
           data.lead_time_days != null &&
           Number.isFinite(data.lead_time_days) &&
