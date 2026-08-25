@@ -220,6 +220,36 @@ describe("the gates that silence the whole engine", () => {
     expect(withWorker.some((x) => x.key === "worker_down")).toBe(true);
   });
 
+  it("reports an AI that is configured but refusing, with the real reason", () => {
+    const f = evaluatePulse(
+      input({
+        claudeFailures: {
+          count: 125,
+          reason: "The Anthropic account cannot pay for requests (its credit balance is too low).",
+        },
+      })
+    );
+    const ai = f.find((x) => x.key === "claude_failing");
+    expect(ai?.severity).toBe("down");
+    expect(ai?.title).toMatch(/125 jobs have failed/);
+    expect(ai?.detail).toMatch(/credit balance is too low/);
+  });
+
+  it("does not double-report: a missing key is 'off', never 'failing'", () => {
+    // No key means nothing to refuse us. Saying both would send the owner to
+    // top up an account that was never configured in the first place.
+    const f = evaluatePulse(
+      input({ claudeConfigured: false, claudeFailures: { count: 9, reason: "whatever" } })
+    );
+    expect(f.some((x) => x.key === "claude_off")).toBe(true);
+    expect(f.some((x) => x.key === "claude_failing")).toBe(false);
+  });
+
+  it("stays quiet when the AI is configured and nothing has been refused", () => {
+    const f = evaluatePulse(input({ claudeFailures: { count: 0, reason: null } }));
+    expect(f.some((x) => x.key === "claude_failing")).toBe(false);
+  });
+
   it("flags zero active organizations as idle-by-definition, not broken", () => {
     const f = evaluatePulse(input({ activeOrgCount: 0 }));
     const none = f.find((x) => x.key === "no_active_orgs");

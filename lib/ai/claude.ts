@@ -6,6 +6,11 @@
  *
  * Degrades gracefully: if ANTHROPIC_API_KEY is missing, calls throw a typed
  * error that agents catch and log as "skipped" so the pipeline keeps flowing.
+ *
+ * A key that EXISTS but no longer works is a different animal and gets its own
+ * error, ClaudeUnavailableError. Nothing degrades gracefully there: an account
+ * out of credits fails every scoring, analysis and draft call in the system,
+ * and the honest thing is to say so loudly rather than to keep flowing past it.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
@@ -18,6 +23,111 @@ export class ClaudeNotConfiguredError extends Error {
     super("ANTHROPIC_API_KEY is not set, Claude-dependent step skipped.");
     this.name = "ClaudeNotConfiguredError";
   }
+}
+
+/**
+ * Stable marker on the front of every AI-outage message.
+ *
+ * The message travels through the agent runner into `agent_logs`, and that row
+ * is the only durable record of the failure. Matching on a marker we control
+ * beats grepping for Anthropic's own wording, which is theirs to reword.
+ */
+export const AI_UNAVAILABLE_PREFIX = "AI_UNAVAILABLE:";
+
+/**
+ * The key is present and Anthropic refused anyway: out of credits, key
+ * revoked, rate limited, or Anthropic itself is down.
+ *
+ * Deliberately NOT a subclass of ClaudeNotConfiguredError. Agents treat that
+ * one as "no AI configured, skip this step and carry on", which is right when
+ * a customer has not set a key up. Applying it here would have every agent
+ * quietly skip its actual work while the dashboard reported a healthy engine,
+ * which is the failure this class exists to make impossible.
+ */
+export class ClaudeUnavailableError extends Error {
+  /** Plain English, safe to show an operator. Never contains the key. */
+  readonly reason: string;
+  readonly status: number | null;
+  /** True when waiting is a plausible fix (rate limit, Anthropic outage). */
+  readonly retryable: boolean;
+
+  constructor(reason: string, status: number | null, retryable: boolean) {
+    super(`${AI_UNAVAILABLE_PREFIX} ${reason}`);
+    this.name = "ClaudeUnavailableError";
+    this.reason = reason;
+    this.status = status;
+    this.retryable = retryable;
+  }
+}
+
+/**
+ * Turn an SDK/network failure into a plain-English cause, or null when it is
+ * not an availability problem at all.
+ *
+ * Null matters: a 400 for a malformed request is OUR bug, and dressing it up
+ * as "the AI is unavailable" would send the owner to top up an account that
+ * was never the problem. Only failures a human can act on as an account or
+ * service issue are named here.
+ */
+export function describeClaudeFailure(
+  err: unknown
+): { reason: string; status: number | null; retryable: boolean } | null {
+  const e = err as { status?: number; message?: string; error?: { error?: { type?: string; message?: string } } };
+  const status = typeof e?.status === "number" ? e.status : null;
+  const body = e?.error?.error;
+  const text = `${body?.message ?? ""} ${e?.message ?? ""}`;
+
+  if (status === 401 || status === 403) {
+    return {
+      reason:
+        "Anthropic rejected the API key. It was deleted, revoked, or copied incompletely. " +
+        "Create a new key at console.anthropic.com and save it under Settings, Integrations.",
+      status,
+      retryable: false,
+    };
+  }
+
+  // Out of credits arrives as a 400, not a 402: the request is well-formed,
+  // the account simply cannot pay for it. Nothing will run until it is topped
+  // up, so this is never retryable.
+  if (/credit balance|insufficient|billing|quota|payment/i.test(text)) {
+    return {
+      reason:
+        "The Anthropic account cannot pay for requests (its credit balance is too low). " +
+        "Nothing will be scored, analysed, or drafted until credits are added at console.anthropic.com under Billing.",
+      status,
+      retryable: false,
+    };
+  }
+
+  if (status === 429) {
+    return {
+      reason:
+        "Anthropic is rate limiting this account, so requests are being refused. " +
+        "This usually clears on its own; if it does not, the account's rate limits need raising.",
+      status,
+      retryable: true,
+    };
+  }
+
+  if (status != null && status >= 500) {
+    return {
+      reason: `Anthropic returned a server error (HTTP ${status}). This is on their side and usually clears on its own.`,
+      status,
+      retryable: true,
+    };
+  }
+
+  // No status at all: the request never reached Anthropic.
+  if (status == null && /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|network|aborted|timeout/i.test(text)) {
+    return {
+      reason: "Could not reach Anthropic (network error). If this persists, check the deployment's outbound access.",
+      status: null,
+      retryable: true,
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -142,9 +252,19 @@ export async function complete(
   }
 
   const anthropic = await client();
-  const res = await anthropic.messages.create(
-    body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming
-  );
+  // Every Claude call in the system passes through here, so this is the one
+  // place that can name "the AI is refusing us" once, in words an owner can
+  // act on, instead of leaving a raw SDK string in thirty agent logs.
+  let res: Anthropic.Messages.Message;
+  try {
+    res = await anthropic.messages.create(
+      body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming
+    );
+  } catch (err) {
+    const cause = describeClaudeFailure(err);
+    if (cause) throw new ClaudeUnavailableError(cause.reason, cause.status, cause.retryable);
+    throw err;
+  }
   const rawText = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
