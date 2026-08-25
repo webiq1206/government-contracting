@@ -22,18 +22,22 @@ import { sendOutreachEmail } from "../integrations/email-transport";
 import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contacts";
 import { gatherTradeAttachments } from "../opportunity-attachments";
 import { isCallable, isEmailable } from "../domain/sub-contactability";
-import { buildOutreachBrief, describeMissing } from "../domain/outreach-brief";
-import { outreachDisplayName } from "../domain/solicitation-completeness";
+import { buildOutreachSections } from "../domain/outreach-sections";
+import {
+  resolveOutreachVars,
+  varSpec,
+  OUTREACH_VAR_SAMPLES,
+} from "../domain/outreach-vars";
+import {
+  validateOutboundEmail,
+  describeProblems,
+} from "../domain/outreach-validation";
 import {
   renderOutreachBrief,
   scrubInternalFailureCopy,
   lineLooksLikeInternalFailure,
 } from "../domain/outreach-email";
-import {
-  renderTemplate,
-  formatDeadlineLabel,
-  plainToHtml,
-} from "../domain/template-render";
+import { renderTemplate, plainToHtml } from "../domain/template-render";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -145,7 +149,6 @@ export const outreach: AgentDefinition = {
     if (!tmpl) return { ok: false, summary: "no active template_1_outreach template" };
 
     const analysis = opp.solicitation_analysis;
-    const deadlineLabel = formatDeadlineLabel(opp.deadline);
 
     // Documents first: the brief lists them, and the completeness check has to
     // know whether any arrived before it can decide the email is sendable.
@@ -154,30 +157,28 @@ export const outreach: AgentDefinition = {
     const gathered = await gatherTradeAttachments(opp, trade);
 
     /**
-     * Everything the subcontractor needs, as sections, plus what is missing.
+     * Every variable this email needs, resolved in one place.
      *
      * One assembly, one verdict. The old path built a paragraph, checked it
      * for thinness, gathered documents, then checked those separately, so
      * "can this email do its job" was answered in two places and neither
-     * looked at project name, location or bid date at all.
+     * looked at project name, location or bid date at all. It also had no
+     * concept of a quote deadline distinct from the bid deadline, which is the
+     * single most consequential thing this email says.
      */
-    const brief = buildOutreachBrief({
+    const resolved = resolveOutreachVars({
+      sub,
+      opportunity: opp,
+      analysis: analysis ?? undefined,
+      profile,
       trade,
-      analysis,
       description: opp.description,
-      title: opp.title,
-      agency: opp.agency,
-      solicitationNumber: opp.solicitation_number,
-      locationState: opp.location_state,
-      locationText: opp.location_text,
-      deadlineLabel,
-      attachedNames: gathered.files.map((f) => f.filename),
-      links: gathered.links,
-      documentsExpected: gathered.expected,
     });
 
-    if (!brief.ready) {
-      const why = describeMissing(brief.missing);
+    if (resolved.missingRequired.length) {
+      const why = `The email is missing ${resolved.missingRequired
+        .map((k) => varSpec(k)?.label ?? k)
+        .join(", ")}.`;
       await query(
         `update opportunities
             set human_action_required = true,
@@ -194,54 +195,60 @@ export const outreach: AgentDefinition = {
         opportunityId,
         subcontractorId,
         message: `Refused to email ${sub.company_name}: the quote request would be incomplete. ${why}`,
-        reasoning: `Missing: ${brief.missing.filter((m) => m.blocking).map((m) => m.key).join(", ")}.`,
+        reasoning: `Missing: ${resolved.missingRequired.join(", ")}.`,
       });
       return {
         ok: true,
         summary: `Held outreach to ${sub.company_name}: ${why}`,
         humanActionRequired: true,
-        data: { missing: brief.missing.filter((m) => m.blocking).map((m) => m.key) },
+        data: { missing: resolved.missingRequired },
       };
     }
 
-    // Non-blocking gaps are still worth a line in the log, so an operator can
-    // see why a quote came back as a rough number.
-    for (const soft of brief.missing.filter((m) => !m.blocking)) {
+    // Gaps that do not stop a send are still worth a line in the log, so an
+    // operator can see why a quote came back as a rough number.
+    for (const gap of resolved.warnings) {
       await logAgent({
         agent: "outreach",
         action: "gap",
         level: "info",
         opportunityId,
         subcontractorId,
-        message: soft.detail,
+        message: gap,
       });
     }
 
     /**
-     * Scrub every recipient-facing line of the brief.
+     * Scrub every recipient-facing value before it becomes an email.
      *
-     * SAM API URLs are rewritten to the public ones, solicitor contacts are
-     * removed so a subcontractor never emails the contracting officer, and any
-     * line that reads as an internal failure is dropped rather than sent.
+     * Done on the RESOLVED VARIABLES rather than on the finished text. SAM API
+     * URLs are rewritten to the public ones and contracting-officer details are
+     * removed, so a subcontractor never emails the agency directly. It has to
+     * happen here, not after substitution: once the template is rendered, the
+     * operator's own phone number is indistinguishable from the contracting
+     * officer's, and a pass over the assembled email censors Brost Co's contact
+     * details out of Brost Co's own message.
+     *
+     * Note `trade` is scrubbed for display only. The original value still
+     * drives attachment filtering and must keep its exact spelling.
      */
     let contactsRedacted = 0;
-    const briefSections = brief.sections
-      .map((section) => ({
-        heading: section.heading,
-        items: section.items
-          .map((item) => {
-            const { sanitised, count } = scrubGovtContacts(rewriteSamUrls(item));
-            contactsRedacted += count;
-            return scrubInternalFailureCopy(sanitised);
-          })
-          .filter((item) => item.trim() && !lineLooksLikeInternalFailure(item)),
-      }))
-      .filter((section) => section.items.length > 0);
+    const scrubValue = (value: string): string => {
+      const { sanitised, count } = scrubGovtContacts(rewriteSamUrls(value));
+      contactsRedacted += count;
+      return scrubInternalFailureCopy(sanitised);
+    };
 
-    // The scope section is the email's reason to exist; losing it to scrubbing
-    // means the send is no longer worth making.
-    const scopeSection = briefSections.find((x) => x.heading === "Scope we need priced");
-    if (!scopeSection) {
+    const vars: Record<string, string> = Object.fromEntries(
+      Object.entries(resolved.vars).map(([key, value]) => [key, scrubValue(value)])
+    );
+
+    /*
+     * The scope is the email's reason to exist. If scrubbing took it, there is
+     * nothing left to ask a price for, and a cheerful note with no scope in it
+     * is worse than no note at all.
+     */
+    if (!vars.scope_summary.trim() || !vars.trade_scope_requirements.trim()) {
       await query(
         `update opportunities
             set human_action_required = true,
@@ -266,60 +273,24 @@ export const outreach: AgentDefinition = {
       };
     }
 
-    // {{scope_summary}} still resolves, for templates that reference it: the
-    // scope lines as sentences rather than the old everything-blob.
-    const scopeSummary = scopeSection.items.join(" ");
+    /*
+     * The sections appended beneath the operator's introduction: project,
+     * scope, requirements, questions, what to send back, and the document
+     * list. Built from the scrubbed variables so the two halves of the email
+     * can never disagree about a date or a scope.
+     */
+    const sections = buildOutreachSections({
+      vars,
+      scopeBoundary: scrubValue(resolved.scopeBoundary),
+      attachedNames: gathered.files.map((f) => f.filename),
+      links: gathered.links,
+      pricingScheduleRequired: resolved.requirements.subRequirements.some((r) =>
+        /pricing schedule|quote format/i.test(r.text)
+      ),
+    });
 
-    // {{questions}} resolves to nothing now: those questions are a section of
-    // the brief. Rendering them in the body too was the same list twice.
-    const questions = "";
-
-    // Every remaining solicitation-derived free-text value must be scrubbed
-    // BEFORE it enters `vars`, not merely before it enters the details block:
-    // templates are operator-editable and may reference {{opportunity_title}},
-    // {{agency}} or {{trade}} directly. Scrubbing is a no-op on clean values,
-    // so this costs nothing when there is no contact to remove.
-    const { sanitised: titleClean, count: titleRedacted } = scrubGovtContacts(
-      opp.title ?? ""
-    );
-    const { sanitised: agencyClean, count: agencyRedacted } = scrubGovtContacts(
-      opp.agency ?? ""
-    );
-    // Recipient-facing copy only — `trade` itself still drives attachment
-    // filtering and must keep its original value for matching.
-    const { sanitised: tradeClean, count: tradeRedacted } = scrubGovtContacts(trade);
-
-    contactsRedacted += titleRedacted + agencyRedacted + tradeRedacted;
-    const senderName = outreachDisplayName(profile);
-    // Greeting uses first name of sub owner when available; never invent a last name.
-    const subGreeting = (() => {
-      const raw = (sub.owner_name ?? "").trim();
-      if (!raw) return "there";
-      return raw.split(/\s+/)[0] || "there";
-    })();
-
-    const vars: Record<string, string> = {
-      owner_name: subGreeting,
-      company_name: profile.legal_name,
-      opportunity_title: titleClean || "an upcoming opportunity",
-      location_state: opp.location_state ?? "",
-      deadline: deadlineLabel,
-      trade: tradeClean,
-      scope_summary: scopeSummary,
-      questions,
-      // External display name only (first name / configured outreach name).
-      sender_name: senderName,
-      phone: profile.phone ?? "",
-      solicitation_number: opp.solicitation_number ?? "",
-      // Agency name is OK; never inject analysis.contacts / CO details.
-      agency: agencyClean,
-    };
-
-    // Solicitation-derived values (scope_summary, questions, title, agency) were
-    // already scrubbed on their way into `vars`. The assembled email is NEVER
-    // scrubbed: after substitution the operator's own phone and email are
-    // indistinguishable from the contracting officer's, so a pass here censors
-    // Brost Co's own contact details out of Brost Co's own email.
+    // Every value was scrubbed on its way into `vars` above. The assembled
+    // email is never scrubbed again, for the reason given there.
     const subject = renderTemplate(tmpl.subject ?? "Partnership opportunity", vars);
     const plainBody = scrubInternalFailureCopy(renderTemplate(tmpl.body, vars));
 
@@ -339,12 +310,60 @@ export const outreach: AgentDefinition = {
         `. Subject: "${subject}" | Body preview: "${plainBody.slice(0, 120).replace(/\n/g, " ")}…"`,
     });
 
-    const details = renderOutreachBrief(briefSections);
-    const detailsPlain = details.plain;
-    const detailsHtml = details.html;
+    const details = renderOutreachBrief(sections);
+    const fullPlain = plainBody + details.plain;
+    const html = plainToHtml(plainBody) + details.html;
 
-    const fullPlain = plainBody + detailsPlain;
-    const html = plainToHtml(plainBody) + detailsHtml;
+    /*
+     * The last gate, on the finished text rather than on intentions.
+     *
+     * Everything above works with values and structures; this reads what the
+     * subcontractor will actually read. A token that survived substitution, a
+     * leaked "undefined", the editor's sample solicitation number, a quote
+     * deadline that is not before the bid deadline, or a document-bearing
+     * solicitation with nothing attached all stop the send here. Each of those
+     * produces an email that reads perfectly well, which is exactly why a
+     * human reviewing the copy would not catch them.
+     */
+    const sendProblems = validateOutboundEmail({
+      subject,
+      body: fullPlain,
+      vars,
+      missingRequired: resolved.missingRequired,
+      attachedNames: gathered.files.map((f) => f.filename),
+      linkNames: gathered.links.map((l) => l.name),
+      documentsExpected: gathered.expected,
+      quoteDueAt: resolved.quote.at,
+      deadlineAt: opp.deadline,
+      sampleValues: OUTREACH_VAR_SAMPLES,
+    });
+    if (sendProblems.length) {
+      const why = describeProblems(sendProblems);
+      await query(
+        `update opportunities
+            set human_action_required = true,
+                risk_flags = (
+                  select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
+                )
+          where id = $1`,
+        [opportunityId]
+      );
+      await logAgent({
+        agent: "outreach",
+        action: "blocked",
+        level: "warn",
+        opportunityId,
+        subcontractorId,
+        message: `Refused to email ${sub.company_name}: the assembled email did not pass its final check. ${why}`,
+        reasoning: sendProblems.map((p) => p.kind).join(", "),
+      });
+      return {
+        ok: true,
+        summary: `Held outreach to ${sub.company_name}: ${why}`,
+        humanActionRequired: true,
+        data: { problems: sendProblems.map((p) => p.kind) },
+      };
+    }
 
     // Idempotency guard. pg-boss delivers at-least-once: a job whose handler
     // sent the email but crashed before acking is redelivered, and a duplicate
@@ -464,10 +483,29 @@ export const outreach: AgentDefinition = {
         provider,
         // Capture exact address used — sub record may be updated later.
         sub.email ?? null,
-        // The trade this email was about, so a reply's outcome lands on the
-        // right trade line instead of every trade this sub was approached for
-        // on the same solicitation.
-        JSON.stringify(trade ? { trade } : {}),
+        /*
+         * Everything the follow-up needs to reconstruct this conversation
+         * without guessing.
+         *
+         * The trade is here so a reply's outcome lands on the right trade line
+         * rather than on every trade this sub was approached for on the same
+         * solicitation. The rest is the identifier set the 48-hour follow-up
+         * reads: which mailbox this went out from, the exact quote deadline
+         * the recipient was given (so the chaser repeats it rather than
+         * recomputing a different one from a clock that has since moved), and
+         * the attachment manifest, so a fallback into a new thread can send
+         * the same package rather than a shorter one.
+         */
+        JSON.stringify({
+          ...(trade ? { trade } : {}),
+          ...(resolved.quote.at ? { quote_due_at: resolved.quote.at } : {}),
+          ...(vars.quote_due_date ? { quote_due_label: vars.quote_due_date } : {}),
+          ...(profile.outreach_email ? { sender_email: profile.outreach_email } : {}),
+          attachments: gathered.files.map((f) => f.filename),
+          ...(gathered.links.length
+            ? { document_links: gathered.links.map((l) => ({ name: l.name, url: l.url })) }
+            : {}),
+        }),
         // The real Message-ID header, so the 48h follow-up can thread under
         // this exact email in the subcontractor's own mail client.
         rfc822MessageId,

@@ -33,6 +33,7 @@ import {
   resolveTimeZone,
   type QuoteDeadline,
 } from "./quote-deadline";
+import { formatDeadlineLabel } from "./template-render";
 
 export type VarCategory =
   | "subcontractor"
@@ -183,7 +184,7 @@ export const OUTREACH_VARS: VarSpec[] = [
     key: "trade_scope_requirements",
     label: "Full trade scope",
     description:
-      "The complete bullet list of work this subcontractor performs: labour, materials, quantities, locations, testing, cleanup and closeout.",
+      "The complete bullet list of work this subcontractor performs: labor, materials, quantities, locations, testing, cleanup and closeout.",
     dataSource: "Per-trade scope, the agency's bid schedule, and scope-shaped special requirements",
     example: "- Remove 12 existing rooftop units in Buildings 3 and 4\n- Test and balance before closeout",
     required: true,
@@ -194,9 +195,9 @@ export const OUTREACH_VARS: VarSpec[] = [
     key: "subcontractor_requirements",
     label: "Requirements on the sub",
     description:
-      "Everything affecting their ability to perform or price: licences, insurance, bonding, wage determinations, site visits, hours, permits, quote validity.",
+      "Everything affecting their ability to perform or price: licenses, insurance, bonding, wage determinations, site visits, hours, permits, quote validity.",
     dataSource: "Solicitation qualifications, special requirements, site visit and acceptance period",
-    example: "- Licence: State mechanical contractor licence (required)\n- Site visit: August 14, 2026 (required)",
+    example: "- License: State mechanical contractor license (required)\n- Site visit: August 14, 2026 (required)",
     required: false,
     fallback:
       "Empty when the solicitation states no conditions, and the section is left out rather than shown blank.",
@@ -494,8 +495,14 @@ export interface ResolveVarsInput {
   };
   trade?: string | null;
   description?: string | null;
-  /** Formatted government deadline, from the caller's own formatter. */
-  deadlineLabel: string;
+  /**
+   * Override for the formatted government deadline.
+   *
+   * Normally omitted: the resolver formats it itself, because it is the only
+   * place that knows which timezone to say it in, and a deadline formatted
+   * before that is known comes out in the server's zone.
+   */
+  deadlineLabel?: string;
   now?: Date;
 }
 
@@ -507,6 +514,8 @@ export interface ResolvedVars {
   warnings: string[];
   quote: QuoteDeadline;
   requirements: OutreachRequirements;
+  /** The one sentence bounding what this sub prices. Not a template variable. */
+  scopeBoundary: string;
 }
 
 export function resolveOutreachVars(input: ResolveVarsInput): ResolvedVars {
@@ -557,12 +566,24 @@ export function resolveOutreachVars(input: ResolveVarsInput): ResolvedVars {
    */
   const scopeLines = requirements.tradeScope.map((i) => i.text);
   const tradeLabel = (input.trade ?? "").trim();
-  let scopeSummary = scopeLines.slice(0, 3).join(" ");
-  if (scopeSummary && tradeLabel) {
-    scopeSummary += requirements.tradeSpecific
-      ? ` Please price the ${tradeLabel} scope only.`
-      : ` Please price the ${tradeLabel} portion of this work only; other trades are being quoted separately.`;
-  }
+  /*
+   * The boundary is kept separate from the summary on purpose.
+   *
+   * {{scope_summary}} is a standalone variable an operator may drop into a
+   * template body, so it has to read as a complete statement. The generated
+   * Scope section already lists every line underneath, so printing the
+   * summary there too put the same three sentences on screen twice, once
+   * joined and once as bullets. The section prints the bullets and this one
+   * sentence, which is the part that is not already there.
+   */
+  const scopeBoundary = tradeLabel
+    ? requirements.tradeSpecific
+      ? `Please price the ${tradeLabel} scope only.`
+      : `Please price the ${tradeLabel} portion of this work only; other trades are being quoted separately.`
+    : "";
+  const scopeSummary = [scopeLines.slice(0, 3).join(" "), scopeBoundary]
+    .filter(Boolean)
+    .join(" ");
 
   const questions = (a.questions_for_subs ?? [])
     .map((q) => String(q ?? "").replace(/\s+/g, " ").trim())
@@ -591,14 +612,16 @@ export function resolveOutreachVars(input: ResolveVarsInput): ResolvedVars {
     location_city_state: city.value,
     trade: tradeLabel,
     scope_summary: scopeSummary,
-    trade_scope_requirements: renderRequirementLines(requirements.tradeScope)
+    trade_scope_requirements: renderRequirementLines(requirements.tradeScope, {
+      markMandatory: false,
+    })
       .map((l) => `- ${l}`)
       .join("\n"),
     subcontractor_requirements: renderRequirementLines(requirements.subRequirements)
       .map((l) => `- ${l}`)
       .join("\n"),
     questions: questions.map((q) => `- ${q}`).join("\n"),
-    deadline: input.deadlineLabel,
+    deadline: input.deadlineLabel ?? formatDeadlineLabel(opp.deadline ?? null, timeZone),
     quote_due_date: quote.label,
     estimated_start_date: startDate,
     project_duration: duration,
@@ -611,7 +634,7 @@ export function resolveOutreachVars(input: ResolveVarsInput): ResolvedVars {
     (spec) => spec.required && !(vars[spec.key] ?? "").trim()
   ).map((spec) => spec.key);
 
-  return { vars, missingRequired, warnings, quote, requirements };
+  return { vars, missingRequired, warnings, quote, requirements, scopeBoundary };
 }
 
 /** Sample values for the editor palette and preview, straight from the specs. */

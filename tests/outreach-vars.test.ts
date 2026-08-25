@@ -269,7 +269,7 @@ describe("resolveOutreachVars", () => {
   it("renders the scope and requirement lists as bullets", () => {
     const r = resolveOutreachVars(BASE);
     expect(r.vars.trade_scope_requirements.split("\n").every((l) => l.startsWith("- "))).toBe(true);
-    expect(r.vars.subcontractor_requirements).toMatch(/- Licence: State mechanical contractor licence \(required\)/);
+    expect(r.vars.subcontractor_requirements).toMatch(/- License: State mechanical contractor licence \(required\)/);
     expect(r.vars.subcontractor_requirements).toMatch(/Site visit.*\(required\)/);
   });
 

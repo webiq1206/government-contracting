@@ -127,7 +127,7 @@ describe("subcontractor requirements", () => {
 
   it("treats qualifications as prerequisites, because that is what they are", () => {
     const r = buildOutreachRequirements({ trade: "HVAC", analysis: ANALYSIS });
-    const licence = r.subRequirements.find((i) => i.text.startsWith("Licence:"));
+    const licence = r.subRequirements.find((i) => i.text.startsWith("License:"));
     expect(licence?.mandatory).toBe(true);
     expect(licence?.text).toContain("mechanical contractor");
   });

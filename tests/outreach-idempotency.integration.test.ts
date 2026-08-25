@@ -26,7 +26,13 @@ vi.mock("../lib/integrations/email-transport", () => ({
   OUTREACH_EMAIL: "info@brostco.com",
 }));
 vi.mock("../lib/ai/companyProfile", () => ({
-  getProfileJson: async () => ({ legal_name: "Prime LLC", owner_name: "Pat Prime", phone: "555-1000", outreach_display_name: "Pat" }),
+  getProfileJson: async () => ({
+    legal_name: "Prime LLC",
+    owner_name: "Pat Prime",
+    phone: "555-1000",
+    outreach_display_name: "Pat",
+    entity_state: "CA",
+  }),
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({ files: [], links: [], expected: false }),
@@ -36,23 +42,13 @@ vi.mock("../lib/app-settings", () => ({
   isAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "paused",
 }));
-vi.mock("../lib/domain/outreach-brief", async (orig) => {
-  const actual = await orig<typeof import("../lib/domain/outreach-brief")>();
-  return {
-    ...actual,
-    buildOutreachBrief: () => ({
-      ready: true,
-      missing: [],
-      tradeSpecific: true,
-      sections: [
-        { heading: "Project", items: ["Project: Test job", "Location: CA"] },
-        { heading: "Scope we need priced", items: ["Install 10 panels"] },
-      ],
-    }),
-  };
-});
 vi.mock("../lib/domain/template-store", () => ({
-  activeTemplate: async () => ({ subject: "Quote request", body: "Hi {{owner_name}}, please quote." }),
+  activeTemplate: async () => ({
+    subject: "Quote request",
+    // Uses the real variables, so a rename that breaks the send is caught here
+    // rather than in production.
+    body: "Hi {{owner_name}}, please quote by {{quote_due_date}}.",
+  }),
 }));
 vi.mock("../lib/domain/advance-stage", () => ({ advancePastCallStep: vi.fn(async () => true) }));
 
@@ -76,8 +72,22 @@ d("outreach idempotency (integration)", () => {
     const o = await queryOne<{ id: string }>(`insert into organizations (name, subscription_status) values ($1,'active') returning id`, [`out-${randomUUID()}`]);
     org.id = o!.id;
     const op = await queryOne<{ id: string }>(
-      `insert into opportunities (org_id, source, title, stage, status, location_state, deadline)
-       values ($1,'test','Test job','sub_research','open','CA', now() + interval '20 days') returning id`, [org.id]);
+      `insert into opportunities
+         (org_id, source, title, stage, status, location_state, location_text,
+          agency, solicitation_number, deadline, solicitation_analysis)
+       values ($1,'test','Panel replacement, Building 12','sub_research','open',
+               'CA','Sacramento, CA','General Services Administration',
+               'GS-26-R-0099', now() + interval '20 days', $2::jsonb)
+       returning id`,
+      [
+        org.id,
+        JSON.stringify({
+          trade_scopes: [
+            { trade: "electrical", work: "Remove and replace 10 distribution panels in Building 12." },
+          ],
+          location: "Sacramento, CA",
+        }),
+      ]);
     opp.id = op!.id;
     const s = await queryOne<{ id: string }>(
       `insert into subcontractors (org_id, company_name, trade_categories, state, email, email_verified, owner_name)
@@ -119,8 +129,22 @@ d("outreach idempotency (integration)", () => {
     // Simulate a failed prior send: a comm row exists but with null provider.
     const o2 = await queryOne<{ id: string }>(`insert into organizations (name, subscription_status) values ($1,'active') returning id`, [`out2-${randomUUID()}`]);
     const op2 = await queryOne<{ id: string }>(
-      `insert into opportunities (org_id, source, title, stage, status, location_state, deadline)
-       values ($1,'test','Recover job','outreach','open','CA', now() + interval '20 days') returning id`, [o2!.id]);
+      `insert into opportunities
+         (org_id, source, title, stage, status, location_state, location_text,
+          agency, solicitation_number, deadline, solicitation_analysis)
+       values ($1,'test','Recover job','outreach','open','CA','Sacramento, CA',
+               'General Services Administration','GS-26-R-0100',
+               now() + interval '20 days', $2::jsonb)
+       returning id`,
+      [
+        o2!.id,
+        JSON.stringify({
+          trade_scopes: [
+            { trade: "electrical", work: "Replace 6 distribution panels in Building 4." },
+          ],
+          location: "Sacramento, CA",
+        }),
+      ]);
     const s2 = await queryOne<{ id: string }>(
       `insert into subcontractors (org_id, company_name, trade_categories, state, email, email_verified, owner_name)
        values ($1,'Elec Two',$2,'CA','elec2@x.invalid',true,'Sam') returning id`, [o2!.id, [trade]]);

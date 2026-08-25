@@ -236,7 +236,7 @@ export function buildOutreachRequirements(input: {
 
   const q = a.qualifications ?? {};
   const qualGroups: [string[] | undefined, string][] = [
-    [q.licenses, "Licence"],
+    [q.licenses, "License"],
     [q.certifications, "Certification"],
     [q.insurance, "Insurance"],
     [q.bonding, "Bonding"],
@@ -324,7 +324,18 @@ export function buildOutreachRequirements(input: {
   };
 }
 
-/** Render a list for an email body, marking what cannot be declined. */
-export function renderRequirementLines(items: RequirementItem[]): string[] {
-  return items.map((i) => (i.mandatory ? `${i.text} (required)` : i.text));
+/**
+ * Render a list for an email body.
+ *
+ * `markMandatory` is off for scope lines on purpose: everything in a scope is
+ * required by definition, so tagging some lines "(required)" and not others
+ * implies the untagged ones are optional. The marker earns its place only in
+ * the requirements list, where some items genuinely are conditional.
+ */
+export function renderRequirementLines(
+  items: RequirementItem[],
+  opts: { markMandatory?: boolean } = {}
+): string[] {
+  const mark = opts.markMandatory ?? true;
+  return items.map((i) => (mark && i.mandatory ? `${i.text} (required)` : i.text));
 }
