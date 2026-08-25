@@ -97,15 +97,32 @@ export function looksLikeBounce(input: {
   // A body carrying DSN fields, even when headers were lost in relaying.
   if (/^\s*(Final-Recipient|Original-Recipient|Diagnostic-Code)\s*:/im.test(body)) return true;
   /*
-   * Last resort, for the gateway notices that carry no DSN part at all: an
-   * SMTP rejection code quoted next to language about the message failing.
-   * Both halves are required, so a subcontractor writing "our bid is 550
-   * dollars" is not mistaken for a bounce.
+   * Last resort, for gateway notices that carry no DSN part at all.
+   *
+   * This has to recognise a machine quoting SMTP without catching a person
+   * quoting numbers, and the obvious version of it does not: "an SMTP-looking
+   * number somewhere near a delivery-ish word" matched
+   *
+   *     "Our price is 550 per square, delivery in 3 weeks."
+   *
+   * which is a quote, from a real subcontractor, and discarding it as a
+   * delivery report is the expensive direction of this decision. That
+   * sentence was caught by running the history repair against real-shaped
+   * data, not by reasoning about the regex.
+   *
+   * So the signal has to be SMTP's own grammar rather than its vocabulary.
+   * A server rejection is a reply code followed by an enhanced status code
+   * ("550 5.1.1 ..."), or an enhanced status code introduced by the phrasing
+   * mail systems use when quoting one. Prose does not accidentally produce
+   * either.
    */
-  return (
-    /\b5\.\d\.\d\b|\b(?:550|551|552|553|554)[ -]/.test(body) &&
-    /deliver|reject|block|bounce|refused|failed/i.test(body)
-  );
+  const smtpRejection = /(?:^|[\s>])[45]\d{2}[ -][45]\.\d{1,3}\.\d{1,3}\b/.test(body);
+  const quotedByAMailSystem =
+    /\b[45]\.\d{1,3}\.\d{1,3}\b/.test(body) &&
+    /(smtp error|remote (?:server|host)|host .{0,40}said|server said|reporting-mta|delivery attempt|message could not be delivered|recipient(?:'s)? server)/i.test(
+      body
+    );
+  return smtpRejection || quotedByAMailSystem;
 }
 
 /**

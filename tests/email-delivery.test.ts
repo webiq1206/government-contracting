@@ -87,11 +87,21 @@ describe("looksLikeBounce", () => {
   });
 
   it("reads an SMTP rejection quoted in a gateway notice with no DSN part", () => {
+    // A reply code followed by an enhanced status code is SMTP's own grammar;
+    // prose does not produce it by accident.
     expect(
       looksLikeBounce({
         from: "security@gateway.example",
         subject: "Notification",
         body: "The message to joe@deadco.com was refused: 550 5.7.1 Message blocked by policy.",
+      })
+    ).toBe(true);
+    // Or an enhanced status code introduced the way mail systems introduce one.
+    expect(
+      looksLikeBounce({
+        from: "noreply@relay.example",
+        subject: "Notification",
+        body: "The remote server returned 5.2.2 while we were trying to reach the recipient.",
       })
     ).toBe(true);
   });
@@ -113,14 +123,37 @@ describe("looksLikeBounce", () => {
         body: "Sorry for the delay, our last delivery failed to show up on site.",
       })
     ).toBe(false);
-    // A number that looks like an SMTP code is not one without the language
-    // of a rejection around it. Widening the detector must not start eating
-    // quotes.
+    // A number that looks like an SMTP code is not one. Widening the detector
+    // must not start eating quotes.
     expect(
       looksLikeBounce({
         from: "dana@pavingco.com",
         subject: "Re: Asphalt overlay",
         body: "Our unit price is 550 per ton and we can hold it for 5.2.1 weeks.",
+      })
+    ).toBe(false);
+    /*
+     * The one that got through, and cost a real quote.
+     *
+     * "550 per square" plus "delivery in 3 weeks" satisfied a rule that asked
+     * only for an SMTP-looking number near a delivery-ish word. Every term in
+     * that sentence is ordinary trade language. Found by running the history
+     * repair against realistic data rather than by reading the regex, which is
+     * why it is pinned here by its exact wording.
+     */
+    expect(
+      looksLikeBounce({
+        from: "sam@realbidder.test",
+        subject: "Re: Quote request: roofing",
+        body: "Our price is 550 per square, delivery in 3 weeks.",
+      })
+    ).toBe(false);
+    // Nor may a sub quoting a rejection they were told about become one.
+    expect(
+      looksLikeBounce({
+        from: "sam@realbidder.test",
+        subject: "Re: Quote request",
+        body: "We had 554 failures on the last job and the block delivery was refused twice.",
       })
     ).toBe(false);
   });
