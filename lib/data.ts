@@ -876,6 +876,51 @@ export async function agentLogsPaged(filters: {
   return { rows, total: totalRow?.total ?? 0, page, pageSize: LOG_PAGE_SIZE };
 }
 
+/**
+ * Per-agent status for the roster: not just how many times it ran, but when it
+ * last ran, whether that run worked, and what it said.
+ *
+ * The roster used to show a cron string and nothing else, which cannot answer
+ * the only questions anyone actually has of it -- is this on, did it run, did
+ * it work. Those answers are all one row of job_runs away, so fetch them here
+ * rather than making the page ask per agent.
+ */
+export interface AgentStatusRow {
+  agent: string;
+  runs_24h: number;
+  errors_24h: number;
+  last_run: string | null;
+  last_finished: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  last_summary: unknown;
+}
+
+export async function agentStatuses(): Promise<AgentStatusRow[]> {
+  return query<AgentStatusRow>(
+    `select r.agent,
+            count(*) filter (where r.started_at > now() - interval '24 hours')::int as runs_24h,
+            count(*) filter (where r.status = 'error'
+                               and r.started_at > now() - interval '24 hours')::int as errors_24h,
+            max(r.started_at)::text as last_run,
+            (last.finished_at)::text as last_finished,
+            last.status  as last_status,
+            last.error   as last_error,
+            last.summary as last_summary
+       from job_runs r
+       -- The most recent run for this agent, which is the one the operator is
+       -- asking about; the counts beside it are the context for it.
+       join lateral (
+         select status, error, summary, finished_at
+           from job_runs x
+          where x.agent = r.agent
+          order by x.started_at desc
+          limit 1
+       ) last on true
+      group by r.agent, last.status, last.error, last.summary, last.finished_at`
+  ).catch(() => []);
+}
+
 export async function jobRunsSummary() {
   return query(
     `select agent,

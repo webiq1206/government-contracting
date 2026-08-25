@@ -34,6 +34,7 @@ import {
   INSTANCE_ID,
   READY_PHASE,
   closeInterruptedRuns,
+  recordHeartbeat,
   startHeartbeat,
 } from "../lib/worker-heartbeat";
 
@@ -52,8 +53,29 @@ const STEP_TIMEOUTS = {
 /** What the heartbeat reports right now. Read on every beat, not captured. */
 let phase = "starting";
 
+/**
+ * Set the phase AND write it out at once, rather than waiting for the next
+ * scheduled beat.
+ *
+ * The heartbeat ticks every 30 seconds, and its first beat lands immediately
+ * after the database check — before the first step has set a phase. So a boot
+ * that dies inside 30 seconds records "database" no matter how far it actually
+ * got, and every reading of that row points at the database step whether or
+ * not the database had anything to do with it. That is precisely the failure
+ * in front of us, and it was being described by a field that could not know.
+ *
+ * Writing on the transition costs one small upsert per boot step and makes the
+ * phase mean what it says: the step the worker was in when it stopped.
+ */
+function setPhase(next: string): void {
+  phase = next;
+  void recordHeartbeat(next).catch(() => {
+    // The scheduled beat will retry; a boot must not fail on its own telemetry.
+  });
+}
+
 function step<T>(name: string, timeoutMs: number, fn: () => Promise<T>): Promise<T> {
-  return bootStep(name, fn, { timeoutMs, onPhase: (p) => (phase = p) });
+  return bootStep(name, fn, { timeoutMs, onPhase: setPhase });
 }
 
 async function main() {
@@ -143,7 +165,7 @@ async function main() {
   // Load UI-managed integration credentials into the environment, and keep
   // them fresh so a key saved on the Integrations page reaches agents without
   // a restart.
-  await hydrateIntegrationEnv();
+  await step("hydrate-integrations", STEP_TIMEOUTS.operator, () => hydrateIntegrationEnv());
   const hydrateTimer = setInterval(() => void hydrateIntegrationEnv(), 5 * 60_000);
   hydrateTimer.unref?.();
 
@@ -201,7 +223,7 @@ async function main() {
   async function shutdown(signal: string) {
     console.log(`[worker] ${signal} received, shutting down...`);
     exitIsIntentional = true;
-    phase = "stopping";
+    setPhase("stopping");
     clearInterval(healthTimer);
     clearInterval(recoveryTimer);
     stopHeartbeat();
@@ -214,7 +236,7 @@ async function main() {
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
 
-  phase = READY_PHASE;
+  setPhase(READY_PHASE);
   console.log("[worker] ready");
 
   // "The process is alive" is not "the queue is being served". pg-boss can stop
@@ -317,19 +339,45 @@ process.on("exit", (code) => {
   }
 });
 
+/**
+ * Leave the cause of death somewhere it can be read back.
+ *
+ * The console log is the natural place for this and it has not been enough:
+ * reaching a deployment's log is its own task, and by the time anyone does the
+ * process that wrote it is long gone. The heartbeat row is already read on
+ * every `npm run doctor`, already has a `detail` column that nothing has ever
+ * written, and survives the process. So the last thing a dying worker does is
+ * say why, in the one place the diagnosis already looks.
+ *
+ * Bounded and best-effort: a database that is unreachable is a plausible
+ * reason to be dying in the first place, and waiting on it would turn a crash
+ * into a hang. Five seconds, then go.
+ */
+async function recordCauseOfDeath(reason: string): Promise<void> {
+  try {
+    await withTimeout(recordHeartbeat(phase, reason.slice(0, 480)), 5_000, "record-cause-of-death");
+  } catch {
+    // Nothing useful left to try; the console line above is the fallback.
+  }
+}
+
 process.on("unhandledRejection", (reason) => {
   console.error("[worker] fatal: unhandled promise rejection:", reason);
   exitIsIntentional = true;
-  process.exit(1);
+  void recordCauseOfDeath(
+    `died at phase "${phase}": unhandled promise rejection: ${reason instanceof Error ? reason.message : String(reason)}`
+  ).finally(() => process.exit(1));
 });
 process.on("uncaughtException", (err) => {
   console.error("[worker] fatal: uncaught exception:", err);
   exitIsIntentional = true;
-  process.exit(1);
+  void recordCauseOfDeath(`died at phase "${phase}": uncaught exception: ${err.message}`).finally(
+    () => process.exit(1)
+  );
 });
 
 main()
-  .then(() => {
+  .then(async () => {
     // Reaching here is not "done". main() only returns after a deliberate
     // health-only path, and those keep the process alive on the health server.
     // If the event loop is empty enough for this to be the end, the worker
@@ -341,10 +389,16 @@ main()
       `[worker] boot ended at phase "${phase}" without reaching "${READY_PHASE}" and without an error. Exiting non-zero so the supervisor restarts it.`
     );
     exitIsIntentional = true;
+    await recordCauseOfDeath(
+      `boot ended at phase "${phase}" without reaching "${READY_PHASE}" and without an error`
+    );
     process.exit(1);
   })
-  .catch((err) => {
+  .catch(async (err) => {
     console.error("[worker] fatal:", err);
     exitIsIntentional = true;
+    await recordCauseOfDeath(
+      `died at phase "${phase}": ${err instanceof Error ? err.message : String(err)}`
+    );
     process.exit(1);
   });

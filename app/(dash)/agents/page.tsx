@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { agentHealth, agentLogsPaged, jobRunsSummary, LOG_PAGE_SIZE } from "@/lib/data";
+import {
+  agentHealth,
+  agentLogsPaged,
+  agentStatuses,
+  jobRunsSummary,
+  LOG_PAGE_SIZE,
+  type AgentStatusRow,
+} from "@/lib/data";
 import { ROSTER } from "@/lib/agents/registry";
 import { PageHeader } from "@/components/badges";
 import { EmptyState } from "@/components/empty-state";
@@ -8,6 +15,7 @@ import { ActionButton } from "@/components/action-button";
 import { AutomationControl } from "@/components/automation-control";
 import { getAutomationState } from "@/lib/app-settings";
 import { timeAgo } from "@/lib/format";
+import { scheduleLabel } from "@/lib/domain/cron-describe";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +42,66 @@ function levelColor(level: string): string {
   return LEVEL_COLOR[level] ?? "text-slate-600";
 }
 
+/**
+ * What an agent's most recent run says, in the words an operator would use.
+ *
+ * The roster used to show a schedule and nothing else, so "is this actually
+ * doing anything" was unanswerable from the page whose entire job is to answer
+ * it. Every branch here has to be readable on its own, including the two that
+ * are easy to leave out: never ran at all, and ran but failed.
+ */
+function lastRunState(st: AgentStatusRow | undefined): {
+  icon: string;
+  tone: string;
+  headline: string;
+  detail: string | null;
+} {
+  if (!st || !st.last_run) {
+    return {
+      icon: "○",
+      tone: "text-slate-500",
+      headline: "Has never run",
+      detail: null,
+    };
+  }
+  const when = timeAgo(st.last_run);
+  if (st.last_status === "error") {
+    return {
+      icon: "✕",
+      tone: "text-risk",
+      headline: `Last run failed ${when}`,
+      detail: st.last_error?.slice(0, 200) ?? summaryText(st.last_summary),
+    };
+  }
+  if (st.last_status === "running") {
+    return { icon: "◐", tone: "text-review", headline: `Started ${when}, still running`, detail: null };
+  }
+  return {
+    icon: "✓",
+    tone: "text-pursue",
+    headline: `Ran ${when}, succeeded`,
+    detail: summaryText(st.last_summary),
+  };
+}
+
+/**
+ * The agent's own sentence about what it did, when it left one. Agents write a
+ * `summary` string into the jsonb; anything else is shown compactly rather
+ * than dropped, because a run with an unreadable result is still a result.
+ */
+function summaryText(summary: unknown): string | null {
+  if (summary == null) return null;
+  if (typeof summary === "string") return summary.slice(0, 200);
+  if (typeof summary === "object") {
+    const rec = summary as Record<string, unknown>;
+    const line = rec.summary ?? rec.message;
+    if (typeof line === "string" && line.trim()) return line.slice(0, 200);
+    const json = JSON.stringify(summary);
+    return json && json !== "{}" ? json.slice(0, 160) : null;
+  }
+  return String(summary).slice(0, 200);
+}
+
 export default async function AgentsPage({
   searchParams,
 }: {
@@ -43,12 +111,14 @@ export default async function AgentsPage({
   const levelFilter = searchParams?.level;
   const q = searchParams?.q ?? "";
   const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
-  const [runs, paged, automation, health] = await Promise.all([
+  const [runs, paged, automation, health, statuses] = await Promise.all([
     jobRunsSummary() as Promise<Row[]>,
     agentLogsPaged({ agent: agentFilter, level: levelFilter, q, page }),
     getAutomationState(),
     agentHealth(),
+    agentStatuses(),
   ]);
+  const statusByAgent = new Map(statuses.map((s) => [s.agent, s]));
   const logs = paged.rows as Row[];
   const totalPages = Math.max(1, Math.ceil(paged.total / LOG_PAGE_SIZE));
 
@@ -129,33 +199,60 @@ export default async function AgentsPage({
         <section>
           <h2 className="label mb-2">Roster</h2>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {ROSTER.map((a) => (
-              <div key={a.name} className="card flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900">{a.label}</p>
-                    <p className="font-mono text-xs text-slate-500">{a.name}</p>
+            {ROSTER.map((a) => {
+              const st = statusByAgent.get(a.name);
+              const last = lastRunState(st);
+              return (
+                <div key={a.name} className="card flex flex-col gap-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{a.label}</p>
+                      <p className="font-mono text-xs text-slate-500">{a.name}</p>
+                    </div>
+                    <span
+                      className={
+                        a.cron
+                          ? "badge shrink-0 bg-accent/10 text-accent"
+                          : "badge shrink-0 bg-slate-200 text-slate-600"
+                      }
+                    >
+                      {scheduleLabel(a.cron)}
+                    </span>
                   </div>
-                  {a.cron ? (
-                    <span className="badge bg-accent/10 font-mono text-accent">{a.cron}</span>
-                  ) : (
-                    <span className="badge bg-slate-200 text-slate-600">event-triggered</span>
-                  )}
+                  <p className="line-clamp-2 text-xs text-slate-600">{a.description}</p>
+
+                  {/* The three questions the roster exists to answer: is it on,
+                      did it run, did it work. */}
+                  <div className="rounded-md border border-border/60 bg-slate-50/60 px-2.5 py-2">
+                    <p className={`flex items-center gap-1.5 text-xs font-medium ${last.tone}`}>
+                      <span aria-hidden>{last.icon}</span>
+                      {last.headline}
+                    </p>
+                    {last.detail && (
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-600">{last.detail}</p>
+                    )}
+                    {st && st.runs_24h > 0 && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {st.runs_24h} run{st.runs_24h === 1 ? "" : "s"} in 24h
+                        {st.errors_24h > 0 ? `, ${st.errors_24h} failed` : ""}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-1">
+                    <Link
+                      href={`/agents?agent=${a.name}`}
+                      className="text-xs text-slate-600 hover:text-accent"
+                    >
+                      See what it did
+                    </Link>
+                    <ActionButton endpoint={`/api/agents/${a.name}/run`} className="btn-ghost">
+                      Run now
+                    </ActionButton>
+                  </div>
                 </div>
-                <p className="line-clamp-2 text-xs text-slate-600">{a.description}</p>
-                <div className="mt-auto flex items-center justify-between gap-2 pt-1">
-                  <Link
-                    href={`/agents?agent=${a.name}`}
-                    className="text-xs text-slate-600 hover:text-accent"
-                  >
-                    Filter to this agent
-                  </Link>
-                  <ActionButton endpoint={`/api/agents/${a.name}/run`} className="btn-ghost">
-                    Run now
-                  </ActionButton>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 
