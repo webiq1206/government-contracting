@@ -13,6 +13,22 @@ export async function createPgBossQueue(): Promise<Queue> {
     ssl: pgSslFor(config.database.url),
     // Keep completed job rows briefly for the dashboard, then archive.
     retentionDays: 7,
+    /**
+     * pg-boss opens a pool of its own, entirely separate from lib/db's. Left at
+     * its default that is a second double-figure pool from the same process,
+     * on top of the app pool here and another in the web process — and a
+     * managed Postgres answers a connection request it cannot serve by making
+     * the caller wait, not by failing fast. The worker that starves in that
+     * wait is the one holding the heartbeat, so the symptom is a silent engine
+     * rather than an error.
+     *
+     * Four is plenty for a queue polling on a timer, and leaves room for the
+     * app pool beside it. Tunable for a bigger deployment without a change
+     * here.
+     */
+    max: Number(process.env.PGBOSS_POOL_MAX ?? 4),
+    /** So these connections are identifiable in the database's own view. */
+    application_name: "brostco-pgboss",
   });
   boss.on("error", (e) => console.error("[pg-boss]", e.message));
 
