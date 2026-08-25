@@ -173,10 +173,46 @@ async function findOverstatedCoverage(): Promise<OverstatedCoverage[]> {
   ).catch(() => []);
 }
 
+/**
+ * Columns this repair reads that arrive in later migrations.
+ *
+ * Without this check the script's first query fails with `column
+ * c.delivery_state does not exist`, which is a true statement that tells an
+ * operator nothing about what to do. The answer is always the same and is
+ * always one command, so it is worth saying outright.
+ */
+const REQUIRED_COLUMNS: { table: string; column: string; migration: string }[] = [
+  { table: "communications", column: "delivery_state", migration: "061" },
+  { table: "communications", column: "rfc822_message_id", migration: "059" },
+];
+
+async function checkSchema(): Promise<void> {
+  const missing: typeof REQUIRED_COLUMNS = [];
+  for (const req of REQUIRED_COLUMNS) {
+    const row = await queryOne<{ n: number }>(
+      `select count(*)::int as n from information_schema.columns
+        where table_name = $1 and column_name = $2`,
+      [req.table, req.column]
+    );
+    if (!row?.n) missing.push(req);
+  }
+  if (!missing.length) return;
+
+  const behind = missing
+    .map((m) => `${m.table}.${m.column} (migration ${m.migration})`)
+    .join(", ");
+  throw new Error(
+    `This database is behind the code. Missing: ${behind}. ` +
+      "Run `npm run db:migrate` first, then run this repair again."
+  );
+}
+
 async function main(): Promise<void> {
   line("Email history repair");
   line(APPLY ? "MODE: APPLY — changes will be written." : "MODE: DRY RUN — nothing will be written.");
   if (ORG) line(`Scope: organization ${ORG}`);
+
+  await checkSchema();
 
   const [misfiled, staleVerified, coverage] = await Promise.all([
     findMisfiledReplies(),
