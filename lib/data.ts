@@ -268,15 +268,51 @@ export interface SubFilters {
   minReliability?: number;
   activeOnly?: boolean;
   q?: string;
+  /** Only subs marked preferred. */
+  preferred?: boolean;
+  /**
+   * Where the email stands: verified, unverified, none found, or never
+   * checked. The roster's single most consequential fact -- an unverified
+   * address is an outreach that will not go out -- and it was not filterable.
+   */
+  emailHealth?: "verified" | "unverified" | "none" | "unchecked";
+  /** Licence state as reported by Sub Verify. */
+  license?: "active" | "other" | "unknown";
+  /** Minimum Google rating. */
+  minRating?: number;
+  /** Subs not contacted in this many days (or never). */
+  quietDays?: number;
+  /** Small-business certified. */
+  sbOnly?: boolean;
+  /** Include blocked subs, which are hidden by default. */
+  includeBlocked?: boolean;
 }
 
-export async function subDatabase(filters: SubFilters = {}): Promise<Subcontractor[]> {
-  const orgId = await currentOrg();
-  const params: unknown[] = [orgId];
+/**
+ * Columns the roster may be sorted by, and the SQL each one means.
+ *
+ * A whitelist rather than string interpolation: a sort key arrives from a
+ * query string, and a query string is a place a stranger can write.
+ */
+export const SUB_SORTS: Record<string, string> = {
+  company_name: "company_name",
+  state: "state nulls last",
+  reliability_score: "coalesce(reliability_score,0)",
+  google_rating: "coalesce(google_rating,0)",
+  last_contacted: "last_contacted nulls last",
+  license_status: "license_status nulls last",
+};
+
+function subWhere(filters: SubFilters, params: unknown[]): string[] {
   // org_id stays in the query text rather than in the interpolated list, so
   // the scoping is visible to anyone reading the statement, and to the guard
   // in tests/agent-scoping.test.ts, which cannot see inside an interpolation.
-  const where: string[] = ["blacklisted = false"];
+  const where: string[] = [];
+  // Blocked subs are hidden unless asked for. They are still on the roster --
+  // "we decided not to use these" is a fact worth keeping -- but they are not
+  // candidates, and mixing them into the default list means someone eventually
+  // emails one.
+  if (!filters.includeBlocked) where.push("blacklisted = false");
   if (filters.trade) {
     params.push(filters.trade);
     where.push(`$${params.length} = any(trade_categories)`);
@@ -289,15 +325,82 @@ export async function subDatabase(filters: SubFilters = {}): Promise<Subcontract
     params.push(filters.minReliability);
     where.push(`coalesce(reliability_score,0) >= $${params.length}`);
   }
+  if (filters.minRating != null) {
+    params.push(filters.minRating);
+    where.push(`coalesce(google_rating,0) >= $${params.length}`);
+  }
+  if (filters.preferred) where.push("is_preferred = true");
+  if (filters.sbOnly) where.push("sb_certified = true");
+  if (filters.emailHealth === "verified") where.push("email is not null and email_verified");
+  if (filters.emailHealth === "unverified") where.push("email is not null and not email_verified");
+  if (filters.emailHealth === "none") where.push("email is null and contact_status is not null");
+  if (filters.emailHealth === "unchecked") where.push("email is null and contact_status is null");
+  if (filters.license === "active") where.push("lower(coalesce(license_status,'')) = 'active'");
+  if (filters.license === "other") {
+    where.push("license_status is not null and lower(license_status) <> 'active'");
+  }
+  if (filters.license === "unknown") where.push("license_status is null");
+  if (filters.quietDays != null) {
+    params.push(filters.quietDays);
+    // Never contacted counts as quiet. It is the loudest version of quiet, and
+    // excluding it would hide exactly the subs most in need of a first touch.
+    where.push(
+      `(last_contacted is null or last_contacted < now() - make_interval(days => $${params.length}))`
+    );
+  }
   if (filters.q) {
     params.push(`%${filters.q}%`);
-    where.push(`(company_name ilike $${params.length} or coalesce(owner_name,'') ilike $${params.length})`);
+    where.push(
+      `(company_name ilike $${params.length} or coalesce(owner_name,'') ilike $${params.length} or coalesce(email,'') ilike $${params.length})`
+    );
   }
+  return where;
+}
+
+/** How many subcontractors match, before paging. */
+export async function subDatabaseCount(filters: SubFilters = {}): Promise<number> {
+  const orgId = await currentOrg();
+  const params: unknown[] = [orgId];
+  const where = subWhere(filters, params);
+  const row = await queryOne<{ n: number }>(
+    `select count(*)::int as n from subcontractors
+      where org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}`,
+    params
+  );
+  return row?.n ?? 0;
+}
+
+export async function subDatabase(
+  filters: SubFilters = {},
+  page?: { sort?: string; direction?: "asc" | "desc"; limit?: number; offset?: number }
+): Promise<Subcontractor[]> {
+  const orgId = await currentOrg();
+  const params: unknown[] = [orgId];
+  const where = subWhere(filters, params);
+
+  /*
+   * The default order is a judgement, not an accident: preferred subs first,
+   * then the most reliable. An explicit sort replaces it, and company_name is
+   * always the last tiebreak so the order is total -- two subs with the same
+   * rating must not swap places between page 1 and page 2, which is how a row
+   * appears twice or not at all while paging.
+   */
+  const column = page?.sort ? SUB_SORTS[page.sort] : undefined;
+  const direction = page?.direction === "desc" ? "desc" : "asc";
+  const orderBy = column
+    ? `${column} ${direction}, company_name asc`
+    : "is_preferred desc, coalesce(reliability_score,0) desc, company_name asc";
+
+  params.push(page?.limit ?? 500);
+  const limitAt = params.length;
+  params.push(page?.offset ?? 0);
+  const offsetAt = params.length;
+
   return query<Subcontractor>(
     `select * from subcontractors
-      where org_id = $1 and ${where.join(" and ")}
-      order by is_preferred desc, coalesce(reliability_score,0) desc, company_name asc
-      limit 500`,
+      where org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}
+      order by ${orderBy}
+      limit $${limitAt} offset $${offsetAt}`,
     params
   );
 }
