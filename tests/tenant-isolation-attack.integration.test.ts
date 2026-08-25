@@ -42,6 +42,7 @@ function session(orgId: string, over: Partial<SessionUser> = {}): SessionUser {
     email: `user-${orgId.slice(0, 8)}@example.invalid`,
     name: "Test User",
     role: "member",
+    orgRole: "owner",
     organizationId: orgId,
     subscriptionStatus: "active",
     planKey: "pro",

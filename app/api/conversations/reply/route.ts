@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSubscriber } from "@/lib/api-auth";
+import { requireSubscriber, requireCapability } from "@/lib/api-auth";
 import { resolveTenantOrgId } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
 import { sendOutreachEmail } from "@/lib/integrations/email-transport";
@@ -31,7 +31,7 @@ function toHtml(text: string): string {
  * address through a customer's mailbox.
  */
 export async function POST(req: Request) {
-  const auth = await requireSubscriber();
+  const auth = await requireCapability("outreach");
   if (auth instanceof NextResponse) return auth;
   const orgId = await resolveTenantOrgId();
 

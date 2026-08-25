@@ -40,6 +40,7 @@ function ordinarySession(email: string) {
     email,
     name: null,
     role: "operator",
+    orgRole: "owner",
     organizationId: "org-1",
     subscriptionStatus: "active",
     planKey: "standard",

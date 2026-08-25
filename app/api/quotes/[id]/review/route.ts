@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  *   dismiss → leave flag but snooze from Today via note (optional future)
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "price" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

@@ -16,7 +16,7 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
 
   // skipCallCard works by bare id; prove the card is ours before handing over.

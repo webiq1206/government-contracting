@@ -18,7 +18,7 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string; docId: string } }
 ) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_subs" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth } = ctx;
 

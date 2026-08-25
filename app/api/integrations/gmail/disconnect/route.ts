@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireUser, requireCapability } from "@/lib/api-auth";
 import { resolveTenantOrgId } from "@/lib/tenant";
 import { gmail } from "@/lib/integrations/gmail";
 
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  * disconnect another's inbox.
  */
 export async function POST() {
-  const auth = await requireUser();
+  const auth = await requireCapability("manage_integrations");
   if (auth instanceof NextResponse) return auth;
   const orgId = await resolveTenantOrgId();
   await gmail.disconnect(orgId);

@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
  * from an invented one.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_rules" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
   const { action } = await req.json().catch(() => ({ action: "approve" }));

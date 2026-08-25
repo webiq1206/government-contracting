@@ -1,6 +1,7 @@
 import { config, integrationStatus } from "@/lib/config";
 import { orgIntegrationStatus } from "@/lib/integration-keys";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
+import { ReadOnlyBanner } from "@/components/permission-gate";
 import { PAGE_HELP } from "@/lib/help-content";
 import { IntegrationManager } from "@/components/integration-manager";
 import { GoogleInboxCard } from "@/components/google-inbox-card";
@@ -85,12 +86,19 @@ export default async function IntegrationsPage({
 
   return (
     <>
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["integrations"]}
         title="Integrations"
         status={`${configuredCount} of ${initial.length} connected`}
-        subtitle="Connect the services that power automation. Paste a key, press Test to verify live, then Save."
+        explanation="Connect the services automation depends on. A key that is stored is not the same as a key that works, so each one shows when it was last used successfully."
+        breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
+
+      {/* Readable at every role; the controls below are gated to the
+          roles that can actually change them. */}
+      <div className="px-5 pt-4">
+        <ReadOnlyBanner role={viewer?.orgRole} capability="manage_integrations" what="the integration settings" />
+      </div>
 
       {(gmailParam === "connected" ||
         gmailParam === "denied" ||

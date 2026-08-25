@@ -14,7 +14,7 @@ const MAX_BODY = 4000;
  * automation, with no subcontractor attached (this is record-level history).
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;
 

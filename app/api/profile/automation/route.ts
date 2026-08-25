@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireUser, requireCapability } from "@/lib/api-auth";
 import {
   getActiveProfile,
   publishProfile,
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  * version (so every agent picks it up immediately).
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
+  const auth = await requireCapability("manage_profile");
   if (auth instanceof NextResponse) return auth;
 
   const body = await req.json().catch(() => ({}));

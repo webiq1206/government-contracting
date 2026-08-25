@@ -92,7 +92,7 @@ export async function POST(
   req: Request,
   { params }: { params: { slug: string } }
 ) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 
@@ -166,7 +166,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: { slug: string } }
 ) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

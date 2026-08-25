@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireUser, requireCapability } from "@/lib/api-auth";
 import {
   hydrateIntegrationEnv,
   settingSources,
@@ -64,7 +64,7 @@ export async function GET() {
  * Body: { values?: Record<envKey, string>, remove?: envKey[] }
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
+  const auth = await requireCapability("manage_integrations");
   if (auth instanceof NextResponse) return auth;
   const body = (await req.json().catch(() => ({}))) as {
     values?: Record<string, string>;

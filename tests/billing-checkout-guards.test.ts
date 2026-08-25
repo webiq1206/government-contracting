@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const auth = {
   id: "user-1",
   email: "owner@example.test",
+  orgRole: "owner",
   organizationId: "org-1",
   impersonatedBy: null as string | null,
 };

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireUser, requireCapability } from "@/lib/api-auth";
 import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
 import { enqueue } from "@/lib/queue";
 import { getAgent } from "@/lib/agents/registry";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Manually trigger an agent run (enqueues a job the worker picks up). */
 export async function POST(req: Request, { params }: { params: { name: string } }) {
-  const auth = await requireUser();
+  const auth = await requireCapability("run_agents");
   if (auth instanceof NextResponse) return auth;
 
   if (await isAutomationPaused()) {

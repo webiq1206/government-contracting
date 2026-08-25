@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSubscriber } from "@/lib/api-auth";
+import { requireSubscriber, requireCapability } from "@/lib/api-auth";
 import { resolveTenantOrgId } from "@/lib/tenant";
 import { query, queryOne } from "@/lib/db";
 import { applyOutcomeToSolicitation, type ReplyOutcome } from "@/lib/domain/reply-outcome";
@@ -30,7 +30,7 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const auth = await requireSubscriber();
+  const auth = await requireCapability("outreach");
   if (auth instanceof NextResponse) return auth;
   const orgId = await resolveTenantOrgId();
 

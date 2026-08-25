@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * the Learning Loop and Analytics.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;
   const body = await req.json().catch(() => ({}));

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireUser, requireCapability } from "@/lib/api-auth";
 import { recordValidation, isAllowedKey } from "@/lib/integration-settings";
 import { orgApiKey } from "@/lib/integration-keys";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  * so a key can be tested BEFORE saving it.
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
+  const auth = await requireCapability("manage_integrations");
   if (auth instanceof NextResponse) return auth;
   const body = (await req.json().catch(() => ({}))) as {
     integration?: string;

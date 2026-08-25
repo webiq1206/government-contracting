@@ -45,6 +45,7 @@ d("bid submission gate (integration)", () => {
     org.id = o!.id;
     CURRENT = {
       id: randomUUID(), email: "op@x.invalid", name: "Op", role: "member",
+      orgRole: "owner",
       organizationId: org.id, subscriptionStatus: "active", planKey: "pro", trialEndsAt: null,
     } as SessionUser;
     // A two-trade solicitation. Only electrical will be priced.

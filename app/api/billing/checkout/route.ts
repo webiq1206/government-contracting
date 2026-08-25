@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
+import { can } from "@/lib/domain/roles";
 import { getFoundingPromo } from "@/lib/billing/promo";
 import {
   appBaseUrl,
@@ -21,6 +22,20 @@ export async function GET(req: Request) {
   }
   if (!auth.organizationId) {
     return NextResponse.redirect(new URL("/signup", appBaseUrl()));
+  }
+  /*
+   * Permission, checked here rather than through requireCapability: that one
+   * layers on requireSubscriber, which answers 402 for a lapsed account, and
+   * these two routes are exactly the ones a lapsed account must still reach in
+   * order to stop being lapsed. So the billing gate stays off and the
+   * permission gate goes on. A redirect rather than a JSON 403 because these
+   * are navigations, not fetches: the browser is following a link, and a raw
+   * JSON body in the address bar is not an answer to anybody.
+   */
+  if (!can(auth.orgRole, "manage_billing")) {
+    return NextResponse.redirect(
+      new URL("/settings/billing?error=not_permitted", appBaseUrl())
+    );
   }
   // Checkout takes a payment method. Not something to start on someone's
   // behalf from a support session.

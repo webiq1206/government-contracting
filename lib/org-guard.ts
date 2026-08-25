@@ -35,6 +35,7 @@ import {
   type AccessLevel,
 } from "./billing/entitlements";
 import { resolveTenantOrgId } from "./tenant";
+import { can, permissionMessage, roleLabel, type Capability } from "./domain/roles";
 import type { SessionUser } from "./auth";
 
 export interface OrgContext {
@@ -45,14 +46,25 @@ export interface OrgContext {
 }
 
 /**
- * Signed in, subscribed, and resolved to exactly one organization.
+ * Signed in, subscribed, permitted, and resolved to exactly one organization.
  *
  * `requireBilling: false` is for the routes an expired customer must still
  * reach to become a customer again (billing itself, integrations reconnect).
  * Everything else should leave it on.
+ *
+ * `capability` is the fourth question, and it went unasked for as long as this
+ * guard existed. `organization_members.role` has held owner / admin / operator
+ * / viewer since multi-tenancy shipped, and nothing read it: every signed-in
+ * member of an organization had identical write access, so the account marked
+ * "read-only" could change final pricing, publish account-wide automation
+ * rules, delete subcontractors and submit a federal bid. Passing the
+ * capability here rather than checking a role at the call site means a new
+ * role is a single row in one table, not an audit of sixty route handlers.
+ *
+ * A route that only reads leaves it off.
  */
 export async function requireOrgContext(
-  opts: { requireBilling?: boolean } = {}
+  opts: { requireBilling?: boolean; capability?: Capability } = {}
 ): Promise<OrgContext | NextResponse> {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
@@ -79,6 +91,20 @@ export async function requireOrgContext(
     orgId = await resolveTenantOrgId({ allowLegacyFallback: true });
   } catch {
     return NextResponse.json({ error: "No organization on this account." }, { status: 403 });
+  }
+
+  if (opts.capability && !can(auth.orgRole, opts.capability)) {
+    // 403, distinct from the 401 above and the 402 before it: signed in, paid
+    // up, not allowed. The body names a role that could, so the next move is
+    // "ask Dana" rather than "the app is broken".
+    return NextResponse.json(
+      {
+        error: permissionMessage(auth.orgRole, opts.capability),
+        requiredCapability: opts.capability,
+        yourRole: roleLabel(auth.orgRole),
+      },
+      { status: 403 }
+    );
   }
 
   return { user: auth, orgId, access: level === "none" ? "trial" : level };

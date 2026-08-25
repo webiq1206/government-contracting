@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  * leave a trace of having done it.
  */
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth } = ctx;
 

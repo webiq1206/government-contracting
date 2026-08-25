@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** Save permanent notes for a subcontractor (editable after every call). */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_subs" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

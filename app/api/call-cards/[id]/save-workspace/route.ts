@@ -54,7 +54,7 @@ export async function POST(
   req: Request,
   { params }: { params: { id: string } }
 ) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;
   const body = await req.json().catch(() => ({}));

@@ -68,6 +68,13 @@ export interface SessionUser {
   role: string;
   /** Active organization for this session (tenant boundary). */
   organizationId: string | null;
+  /**
+   * The role INSIDE that organization, which is what every permission check
+   * reads. Distinct from `role` above, which is platform-level and predates
+   * multi-tenancy. Null when there is no membership row; consumers normalize
+   * that to the least privileged role, never the most.
+   */
+  orgRole: string | null;
   /** Stripe subscription_status for the org (active, trialing, none, …). */
   subscriptionStatus: string | null;
   planKey: string | null;
@@ -96,6 +103,7 @@ export interface SessionUser {
 /** The fields every SessionUser gets before attachOrg fills in the org ones. */
 const NO_ORG = {
   organizationId: null,
+  orgRole: null,
   subscriptionStatus: null,
   planKey: null,
   trialEndsAt: null,
@@ -206,10 +214,14 @@ export async function authenticate(
 
 async function attachOrg(user: SessionUser): Promise<SessionUser> {
   try {
-    const { getOrgForUser } = await import("./organizations");
-    const org = await getOrgForUser(user.id);
+    const { getOrgForUser, getOrgRoleForUser } = await import("./organizations");
+    const [org, orgRole] = await Promise.all([
+      getOrgForUser(user.id),
+      getOrgRoleForUser(user.id).catch(() => null),
+    ]);
     return {
       ...user,
+      orgRole,
       organizationId: org?.id ?? null,
       subscriptionStatus: org?.subscription_status ?? null,
       planKey: org?.plan_key ?? null,

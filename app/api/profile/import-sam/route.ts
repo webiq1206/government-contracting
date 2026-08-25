@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
  * ride onto every bid the platform produces.
  */
 export async function POST(req: Request) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_profile" });
   if (ctx instanceof NextResponse) return ctx;
 
   // The SAM key may be stored in the UI-managed integration settings rather

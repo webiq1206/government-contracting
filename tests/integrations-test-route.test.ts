@@ -17,7 +17,14 @@ const orgApiKey = vi.fn();
 const recordValidation = vi.fn();
 const samValidator = vi.fn();
 
-vi.mock("@/lib/api-auth", () => ({ requireUser: () => requireUser() }));
+vi.mock("@/lib/api-auth", () => ({
+  requireUser: () => requireUser(),
+  // The route guards with requireCapability now. These tests are about
+  // what the handler does once past the guard, so the mock stands in for
+  // a permitted user; tests/roles.test.ts covers the refusal itself.
+  requireCapability: () => requireUser(),
+  requireSubscriber: () => requireUser(),
+}));
 vi.mock("@/lib/integration-keys", () => ({
   orgApiKey: (k: string, o?: string) => orgApiKey(k, o),
 }));
