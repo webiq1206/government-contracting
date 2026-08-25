@@ -1,9 +1,21 @@
 name: CI
 
+# Pull requests only.
+#
+# Every change reaches main by squash-merging a pull request that has already
+# run exactly these three steps against exactly this tree, so a second run on
+# the merge commit re-proves a green result and nothing else. It was not free:
+# across the last thirty runs, the push-to-main trigger accounted for thirteen
+# runs and 30 of 68 minutes -- 44% of the bill for a duplicate -- on a private
+# repository where minutes are metered.
+#
+# What this gives up, stated plainly: a commit pushed straight to main without
+# a pull request is not checked, and a pull request approved against a slightly
+# older main is not re-verified after the merge. The first is a process the
+# project does not use; the second is caught by the next pull request, which
+# branches from the merged main.
 on:
   pull_request:
-  push:
-    branches: [main]
 
 # A new push supersedes the run in flight for the same branch.
 concurrency:
