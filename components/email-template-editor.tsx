@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
 import { plainToHtml, renderTemplate } from "@/lib/domain/template-render";
 import {
+  TEMPLATE_TOKENS,
   TEMPLATE_TOKEN_SAMPLES,
   previewBriefSections,
 } from "@/lib/domain/template-tokens";
@@ -13,6 +14,7 @@ import {
   wrapSelection,
 } from "@/lib/domain/template-markup";
 import { renderOutreachBrief } from "@/lib/domain/outreach-email";
+import { buildOutreachSections } from "@/lib/domain/outreach-sections";
 import { validateTemplate } from "@/lib/domain/outreach-validation";
 
 // ---------------------------------------------------------------------------
@@ -356,6 +358,79 @@ export function EmailTemplateEditor({ template }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [savedVersion, setSavedVersion] = useState<number | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+
+  /*
+   * Preview against a record the operator actually holds.
+   *
+   * Rendering against the sample values proves the SHAPE of an email and
+   * nothing about whether it can be sent: the samples are complete by
+   * construction, so that preview is always perfect, and every gap that
+   * really stops a send stays invisible until a live opportunity reaches the
+   * outreach agent at 3am.
+   */
+  type Pairing = {
+    opportunity_id: string;
+    subcontractor_id: string;
+    trade: string | null;
+    opportunity_title: string | null;
+    company_name: string;
+  };
+  type RealContext = {
+    vars: Record<string, string>;
+    scopeBoundary: string;
+    missingRequired: string[];
+    warnings: string[];
+    attachedNames: string[];
+  };
+  const [pairings, setPairings] = useState<Pairing[]>([]);
+  /** True when no outreach exists yet and these pairs were matched by trade. */
+  const [pairsAreHypothetical, setPairsAreHypothetical] = useState(false);
+  const [pairKey, setPairKey] = useState("");
+  const [realCtx, setRealCtx] = useState<RealContext | null>(null);
+  const [ctxBusy, setCtxBusy] = useState(false);
+  const [ctxError, setCtxError] = useState<string | null>(null);
+
+  async function loadPairings() {
+    if (pairings.length) return;
+    try {
+      const res = await fetch("/api/templates/preview-context?list=1");
+      const data = (await res.json()) as { pairings?: Pairing[]; synthesized?: boolean };
+      setPairings(data.pairings ?? []);
+      setPairsAreHypothetical(Boolean(data.synthesized));
+    } catch {
+      // A preview that cannot list real work still previews with samples.
+    }
+  }
+
+  async function loadRealContext(key: string) {
+    setPairKey(key);
+    setCtxError(null);
+    if (!key) {
+      setRealCtx(null);
+      return;
+    }
+    const [opportunityId, subcontractorId, trade] = key.split("|");
+    setCtxBusy(true);
+    try {
+      const res = await fetch(
+        `/api/templates/preview-context?opportunityId=${encodeURIComponent(opportunityId)}` +
+          `&subcontractorId=${encodeURIComponent(subcontractorId)}` +
+          (trade ? `&trade=${encodeURIComponent(trade)}` : "")
+      );
+      const data = (await res.json()) as RealContext & { error?: string };
+      if (!res.ok) {
+        setCtxError(data.error ?? "Could not load that record.");
+        setRealCtx(null);
+        return;
+      }
+      setRealCtx(data);
+    } catch (e) {
+      setCtxError((e as Error).message);
+      setRealCtx(null);
+    } finally {
+      setCtxBusy(false);
+    }
+  }
   const [testBusy, setTestBusy] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; email?: string; error?: string } | null>(null);
 
@@ -538,10 +613,26 @@ export function EmailTemplateEditor({ template }: Props) {
   // Render
   // -------------------------------------------------------------------------
 
-  const previewSubject = previewFilled(subject || "(no subject)");
-  const previewDetails = renderOutreachBrief(previewBriefSections());
+  /*
+   * One rendering path for both modes.
+   *
+   * The real context supplies the same variable map the send path builds, so
+   * the preview is the send path's own output rather than a second rendering
+   * that happens to look similar.
+   */
+  const previewVars = realCtx?.vars ?? TEMPLATE_TOKEN_SAMPLES;
+  const previewSections = realCtx
+    ? buildOutreachSections({
+        vars: realCtx.vars,
+        scopeBoundary: realCtx.scopeBoundary,
+        attachedNames: realCtx.attachedNames,
+        links: [],
+      })
+    : previewBriefSections();
+  const previewSubject = renderTemplate(subject || "(no subject)", previewVars);
+  const previewDetails = renderOutreachBrief(previewSections);
   const previewBodyHtml =
-    plainToHtml(previewFilled(body)) + previewDetails.html;
+    plainToHtml(renderTemplate(body, previewVars)) + previewDetails.html;
 
   return (
     <div className="card space-y-5">
@@ -683,7 +774,10 @@ export function EmailTemplateEditor({ template }: Props) {
         <button
           className="btn-ghost"
           type="button"
-          onClick={() => setShowPreview(true)}
+          onClick={() => {
+            setShowPreview(true);
+            void loadPairings();
+          }}
         >
           Preview email
         </button>
@@ -734,13 +828,52 @@ export function EmailTemplateEditor({ template }: Props) {
           <div className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border/55 bg-surface text-foreground shadow-2xl dark:border-white/10">
             {/* Preview header */}
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border/55 px-6 py-4 dark:border-white/10">
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="eyebrow text-accent-strong">
-                  Email preview · sample values
+                  {realCtx ? "Email preview \u00b7 real record" : "Email preview \u00b7 sample values"}
                 </p>
                 <p className="mt-2 text-sm font-medium text-foreground break-words">
                   Subject: {previewSubject}
                 </p>
+
+                <label className="label mt-3 block" htmlFor={`preview-pair-${template.slug}`}>
+                  Preview against
+                </label>
+                <select
+                  id={`preview-pair-${template.slug}`}
+                  className="input h-9 w-full max-w-md text-xs"
+                  value={pairKey}
+                  onChange={(e) => void loadRealContext(e.target.value)}
+                >
+                  <option value="">Sample values</option>
+                  {pairings.map((p) => (
+                    <option
+                      key={`${p.opportunity_id}|${p.subcontractor_id}|${p.trade ?? ""}`}
+                      value={`${p.opportunity_id}|${p.subcontractor_id}|${p.trade ?? ""}`}
+                    >
+                      {p.company_name}
+                      {p.trade ? ` (${p.trade})` : ""} {"\u2014"}{" "}
+                      {p.opportunity_title ?? "untitled opportunity"}
+                    </option>
+                  ))}
+                </select>
+                {ctxBusy && (
+                  <p className="mt-1 text-xs text-muted-foreground">Loading that record...</p>
+                )}
+                {pairsAreHypothetical && pairings.length > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    No subcontractor has been approached on a live job yet, so these
+                    pair each open opportunity with a firm whose trades match. The
+                    values are real, and so are the gaps.
+                  </p>
+                )}
+                {ctxError && <p className="mt-1 text-xs text-risk">{ctxError}</p>}
+                {!ctxBusy && !ctxError && pairings.length === 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    No open opportunities with contactable subcontractors yet, so
+                    only sample values are available.
+                  </p>
+                )}
               </div>
               <button
                 className="btn-ghost shrink-0 text-xs"
@@ -758,12 +891,41 @@ export function EmailTemplateEditor({ template }: Props) {
             </div>
             {/* Preview footer */}
             <div className="shrink-0 border-t border-border bg-surface px-6 py-3">
-              <p className="text-xs text-muted-foreground">
-                Fill-in fields shown with sample data. Actual emails use live
-                solicitation values, and attach the real solicitation files listed
-                at the bottom. Bold, highlight, and bullets match what recipients
-                see.
-              </p>
+              {realCtx ? (
+                <>
+                  {realCtx.missingRequired.length > 0 ? (
+                    <p className="text-xs text-risk">
+                      <span className="font-medium">
+                        This email could not be sent for this record.
+                      </span>{" "}
+                      Missing:{" "}
+                      {realCtx.missingRequired
+                        .map((k) => TEMPLATE_TOKENS.find((t) => t.key === k)?.label ?? k)
+                        .join(", ")}
+                      .
+                    </p>
+                  ) : (
+                    <p className="text-xs text-pursue">
+                      This record has everything the email needs. It would send as
+                      shown, with {realCtx.attachedNames.length} document
+                      {realCtx.attachedNames.length === 1 ? "" : "s"} attached.
+                    </p>
+                  )}
+                  {realCtx.warnings.length > 0 && (
+                    <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
+                      {realCtx.warnings.map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Sample values, which are complete by construction, so this preview
+                  always looks right. Pick a real opportunity above to see whether an
+                  email could actually be sent for it.
+                </p>
+              )}
             </div>
           </div>
         </div>
