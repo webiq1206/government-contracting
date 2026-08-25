@@ -31,6 +31,7 @@
     "repair:sub-locations": "tsx scripts/repair-sub-locations.ts",
     "queue:retire-dead-jobs": "tsx scripts/retire-dead-jobs.ts",
     "doctor": "tsx scripts/doctor.ts",
+    "repair:email-history": "tsx scripts/repair-email-history.ts",
     "purge-test-orgs": "tsx scripts/purge-test-orgs.ts"
   },
   "dependencies": {

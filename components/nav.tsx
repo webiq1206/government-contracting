@@ -8,12 +8,24 @@ import { ThemeToggle } from "./theme-toggle";
 import { SearchButton } from "./command-palette";
 
 /**
- * Navigation is deliberately lopsided. Only three destinations are real daily
- * work; everything else is reference you visit on purpose, or something the
- * platform already surfaces on Today when it needs you. Showing all fourteen
- * at equal weight implied fourteen responsibilities. Nothing was removed,
- * secondary pages simply live behind "More" (which carries a dot when
- * anything inside it needs attention, so nothing can hide).
+ * Navigation as named sections rather than a short list plus a drawer.
+ *
+ * The previous shape put four destinations up front and everything else
+ * behind "More". The intent was to stop fourteen equal-weight links implying
+ * fourteen responsibilities, which was right; the cost was that Contracts,
+ * Compliance, the Email Log and every settings page became things you had to
+ * already know were there. Operational pages a person needs weekly should not
+ * require opening a drawer to discover.
+ *
+ * So the pages are grouped by what they are FOR -- the work, the people, the
+ * delivery, the reporting -- and every group is visible at rest. Groups
+ * collapse, the one containing the current page is open, and a collapsed
+ * group carries a dot when something inside it needs attention, so nothing
+ * can hide.
+ *
+ * The 01-04 numbering is gone with it. Numbers promise a sequence, and these
+ * are not steps: an operator moves between Today, an opportunity and the Call
+ * Queue continuously, in whatever order the day takes.
  *
  * On phones the menu is a full-screen overlay (100vw × 100dvh) so the
  * operator has enough room to read labels and the thumb reaches everywhere.
@@ -27,61 +39,98 @@ interface Item {
   badge?: "review" | "calls";
 }
 
-const PRIMARY: Item[] = [
-  { href: "/today", label: "Today", hint: "Everything that needs you" },
-  { href: "/call-queue", label: "Call Queue", hint: "Work calls one after another", badge: "calls" },
-  { href: "/pipeline", label: "Opportunities", hint: "Every opportunity, by whose turn it is" },
-  { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass", badge: "review" },
-];
+interface Section {
+  key: string;
+  label: string;
+  items: Item[];
+  /** Platform-owner tools, hidden from customers entirely. */
+  adminOnly?: boolean;
+}
 
 /**
- * Platform-owner tools, shown only to platform admins.
+ * The sections, in the order a working day tends to move through them.
  *
- * Site Authority tracks OUR marketing domain's backlinks through Ahrefs. It
- * was in the customer navigation, where it is both meaningless to a
- * contractor and a window onto our own business. It is an internal tool and
- * now sits with the other internal tool.
+ * Names describe the job rather than the software: "Delivery" is what happens
+ * after you win, "Performance" is how it went. A contractor should be able to
+ * find a page from the noun in their head.
  */
-const PLATFORM_ADMIN_ITEMS: Item[] = [
-  { href: "/admin/accounts", label: "All accounts" },
-  { href: "/admin/invitations", label: "Invitations" },
-  { href: "/admin/billing", label: "All customers (billing)" },
-  { href: "/authority", label: "Site authority (ours)" },
-];
-
-const MORE: { section: string; items: Item[] }[] = [
+const SECTIONS: Section[] = [
   {
-    section: "Records",
+    key: "work",
+    label: "Work",
+    items: [
+      { href: "/today", label: "Today", hint: "Everything that needs you" },
+      { href: "/pipeline", label: "Opportunities", hint: "Every opportunity, by whose turn it is" },
+      { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass", badge: "review" },
+      { href: "/call-queue", label: "Call Queue", hint: "Work calls one after another", badge: "calls" },
+    ],
+  },
+  {
+    key: "relationships",
+    label: "Relationships",
     items: [
       { href: "/subs", label: "Subcontractors" },
+      { href: "/email-log", label: "Communications" },
+    ],
+  },
+  {
+    key: "delivery",
+    label: "Delivery",
+    items: [
       { href: "/contracts", label: "Contracts" },
-      { href: "/compliance", label: "Renewals & compliance" },
+      { href: "/compliance", label: "Compliance" },
     ],
   },
   {
-    section: "Check on the system",
+    key: "performance",
+    label: "Performance",
     items: [
-      { href: "/agents", label: "What the system did" },
-      { href: "/email-log", label: "Email log" },
-      { href: "/analytics", label: "Results & numbers" },
-      { href: "/how-it-works", label: "How this all works" },
+      { href: "/analytics", label: "Analytics" },
+      { href: "/agents", label: "Automation" },
     ],
   },
   {
-    section: "Settings",
+    key: "help",
+    label: "Help",
+    // Guide Me is a panel rather than a page -- it opens over whatever you are
+    // looking at, because its whole value is knowing where you are. Listing it
+    // as a destination here would be a link that navigates nowhere.
+    items: [{ href: "/how-it-works", label: "Knowledge Center" }],
+  },
+  {
+    key: "settings",
+    label: "Settings",
     items: [
-      { href: "/settings/profile", label: "Company profile" },
+      { href: "/settings/profile", label: "Company" },
+      { href: "/settings/rules", label: "Rules" },
+      { href: "/settings/content", label: "Content" },
+      { href: "/settings/integrations", label: "Integrations" },
       { href: "/settings/billing", label: "Billing" },
-      { href: "/settings/rules", label: "Automation rules" },
-      { href: "/settings/content", label: "Content library" },
-      { href: "/settings/integrations", label: "Connected services" },
     ],
+  },
+  {
+    key: "platform",
+    label: "Platform Admin",
+    adminOnly: true,
+    items: [
+      { href: "/admin/accounts", label: "Accounts" },
+      { href: "/admin/invitations", label: "Invitations" },
+      { href: "/admin/billing", label: "Customer Billing" },
+    ],
+  },
+  {
+    key: "optional",
+    label: "Optional Tools",
+    /*
+     * Site Authority tracks OUR marketing domain's backlinks. It is
+     * meaningless to a contractor and a window onto our own business, so it
+     * stays admin-only and in its own group rather than sitting among the
+     * pages a customer works in.
+     */
+    adminOnly: true,
+    items: [{ href: "/authority", label: "Site Authority" }],
   },
 ];
-
-function padIndex(n: number) {
-  return String(n).padStart(2, "0");
-}
 
 export function Nav({
   email,
@@ -107,7 +156,13 @@ export function Nav({
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
+  /**
+   * Which groups the operator has explicitly toggled. A group is open when
+   * they opened it, or when it holds the page they are on -- so arriving at
+   * Compliance from a link never leaves the sidebar looking like Compliance
+   * is somewhere else.
+   */
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState(false);
   const [localPaused, setLocalPaused] = useState(automationPaused);
   const [togglingAutomation, setTogglingAutomation] = useState(false);
@@ -191,8 +246,13 @@ export function Nav({
   }
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
-  const moreHasActive = MORE.some((g) => g.items.some((i) => isActive(i.href)));
-  const moreNeedsAttention = reviewCount > 0;
+  const sections = SECTIONS.filter((sec) => !sec.adminOnly || isPlatformAdmin);
+  const sectionHasActive = (sec: Section) => sec.items.some((i) => isActive(i.href));
+  const sectionBadgeTotal = (sec: Section) =>
+    sec.items.reduce((n, i) => n + (i.badge ? counts[i.badge] : 0), 0);
+  // Work is where a day starts, so it opens without being asked.
+  const isSectionOpen = (sec: Section) =>
+    openSections[sec.key] ?? (sec.key === "work" || sectionHasActive(sec));
   const initials =
     email
       .split("@")[0]
@@ -203,15 +263,7 @@ export function Nav({
       .join("")
       .slice(0, 2) || "BC";
 
-  function Row({
-    item,
-    index,
-    compact = false,
-  }: {
-    item: Item;
-    index?: number;
-    compact?: boolean;
-  }) {
+  function Row({ item, compact = false }: { item: Item; compact?: boolean }) {
     const active = isActive(item.href);
     const badge = item.badge ? counts[item.badge] : 0;
     return (
@@ -227,15 +279,6 @@ export function Nav({
         }`}
       >
         <span className="flex min-w-0 items-baseline gap-2.5">
-          {index != null && (
-            <span
-              className={`num shrink-0 text-[0.65rem] tracking-wider ${
-                active ? "text-gold" : "text-muted-foreground/70"
-              }`}
-            >
-              {padIndex(index)}
-            </span>
-          )}
           <span className="min-w-0">
             <span className={compact ? "" : "block text-sm"}>{item.label}</span>
             {!compact && item.hint && (
@@ -379,69 +422,54 @@ export function Nav({
         </div>
 
         <div className="scroll-thin flex-1 space-y-0.5 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:px-4 md:pb-3">
-          <p className="mb-2 px-3 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Workspace
-          </p>
-          {PRIMARY.map((item, i) => (
-            <Row key={item.href} item={item} index={i + 1} />
-          ))}
-
-          <div className="pt-3">
-            <button
-              type="button"
-              onClick={() => setMoreOpen((o) => !o)}
-              aria-expanded={moreOpen || moreHasActive}
-              className="flex min-h-11 w-full items-center justify-between rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground md:min-h-0 md:py-1.5"
-            >
-              <span className="flex items-center gap-2">
-                More
-                {moreNeedsAttention && !moreOpen && !moreHasActive && (
+          {sections.map((sec) => {
+            const open = isSectionOpen(sec);
+            const waiting = sectionBadgeTotal(sec);
+            return (
+              <div key={sec.key} className="pt-1 first:pt-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenSections((prev) => ({ ...prev, [sec.key]: !open }))
+                  }
+                  aria-expanded={open}
+                  className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left transition-colors hover:text-foreground md:min-h-0 md:py-1.5"
+                >
+                  {/* A heading, not another dim menu item: a rule above it,
+                      real weight, and separation from the links beneath. */}
+                  <span className="flex items-center gap-2 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-foreground/70">
+                    <span aria-hidden className="h-px w-3 shrink-0 bg-gold/70" />
+                    {sec.label}
+                    {/* Collapsed groups must not be able to hide work. */}
+                    {waiting > 0 && !open && (
+                      <span
+                        aria-label={`${waiting} waiting`}
+                        className="inline-block h-1.5 w-1.5 rounded-full bg-gold"
+                      />
+                    )}
+                  </span>
                   <span
-                    aria-label={`${reviewCount} waiting`}
-                    className="inline-block h-1.5 w-1.5 rounded-full bg-gold"
-                  />
-                )}
-              </span>
-              <span
-                aria-hidden
-                className={`text-xs text-muted-foreground transition-transform ${
-                  moreOpen || moreHasActive ? "rotate-180" : ""
-                }`}
-              >
-                ▾
-              </span>
-            </button>
+                    aria-hidden
+                    className={`text-xs text-muted-foreground transition-transform ${
+                      open ? "rotate-180" : ""
+                    }`}
+                  >
+                    ▾
+                  </span>
+                </button>
 
-            {(moreOpen || moreHasActive) && (
-              <div className="mt-1 space-y-3 pb-2">
-                {[
-                  ...MORE,
-                  ...(isPlatformAdmin
-                    ? [{ section: "Platform admin", items: PLATFORM_ADMIN_ITEMS }]
-                    : []),
-                ].map((group) => (
-                  <div key={group.section} className="pt-1">
-                    {/* Section labels were 9.6px of muted text sitting flush
-                        against the links below them, so they read as another
-                        dim menu item instead of a heading. A rule above, more
-                        weight, and real separation make the grouping visible
-                        at a glance. */}
-                    <p className="mb-1.5 mt-2 flex items-center gap-2 border-t border-border/45 px-3 pt-3 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-foreground/70 dark:border-white/10">
-                      <span aria-hidden className="h-px w-3 shrink-0 bg-gold/70" />
-                      {group.section}
-                    </p>
-                    <ul className="space-y-0.5">
-                      {group.items.map((item) => (
-                        <li key={item.href}>
-                          <Row item={item} compact />
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
+                {open && (
+                  <ul className="mb-1 space-y-0.5">
+                    {sec.items.map((item) => (
+                      <li key={item.href}>
+                        <Row item={item} compact={sec.key !== "work"} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })}
         </div>
 
         {engineLabel && (
