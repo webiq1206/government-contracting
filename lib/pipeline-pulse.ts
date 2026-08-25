@@ -13,12 +13,13 @@ import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { tryResolveTenantOrgId } from "./tenant";
 import { LEGACY_ORG_ID } from "./tenant-context";
 import { isAutomationPaused } from "./app-settings";
-import { config } from "./config";
+import { listActiveOrganizations } from "./organizations";
+import { recentAiTrouble } from "./integration-health";
 
 export async function readPipelinePulse(): Promise<PulseFinding[]> {
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
 
-  const [runs, open, samKeyPresent, samError, quota, connection, heartbeat, stuck, paused, activeOrgs] = await Promise.all([
+  const [runs, open, samKeyPresent, claudeKeyPresent, samError, quota, connection, heartbeat, stuck, paused, activeOrgCount, aiTrouble] = await Promise.all([
     queryOne<{ worker_last: string | null; monitor_last_ok: string | null }>(
       `select (select max(started_at) from job_runs) as worker_last,
               (select max(started_at) from job_runs
@@ -29,6 +30,7 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
       [orgId]
     ).catch(() => null),
     orgHasKey("SAM_API_KEY", orgId).catch(() => false),
+    orgHasKey("ANTHROPIC_API_KEY", orgId).catch(() => false),
     // The monitor logs poll-sam at error level when SAM answers with a
     // failure. Two cron cycles is the honesty window: a fixed key stops
     // producing errors and the banner clears itself on the next clean run.
@@ -57,9 +59,23 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
       [orgId]
     ).catch(() => null),
     isAutomationPaused().catch(() => false),
-    queryOne<{ n: number }>(
-      `select count(*)::int as n from organizations where subscription_status in ('active','trial')`
-    ).catch(() => null),
+    /**
+     * Ask the same function the scheduler asks, rather than re-deriving "who
+     * is active" from subscription_status here.
+     *
+     * The hand-written `status in ('active','trial')` this replaces did not
+     * know about billing_exempt or trial_ends_at, so a comped account (Stripe
+     * says canceled, the column says full access) counted as zero, and the
+     * Today page told its owner there were "no active organizations and
+     * automation will not run" while the engine was in fact working for them.
+     * Two screens, two selectors, one of them wrong.
+     */
+    listActiveOrganizations()
+      .then((orgs) => orgs.length)
+      .catch(() => null),
+    // Did Anthropic actually refuse us recently? A configured key cannot
+    // answer that; only what happened when we used it can.
+    recentAiTrouble(orgId).catch(() => ({ count: 0, reason: null })),
   ]);
 
   return evaluatePulse({
@@ -83,7 +99,12 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
       drafts: stuck?.drafts ?? 0,
     },
     automationPaused: paused,
-    claudeConfigured: config.claude.enabled,
-    activeOrgCount: activeOrgs?.n ?? undefined,
+    // The org's own key, like every other credential on this page. Reading
+    // config.claude.enabled asked the process environment instead, which for a
+    // customer is the PLATFORM's key: theirs could be missing entirely and
+    // this still reported the AI as configured.
+    claudeConfigured: claudeKeyPresent,
+    claudeFailures: aiTrouble,
+    activeOrgCount: activeOrgCount ?? undefined,
   });
 }

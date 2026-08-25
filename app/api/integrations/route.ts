@@ -8,6 +8,7 @@ import {
   isAllowedKey,
 } from "@/lib/integration-settings";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
+import { recentAiTrouble, troubleSummary } from "@/lib/integration-health";
 import { gmail } from "@/lib/integrations/gmail";
 import { logAgent } from "@/lib/logger";
 
@@ -18,6 +19,9 @@ async function assemble() {
   await hydrateIntegrationEnv();
   const sources = await settingSources();
   const gmailConnected = await gmail.isConnected().catch(() => false);
+  // A stored key says nothing about whether the service behind it still
+  // answers. This is what happened when we last used it.
+  const aiTrouble = await recentAiTrouble().catch(() => ({ count: 0, reason: null }));
   return INTEGRATION_DEFS.map((def) => {
     const fields = def.fields.map((f) => ({
       ...f,
@@ -27,7 +31,10 @@ async function assemble() {
     const configured =
       def.id === "usaspending" ||
       (required.length > 0 && required.every((f) => f.source !== "none"));
-    const lastError = fields.map((f) => f.last_error).find(Boolean) ?? null;
+    const lastError =
+      (def.id === "claude" ? troubleSummary(aiTrouble) : null) ??
+      fields.map((f) => f.last_error).find(Boolean) ??
+      null;
     const lastValidated =
       fields
         .map((f) => f.last_validated_at)

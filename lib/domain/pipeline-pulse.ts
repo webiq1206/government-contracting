@@ -33,6 +33,7 @@ export interface PulseFinding {
     | "outreach_drafts"
     | "automation_paused"
     | "claude_off"
+    | "claude_failing"
     | "no_active_orgs";
   severity: PulseSeverity;
   title: string;
@@ -78,6 +79,18 @@ export interface PulseInput {
   /** Whether an Anthropic key is configured. Without it nothing gets scored,
    *  analysed, or drafted, so discovery piles up and never advances. */
   claudeConfigured?: boolean;
+  /**
+   * Recent agent failures whose cause was Anthropic refusing the request:
+   * how many, and the plain-English reason from the newest one.
+   *
+   * A configured key told us nothing about whether the account behind it can
+   * still serve a request. It cannot tell the difference between a working
+   * integration and an account out of credits, and the second looked exactly
+   * like the first on every screen while every scoring, analysis and drafting
+   * job failed. This is the difference, and it comes from what actually
+   * happened rather than from what is configured.
+   */
+  claudeFailures?: { count: number; reason: string | null };
   /** Active organizations the engine has to work for; zero means idle by
    *  definition, not broken. */
   activeOrgCount?: number;
@@ -151,6 +164,21 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
     });
     // Not a hard return: the worker/SAM legs below still report, because they
     // are independent failures worth seeing at the same time.
+  } else if (input.claudeFailures && input.claudeFailures.count > 0) {
+    // Only when a key IS configured. Without one there is nothing to refuse
+    // us, and "claude_off" above already owns that message.
+    const n = input.claudeFailures.count;
+    findings.push({
+      key: "claude_failing",
+      severity: "down",
+      title: `The AI is refusing every request, so ${n} job${n === 1 ? " has" : "s have"} failed.`,
+      detail:
+        `${input.claudeFailures.reason ?? "Anthropic refused the request."} ` +
+        "Deals are still being found, but until this is fixed nothing gets scored, analysed, or drafted, " +
+        "so opportunities pile up unworked.",
+      href: "/settings/integrations",
+      cta: "Open Integrations",
+    });
   }
 
   if (input.activeOrgCount === 0) {

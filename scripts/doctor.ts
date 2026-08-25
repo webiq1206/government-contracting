@@ -26,6 +26,7 @@ import { orgHasKey } from "../lib/integration-keys";
 import { scheduledAgents } from "../lib/agents/registry";
 import { listActiveOrganizations } from "../lib/organizations";
 import { looksLikeTestOrg, hasGeneratedTag } from "../lib/domain/test-org-match";
+import { recentAiTrouble } from "../lib/integration-health";
 
 type Status = "PASS" | "WARN" | "FAIL";
 const results: { status: Status; title: string; fix?: string }[] = [];
@@ -436,6 +437,29 @@ async function main() {
       check("FAIL", `[${org.name}] No SAM.gov API key`, "Add the SAM key in Settings → Integrations. Without it, no federal opportunities are ever pulled — this alone stops all deal discovery.");
     } else {
       check("PASS", `[${org.name}] SAM.gov key present`);
+    }
+
+    /*
+     * The AI leg. A present key is not a working key: an Anthropic account
+     * with no credit balance answers every scoring, analysis and drafting call
+     * with a refusal, and both the Integrations page and this report used to
+     * call that "connected" while the work silently stopped. Ask what actually
+     * happened in the last six hours instead.
+     */
+    const hasClaude = await orgHasKey("ANTHROPIC_API_KEY", org.id).catch(() => false);
+    if (!hasClaude) {
+      check("FAIL", `[${org.name}] No Anthropic API key`, "Add the Anthropic key in Settings → Integrations. Deals are still found without it, but nothing is scored, analysed, or drafted, so they pile up unworked.");
+    } else {
+      const ai = await recentAiTrouble(org.id).catch(() => ({ count: 0, reason: null }));
+      if (ai.count > 0) {
+        check(
+          "FAIL",
+          `[${org.name}] The AI is refusing requests (${ai.count} failed job(s) in 6h)`,
+          ai.reason ?? "Anthropic refused the request. Test the key in Settings → Integrations."
+        );
+      } else {
+        check("PASS", `[${org.name}] Anthropic key present, no refusals in the last 6h`);
+      }
     }
 
     const monitor = await queryOne<{ ok: string | null; err: string | null }>(

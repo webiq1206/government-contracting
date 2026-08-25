@@ -61,18 +61,51 @@ export function looksLikeBounce(input: {
 
   // The authoritative signal: RFC 3464 report type.
   if (/report-type\s*=\s*"?delivery-status"?/.test(ctype)) return true;
-  // The standard automated senders.
-  if (/mailer-daemon@|postmaster@/.test(from)) return true;
-  // Subject lines the big providers use.
+  /*
+   * The standard automated senders. The `@` is deliberately not required:
+   * plenty of systems send as a bare `MAILER-DAEMON` with no domain, and
+   * requiring the sigil let those through as ordinary mail.
+   */
+  if (/mailer[-\s]?daemon|postmaster|^\s*<?bounce[s+-]/.test(from)) return true;
+  // Security gateways reject on the recipient's behalf and sign the notice
+  // themselves, so nothing above matches them.
+  if (/mimecast|proofpoint|barracuda|messagelabs|quarantine@|spamfilter|antispam/.test(from)) {
+    return true;
+  }
+  /*
+   * Subject lines, kept deliberately wide.
+   *
+   * The cost of the two mistakes is not symmetric. A missed bounce is
+   * recorded as a REPLY: it marks the outreach responsive, satisfies trade
+   * coverage nobody has, and leaves the operator waiting for a quote that can
+   * never arrive. A false positive is one message filed as a delivery report
+   * instead of a reply, on a thread the operator can still read.
+   *
+   * The narrow list this replaces missed the ordinary cases. "Undelivered
+   * Mail Returned to Sender" is Postfix's own wording and matched neither
+   * `undeliverable` nor `returned mail`; "Message blocked" and "Delivery
+   * Failure" matched nothing at all. Each alternative below is a real subject
+   * line from a provider in use.
+   */
   if (
-    /delivery status notification|undeliverable|delivery has failed|returned mail|mail delivery (failed|subsystem)|failure notice/.test(
+    /delivery (status notification|failure|failed|incomplete|has failed)|undeliver(able|ed)|returned (mail|to sender)|mail delivery (failed|subsystem)|failure notice|message (?:was )?(?:blocked|rejected|not delivered)|could ?n'?o?t be delivered|unable to deliver|blocked by|quarantine|recipient (rejected|unknown|not found)|address (rejected|not found)/.test(
       subject
     )
   ) {
     return true;
   }
   // A body carrying DSN fields, even when headers were lost in relaying.
-  return /^\s*(Final-Recipient|Original-Recipient|Diagnostic-Code)\s*:/im.test(body);
+  if (/^\s*(Final-Recipient|Original-Recipient|Diagnostic-Code)\s*:/im.test(body)) return true;
+  /*
+   * Last resort, for the gateway notices that carry no DSN part at all: an
+   * SMTP rejection code quoted next to language about the message failing.
+   * Both halves are required, so a subcontractor writing "our bid is 550
+   * dollars" is not mistaken for a bounce.
+   */
+  return (
+    /\b5\.\d\.\d\b|\b(?:550|551|552|553|554)[ -]/.test(body) &&
+    /deliver|reject|block|bounce|refused|failed/i.test(body)
+  );
 }
 
 /**

@@ -185,9 +185,10 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
             {!def.configured && def.without && (
               <p className="text-xs text-review">Right now: {def.without}</p>
             )}
-            {def.last_error && (
-              <p className="text-xs text-risk">Last check failed: {def.last_error}</p>
-            )}
+            {/* Not always a failed test any more: this also carries a service
+                that refused real work, where "Last check failed" would have
+                read as a stale test result rather than as live breakage. */}
+            {def.last_error && <p className="text-xs text-risk">Not working: {def.last_error}</p>}
             {def.last_validated_at && !def.last_error && (
               <p className="text-xs text-slate-500">
                 Last verified {new Date(def.last_validated_at).toLocaleString()}

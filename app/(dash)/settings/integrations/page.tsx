@@ -7,6 +7,7 @@ import { GoogleInboxCard } from "@/components/google-inbox-card";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-settings";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
+import { recentAiTrouble, troubleSummary } from "@/lib/integration-health";
 import { gmail } from "@/lib/integrations/gmail";
 
 const CORE_IDS = new Set(["sam", "claude"]);
@@ -27,11 +28,15 @@ export default async function IntegrationsPage({
   searchParams?: { gmail?: string; gmailError?: string };
 }) {
   await hydrateIntegrationEnv();
-  const [sources, inbox] = await Promise.all([
+  const [sources, inbox, aiTrouble] = await Promise.all([
     settingSources(),
     gmail
       .connection()
       .catch(() => ({ connected: false, email: null, status: "none", lastError: null })),
+    // "Connected" here has only ever meant "a key is saved". It said so
+    // through a day in which Anthropic refused every request for want of
+    // credits, which is the one day it mattered.
+    recentAiTrouble().catch(() => ({ count: 0, reason: null })),
   ]);
   const gmailConnected = inbox.connected;
   // Platform-owned integrations (our Ahrefs, our document storage) are hidden
@@ -63,7 +68,10 @@ export default async function IntegrationsPage({
       fields,
       configured: def.id === "gmail" ? gmailConnected || configured : configured,
       gmailConnected: def.id === "gmail" ? gmailConnected : undefined,
-      last_error: fields.map((f) => f.last_error).find(Boolean) ?? null,
+      last_error:
+        (def.id === "claude" ? troubleSummary(aiTrouble) : null) ??
+        fields.map((f) => f.last_error).find(Boolean) ??
+        null,
       last_validated_at:
         fields
           .map((f) => f.last_validated_at)

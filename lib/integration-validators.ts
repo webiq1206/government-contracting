@@ -122,13 +122,52 @@ export const VALIDATORS: Record<string, (v: Values) => Promise<ValidationResult>
   claude: async (v) => {
     const key = v.ANTHROPIC_API_KEY;
     if (!key) return { ok: false, message: "Enter your Anthropic API key first." };
-    const res = await timedFetch("https://api.anthropic.com/v1/models?limit=1", {
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+    /*
+     * Send a real (one-token) message rather than listing models.
+     *
+     * GET /v1/models answers 200 for any live key, including one on an account
+     * with a zero credit balance. Only a message is billed, so only a message
+     * can tell "the key is valid" from "the key works". This test reported
+     * "Connected. Claude is ready to score and write briefs." throughout a day
+     * in which every scoring and drafting job failed for want of credits. One
+     * token costs a fraction of a cent and buys an honest answer.
+     */
+    const res = await timedFetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5",
+        max_tokens: 1,
+        messages: [{ role: "user", content: "hi" }],
+      }),
     });
-    if (res.status === 401)
+    if (res.ok) return { ok: true, message: "Connected. Claude answered a live request." };
+
+    const detail = redactSecret(apiErrorDetail(await res.text().catch(() => "")), key);
+    if (res.status === 401 || res.status === 403)
       return { ok: false, message: "Anthropic rejected this key. Copy it again from console.anthropic.com." };
-    if (!res.ok) return { ok: false, message: `Anthropic returned an error (HTTP ${res.status}).` };
-    return { ok: true, message: "Connected. Claude is ready to score and write briefs." };
+    // An account out of credits is a well-formed request that cannot be paid
+    // for, so Anthropic answers 400, not 402. Name it, because "HTTP 400"
+    // reads like a bug in us and sends the owner to the wrong place.
+    if (/credit balance|insufficient|billing|quota|payment/i.test(detail))
+      return {
+        ok: false,
+        message:
+          "The key works, but the Anthropic account is out of credits, so every request is refused. " +
+          "Add credits at console.anthropic.com under Billing.",
+      };
+    if (res.status === 429)
+      return { ok: false, message: "Anthropic is rate limiting this account right now. Try again shortly." };
+    return {
+      ok: false,
+      message: detail
+        ? `Anthropic returned an error (HTTP ${res.status}): ${detail}`
+        : `Anthropic returned an error (HTTP ${res.status}).`,
+    };
   },
 
   googleMaps: async (v) => {
