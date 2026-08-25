@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * never invents.
  */
 export async function POST(req: Request) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;
 

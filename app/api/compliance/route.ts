@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * countdown/alerts.
  */
 export async function POST(req: Request) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_compliance" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

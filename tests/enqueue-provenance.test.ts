@@ -20,6 +20,7 @@ import { randomUUID } from "crypto";
 const sent: { name: string; payload: Record<string, unknown> }[] = [];
 let sessionUser: { id: string; organizationId: string | null } = {
   id: "u1",
+  orgRole: "owner",
   organizationId: null,
 };
 

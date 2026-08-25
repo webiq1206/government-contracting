@@ -12,6 +12,7 @@ import { accessLevel, trialDaysLeft, isCardlessTrial } from "@/lib/billing/entit
 import { allQuotaStates, TRIAL_METRIC_LABEL } from "@/lib/billing/trial-limits";
 import { TrialPlanPicker } from "@/components/trial-plan-picker";
 import { accountStatus } from "@/lib/domain/account-status";
+import { permissionMessage } from "@/lib/domain/roles";
 import { AccountStatusPanel } from "@/components/account-status-panel";
 import { getAutomationState } from "@/lib/app-settings";
 
@@ -154,7 +155,14 @@ export default async function BillingSettingsPage({
         {/* The six facts first. Everything below is detail on one of them. */}
         <AccountStatusPanel status={accountFacts} />
 
-        {searchParams?.error === "support_session" ? (
+        {searchParams?.error === "not_permitted" ? (
+          <div className="rounded-md border border-review/40 bg-review/10 px-4 py-3 text-sm text-foreground">
+            {/* Reached by following the checkout or portal link with a role
+                that cannot use it. Names who can, so the next step is a
+                conversation rather than a support ticket. */}
+            {permissionMessage(user?.orgRole ?? null, "manage_billing")}
+          </div>
+        ) : searchParams?.error === "support_session" ? (
           <div className="rounded-md border border-risk/40 bg-risk/5 px-4 py-3 text-sm text-risk">
             Billing cannot be changed from a support session. Return to your own
             account first.

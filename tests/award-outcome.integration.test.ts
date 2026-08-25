@@ -47,6 +47,7 @@ d("award outcome (integration)", () => {
     org.id = o!.id;
     CURRENT = {
       id: randomUUID(), email: "op@x.invalid", name: "Op", role: "member",
+      orgRole: "owner",
       organizationId: org.id, subscriptionStatus: "active", planKey: "pro", trialEndsAt: null,
     } as SessionUser;
     const op = await queryOne<{ id: string }>(

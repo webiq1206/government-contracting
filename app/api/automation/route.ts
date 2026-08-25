@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireUser, requireCapability } from "@/lib/api-auth";
 import { getAutomationState, setAutomationPaused } from "@/lib/app-settings";
 import { logAgent } from "@/lib/logger";
 
@@ -15,7 +15,7 @@ export async function GET() {
 
 /** Toggle the automation pause switch. Body: { paused: boolean }. */
 export async function POST(req: Request) {
-  const auth = await requireUser();
+  const auth = await requireCapability("pause_automation");
   if (auth instanceof NextResponse) return auth;
 
   const body = (await req.json().catch(() => ({}))) as { paused?: unknown };

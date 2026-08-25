@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** Create an operator-defined KPI (metric from the fixed catalog + params). */
 export async function POST(req: Request) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_profile" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

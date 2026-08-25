@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Create a new content-library snippet. */
 export async function POST(req: Request) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

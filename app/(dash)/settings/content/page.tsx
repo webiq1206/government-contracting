@@ -1,4 +1,6 @@
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
+import { ReadOnlyBanner } from "@/components/permission-gate";
+import { currentUser } from "@/lib/auth";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ContentLibraryManager } from "@/components/content-library-manager";
 import { EmailTemplateEditor, type EmailTemplate } from "@/components/email-template-editor";
@@ -43,6 +45,10 @@ async function activeOutreachTemplates(): Promise<EmailTemplate[]> {
 }
 
 export default async function ContentLibraryPage() {
+  // Who is reading, so the page can say plainly when it is read-only for
+  // them rather than letting them fill in a form that will be refused.
+  const viewer = await currentUser().catch(() => null);
+
   const [items, templates] = await Promise.all([
     contentLibrary(),
     activeOutreachTemplates(),
@@ -50,7 +56,7 @@ export default async function ContentLibraryPage() {
 
   return (
     <>
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["content"]}
         title="Content Library"
         status={
@@ -58,8 +64,15 @@ export default async function ContentLibraryPage() {
             ? `${items.length} snippet${items.length === 1 ? "" : "s"} · ${templates.length} email template${templates.length === 1 ? "" : "s"}`
             : `${templates.length} email template${templates.length === 1 ? "" : "s"}`
         }
-        subtitle="Two places to store language Brost Co reuses: emails it sends to subcontractors, and short proposal paragraphs it drafts into bids."
+        explanation="The language this platform reuses: the emails it sends to subcontractors, and the short paragraphs it drafts into bids."
+        breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
+
+      {/* Readable at every role; the controls below are gated to the
+          roles that can actually change them. */}
+      <div className="px-5 pt-4">
+        <ReadOnlyBanner role={viewer?.orgRole} capability="manage_content" what="the content library" />
+      </div>
       <EditorialTabs
         ariaLabel="Content settings"
         defaultTab="email-templates"

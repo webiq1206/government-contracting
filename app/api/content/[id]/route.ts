@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * full title/category/body validation.
  */
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 
@@ -61,7 +61,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 /** Delete a snippet. */
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

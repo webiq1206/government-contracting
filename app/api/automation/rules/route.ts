@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireUser, requireCapability } from "@/lib/api-auth";
 import { queryOne } from "@/lib/db";
 import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
 import { getAutomationRules, setAutomationRules } from "@/lib/app-settings";
@@ -110,7 +110,7 @@ export async function GET() {
  * `preview_only: true` returns the would-be effect without saving.
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
+  const auth = await requireCapability("manage_rules");
   if (auth instanceof NextResponse) return auth;
   const body = (await req.json().catch(() => ({}))) as Partial<AutomationRules> & {
     preview_only?: boolean;

@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  * and "we filed their paper" survives into the audit trail.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_subs" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth } = ctx;
 

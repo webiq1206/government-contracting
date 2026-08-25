@@ -1,7 +1,9 @@
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { query } from "@/lib/db";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
-import { PageHeader } from "@/components/badges";
+import { PageFrame } from "@/components/page-frame";
+import { ReadOnlyBanner } from "@/components/permission-gate";
+import { currentUser } from "@/lib/auth";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
@@ -25,6 +27,10 @@ interface ProposedWeightRow {
 }
 
 export default async function ProfilePage() {
+  // Who is reading, so the page can say plainly when it is read-only for
+  // them rather than letting them fill in a form that will be refused.
+  const viewer = await currentUser().catch(() => null);
+
   const profile = await getActiveProfile({ fresh: true });
   const json: CompanyProfileJson | null = profile?.profile_json ?? null;
 
@@ -100,7 +106,7 @@ export default async function ProfilePage() {
 
   return (
     <>
-      <PageHeader
+      <PageFrame
         help={PAGE_HELP["profile"]}
         title="Company Profile"
         status={
@@ -108,8 +114,15 @@ export default async function ProfilePage() {
             ? `Version ${profile.version} · updated ${shortDate(profile.updated_at)}`
             : "No active profile"
         }
-        subtitle="Legal identity, trades, certifications, and scoring thresholds. Scoring and eligibility checks use this as the source of truth."
+        explanation="Who the company is, what it can bid on, and where. Scoring, eligibility and every generated document read this as the source of truth."
+        breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
+
+      {/* Readable at every role; the controls below are gated to the
+          roles that can actually change them. */}
+      <div className="px-5 pt-4">
+        <ReadOnlyBanner role={viewer?.orgRole} capability="manage_profile" what="the company profile" />
+      </div>
 
       <div
         className="flex min-h-0 min-w-0 flex-1 flex-col"

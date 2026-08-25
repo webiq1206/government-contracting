@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/api-auth";
+import { requireUser, requireCapability } from "@/lib/api-auth";
 import { impersonationRefusal } from "@/lib/impersonation";
 import { resolveTenantOrgId } from "@/lib/tenant";
 import { getStripe } from "@/lib/billing/stripe";
@@ -31,7 +31,7 @@ export const dynamic = "force-dynamic";
  * refunding, so nobody can cycle plans to extract cash.
  */
 export async function POST(req: Request) {
-  const auth = await requireUser();
+  const auth = await requireCapability("manage_billing");
   if (auth instanceof NextResponse) return auth;
   // Moving up proration is 'always_invoice', so this route charges a card
   // immediately. Nobody signed in as a customer for support gets to do that.

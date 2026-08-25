@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** Remove an operator-defined KPI. */
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_profile" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

@@ -82,6 +82,9 @@ export async function signupAccount(input: {
       email: user.email,
       name: user.name,
       role: user.role,
+      // addMember creates the signing-up user as the owner of the new
+      // organization, so this is not a guess.
+      orgRole: "owner",
       organizationId: org.id,
       subscriptionStatus: org.subscription_status,
       planKey: org.plan_key,

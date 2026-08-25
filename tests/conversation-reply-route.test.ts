@@ -30,7 +30,13 @@ async function load(opts: RouteOpts = {}) {
   );
 
   vi.doMock("@/lib/api-auth", () => ({
-    requireSubscriber: vi.fn(async () => ({ id: "u1", organizationId: "org-1" })),
+    // The route guards with requireCapability("outreach") now. These tests are
+    // about what the handler does once past the guard, so the stand-in is a
+    // permitted user; tests/roles.test.ts and the route-coverage test cover
+    // the refusal itself.
+    requireSubscriber: vi.fn(async () => ({ id: "u1", orgRole: "owner", organizationId: "org-1" })),
+    requireCapability: vi.fn(async () => ({ id: "u1", orgRole: "owner", organizationId: "org-1" })),
+    requireUser: vi.fn(async () => ({ id: "u1", orgRole: "owner", organizationId: "org-1" })),
   }));
   vi.doMock("@/lib/tenant", () => ({ resolveTenantOrgId: vi.fn(async () => "org-1") }));
   vi.doMock("@/lib/db", () => ({ query, queryOne }));

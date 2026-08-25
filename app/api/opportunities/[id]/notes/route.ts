@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 /** Save the operator's free-form notes on an opportunity. */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;
 

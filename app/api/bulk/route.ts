@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSubscriber } from "@/lib/api-auth";
+import { requireSubscriber, requireCapability } from "@/lib/api-auth";
 import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
@@ -40,7 +40,7 @@ function parseIds(raw: unknown): string[] | null {
  * Body shapes: skip_calls | snooze | pursue | dismiss (see BulkBody).
  */
 export async function POST(req: Request) {
-  const auth = await requireSubscriber();
+  const auth = await requireCapability("decide");
   if (auth instanceof NextResponse) return auth;
 
   const body = (await req.json().catch(() => ({}))) as Partial<BulkBody> & {

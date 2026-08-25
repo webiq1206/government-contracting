@@ -21,7 +21,7 @@ interface QuoteInput {
 
 /** Operator enters written sub quotes; platform prices the bid + flags out-of-range, then triggers Bid Builder. */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "price" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

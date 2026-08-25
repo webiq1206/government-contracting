@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireSubscriber } from "@/lib/api-auth";
+import { requireSubscriber, requireCapability } from "@/lib/api-auth";
 import { resolveTenantOrgId } from "@/lib/tenant";
 import { generateReplyDraft, saveDraftEdit } from "@/lib/domain/reply-draft";
 
@@ -22,7 +22,7 @@ const DRAFT_RULE = { limit: 30, windowMs: 10 * 60 * 1000 };
  * there is exactly one path that can put mail in front of a subcontractor.
  */
 export async function POST(req: Request) {
-  const auth = await requireSubscriber();
+  const auth = await requireCapability("outreach");
   if (auth instanceof NextResponse) return auth;
   const orgId = await resolveTenantOrgId();
 
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
  * does not make them pay for a fresh draft to get back to where they were.
  */
 export async function PUT(req: Request) {
-  const auth = await requireSubscriber();
+  const auth = await requireCapability("outreach");
   if (auth instanceof NextResponse) return auth;
   const orgId = await resolveTenantOrgId();
 

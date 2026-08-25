@@ -10,7 +10,7 @@ const ALLOWED = new Set(["active", "completed"]);
 
 /** Move a contract between active and completed (past). */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "manage_contracts" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 

@@ -17,7 +17,20 @@ interface Preview {
  * Settings → Automation rules. Tabbed by concern; live preview shows impact
  * before anything is saved.
  */
-export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
+export function AutomationRulesForm({
+  initial,
+  /**
+   * Rendered for a role that may read these rules but not change them. A
+   * native <fieldset disabled> rather than a per-control flag: it disables
+   * everything inside it including controls added later, and assistive
+   * technology announces the whole group as unavailable instead of each field
+   * separately.
+   */
+  readOnly = false,
+}: {
+  initial: AutomationRules;
+  readOnly?: boolean;
+}) {
   const router = useRouter();
   const [form, setForm] = useState<AutomationRules>(initial);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -123,6 +136,7 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
   );
 
   return (
+    <fieldset disabled={readOnly} className="contents">
     <EditorialTabs
       ariaLabel="Automation rule sections"
       defaultTab="deadlines"
@@ -324,6 +338,7 @@ export function AutomationRulesForm({ initial }: { initial: AutomationRules }) {
         },
       ]}
     />
+    </fieldset>
   );
 }
 

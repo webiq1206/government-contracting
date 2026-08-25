@@ -15,6 +15,11 @@ let auth: Record<string, unknown> = {};
 
 vi.mock("../lib/api-auth", () => ({
   requireUser: vi.fn(async () => auth),
+  // change-plan guards with requireCapability("manage_billing") now. This
+  // suite is about the support-session refusal happening BEFORE Stripe or the
+  // tenant is touched, so the permission layer resolves to the same fixture.
+  requireCapability: vi.fn(async () => auth),
+  requireSubscriber: vi.fn(async () => auth),
 }));
 
 vi.mock("../lib/tenant", () => ({
@@ -65,6 +70,7 @@ function customer(extra: Record<string, unknown> = {}) {
     id: "user-1",
     email: "customer@example.com",
     role: "operator",
+    orgRole: "owner",
     organizationId: "org-1",
     subscriptionStatus: "active",
     trialEndsAt: null,

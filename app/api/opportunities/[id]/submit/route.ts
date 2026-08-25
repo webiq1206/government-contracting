@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /** Operator submits the reviewed bid package. Guards the submit-lead-hours rule + prime_only block. */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
+  const ctx = await requireOrgContext({ capability: "submit" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
   const { force } = await req.json().catch(() => ({}));
