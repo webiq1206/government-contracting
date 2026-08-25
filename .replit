@@ -48,5 +48,4 @@ timeoutMs = 120000
 PLATFORM_ADMIN_EMAILS = "brostcoholdings@gmail.com,info@brostco.com,hello@brostco.com"
 
 [userenv.development]
-RUN_WORKER = "false"
 USE_REPLIT_DEV_DB = "true"
