@@ -398,6 +398,35 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
         and c.channel='email' and c.direction='outbound'
         and c.follow_up_at is not null and c.follow_up_at <= now()
         and c.replied_at is null
+        /*
+         * Has this firm answered us about this job AT ALL?
+         *
+         * replied_at above only says "nobody replied to THIS message". A
+         * subcontractor who answered the follow-up rather than the original,
+         * or who wrote in on a second thread, leaves the first row's
+         * replied_at null forever -- so we chased people who had already
+         * quoted. Any inbound message on the pair settles it, whichever of
+         * our messages it was addressed to.
+         */
+        and not exists (
+          select 1 from communications r
+           where r.org_id = c.org_id
+             and r.direction = 'inbound'
+             and r.subcontractor_id = c.subcontractor_id
+             and r.opportunity_id is not distinct from c.opportunity_id
+        )
+        /*
+         * And has the pairing already reached an outcome? A sub marked
+         * responsive, quoted, declined or closed out has been dealt with, and
+         * nudging them after that reads as though nobody was listening.
+         */
+        and not exists (
+          select 1 from opportunity_subs os2
+           where os2.opportunity_id = c.opportunity_id
+             and os2.subcontractor_id = c.subcontractor_id
+             and os2.outreach_state in
+                 ('responsive','quoted','responded','declined','not_a_fit','unavailable')
+        )
       limit 50`,
     [orgId]
   );
@@ -412,6 +441,32 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
     // it is RESTORED below when the send fails with a retryable error.
     await query(`update communications set follow_up_at = null where id = $1`, [row.id]);
     if (!row.email || !row.email_verified) continue;
+
+    /*
+     * Ask again, immediately before sending.
+     *
+     * The selection above ran once for up to fifty rows, and a quote can
+     * arrive during the seconds it takes to work through them. Re-reading
+     * here closes that window: the alternative is a "just following up, have
+     * you had a chance to price this?" landing minutes after the price did,
+     * which is the single most conspicuous way for software to look like it
+     * is not paying attention. Two reads of the same fact are cheap; that
+     * email cannot be recalled.
+     */
+    const answered = await queryOne<{ n: number }>(
+      `select (
+         (select count(*) from communications r
+           where r.org_id = $1 and r.direction = 'inbound'
+             and r.subcontractor_id = $2
+             and r.opportunity_id is not distinct from $3)
+       + (select count(*) from opportunity_subs os2
+           where os2.opportunity_id = $3 and os2.subcontractor_id = $2
+             and os2.outreach_state in
+                 ('responsive','quoted','responded','declined','not_a_fit','unavailable'))
+       )::int as n`,
+      [orgId, row.subcontractor_id, row.opportunity_id]
+    ).catch(() => null);
+    if ((answered?.n ?? 0) > 0) continue;
 
     // Build the sub greeting the same way the initial outreach agent does.
     const ownerFirst = (() => {
@@ -477,6 +532,38 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       : null;
     if (row.gmail_thread_id && threadSubject) subject = threadSubject;
 
+    /*
+     * Recover a missing Message-ID rather than send without one.
+     *
+     * rfc822_message_id is read back from Gmail after the original send, and
+     * that read can fail: a grant issued before gmail.readonly was requested
+     * cannot do it at all, and older rows predate the read entirely. The
+     * failure is invisible from our side -- threadId still groups the
+     * follow-up correctly in OUR mailbox, so the conversation view looks
+     * perfect -- while the subcontractor receives an unconnected email every
+     * single time. That is the "follow-ups start new threads" report, and no
+     * amount of care at send time fixes the rows already written.
+     *
+     * So when the column is empty and we know the thread, ask Gmail what our
+     * own last message in it was, and write the answer back so the next
+     * follow-up needs no repair at all.
+     */
+    let inReplyTo = row.rfc822_message_id ?? null;
+    let references: string[] = [];
+    if (row.gmail_thread_id) {
+      const recovered = await gmail
+        .threadMessageId(row.gmail_thread_id, orgId)
+        .catch(() => ({ rfc822MessageId: null, references: [] as string[] }));
+      references = recovered.references;
+      if (!inReplyTo && recovered.rfc822MessageId) {
+        inReplyTo = recovered.rfc822MessageId;
+        await query(`update communications set rfc822_message_id = $2 where id = $1`, [
+          row.id,
+          inReplyTo,
+        ]).catch(() => {});
+      }
+    }
+
     const res = await sendOutreachEmail({
       to: row.email,
       subject,
@@ -484,7 +571,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       trackingId: row.tracking_id ?? undefined,
       orgId,
       threadId: row.gmail_thread_id ?? undefined,
-      inReplyTo: row.rfc822_message_id ?? undefined,
+      inReplyTo: inReplyTo ?? undefined,
+      references,
     });
     if (!res.disabled && !res.error) {
       await query(
@@ -504,7 +592,11 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
           // sub was approached for.
           JSON.stringify(row.trade ? { kind: "followup", trade: row.trade } : { kind: "followup" }),
           res.threadId ?? row.gmail_thread_id ?? null,
-          res.rfc822MessageId ?? null,
+          // Fall back to what we just threaded under. If the read-back failed
+          // again, the next follow-up would otherwise find another null and
+          // repeat the recovery; keeping the parent here means the chain is
+          // never empty, and threadMessageId() repairs it properly next time.
+          res.rfc822MessageId ?? inReplyTo ?? null,
         ]
       );
       // Reflect the follow-up on the pairing + roster so Today / opp / sub
@@ -1458,12 +1550,56 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         continue;
       }
 
+      /*
+       * In-Reply-To first, then the rest of References, newest cited ancestor
+       * first. This is what makes matching survive a mailbox that groups
+       * threads differently from ours, or a subcontractor replying from a
+       * different address than the one we wrote to.
+       */
+      const referenceIds = [
+        ...(r.inReplyTo ? [r.inReplyTo] : []),
+        ...[...r.references].reverse(),
+      ].filter(Boolean);
+
       const { comm, strongMatch } = await matchInboundReply({
         orgId,
         threadId: r.threadId,
+        referenceIds,
         fromEmail,
       });
-      if (!comm) continue;
+      if (!comm) {
+        /*
+         * Unmatched, and no longer silent.
+         *
+         * `continue` on its own is how a real reply disappears without
+         * leaving a trace: nothing is written, nothing is counted, and the
+         * only evidence it ever arrived is in the mailbox nobody is reading
+         * on purpose. Most unmatched mail here is genuinely ours to ignore --
+         * newsletters, a colleague, an automated notice -- so this is not an
+         * error. But when the sender IS a subcontractor on this roster, we
+         * emailed a firm and they wrote back and we failed to place it, and
+         * that is worth an operator's attention every time.
+         */
+        const known = await queryOne<{ id: string; company_name: string }>(
+          `select id, company_name from subcontractors
+            where org_id = $1 and lower(email) = $2 limit 1`,
+          [orgId, fromEmail]
+        ).catch(() => null);
+        if (known) {
+          await logAgent({
+            agent: "maintenance",
+            action: "reply-unmatched",
+            level: "warn",
+            status: "skipped",
+            subcontractorId: known.id,
+            message:
+              `${known.company_name} <${fromEmail}> replied, but the message could not be matched to any outreach we sent ` +
+              `(subject "${(r.subject || "(no subject)").slice(0, 120)}"). It has NOT been recorded against an opportunity. ` +
+              "Open the thread in the connected inbox and handle it by hand.",
+          }).catch(() => {});
+        }
+        continue;
+      }
       matched++;
       if (comm.opportunity_id) {
         touchedOpportunities.add(comm.opportunity_id);
@@ -1517,6 +1653,13 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         // check above, so it needs the same evidence that check had.
         subject: r.subject,
         contentType: r.contentType,
+        // The envelope, so the stored reply is the message and not a précis.
+        fromAddress: r.from,
+        toAddresses: r.to,
+        ccAddresses: r.cc,
+        sentAt: r.date,
+        rfc822MessageId: r.rfc822MessageId,
+        attachmentNames: (r.attachments ?? []).map((a) => a.filename),
         unreadableAttachments: docs.unreadable,
       });
       // Capture's own bounce guard caught what the check above missed. It
@@ -1800,13 +1943,46 @@ export const unresponsiveSweep: AgentDefinition = {
                        and q.quote_amount is not null
                        and q.quote_amount > 0
                   )
+              /*
+               * Seventy-two hours since we LAST wrote, not since we first did.
+               *
+               * Asking whether SOME outbound is older than 72h is satisfied by
+               * the original outreach, which is always the oldest message in the
+               * conversation. The follow-up goes out at 48 hours, so this
+               * declared "No response" 24 hours after the follow-up while
+               * claiming to wait 72 -- and a subcontractor who answers on the
+               * third day, which is entirely normal, found themselves already
+               * written off. Inverting it measures the wait from the most
+               * recent thing we sent, which is what the sentence in the
+               * agent's own description says.
+               */
+              and not exists (
+                    select 1 from communications c
+                     where c.opportunity_id = os.opportunity_id
+                       and c.subcontractor_id = os.subcontractor_id
+                       and c.channel = 'email'
+                       and c.direction = 'outbound'
+                       and c.created_at > now() - interval '72 hours'
+                  )
               and exists (
                     select 1 from communications c
                      where c.opportunity_id = os.opportunity_id
                        and c.subcontractor_id = os.subcontractor_id
                        and c.channel = 'email'
                        and c.direction = 'outbound'
-                       and c.created_at <= now() - interval '72 hours'
+                  )
+              /*
+               * And nothing inbound on the pairing, whichever of our messages
+               * it answered. outreach_state and responded_at are both things
+               * WE maintain; an actual email from them is the fact. If one
+               * exists, "no response" is simply false, and saying it puts a
+               * live bidder in the dismissed column.
+               */
+              and not exists (
+                    select 1 from communications r
+                     where r.opportunity_id = os.opportunity_id
+                       and r.subcontractor_id = os.subcontractor_id
+                       and r.direction = 'inbound'
                   )
             returning os.id, os.opportunity_id`,
           [orgId]
