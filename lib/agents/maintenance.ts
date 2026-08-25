@@ -296,6 +296,51 @@ async function recordBounce(input: {
     }).catch((err) =>
       console.error(`[maintenance] bounce suppression failed: ${(err as Error).message}`)
     );
+
+    /*
+     * A dead address is not a verified one.
+     *
+     * Suppression stopped us mailing it again, which protects the sending
+     * domain, and there it stopped. The subcontractor kept its "Email
+     * verified" badge on the roster and on its own record, because nothing in
+     * bounce handling has ever touched the subcontractors table -- so the one
+     * place an operator looks to decide "can I reach this firm" went on
+     * saying yes about an address the receiving server had refused outright.
+     */
+    await query(
+      `update subcontractors
+          set email_verified = false
+        where org_id = $1 and lower(email) = $2 and email_verified`,
+      [orgId, address.toLowerCase()]
+    ).catch((err) =>
+      console.error(`[maintenance] bounce unverify failed: ${(err as Error).message}`)
+    );
+
+    /*
+     * And the outreach it belonged to is not "contacted".
+     *
+     * outreach_state stayed at 'sent', which sits inside the CONTACTED set in
+     * lib/domain/trade-coverage.ts, so a trade whose only subcontractor hard
+     * bounced still read as covered. The bid then advanced on coverage that
+     * did not exist. 'send_failed' is the state outreach itself already uses
+     * when a send fails outright, and it is the truth here too.
+     */
+    await query(
+      `update opportunity_subs os
+          set outreach_state = 'send_failed'
+         from subcontractors s
+        where s.id = os.subcontractor_id
+          and s.org_id = $1
+          and lower(s.email) = $2
+          -- Only rows that claim contact was MADE. 'pending' has not been sent
+          -- yet and suppression already stops it, and a row that reached
+          -- 'responsive' or 'quoted' has a human-written reply behind it that
+          -- a later bounce on the same address must not erase.
+          and os.outreach_state in ('sent','followed_up')`,
+      [orgId, address.toLowerCase()]
+    ).catch((err) =>
+      console.error(`[maintenance] bounce coverage update failed: ${(err as Error).message}`)
+    );
   }
 
   await logAgent({
@@ -1468,8 +1513,23 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         replyText,
         threadId: r.threadId,
         messageId: r.messageId,
+        // Capture re-checks for a bounce itself rather than trusting the
+        // check above, so it needs the same evidence that check had.
+        subject: r.subject,
+        contentType: r.contentType,
         unreadableAttachments: docs.unreadable,
       });
+      // Capture's own bounce guard caught what the check above missed. It
+      // wrote nothing; record the delivery failure here instead, exactly as
+      // the earlier branch would have.
+      if (result.bounce) {
+        await recordBounce({
+          orgId,
+          threadId: r.threadId,
+          report: parseBounce(r.body || r.snippet),
+        });
+        continue;
+      }
       // Already captured (e.g. by the Resend inbound webhook or a previous
       // poll of the sliding window): skip notifications and re-enqueues.
       if (result.duplicate) continue;

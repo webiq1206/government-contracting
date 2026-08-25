@@ -52,6 +52,50 @@ describe("looksLikeBounce", () => {
     expect(looksLikeBounce({ body: GMAIL_HARD })).toBe(true);
   });
 
+  /**
+   * The subjects that got through.
+   *
+   * Every line here is a real provider's wording, and every one of them was
+   * recorded as an inbound REPLY: it marked the outreach responsive, satisfied
+   * trade coverage nobody had, and left the operator waiting for a quote that
+   * could never arrive. The old list matched "undeliverable" but not Postfix's
+   * own "Undelivered Mail Returned to Sender", and "delivery has failed" but
+   * not "Delivery Failure".
+   */
+  it.each([
+    "Message blocked",
+    "Undelivered Mail Returned to Sender",
+    "Delivery Failure",
+    "Delivery incomplete",
+    "Your message was not delivered",
+    "Message rejected by recipient server",
+    "Warning: could not be delivered",
+    "Unable to deliver your message",
+    "Quarantine Notification",
+    "Recipient address rejected",
+  ])("recognises %j as a delivery report, not a reply", (subject) => {
+    expect(looksLikeBounce({ subject })).toBe(true);
+  });
+
+  it("recognises the automated senders that carry no @ and the gateways that reject on a recipient's behalf", () => {
+    // A bare MAILER-DAEMON with no domain: requiring the sigil let it through.
+    expect(looksLikeBounce({ from: "MAILER-DAEMON" })).toBe(true);
+    expect(looksLikeBounce({ from: "Mail Delivery System <MAILER DAEMON>" })).toBe(true);
+    // Security appliances sign the notice themselves, so no daemon address appears.
+    expect(looksLikeBounce({ from: "noreply@eu-central.mimecast.com" })).toBe(true);
+    expect(looksLikeBounce({ from: "quarantine@corp.example" })).toBe(true);
+  });
+
+  it("reads an SMTP rejection quoted in a gateway notice with no DSN part", () => {
+    expect(
+      looksLikeBounce({
+        from: "security@gateway.example",
+        subject: "Notification",
+        body: "The message to joe@deadco.com was refused: 550 5.7.1 Message blocked by policy.",
+      })
+    ).toBe(true);
+  });
+
   it("does not mistake a real subcontractor reply for a bounce", () => {
     // The consequence of a false positive is a genuine quote being discarded.
     expect(
@@ -67,6 +111,16 @@ describe("looksLikeBounce", () => {
         from: "mike@roofco.com",
         subject: "Re: Roof replacement",
         body: "Sorry for the delay, our last delivery failed to show up on site.",
+      })
+    ).toBe(false);
+    // A number that looks like an SMTP code is not one without the language
+    // of a rejection around it. Widening the detector must not start eating
+    // quotes.
+    expect(
+      looksLikeBounce({
+        from: "dana@pavingco.com",
+        subject: "Re: Asphalt overlay",
+        body: "Our unit price is 550 per ton and we can hold it for 5.2.1 weeks.",
       })
     ).toBe(false);
   });

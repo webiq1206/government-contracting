@@ -32,6 +32,7 @@ import {
 } from "./reply-matching";
 import { closeOutDeclinedSub } from "./domain/decline-closeout";
 import { decideReply, type ReplyDecision } from "./domain/reply-outcome";
+import { looksLikeBounce } from "./domain/email-delivery";
 import { enqueue } from "./queue";
 
 export interface MatchedComm {
@@ -59,6 +60,15 @@ export interface CaptureReplyInput {
   replyText: string;
   threadId?: string | null;
   messageId?: string | null;
+  /**
+   * The raw subject and content type, when the caller has them.
+   *
+   * Passed so this function can decide for itself whether it is looking at a
+   * delivery report rather than trusting that someone upstream already
+   * checked. See the guard in captureReply.
+   */
+  subject?: string | null;
+  contentType?: string | null;
   /**
    * Attachments that looked like a quote but could not be read. Their contents
    * are unknown, not absent, so a reply carrying one is never acted on
@@ -90,6 +100,11 @@ export interface CaptureReplyResult {
   /** True when decline / can't-fulfill was applied (callers must skip call-prep). */
   declined: boolean;
   thankYouSent: boolean;
+  /**
+   * True when this message was a delivery-status report, not a reply. Nothing
+   * was written. The caller should record the bounce instead.
+   */
+  bounce?: boolean;
 }
 
 function emptyExtracted(): ExtractedReply {
@@ -197,6 +212,52 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   const { orgId, comm, strongMatch, fromEmail, replyText } = input;
   const extract = input.extract ?? extractReplyFromReply;
   const closeOut = input.closeOut ?? closeOutDeclinedSub;
+
+  /**
+   * A delivery report is not a reply, and this function must not be the place
+   * that finds out too late.
+   *
+   * The poller already checks before calling here, and that check was the
+   * ONLY thing standing between a bounce and an inbound row. One heuristic,
+   * one call site, no second opinion: everything it did not recognise landed
+   * on the strong-match branch above -- the highest-trust path, the one
+   * permitted to save a quote and close a subcontractor out -- and was written
+   * with a hardcoded direction of 'inbound'. Nothing downstream re-examined
+   * it, because by then it was simply a reply.
+   *
+   * So the check is repeated where the writes actually happen. Both call
+   * sites can now be wrong only by both being wrong, and a future caller
+   * cannot forget it at all.
+   */
+  if (
+    looksLikeBounce({
+      from: fromEmail,
+      subject: input.subject ?? null,
+      contentType: input.contentType ?? null,
+      body: replyText,
+    })
+  ) {
+    return {
+      subId: comm.subcontractor_id,
+      companyName: comm.company_name,
+      extracted: emptyExtracted(),
+      decision: {
+        outcome: "none",
+        act: false,
+        needsReview: true,
+        reviewReason:
+          "This looked like a delivery failure notice rather than a reply, so nothing was recorded or changed.",
+      },
+      quoteSaved: false,
+      quoteSkippedExisting: false,
+      senderVerified: false,
+      trade: null,
+      duplicate: false,
+      declined: false,
+      thankYouSent: false,
+      bounce: true,
+    };
+  }
 
   // Idempotency: webhook providers retry deliveries and the Gmail poller
   // re-scans a sliding window. If this provider message id was already
