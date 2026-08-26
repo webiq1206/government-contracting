@@ -562,6 +562,26 @@ preferences, display density).
 | The accessibility sweep's route list | 16 routes | 26, and a test that keeps it whole | - | - | It printed "0 findings" while seven operator pages were not in the list at all. Adding them found fourteen touch targets under 44px on the platform accounts table: the density buttons at 24px, every sortable column header at 13px, and the row links at 36px. A zero that covers less than the product is worse than a number nobody trusts, because this one does get trusted |
 | Table sort headers and density buttons | Under 44px on a phone | Thumb-sized on mobile, unchanged above it | Table | Table | Sorting is exactly what somebody does on a small screen to make a wide table usable |
 
+### The signed-out screens, and the sweep that never saw them
+
+The accessibility sweep signed in before it started measuring, so the pages a
+customer meets before they have an account had never been checked at all. It
+now runs a signed-out pass first, in a context that has never held a session
+cookie.
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| The sign-in form's two inputs | No accessible name | Labelled | Form | Form | "Email" and "Password" rendered above them and were tied to nothing, so a screen reader announced two blank text boxes on the page every customer has to pass through. Correct to anyone who could see it, and the sweep signed in THROUGH this form without ever measuring it |
+| The first-run setup form | Four labels, none associated | Labelled | Form | Form | Same defect, on the screen that creates the first account on a deployment |
+| Nine more bare labels | Across the operator UI | Labelled | Forms | Forms | Scoring thresholds, the content library's four fields, the template editor's subject and body, and the integration credential field. Two of them had an aria-label duplicating the visible text, which named the field for a screen reader and left clicking the label doing nothing |
+| A bare label shipping again | Possible | A failing test | - | - | `tests/input-labels.test.ts` catches it in source, including on the three screens the sweep cannot reach without a live token or a fresh install |
+| Contrast measurement | Ancestor walk | What is actually painted | - | - | The walk reported the marketing navigation at 1.05:1, near-invisible, for light text sitting legibly on a dark hero: the header is positioned over that hero rather than inside it, so walking up the DOM missed it and landed on the cream page background. A confident wrong number is worse than no check, because it sends somebody to fix a page that is correct |
+| Contrast on screen-reader-only text | Reported as a failure | Excluded | - | - | The `.sr-only` pattern is a 1px box clipped to nothing, which passes every other visibility test. Asking what colour invisible text is against has no answer |
+| Marketing footer, navigation and hero links | 14 to 28px tall on a phone | 44px on a phone, unchanged above it | Links | Links | These are the first things a customer touches, and several were a coin toss under a thumb |
+| The video's only stop control | 36px | 44px | Button | Button | It sits over a playing video and is the only way to stop it |
+| A `<label>` and an `<h3>` inside the marketing mock | Form control and document heading | Inline elements | Mock | Mock | The mock is a picture of the product. Its caption was a form label attached to no control, and its title was an h3 directly under the page h1, which is a skipped level for anyone navigating by headings |
+| The sweep's own sign-in | Drove the form | Calls the API | - | - | Once the signed-out pass runs first, a click can land before hydration and be swallowed, which the sweep reported as a broken sign-in on a form that works. The form is measured in the signed-out pass, so nothing is lost |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

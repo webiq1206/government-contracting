@@ -756,8 +756,14 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
 
       {/* Subject */}
       <div className={template.slug === "template_2_followup" ? "hidden" : undefined}>
-        <label className="label mb-1.5 block">Subject line</label>
+        {/* Associated as well as visible, so clicking the label focuses the
+            field. The aria-label below named it for a screen reader and did
+            nothing for a mouse. */}
+        <label className="label mb-1.5 block" htmlFor="template-subject">
+          Subject line
+        </label>
         <input
+          id="template-subject"
           ref={subjectRef}
           className="input font-mono text-sm"
           value={subject}
@@ -768,14 +774,15 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDropSubject}
           placeholder="e.g. Pricing request: {{trade}} | {{location_city_state}}"
-          aria-label="Email subject line"
         />
       </div>
 
       {/* Body */}
       <div>
         <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-          <label className="label block">Email body</label>
+          <label className="label block" htmlFor="template-body">
+            Email body
+          </label>
           <div
             className="flex flex-wrap items-center gap-1"
             role="toolbar"
@@ -795,6 +802,7 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
           </div>
         </div>
         <textarea
+          id="template-body"
           ref={bodyRef}
           className="input min-h-[260px] resize-y font-mono text-sm leading-relaxed"
           value={body}
@@ -805,7 +813,6 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDropBody}
           placeholder="Write your email here. Select text, then use Bold, Highlight, or Bullets. Click or drag a fill-in field above to insert it."
-          aria-label="Email body"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           Highlight applies to each line, not a whole block. Fill-in fields look

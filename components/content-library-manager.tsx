@@ -174,8 +174,13 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
           </p>
           <div className="grid gap-3 sm:grid-cols-[1fr_minmax(12rem,16rem)]">
             <div>
-              <label className="label mb-1 block">Title</label>
+              {/* Named by its label rather than by a placeholder, which
+                  disappears the moment somebody types into the field. */}
+              <label className="label mb-1 block" htmlFor="snippet-title">
+                Title
+              </label>
               <input
+                id="snippet-title"
                 className="input"
                 placeholder="e.g. VA facility roofing, 2023"
                 value={form.title}
@@ -183,8 +188,11 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
               />
             </div>
             <div>
-              <label className="label mb-1 block">Snippet type</label>
+              <label className="label mb-1 block" htmlFor="snippet-type">
+                Snippet type
+              </label>
               <select
+                id="snippet-type"
                 className="input"
                 value={form.category}
                 onChange={(e) =>
@@ -205,8 +213,11 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
             </p>
           )}
           <div>
-            <label className="label mb-1 block">Content</label>
+            <label className="label mb-1 block" htmlFor="snippet-body">
+              Content
+            </label>
             <textarea
+              id="snippet-body"
               className="input min-h-[140px] resize-y font-normal"
               placeholder="The reusable paragraph(s). Write it the way you want it to read in a proposal."
               value={form.body}
@@ -214,8 +225,11 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
             />
           </div>
           <div>
-            <label className="label mb-1 block">Tags</label>
+            <label className="label mb-1 block" htmlFor="snippet-tags">
+              Tags
+            </label>
             <input
+              id="snippet-tags"
               className="input"
               placeholder="comma-separated, e.g. hvac, va, 236220"
               value={form.tags}

@@ -33,8 +33,19 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="card space-y-4">
       <div>
-        <label className="label">Email</label>
+        {/*
+          * htmlFor, not just visible text. Both of these labels rendered on
+          * screen and were tied to nothing, so a screen reader announced two
+          * blank text boxes on the page every customer has to pass through.
+          * Invisible to sighted review, which is why the sweep now measures
+          * signed-out pages: it used to sign in THROUGH this form without ever
+          * looking at it.
+          */}
+        <label className="label" htmlFor="login-email">
+          Email
+        </label>
         <input
+          id="login-email"
           type="email"
           className="input mt-1"
           value={email}
@@ -45,15 +56,18 @@ export function LoginForm() {
       </div>
       <div>
         <div className="flex items-center justify-between gap-2">
-          <label className="label">Password</label>
+          <label className="label" htmlFor="login-password">
+            Password
+          </label>
           <Link
             href="/forgot-password"
-            className="min-h-9 inline-flex items-center text-xs font-medium text-accent-strong hover:underline md:min-h-0"
+            className="inline-flex min-h-11 items-center text-xs font-medium text-accent-strong hover:underline md:min-h-0"
           >
             Forgot password?
           </Link>
         </div>
         <input
+          id="login-password"
           type="password"
           className="input mt-1"
           value={password}
@@ -68,7 +82,10 @@ export function LoginForm() {
       </button>
       <p className="text-center text-xs text-muted-foreground">
         New here?{" "}
-        <Link href="/signup" className="font-medium text-accent-strong hover:underline">
+        <Link
+          href="/signup"
+          className="inline-flex min-h-11 items-center font-medium text-accent-strong hover:underline md:min-h-0"
+        >
           Start a subscription
         </Link>
       </p>

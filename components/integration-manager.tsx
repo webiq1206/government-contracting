@@ -283,7 +283,12 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
               ) : (
               <div key={f.env}>
                 <div className="flex items-center justify-between">
-                  <label className="label">{f.label}</label>
+                  {/* Tied to the field. A secret typed into a box a screen
+                      reader announces as blank is the worst place to leave
+                      this undone. */}
+                  <label className="label" htmlFor={`integration-${f.env}`}>
+                    {f.label}
+                  </label>
                   {f.source !== "none" && (
                     <span className="flex items-center gap-2 text-xs text-slate-500">
                       <span className="num">{f.masked}</span>
@@ -303,15 +308,16 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                   )}
                 </div>
                 <input
+                  id={`integration-${f.env}`}
                   className="input mt-1"
                   type={f.secret ? "password" : "text"}
                   autoComplete="off"
-                  // The visible <label> above is a plain element, not tied to
-                  // this input, so a screen reader announced "password field"
-                  // and nothing else. Naming the credential matters more here
-                  // than most places: pasting a SAM key into the Anthropic
-                  // field is a silent, confusing failure.
-                  aria-label={f.label}
+                  // Named by the visible label above rather than by an
+                  // aria-label duplicating it. The aria-label was added when
+                  // that label was tied to nothing and a screen reader
+                  // announced "password field" and no more; now the label
+                  // itself carries the name, and clicking it focuses the
+                  // field, which an aria-label never did.
                   placeholder={
                     f.source === "none"
                       ? (f.placeholder ?? `Paste your ${f.label.toLowerCase()}`)

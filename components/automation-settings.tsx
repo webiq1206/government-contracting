@@ -88,9 +88,12 @@ export function AutomationSettings({
 
       <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
         <div>
-          <label className="label">Auto-pursue at score</label>
+          <label className="label" htmlFor="auto-pursue-score">
+            Auto-pursue at score
+          </label>
           <div className="mt-1 flex items-center gap-3">
             <input
+              id="auto-pursue-score"
               type="number"
               min={1}
               max={100}
@@ -106,9 +109,12 @@ export function AutomationSettings({
         </div>
 
         <div>
-          <label className="label">Review floor</label>
+          <label className="label" htmlFor="review-floor">
+            Review floor
+          </label>
           <div className="mt-1 flex items-center gap-3">
             <input
+              id="review-floor"
               type="number"
               min={1}
               max={score - 1}

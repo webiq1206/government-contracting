@@ -50,7 +50,7 @@ Auth, onboarding, marketing, the vendor portal and the theme QA harness.
 | --- | --- | --- | --- |
 | `/` | root | - | 82 |
 | `/billing/success` | root | - | 53 |
-| `/forgot-password` | root | - | 46 |
+| `/forgot-password` | root | - | 49 |
 | `/invite` | root | - | 103 |
 | `/login` | root | - | 37 |
 | `/privacy` | marketing | - | 75 |

@@ -204,15 +204,15 @@ export function LandingPage({
                 <div className="app-body">
                   <div className="queue-title">
                     <div>
-                      <label>Needs your attention</label>
-                      <h3>3 decisions. 18 minutes.</h3>
+                      <em>Needs your attention</em>
+                      <strong>3 decisions. 18 minutes.</strong>
                     </div>
                     <span>LIVE</span>
                   </div>
                   <div className="task priority">
                     <i>01</i>
                     <div>
-                      <label>Decision needed</label>
+                      <em>Decision needed</em>
                       <b>HVAC maintenance, Boise VA</b>
                       <span>Score 84 · Due in 12 days · $1.2M estimate</span>
                     </div>
@@ -221,7 +221,7 @@ export function LandingPage({
                   <div className="task">
                     <i>02</i>
                     <div>
-                      <label>Subcontractor follow-up</label>
+                      <em>Subcontractor follow-up</em>
                       <b>Electrical quote still outstanding</b>
                       <span>Last contact 3 days ago · Follow-up ready</span>
                     </div>
@@ -230,7 +230,7 @@ export function LandingPage({
                   <div className="task">
                     <i>03</i>
                     <div>
-                      <label>Final review</label>
+                      <em>Final review</em>
                       <b>Grounds maintenance IDIQ</b>
                       <span>Package complete · Submission due tomorrow</span>
                     </div>

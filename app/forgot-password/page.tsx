@@ -35,7 +35,10 @@ export default function ForgotPasswordPage() {
           <ForgotPasswordForm />
         </div>
         <p className="mt-4 text-center text-xs text-muted-foreground">
-          <Link href="/login" className="text-accent hover:underline">
+          <Link
+            href="/login"
+            className="inline-flex min-h-11 items-center text-accent hover:underline md:min-h-0"
+          >
             Back to login
           </Link>
         </p>

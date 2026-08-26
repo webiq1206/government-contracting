@@ -24,7 +24,11 @@ export function MarketingFooter({
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div className="sm:col-span-2 lg:col-span-1">
-            <Link href="/" className="inline-flex" aria-label="Brost Co home">
+            <Link
+              href="/"
+              className="inline-flex min-h-11 items-center sm:min-h-0"
+              aria-label="Brost Co home"
+            >
               <Wordmark variant={dark ? "light" : "dark"} className="h-7" />
             </Link>
             <p
@@ -81,8 +85,13 @@ function FooterCol({
       <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${dark ? "text-gold-text" : "text-accent"}`}>
         {title}
       </p>
+      {/*
+        * Thumb-sized on a phone, where these were 20px tall in a gapped
+        * column, and unchanged above it, where a pointer is precise. The gap
+        * collapses on mobile so the column does not grow by the difference.
+        */}
       <nav
-        className={`mt-3 flex flex-col gap-2 text-sm ${
+        className={`mt-3 flex flex-col gap-0 text-sm sm:gap-2 [&_a]:flex [&_a]:min-h-11 [&_a]:items-center sm:[&_a]:min-h-0 ${
           dark ? "text-white/65 [&_a:hover]:text-white" : "text-muted-foreground [&_a:hover]:text-foreground"
         }`}
         aria-label={title}
