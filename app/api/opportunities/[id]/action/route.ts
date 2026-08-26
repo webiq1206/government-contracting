@@ -3,7 +3,7 @@ import { requireOrgContext } from "@/lib/org-guard";
 import {
   areCallsEnabled,
   AUTOMATION_PAUSED_ERROR,
-  isAutomationPaused,
+  isAutomationStopped,
 } from "@/lib/app-settings";
 import { CALL_STAGE, STAGE_AFTER_CALLS, withoutCallStage } from "@/lib/domain/call-step";
 import { query, queryOne } from "@/lib/db";
@@ -60,7 +60,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   if (action === "pursue" || action === "rerun" || action === "send_back" || action === "move") {
-    if (await isAutomationPaused()) {
+    if (await isAutomationStopped()) {
       return NextResponse.json({ error: AUTOMATION_PAUSED_ERROR }, { status: 409 });
     }
   }

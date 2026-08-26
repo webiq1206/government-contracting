@@ -547,7 +547,14 @@ export default async function TodayPage({
     bidWork: data.totals.bidWork,
     quoteReviews: data.totals.quoteReviews,
     subFollowUps: data.totals.subFollowUps,
-    compliance: data.complianceAlerts.length,
+    // totals.compliance, not complianceAlerts.length: that list is `limit 8`
+    // because it also renders a preview strip, so its length reports the cap.
+    compliance: data.totals.compliance,
+    // awardCompliance is genuinely uncapped (loadAwardCompliance has no limit)
+    // and needsAttentionOnWonWork is a JS predicate over a computed
+    // assessment, so its length IS the count. Writing the predicate a second
+    // time in SQL to get a "proper" total would create the second source of
+    // truth this ledger exists to remove.
     awardCompliance: data.awardCompliance.length,
     flagged: data.totals.flagged,
     approvals: approvalCount,

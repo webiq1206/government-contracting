@@ -1793,7 +1793,30 @@ export interface AgentStatusRow {
   last_summary: unknown;
 }
 
-export async function agentStatuses(): Promise<AgentStatusRow[]> {
+/**
+ * This organization's agent runs. Never anybody else's.
+ *
+ * Both this and jobRunsSummary below feed `/agents`, the customer-facing
+ * Automation Health page, and both read job_runs, which had no org_id at all.
+ * So every customer was shown platform-wide run and error counts, plus the
+ * error text and summary JSON of whichever tenant happened to run an agent
+ * most recently. A summary reading "Compliance monitor: 3 orgs checked" is
+ * another customer's business on this customer's screen, and last_error can
+ * name a record outright.
+ *
+ * Legacy rows written before migration 070 have a null org_id and are
+ * excluded rather than attributed. Nothing in such a row says who it belonged
+ * to, and a guess here would put a stranger's failure rate in somebody's
+ * sidebar with a straight face. They remain visible to platform admin, where
+ * a platform-wide question is the question being asked.
+ */
+export async function agentStatuses(orgId?: string): Promise<AgentStatusRow[]> {
+  // currentOrg, not tryResolveTenantOrgId: this file resolves the tenant one
+  // way, and that way falls back to the founding organization so the original
+  // single-tenant install, whose rows predate organization_members, still sees
+  // its own page. LEGACY_ORG_ID is a real organization id, so that fallback is
+  // still a scope and not a fall-open.
+  const org = orgId ?? (await currentOrg());
   return query<AgentStatusRow>(
     `select r.agent,
             count(*) filter (where r.started_at > now() - interval '24 hours')::int as runs_24h,
@@ -1806,23 +1829,53 @@ export async function agentStatuses(): Promise<AgentStatusRow[]> {
             last.summary as last_summary
        from job_runs r
        -- The most recent run for this agent, which is the one the operator is
-       -- asking about; the counts beside it are the context for it.
+       -- asking about; the counts beside it are the context for it. Scoped
+       -- inside the lateral as well as outside: without it the counts would be
+       -- this organization's and the error text beside them somebody else's,
+       -- which is the same leak wearing a filter.
        join lateral (
          select status, error, summary, finished_at
            from job_runs x
-          where x.agent = r.agent
+          where x.agent = r.agent and x.org_id = $1
           order by x.started_at desc
           limit 1
        ) last on true
-      group by r.agent, last.status, last.error, last.summary, last.finished_at`
+      where r.org_id = $1
+      group by r.agent, last.status, last.error, last.summary, last.finished_at`,
+    [org]
   ).catch(() => []);
 }
 
-export async function jobRunsSummary() {
+/** This organization's run tallies. See agentStatuses for why the scope. */
+export async function jobRunsSummary(orgId?: string) {
+  const org = orgId ?? (await currentOrg());
   return query(
     `select agent,
             count(*) filter (where status='ok') as ok,
             count(*) filter (where status='error') as error,
+            max(started_at) as last_run
+       from job_runs
+      where org_id = $1
+      group by agent order by max(started_at) desc nulls last`,
+    [org]
+  );
+}
+
+/**
+ * Every organization's runs, for platform admin only.
+ *
+ * Deliberately a separate function rather than an optional argument on the two
+ * above. An unscoped read is a different question with a different audience,
+ * and making it opt-in by name means no customer-facing caller reaches it by
+ * forgetting to pass something. Includes the legacy null-org rows, which is
+ * the only place they can honestly be shown.
+ */
+export async function platformJobRunsSummary() {
+  return query(
+    `select agent,
+            count(*) filter (where status='ok') as ok,
+            count(*) filter (where status='error') as error,
+            count(*) filter (where org_id is null) as unattributed,
             max(started_at) as last_run
        from job_runs
       group by agent order by max(started_at) desc nulls last`
@@ -2182,6 +2235,16 @@ export interface ActionCenterData {
     subFollowUps: number;
     quoteReviews: number;
     replyReviews: number;
+    /**
+     * Compliance alerts, uncounted by the list above it.
+     *
+     * complianceAlerts is `limit 8`, because it also renders a preview strip.
+     * Today fed that array's LENGTH into the work ledger, so an account with
+     * twenty overdue registrations was told in its headline number that it
+     * had eight. Same defect this totals block exists to fix, in one of the
+     * two inputs it did not cover.
+     */
+    compliance: number;
   };
 }
 
@@ -2440,6 +2503,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
       sub_follow_ups: number;
       quote_reviews: number;
       reply_reviews: number;
+      compliance: number;
     }>(
       `select
          (${actionOppCount(orgId)} ${ACTION_OPP_WHERE.triage}) as triage,
@@ -2456,7 +2520,11 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          (select count(*)::int from subcontractor_reply_events e
             left join opportunities o on o.id = e.opportunity_id
            where e.needs_review and e.reviewed_at is null
-             and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))) as reply_reviews`,
+             and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))) as reply_reviews,
+         (select count(*)::int from compliance_items ci
+           where ci.org_id = '${orgId}'
+             and coalesce(ci.status_override, ci.status)
+                 in ('warning','critical','blocked')) as compliance`,
       [urgentDays]
     ).catch(() => null),
   ]);
@@ -2522,6 +2590,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
       subFollowUps: totalsRow?.sub_follow_ups ?? followUpsWithWork.length,
       quoteReviews: totalsRow?.quote_reviews ?? quoteReviews.length,
       replyReviews: totalsRow?.reply_reviews ?? replyReviews.length,
+      compliance: totalsRow?.compliance ?? complianceAlerts.length,
     },
   };
 }
@@ -2824,7 +2893,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
   if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
 
-  const [replies, decisions, calls, actionable] = await Promise.all([
+  const [replies, decisions, calls, actionable, awaitingReply] = await Promise.all([
     // Unread subcontractor replies. These go to the very front of the queue:
     // the reply-poll flags a reply it could not act on confidently, and until
     // a person reads it, the solicitation it belongs to is stuck.
@@ -2874,6 +2943,53 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       `select id, title, stage, deadline, risk_flags from opportunities
         where org_id=$1 and human_action_required=true and status='open'
           and not (tier='review' and stage='scoring')`,
+      [orgId]
+    ),
+    /*
+     * Outreach that is out and not yet answered.
+     *
+     * Nothing is wrong with these and nobody needs to do anything: the packet
+     * went, the follow-up has not come due, and the right action is to let the
+     * clock run. They were invisible, which meant Today could say "nothing
+     * waiting on you" while eleven quote requests were in flight, and an
+     * operator had no way to see the pipeline was moving without opening each
+     * opportunity.
+     *
+     * Deliberately excludes 'followed_up' and 'unresponsive': those are the
+     * subFollowUps bucket, where we have already chased and a person now has
+     * to decide whether to call or replace them. That is our move, not theirs.
+     */
+    query<{
+      id: string;
+      company_name: string | null;
+      trade: string | null;
+      opp_id: string;
+      opp_title: string | null;
+      deadline: string | null;
+      sent_at: string | null;
+    }>(
+      /*
+       * The send time comes from the communication, not the pairing.
+       * opportunity_subs has no last_contacted_at column; it carries
+       * created_at and responded_at only. Asking it for one would throw at
+       * runtime and be swallowed by the caller's catch, which is exactly how
+       * the call_cards query above lost `cc.trade` and took this whole
+       * function with it, silently, until somebody noticed the queue was
+       * always empty.
+       */
+      `select os.id, s.company_name, os.trade,
+              o.id as opp_id, o.title as opp_title, o.deadline,
+              (select max(c.created_at) from communications c
+                where c.opportunity_id = os.opportunity_id
+                  and c.subcontractor_id = os.subcontractor_id
+                  and c.direction = 'outbound') as sent_at
+         from opportunity_subs os
+         join opportunities o on o.id = os.opportunity_id
+         join subcontractors s on s.id = os.subcontractor_id
+        where o.org_id=$1 and o.status='open'
+          and os.outreach_state = 'sent'
+        order by os.created_at asc
+        limit 25`,
       [orgId]
     ),
   ]);
@@ -2946,6 +3062,31 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       // Naming them is the difference between "resolve blocker" and knowing
       // which blocker.
       blocker: o.risk_flags?.length ? flagSummary(o.risk_flags) : null,
+    })),
+    /*
+     * Quote requests that are out and unanswered.
+     *
+     * `fix_blocker` would be wrong and `call` would be wrong: nothing is
+     * broken and nobody should be dialling yet. The kind is decide because
+     * that is what the row eventually becomes, and stateOf() reads waitingOn
+     * before anything else, so it never appears under "Needs you" while the
+     * subcontractor still has it.
+     */
+    ...awaitingReply.map((w) => ({
+      key: `awaiting:${w.id}`,
+      kind: "decide" as const,
+      title: `Waiting on ${w.company_name ?? "a subcontractor"}${w.trade ? ` for ${w.trade}` : ""}`,
+      context: w.opp_title ?? "",
+      due: isoOrNull(w.deadline),
+      href: `/opportunity/${w.opp_id}`,
+      actionLabel: "Open opportunity",
+      reason: w.sent_at
+        ? `The quote request went out on ${new Date(w.sent_at).toISOString().slice(0, 10)} and they have not answered yet.`
+        : "The quote request has gone out and they have not answered yet.",
+      waitingOn: {
+        party: w.company_name ?? "a subcontractor",
+        since: isoOrNull(w.sent_at),
+      },
     })),
   ];
   /*

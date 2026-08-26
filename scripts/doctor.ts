@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { config } from "../lib/config";
 import { query, queryOne, dbHealthy } from "../lib/db";
 import { readWorkerHeartbeat, READY_PHASE } from "../lib/worker-heartbeat";
-import { isAutomationPaused } from "../lib/app-settings";
+import { isAutomationPaused, isPlatformAutomationPaused } from "../lib/app-settings";
 import { gmail } from "../lib/integrations/gmail";
 import { orgHasKey } from "../lib/integration-keys";
 import { scheduledAgents } from "../lib/agents/registry";
@@ -136,11 +136,29 @@ async function main() {
     check("PASS", "AUTH_SECRET is set to a real value");
   }
 
-  // ---- 3. Master automation switch ----
-  const paused = await isAutomationPaused().catch(() => false);
-  if (paused) {
-    check("FAIL", "Automation is PAUSED (master switch)", "Turn automation back on in Settings. While paused, the scheduler enqueues nothing and every send is refused — the single most common cause of a silent engine.");
-  } else {
+  // ---- 3. Automation switches ----
+  /*
+   * Two switches, reported separately, because they have different fixes and
+   * different blast radii. Reporting only one of them would let this line say
+   * "Automation is on" while the other one had everything stopped.
+   */
+  const platformPaused = await isPlatformAutomationPaused().catch(() => false);
+  const orgPaused = await isAutomationPaused().catch(() => false);
+  if (platformPaused) {
+    check(
+      "FAIL",
+      "Automation is PAUSED platform-wide",
+      "The platform kill switch is on, so nothing runs for any account. This is not an account setting; it is turned off wherever it was turned on."
+    );
+  }
+  if (orgPaused) {
+    check(
+      "FAIL",
+      "Automation is PAUSED for this account (master switch)",
+      "Turn automation back on in Settings. While paused, the scheduler enqueues nothing and every send is refused, which is the single most common cause of a silent engine."
+    );
+  }
+  if (!platformPaused && !orgPaused) {
     check("PASS", "Automation is on");
   }
 

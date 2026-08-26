@@ -38,10 +38,14 @@ vi.mock("../lib/queue/pgboss", () => ({
 
 vi.mock("@/lib/app-settings", () => ({
   isAutomationPaused: async () => false,
+  isAutomationStopped: async () => false,
+  isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "paused",
 }));
 vi.mock("../lib/app-settings", () => ({
   isAutomationPaused: async () => false,
+  isAutomationStopped: async () => false,
+  isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "paused",
 }));
 vi.mock("@/lib/api-auth", () => ({ requireUser: async () => sessionUser }));
