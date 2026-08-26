@@ -627,6 +627,25 @@ iPhone 13, on the built production server rather than in dev.
 | The subcontractor record and compliance | - | Confirmed completable | - | Walked | Same |
 | The call workspace going unmeasured again | Possible | A failing test | - | - | `tests/call-touch-targets.test.ts` pins the floor in source. It is a weaker instrument than a measurement and says so: it confirms the floor is declared, not that the rendered box clears 44. Seeding a call card for the sweep would measure the real thing, and is the better fix whenever the sweep grows fixtures |
 
+### Automation transparency (brief section 10)
+
+"What ran, when, why, and what it changed." Audited by reading every write an
+agent makes to an operator-visible record and asking whether anything on screen
+would explain it. The compliance auditor failed that test in a way that was not
+only invisible but wrong.
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| A compliance audit that could not run | Discarded the last audit's findings and recomputed readiness from what was left | Keeps every finding and recomputes from all of them | Panel | Panel | Demonstrated on one row: with the AI key absent, the old two lines produced `package_ready = true` and the new ones produce `false`. A package held back by a bonding blocker became ready to submit because the key had been removed. Less information arrived as better news, which is the failure mode this product treats as the serious one |
+| Three of the four skip paths | Wrote to the bid and returned, logging nothing | Log a warn with the reason and the carry-over count | Timeline | Timeline | Only the generic error path logged. An operator watching the record saw the status change and had nothing anywhere that said what happened or why |
+| When the findings were produced | Not recorded | `bids.audit_ran_at`, stamped only by a completed pass | Notice | Notice | Without a date, a carried-over blocker and a fresh one are the same sentence. Existing bids are left null rather than backfilled from `updated_at`, which would date the audit to whatever last touched the row: a plausible wrong answer, worse than an honest absence |
+| What the panel says about the audit | Three separate conditions, one of them a grey aside | One notice from `auditNotice` | Bordered | Bordered | The combination that mattered could not be expressed by three independent conditions: today's run did not happen AND what you are reading is from last Tuesday AND it still blocks. It now reads "Today's compliance audit could not run. 1 blocker from Aug 18, 2026 still stands" |
+| An audit that has never run | Same sentence as one that ran and was skipped | Its own sentence | Notice | Notice | Never checked is not the same as checked and skipped, and neither is clean. An account with no AI key reaches submission on the deterministic checks alone and the page now says so |
+| "Not ready yet, 0 things to finish" | Counted only deterministic blockers | Counts those plus open audit blockers | Line | Line | Readiness is both, so the count that explained it was missing half its input. A zero beside a refusal reads as a bug in the product rather than as work to do |
+| "Compliance review: In progress" | The fallback whenever nothing else matched | "N items to finish", "Audit running", or "Nothing has checked this yet" | Row | Row | It claimed work was under way in order to avoid an empty cell, including when the audit had been skipped and nothing was running at all. Silence is not progress |
+| The package checklist headline | `satisfied_count / total_mandatory` | The fraction of the four rows it heads | Figure | Figure | It was one of the four rows, so a package with its forms in order rendered "100%" in display type above three unticked items and a disabled submit button. Measured on screen at 100 before and 25 after, on the same record. A confident figure answering a narrower question than it appears to is worse than no figure, because nobody reads past it |
+| The rows and the number | Computed separately | One function, one test | - | - | They had already drifted once. `tests/audit-skip.test.ts` pins both, including the combinations that are awkward to reach in a browser |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
