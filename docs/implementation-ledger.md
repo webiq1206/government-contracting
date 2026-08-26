@@ -202,6 +202,9 @@ Findings named in the instructions, checked before any code was changed.
 | 29 | An item that became mandatory is a change even with identical wording | Implemented | The package is assembled from what is mandatory, so a silently promoted item was never being collected |
 | 29 | Trade scopes are not claimed to have been re-derived | Implemented, and honest about the gap | Re-deriving trades needs a fresh analysis, and an analysis that also rewrote the record would be the silent-overwrite bug wearing a verification badge. When a document changed, the trades are reported as unverified and the scope is recorded as incomplete, which the outcome model turns into "partly checked" rather than "verified" |
 | 29 | Nothing is applied automatically by the agent | Implemented | Including the outreach stop the findings call for. An automated stop is an operator control with its own audit trail, and firing it from a background job would produce a suppression nobody chose |
+| 27 | Abort is a deliberate flow, not a browser dialog | Implemented | `window.confirm` records nothing, and the question it asks is not the one the operator has. Theirs is what stops, what has already gone out that cannot be taken back, and what is kept. All three are on the screen before the button is live |
+| 27 | Typed confirmation on the record's own number | Implemented | The solicitation number rather than the word ABORT, which is muscle memory and proves nothing about which record is on screen |
+| 27 | Pause, abort, resume and restart stay distinct | Implemented | A pause offers a resume because nothing was thrown away. An abort offers a restart, because resuming would silently reactivate work built against a solicitation that may have been amended twice since |
 | 26 | Lint runs and passes | Verified | `.eslintrc.json`; three findings fixed rather than suppressed |
 
 ## Corrections made to my own work
@@ -230,11 +233,12 @@ a ledger.
 
 | Requirement | Built | Not built |
 | --- | --- | --- |
-| WP27 operator control | The pursuit state, the guard, its enforcement at the runner, the send boundary and the enqueue path, and the API for pause, resume, abort and restart | The UI: the deliberate abort confirmation flow with its impact summary and typed confirmation, and the Opportunity Workspace controls. Also `Stop outreach for this subcontractor` and the four distinct call controls (`Skip this call`, `Call later`, `Do not call for this trade`, `Do not call this subcontractor`), which need their own suppression records |
+| WP27 operator control | All of it. The pursuit state, the guard and its enforcement; the suppression model, its send-boundary and call-prep enforcement, and `Stop outreach for this subcontractor` with its preview; the structured skip with its reason and scope; and the deliberate abort confirmation with the impact summary, the reason list and the typed solicitation number | `Call later` as a distinct control that schedules one future call task. The other three call controls are the skip's three scopes and are shipped; this fourth one needs a scheduled task rather than a suppression, and the snooze mechanism it should reuse is per-card rather than per-pairing |
+| WP29 reverification | The nine states, the outcome rules, the comparison model, the storage with its constraints, the agent, the API and the reconciliation report | A fresh independent extraction, which is why trade scopes are reported as unverified rather than re-derived. Also the narrower per-section Reverify entry points in Requirements, Subs and Pricing: the full control is on the Files tab, and the others are the same call with a different scope |
 
-Recorded this way deliberately. The guard is the half that prevents harm, and
-shipping it before the controls means an abort set by any route is honoured
-everywhere. Shipping the buttons first would have been the half that looks
+Recorded this way deliberately. The guard was the half that prevents harm and
+shipped first, so an abort set by any route was honoured everywhere before any
+button existed. Shipping the buttons first would have been the half that looks
 finished.
 
 ## Implemented but not yet surfaced

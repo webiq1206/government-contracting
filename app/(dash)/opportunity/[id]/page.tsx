@@ -45,6 +45,9 @@ import { compareScenarios, pricingSheet } from "@/lib/domain/pricing-row";
 import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
 import { pricingRowsWithQuotes } from "@/lib/pricing-rows";
 import { ReverifyPanel } from "@/components/reverify-panel";
+import { PursuitControls } from "@/components/pursuit-controls";
+import { pursuitImpact } from "@/lib/pursuit-impact";
+import { parsePursuitState } from "@/lib/domain/pursuit-state";
 import { lastFullVerificationAt, lastVerification, liveVerification } from "@/lib/reverification";
 import { recommendScope } from "@/lib/domain/reverification";
 import { actingOrgId } from "@/lib/tenant-context";
@@ -172,6 +175,18 @@ export default async function OpportunityPage({ params }: { params: { id: string
         lastFullVerificationAt(params.id, pricingOrgId).catch(() => null),
       ])
     : [null, null, null];
+  /*
+   * What aborting would stop, read before the button is offered.
+   *
+   * Fetched on the page rather than by the flow when it opens, so the
+   * confirmation is against numbers that were true when the operator started
+   * reading rather than numbers that arrive after they have decided.
+   */
+  const abortImpact = await pursuitImpact(params.id).catch(() => null);
+  const pursuit = parsePursuitState(
+    (opp as unknown as { pursuit_state?: string }).pursuit_state
+  );
+
   const hoursToClose = opp.deadline
     ? (new Date(opp.deadline).getTime() - Date.now()) / 3_600_000
     : null;
@@ -517,6 +532,21 @@ export default async function OpportunityPage({ params }: { params: { id: string
             </div>
             <ScoreBadge score={opp.score} variant="box" />
           </div>
+          {/*
+            Pause, abort and restart, in the header rather than in a settings
+            page. The instruction is that a person must be able to stop work
+            without hunting, and hunting is what a control in Settings means.
+          */}
+          {abortImpact && (
+            <div className="mt-5">
+              <PursuitControls
+                opportunityId={opp.id}
+                state={pursuit}
+                impact={abortImpact}
+                canControl={can(viewer?.orgRole, "outreach")}
+              />
+            </div>
+          )}
         </header>
         <OpportunityWorkspace
           banner={
