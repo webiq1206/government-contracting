@@ -100,22 +100,61 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   }
 
-  // Block until the compliance package passes validation + the independent
-  // audit has no open blockers, unless forced (non-trade items only).
+  /*
+   * The compliance package, and what force may and may not get past.
+   *
+   * `force` used to skip this check entirely, which meant it skipped
+   * validation_json.blockers with it. Those are not soft findings: the list is
+   * a missing mandatory form, an unsigned prefilled document, a required item
+   * the operator never provided, a generated artifact missing from storage, a
+   * missing bid PDF, or requirements that were never extracted at all.
+   * Optional items and a pricing total that does not reconcile are already
+   * kept separate as `warnings`, and warnings never blocked anything.
+   *
+   * So the split the instructions ask for already existed in the data. What
+   * was missing was that force respected it. Submitting without a mandatory
+   * form is not a judgement an operator can make from this screen: the agency
+   * finds the package non-responsive and the bid is gone, and nothing on the
+   * screen at the moment of forcing says so.
+   *
+   * Audit blockers keep their own route, which is acknowledgement. An
+   * `acknowledged` finding is a person recording that they considered it and
+   * disagreed, against their name; force is the same act with no record of
+   * who or why.
+   */
+  const validationBlockers = bid.validation_json?.blockers ?? [];
+  const auditBlockers = (bid.audit_findings ?? [])
+    .filter((f) => f.severity === "blocker" && !f.acknowledged)
+    .map((f) => f.finding);
+  const hardBlockers = [...validationBlockers, ...auditBlockers];
+  if (hardBlockers.length > 0) {
+    return NextResponse.json(
+      {
+        error: `The submission package is not complete yet:\n• ${hardBlockers.join("\n• ")}`,
+        needsForce: false,
+        blockers: hardBlockers,
+      },
+      { status: 409 }
+    );
+  }
+
+  /*
+   * Package not marked ready, but nothing enumerated why.
+   *
+   * This is the compliance audit having not run rather than having failed:
+   * out of credit, unreachable, or skipped. The instructions call for a human
+   * gate here rather than an unqualified block, which is what force is.
+   */
   if (!bid.package_ready && !force) {
-    const validationBlockers = bid.validation_json?.blockers ?? [];
-    const auditBlockers = (bid.audit_findings ?? [])
-      .filter((f) => f.severity === "blocker" && !f.acknowledged)
-      .map((f) => f.finding);
-    const blockers = [...validationBlockers, ...auditBlockers];
     return NextResponse.json(
       {
         error:
-          blockers.length > 0
-            ? `The submission package is not complete yet:\n• ${blockers.join("\n• ")}`
-            : "The submission package has not passed compliance validation yet.",
+          "The mechanical checks have passed and nothing is outstanding, but the compliance audit has not confirmed this package. " +
+          "That usually means the audit could not run rather than that it failed. Review the package yourself and submit again to confirm.",
         needsForce: true,
-        blockers,
+        // Deliberately empty, and true: everything enumerable was refused
+        // above. Returning a list here would invent a reason.
+        blockers: [],
       },
       { status: 409 }
     );

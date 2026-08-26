@@ -95,7 +95,18 @@ d("bid submission gate (integration)", () => {
     expect(row?.stage).toBe("bid_building");
   });
 
-  it("blocks an unready package (compliance not passed) without force", async () => {
+  it("blocks an unready package, and says forcing will not help", async () => {
+    /*
+     * This case used to answer needsForce: true, and that was the defect
+     * rather than the assertion being wrong. A missing SF1449 is a mandatory
+     * form; offering the operator a force button for it is offering them a
+     * way to submit a non-responsive package.
+     *
+     * needsForce is now false whenever an enumerable hard blocker is present,
+     * so the UI can stop showing an override that would only make things
+     * worse. It is still true for the one remaining case, where the package
+     * is unconfirmed but nothing is outstanding.
+     */
     // Price the missing trade so we get past the trade gate to the package gate.
     await query(
       `insert into quotes (org_id, opportunity_id, subcontractor_id, trade, quote_amount)
@@ -105,8 +116,40 @@ d("bid submission gate (integration)", () => {
     const res = await POST(req({}), { params: { id: opp.id } });
     expect(res.status).toBe(409);
     const json = await res.json();
-    expect(json.needsForce).toBe(true);
+    expect(json.needsForce).toBe(false);
     expect(JSON.stringify(json)).toContain("SF1449");
+  });
+
+  it("will not let force past a missing mandatory form", async () => {
+    /*
+     * The gap this closes. force skipped the whole package check, and that
+     * check is where validation_json.blockers live: a missing mandatory form,
+     * an unsigned prefilled document, a required item nobody provided, a
+     * generated artifact missing from storage, a missing bid PDF.
+     *
+     * Optional items and a pricing total that does not reconcile were already
+     * kept apart as `warnings` and never blocked anything, so the hard/soft
+     * split the instructions ask for existed in the data. What was missing was
+     * force respecting it.
+     *
+     * Submitting without a mandatory form is not a judgement an operator can
+     * make from this screen: the agency finds the package non-responsive, the
+     * bid is gone, and nothing visible at the moment of forcing says so.
+     */
+    const res = await POST(req({ force: true }), { params: { id: opp.id } });
+    expect(res.status).toBe(409);
+    const json = await res.json();
+    expect(json.needsForce).toBe(false);
+    expect(JSON.stringify(json)).toContain("SF1449");
+  });
+
+  it("names the blockers it refused, rather than only refusing", async () => {
+    // A 409 with no list sends the operator hunting. The blockers array is the
+    // difference between "not ready" and "sign this one form".
+    const res = await POST(req({ force: true }), { params: { id: opp.id } });
+    const json = await res.json();
+    expect(Array.isArray(json.blockers)).toBe(true);
+    expect(json.blockers.length).toBeGreaterThan(0);
   });
 
   it("refuses another org's opportunity outright", async () => {
