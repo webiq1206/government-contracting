@@ -72,7 +72,64 @@ async function main() {
   console.log(
     `\n${rows.length} organization(s). "agents_work_for_it" is the same rule listActiveOrganizations applies.`
   );
+
+  await suspectBids();
   await closePool();
+}
+
+/**
+ * Bids that may be claiming they are ready to submit when they are not.
+ *
+ * Until 069, a compliance audit that could not run kept only the
+ * deterministic `elig_*` findings and recomputed readiness from what
+ * survived, discarding the AI findings from the last completed audit. So a
+ * package held back by an AI blocker could be marked ready by a run that had
+ * read nothing, which happens whenever the AI is unreachable or out of
+ * credit.
+ *
+ * The fix stops it happening again. It does not correct rows already written
+ * that way: those stay as they are until the auditor next runs on them. This
+ * lists them so somebody can decide, rather than leaving the product telling
+ * an operator a package is ready when the only thing that cleared it was an
+ * audit that never happened.
+ *
+ * `audit_ran_at is null` means the AI pass has never completed on that bid,
+ * which is not the same as a clean audit and must not be read as one.
+ */
+async function suspectBids() {
+  const rows = await query<{
+    opportunity: string | null;
+    audit_status: string | null;
+    audit_ran_at: string | null;
+    open_ai_blockers: number;
+  }>(
+    `select o.title as opportunity,
+            b.audit_status,
+            b.audit_ran_at::text as audit_ran_at,
+            (select count(*)
+               from jsonb_array_elements(coalesce(b.audit_findings, '[]'::jsonb)) f
+              where f->>'severity' = 'blocker'
+                and coalesce((f->>'acknowledged')::boolean, false) = false
+                and left(coalesce(f->>'id', ''), 5) <> 'elig_'
+            )::int as open_ai_blockers
+       from bids b
+       left join opportunities o on o.id = b.opportunity_id
+      where b.package_ready = true
+        and coalesce(b.audit_status, '') = 'skipped'
+      order by b.updated_at desc`
+  );
+
+  console.log("\nBids marked ready by an audit that could not run:");
+  if (rows.length === 0) {
+    console.log("  none. Nothing to correct.");
+    return;
+  }
+  console.table(rows);
+  console.log(
+    `  ${rows.length} bid(s). Each is marked ready with its last audit recorded as skipped.\n` +
+      "  Re-running the compliance auditor on these recomputes readiness from everything\n" +
+      "  still known, which is the fix. Do that once the AI is reachable again."
+  );
 }
 
 main().catch(async (err) => {
