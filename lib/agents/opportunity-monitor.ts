@@ -8,14 +8,18 @@
  */
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
+import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { sam, wantNoticeType, type SamOpportunity } from "../integrations/sam";
 import { runEnabledScrapers } from "../integrations/scrapers";
 import { enqueue } from "../queue";
 import { resolveEstimatedValue } from "../domain/value-extract";
 import { ingestOpportunity } from "../domain/opportunity-ingest";
 import { listActiveOrganizations } from "../organizations";
-import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
+import { runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
+
+/** Named once, because the fan-out helper logs under it. */
+const AGENT_NAME = "opportunity-monitor";
 import type { AgentResult } from "../types";
 
 // SAM's ncode/ptype/state are all single-value, so federal ingestion queries
@@ -338,11 +342,8 @@ export const opportunityMonitor: AgentDefinition = {
   cron: "0 */3 * * *",
   worksWithoutClaude: true, // ingestion is rule-based; scoring needs Claude
   async handler(): Promise<AgentResult> {
-    let orgs = await listActiveOrganizations().catch(() => []);
-    if (orgs.length === 0) {
-      // Pre-migration / single-tenant fallback.
-      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
-    }
+    const fanout = await orgsToSweep(AGENT_NAME);
+    const orgs = fanout.orgs;
 
     let ingested = 0;
     let sourcesSought = 0;
@@ -378,7 +379,10 @@ export const opportunityMonitor: AgentDefinition = {
       }
     }
 
-    const summary = skippedDisabled
+    const note = fanoutNote(fanout);
+    const summary = note
+      ? note
+      : skippedDisabled
       ? `Ingestion partial (no SAM key connected). ${ingested} new from other sources across ${orgs.length} org(s).`
       : `Ingested ${ingested} new opportunities across ${orgs.length} org(s) (${sourcesSought} sources-sought), triggered scoring.${
           ingestErrors > 0 ? ` Skipped ${ingestErrors} malformed notice(s).` : ""
@@ -386,7 +390,8 @@ export const opportunityMonitor: AgentDefinition = {
           samProblems.length > 0 ? ` SAM PROBLEM: ${samProblems[0]}, see the poll-sam log entry.` : ""
         }`;
     return {
-      ok: true,
+      // Nothing ingested for anybody is not a quiet run, it is a stopped one.
+      ok: fanout.error == null,
       summary,
       reasoning: `Polled SAM per org for NAICS [${[...naicsAll].join(", ")}]; deduped by org+source_id and open solicitation_number.`,
       data: { ingested, sourcesSought, orgs: orgs.length },

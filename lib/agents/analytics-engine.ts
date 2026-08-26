@@ -10,9 +10,13 @@ import { query, queryOne } from "../db";
 import { listActiveOrganizations } from "../organizations";
 import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
 import { logAgent } from "../logger";
+import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
 import type { AgentDefinition } from "./types";
+
+/** Named once, because the fan-out helper logs under it. */
+const AGENT_NAME = "analytics-engine";
 import type { AgentResult } from "../types";
 
 interface RateRow {
@@ -57,20 +61,22 @@ export const analyticsEngine: AgentDefinition = {
      * breakdowns sat empty for everyone. Same shape as the opportunity
      * monitor: resolve the organizations, then do the work inside each.
      */
-    let orgs = await listActiveOrganizations().catch(() => []);
-    if (orgs.length === 0) {
-      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
-    }
+    const fanout = await orgsToSweep(AGENT_NAME);
+    const orgs = fanout.orgs;
 
     const summaries: string[] = [];
     for (const org of orgs) {
       summaries.push(await runWithOrg(org.id, () => computeForOrg(org.id)));
     }
 
+    const note = fanoutNote(fanout);
     return {
-      ok: true,
-      summary:
-        orgs.length === 1
+      // Not ok when nobody was processed. A snapshot run that covered no
+      // accounts must not read the same as one that covered them all.
+      ok: fanout.error == null,
+      summary: note
+        ? note
+        : orgs.length === 1
           ? summaries[0]
           : `Snapshots for ${orgs.length} organizations. ${summaries.join(" | ")}`,
       reasoning:

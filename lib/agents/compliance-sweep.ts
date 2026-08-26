@@ -15,6 +15,7 @@
  */
 import { query } from "../db";
 import { logAgent } from "../logger";
+import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { listActiveOrganizations } from "../organizations";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import { systemMail } from "../integrations/system-mail";
@@ -26,6 +27,9 @@ import {
   type DocType,
 } from "../domain/sub-compliance";
 import type { AgentDefinition } from "./types";
+
+/** Named once, because the fan-out helper logs under it. */
+const AGENT_NAME = "compliance-sweep";
 import type { AgentResult } from "../types";
 
 interface Row extends ComplianceDoc {
@@ -85,10 +89,8 @@ export const complianceSweep: AgentDefinition = {
     // Cron with no payload: nothing set a tenant context. Loop every active
     // organization and sweep each inside its own, so one tenant's document
     // rows, status writes, digest email, and audit log never span another's.
-    let orgs = await listActiveOrganizations().catch(() => []);
-    if (orgs.length === 0) {
-      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
-    }
+    const fanout = await orgsToSweep(AGENT_NAME);
+    const orgs = fanout.orgs;
     let checked = 0;
     let lapsed = 0;
     let expiring = 0;
@@ -117,8 +119,9 @@ export const complianceSweep: AgentDefinition = {
       humanAction = humanAction || r.humanAction;
     }
 
+    const note = fanoutNote(fanout);
     const swept = orgs.length - failedOrgs.length;
-    const parts = [
+    const parts = note ? [note] : [
       `Compliance sweep across ${swept} of ${orgs.length} org(s): ${checked} document(s) checked, ${lapsed} newly lapsed, ${expiring} expiring.`,
     ];
     if (unrecorded > 0) {
@@ -140,9 +143,9 @@ export const complianceSweep: AgentDefinition = {
        * is written at status 'error', which is what `automation-status` reads.
        * Flagging it here as well would count one failure twice.
        */
-      ok: failedOrgs.length === 0,
+      ok: failedOrgs.length === 0 && fanout.error == null,
       summary: parts.join(" ").slice(0, 800),
-      humanActionRequired: humanAction || unrecorded > 0,
+      humanActionRequired: humanAction || unrecorded > 0 || fanout.error != null,
     };
   },
 };

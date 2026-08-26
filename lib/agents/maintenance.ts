@@ -19,12 +19,18 @@ import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
  * Active organization ids for a cron sweep that must run per tenant. Falls
  * back to the founding org so a pre-migration single-tenant install still
  * sweeps. Every unscoped sweep uses this so no statement spans tenants.
+ *
+ * The fallback belongs to a genuinely empty list. It used to cover a failed
+ * lookup too, so a database hiccup on this one statement meant every customer
+ * was skipped and the sweep ran against the founding org alone, reporting
+ * success. `orgsToSweep` keeps the two apart and logs the failure.
  */
 async function activeOrgIds(): Promise<string[]> {
-  const orgs = await listActiveOrganizations().catch(() => []);
+  const { orgs } = await orgsToSweep("maintenance");
   return orgs.length ? orgs.map((o) => o.id) : [LEGACY_ORG_ID];
 }
 import { listActiveOrganizations } from "../organizations";
+import { orgsToSweep } from "./org-fanout";
 import {
   applyOutcomeToSolicitation,
   recordReplyEvent,
@@ -75,7 +81,14 @@ export const outreachFollowup: AgentDefinition = {
      * phone number, against our trial quota. Resolve the organizations, then
      * do each one's sweep inside its own context.
      */
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     let sentTotal = 0;
     let dueTotal = 0;
     let lastCalls = 0;
@@ -846,7 +859,14 @@ export const outreachRecoverySweep: AgentDefinition = {
     "Re-sends initial outreach that failed or was stored as a draft, once the organization's inbox is connected again.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     const enqueued: AgentResult["enqueued"] = [];
     let recovered = 0;
     let waiting = 0;
@@ -1153,7 +1173,14 @@ export const scoringRecoverySweep: AgentDefinition = {
     // whole budget and the customers behind it were never recovered at all.
     // Nothing about the org travels with the job (the queue carries only the
     // payload), so the scoring engine derives it from the opportunity.
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     const unscored: { id: string; title: string | null }[] = [];
     for (const org of orgs) {
       const rows = await query<{ id: string; title: string | null }>(
@@ -1202,7 +1229,14 @@ export const expiredOpportunitySweep: AgentDefinition = {
     "Archives opportunities whose submission deadline passed without a bid. Nothing is deleted: all documents, communications, and history stay on the archived record.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     let archived = 0;
     let deleted = 0;
     for (const org of orgs) {
@@ -1490,7 +1524,14 @@ export const retentionSweep: AgentDefinition = {
      * my records forever, had them deleted on our schedule instead, and
      * deletion here is permanent.
      */
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     const summaries: string[] = [];
     for (const org of orgs) {
       const line = await runWithOrg(org.id, () => purgeRetentionForOrg(org.id));
@@ -1584,7 +1625,14 @@ export const backlinkOutreachSweep: AgentDefinition = {
     // sweep runs once per organization. Platform-wide it sent every tenant's
     // approved outreach from the founding org's inbox and matched replies
     // against every tenant's prospects at once.
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     let sent = 0;
     let followUps = 0;
     let errors = 0;
@@ -2245,7 +2293,14 @@ export const contactRecheckSweep: AgentDefinition = {
   async handler(): Promise<AgentResult> {
     // Clear historical call cards that can never be dialed so Today / Call
     // Queue stay actionable.
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     // Per organization: this used to run once unscoped and skip uncallable
     // call cards across every tenant in a single statement.
     const cleared: { id: string }[] = [];

@@ -15,10 +15,14 @@ import { query, queryOne } from "../db";
 import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
+import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { systemMail } from "../integrations/system-mail";
 import { listActiveOrganizations } from "../organizations";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
+
+/** Named once, because the fan-out helper logs under it. */
+const AGENT_NAME = "learning-loop";
 import type { AgentResult, ScoreBreakdown } from "../types";
 import { reliabilityBreakdown, isPreferred as preferred } from "../domain/reliability";
 
@@ -69,20 +73,20 @@ export const learningLoop: AgentDefinition = {
      * would have gone unnoticed: each customer's tuning was quietly being
      * driven by strangers' outcomes.
      */
-    let orgs = await listActiveOrganizations().catch(() => []);
-    if (orgs.length === 0) {
-      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
-    }
+    const fanout = await orgsToSweep(AGENT_NAME);
+    const orgs = fanout.orgs;
 
     const summaries: string[] = [];
     for (const org of orgs) {
       summaries.push(await runWithOrg(org.id, () => learnForOrg(org.id)));
     }
 
+    const note = fanoutNote(fanout);
     return {
-      ok: true,
-      summary:
-        summaries.length === 1
+      ok: fanout.error == null,
+      summary: note
+        ? note
+        : summaries.length === 1
           ? summaries[0]
           : `Learning loop across ${summaries.length} organizations. ${summaries.join(" | ")}`,
     };

@@ -157,17 +157,37 @@ export const subOnboarding: AgentDefinition = {
     // and chased other tenants' subcontractors from whatever context was
     // ambient. One org at a time, each inside its own context.
     let candidates: Awaited<ReturnType<typeof loadAwardCompliance>> = [];
+    /** Accounts whose compliance could not be read this run. */
+    const orgFailures: string[] = [];
     if (opportunityId) {
       candidates = await loadAwardCompliance({ opportunityId });
     } else {
       const { listActiveOrganizations } = await import("../organizations");
-      const orgs = await listActiveOrganizations().catch(() => []);
+      /*
+       * Deliberately not caught. The empty result below is reported as "no
+       * active contracts with subcontractors attached", which is a positive
+       * statement of absence, and it was being made about a lookup that had
+       * failed. Letting it throw hands the failure to the runner, which logs
+       * it at error status and marks the run failed.
+       */
+      const orgs = await listActiveOrganizations();
       for (const org of orgs) {
         const rows = await runWithOrg(org.id, () =>
           loadAwardCompliance({ orgId: org.id })
-        ).catch(() => []);
+        ).catch((err: Error) => {
+          // One account's failure must not stop the others, but it also must
+          // not disappear into a claim that account had nothing to onboard.
+          orgFailures.push(`${org.id}: ${err.message}`);
+          return [];
+        });
         candidates.push(...rows);
       }
+    }
+    if (orgFailures.length > 0 && candidates.length === 0) {
+      return {
+        ok: false,
+        summary: `No subcontractors could be checked: ${orgFailures.join("; ")}`.slice(0, 500),
+      };
     }
     if (candidates.length === 0) {
       return {
