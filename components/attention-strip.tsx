@@ -36,7 +36,7 @@ export function AttentionStrip({
               Bid readiness
             </h2>
             <p className="mt-1 font-display text-3xl text-foreground">
-              <span className="num text-gold">{readiness.percent}%</span>
+              <span className="num text-gold-text">{readiness.percent}%</span>
             </p>
             <p className="mt-1 text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground">
               {readyForReview
@@ -127,7 +127,7 @@ function Bucket({
         {title} ({items.length})
       </p>
       {items.length === 0 ? (
-        <p className="mt-1 text-xs text-slate-400">None</p>
+        <p className="mt-1 text-xs text-slate-500">None</p>
       ) : (
         <ul className="mt-1.5 space-y-1">
           {items.slice(0, 5).map((i) => (
@@ -146,7 +146,7 @@ function Bucket({
             </li>
           ))}
           {items.length > 5 && (
-            <li className="text-xs text-slate-400">+{items.length - 5} more</li>
+            <li className="text-xs text-slate-500">+{items.length - 5} more</li>
           )}
         </ul>
       )}

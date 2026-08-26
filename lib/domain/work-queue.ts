@@ -36,6 +36,52 @@ export interface WorkItem {
   href: string;
   /** Label for the inline action button. */
   actionLabel: string;
+  /**
+   * Why this is here, in one clause.
+   *
+   * Distinct from `title`, which is the ask. "Call Rivera Mechanical about
+   * HVAC" says what to do; "no reply in 6 days and the bid is due Friday"
+   * says why it is worth doing before the next thing. A queue that only says
+   * what leaves the operator re-deriving the why for every row.
+   */
+  reason?: string | null;
+  /**
+   * What is stopping this from moving on its own, when something is.
+   *
+   * Empty for ordinary work. Present only where automation tried and could
+   * not, which is exactly the case where a person cannot guess what happened.
+   */
+  blocker?: string | null;
+}
+
+/**
+ * Collapse items that are the same problem seen from two places.
+ *
+ * An opportunity flagged for human attention can appear as both a blocker and
+ * a bid to review; a subcontractor who replied can be both a reply to read and
+ * a quote to enter. Each pair is one thing to do, and showing it twice makes
+ * the queue longer without making it fuller -- and makes the count at the top
+ * of Today disagree with the list underneath it.
+ *
+ * Keeps the item that comes first in queue order, since that is the one whose
+ * action actually resolves the pair.
+ */
+export function dedupeWorkItems(items: WorkItem[]): WorkItem[] {
+  const byRecord = new Map<string, WorkItem>();
+  const out: WorkItem[] = [];
+  for (const item of sortWorkItems(items)) {
+    // The record id is the part of the key after the kind prefix.
+    const record = item.key.slice(item.key.indexOf(":") + 1);
+    if (!record) {
+      out.push(item);
+      continue;
+    }
+    const seen = byRecord.get(record);
+    if (seen) continue;
+    byRecord.set(record, item);
+    out.push(item);
+  }
+  return out;
 }
 
 const KIND_ORDER: Record<WorkKind, number> = {

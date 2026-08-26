@@ -225,7 +225,7 @@ export default async function AgentsPage({
                   <div className="mt-auto flex items-center justify-between gap-2 pt-1">
                     <Link
                       href={`/agents?agent=${a.name}`}
-                      className="text-xs text-slate-600 hover:text-accent"
+                      className="inline-flex min-h-11 items-center text-xs text-slate-600 hover:text-accent md:min-h-0"
                     >
                       See what it did
                     </Link>
@@ -291,8 +291,14 @@ export default async function AgentsPage({
               name="q"
               defaultValue={q}
               placeholder="Search messages…"
+              aria-label="Search the automation log"
             />
-            <select className="select w-auto" name="level" defaultValue={levelFilter ?? ""}>
+            <select
+              className="select w-auto"
+              name="level"
+              defaultValue={levelFilter ?? ""}
+              aria-label="Filter the log by severity"
+            >
               <option value="">All levels</option>
               <option value="success">Success</option>
               <option value="info">Info</option>
@@ -312,7 +318,7 @@ export default async function AgentsPage({
           <div className="mb-2 flex flex-wrap gap-1.5">
             <Link
               href={link({ agent: undefined, page: undefined })}
-              className={`badge ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
+              className={`badge min-h-11 md:min-h-0 ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
             >
               All agents
             </Link>
@@ -320,7 +326,7 @@ export default async function AgentsPage({
               <Link
                 key={a.name}
                 href={link({ agent: a.name, page: undefined })}
-                className={`badge ${
+                className={`badge min-h-11 md:min-h-0 ${
                   agentFilter === a.name
                     ? "bg-accent/10 text-accent"
                     : "bg-slate-200 text-slate-600 hover:text-slate-800"

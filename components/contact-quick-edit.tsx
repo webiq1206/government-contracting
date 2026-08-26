@@ -98,7 +98,7 @@ export function ContactQuickEdit({
         aria-expanded={open}
         aria-haspopup="dialog"
         title="Edit contact info"
-        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-400 hover:bg-surface hover:text-accent md:h-7 md:w-7"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-surface hover:text-accent md:h-7 md:w-7"
         onClick={(e) => {
           e.stopPropagation();
           if (!open) {

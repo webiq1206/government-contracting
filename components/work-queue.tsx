@@ -46,6 +46,19 @@ export function WorkQueue({ items, limit }: { items: WorkItem[]; limit?: number 
                     )}
                     <DeadlineBadge deadline={item.due ?? null} />
                   </div>
+                  {/*
+                    The blocker before the reason: when automation named
+                    something it could not get past, that IS the reason, and
+                    repeating a generic one underneath it would be noise.
+                  */}
+                  {item.blocker ? (
+                    <p className="mt-1 line-clamp-2 text-xs text-review">
+                      <span className="label mr-1 inline">Blocked</span>
+                      {item.blocker}
+                    </p>
+                  ) : item.reason ? (
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.reason}</p>
+                  ) : null}
                 </div>
                 <span
                   className={`${

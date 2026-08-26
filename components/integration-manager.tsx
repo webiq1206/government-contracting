@@ -279,6 +279,12 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
                   className="input mt-1"
                   type={f.secret ? "password" : "text"}
                   autoComplete="off"
+                  // The visible <label> above is a plain element, not tied to
+                  // this input, so a screen reader announced "password field"
+                  // and nothing else. Naming the credential matters more here
+                  // than most places: pasting a SAM key into the Anthropic
+                  // field is a silent, confusing failure.
+                  aria-label={f.label}
                   placeholder={
                     f.source === "none"
                       ? (f.placeholder ?? `Paste your ${f.label.toLowerCase()}`)

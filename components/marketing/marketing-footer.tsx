@@ -78,7 +78,7 @@ function FooterCol({
 }) {
   return (
     <div>
-      <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${dark ? "text-gold" : "text-accent"}`}>
+      <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${dark ? "text-gold-text" : "text-accent"}`}>
         {title}
       </p>
       <nav

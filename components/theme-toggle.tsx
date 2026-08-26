@@ -27,7 +27,7 @@ export function ThemeToggle({
         type="button"
         aria-pressed={theme === "light"}
         onClick={() => setTheme("light")}
-        className={`${pad} min-h-10 rounded-sm font-medium transition-colors md:min-h-0 ${
+        className={`${pad} min-h-11 rounded-sm font-medium transition-colors md:min-h-0 ${
           theme === "light"
             ? "bg-surface text-foreground shadow-sm ring-1 ring-border/80 dark:bg-surface-raised"
             : "text-muted-foreground hover:text-foreground"
@@ -39,7 +39,7 @@ export function ThemeToggle({
         type="button"
         aria-pressed={theme === "dark"}
         onClick={() => setTheme("dark")}
-        className={`${pad} min-h-10 rounded-sm font-medium transition-colors md:min-h-0 ${
+        className={`${pad} min-h-11 rounded-sm font-medium transition-colors md:min-h-0 ${
           theme === "dark"
             ? "bg-surface text-foreground shadow-sm ring-1 ring-border/80 dark:bg-surface-raised dark:ring-white/20"
             : "text-muted-foreground hover:text-foreground"

@@ -123,7 +123,7 @@ export function PipelineCardMenu({
           setOpen((o) => !o);
           setMsg(null);
         }}
-        className="flex h-10 w-10 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-surface hover:text-slate-700 md:h-7 md:w-7"
+        className="flex h-11 w-11 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-surface hover:text-slate-700 md:h-7 md:w-7"
       >
         <span className="text-lg leading-none">⋯</span>
       </button>

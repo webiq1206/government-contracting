@@ -250,19 +250,19 @@ export default async function PipelinePage({
         <div className="flex gap-1 rounded-md border border-border p-0.5">
           <Link
             href="/pipeline"
-            className={`inline-flex min-h-10 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             Simple
           </Link>
           <Link
             href="/pipeline?view=stages"
-            className={`inline-flex min-h-10 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "stages" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "stages" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             All stages
           </Link>
           <Link
             href="/pipeline?view=table"
-            className={`inline-flex min-h-10 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "table" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "table" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             Table
           </Link>
@@ -486,7 +486,10 @@ function MobileColumn({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-2 shrink-0 pb-1">
         <div className="flex items-baseline gap-2">
-          <h3 className="truncate text-sm font-semibold text-foreground">{title}</h3>
+          {/* h2, not h3: this is the first heading under the page title, and
+              jumping a level is how a screen-reader user loses the outline
+              they navigate by. */}
+          <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
           <span className="num text-xs text-muted-foreground">{count}</span>
           {badgeLabel && <span className={`badge ml-auto ${badge}`}>{badgeLabel}</span>}
         </div>
@@ -537,7 +540,7 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
       {o.agency && <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>}
       <p className="mt-2 text-xs font-semibold text-accent-strong">
         {NEXT_ACTION[o.stage] ?? o.stage}
-        <span className="ml-1 font-medium text-gold">Open ↗</span>
+        <span className="ml-1 font-medium text-gold-text">Open ↗</span>
       </p>
     </Link>
     </CardPreview>

@@ -51,17 +51,16 @@ export default async function AccountLayout({
           <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 bg-background px-3 dark:border-white/10">
             <Link
               href="/today"
-              className="inline-flex min-w-0 max-w-[42%] items-center overflow-hidden"
-              style={{ height: "1.5rem" }}
+              className="inline-flex min-h-11 min-w-0 max-w-[42%] items-center overflow-hidden"
               aria-label="Brost Co Today"
             >
-              <ThemeWordmark className="h-full w-auto max-w-full" />
+              <ThemeWordmark className="h-6 w-auto max-w-full" />
             </Link>
             <div className="flex-1" />
             <ThemeToggle compact />
             <Link
               href="/today"
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex min-h-11 items-center text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
               ← Today
             </Link>

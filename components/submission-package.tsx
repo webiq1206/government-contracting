@@ -245,7 +245,7 @@ export function SubmissionPackage({
 
         <div className="rounded-md border border-border/55 bg-surface px-6 py-7 text-foreground dark:border-white/10 dark:bg-shell">
           <p className="eyebrow-gold">Package checklist</p>
-          <p className="mt-3 font-display text-4xl text-gold">
+          <p className="mt-3 font-display text-4xl text-gold-text">
             <span className="num">{readyPct}%</span>
           </p>
           <p className="mt-1 text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground">
@@ -469,7 +469,7 @@ export function SubmissionPackage({
                       <div className="flex shrink-0 items-center gap-3">
                         <label
                           className={`cursor-pointer text-xs ${
-                            busyId === r.id ? "text-slate-400" : "text-accent hover:underline"
+                            busyId === r.id ? "text-slate-500" : "text-accent hover:underline"
                           }`}
                         >
                           {r.operator_doc ? "Replace file" : "Attach file"}

@@ -104,7 +104,7 @@ export function VendorDocUpload({
             </label>
             <label className="block">
               <span className="label mb-1 block">
-                Policy starts <span className="ml-1 font-normal text-slate-400">optional</span>
+                Policy starts <span className="ml-1 font-normal text-slate-500">optional</span>
               </span>
               <input
                 type="date"
@@ -131,7 +131,7 @@ export function VendorDocUpload({
       {!isInsurance && (
         <label className="block">
           <span className="label mb-1 block">
-            Expires <span className="ml-1 font-normal text-slate-400">if it has an expiry</span>
+            Expires <span className="ml-1 font-normal text-slate-500">if it has an expiry</span>
           </span>
           <input
             type="date"
@@ -172,7 +172,7 @@ function Text({
   return (
     <label className="block">
       <span className="label mb-1 block">
-        {label} <span className="ml-1 font-normal text-slate-400">optional</span>
+        {label} <span className="ml-1 font-normal text-slate-500">optional</span>
       </span>
       <input
         className="input"

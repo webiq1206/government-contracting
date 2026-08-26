@@ -187,7 +187,7 @@ function Metric({
 }) {
   const inner = (
     <>
-      <span className="text-slate-400">{label} </span>
+      <span className="text-slate-500">{label} </span>
       <span className={`num font-semibold ${accent ? "text-risk" : "text-slate-800"}`}>
         {value}
       </span>

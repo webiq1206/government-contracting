@@ -40,6 +40,9 @@ const config: Config = {
         "accent-soft": "rgb(var(--accent-soft) / <alpha-value>)",
         "accent-strong": "rgb(var(--accent-strong) / <alpha-value>)",
         gold: "rgb(var(--gold) / <alpha-value>)",
+        // Readable gold, for text. See --gold-text in globals.css: the brand
+        // gold is 2.08:1 on the light page and cannot carry body copy.
+        "gold-text": "rgb(var(--gold-text) / <alpha-value>)",
         "gold-deep": "rgb(var(--gold-deep) / <alpha-value>)",
         pursue: "rgb(var(--pursue) / <alpha-value>)",
         "pursue-strong": "rgb(var(--pursue-strong) / <alpha-value>)",

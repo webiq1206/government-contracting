@@ -242,7 +242,10 @@ function StepRow({ step, last }: { step: Step; last: boolean }) {
         {step.href && (
           <Link
             href={step.href}
-            className="mt-1.5 inline-block text-xs font-medium text-accent hover:underline"
+            /* This is the step's action, not a link inside a sentence, so it
+               gets a thumb-sized box rather than the 16px a bare inline-block
+               collapses to. */
+            className="mt-1.5 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline md:min-h-0"
           >
             {step.hrefLabel ?? "Go there"} →
           </Link>

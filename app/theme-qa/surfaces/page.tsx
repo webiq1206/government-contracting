@@ -39,7 +39,7 @@ export default function SurfacesLab() {
                 </span>
               </h2>
             </div>
-            <span aria-hidden className="mb-1 text-lg text-gold">
+            <span aria-hidden className="mb-1 text-lg text-gold-text">
               +
             </span>
           </summary>

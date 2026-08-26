@@ -136,7 +136,9 @@ export function SwipeRail({
               role="tab"
               aria-selected={current}
               onClick={() => goTo(i)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition ${
+              /* min-h-11: these are the lane switcher on the busiest mobile
+                 screen and were 30px tall, the smallest control on it. */
+              className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition md:min-h-0 ${
                 current
                   ? "border-accent bg-accent text-white"
                   : item.attention
