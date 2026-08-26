@@ -11,6 +11,9 @@ import {
   overrideSummary,
   OVERRIDE_PROBLEM_MESSAGE,
 } from "@/lib/domain/override";
+import { pricingRowsWithQuotes, freezeCalculation } from "@/lib/pricing-rows";
+import { pricingSheet } from "@/lib/domain/pricing-row";
+import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
 import type { Opportunity } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -58,9 +61,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     validation_json: { blockers?: string[] } | null;
     requirements_fingerprint: string | null;
     audit_findings: { severity: string; acknowledged?: boolean; finding: string }[] | null;
+    bid_amount: string | null;
   }>(
     `select id, human_flags, qa_checklist, package_ready, validation_json, audit_findings,
-            requirements_fingerprint
+            requirements_fingerprint, bid_amount
        from bids where opportunity_id=$1 order by created_at desc limit 1`,
     [params.id]
   );
@@ -100,35 +104,42 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
-  // Hard gate: every required trade must have a positive quote. Force override
-  // cannot bypass missing trade pricing.
+  /*
+   * Hard gate: the pricing sheet has to hold together. Force cannot bypass it.
+   *
+   * This used to ask one question, "does every required trade have a positive
+   * quote row", and a bid could pass it while being unpriceable in three other
+   * ways: a subcontractor excluded work nobody picked up, an alternate went
+   * into the bid with no price on it, or three firms quoted the same trade and
+   * nobody chose between them. Each of those produces a number that looks like
+   * a cost and is not one.
+   *
+   * The sheet answers all of them from one model, and it is the same model the
+   * Pricing tab renders, so the screen and the gate cannot disagree.
+   */
   const required = (opp.solicitation_analysis?.required_trades ?? [])
     .map((t) => String(t).trim())
     .filter(Boolean);
-  if (required.length > 0) {
-    const quoteRows = await query<{ trade: string | null; quote_amount: number | null }>(
-      `select trade, quote_amount from quotes where opportunity_id = $1`,
-      [params.id]
-    ).catch(() => []);
-    const quoted = new Set(
-      quoteRows
-        .filter((q) => Number(q.quote_amount) > 0)
-        .map((q) => (q.trade ?? "").trim().toLowerCase())
-        .filter(Boolean)
+  const pricingRows = await pricingRowsWithQuotes(params.id, orgId).catch(() => []);
+  const sheet = pricingSheet(required, pricingRows, {
+    now: new Date(),
+    bidDueAt: opp.deadline ? new Date(opp.deadline) : null,
+    quoteValidityRequired: (opp.solicitation_analysis?.compliance_matrix ?? []).some((r) =>
+      /quote\s+validity|price\s+validity|prices?\s+(?:must\s+)?(?:remain|held|hold)/i.test(
+        `${r?.title ?? ""} ${r?.instructions ?? ""} ${r?.format ?? ""}`
+      )
+    ),
+  });
+  if (sheet.blockers.length > 0) {
+    const messages = sheet.blockers.map((b) => b.message);
+    return NextResponse.json(
+      {
+        error: `Bid cannot be submitted. The pricing is not complete:\n\u2022 ${messages.join("\n\u2022 ")}`,
+        needsForce: false,
+        blockers: messages,
+      },
+      { status: 409 }
     );
-    const missingTrades = required.filter((t) => !quoted.has(t.toLowerCase()));
-    if (missingTrades.length > 0) {
-      return NextResponse.json(
-        {
-          error: `Bid cannot be submitted. Missing pricing for: ${missingTrades.join(", ")}.`,
-          needsForce: false,
-          blockers: missingTrades.map(
-            (t) => `${t} pricing has not been received`
-          ),
-        },
-        { status: 409 }
-      );
-    }
   }
 
   /*
@@ -273,6 +284,56 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       message: overrideSummary(overrideReq, auth.email, at),
     });
   }
+  /*
+   * Freeze the arithmetic this approval was given against.
+   *
+   * A package approved against particular numbers is approved against those
+   * numbers. If the pricing rows can move afterwards then the sign-off is a
+   * record of nothing: the screen shows today's total beside a decision made
+   * for yesterday's, and there is no way from inside the product to tell that
+   * they differ. The snapshot row cannot be edited once written.
+   *
+   * Not fatal if it fails. Losing the frozen copy is bad; refusing an approval
+   * that passed every gate because a second insert failed is worse, and the
+   * approval event below is still written either way.
+   */
+  // numeric arrives as a string. Null stays null: a bid nobody has set is not
+  // a bid of zero, and Number(null) is exactly how it would become one.
+  const bidAmount =
+    bid.bid_amount != null && Number.isFinite(Number(bid.bid_amount))
+      ? Number(bid.bid_amount)
+      : null;
+  const math = bidMath({ cost: sheet.cost, bid: bidAmount, contingencyPct: null });
+  await freezeCalculation({
+    bidId: bid.id,
+    orgId,
+    opportunityId: params.id,
+    reason: "approved",
+    actor: auth.email,
+    calculation: {
+      cost: sheet.cost,
+      bid: bidAmount,
+      grossProfit: math.grossProfit,
+      marginPct: math.marginPct,
+      markupPct: math.markupPct,
+      unknown: math.unknown,
+      formula: explainBidMath(math),
+      weakestConfidence: sheet.weakestConfidence,
+      rows: sheet.rows.map((p) => ({
+        trade: p.row.trade,
+        scopeKey: p.row.scopeKey,
+        selectedSub: p.row.selectedSubName ?? null,
+        backupSub: p.row.backupSubName ?? null,
+        baseQuote: p.row.baseQuote,
+        total: p.total,
+        confidence: p.row.confidence,
+        quoteExpiresOn: p.row.quoteExpiresOn,
+        exclusions: p.row.exclusions,
+        alternates: p.row.alternates,
+        problems: p.problems.map((x) => x.message),
+      })),
+    },
+  }).catch(() => {});
   await query(
     `insert into bid_submission_events (bid_id, org_id, from_state, to_state, actor, proof)
      values ($1,$2,'package_ready','approved',$3,$4)`,

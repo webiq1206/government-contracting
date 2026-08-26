@@ -162,6 +162,15 @@ Findings named in the instructions, checked before any code was changed.
 | 9 | Margin and markup stay distinct and correct | Verified | Both computed, both labelled with their denominator. The test carries the case that costs money: the same intent priced at 20% markup instead of 20% margin is 4,000 less profit on an 80,000 job |
 | 9 | Formulas, inputs and rounding explained | Verified | `explainBidMath` writes out how each figure was reached and stops at the first thing it cannot work out, rather than showing a profit equal to the whole cost when the bid is unset |
 | 9 | A manual adjustment carries its reason | Verified | Flagged when absent. A number an estimator cannot defend six weeks later should not be sitting silently in a bid |
+| 9 | One required pricing row per trade scope | Implemented | Migration `078` plus `lib/domain/pricing-row.ts`. Selected and backup subcontractor, base quote, alternates, exclusions, taxes, freight, mobilisation, bonding, payment terms, quote expiry, availability, lead time, confidence, supporting file, and a manual adjustment that has to say why. The identity of a row is the normalised trade name, so " HVAC " and "hvac" cannot become two rows pricing the same work |
+| 9 | Applies-but-unpriced is recorded, not inferred | Implemented | `pending_components`. A nullable column cannot tell "this trade has no freight" from "there is freight and nobody has asked how much", and treating the second as the first makes the total too low by exactly the amount nobody found out. Naming the component makes the total unknown, and the flag beats a stale figure still sitting in the field |
+| 9 | An exclusion is a hole, not a discount | Implemented | An exclusion whose coverage nobody recorded reads as `unassigned` and blocks the bid. Work a subcontractor writes out of their price does not make the trade cheaper |
+| 9 | Several competing quotes per trade | Implemented | Candidates are shown and the row has no base quote until somebody picks one. Taking the lowest automatically would be the product making the decision, and the cheapest quote is regularly the one that excluded the most. The editor puts the reason next to the buttons |
+| 9 | Partial quote cannot satisfy complete trade coverage | Implemented | A trade with no row at all is a blocker naming the trade; the sheet has no cost while any required trade is missing or unknown, rather than a lower one |
+| 9 | Scenario comparison | Implemented | `compareScenarios`, off the account's own configured margin scenarios rather than three the product invented. When the cost is unknown every scenario says so in words: a comparison table is the easiest place in a product to print a confident zero |
+| 9 | Immutable calculation snapshots for approved and sent packages | Implemented | `bid_calculation_snapshots` with a trigger refusing UPDATE outright and DELETE while the bid exists. Approval and sending each write one, deliberately separate: a package approved on Tuesday and sent on Thursday may not carry the same numbers, and the two side by side are the record of what moved |
+| 9 | Last calculation time | Implemented | The latest row change, or "Nothing has been priced yet". Null is not "just now" |
+| 9 | The submit gate reads the same sheet the screen does | Implemented | The gate asked one question, "does every required trade have a positive quote", and a bid could pass it while carrying an unassigned exclusion, an unpriced alternate in the bid, a pending component, or three quotes and no choice. One model answers all of them, so the Pricing tab and the gate cannot disagree |
 | 26 | Lint runs and passes | Verified | `.eslintrc.json`; three findings fixed rather than suppressed |
 
 ## Corrections made to my own work
@@ -212,6 +221,12 @@ The baseline is therefore only meaningful when re-measured at `main` against
 the database in its current state, immediately before the comparison. Diffing
 against a stored list would have reported 25 regressions that do not exist,
 which is worse than no baseline at all, because it looks like evidence.
+
+Re-measured while building the pricing workspace: 22 failing across 7 files,
+and the identical 22 fail on a clean tree with the pricing work stashed. They
+are the outreach, threading, enqueue-provenance and live-database-guard
+suites, none of which the pricing change touches. Recorded here rather than
+reported as green, and recorded as a comparison rather than as a number.
 
 ## Blocked
 

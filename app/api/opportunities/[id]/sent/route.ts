@@ -12,6 +12,9 @@ import {
   type SentEvidence,
   type SubmissionMethod,
 } from "@/lib/domain/submission-state";
+import { freezeCalculation, pricingRowsWithQuotes } from "@/lib/pricing-rows";
+import { pricingSheet } from "@/lib/domain/pricing-row";
+import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -146,6 +149,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     ]
   );
 
+  /*
+   * Freeze the arithmetic that actually went out.
+   *
+   * Approval already wrote a snapshot, and this is deliberately a second one
+   * rather than a reuse of it: a package can be approved on Tuesday, have a
+   * quote re-confirmed on Wednesday, and be sent on Thursday. What a
+   * contracting officer received is what the numbers were at the moment of
+   * sending, and the two snapshots side by side are the record of anything
+   * that moved in between.
+   */
+  await freezeSentCalculation(params.id, orgId, bid.id, auth.email);
+
   const proof = proofSummary("sent", evidence);
   await query(
     `insert into bid_submission_events (bid_id, org_id, from_state, to_state, actor, proof)
@@ -170,4 +185,73 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   });
 
   return NextResponse.json({ ok: true, state: "sent", proof });
+}
+
+/**
+ * The pricing as it stood when the package left.
+ *
+ * Failure here is swallowed on purpose. Losing the frozen copy is bad; failing
+ * a send that has already happened in the real world, because a second insert
+ * failed, is worse, and the submission event and audit line are written either
+ * way.
+ */
+async function freezeSentCalculation(
+  opportunityId: string,
+  orgId: string,
+  bidId: string,
+  actor: string
+): Promise<void> {
+  try {
+    const opp = await queryOne<{
+      deadline: Date | null;
+      solicitation_analysis: { required_trades?: string[] } | null;
+    }>(
+      `select deadline, solicitation_analysis from opportunities where id = $1 and org_id = $2`,
+      [opportunityId, orgId]
+    );
+    const required = (opp?.solicitation_analysis?.required_trades ?? [])
+      .map((t) => String(t).trim())
+      .filter(Boolean);
+    const rows = await pricingRowsWithQuotes(opportunityId, orgId);
+    const sheet = pricingSheet(required, rows, {
+      now: new Date(),
+      bidDueAt: opp?.deadline ? new Date(opp.deadline) : null,
+    });
+    const bidRow = await queryOne<{ bid_amount: string | null }>(
+      `select bid_amount from bids where id = $1`,
+      [bidId]
+    );
+    const bidAmount =
+      bidRow?.bid_amount != null && Number.isFinite(Number(bidRow.bid_amount))
+        ? Number(bidRow.bid_amount)
+        : null;
+    const math = bidMath({ cost: sheet.cost, bid: bidAmount, contingencyPct: null });
+    await freezeCalculation({
+      bidId,
+      orgId,
+      opportunityId,
+      reason: "sent",
+      actor,
+      calculation: {
+        cost: sheet.cost,
+        bid: bidAmount,
+        grossProfit: math.grossProfit,
+        marginPct: math.marginPct,
+        markupPct: math.markupPct,
+        formula: explainBidMath(math),
+        weakestConfidence: sheet.weakestConfidence,
+        rows: sheet.rows.map((p) => ({
+          trade: p.row.trade,
+          scopeKey: p.row.scopeKey,
+          selectedSub: p.row.selectedSubName ?? null,
+          baseQuote: p.row.baseQuote,
+          total: p.total,
+          confidence: p.row.confidence,
+          quoteExpiresOn: p.row.quoteExpiresOn,
+        })),
+      },
+    });
+  } catch {
+    // Deliberately silent: see the note above.
+  }
 }

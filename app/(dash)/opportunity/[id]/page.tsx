@@ -6,6 +6,7 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
+import { PricingWorkspace } from "@/components/pricing-workspace";
 import { BidBrief } from "@/components/bid-brief";
 import { DocumentInventoryPanel } from "@/components/document-inventory-panel";
 import { AttachmentsPanel } from "@/components/attachments-panel";
@@ -40,6 +41,11 @@ import { ActivityLogActions } from "@/components/activity-log-actions";
 import { OpportunityTaskList } from "@/components/opportunity-task-list";
 import { OpportunityWorkspace } from "@/components/opportunity-workspace";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
+import { compareScenarios, pricingSheet } from "@/lib/domain/pricing-row";
+import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
+import { pricingRowsWithQuotes } from "@/lib/pricing-rows";
+import { actingOrgId } from "@/lib/tenant-context";
+import { getProfileJson } from "@/lib/ai/companyProfile";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
 import { buildGuidedPlan } from "@/lib/domain/guided-plan";
 import { GuidedPlanPanel } from "@/components/guided-plan";
@@ -90,6 +96,71 @@ export default async function OpportunityPage({ params }: { params: { id: string
     company_name: s.company_name,
     trade: s.trade,
   }));
+
+  /*
+   * The pricing sheet, computed here rather than in the browser.
+   *
+   * Every figure on the Pricing tab depends on "now": a quote that expires
+   * today is expired or is not. Recomputing in a client component would give
+   * one answer during rendering and another after hydration, and would put the
+   * arithmetic in two places. So the sheet, the scenarios and the formula are
+   * worked out on the server and passed down as data.
+   */
+  const pricingOrgId = await actingOrgId();
+  const profileForPricing = await getProfileJson().catch(() => null);
+  const pricingRows = pricingOrgId
+    ? await pricingRowsWithQuotes(params.id, pricingOrgId).catch(() => [])
+    : [];
+  const requiredTradesForPricing = (analysis?.required_trades ?? [])
+    .map((t) => String(t).trim())
+    .filter(Boolean);
+  const sheet = pricingSheet(requiredTradesForPricing, pricingRows, {
+    now: new Date(),
+    bidDueAt: opp.deadline ? new Date(opp.deadline) : null,
+    /*
+     * Whether an expired quote hard-blocks depends on the solicitation. Where
+     * the compliance matrix names a quote-validity requirement it does;
+     * elsewhere it is a real risk and a judgement call, which is what the
+     * override flow is for.
+     */
+    quoteValidityRequired: (analysis?.compliance_matrix ?? []).some((r) =>
+      /quote\s+validity|price\s+validity|prices?\s+(?:must\s+)?(?:remain|held|hold)/i.test(
+        `${r?.title ?? ""} ${r?.instructions ?? ""} ${r?.format ?? ""}`
+      )
+    ),
+  });
+  const targetMarginPct = profileForPricing?.target_margin_pct ?? null;
+  /*
+   * No contingency percentage is configured on this account's profile, and
+   * inventing one would put a number in the arithmetic that nobody chose. Null
+   * means the loaded cost is the cost, which is what is true today.
+   */
+  const contingencyPct: number | null = null;
+  const pricingScenarios = compareScenarios(sheet.cost, [
+    ...(bid?.bid_amount != null
+      ? [{ label: "The assembled bid", bid: Number(bid.bid_amount), contingencyPct }]
+      : []),
+    ...(targetMarginPct != null
+      ? [{ label: `Target margin ${targetMarginPct}%`, targetMarginPct, contingencyPct }]
+      : []),
+    // The scenarios this account configured, not three the product made up.
+    ...(profileForPricing?.pricing_rules?.margin_scenarios ?? [])
+      .filter((m) => typeof m === "number" && m !== targetMarginPct)
+      .map((m) => ({ label: `At ${m}% margin`, targetMarginPct: m, contingencyPct })),
+  ]);
+  const pricingFormula = explainBidMath(
+    bidMath({
+      cost: sheet.cost,
+      bid: bid?.bid_amount != null ? Number(bid.bid_amount) : null,
+      contingencyPct,
+    })
+  );
+  // Null when nothing has been priced. "Never" is a fact; "just now" would be
+  // a false one.
+  const lastPricedAt = pricingRows.reduce<Date | null>((latest, r) => {
+    if (!r.updatedAt) return latest;
+    return latest == null || r.updatedAt > latest ? r.updatedAt : latest;
+  }, null);
   /*
    * Every source document, with what became of it, worst first.
    *
@@ -711,6 +782,20 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   />
                 </div>
               </div>
+
+              {/* The trade-by-trade sheet. Placed above the quote form because
+                  it is where the money actually is: the form enters one
+                  number, this says whether the bid has a cost at all. */}
+              <PricingWorkspace
+                opportunityId={opp.id}
+                sheet={sheet}
+                scenarios={pricingScenarios}
+                subs={subOptions}
+                formula={pricingFormula}
+                canPrice={can(viewer?.orgRole, "price")}
+                lastCalculatedAt={lastPricedAt}
+                targetMarginPct={targetMarginPct}
+              />
 
               {showQuotePanel && (
                 <div
