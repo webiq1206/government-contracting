@@ -93,7 +93,13 @@ export function TodayBulkCalls({
               />
               <ActionButton
                 endpoint={`/api/call-cards/${c.id}/skip`}
-                className="shell-ghost text-xs"
+                /*
+                 * min-h-11 on touch, like the control beside it. It was 40px
+                 * tall and had been since it was written; the sweep only saw
+                 * it once there were call cards in the account for this
+                 * section to render at all.
+                 */
+                className="shell-ghost min-h-11 text-xs md:min-h-0"
                 toast={{
                   message: `Skipped calling ${c.company_name}. Recorded on their history.`,
                   undo: {

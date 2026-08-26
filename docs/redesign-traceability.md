@@ -236,6 +236,24 @@ written in advance of the work.
 | Confidence read from `solicitation_analysis` | Fixed | Read from `score_breakdown` | Review, Opportunities drawer | Both | It was never there, so every record reported "not assessed". It describes how much of the notice could be read at scoring time, which is a property of the scoring |
 | `hrefFor` function prop into a client component | Fixed | A string prefix | - | - | TypeScript accepted a function prop across the server/client boundary and the render threw. The page returned nothing at all until it was found |
 
+### Call Queue
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Workspace opened as a modal over the queue | Changed | A permanent split: queue left, call right | Call Queue | Full-screen call after selection, with a way back | An operator making eight calls in a morning finishes one and starts the next, and a dialog that closes and reopens between every pair puts a full-screen transition in the middle of that rhythm |
+| One workspace component, two frames | Behaviour | `variant="inline"` drops the backdrop and the dialog semantics | - | - | Only the frame differs. A separate inline component would be two copies of a twenty-field form, and the copy that gets fixed is never the one somebody is using |
+| Which call is open | Changed | `?open=<id>` on the queue URL | - | - | Back button, shareable link, and the mobile rule as a CSS class rather than a second implementation. The deep link from Today already used this parameter |
+| "N calls ready" | Changed | Calls to make, how many are on a bid due inside two days, how many are outside working hours there | Call Queue | Call Queue | A count answers how many. What stops a call happening is what decides which one to make |
+| (new) Local time where the subcontractor is | Added | Queue row | Call Queue | Call Queue | An operator who cannot see it is five in the morning there finds out by dialling |
+| Local time for a state spanning two zones | Behaviour | Says the hour is not certain, and shows none | Call Queue | Call Queue | Florida, Texas, the Dakotas, Kansas, Nebraska, Indiana, Kentucky, Tennessee, Michigan, Oregon and Idaho are left out of the map rather than guessed at. A confident wrong hour is worse than none: it is the difference between checking and dialling |
+| (new) Contact quality | Added | Queue row | Call Queue | Call Queue | A confirmed email and an unconfirmed one are different facts, and a card with no phone cannot be called at all |
+| (new) Why this call is happening | Added | Queue row | Call Queue | Call Queue | Reconstructed from memory every time, and got wrong on the tenth call of the morning. A subcontractor who wrote back is a different conversation from one who has ignored two emails |
+| (new) Last contact on the row | Added | Queue row | Call Queue | Call Queue | Listed in the audit as a required row field, and it was not there |
+| (new) Search and grouping | Added | Above the list | Call Queue | Call Queue | Group by opportunity or by trade. Grouping keeps the incoming order inside each group, because the queue arrives soonest-deadline first with replies on top and regrouping must not quietly resort it |
+| The "start here" plan | Changed | Hidden while a search or grouping is active | Call Queue | Call Queue | It names the call to start with, so beside a filtered result it points at a card that is not on screen |
+| Per-card Skip on Today, 40px tall | Fixed | `min-h-11` on touch | Today | Today | Under the 44px minimum since it was written. The sweep only saw it once the account had call cards for that section to render at all |
+| "Time there unknown" at 2.25:1 | Fixed | `text-slate-500` | Call Queue | Call Queue | Well under the 4.5:1 a 12px string needs, and a caveat about not knowing something must not be the hardest thing on the row to read |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

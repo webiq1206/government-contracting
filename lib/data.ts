@@ -317,11 +317,19 @@ export interface CallCardRow {
   company_name: string;
   owner_name: string | null;
   email: string | null;
+  /** Whether that address was ever confirmed deliverable. */
+  email_verified?: boolean;
   phone: string | null;
   website: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
+  /** When we last wrote to them, ISO. Null when we never have. */
+  last_contacted?: string | null;
+  /** When this card was last dialled, ISO. Null when it never has been. */
+  called_at?: string | null;
+  /** Dials with no answer recorded against this card. */
+  attempts?: number | null;
   google_rating: number | null;
   reliability_score: number | null;
   license_status: string | null;
@@ -359,6 +367,15 @@ export async function callQueue(): Promise<CallCardRow[]> {
             o.value_estimated, o.value_estimated_source, o.location_state, o.location_text as opportunity_location,
             o.deadline, o.solicitation_number,
             o.description, o.solicitation_analysis, o.attachments_json,
+            /*
+             * What the queue needs before anybody dials: whether the address
+             * was ever confirmed, when we last wrote, how many times this card
+             * has been tried, and the state, which is only used to work out
+             * the hour where they are.
+             */
+            s.email_verified, s.last_contacted::text as last_contacted,
+            cc.called_at::text as called_at,
+            coalesce((cc.response_json->>'attempts')::int, 0) as attempts,
             (select trade from opportunity_subs os
               where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
        from call_cards cc

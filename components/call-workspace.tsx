@@ -130,9 +130,15 @@ function initialWrapUp(card: CallCardRow): WrapUp {
 export function CallWorkspace({
   data,
   onClose,
+  variant = "overlay",
 }: {
   data: CallWorkspaceData;
   onClose: () => void;
+  /**
+   * "inline" drops the backdrop and the dialog semantics so the call can sit
+   * beside the queue rather than on top of it. Only the frame differs.
+   */
+  variant?: "overlay" | "inline";
 }) {
   const router = useRouter();
   const { push } = useToast();
@@ -343,17 +349,30 @@ export function CallWorkspace({
     [card.opportunity_location, card.location_state].filter(Boolean).join(", ") || null,
   ].filter(Boolean) as string[];
 
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex justify-end bg-black/40"
-      onClick={onClose}
-      role="presentation"
-    >
+  /*
+   * Two shapes, one workspace.
+   *
+   * Inline is the desktop Call Queue, where the audit asks for a permanent
+   * split: the list stays on the left and the call lives beside it, so
+   * finishing one call and starting the next never closes and reopens a
+   * dialog. Overlay is everywhere else, and on a phone, where a call has to
+   * be the whole screen.
+   *
+   * The difference is deliberately only the frame. Making the inline one a
+   * separate component would be two copies of a twenty-field form, and the
+   * copy that gets fixed is never the one somebody is using.
+   */
+  const inline = variant === "inline";
+  const body = (
       <aside
-        onClick={(e) => e.stopPropagation()}
-        className="scroll-thin flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-background shadow-2xl"
-        role="dialog"
-        aria-modal="true"
+        onClick={inline ? undefined : (e) => e.stopPropagation()}
+        className={
+          inline
+            ? "scroll-thin flex h-full w-full flex-col overflow-y-auto bg-background"
+            : "scroll-thin flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-background shadow-2xl"
+        }
+        role={inline ? "region" : "dialog"}
+        aria-modal={inline ? undefined : true}
         aria-label={`Call workspace for ${card.company_name}`}
       >
         {/* Who, what, and the dial button. Nothing else competes for the top. */}
@@ -718,6 +737,16 @@ export function CallWorkspace({
           )}
         </footer>
       </aside>
+  );
+
+  if (inline) return body;
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex justify-end bg-black/40"
+      onClick={onClose}
+      role="presentation"
+    >
+      {body}
     </div>
   );
 }
