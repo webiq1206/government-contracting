@@ -41,9 +41,13 @@ import { filenameFromResponse, isArchive, normalizeAttachmentMeta } from "../dom
 import {
   amendmentNumber,
   classifyDocumentName,
+  changeSummary,
+  documentChanges,
+  parseDocumentClass,
   resolveCitation,
   withPageMarkers,
   type CitationTarget,
+  type InventorySnapshot,
   type ExtractionState,
   type OcrState,
 } from "../domain/document-inventory";
@@ -93,6 +97,36 @@ function extractionStateFor(status: AttachmentFetchStatus, trimmed: boolean): Ex
     default:
       return "pending";
   }
+}
+
+/**
+ * The inventory as it stands, keyed by storage path.
+ *
+ * Keyed on the path rather than the display name because names are recovered
+ * from a Content-Disposition header and can legitimately change between runs
+ * for the same file: keying on the name would report a rename as a document
+ * arriving and another one leaving.
+ */
+async function readInventorySnapshot(opportunityId: string): Promise<InventorySnapshot[]> {
+  const rows = await query<{
+    key: string;
+    name: string;
+    content_hash: string | null;
+    document_class: string | null;
+    amendment_number: number | null;
+  }>(
+    `select storage_path as key, name, content_hash, document_class, amendment_number
+       from documents
+      where opportunity_id = $1 and kind = 'solicitation' and storage_path is not null`,
+    [opportunityId]
+  );
+  return rows.map((r) => ({
+    key: r.key,
+    name: r.name,
+    contentHash: r.content_hash,
+    documentClass: parseDocumentClass(r.document_class),
+    amendmentNumber: r.amendment_number,
+  }));
 }
 
 /** Run over a list with a bounded number in flight, preserving input order. */
@@ -481,7 +515,10 @@ async function processAttachment(
              source_system='sam.gov', source_url=$5, original_filename=$6,
              content_hash=$7, byte_size=$8, document_class=$9, amendment_number=$10,
              disposition='delivered', access_state='available',
-             last_verified_at=now(), last_error=null
+             last_verified_at=now(), last_error=null,
+             -- A file re-issued under the same name with different bytes is a
+             -- new version of that document, not a re-read of the old one.
+             version = case when content_hash is distinct from $7 then version + 1 else version end
            where id=$4`,
           [
             meta.filename,
@@ -912,9 +949,32 @@ export const solicitationAnalyst: AgentDefinition = {
      * have changed the requirements. The forty that survived were then all
      * fetched at once, up to a gigabyte in flight.
      */
+    /*
+     * What the inventory said before this run, so the run can say what moved.
+     *
+     * Read first, because processing overwrites it. The change worth catching
+     * is the quiet one: an agency replaces a file in place, same name, same
+     * count, same list, and every requirement extracted from the old version
+     * is now describing a document that no longer exists.
+     */
+    const inventoryBefore = await readInventorySnapshot(opportunityId);
+
     const processed = await inBatches(attachments, ATTACHMENT_CONCURRENCY, (att, i) =>
       processAttachment(opportunityId, att, i)
     );
+
+    const changes = documentChanges(inventoryBefore, await readInventorySnapshot(opportunityId));
+    if (!changes.quiet && inventoryBefore.length > 0) {
+      // Only worth a line when there was something to compare against. On a
+      // first run every document is new, which is not news.
+      await logAgent({
+        agent: "solicitation-analyst",
+        action: "documents_changed",
+        opportunityId,
+        level: changes.changed.length > 0 || changes.newAmendments.length > 0 ? "warn" : "info",
+        message: changeSummary(changes),
+      });
+    }
 
     /*
      * Decide what fits, and say what did not.

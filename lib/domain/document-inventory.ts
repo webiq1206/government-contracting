@@ -351,3 +351,102 @@ export function withPageMarkers(pages: readonly string[]): string {
     .filter(Boolean)
     .join("\n\n");
 }
+
+export interface InventorySnapshot {
+  /** Stable across re-fetches: the storage key, not the display name. */
+  key: string;
+  name: string;
+  contentHash: string | null;
+  documentClass: DocumentClass;
+  amendmentNumber: number | null;
+}
+
+export interface DocumentChanges {
+  added: InventorySnapshot[];
+  /** Same file, different bytes. The version that was read is gone. */
+  changed: InventorySnapshot[];
+  /** On the notice last time, not on it now. */
+  removed: InventorySnapshot[];
+  /** Any amendment among the added ones, highest number first. */
+  newAmendments: InventorySnapshot[];
+  unchanged: number;
+  /** True when nothing about the source set moved. */
+  quiet: boolean;
+}
+
+/**
+ * What moved on this solicitation since the last time it was read.
+ *
+ * The change that matters most is the quiet one: an agency re-issues a file
+ * under the same name with different content. Nothing about the document list
+ * looks different, the count is the same, the names are the same, and every
+ * requirement extracted from the old version is now describing a document
+ * that no longer exists. Comparing bytes is the only way to see it.
+ *
+ * "Superseded" here means exactly that: the same file, re-issued. It does not
+ * mean Amendment 0002 replaces Amendment 0001. Federal amendments are
+ * cumulative and each one stands on its own, so treating a later amendment as
+ * replacing an earlier one would hide a document that is still binding. New
+ * amendments are reported separately, as arrivals rather than replacements.
+ *
+ * A document with no content hash on either side counts as unchanged rather
+ * than as changed: an unknown hash is a gap in the record, and reporting a gap
+ * as a change would make every run after a failed hash look like an amendment.
+ */
+export function documentChanges(
+  previous: readonly InventorySnapshot[],
+  current: readonly InventorySnapshot[]
+): DocumentChanges {
+  const before = new Map(previous.map((d) => [d.key, d]));
+  const after = new Map(current.map((d) => [d.key, d]));
+
+  const added: InventorySnapshot[] = [];
+  const changed: InventorySnapshot[] = [];
+  let unchanged = 0;
+
+  for (const doc of current) {
+    const was = before.get(doc.key);
+    if (!was) {
+      added.push(doc);
+      continue;
+    }
+    if (was.contentHash && doc.contentHash && was.contentHash !== doc.contentHash) {
+      changed.push(doc);
+    } else {
+      unchanged++;
+    }
+  }
+  const removed = previous.filter((d) => !after.has(d.key));
+  const newAmendments = added
+    .filter((d) => d.documentClass === "amendment")
+    .sort((a, b) => (b.amendmentNumber ?? -1) - (a.amendmentNumber ?? -1));
+
+  return {
+    added,
+    changed,
+    removed,
+    newAmendments,
+    unchanged,
+    quiet: added.length === 0 && changed.length === 0 && removed.length === 0,
+  };
+}
+
+/** One line for the Automation Log, saying what actually moved. */
+export function changeSummary(changes: DocumentChanges): string {
+  if (changes.quiet) return `No change to the ${changes.unchanged} source document(s).`;
+  const parts: string[] = [];
+  if (changes.newAmendments.length > 0) {
+    parts.push(`${changes.newAmendments.length} new amendment(s): ${changes.newAmendments.map((a) => a.name).join(", ")}`);
+  }
+  const otherAdded = changes.added.length - changes.newAmendments.length;
+  if (otherAdded > 0) parts.push(`${otherAdded} new document(s)`);
+  if (changes.changed.length > 0) {
+    parts.push(
+      `${changes.changed.length} re-issued with different content: ${changes.changed.map((c) => c.name).join(", ")}`
+    );
+  }
+  if (changes.removed.length > 0) {
+    parts.push(`${changes.removed.length} no longer on the notice: ${changes.removed.map((r) => r.name).join(", ")}`);
+  }
+  return `${parts.join("; ")}. ${changes.unchanged} unchanged.`;
+}

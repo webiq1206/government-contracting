@@ -11,7 +11,10 @@ import {
   parseOcrState,
   resolveCitation,
   withPageMarkers,
+  documentChanges,
+  changeSummary,
   type InventoryRow,
+  type InventorySnapshot,
 } from "../lib/domain/document-inventory";
 
 describe("guessing what a document is", () => {
@@ -268,5 +271,107 @@ describe("page markers", () => {
   it("spends nothing on pages with nothing on them", () => {
     expect(withPageMarkers(["", "   ", "\n"])).toBe("");
     expect(withPageMarkers([])).toBe("");
+  });
+});
+
+describe("what moved since the last read", () => {
+  const snap = (over: Partial<InventorySnapshot>): InventorySnapshot => ({
+    key: "solicitations/o1/1_pws.pdf",
+    name: "PWS.pdf",
+    contentHash: "aaa",
+    documentClass: "solicitation",
+    amendmentNumber: null,
+    ...over,
+  });
+
+  it("sees a file re-issued under the same name with different bytes", () => {
+    /*
+     * The quiet change, and the reason this compares hashes at all. An agency
+     * replaces a file in place: same name, same count, same list. Every
+     * requirement extracted from the old version is now describing a document
+     * that no longer exists, and nothing about the document list looks any
+     * different.
+     */
+    const changes = documentChanges([snap({})], [snap({ contentHash: "bbb" })]);
+    expect(changes.changed).toHaveLength(1);
+    expect(changes.quiet).toBe(false);
+    expect(changeSummary(changes)).toContain("re-issued with different content");
+  });
+
+  it("is quiet when nothing moved", () => {
+    const changes = documentChanges([snap({})], [snap({})]);
+    expect(changes.quiet).toBe(true);
+    expect(changes.unchanged).toBe(1);
+    expect(changeSummary(changes)).toBe("No change to the 1 source document(s).");
+  });
+
+  it("reports a new amendment as an arrival, not a replacement", () => {
+    /*
+     * Federal amendments are cumulative: Amendment 0002 does not cancel
+     * Amendment 0001, and treating it as a replacement would hide a document
+     * that is still binding on the bid.
+     */
+    const before = [snap({}), snap({ key: "k-a1", name: "Amendment 0001.pdf", documentClass: "amendment", amendmentNumber: 1 })];
+    const after = [
+      ...before,
+      snap({ key: "k-a2", name: "Amendment 0002.pdf", documentClass: "amendment", amendmentNumber: 2 }),
+    ];
+    const changes = documentChanges(before, after);
+    expect(changes.newAmendments.map((a) => a.name)).toEqual(["Amendment 0002.pdf"]);
+    expect(changes.changed).toHaveLength(0);
+    expect(changes.removed).toHaveLength(0);
+    expect(changeSummary(changes)).toContain("1 new amendment(s): Amendment 0002.pdf");
+  });
+
+  it("orders new amendments with the latest first", () => {
+    const after = [
+      snap({ key: "k-a1", name: "Amendment 0001.pdf", documentClass: "amendment", amendmentNumber: 1 }),
+      snap({ key: "k-a3", name: "Amendment 0003.pdf", documentClass: "amendment", amendmentNumber: 3 }),
+      snap({ key: "k-a2", name: "Amendment 0002.pdf", documentClass: "amendment", amendmentNumber: 2 }),
+    ];
+    expect(documentChanges([], after).newAmendments.map((a) => a.amendmentNumber)).toEqual([3, 2, 1]);
+  });
+
+  it("notices a document that has left the notice", () => {
+    const changes = documentChanges([snap({}), snap({ key: "k2", name: "Exhibit A.pdf" })], [snap({})]);
+    expect(changes.removed.map((r) => r.name)).toEqual(["Exhibit A.pdf"]);
+    expect(changeSummary(changes)).toContain("no longer on the notice");
+  });
+
+  it("treats a missing hash as a gap in the record, not as a change", () => {
+    /*
+     * An unknown hash means the record is incomplete, not that the file
+     * moved. Reporting it as a change would make every run after one failed
+     * hash look like an amendment landed, and an alert that cries wolf is an
+     * alert nobody reads.
+     */
+    for (const [was, now] of [
+      [null, "bbb"],
+      ["aaa", null],
+      [null, null],
+    ] as const) {
+      const changes = documentChanges(
+        [snap({ contentHash: was })],
+        [snap({ contentHash: now })]
+      );
+      expect(changes.changed, `${was} -> ${now}`).toHaveLength(0);
+      expect(changes.unchanged).toBe(1);
+    }
+  });
+
+  it("keys on the storage path, not the display name", () => {
+    // Names are recovered from a Content-Disposition header and can change
+    // between runs for the same file. The key cannot.
+    const changes = documentChanges(
+      [snap({ name: "attachment" })],
+      [snap({ name: "Wage Determination.pdf" })]
+    );
+    expect(changes.quiet).toBe(true);
+  });
+
+  it("handles a first run with nothing before it", () => {
+    const changes = documentChanges([], [snap({}), snap({ key: "k2" })]);
+    expect(changes.added).toHaveLength(2);
+    expect(changes.quiet).toBe(false);
   });
 });
