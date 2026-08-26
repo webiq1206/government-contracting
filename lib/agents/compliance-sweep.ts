@@ -92,19 +92,57 @@ export const complianceSweep: AgentDefinition = {
     let checked = 0;
     let lapsed = 0;
     let expiring = 0;
+    let unrecorded = 0;
     let humanAction = false;
+    /*
+     * Organizations whose sweep threw.
+     *
+     * The catch returned null and the loop moved on, while the summary went on
+     * saying "across 5 org(s)" and reporting the totals of however many had
+     * actually run. An account whose coverage was never checked read exactly
+     * like an account with nothing expiring. Counting one org's failure is
+     * deliberate isolation and worth keeping; not saying so is not.
+     */
+    const failedOrgs: string[] = [];
     for (const org of orgs) {
-      const r = await runWithOrg(org.id, () => sweepOrg(org.id)).catch(() => null);
+      const r = await runWithOrg(org.id, () => sweepOrg(org.id)).catch((e: Error) => {
+        failedOrgs.push(`${org.id}: ${e.message}`);
+        return null;
+      });
       if (!r) continue;
       checked += r.checked;
       lapsed += r.lapsed;
       expiring += r.expiring;
+      unrecorded += r.unrecorded;
       humanAction = humanAction || r.humanAction;
     }
+
+    const swept = orgs.length - failedOrgs.length;
+    const parts = [
+      `Compliance sweep across ${swept} of ${orgs.length} org(s): ${checked} document(s) checked, ${lapsed} newly lapsed, ${expiring} expiring.`,
+    ];
+    if (unrecorded > 0) {
+      parts.push(
+        `${unrecorded} document(s) could not have a new status written, so what is on screen for them is out of date.`
+      );
+    }
+    if (failedOrgs.length > 0) {
+      parts.push(`${failedOrgs.length} account(s) were not swept at all: ${failedOrgs.join("; ")}`);
+    }
+
     return {
-      ok: true,
-      summary: `Compliance sweep across ${orgs.length} org(s): ${checked} document(s) checked, ${lapsed} newly lapsed, ${expiring} expiring.`,
-      humanActionRequired: humanAction,
+      /*
+       * Not ok when a whole account went unchecked, because a sweep that
+       * skipped an account has not done the thing its name claims.
+       *
+       * A failed document write leaves this ok on purpose: the run did
+       * complete and did report the problem, and the status-write-failed log
+       * is written at status 'error', which is what `automation-status` reads.
+       * Flagging it here as well would count one failure twice.
+       */
+      ok: failedOrgs.length === 0,
+      summary: parts.join(" ").slice(0, 800),
+      humanActionRequired: humanAction || unrecorded > 0,
     };
   },
 };
@@ -113,32 +151,72 @@ async function sweepOrg(orgId: string): Promise<{
   checked: number;
   lapsed: number;
   expiring: number;
+  /** Documents whose new status could not be written. */
+  unrecorded: number;
   humanAction: boolean;
 }> {
     const docs = await loadDocuments(orgId);
     if (docs.length === 0) {
-      return { checked: 0, lapsed: 0, expiring: 0, humanAction: false };
+      return { checked: 0, lapsed: 0, expiring: 0, unrecorded: 0, humanAction: false };
     }
 
     const now = new Date();
     const expiringSoon: Row[] = [];
     const justExpired: Row[] = [];
-    let restatused = 0;
+    /*
+     * Documents whose status could not be written.
+     *
+     * The update swallowed its error and pushed the document onto justExpired
+     * regardless, so a failed write produced a digest saying a subcontractor
+     * was LAPSED while the row still said active. That row is what the rest of
+     * the product reads: the rule that no work goes out behind a lapsed
+     * certificate is enforced off the status, so an uninsured subcontractor
+     * stayed cleared for work while the operator had been told otherwise, and
+     * nothing anywhere recorded that a write had failed.
+     *
+     * A document that could not be restatused is now reported as exactly
+     * that, and is not counted among the ones that changed.
+     */
+    const writeFailed: { doc: Row; error: string }[] = [];
 
     for (const doc of docs) {
       const computed = currentStatus(doc, now);
       if (computed !== doc.status) {
-        await query(
-          `update subcontractor_documents set status = $2, updated_at = now() where id = $1`,
-          [doc.id, computed]
-        ).catch(() => {});
-        restatused++;
+        try {
+          await query(
+            `update subcontractor_documents set status = $2, updated_at = now() where id = $1`,
+            [doc.id, computed]
+          );
+        } catch (err) {
+          writeFailed.push({ doc, error: (err as Error).message });
+          continue;
+        }
         // Only the transition into expired is news. A document that was
         // already expired yesterday has been reported once and should not be
         // reported again every single day.
         if (computed === "expired") justExpired.push(doc);
       }
       if (computed === "expiring") expiringSoon.push(doc);
+    }
+
+    /*
+     * Said once per run, at error level, naming the documents.
+     *
+     * This is the case where the sweep knows its own picture of coverage is
+     * wrong. Reporting it as an ordinary run with a smaller count would be the
+     * silence this whole audit is about.
+     */
+    if (writeFailed.length > 0) {
+      await logAgent({
+        agent: "compliance-sweep",
+        action: "status-write-failed",
+        level: "error",
+        status: "error",
+        message: `Could not record a new status for ${writeFailed.length} document(s). Their coverage on screen is out of date, and any rule that reads it is working from the old status. ${writeFailed
+          .map((w) => `${w.doc.company_name}: ${w.error}`)
+          .join("; ")}`.slice(0, 500),
+        output: { failed: writeFailed.map((w) => ({ id: w.doc.id, error: w.error })) },
+      });
     }
 
     // Both lists are per document. A sub with two lapsing certificates is one
@@ -237,6 +315,10 @@ async function sweepOrg(orgId: string): Promise<{
       checked: docs.length,
       lapsed: justExpired.length,
       expiring: expiringSoon.length,
-      humanAction: justExpired.length > 0 || workingAndLapsing > 0,
+      unrecorded: writeFailed.length,
+      // A sweep that could not write is a person-shaped problem too: what is
+      // on screen no longer matches what the dates say.
+      humanAction:
+        justExpired.length > 0 || workingAndLapsing > 0 || writeFailed.length > 0,
     };
 }
