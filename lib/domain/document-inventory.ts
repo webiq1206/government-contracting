@@ -450,3 +450,187 @@ export function changeSummary(changes: DocumentChanges): string {
   }
   return `${parts.join("; ")}. ${changes.unchanged} unchanged.`;
 }
+
+export interface DocumentRecord {
+  id: string;
+  name: string;
+  documentClass: DocumentClass;
+  version: number;
+  amendmentNumber: number | null;
+  pageCount: number | null;
+  extractionState: ExtractionState;
+  ocrState: OcrState | null;
+  accessState: AccessState | null;
+  disposition: Disposition;
+  excludedReason: string | null;
+  relevantToAll: boolean | null;
+  tradeRelevance: string[] | null;
+  sourceSystem: string | null;
+  sourceUrl: string | null;
+  lastVerifiedAt: Date | null;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  reviewNote: string | null;
+  supersededBy: string | null;
+  lastError: string | null;
+  byteSize: number | null;
+  storagePath: string | null;
+}
+
+export type AttentionLevel = "blocker" | "watch" | "none";
+
+export interface DocumentDisplay extends DocumentRecord {
+  classLabel: string;
+  extractionLabel: string;
+  ocrLabel: string | null;
+  accessLabel: string | null;
+  dispositionLabel: string;
+  /** Who this document matters to, in words. */
+  relevanceLabel: string;
+  attention: AttentionLevel;
+  /**
+   * What is wrong, in a sentence somebody can act on. Null when nothing is.
+   *
+   * Deliberately not a status word. "Unreadable" tells an operator a state;
+   * "nothing in this file was ever read, so any requirement inside it is
+   * missing from the brief" tells them why they should care.
+   */
+  problem: string | null;
+}
+
+/**
+ * How a document should read on the Documents tab.
+ *
+ * The rule the instructions set, and the one worth defending, is that a
+ * document with a problem stays visible as a blocker rather than being tidied
+ * away. Every branch below that returns "blocker" is a case where the bid was
+ * assembled without something, and the screen must not look the same as one
+ * where it was not.
+ */
+export function describeDocument(doc: DocumentRecord): DocumentDisplay {
+  const relevanceLabel =
+    doc.relevantToAll === true
+      ? "Every trade"
+      : doc.tradeRelevance && doc.tradeRelevance.length > 0
+        ? doc.tradeRelevance.join(", ")
+        : "Not yet assessed";
+
+  let attention: AttentionLevel = "none";
+  let problem: string | null = null;
+
+  if (doc.supersededBy) {
+    // Not a problem: a superseded document is history, and history is meant
+    // to be kept. It just should not be read as current.
+    attention = "watch";
+    problem = "Replaced by a newer version of this file. Kept for history.";
+  } else if (doc.disposition === "blocked") {
+    attention = "blocker";
+    problem =
+      doc.lastError?.trim() ||
+      "This document was not collected, so nothing in it has been read.";
+  } else if (doc.disposition === "excluded") {
+    attention = "watch";
+    problem = `Excluded on purpose: ${doc.excludedReason?.trim() || "no reason recorded"}.`;
+  } else if (doc.extractionState === "unreadable") {
+    attention = "blocker";
+    problem =
+      "Stored, but nothing in it could be read, transcription included. Any requirement, form, page limit or deadline inside it is missing from the brief.";
+  } else if (doc.extractionState === "not_read") {
+    attention = "blocker";
+    problem =
+      "Stored, but its text never reached the analysis, so nothing in it informed the brief.";
+  } else if (doc.extractionState === "partial") {
+    attention = "blocker";
+    problem = "Only part of this document was read. The rest has not informed the brief.";
+  } else if (doc.extractionState === "pending") {
+    attention = "watch";
+    problem = "Not processed yet.";
+  } else if (doc.accessState && doc.accessState !== "available") {
+    // The text was read, so the brief is sound; the file itself can no longer
+    // be fetched, which matters when somebody goes to open it.
+    attention = "watch";
+    problem =
+      doc.accessState === "link_expired"
+        ? "Read already, but the source link has expired, so it cannot be re-verified."
+        : doc.accessState === "protected"
+          ? "Password protected at the source."
+          : "The source could not be reached on the last check.";
+  }
+
+  return {
+    ...doc,
+    classLabel: DOCUMENT_CLASS_LABEL[doc.documentClass],
+    extractionLabel: EXTRACTION_STATE_LABEL[doc.extractionState],
+    ocrLabel: doc.ocrState ? OCR_STATE_LABEL[doc.ocrState] : null,
+    accessLabel: doc.accessState ? ACCESS_STATE_LABEL[doc.accessState] : null,
+    dispositionLabel: DISPOSITION_LABEL[doc.disposition],
+    relevanceLabel,
+    attention,
+    problem,
+  };
+}
+
+/**
+ * Order for the Documents tab: what needs somebody first, then the newest
+ * amendment, then everything else.
+ *
+ * Alphabetical would be tidier and would bury the one file nobody has read
+ * under thirty that are fine.
+ */
+export function sortForReview(docs: readonly DocumentDisplay[]): DocumentDisplay[] {
+  const rank = (d: DocumentDisplay) =>
+    d.attention === "blocker" ? 0 : d.attention === "watch" ? 1 : 2;
+  return [...docs].sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (b.amendmentNumber ?? -1) - (a.amendmentNumber ?? -1) ||
+      a.name.localeCompare(b.name)
+  );
+}
+
+/**
+ * A database row as an inventory record.
+ *
+ * Every state goes through its parser, which falls back to the pessimistic
+ * value rather than the convenient one. A row written before migration 072, or
+ * by a caller that forgot a column, reads as "somebody has to look at this"
+ * instead of quietly rendering as read-in-full.
+ *
+ * `ocr_state` and `access_state` are the exceptions and stay null when null:
+ * they are genuinely unknown for a non-PDF or a document nobody has re-checked,
+ * and a screen saying "waiting to be transcribed" about a spreadsheet is noise,
+ * not caution.
+ */
+export function toDocumentRecord(row: Record<string, unknown>): DocumentRecord {
+  const date = (v: unknown): Date | null => (v instanceof Date ? v : null);
+  const str = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+  const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
+  const trades = Array.isArray(row.trade_relevance)
+    ? row.trade_relevance.filter((t): t is string => typeof t === "string")
+    : null;
+  return {
+    id: String(row.id ?? ""),
+    name: String(row.name ?? "Untitled"),
+    documentClass: parseDocumentClass(row.document_class),
+    version: num(row.version) ?? 1,
+    amendmentNumber: num(row.amendment_number),
+    pageCount: num(row.page_count),
+    extractionState: parseExtractionState(row.extraction_state),
+    ocrState: row.ocr_state == null ? null : parseOcrState(row.ocr_state),
+    accessState: row.access_state == null ? null : parseAccessState(row.access_state),
+    disposition: parseDisposition(row.disposition),
+    excludedReason: str(row.excluded_reason),
+    relevantToAll: typeof row.relevant_to_all === "boolean" ? row.relevant_to_all : null,
+    tradeRelevance: trades && trades.length > 0 ? trades : null,
+    sourceSystem: str(row.source_system),
+    sourceUrl: str(row.source_url),
+    lastVerifiedAt: date(row.last_verified_at),
+    reviewedBy: str(row.reviewed_by),
+    reviewedAt: date(row.reviewed_at),
+    reviewNote: str(row.review_note),
+    supersededBy: str(row.superseded_by),
+    lastError: str(row.last_error),
+    byteSize: num(row.byte_size),
+    storagePath: str(row.storage_path),
+  };
+}

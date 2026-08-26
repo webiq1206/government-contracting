@@ -13,6 +13,11 @@ import {
   withPageMarkers,
   documentChanges,
   changeSummary,
+  describeDocument,
+  sortForReview,
+  toDocumentRecord,
+  type DocumentDisplay,
+  type DocumentRecord,
   type InventoryRow,
   type InventorySnapshot,
 } from "../lib/domain/document-inventory";
@@ -373,5 +378,195 @@ describe("what moved since the last read", () => {
     const changes = documentChanges([], [snap({}), snap({ key: "k2" })]);
     expect(changes.added).toHaveLength(2);
     expect(changes.quiet).toBe(false);
+  });
+});
+
+describe("how a document reads on the Documents tab", () => {
+  const rec = (over: Partial<DocumentRecord>): DocumentRecord => ({
+    id: "d1",
+    name: "PWS.pdf",
+    documentClass: "solicitation",
+    version: 1,
+    amendmentNumber: null,
+    pageCount: 12,
+    extractionState: "extracted",
+    ocrState: "not_needed",
+    accessState: "available",
+    disposition: "delivered",
+    excludedReason: null,
+    relevantToAll: true,
+    tradeRelevance: null,
+    sourceSystem: "sam.gov",
+    sourceUrl: "https://sam.gov/x",
+    lastVerifiedAt: new Date("2026-08-26T00:00:00Z"),
+    reviewedBy: null,
+    reviewedAt: null,
+    reviewNote: null,
+    supersededBy: null,
+    lastError: null,
+    byteSize: 1024,
+    storagePath: "solicitations/o/1_pws.pdf",
+    ...over,
+  });
+
+  it("says nothing is wrong when nothing is", () => {
+    const d = describeDocument(rec({}));
+    expect(d.attention).toBe("none");
+    expect(d.problem).toBeNull();
+    expect(d.extractionLabel).toBe("Read in full");
+  });
+
+  it.each([
+    ["unreadable" as const, "transcription included"],
+    ["not_read" as const, "never reached the analysis"],
+    ["partial" as const, "Only part of this document was read"],
+  ])("treats %s as a blocker", (state, phrase) => {
+    /*
+     * These are not degrees of success. Each one means the bid was assembled
+     * without something that is in the solicitation, and the screen must not
+     * look the same as one where it was not.
+     */
+    const d = describeDocument(rec({ extractionState: state }));
+    expect(d.attention).toBe("blocker");
+    expect(d.problem).toContain(phrase);
+  });
+
+  it("explains the problem rather than naming the state", () => {
+    // "Unreadable" tells an operator a state. The sentence tells them why it
+    // matters, which is the only reason to put it on a screen.
+    const d = describeDocument(rec({ extractionState: "unreadable" }));
+    expect(d.problem).toContain("missing from the brief");
+  });
+
+  it("carries the reason on a deliberate exclusion", () => {
+    const d = describeDocument(
+      rec({ disposition: "excluded", excludedReason: "Duplicate of Attachment 2." })
+    );
+    expect(d.attention).toBe("watch");
+    expect(d.problem).toContain("Duplicate of Attachment 2.");
+  });
+
+  it("says so when an exclusion has no reason on it", () => {
+    const d = describeDocument(rec({ disposition: "excluded", excludedReason: "  " }));
+    expect(d.problem).toContain("no reason recorded");
+  });
+
+  it("prefers the recorded error to a generic sentence on a blocked document", () => {
+    const d = describeDocument(
+      rec({ disposition: "blocked", lastError: "Refused: the host resolves to loopback." })
+    );
+    expect(d.problem).toBe("Refused: the host resolves to loopback.");
+  });
+
+  it("keeps a superseded document visible as history, not as a problem", () => {
+    // History is meant to be kept. It just should not read as current.
+    const d = describeDocument(rec({ supersededBy: "d9" }));
+    expect(d.attention).toBe("watch");
+    expect(d.problem).toContain("Kept for history");
+  });
+
+  it("flags an expired link without calling the brief unsound", () => {
+    // The text was read, so the requirements stand. What has gone is the
+    // ability to open the file, which matters when somebody tries.
+    const d = describeDocument(rec({ accessState: "link_expired" }));
+    expect(d.attention).toBe("watch");
+    expect(d.problem).toContain("cannot be re-verified");
+  });
+
+  it("does not claim a trade relevance it was never given", () => {
+    const d = describeDocument(rec({ relevantToAll: null, tradeRelevance: null }));
+    expect(d.relevanceLabel).toBe("Not yet assessed");
+  });
+
+  it("names the trades when it knows them", () => {
+    const d = describeDocument(
+      rec({ relevantToAll: false, tradeRelevance: ["Electrical", "HVAC"] })
+    );
+    expect(d.relevanceLabel).toBe("Electrical, HVAC");
+  });
+});
+
+describe("what the Documents tab shows first", () => {
+  const disp = (over: Partial<DocumentDisplay>): DocumentDisplay =>
+    ({
+      id: "x", name: "x.pdf", attention: "none", amendmentNumber: null,
+      ...over,
+    }) as DocumentDisplay;
+
+  it("puts what needs somebody above what does not", () => {
+    // Alphabetical is tidier and buries the one file nobody read under thirty
+    // that are fine.
+    const sorted = sortForReview([
+      disp({ id: "ok", name: "AAA.pdf" }),
+      disp({ id: "watch", name: "BBB.pdf", attention: "watch" }),
+      disp({ id: "bad", name: "ZZZ.pdf", attention: "blocker" }),
+    ]);
+    expect(sorted.map((d) => d.id)).toEqual(["bad", "watch", "ok"]);
+  });
+
+  it("puts the newest amendment first among equals", () => {
+    const sorted = sortForReview([
+      disp({ id: "a1", amendmentNumber: 1 }),
+      disp({ id: "a3", amendmentNumber: 3 }),
+      disp({ id: "a2", amendmentNumber: 2 }),
+    ]);
+    expect(sorted.map((d) => d.id)).toEqual(["a3", "a2", "a1"]);
+  });
+
+  it("does not mutate what it was given", () => {
+    const input = [disp({ id: "a" }), disp({ id: "b", attention: "blocker" })];
+    sortForReview(input);
+    expect(input.map((d) => d.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("reading a row out of the database", () => {
+  it("falls back to the pessimistic state on a row from before the inventory existed", () => {
+    /*
+     * Rows written before migration 072 have no disposition and no extraction
+     * state. They must read as "somebody has to look at this", never as
+     * read-in-full, because nothing in such a row records whether its text ever
+     * reached an analysis. That is the whole reason those columns were not
+     * backfilled.
+     */
+    const d = toDocumentRecord({ id: "d1", name: "Old.pdf" });
+    expect(d.disposition).toBe("blocked");
+    expect(d.extractionState).toBe("pending");
+    expect(d.documentClass).toBe("other");
+    expect(d.version).toBe(1);
+  });
+
+  it("leaves OCR and access unknown rather than guessing", () => {
+    // A spreadsheet has no OCR state, and a screen saying "waiting to be
+    // transcribed" about one is noise, not caution.
+    const d = toDocumentRecord({ id: "d1", name: "Pricing.xlsx" });
+    expect(d.ocrState).toBeNull();
+    expect(d.accessState).toBeNull();
+  });
+
+  it("keeps a real timestamp and refuses a string that looks like one", () => {
+    // node-postgres returns Date for timestamptz. A string here means
+    // something upstream stringified it, and treating it as a date would put
+    // "Invalid Date" on the screen.
+    const when = new Date("2026-08-26T00:00:00Z");
+    expect(toDocumentRecord({ id: "d", name: "n", last_verified_at: when }).lastVerifiedAt).toBe(when);
+    expect(
+      toDocumentRecord({ id: "d", name: "n", last_verified_at: "2026-08-26" }).lastVerifiedAt
+    ).toBeNull();
+  });
+
+  it("treats an empty trade list as no assessment rather than as no trades", () => {
+    // "This document matters to nobody" and "nobody has looked" are different
+    // facts, and only one of them is a reason to stop asking.
+    expect(toDocumentRecord({ id: "d", name: "n", trade_relevance: [] }).tradeRelevance).toBeNull();
+    expect(
+      toDocumentRecord({ id: "d", name: "n", trade_relevance: ["Electrical", 7] }).tradeRelevance
+    ).toEqual(["Electrical"]);
+  });
+
+  it("survives a row with nothing recognisable in it", () => {
+    const d = toDocumentRecord({});
+    expect(d.name).toBe("Untitled");
+    expect(describeDocument(d).attention).toBe("blocker");
   });
 });

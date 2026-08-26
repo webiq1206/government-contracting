@@ -7,20 +7,27 @@ interface DocRow {
 }
 
 /**
- * The always-visible attachments panel for a record. Every plan / spec / drawing
- * / clarification associated with the opportunity is surfaced here even if the
- * AI Bid Brief has not run yet, so nobody has to hunt for the source documents.
+ * Files that are not source documents: the generated package pieces, the
+ * capability statement, operator uploads.
+ *
+ * Source documents moved to DocumentInventoryPanel, which shows what became of
+ * each one. These stayed here rather than joining them, because a generated
+ * bid PDF has no extraction state and never will: an inventory row for it
+ * would read "not processed yet" for ever, which is both alarming and false.
+ *
+ * They stayed visible, which is the part that matters. Dropping them to make
+ * the new panel look tidy would take away access to the files an operator
+ * downloads and sends.
  */
 export function AttachmentsPanel({ documents }: { documents: DocRow[] }) {
   return (
-    <div className="card scroll-mt-editorial" id="attachments" data-guide-target="attachments">
+    <div className="card">
       <p className="eyebrow mb-3">
-        Attachments · <span className="num">{documents.length}</span>
+        Generated and uploaded files · <span className="num">{documents.length}</span>
       </p>
       {documents.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          No attachments captured yet. The Ingestion agent will attach originals
-          the next time this opportunity is refreshed from SAM.gov.
+        <p className="text-sm text-muted-foreground">
+          Nothing generated or uploaded for this bid yet.
         </p>
       ) : (
         <ul className="divide-y divide-border text-sm">

@@ -7,11 +7,19 @@ import { HelpPopover } from "@/components/help-popover";
 import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { BidBrief } from "@/components/bid-brief";
+import { DocumentInventoryPanel } from "@/components/document-inventory-panel";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
 import { OpportunityJourney } from "@/components/opportunity-journey";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
+import {
+  describeDocument,
+  sortForReview,
+  toDocumentRecord,
+} from "@/lib/domain/document-inventory";
 import { SubmissionPackage } from "@/components/submission-package";
 import { OpportunityNotes } from "@/components/opportunity-notes";
 import { Collapsible } from "@/components/collapsible";
@@ -60,10 +68,11 @@ const PAST_PERF_LABEL: Record<string, string> = {
  * Pricing / Files / More.
  */
 export default async function OpportunityPage({ params }: { params: { id: string } }) {
-  const [detail, automation, rules] = await Promise.all([
+  const [detail, automation, rules, viewer] = await Promise.all([
     opportunityDetail(params.id),
     getAutomationState(),
     getAutomationRules(),
+    currentUser(),
   ]);
   if (!detail) notFound();
   const { opp, quotes, subs, documents, logs, competitors, subComms, pendingCalls } = detail;
@@ -80,6 +89,32 @@ export default async function OpportunityPage({ params }: { params: { id: string
     company_name: s.company_name,
     trade: s.trade,
   }));
+  /*
+   * Every source document, with what became of it, worst first.
+   *
+   * The panel this replaces showed a filename, a kind and a link, which is
+   * enough to find a file and nowhere near enough to answer whether anything
+   * in this bid went unread. Sorted so a document nobody has read cannot sit
+   * thirtieth in an alphabetical list.
+   */
+  const briefDocsSource = documents as Record<string, unknown>[];
+  const inventory = sortForReview(
+    (documents as Record<string, unknown>[])
+      .filter((d) => String(d.kind) === "solicitation")
+      .map((d) => describeDocument(toDocumentRecord(d)))
+  );
+  /*
+   * Everything that is not a source document: the generated package pieces,
+   * the capability statement, operator uploads.
+   *
+   * Kept on its own rather than folded into the inventory above, and kept
+   * rather than dropped. These have no extraction state and never will, so an
+   * inventory row for a generated bid PDF would read "not processed yet" for
+   * ever, which is alarming and false. And removing them from the Files tab to
+   * make the new panel look tidy would take away access to files an operator
+   * downloads and sends.
+   */
+  const otherFiles = briefDocsSource.filter((d) => String(d.kind) !== "solicitation");
   const briefDocs = (documents as Record<string, unknown>[]).map((d) => ({
     id: String(d.id),
     name: String(d.name),
@@ -834,7 +869,22 @@ export default async function OpportunityPage({ params }: { params: { id: string
               >
                 Solicitation attachments, generated package pieces, and downloads.
               </SectionHeading>
-              <AttachmentsPanel documents={briefDocs} />
+              <DocumentInventoryPanel
+                documents={inventory}
+                canDecide={can(viewer?.orgRole, "decide")}
+                canRunAgents={can(viewer?.orgRole, "run_agents")}
+              />
+              {otherFiles.length > 0 && (
+                <AttachmentsPanel
+                  documents={otherFiles.map((d) => ({
+                    id: String(d.id),
+                    name: String(d.name),
+                    kind: String(d.kind),
+                    storage_path: (d.storage_path as string) ?? null,
+                    meta: (d.meta as { source_url?: string }) ?? null,
+                  }))}
+                />
+              )}
               <Collapsible title="Notes" defaultOpen={Boolean(opp.notes)}>
                 <OpportunityNotes opportunityId={opp.id} initialNotes={opp.notes} />
               </Collapsible>
