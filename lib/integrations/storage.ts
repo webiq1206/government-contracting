@@ -17,15 +17,48 @@ import { promises as fs } from "fs";
 import path from "path";
 import { createHmac, timingSafeEqual } from "crypto";
 
+/**
+ * The key these tokens are signed with, or nothing in production.
+ *
+ * config.auth.secret falls back to "dev-insecure-secret-change-me", which is
+ * in the open-source tree. A production instance running on it would sign
+ * file-access tokens with a value anybody can read, so every stored
+ * solicitation document, W-9 and subcontractor upload would be reachable by
+ * anyone who can construct a URL.
+ *
+ * The health endpoint already returns 503 for this, which is what stops a
+ * host sending traffic. It does not stop the process minting tokens, and
+ * lib/domain/sub-portal-link.ts had already taken the stronger position for
+ * portal links: refuse rather than degrade. File links are reachable by the
+ * same strangers and carry the same documents, so they get the same answer.
+ *
+ * Dev and tests keep the default, which is what it is for.
+ */
+function fileSecret(): string {
+  if (config.isProd && config.auth.secretIsDefault) {
+    throw new Error("AUTH_SECRET must be set before file links can be issued.");
+  }
+  return config.auth.secret;
+}
+
 /** HMAC token for time-limited public access to a stored file. */
 export function fileToken(key: string, exp: number): string {
-  return createHmac("sha256", config.auth.secret)
+  return createHmac("sha256", fileSecret())
     .update(`file:${key}:${exp}`)
     .digest("hex");
 }
 
-/** Validate a file-access token produced by `fileToken`. */
+/**
+ * Validate a file-access token produced by `fileToken`.
+ *
+ * Fails closed on the default secret rather than throwing: a thrown error here
+ * becomes a 500 on a public route, which tells a stranger more than a refusal
+ * does. Every token issued under a public key is forgeable, so refusing all of
+ * them, including the legitimate ones, is the correct answer and not a
+ * degradation to avoid.
+ */
 export function verifyFileToken(key: string, exp: number, sig: string): boolean {
+  if (config.isProd && config.auth.secretIsDefault) return false;
   if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1000)) return false;
   const expected = fileToken(key, exp);
   if (sig.length !== expected.length) return false;
