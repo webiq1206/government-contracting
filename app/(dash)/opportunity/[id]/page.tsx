@@ -471,6 +471,31 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   </p>
                 </div>
               )}
+
+              {/*
+                * Moved here from a tab labelled "More". It said so itself:
+                * "same tracker as the top banner". A duplicate of the banner
+                * belongs under the banner, not behind a word that describes a
+                * tab's position rather than its contents.
+                */}
+              <div id="workflow" data-guide-target="workflow" className="space-y-2">
+                <SectionHeading
+                  eyebrow="Current workflow"
+                  title="Where this bid stands"
+                  tip={termTip("workflow")}
+                >
+                  Same tracker as the top banner. Use Next step for the action to take now.
+                </SectionHeading>
+                <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
+                {/* Below xl there is no side panel, so the same live task list
+                    lives here rather than only on wide screens. */}
+                <div className="pt-2 xl:hidden">
+                  <OpportunityTaskList plan={plan} />
+                </div>
+                <a href="#next-step" className="btn-ghost text-xs">
+                  Jump to Next step
+                </a>
+              </div>
             </div>
           }
           requirements={
@@ -786,7 +811,38 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
               <CompetitiveLandscape competitors={competitors} pricing={pricing} />
 
-              {bid && (
+
+              {!showQuotePanel && !hasBid && (
+                <div className="card">
+                  <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
+                    Pricing
+                  </h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Quote entry opens once this opportunity reaches capture. Pricing comps and
+                    the bid package will appear here when available.
+                  </p>
+                </div>
+              )}
+            </div>
+          }
+          files={
+            <div className="space-y-4 px-5 py-8 sm:px-6" id="docs">
+              <SectionHeading
+                eyebrow="Documents"
+                title="Files for this bid"
+                tip={termTip("documents")}
+              >
+                Solicitation attachments, generated package pieces, and downloads.
+              </SectionHeading>
+              <AttachmentsPanel documents={briefDocs} />
+              <Collapsible title="Notes" defaultOpen={Boolean(opp.notes)}>
+                <OpportunityNotes opportunityId={opp.id} initialNotes={opp.notes} />
+              </Collapsible>
+            </div>
+          }
+          submission={
+            <div className="space-y-8 px-5 py-8 sm:px-6">
+              {bid ? (
                 <>
                   <div
                     id="submission"
@@ -849,57 +905,21 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     </div>
                   )}
                 </>
-              )}
-
-              {!showQuotePanel && !hasBid && (
+              ) : (
                 <div className="card">
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
-                    Pricing
+                    Nothing to submit yet
                   </h2>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Quote entry opens once this opportunity reaches capture. Pricing comps and
-                    the bid package will appear here when available.
+                    The package is assembled once pricing is in. This section is where the
+                    checks, the required forms and the submission itself will live.
                   </p>
                 </div>
               )}
             </div>
           }
-          files={
-            <div className="space-y-4 px-5 py-8 sm:px-6" id="docs">
-              <SectionHeading
-                eyebrow="Documents"
-                title="Files for this bid"
-                tip={termTip("documents")}
-              >
-                Solicitation attachments, generated package pieces, and downloads.
-              </SectionHeading>
-              <AttachmentsPanel documents={briefDocs} />
-              <Collapsible title="Notes" defaultOpen={Boolean(opp.notes)}>
-                <OpportunityNotes opportunityId={opp.id} initialNotes={opp.notes} />
-              </Collapsible>
-            </div>
-          }
-          more={
+          activity={
             <div className="space-y-8 px-5 py-8 sm:px-6">
-              <div id="workflow" data-guide-target="workflow" className="space-y-2">
-                <SectionHeading
-                  eyebrow="Current workflow"
-                  title="Where this bid stands"
-                  tip={termTip("workflow")}
-                >
-                  Same tracker as the top banner. Use Next step for the action to take now.
-                </SectionHeading>
-                <OpportunityJourney stage={opp.stage} callsEnabled={rules.calls_enabled} />
-                {/* Below xl there is no side panel, so the same live task list
-                    lives here rather than only on wide screens. */}
-                <div className="pt-2 xl:hidden">
-                  <OpportunityTaskList plan={plan} />
-                </div>
-                <a href="#next-step" className="btn-ghost text-xs">
-                  Jump to Next step
-                </a>
-              </div>
-
               <div id="activity" className="scroll-mt-editorial space-y-2">
                 <SectionHeading
                   eyebrow="Activity"

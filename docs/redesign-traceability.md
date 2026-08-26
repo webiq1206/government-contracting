@@ -254,6 +254,18 @@ written in advance of the work.
 | Per-card Skip on Today, 40px tall | Fixed | `min-h-11` on touch | Today | Today | Under the 44px minimum since it was written. The sweep only saw it once the account had call cards for that section to render at all |
 | "Time there unknown" at 2.25:1 | Fixed | `text-slate-500` | Call Queue | Call Queue | Well under the 4.5:1 a 12px string needs, and a caveat about not knowing something must not be the hardest thing on the row to read |
 
+### Opportunity workspace
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Six sections: Brief, Details, Coverage, Pricing, Files, More | Changed | The seven the audit names: Overview, Requirements, Subs and outreach, Pricing, Documents, Submission, Activity | Opportunity | Opportunity | - |
+| Submission at the foot of the Pricing tab | Changed | Its own section | Opportunity | Opportunity | It is the gate that decides whether a bid goes out, and it sat below the quote table, below the comps, below the competitive read, reachable only by scrolling a tab named after something else |
+| Activity behind a tab labelled "More" | Changed | Its own section | Opportunity | Opportunity | "More" describes a tab's position rather than its contents, and it is where things go when nobody wants to decide where they belong |
+| Workflow tracker in "More" | Combined | Overview, under the banner it duplicates | Opportunity | Opportunity | It said so itself: "same tracker as the top banner." A duplicate of the banner belongs under the banner |
+| "Brief", "Details", "Coverage", "Files" | Changed | "Overview", "Requirements", "Subs and outreach", "Documents" | Opportunity | Opportunity | The audit names them, and three of the four old names described the content rather than the question the section answers |
+| `#submission`, `#more`, `#workflow`, `#overview`, `#docs`, `#quotes` | Kept | All still resolve | - | - | Links to `#submission` are in Today's queue, in the guide, and in emails people sent themselves. `#more` is in nothing anyone wrote, and it cost nothing to keep working |
+| Submission with no bid | Changed | "Nothing to submit yet", with what will appear there | Opportunity | Opportunity | The section previously did not exist at all before a bid was assembled, so the answer to "where do I submit this" was nowhere |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
