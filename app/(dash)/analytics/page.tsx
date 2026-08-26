@@ -207,13 +207,25 @@ export default async function AnalyticsPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             label="Win rate"
-            value={winRate != null ? `${winRate}%` : "-"}
-            sub={`${wins ?? 0} wins · ${losses ?? 0} losses`}
+            value={winRate != null ? `${winRate}%` : "Not enough history"}
+            /*
+             * "0 wins · 0 losses" reads as a track record of failure on an
+             * account that has simply never submitted anything, and `?? 0`
+             * turns an uncounted value into a real-looking zero. An account
+             * with no decided bids has no win rate -- that is a different
+             * fact from a win rate of nought, and the edge-case sweep caught
+             * this on all three scenarios.
+             */
+            sub={
+              (wins ?? 0) + (losses ?? 0) === 0
+                ? "No bids decided yet"
+                : `${wins ?? 0} won · ${losses ?? 0} lost`
+            }
             accent
           />
           <KpiCard
             label="Avg margin on wins"
-            value={avgMargin != null ? `${avgMargin}%` : "-"}
+            value={avgMargin != null ? `${avgMargin}%` : (wins ?? 0) === 0 ? "No wins yet" : "Not recorded"}
             accent
           />
           <KpiCard
