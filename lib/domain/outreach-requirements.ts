@@ -146,6 +146,35 @@ function mentionsTrade(text: string, trade: string): boolean {
   return stem.length >= 4 && text.toLowerCase().includes(stem);
 }
 
+/**
+ * A scope-shaped requirement that belongs to a DIFFERENT trade.
+ *
+ * The filter this replaces was unreachable. It read:
+ *
+ *   if (!SCOPE_RE.test(text)) continue;
+ *   if (trade && !mentionsTrade(text, trade) && !SCOPE_RE.test(text)) continue;
+ *
+ * The first line guarantees SCOPE_RE matches, so `!SCOPE_RE.test(text)` on the
+ * second is always false and the `continue` never ran. Every scope-shaped
+ * special requirement was therefore attached to every trade, so the roofer
+ * received "all electrical conduit shall be tested and certified" in their
+ * list of what to price.
+ *
+ * The obvious repair, dropping the dead clause, over-corrects: plenty of
+ * scope-shaped requirements name no trade at all ("all work areas shall be
+ * cleaned daily") and genuinely apply to everybody. Removing those from every
+ * trade would lose real requirements to fix a leak.
+ *
+ * So the test is ownership, not mention: exclude a requirement only when it
+ * names one of the solicitation's OTHER trades and does not name this one.
+ * Anything trade-neutral still reaches everyone, which is what it is for.
+ */
+function belongsToAnotherTrade(text: string, trade: string, otherTrades: string[]): boolean {
+  if (!trade) return false;
+  if (mentionsTrade(text, trade)) return false;
+  return otherTrades.some((other) => mentionsTrade(text, other));
+}
+
 export function buildOutreachRequirements(input: {
   trade?: string | null;
   analysis?: AnalysisLike | null;
@@ -155,6 +184,15 @@ export function buildOutreachRequirements(input: {
   const a = input.analysis ?? {};
   const trade = clean(input.trade);
   const gaps: string[] = [];
+  /*
+   * The other trades this solicitation needs, from the analyst's own list.
+   * Without it "belongs to another trade" has nothing to compare against and
+   * the only available test is "mentions mine", which throws away every
+   * project-wide requirement.
+   */
+  const otherTrades = (a.trade_scopes ?? [])
+    .map((ts) => clean(ts?.trade))
+    .filter((t) => t && (!trade || t.toLowerCase() !== trade.toLowerCase()));
 
   // --- What they are pricing ----------------------------------------------
   const subWork = resolveSubWork({
@@ -215,7 +253,7 @@ export function buildOutreachRequirements(input: {
     if (!text || text.length > 300) continue;
     if (CONDITION_RE.test(text)) continue; // that is a condition, handled below
     if (!SCOPE_RE.test(text)) continue;
-    if (trade && !mentionsTrade(text, trade) && !SCOPE_RE.test(text)) continue;
+    if (belongsToAnotherTrade(text, trade, otherTrades)) continue;
     const it = item(text, "special_requirements");
     if (it) tradeScope.push(it);
   }
@@ -279,11 +317,23 @@ export function buildOutreachRequirements(input: {
     });
   }
 
-  // Condition-shaped special requirements: wages, clearances, hours, permits.
+  /*
+   * Condition-shaped special requirements: wages, clearances, hours, permits.
+   *
+   * Same ownership test as the scope loop above, and it was missing here
+   * entirely rather than merely unreachable. Most conditions are genuinely
+   * site-wide (a wage determination, badging, working hours) and must reach
+   * everybody, which is why the test is "names another trade and not mine"
+   * rather than "names mine". But a licence condition written as "electrical
+   * work shall be performed by a licensed master electrician" is not the
+   * roofer's to satisfy, and telling them it is invites them to price a
+   * qualification they do not need or to decline work they could do.
+   */
   for (const raw of a.special_requirements ?? []) {
     const text = clean(raw);
     if (!text || text.length > 300) continue;
     if (!CONDITION_RE.test(text)) continue;
+    if (belongsToAnotherTrade(text, trade, otherTrades)) continue;
     const it = item(text, "special_requirements");
     if (it) subRequirements.push(it);
   }

@@ -392,6 +392,11 @@ export const outreach: AgentDefinition = {
       quoteDueAt: resolved.quote.at,
       deadlineAt: opp.deadline,
       sampleValues: OUTREACH_VAR_SAMPLES,
+      // The scope check the validator could not make for itself. resolved
+      // already knows whether the text it built is this trade's or the whole
+      // project's; until now that answer only reached a gap note.
+      trade: trade || null,
+      tradeSpecific: resolved.requirements.tradeSpecific,
     });
     if (sendProblems.length) {
       const why = describeProblems(sendProblems);
