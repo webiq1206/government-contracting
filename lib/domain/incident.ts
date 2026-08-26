@@ -19,6 +19,16 @@
  * the database and the provider live elsewhere.
  */
 
+/*
+ * Failures are classified by `classifyFailure` from the health model rather
+ * than by a rule of this module's own. A second classifier would be a second
+ * answer to one question, and the two would drift: an error that health files
+ * under `provider_credit` and recovery files under `other` is an error that
+ * belongs to an incident and can never be replayed into it. One rule, in the
+ * place that already had it.
+ */
+import { classifyFailure } from "./automation-health";
+
 /**
  * The lifecycle, in the only order it can happen.
  *
@@ -211,26 +221,8 @@ export function replayDecision(
    * credit outage will fail again on the bad API key, and requeueing it makes
    * the backlog look like it is not draining when it is.
    */
-  if (classifyForRecovery(failure.error) !== cause) return no("different_cause");
+  if (classifyFailure(failure.error) !== cause) return no("different_cause");
   return { failure, eligible: true, reason: null };
-}
-
-/**
- * The cause a failure would be filed under.
- *
- * Deliberately coarse, and deliberately a separate function from the display
- * classifier: this one decides whether two failures are the same problem for
- * the purpose of replaying them together, which is a lower bar than deciding
- * what to tell somebody.
- */
-export function classifyForRecovery(error: string | null | undefined): string {
-  const e = (error ?? "").toLowerCase();
-  if (/credit|billing|payment|insufficient|quota|balance/.test(e)) return "provider_credit";
-  if (/rate.?limit|429|overloaded|529/.test(e)) return "provider_rate_limit";
-  if (/401|403|unauthor|invalid.*key|authentication/.test(e)) return "provider_auth";
-  if (/timeout|econnreset|enotfound|network|socket/.test(e)) return "network";
-  if (/5\d\d|internal server/.test(e)) return "provider_error";
-  return "other";
 }
 
 export interface ReplayPlan {

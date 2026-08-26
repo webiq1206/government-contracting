@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   canTransition,
-  classifyForRecovery,
   describePlan,
   INCIDENT_STATES,
   isOpen,
@@ -12,6 +11,7 @@ import {
   type IncidentState,
   type JobFailure,
 } from "../lib/domain/incident";
+import { classifyFailure } from "../lib/domain/automation-health";
 
 const failure = (over: Partial<JobFailure> = {}): JobFailure => ({
   id: "run-1",
@@ -142,23 +142,29 @@ describe("deciding what is safe to replay", () => {
   });
 });
 
-describe("classifying a failure for recovery", () => {
-  it.each([
-    ["Your credit balance is too low", "provider_credit"],
-    ["insufficient_quota", "provider_credit"],
-    ["429 rate_limit_error", "provider_rate_limit"],
-    ["Overloaded (529)", "provider_rate_limit"],
-    ["401 authentication_error: invalid x-api-key", "provider_auth"],
-    ["ECONNRESET", "network"],
-    ["500 internal server error", "provider_error"],
-    ["the pdf had no text", "other"],
-  ])("reads %s as %s", (error, cause) => {
-    expect(classifyForRecovery(error)).toBe(cause);
-  });
-
-  it("does not guess from an empty error", () => {
-    expect(classifyForRecovery(null)).toBe("other");
-    expect(classifyForRecovery("")).toBe("other");
+describe("one classifier, not two", () => {
+  it("files a failure under the same cause the health model would", () => {
+    /*
+     * This module used to carry its own classifier. Two answers to one
+     * question drift, and the drift is silent and total: an error that health
+     * files under `provider_credit` and recovery files under `other` belongs
+     * to an incident it can never be replayed into, so the backlog sits there
+     * looking like it is not draining.
+     *
+     * The test is against the shared function, so it fails the day somebody
+     * adds a second one back.
+     */
+    for (const [error, cause] of [
+      ["Your credit balance is too low", "provider_credit"],
+      ["401 authentication_error: invalid x-api-key", "provider_auth"],
+      ["429 rate limit", "provider_rate_limit"],
+    ] as const) {
+      expect(classifyFailure(error)).toBe(cause);
+      // And the eligibility check agrees with it, which is the property that
+      // actually matters.
+      expect(replayDecision(failure({ error }), cause).eligible).toBe(true);
+      expect(replayDecision(failure({ error }), "network").reason).toBe("different_cause");
+    }
   });
 });
 

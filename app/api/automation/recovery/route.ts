@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
-import { incidentById, incidentHistory, openIncidents } from "@/lib/incidents";
+import {
+  incidentById,
+  incidentHistory,
+  openIncidents,
+  syncAutomationIncidents,
+} from "@/lib/incidents";
+import { automationHealth } from "@/lib/automation-status";
 import { runRecoveryCheck } from "@/lib/recovery";
 import { INCIDENT_NEXT_ACTION, INCIDENT_STATE_LABEL } from "@/lib/domain/incident";
 
@@ -20,6 +26,13 @@ export async function GET() {
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
 
+  /*
+   * Record what the assessment finds before reading the list, so an outage
+   * that started since the last look has an incident to be recovered rather
+   * than a button that says there is nothing to do.
+   */
+  const health = await automationHealth(ctx.orgId);
+  await syncAutomationIncidents(ctx.orgId, health).catch(() => {});
   const incidents = await openIncidents(ctx.orgId);
   const withHistory = await Promise.all(
     incidents.map(async (i) => ({

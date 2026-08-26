@@ -280,3 +280,62 @@ export async function incidentHistory(
     at: r.created_at as Date,
   }));
 }
+
+/**
+ * Record what the assessment just found.
+ *
+ * `assessAutomation` derives incidents from a rolling window and is right to;
+ * this is what gives those findings a life beyond the window. Every blocking
+ * cause it reports opens or updates one persisted incident, and any incident
+ * whose backlog has finished draining is closed.
+ *
+ * Deliberately not called from `automationHealth()`, which runs on every page
+ * render through the nav badge. A write on every page load is a write nobody
+ * asked for, and one that would contend on the partial unique index under any
+ * real traffic. It is called where an incident matters: the Automation Health
+ * page and the recovery endpoints.
+ *
+ * Only blocking causes open incidents. A degraded run that resolved itself is
+ * not something to keep a record of and chase to a formal recovery, and
+ * treating it as one trains people to ignore incidents, which is the failure
+ * mode this whole model exists to avoid.
+ */
+export async function syncAutomationIncidents(
+  orgId: string,
+  health: {
+    incidents: {
+      cause: string;
+      spec: { blocking: boolean; repair?: string };
+      failures: number;
+      firstSeen: string;
+    }[];
+    lastSuccessAt: string | null;
+  },
+  nextRunAt?: Date | null
+): Promise<IncidentRow[]> {
+  for (const found of health.incidents) {
+    if (!found.spec.blocking) continue;
+    await openOrUpdateIncident({
+      orgId,
+      cause: found.cause,
+      severity: "blocking",
+      provider: found.cause.startsWith("provider_") ? "anthropic" : null,
+      startedAt: new Date(found.firstSeen),
+      failedCount: found.failures,
+      recommendedAction: found.spec.repair ?? null,
+      lastAgentSuccessAt: health.lastSuccessAt ? new Date(health.lastSuccessAt) : null,
+      nextRunAt: nextRunAt ?? null,
+    }).catch((err) => {
+      // A bookkeeping write must never take down the page that reports the
+      // outage. The health assessment above it is still true.
+      console.error(`[incidents] could not record ${found.cause}: ${(err as Error).message}`);
+    });
+  }
+
+  const open = await openIncidents(orgId);
+  const { reconcileDraining } = await import("./recovery");
+  const reconciled = await Promise.all(
+    open.map((i) => reconcileDraining(i).catch(() => i))
+  );
+  return reconciled.filter((i) => i.state !== "recovered");
+}

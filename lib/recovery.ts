@@ -24,7 +24,6 @@ import { enqueue } from "./queue";
 import { logAgent } from "./logger";
 import { advance, incidentById, type IncidentRow } from "./incidents";
 import {
-  classifyForRecovery,
   describePlan,
   planReplay,
   replayDecision,
