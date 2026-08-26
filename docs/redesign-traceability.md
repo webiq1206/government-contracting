@@ -610,6 +610,23 @@ cookie.
 | Recording a bid as submitted | No confirmation | Confirmed, and the confirmation says what it does | Prompt | Prompt | The override path has always confirmed and the ordinary one, which is the one everybody uses, did not. Pressing it does not send anything to the agency: it records that you did. A bid marked delivered that nobody uploaded is the product asserting something that did not happen |
 | A new editor shipping unguarded | Possible | A failing test | - | - | `tests/unsaved-guard.test.ts` lists the editors deliberately, because "is there unsaved work here" is a judgement about what a form holds rather than something a scan can decide. Adding one means making that decision on purpose |
 
+### Mobile completion (brief section 13)
+
+"Every workflow must be completable on a phone." Walked at 390 by 844, an
+iPhone 13, on the built production server rather than in dev.
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| The call workspace | Never measured | Measured, and six targets fixed | Unchanged | 44px | The accessibility sweep reported no findings for this page for as long as it has existed, because the page only renders when the account has a call waiting. The seeded account has none, so the sweep signed in, found an empty queue, measured the empty state, and counted it as covered |
+| The yes/no and choice answers | 165 by 36 | 44 tall on a phone | Unchanged | 44px | These are pressed one-handed with a phone against an ear. At 36 a slip on a yes/no records the opposite of what was said, and the record is what later sourcing reads |
+| The confidence row, one to five | 62 by 36 | 44 tall on a phone | Unchanged | 44px | Five targets side by side, filled in immediately before Complete call. A slip here rates a different subcontractor than the one on the phone |
+| The close control | 27 by 38 | 44 by 44 on a phone | Unchanged | 44px | The only way out of the workspace |
+| The brief toggle | 28 by 16 | 44 by 44 on a phone | Unchanged | 44px | Opens the job details mid-call. A height floor alone left it 28 wide and still a miss, because a text button is only as wide as its one-word label |
+| `/review`, pursue and pass | - | Confirmed completable | - | Walked | Both decisions, the bulk bar and the brief panel, end to end on the phone |
+| The opportunity record | - | Confirmed completable | - | Walked | All twelve sections reachable, no horizontal overflow at 390 |
+| The subcontractor record and compliance | - | Confirmed completable | - | Walked | Same |
+| The call workspace going unmeasured again | Possible | A failing test | - | - | `tests/call-touch-targets.test.ts` pins the floor in source. It is a weaker instrument than a measurement and says so: it confirms the floor is declared, not that the rendered box clears 44. Seeding a call card for the sweep would measure the real thing, and is the better fix whenever the sweep grows fixtures |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
@@ -629,6 +646,16 @@ cookie.
 - **Recurrence, reminder policy, calendar view and bulk document upload are
   not built.** Each needs schema and a background job rather than a layout, and
   they are worth doing on their own rather than inside a page restructure.
+
+- **The accessibility sweep still cannot reach the call workspace.** Measuring
+  it needs a call card in the database, which means the sweep grows fixtures and
+  a teardown, and a sweep that writes to the database it is measuring can leave
+  rows behind when it fails partway. The source test is the weaker guard chosen
+  deliberately over a heavier one; the gap is written down here rather than
+  closed quietly.
+- **The browser Back button in the call workspace is not guarded.** Same
+  reasoning as everywhere else: a broken guard traps somebody on a page they are
+  trying to leave. Save draft is one tap away and keeps the answers.
 
 - **Site Authority stays admin-only.** It reports on our own marketing domain
   and means nothing to a contractor.

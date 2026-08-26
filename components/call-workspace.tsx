@@ -405,7 +405,9 @@ export function CallWorkspace({
             <button
               onClick={onClose}
               aria-label="Close"
-              className="rounded-md border border-border p-1.5 text-muted-foreground hover:bg-surface"
+              /* The way out of a full-screen workspace on a phone, and it was
+                 27 pixels wide. */
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-surface md:min-h-0 md:min-w-0 md:p-1.5"
             >
               ✕
             </button>
@@ -452,7 +454,13 @@ export function CallWorkspace({
               <button
                 type="button"
                 onClick={() => setBriefOpen((o) => !o)}
-                className="ml-auto text-xs font-medium text-accent-strong hover:underline"
+                /*
+                 * This opens the job details mid-call, and it was 28 by 16.
+                 * The height is fixed by min-h-11; the width needs its own
+                 * floor, because the label is one short word and a text
+                 * button is only as wide as its text.
+                 */
+                className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-end text-xs font-medium text-accent-strong hover:underline md:min-h-0 md:min-w-0"
                 aria-expanded={briefOpen}
               >
                 {briefOpen ? "Hide brief" : "Brief"}
@@ -637,7 +645,13 @@ export function CallWorkspace({
                       type="button"
                       onClick={() => setWrap((w) => ({ ...w, confidence: n }))}
                       aria-pressed={wrap.confidence === n}
-                      className={`h-9 flex-1 rounded-md border text-sm ${
+                      /*
+                       * 44 on a phone, because this is the last thing typed
+                       * before Complete call and the five targets sit side by
+                       * side: at 36 a slip records a different confidence in
+                       * a subcontractor, which is what later sourcing reads.
+                       */
+                      className={`min-h-11 flex-1 rounded-md border text-sm md:h-9 md:min-h-0 ${
                         wrap.confidence === n
                           ? "border-accent bg-accent-soft text-accent-strong"
                           : "border-border text-muted-foreground hover:bg-surface"
