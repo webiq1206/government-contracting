@@ -117,6 +117,11 @@ const SECTIONS: Section[] = [
       { href: "/admin/accounts", label: "Accounts" },
       { href: "/admin/invitations", label: "Invitations" },
       { href: "/admin/billing", label: "Customer Billing" },
+      // Its own entry rather than fifteen rows at the foot of Accounts. The
+      // record of what we did to somebody's account is a different question
+      // from which account is in trouble, and it is the one somebody comes
+      // looking for months later.
+      { href: "/admin/audit", label: "Audit Log" },
     ],
   },
   {

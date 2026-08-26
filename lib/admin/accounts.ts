@@ -37,6 +37,13 @@ export interface AdminAccountRow {
   owner_name: string | null;
   owner_user_id: string | null;
   member_count: number;
+  /**
+   * The most recent sign-in by anybody in this account, or null if nobody
+   * ever has. Read from sessions rather than from a "last seen" column,
+   * because a column would need writing on every request and this is the one
+   * page that ever asks.
+   */
+  last_active_at: string | null;
   /** Computed, never stored: what this account can actually do right now. */
   access: AccessLevel;
 }
@@ -64,7 +71,16 @@ const ACCOUNT_SELECT = `
          owner.name             as owner_name,
          owner.id               as owner_user_id,
          (select count(*) from organization_members m where m.org_id = o.id)::int
-                                as member_count
+                                as member_count,
+         -- Newest session created for anybody in this account. Impersonated
+         -- sessions are excluded: an administrator opening a support session
+         -- is not the customer using their account, and counting it would
+         -- make every account somebody investigated look freshly active.
+         (select max(s.created_at)::text
+            from sessions s
+            join organization_members m2 on m2.user_id = s.user_id
+           where m2.org_id = o.id and s.impersonator_user_id is null)
+                                as last_active_at
     from organizations o
     -- One owner row even when an organization has several. Oldest membership
     -- wins so the answer is stable between page loads rather than whichever

@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/page-frame";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { adminAccountRows, type AdminAccountRow } from "@/lib/admin/accounts";
-import { recentAdminActions } from "@/lib/admin/audit";
-import { shortDate } from "@/lib/format";
+import Link from "next/link";
+import { activityOf, ACTIVITY_FILTERS } from "@/lib/domain/account-activity";
 import { FilterToolbar } from "@/components/filter-toolbar";
 import { AdminAccountsTable } from "@/components/admin-accounts-table";
 import {
@@ -53,6 +53,37 @@ const SPECS: FilterSpec[] = [
       { value: "none", label: "No subscription" },
     ],
   },
+  {
+    key: "plan",
+    label: "Plan",
+    kind: "select",
+    placeholder: "Any",
+    options: [
+      { value: "founding", label: "Founding" },
+      { value: "standard", label: "Standard" },
+      { value: "none", label: "No plan" },
+    ],
+  },
+  {
+    key: "activity",
+    label: "Use",
+    kind: "select",
+    placeholder: "Any",
+    hint: "Never signed in is a failed onboarding and is recoverable. Dormant is churn already under way.",
+    options: ACTIVITY_FILTERS.map((f) => ({ value: f.value, label: f.label })),
+  },
+  {
+    key: "signup",
+    label: "Signed up",
+    kind: "select",
+    placeholder: "Any time",
+    options: [
+      { value: "7", label: "Last 7 days" },
+      { value: "30", label: "Last 30 days" },
+      { value: "90", label: "Last 90 days" },
+    ],
+  },
+  { key: "trial", label: "On trial only", kind: "boolean" },
   { key: "suspended", label: "Suspended only", kind: "boolean" },
   {
     key: "noowner",
@@ -70,6 +101,10 @@ const SORT_ACCESSORS: Record<string, (r: AdminAccountRow) => unknown> = {
   plan_key: (r) => r.plan_key,
   member_count: (r) => r.member_count,
   created_at: (r) => r.created_at,
+  // Nulls sort last under an empty string, which is wrong here: an account
+  // nobody has ever opened is the most interesting row on the page, not the
+  // least. An empty last-active becomes the earliest possible date instead.
+  last_active_at: (r) => r.last_active_at ?? "0000",
 };
 
 export default async function AdminAccountsPage({
@@ -82,10 +117,8 @@ export default async function AdminAccountsPage({
   // exists and is worth attacking.
   if (auth instanceof Response) notFound();
 
-  const [all, audit] = await Promise.all([
-    adminAccountRows(),
-    recentAdminActions(15),
-  ]);
+  const all = await adminAccountRows();
+  const now = new Date();
 
   // Headline counts describe the WHOLE platform, not the current filter. A
   // number that moves when you type in a search box is not a fact about the
@@ -93,6 +126,9 @@ export default async function AdminAccountsPage({
   const lockedOut = all.filter((r) => r.access === "none").length;
   const comped = all.filter((r) => r.billing_exempt).length;
   const suspended = all.filter((r) => r.suspended_at).length;
+  const neverUsed = all.filter(
+    (r) => activityOf(r.last_active_at, r.created_at, now).state === "never"
+  ).length;
 
   const values = parseFilters(SPECS, searchParams);
   const needle = (values.q ?? "").toLowerCase();
@@ -104,6 +140,18 @@ export default async function AdminAccountsPage({
     if (values.billing === "none" && r.subscription_status) return false;
     if (values.suspended === "1" && !r.suspended_at) return false;
     if (values.noowner === "1" && r.owner_email) return false;
+    if (values.trial === "1" && r.access !== "trial") return false;
+    if (values.plan === "none" ? r.plan_key && r.plan_key !== "none" : values.plan && r.plan_key !== values.plan) {
+      return false;
+    }
+    if (values.activity && activityOf(r.last_active_at, r.created_at, now).state !== values.activity) {
+      return false;
+    }
+    if (values.signup) {
+      const cutoff = now.getTime() - Number(values.signup) * 86_400_000;
+      const at = new Date(r.created_at).getTime();
+      if (!Number.isFinite(at) || at < cutoff) return false;
+    }
     return true;
   });
 
@@ -120,11 +168,36 @@ export default async function AdminAccountsPage({
         explanation="Every organization, who owns it, and whether it can use the product right now."
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Accounts" value={rows.length} />
-          <Stat label="Locked out" value={lockedOut} tone={lockedOut ? "text-risk" : undefined} />
-          <Stat label="Comped" value={comped} />
-          <Stat label="Suspended" value={suspended} tone={suspended ? "text-risk" : undefined} />
+        {/*
+          * Whole-platform counts, and each one is a filter.
+          *
+          * "Accounts" read `rows.length`, which is the current page rather
+          * than the platform, so a page of 25 out of 300 organizations
+          * reported 25 accounts under a comment saying these describe the
+          * whole platform. The other three were already right, which is what
+          * made the wrong one so easy to believe.
+          */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <Stat label="Accounts" value={all.length} href="/admin/accounts" />
+          <Stat
+            label="Locked out"
+            value={lockedOut}
+            tone={lockedOut ? "text-risk" : undefined}
+            href="/admin/accounts?access=none"
+          />
+          <Stat
+            label="Never signed in"
+            value={neverUsed}
+            tone={neverUsed ? "text-review" : undefined}
+            href="/admin/accounts?activity=never"
+          />
+          <Stat label="Comped" value={comped} href="/admin/accounts?billing=comped" />
+          <Stat
+            label="Suspended"
+            value={suspended}
+            tone={suspended ? "text-risk" : undefined}
+            href="/admin/accounts?suspended=1"
+          />
         </div>
 
         <FilterToolbar
@@ -154,43 +227,42 @@ export default async function AdminAccountsPage({
           }
         />
 
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold">Recent admin activity</h2>
-          <p className="text-xs text-muted-foreground">
-            Everything administrators have done to other people&apos;s accounts. Kept
-            even after an account is deleted.
-          </p>
-          <div className="panel-inset">
-            {audit.length === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-                Nothing yet.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border/60 text-sm">
-                {audit.map((a) => (
-                  <li key={a.id} className="flex flex-wrap gap-x-2 px-4 py-2">
-                    <span className="text-muted-foreground">{shortDate(a.created_at)}</span>
-                    <span className="font-medium">{a.admin_email}</span>
-                    <span>{a.action.replace(/_/g, " ")}</span>
-                    {a.target_org_name && (
-                      <span className="text-muted-foreground">{a.target_org_name}</span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
+        {/*
+          * The audit log has its own area now. The audit asks for it, and the
+          * reason is that it answers a different question: this page is "which
+          * account is in trouble", and the log is "what did we do to somebody".
+          * Mixing them meant fifteen arbitrary rows of history under a table
+          * that scrolls, which is neither a summary nor a record.
+          */}
+        <p className="text-sm text-muted-foreground">
+          Everything administrators have done to other people&apos;s accounts is kept in the{" "}
+          <Link href="/admin/audit" className="font-medium text-accent hover:underline">
+            admin audit log
+          </Link>
+          , including for accounts that have since been deleted.
+        </p>
+
       </div>
     </>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: string }) {
+/** A count, and the filtered list it counts. The audit asks for these to be clickable. */
+function Stat({
+  label,
+  value,
+  tone,
+  href,
+}: {
+  label: string;
+  value: number;
+  tone?: string;
+  href: string;
+}) {
   return (
-    <div className="panel-inset p-3">
+    <Link href={href} className="panel-inset block p-3 transition-colors hover:border-accent/50">
       <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={`text-2xl font-semibold ${tone ?? ""}`}>{value}</div>
-    </div>
+    </Link>
   );
 }

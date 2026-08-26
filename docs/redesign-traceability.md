@@ -405,6 +405,21 @@ written in advance of the work.
 | A past-due row's next attempt | Added | Table column | Column | Column | Stored from the failure event rather than inferred. A retry Stripe has not scheduled reads "none scheduled" rather than as one it has |
 | Conflicts fixed automatically | Not done | - | - | - | Several of these are legitimate states somebody chose, and a deliberate choice and an accident look identical from here. Each card says what disagrees and what it costs; a person decides |
 
+### Platform Admin Accounts
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| "Accounts" headline count | Fixed | The platform total | Summary card | Summary card | It read the current page, so 25 rows out of 300 organizations reported 25 accounts, directly under a comment saying these counts describe the whole platform and not the current filter. The other three were right, which is what made the wrong one easy to believe |
+| Static summary cards | Changed | Each one filters the table | 5 cards | 5 cards | The audit asks for clickable summary cards, and a count nobody can act on is a decoration |
+| (new) Never signed in | Added | Card and filter | Card | Card | Never and not lately are different accounts. One is a failed onboarding and recoverable; the other is churn already under way, and collapsing them into "inactive" loses the part that says what to do |
+| A signup from this morning | Behaviour | Not flagged | Table | Table | An account created an hour ago has not failed at anything, and chasing it wastes everybody's time |
+| (new) Last used column | Added | Table | Column | Column | Access, plan and status read identically for an account signed up today, one working daily, and one paying monthly that nobody has opened since March |
+| Support sessions | Behaviour | Not counted as use | Data layer | Data layer | An administrator opening a support session is not the customer using their account, and counting it would make every account anyone investigated look freshly active |
+| Filters | Added | Plan, use, signed-up, on trial | Toolbar | Toolbar | Four of the dimensions the audit names were missing |
+| Recent admin activity | Moved | `/admin/audit`, its own area | Audit page | Audit page | The audit asks for it, and the reason is that it answers a different question: this page is "which account is in trouble", the log is "what did we do to somebody". Fifteen arbitrary rows under a table that scrolls was neither a summary nor a record |
+| Test history in the audit view | Fixed | Filtered by the acting address too | Audit page | Audit page | The name matcher only fires on a target organization, and an invitation action has none, so every test invitation ever revoked sat in the production view looking like real history. On the seeded database that was fourteen rows of it. RFC 2606 reserves `.test` and the `example.*` domains, so an administrator at one is a fixture with certainty rather than by inference |
+| That address signal | Not used for deletion | - | - | - | The organization matcher is strict because a false positive there destroys a customer account. This one decides only whether a log line appears by default, and the toggle brings everything back |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

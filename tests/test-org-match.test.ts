@@ -6,7 +6,11 @@
  * match a name a customer could plausibly type. When in doubt, it must say no.
  */
 import { describe, it, expect } from "vitest";
-import { looksLikeTestOrg, hasGeneratedTag } from "../lib/domain/test-org-match";
+import {
+  looksLikeTestOrg,
+  hasGeneratedTag,
+  looksLikeTestEmail,
+} from "../lib/domain/test-org-match";
 
 describe("looksLikeTestOrg — catches leaked fixtures", () => {
   it("matches the fixtures actually seen leaked in production", () => {
@@ -122,5 +126,34 @@ describe("hasGeneratedTag", () => {
     // The two-signal rule is what stands between cleanup and losing a customer.
     expect(hasGeneratedTag("Northgate 1a2b3c4d")).toBe(true);
     expect(looksLikeTestOrg("Northgate 1a2b3c4d")).toBe(false);
+  });
+});
+
+describe("looksLikeTestEmail", () => {
+  it("recognises the domains RFC 2606 reserves, which nobody can register", () => {
+    expect(looksLikeTestEmail("invite-admin-2abd94e6@example.test")).toBe(true);
+    expect(looksLikeTestEmail("someone@test")).toBe(true);
+    expect(looksLikeTestEmail("a@sub.example.com")).toBe(true);
+    expect(looksLikeTestEmail("a@example.org")).toBe(true);
+    expect(looksLikeTestEmail("a@example.net")).toBe(true);
+  });
+
+  it("leaves a real address alone", () => {
+    expect(looksLikeTestEmail("owner@brostco.com")).toBe(false);
+    expect(looksLikeTestEmail("info@webiq.co")).toBe(false);
+    // The trap: a real domain that merely contains the word.
+    expect(looksLikeTestEmail("owner@testequipment.com")).toBe(false);
+    expect(looksLikeTestEmail("owner@example.company")).toBe(false);
+  });
+
+  it("does not fall over on junk", () => {
+    expect(looksLikeTestEmail(null)).toBe(false);
+    expect(looksLikeTestEmail("")).toBe(false);
+    expect(looksLikeTestEmail("not-an-address")).toBe(false);
+    expect(looksLikeTestEmail("trailing@")).toBe(false);
+  });
+
+  it("ignores case and surrounding space", () => {
+    expect(looksLikeTestEmail("  Admin@Example.TEST  ")).toBe(true);
   });
 });

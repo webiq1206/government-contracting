@@ -5,6 +5,7 @@ import { DataTable, type Column } from "@/components/data-table";
 import { shortDate } from "@/lib/format";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { AdminAccountRow } from "@/lib/admin/accounts";
+import { activityOf } from "@/lib/domain/account-activity";
 
 const ACCESS_LABEL: Record<string, { text: string; tone: string }> = {
   full: { text: "Full access", tone: "bg-pursue/15 text-pursue" },
@@ -104,6 +105,31 @@ export function AdminAccountsTable({
       header: "Joined",
       sortable: true,
       render: (r) => <span className="text-muted-foreground">{shortDate(r.created_at)}</span>,
+    },
+    {
+      key: "last_active_at",
+      header: "Last used",
+      sortable: true,
+      hint: "The most recent real sign-in. Support sessions are not counted, or every account anyone looked at would read as freshly active.",
+      render: (r) => {
+        const a = activityOf(r.last_active_at, r.created_at);
+        return (
+          <span
+            className={
+              a.state === "never"
+                ? a.attention
+                  ? "text-review"
+                  : "text-muted-foreground"
+                : a.state === "dormant"
+                  ? "text-review"
+                  : "text-muted-foreground"
+            }
+            title={a.meaning}
+          >
+            {a.state === "never" ? "Never" : `${a.daysSince}d ago`}
+          </span>
+        );
+      },
     },
   ];
 
