@@ -49,10 +49,10 @@ export function HelpPopover({
         aria-expanded={open}
         title="What is this page?"
         onClick={() => setOpen((o) => !o)}
-        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors sm:h-6 sm:w-6 ${
+        className={`tap h-9 w-9 shrink-0 rounded-full border text-xs font-semibold transition-colors sm:h-6 sm:w-6 ${
           open
             ? "border-gold bg-gold text-ink"
-            : "border-border-strong/40 text-muted-foreground hover:border-gold hover:text-gold"
+            : "border-border-strong/40 text-muted-foreground hover:border-gold hover:text-gold-text"
         }`}
       >
         ?

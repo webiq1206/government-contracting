@@ -324,7 +324,7 @@ export function GuideWizard() {
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <span aria-hidden className="text-gold">
+        <span aria-hidden className="text-gold-text">
           ?
         </span>
         Guide Me

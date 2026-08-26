@@ -174,7 +174,7 @@ export function DataTable<T extends { id: string }>({
               type="button"
               onClick={() => persist(hidden, d)}
               className={`rounded px-2 py-1 transition-colors ${
-                density === d ? "bg-gold/20 text-gold" : "text-muted-foreground hover:text-foreground"
+                density === d ? "bg-gold/20 text-gold-text" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {d === "comfortable" ? "Roomy" : "Tight"}
@@ -213,7 +213,7 @@ export function DataTable<T extends { id: string }>({
                       <Link
                         href={href({ sort: nextSort(sort, c.key), page: 1 })}
                         className={`transition-colors hover:text-foreground ${
-                          active ? "text-gold" : ""
+                          active ? "text-gold-text" : ""
                         }`}
                       >
                         {c.header}
@@ -257,7 +257,7 @@ export function DataTable<T extends { id: string }>({
                   colSpan={visible.length + (selection ? 1 : 0)}
                 >
                   Nothing matches these filters.{" "}
-                  <Link href={pathname} className="text-gold hover:underline">
+                  <Link href={pathname} className="text-gold-text hover:underline">
                     Clear them
                   </Link>
                 </td>
@@ -282,7 +282,7 @@ export function DataTable<T extends { id: string }>({
                 key={n}
                 href={href({ perPage: n, page: 1 })}
                 className={`rounded px-1.5 py-0.5 transition-colors ${
-                  paging.perPage === n ? "bg-gold/20 text-gold" : "hover:text-foreground"
+                  paging.perPage === n ? "bg-gold/20 text-gold-text" : "hover:text-foreground"
                 }`}
               >
                 {n}

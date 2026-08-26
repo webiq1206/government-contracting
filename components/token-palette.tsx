@@ -67,7 +67,11 @@ export function TokenPalette({ onInsert }: Props) {
                             e.dataTransfer.effectAllowed = "copy";
                           }}
                           onClick={() => onInsert(tok.key)}
-                          className="cursor-grab rounded border border-accent/30 bg-accent-soft px-2 py-1 font-mono text-[11px] text-accent-strong transition hover:border-accent hover:bg-accent/10 active:cursor-grabbing"
+                          /* min-h-11 on touch: these are click-to-insert
+                             controls, not decoration, and at 27px they were
+                             the fiddliest thing in the template editor -- on
+                             the device where dragging is hardest. */
+                          className="inline-flex min-h-11 cursor-grab items-center rounded border border-accent/30 bg-accent-soft px-2 py-1 font-mono text-[11px] text-accent-strong transition hover:border-accent hover:bg-accent/10 active:cursor-grabbing md:min-h-0"
                         >
                           {`{{${tok.key}}}`}
                         </button>
@@ -93,7 +97,7 @@ export function TokenPalette({ onInsert }: Props) {
                           type="button"
                           aria-expanded={isOpen}
                           onClick={() => setOpen(isOpen ? null : tok.key)}
-                          className="ml-auto text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                          className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-end text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline md:min-h-0 md:min-w-0"
                         >
                           {isOpen ? "Hide details" : "Details"}
                         </button>

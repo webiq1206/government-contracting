@@ -96,7 +96,7 @@ export function BulkSelectCheckbox({
   const { selected, toggle } = useBulkSelection();
   return (
     <label
-      className={`inline-flex cursor-pointer items-center ${className}`}
+      className={`inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center md:min-h-0 md:min-w-0 ${className}`}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
@@ -121,7 +121,9 @@ export function BulkSelectAllCheckbox({
   const { allSelected, someSelected, toggleAll, allIds } = useBulkSelection();
   if (allIds.length === 0) return null;
   return (
-    <label className={`inline-flex cursor-pointer items-center gap-2 text-sm ${className}`}>
+    <label
+      className={`inline-flex min-h-11 cursor-pointer items-center gap-2 py-2 pr-2 text-sm md:min-h-0 md:py-0 md:pr-0 ${className}`}
+    >
       <input
         type="checkbox"
         className="h-4 w-4 rounded border-border text-accent focus:ring-accent"

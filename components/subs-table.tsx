@@ -39,7 +39,7 @@ export function SubsTable({
       sortable: true,
       render: (s) => (
         <>
-          <Link href={`/subs/${s.id}`} className="font-medium text-foreground hover:text-gold">
+          <Link href={`/subs/${s.id}`} className="font-medium text-foreground hover:text-gold-text">
             {s.is_preferred ? "★ " : ""}
             {s.company_name}
           </Link>
@@ -179,7 +179,7 @@ export function SubsTable({
           {s.blacklisted && <span className="badge bg-risk/15 text-risk">Blocked</span>}
           {s.sb_certified && (
             <span
-              className="badge bg-gold/15 text-gold"
+              className="badge bg-gold/15 text-gold-text"
               title="Certified small business: counts toward federal small-business requirements"
             >
               Small business

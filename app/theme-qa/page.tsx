@@ -42,7 +42,7 @@ export default function ThemeQaPage() {
             Search…
           </div>
           <div className="rounded-md border border-border/55 px-3 py-2 text-sm text-muted-foreground dark:border-white/15">
-            <span className="text-gold">?</span> Guide Me
+            <span className="text-gold-text">?</span> Guide Me
           </div>
         </div>
         <nav className="mt-4 flex-1 space-y-0.5 px-4 text-sm">
@@ -51,7 +51,7 @@ export default function ThemeQaPage() {
               key={label}
               className={`rounded-md px-3 py-2 ${
                 i === 0
-                  ? "bg-gold/15 font-medium text-gold"
+                  ? "bg-gold/15 font-medium text-gold-text"
                   : "text-muted-foreground"
               }`}
             >
@@ -111,7 +111,7 @@ export default function ThemeQaPage() {
                     } ${i === 0 ? "focus-rail" : ""}`}
                   >
                     <div className="min-w-0">
-                      <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-gold">
+                      <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-gold-text">
                         Deadline
                       </p>
                       <p className="mt-1 text-sm font-medium text-foreground">{title}</p>
@@ -248,7 +248,7 @@ export default function ThemeQaPage() {
           type="button"
           className="fixed z-[65] hidden items-center gap-2 rounded-md border border-gold/40 bg-surface px-4 py-3 text-sm font-medium text-foreground shadow-lg dark:bg-shell md:bottom-6 md:right-6 md:flex"
         >
-          <span className="text-gold">?</span> Guide Me
+          <span className="text-gold-text">?</span> Guide Me
         </button>
 
         {/* Mobile tab bar mock */}
@@ -257,7 +257,7 @@ export default function ThemeQaPage() {
             <div
               key={label}
               className={`relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] ${
-                i === 0 ? "font-semibold text-gold" : "text-muted-foreground"
+                i === 0 ? "font-semibold text-gold-text" : "text-muted-foreground"
               }`}
             >
               {label}

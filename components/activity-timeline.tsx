@@ -7,7 +7,7 @@ const KIND_BADGE: Record<ActivityEvent["kind"], string> = {
   call: "bg-pursue/15 text-pursue",
   note: "bg-review/15 text-review",
   human: "bg-pursue/15 text-pursue-strong",
-  quote: "bg-gold/20 text-gold",
+  quote: "bg-gold/20 text-gold-text",
   document: "bg-muted text-muted-foreground",
 };
 

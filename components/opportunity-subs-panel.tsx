@@ -156,19 +156,19 @@ export function OpportunitySubsPanel({
 
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                           <span>
-                            <span className="text-slate-400">Emails </span>
+                            <span className="text-slate-500">Emails </span>
                             <span className="num text-slate-700">{s.emails_sent}</span>
                           </span>
                           <span>
-                            <span className="text-slate-400">Calls </span>
+                            <span className="text-slate-500">Calls </span>
                             <span className="num text-slate-700">{s.calls_logged}</span>
                           </span>
                           <span>
-                            <span className="text-slate-400">Touches </span>
+                            <span className="text-slate-500">Touches </span>
                             <span className="num text-slate-700">{s.touches}</span>
                           </span>
                           <span>
-                            <span className="text-slate-400">Last touch </span>
+                            <span className="text-slate-500">Last touch </span>
                             {s.last_touch_at
                               ? timeAgo(s.last_touch_at)
                               : s.last_contacted

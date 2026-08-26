@@ -312,6 +312,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
               options={CERT_OPTIONS}
               allowCustom
               placeholder="Search certifications, or type your own…"
+              aria-label="Search certifications"
             />
           </PickerField>
           <PickerField label="Industry codes (NAICS)" hint={ARRAY_HELP.naics_codes}>
@@ -321,6 +322,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
               options={NAICS_OPTIONS}
               allowCustom
               placeholder="Search by code or keyword, e.g. janitorial…"
+              aria-label="Search NAICS codes by number or keyword"
             />
           </PickerField>
           <Field label="Primary trades" value={trades} onChange={setTrades} hint={ARRAY_HELP.primary_trades} />
@@ -331,6 +333,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
               options={SERVICE_AREA_OPTIONS}
               allowCustom
               placeholder="Search states, or type a region…"
+              aria-label="Search states and regions"
             />
           </PickerField>
         </div>
@@ -529,7 +532,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
               <button
                 type="button"
                 onClick={() => { setDirty(true); setExclusions((r) => r.filter((_, idx) => idx !== i)); }}
-                className="text-left text-xs text-slate-500 hover:text-risk sm:hidden"
+                className="flex min-h-11 items-center text-left text-xs text-slate-500 hover:text-risk sm:hidden"
               >
                 Remove this rule
               </button>
@@ -556,6 +559,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
           rows={4}
           className="input"
           placeholder="e.g. We prefer projects within 100 miles of Boise."
+          aria-label="Standing instructions for the agents"
         />
       </Section>
 

@@ -63,7 +63,7 @@ export function TodayBulkTriage({
               {n}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-gold">
+              <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-gold-text">
                 Pursuit decision
               </p>
               <p className="mt-1 text-sm font-medium text-foreground sm:truncate">
@@ -103,7 +103,7 @@ export function TodayBulkTriage({
                 >
                   Pass on this
                 </ActionButton>
-                <span className="text-xs font-medium text-gold sm:ml-1">Open brief</span>
+                <span className="text-xs font-medium text-gold-text sm:ml-1">Open brief</span>
               </StopClickPropagation>
             </div>
           </Link>

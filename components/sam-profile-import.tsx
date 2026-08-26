@@ -91,7 +91,7 @@ export function SamProfileImport({ samConnected }: { samConnected: boolean }) {
   if (!samConnected) {
     return (
       <div className="card space-y-2">
-        <h3 className="text-sm font-semibold text-slate-900">Import from SAM.gov</h3>
+        <h2 className="text-sm font-semibold text-slate-900">Import from SAM.gov</h2>
         <p className="text-sm leading-relaxed text-slate-600">
           Once your SAM.gov key is connected, Brost Co can pull your registration straight
           into this profile: legal name, UEI, CAGE code, address, NAICS codes, and your
@@ -107,7 +107,7 @@ export function SamProfileImport({ samConnected }: { samConnected: boolean }) {
   return (
     <div className="card space-y-4">
       <div>
-        <h3 className="text-sm font-semibold text-slate-900">Import from SAM.gov</h3>
+        <h2 className="text-sm font-semibold text-slate-900">Import from SAM.gov</h2>
         <p className="mt-1 text-sm leading-relaxed text-slate-600">
           Pull your own registration in rather than retyping it. You will see exactly what
           was found and can change anything before it is saved.

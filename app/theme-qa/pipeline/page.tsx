@@ -195,7 +195,7 @@ function Card({ fixture, stageKey }: { fixture: Fixture; stageKey: string }) {
       </div>
       <p className="mt-2 text-xs font-semibold text-accent-strong">
         {NEXT_ACTION[stageKey] ?? stageKey}
-        <span className="ml-1 font-medium text-gold">Open ↗</span>
+        <span className="ml-1 font-medium text-gold-text">Open ↗</span>
       </p>
     </div>
   );

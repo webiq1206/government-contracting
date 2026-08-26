@@ -138,7 +138,7 @@ export function FilterToolbar({
                 key={c.key}
                 type="button"
                 onClick={() => go(withoutFilter(values, c.key))}
-                className="badge inline-flex items-center gap-1.5 bg-gold/15 text-gold transition-colors hover:bg-gold/25"
+                className="badge inline-flex items-center gap-1.5 bg-gold/15 text-gold-text transition-colors hover:bg-gold/25"
                 title={`Remove the ${c.label} filter`}
               >
                 <span className="font-medium">{c.label}:</span> {c.display}

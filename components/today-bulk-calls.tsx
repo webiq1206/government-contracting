@@ -20,9 +20,9 @@ const ROW =
 
 function CtaArrow({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-gold">
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-gold-text">
       {label}
-      <span aria-hidden className="text-gold">
+      <span aria-hidden className="text-gold-text">
         ↗
       </span>
     </span>
@@ -112,7 +112,7 @@ export function TodayBulkCalls({
       {totalCount > calls.length && (
         <Link
           href="/call-queue"
-          className="block border-b border-border/55 px-1 py-3 text-center text-xs text-foreground/45 transition-colors hover:text-gold dark:border-white/10"
+          className="block border-b border-border/55 px-1 py-3 text-center text-xs text-foreground/45 transition-colors hover:text-gold-text dark:border-white/10"
         >
           {totalCount - calls.length} more call
           {totalCount - calls.length === 1 ? "" : "s"} in the queue →

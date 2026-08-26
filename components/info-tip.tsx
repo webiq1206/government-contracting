@@ -52,7 +52,7 @@ export function InfoTip({
         className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-[0.625rem] font-semibold leading-none transition-colors sm:h-4 sm:w-4 ${
           open
             ? "border-gold bg-gold text-ink"
-            : "border-border-strong/50 text-muted-foreground hover:border-gold hover:text-gold"
+            : "border-border-strong/50 text-muted-foreground hover:border-gold hover:text-gold-text"
         }`}
       >
         ?

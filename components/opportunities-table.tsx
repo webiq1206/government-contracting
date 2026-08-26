@@ -48,7 +48,7 @@ export function OpportunitiesTable({
         <>
           <Link
             href={`/opportunity/${o.id}`}
-            className="font-medium text-foreground hover:text-gold"
+            className="font-medium text-foreground hover:text-gold-text"
           >
             {o.title ?? "Untitled opportunity"}
           </Link>

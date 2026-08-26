@@ -50,9 +50,9 @@ const ROW =
 
 function CtaArrow({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-gold">
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors group-hover:text-gold-text">
       {label}
-      <span aria-hidden className="text-gold">
+      <span aria-hidden className="text-gold-text">
         ↗
       </span>
     </span>
@@ -107,7 +107,7 @@ function OppActionRow({
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-gold">
+        <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-gold-text">
           {category}
         </p>
         <p className="mt-1 text-sm font-medium text-foreground sm:truncate">
@@ -168,7 +168,7 @@ function OppActionRow({
             >
               Pass on this
             </ActionButton>
-            <span className="text-xs font-medium text-gold sm:ml-1">Open brief</span>
+            <span className="text-xs font-medium text-gold-text sm:ml-1">Open brief</span>
           </StopClickPropagation>
         ) : (
           <CtaArrow label={action} />
@@ -214,7 +214,7 @@ function Section({
         </div>
         <span
           aria-hidden
-          className="mb-1 select-none text-lg text-gold transition-transform group-open:rotate-45"
+          className="mb-1 select-none text-lg text-gold-text transition-transform group-open:rotate-45"
         >
           +
         </span>
@@ -256,7 +256,7 @@ function StatRow({
         <span className="group-hover:underline group-hover:decoration-gold group-hover:underline-offset-4">
           {label}
         </span>
-        <span className="num text-foreground group-hover:text-gold">{value}</span>
+        <span className="num text-foreground group-hover:text-gold-text">{value}</span>
       </Link>
     </li>
   );
@@ -324,7 +324,7 @@ function PipelineHealthRail({
               poster; these each open the board filtered to exactly what was
               counted. */}
           <Link href="/pipeline" className="group mt-4 block">
-            <p className="font-display text-5xl text-foreground transition-colors group-hover:text-gold">
+            <p className="font-display text-5xl text-foreground transition-colors group-hover:text-gold-text">
               <span className="num">{active}</span>
             </p>
             <p className="mt-1 text-sm text-foreground/45 group-hover:text-foreground/70">
@@ -392,7 +392,7 @@ function PipelineHealthRail({
             <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
               Automation activity
             </p>
-            <p className="mt-1 text-sm font-medium text-gold">{actionHeadline}</p>
+            <p className="mt-1 text-sm font-medium text-gold-text">{actionHeadline}</p>
             {/* The number alone invites the question this answers: what ARE
                 they? Naming the biggest few costs one line and removes a
                 click. */}
@@ -405,7 +405,7 @@ function PipelineHealthRail({
             <p className="font-mono text-[8px] uppercase tracking-[0.1em] text-muted-foreground">
               Automation activity
             </p>
-            <p className="mt-1 text-sm font-medium text-gold">Queue clear</p>
+            <p className="mt-1 text-sm font-medium text-gold-text">Queue clear</p>
           </div>
         )}
 
@@ -994,7 +994,7 @@ export default async function TodayPage() {
                       href="/agents"
                       className="block rounded-md border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm text-foreground/80 transition-colors hover:border-gold/60"
                     >
-                      <span className="font-semibold text-gold">Last 24 hours:</span>{" "}
+                      <span className="font-semibold text-gold-text">Last 24 hours:</span>{" "}
                       {digestParts.join(" · ")}
                       <span className="text-foreground/45"> · open Automation Log</span>
                     </Link>

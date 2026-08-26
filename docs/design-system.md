@@ -143,4 +143,7 @@ looks like emptiness makes an operator believe they have no work.
 
 Contrast, focus order, touch-target size and colour-only status are measured in
 the browser rather than statically, because they depend on what actually
-renders. See `scripts/a11y-sweep.ts`.
+renders: `npm run a11y` against a running server, which writes
+`docs/accessibility-report.md`. `npm run perf` does the same for render time at
+a size the application has not reached yet, writing
+`docs/performance-report.md`.

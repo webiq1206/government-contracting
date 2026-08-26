@@ -73,7 +73,7 @@ export function ScoreBreakdownCard({ breakdown }: { breakdown: ScoreBreakdown })
                     </InfoTip>
                   ) : null}
                 </span>
-                <span className="num shrink-0 text-gold">+{d.points}</span>
+                <span className="num shrink-0 text-gold-text">+{d.points}</span>
               </div>
               <div className="mt-1.5 h-1 rounded-full bg-border">
                 <div

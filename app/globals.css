@@ -39,6 +39,21 @@
   --accent-strong: 126 94 51;
   --gold: 195 160 107; /* #c3a06b */
   --gold-deep: 166 130 80; /* #a68250 */
+  /*
+   * The brand gold, darkened just enough to be readable as TEXT on the light
+   * surfaces it actually lands on.
+   *
+   * #c3a06b is 2.08:1 against the page -- less than half the 4.5:1 that AA
+   * asks for body text -- and it was carrying page titles in the mobile app
+   * bar, every eyebrow, and most link text. The accessibility sweep found it
+   * on all sixteen operator pages.
+   *
+   * Same hue, scaled to 64%, which is the largest value that clears 4.5:1 on
+   * the lightest surface it sits on (4.63:1). The undarkened gold stays
+   * exactly as it was for rules, borders, fills and the wordmark, where the
+   * 3:1 non-text threshold applies and it passes.
+   */
+  --gold-text: 125 102 68;
 
   /* Status */
   --pursue: 90 107 82;
@@ -54,7 +69,10 @@
   --slate-200: 226 220 208;
   --slate-300: 205 195 181;
   --slate-400: 168 158 142;
-  --slate-500: 120 112 98;
+  /* 120 112 98 measured 4.16:1 against the page, just under the 4.5:1 that
+     AA asks of the supporting text this tone carries. Same hue, 5% darker,
+     which clears it at 4.54:1 without collapsing the step to slate-600. */
+  --slate-500: 114 106 93;
   --slate-600: 92 85 74;
   --slate-700: 64 59 51;
   --slate-800: 40 37 32;
@@ -90,6 +108,8 @@
   --accent-strong: 212 180 130;
   --gold: 195 160 107;
   --gold-deep: 166 130 80;
+  /* Dark mode needs no adjustment: the same gold is 6.13:1 on night. */
+  --gold-text: 195 160 107;
 
   --pursue: 138 158 128;
   --pursue-strong: 168 186 156;
@@ -161,7 +181,7 @@ body {
      Applied via class, never as a default. */
   .font-accent {
     font-family: theme("fontFamily.serif");
-    color: rgb(var(--gold));
+    color: rgb(var(--gold-text));
     font-feature-settings: "kern" 1, "liga" 1;
   }
 
@@ -173,13 +193,43 @@ body {
     letter-spacing: -0.005em;
   }
 
-  /* Buttons: sharper corners to match landing CTAs; min height for phones. */
+  /*
+   * Buttons: sharper corners to match landing CTAs; min height for phones.
+   *
+   * min-h-11 is 44px, which is the target size the audit asks for and which
+   * the accessibility sweep measured every button falling 4px short of. It was
+   * min-h-10 (40px) -- close enough to look right and not close enough to hit
+   * reliably with a thumb, which is the worst place for a control to be.
+   */
   .btn,
   .btn-primary,
   .btn-ghost,
   .btn-danger,
   .btn-success {
-    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-sm px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /*
+   * A hit area big enough for a thumb, on a control that should stay small.
+   *
+   * Icon buttons -- help, overflow menus, close -- look wrong at 44px and have
+   * to be hit at 44px. The element keeps its visual size and grows its
+   * clickable box instead, which is what the touch-target rule actually asks
+   * for.
+   */
+  .tap {
+    @apply relative inline-flex items-center justify-center;
+  }
+  @media (pointer: coarse) {
+    .tap::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 44px;
+      height: 44px;
+      transform: translate(-50%, -50%);
+    }
   }
   @media (min-width: 768px) {
     .btn,
@@ -301,7 +351,11 @@ body {
     @apply mt-1 text-[0.55rem] tracking-[0.14em] text-muted-foreground;
   }
   .dash-tab {
-    @apply relative pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground;
+    /* min-h-11 on touch: these read as tabs and are hit as buttons, and at
+       30px they were the smallest interactive thing on the pipeline. The
+       underline that marks the active one is drawn by ::after, so growing
+       the box does not move it. */
+    @apply relative inline-flex min-h-11 min-w-11 items-center justify-center pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground md:min-h-0 md:min-w-0;
   }
   .dash-tab--active {
     @apply text-foreground;
@@ -324,7 +378,9 @@ body {
   }
   /* Landing-matched eyebrow: mono label with gold hairline rule. */
   .eyebrow-gold {
-    @apply inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase text-gold;
+    /* text-gold-text, not text-gold: this is 10px type, and the brand gold is
+       2.08:1 on the page. See --gold-text. */
+    @apply inline-flex items-center gap-2.5 font-mono text-[10px] font-medium uppercase text-gold-text;
     letter-spacing: 0.16em;
   }
   .eyebrow-gold::before {
@@ -332,7 +388,10 @@ body {
     display: block;
     width: 22px;
     height: 1px;
-    background: #a68250;
+    /* The rule beside the eyebrow is decoration, so the 3:1 non-text
+       threshold applies and the deep gold clears it. Via the token rather
+       than a raw hex so it follows the theme. */
+    background: rgb(var(--gold-deep));
   }
   .eyebrow-gold--plain::before {
     display: none;
@@ -396,7 +455,10 @@ body {
     display: block;
     width: 22px;
     height: 1px;
-    background: #a68250;
+    /* The rule beside the eyebrow is decoration, so the 3:1 non-text
+       threshold applies and the deep gold clears it. Via the token rather
+       than a raw hex so it follows the theme. */
+    background: rgb(var(--gold-deep));
   }
 
   /* Inputs: taller on phones for fat-finger accuracy. */
@@ -414,6 +476,23 @@ body {
   }
   .select {
     @apply input appearance-none;
+  }
+
+  /*
+   * A checkbox is 16px and cannot usefully be bigger; its LABEL is the target.
+   *
+   * Every checkbox in this application sits inside its own label, which is
+   * correct and which collapsed to the height of the checkbox, so the real hit
+   * area was 16px on a phone. One rule rather than a class to remember at each
+   * call site, so a checkbox added next year is covered without anybody
+   * knowing this rule exists. Coarse pointers only: on a mouse a 44px row of
+   * checkboxes is just wasted space.
+   */
+  @media (pointer: coarse) {
+    label:has(> input[type="checkbox"]),
+    label:has(> input[type="radio"]) {
+      min-height: 2.75rem;
+    }
   }
 
   /* Tables */

@@ -50,7 +50,7 @@ export function TodayGreeting({
     <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border/55 pb-8 dark:border-white/10">
       <div className="min-w-0">
         <p className="eyebrow-gold">{parts.date}</p>
-        <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-gold">
+        <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-gold-text">
           {settingUp ? "Getting started" : "Needs your attention"}
         </p>
         <h1 className="mt-2 font-display text-3xl leading-tight text-foreground sm:text-4xl lg:text-[2.75rem]">
@@ -99,7 +99,7 @@ export function TodayGreeting({
           <p className="font-mono text-[8px] uppercase tracking-[0.12em] text-muted-foreground">
             Live queue
           </p>
-          <p className="mt-1 font-display text-2xl text-gold">
+          <p className="mt-1 font-display text-2xl text-gold-text">
             <span className="num">{actionCount}</span>
           </p>
         </div>

@@ -307,7 +307,7 @@ export function Nav({
           compact ? "py-2.5 pl-3 text-sm md:py-1.5" : "py-2.5 pl-3 md:py-2"
         } ${
           active
-            ? "bg-gold/15 font-medium text-gold"
+            ? "bg-gold/15 font-medium text-gold-text"
             : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         }`}
       >
@@ -333,13 +333,18 @@ export function Nav({
   return (
     <>
       <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 bg-background px-3 dark:border-white/10 md:hidden">
+        {/*
+          The app bar's route home, and it was a 24px-tall target: the smallest
+          interactive thing on every mobile screen, and the one people reach
+          for by habit. The wordmark itself stays 24px; the LINK is 44, which
+          is what a thumb actually has to find.
+        */}
         <Link
           href="/today"
-          className="inline-flex min-w-0 max-w-[42%] items-center overflow-hidden"
-          style={{ height: "1.5rem" }}
+          className="inline-flex min-h-11 min-w-0 max-w-[42%] items-center overflow-hidden"
           aria-label="Brost Co Today"
         >
-          <ThemeWordmark className="h-full w-auto max-w-full" />
+          <ThemeWordmark className="h-6 w-auto max-w-full" />
         </Link>
 
         <div className="flex-1" />
@@ -351,7 +356,7 @@ export function Nav({
             type="button"
             onClick={handleToggleAutomation}
             disabled={togglingAutomation}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-review/50 bg-review/10 px-2.5 py-1 text-[11px] text-foreground/80 transition-colors active:bg-review/25 disabled:opacity-50"
+            className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-review/50 bg-review/10 px-3 py-1 text-[11px] text-foreground/80 transition-colors active:bg-review/25 disabled:opacity-50"
             aria-label="Automation paused, tap to resume"
           >
             <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-review" />
@@ -382,7 +387,13 @@ export function Nav({
         }`}
       >
         <div className="hidden shrink-0 px-5 py-6 md:block">
-          <Link href="/today" className="block" aria-label="Brost Co Today">
+          {/* min-h-11 on touch: the wordmark is the app bar's route home and
+              was a 24px-tall target, the smallest on every mobile screen. */}
+          <Link
+            href="/today"
+            className="flex min-h-11 items-center md:block md:min-h-0"
+            aria-label="Brost Co Today"
+          >
             <ThemeWordmark className="h-7 w-auto" />
             <p className="mt-2 text-[0.65rem] uppercase tracking-[0.16em] text-muted-foreground">
               Workspace
@@ -445,9 +456,9 @@ export function Nav({
               setOpen(false);
               window.dispatchEvent(new Event("open-guide-wizard"));
             }}
-            className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-gold/40 hover:bg-gold/10 hover:text-gold dark:border-white/15 md:min-h-0 md:py-1.5"
+            className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-gold/40 hover:bg-gold/10 hover:text-gold-text dark:border-white/15 md:min-h-0 md:py-1.5"
           >
-            <span aria-hidden className="text-gold">
+            <span aria-hidden className="text-gold-text">
               ?
             </span>
             Guide Me
@@ -510,7 +521,7 @@ export function Nav({
             href="/agents"
             onClick={() => setOpen(false)}
             title={automationDetail}
-            className={`mx-3 mb-2 shrink-0 rounded-md border px-3 py-3 text-xs transition-colors ${
+            className={`mx-3 mb-2 flex min-h-11 shrink-0 flex-col justify-center rounded-md border px-3 py-3 text-xs transition-colors ${
               CHIP_STYLE[automationState ?? "healthy"]
             }`}
           >

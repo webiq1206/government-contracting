@@ -216,14 +216,14 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
     <div className="border-t border-border pt-4">
       <button
         type="button"
-        className="flex w-full items-center justify-between text-left"
+        className="flex min-h-11 w-full items-center justify-between text-left md:min-h-0"
         onClick={toggle}
         aria-expanded={open}
       >
         <span className="text-sm font-medium text-slate-700">
           Version history
         </span>
-        <span className="text-slate-400 text-xs select-none">
+        <span className="text-slate-500 text-xs select-none">
           {open ? "▲ collapse" : "▼ expand"}
         </span>
       </button>
@@ -278,12 +278,12 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
                     <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
                       {v.subject
                         ? v.subject
-                        : <em className="text-slate-400">(no subject)</em>}
+                        : <em className="text-slate-500">(no subject)</em>}
                     </span>
-                    <span className="shrink-0 text-[10px] text-slate-400">
+                    <span className="shrink-0 text-[10px] text-slate-500">
                       {formatDate(v.created_at)}
                     </span>
-                    <span className="shrink-0 text-slate-400 text-xs select-none">
+                    <span className="shrink-0 text-slate-500 text-xs select-none">
                       {isExpanded ? "▲" : "▼"}
                     </span>
                   </button>
@@ -642,7 +642,7 @@ export function EmailTemplateEditor({ template }: Props) {
         {template.description && (
           <p className="mt-0.5 text-sm text-slate-500">{template.description}</p>
         )}
-        <p className="mt-1 text-xs text-slate-400">
+        <p className="mt-1 text-xs text-slate-500">
           Currently on version {currentVersion}
         </p>
         {(() => {
@@ -700,6 +700,7 @@ export function EmailTemplateEditor({ template }: Props) {
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDropSubject}
           placeholder="e.g. Pricing request: {{trade}} | {{location_city_state}}"
+          aria-label="Email subject line"
         />
       </div>
 
@@ -736,6 +737,7 @@ export function EmailTemplateEditor({ template }: Props) {
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDropBody}
           placeholder="Write your email here. Select text, then use Bold, Highlight, or Bullets. Click or drag a fill-in field above to insert it."
+          aria-label="Email body"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           Highlight applies to each line, not a whole block. Fill-in fields look
@@ -952,7 +954,9 @@ function FormatButton({
         e.preventDefault();
       }}
       onClick={onClick}
-      className="rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:border-foreground/30 hover:bg-surface"
+      /* min-h-11 / min-w-11 on touch: a 45x26 formatting button is the kind
+         of target you miss twice before hitting, in the middle of writing. */
+      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:border-foreground/30 hover:bg-surface md:min-h-0 md:min-w-0"
     >
       {label}
     </button>

@@ -32,6 +32,8 @@
     "queue:retire-dead-jobs": "tsx scripts/retire-dead-jobs.ts",
     "doctor": "tsx scripts/doctor.ts",
     "inventory": "tsx scripts/interface-inventory.ts",
+    "a11y": "tsx scripts/a11y-sweep.ts",
+    "perf": "tsx scripts/perf-sweep.ts",
     "repair:email-history": "tsx scripts/repair-email-history.ts",
     "purge-test-orgs": "tsx scripts/purge-test-orgs.ts"
   },

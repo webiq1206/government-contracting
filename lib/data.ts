@@ -604,7 +604,20 @@ export interface EmailLogCounts {
   inbound: number;
 }
 
-const EMAIL_LOG_RESPONDED = `(c.direction = 'inbound' or c.replied_at is not null or replies.inbound_at is not null)`;
+/**
+ * Whether this message's conversation ever got a reply.
+ *
+ * `replies.responded` used to be `min(r.created_at)` from a LATERAL subquery,
+ * and only its null-ness was ever read. That cost more than it sounds: the
+ * lateral runs once per row, so producing the nine counters at the top of the
+ * page meant resolving "did this thread get a reply" twenty thousand separate
+ * times. EXPLAIN showed `loops=20060` and 557ms on one aggregate.
+ *
+ * The set of conversations that have an inbound message is the same set for
+ * every row, so it is now computed once and hash-joined. Same answer, one
+ * pass.
+ */
+const EMAIL_LOG_RESPONDED = `(c.direction = 'inbound' or c.replied_at is not null or replied_by_opp.subcontractor_id is not null or replied_by_thread.subcontractor_id is not null)`;
 
 export async function emailLogPaged(opts: {
   page: number;
@@ -622,21 +635,51 @@ export async function emailLogPaged(opts: {
       : "";
   const statusSql = emailLogStatusSql(status, EMAIL_LOG_RESPONDED);
 
+  /*
+   * The conversations that have ever received an inbound message, as two
+   * small sets: one keyed by (subcontractor, opportunity) and one by
+   * (subcontractor, Gmail thread). A message counts as answered if either
+   * matches, which is exactly what the old per-row lateral tested -- computed
+   * once for the whole page instead of once per row.
+   *
+   * Both sets are org-scoped, so a reply in one tenant can never mark another
+   * tenant's message as answered.
+   */
+  const withReplies = (orgParamIndex: number) => `
+    with inbound_by_opp as (
+      select distinct subcontractor_id, opportunity_id
+        from communications
+       where org_id = $${orgParamIndex}
+         and channel = 'email' and direction = 'inbound'
+         and subcontractor_id is not null and opportunity_id is not null
+    ),
+    inbound_by_thread as (
+      select distinct subcontractor_id, gmail_thread_id
+        from communications
+       where org_id = $${orgParamIndex}
+         and channel = 'email' and direction = 'inbound'
+         and subcontractor_id is not null and gmail_thread_id is not null
+    )`;
+
+  /*
+   * Plain LEFT JOINs rather than EXISTS in a lateral.
+   *
+   * EXISTS reads better but plans worse: Postgres inlines it as a SubPlan on
+   * the outer scan and evaluates it per row, which was still 350ms after the
+   * first rewrite. Joining the two sets lets it hash them once -- 15ms for
+   * the same answer. Both sets are DISTINCT, so neither join can multiply
+   * rows.
+   */
   const from = (searchParamIndex: number, orgParamIndex: number) => `
     from communications c
     join subcontractors s on s.id = c.subcontractor_id
     left join opportunities o on o.id = c.opportunity_id
-    left join lateral (
-      select min(r.created_at) as inbound_at
-        from communications r
-       where r.channel = 'email'
-         and r.direction = 'inbound'
-         and r.subcontractor_id = c.subcontractor_id
-         and (
-           (c.opportunity_id is not null and r.opportunity_id = c.opportunity_id)
-           or (c.gmail_thread_id is not null and r.gmail_thread_id = c.gmail_thread_id)
-         )
-    ) replies on true
+    left join inbound_by_opp replied_by_opp
+           on replied_by_opp.subcontractor_id = c.subcontractor_id
+          and replied_by_opp.opportunity_id = c.opportunity_id
+    left join inbound_by_thread replied_by_thread
+           on replied_by_thread.subcontractor_id = c.subcontractor_id
+          and replied_by_thread.gmail_thread_id = c.gmail_thread_id
     where c.channel = 'email'
       and c.org_id = $${orgParamIndex}
       ${searchSql(searchParamIndex)}
@@ -655,7 +698,8 @@ export async function emailLogPaged(opts: {
 
   const [rows, totals, countRows] = await Promise.all([
     query<EmailLogRow>(
-      `select c.id, c.created_at, c.subject, c.body, c.provider,
+      `${withReplies(listOrgIndex)}
+       select c.id, c.created_at, c.subject, c.body, c.provider,
               c.recipient_email, c.opened_at, c.clicked_at, c.replied_at, c.direction,
               c.delivery_state, c.delivery_detail,
               ${EMAIL_LOG_RESPONDED} as responded,
@@ -668,7 +712,8 @@ export async function emailLogPaged(opts: {
       listParams
     ),
     query<{ count: string }>(
-      `select count(*)::text as count ${from(1, countOrgIndex)} and ${statusSql}`,
+      `${withReplies(countOrgIndex)}
+       select count(*)::text as count ${from(1, countOrgIndex)} and ${statusSql}`,
       countParams
     ),
     query<{
@@ -682,7 +727,8 @@ export async function emailLogPaged(opts: {
       failed: string;
       inbound: string;
     }>(
-      `select
+      `${withReplies(countOrgIndex)}
+       select
          count(*)::text as all,
          count(*) filter (where c.direction = 'outbound')::text as sent,
          count(*) filter (where c.direction = 'outbound' and c.opened_at is not null)::text as opened,

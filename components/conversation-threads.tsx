@@ -291,7 +291,7 @@ export function ConversationThreads({
                   Waiting on you
                 </span>
               )}
-              <span aria-hidden className="text-xs text-slate-400">
+              <span aria-hidden className="text-xs text-slate-500">
                 {expanded ? "▴" : "▾"}
               </span>
             </button>

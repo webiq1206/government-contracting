@@ -414,7 +414,7 @@ function Field({
     <label className="block">
       <span className="label mb-1 block">
         {label}
-        {optional && <span className="ml-1 font-normal text-slate-400">optional</span>}
+        {optional && <span className="ml-1 font-normal text-slate-500">optional</span>}
       </span>
       {hint && <span className="mb-1 block text-xs leading-relaxed text-slate-500">{hint}</span>}
       <input

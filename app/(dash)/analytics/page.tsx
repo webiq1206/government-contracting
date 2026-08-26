@@ -193,8 +193,11 @@ export default async function AnalyticsPage() {
           <div className="callout-panel text-sm text-slate-700">
             Deeper breakdowns (win rate by NAICS, agency, geography, cash flow, sub
             rankings, velocity) appear after Analytics Engine runs.{" "}
-            <Link href="/agents" className="font-medium text-accent hover:underline">
-              Run it from Automation Log
+            <Link
+              href="/agents"
+              className="inline-flex min-h-11 items-center font-medium text-accent hover:underline md:min-h-0"
+            >
+              Run it from Automation Health
             </Link>
             .
           </div>

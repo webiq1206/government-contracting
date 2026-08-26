@@ -27,6 +27,16 @@ export function TokenMultiSelect({
   placeholder = "Search…",
   allowCustom = false,
   emptyText = "No matches.",
+  /**
+   * Names the search box for a screen reader.
+   *
+   * Callers were already passing this and it was being dropped on the floor:
+   * the component did not declare the prop, so TypeScript accepted it as
+   * excess and nothing reached the input. The visible <PickerField> label sits
+   * outside the component and is not associated with anything, so without this
+   * the field announced as an unlabelled text box.
+   */
+  "aria-label": ariaLabel,
 }: {
   value: string;
   onChange: (csv: string) => void;
@@ -34,6 +44,7 @@ export function TokenMultiSelect({
   placeholder?: string;
   allowCustom?: boolean;
   emptyText?: string;
+  "aria-label"?: string;
 }) {
   const [q, setQ] = useState("");
   const [focused, setFocused] = useState(false);
@@ -103,6 +114,7 @@ export function TokenMultiSelect({
         type="text"
         className="input"
         value={q}
+        aria-label={ariaLabel}
         placeholder={placeholder}
         onChange={(e) => {
           setQ(e.target.value);

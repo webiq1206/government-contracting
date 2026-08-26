@@ -79,6 +79,7 @@ export default async function EmailLogPage({
             name="q"
             defaultValue={q}
             placeholder="Search by sub name or subject…"
+            aria-label="Search messages by subcontractor name or subject"
             className="input w-full max-w-sm"
           />
           <button type="submit" className="btn-ghost text-sm">
@@ -179,7 +180,7 @@ function StatusChip({
       href={href}
       role="tab"
       aria-selected={active}
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+      className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors md:min-h-0 md:px-2.5 ${
         active
           ? "border-gold bg-gold/15 text-foreground"
           : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground"

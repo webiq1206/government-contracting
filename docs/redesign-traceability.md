@@ -99,10 +99,33 @@ written in advance of the work.
 | Today's greeting | Kept | Its own frame | Today | Today | The audit specifies exactly this shape for Today: date, role-aware headline, workload sentence, count |
 | Opportunity workspace header | Kept | Its own sticky record header | Opportunity | Opportunity | Carries deadline, stage, score, confidence, owner and readiness, plus a pinned back bar |
 
+### Accessibility
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Brand gold as text colour | Changed | `--gold-text`, the same hue at 64% | Everywhere | Everywhere | 2.08:1 against the page, less than half of AA, and it carried page titles, every eyebrow and most link text. The undarkened gold stays for rules, borders and fills, where the 3:1 non-text threshold applies |
+| `--slate-500` | Changed | 114 106 93 | - | - | 4.16:1, just under AA, on the tone that carries supporting text |
+| `text-slate-400` on text | Changed | `text-slate-500` | - | - | 2.45:1. That tone is decoration, not text |
+| Buttons at `min-h-10` | Changed | `min-h-11` on touch | - | Everywhere | 40px is close enough to look right and not close enough to hit |
+| Checkbox labels | Changed | One `:has()` rule, 44px on coarse pointers | - | Everywhere | Every checkbox sits in its own label, and every label collapsed to the 16px checkbox |
+| Placeholders as the only label | Changed | `aria-label` on 10 controls | - | - | A placeholder disappears the moment you type |
+| `TokenMultiSelect` dropping `aria-label` | Fixed | Prop declared and forwarded | - | - | Callers were passing it; TypeScript accepted it as excess and nothing reached the input |
+| `h1` to `h3` jumps | Changed | `h2` | Pipeline, Profile | Same | The outline is how a screen-reader user navigates |
+
+### Performance
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Email log's reply lookup | Changed | Two pre-aggregated sets, hash-joined | Communications | Communications | A LATERAL running once per row: `loops=20060` to produce nine counters. 557ms to 15ms on the query, 652ms to 45ms on the page |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
   Naming a page confirms it exists and is worth attacking. `PermissionState`
   would weaken that, so both routes still 404 for signed-in non-admins.
+- **`/pipeline` is left at ~200ms.** It renders every open opportunity as a
+  draggable card, so it is linear where the others are not. Virtualizing it is
+  worth doing when an account carries thousands of open opportunities, and is
+  not worth the complexity before then.
 - **Site Authority stays admin-only.** It reports on our own marketing domain
   and means nothing to a contractor.
