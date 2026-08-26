@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { subDatabase, subDatabaseCount, SUB_SORTS } from "@/lib/data";
+import { subDatabase, subDatabaseCount, subPeek, SUB_SORTS } from "@/lib/data";
+import { SubPeek } from "@/components/sub-peek";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -127,6 +128,52 @@ export default async function SubsPage({
 
   const filtered = Object.keys(values).length > 0;
 
+  /*
+   * The peek is a query parameter, so it survives the back button and can be
+   * pasted to somebody. An id that is not this org's simply returns nothing
+   * and the list renders without a drawer, which is the same thing a deleted
+   * record does and needs no separate branch.
+   */
+  const peekId = typeof searchParams.peek === "string" ? searchParams.peek : null;
+  const peeked = peekId ? await subPeek(peekId) : null;
+
+  function withoutPeek(): string {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchParams)) {
+      if (k === "peek" || v == null) continue;
+      if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+      else p.set(k, v);
+    }
+    const q = p.toString();
+    return q ? `/subs?${q}` : "/subs";
+  }
+
+  /*
+   * The list URL with the peek stripped and a trailing separator, so the table
+   * can append `peek=<id>` without knowing whether there were filters.
+   */
+  const peekBase = (() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchParams)) {
+      if (k === "peek" || v == null) continue;
+      if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+      else p.set(k, v);
+    }
+    const q = p.toString();
+    return q ? `/subs?${q}&` : "/subs?";
+  })();
+
+  function withPeek(id: string): string {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchParams)) {
+      if (k === "peek" || v == null) continue;
+      if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+      else p.set(k, v);
+    }
+    p.set("peek", id);
+    return `/subs?${p.toString()}`;
+  }
+
   return (
     <div className="flex page-shell">
       <PageFrame
@@ -152,7 +199,8 @@ export default async function SubsPage({
         }
       />
 
-      <div className="scroll-thin flex-1 overflow-auto p-4">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="scroll-thin min-w-0 flex-1 overflow-auto p-4">
         {/* Mobile keeps the stacked cards: a ten-column table on a phone is
             a horizontal scroll nobody wins. */}
         <ul className="space-y-4 lg:hidden">
@@ -196,12 +244,22 @@ export default async function SubsPage({
                   ) : null}
                 </div>
               </Link>
+              {/*
+                * Outside the card link, not inside it: a link inside a link is
+                * invalid markup and the browser resolves it by dropping one of
+                * them, which is how a control stops working for no visible
+                * reason.
+                */}
+              <Link href={withPeek(s.id)} className="btn-ghost mt-2 inline-flex text-xs">
+                Quick look
+              </Link>
             </li>
           ))}
         </ul>
 
         <div className="hidden lg:block">
           <SubsTable
+            peekBase={peekBase}
             rows={subs}
             total={total}
             filters={values}
@@ -232,6 +290,9 @@ export default async function SubsPage({
             }
           />
         </div>
+      </div>
+
+      {peeked && <SubPeek sub={peeked} closeHref={withoutPeek()} />}
       </div>
     </div>
   );

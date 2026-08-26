@@ -20,6 +20,7 @@ import { listActiveOrganizations } from "../organizations";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, ScoreBreakdown } from "../types";
+import { reliabilityBreakdown, isPreferred as preferred } from "../domain/reliability";
 
 const AnalysisSchema = z.object({
   weight_adjustments: z
@@ -348,26 +349,24 @@ async function recomputeSubScores(orgId: string): Promise<SubUpdateResult> {
     const respAny = Number(s.responded_any);
     const quotes = Number(s.quote_count);
 
-    // Responsiveness: fraction responding within 48h, weighted toward fast replies.
-    let responsiveness: number;
-    if (outreach === 0) {
-      responsiveness = quotes > 0 ? 60 : 50; // no outreach on record; neutral-ish
-    } else {
-      const fast = resp48 / outreach;
-      const any = respAny / outreach;
-      responsiveness = Math.round(Math.min(100, fast * 80 + any * 20));
-    }
+    /*
+     * The arithmetic moved to lib/domain/reliability.ts, which is also what
+     * the roster reads to show the breakdown behind the number. Two copies
+     * would eventually disagree, and the way anyone would notice is a
+     * breakdown whose parts do not add up to the score above them.
+     */
+    const inputs = {
+      outreach,
+      respondedWithin48h: resp48,
+      respondedEver: respAny,
+      quotes,
+      blacklisted: Boolean(s.blacklisted),
+    };
+    const breakdown = reliabilityBreakdown(inputs);
+    const responsiveness = breakdown.responsiveness;
+    const reliability = breakdown.reliability;
 
-    // Reliability heuristic: base on quote presence, penalize blacklist, blend responsiveness.
-    let reliability: number;
-    if (s.blacklisted) {
-      reliability = 0;
-    } else {
-      const quoteBonus = quotes > 0 ? 40 : 0;
-      reliability = Math.round(Math.min(100, 30 + quoteBonus + responsiveness * 0.3));
-    }
-
-    const isPreferred = !s.blacklisted && reliability >= 80;
+    const isPreferred = preferred(inputs);
     if (isPreferred) promoted++;
 
     // Preferred status is recomputed each run, NOT a one-way ratchet: a sub whose

@@ -30,6 +30,7 @@ export function OpportunitiesTable({
   paging,
   rules,
   emptyState,
+  peekBase,
 }: {
   rows: Opportunity[];
   total: number;
@@ -38,6 +39,8 @@ export function OpportunitiesTable({
   paging: PageState;
   rules?: AutomationRules;
   emptyState: React.ReactNode;
+  /** The current list URL with the peek stripped, ready for `peek=<id>`. */
+  peekBase: string;
 }) {
   const columns: Column<Opportunity>[] = [
     {
@@ -157,6 +160,19 @@ export function OpportunitiesTable({
       optional: true,
       render: (o) => (
         <span className="text-muted-foreground">{shortDate(o.updated_at)}</span>
+      ),
+    },
+    {
+      key: "peek",
+      header: "",
+      render: (o) => (
+        <Link
+          href={`${peekBase}peek=${o.id}`}
+          scroll={false}
+          className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+        >
+          Quick look
+        </Link>
       ),
     },
   ];

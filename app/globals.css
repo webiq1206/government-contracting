@@ -256,6 +256,21 @@ body {
       padding-bottom: 0;
     }
   }
+  /*
+   * The peek drawer is `fixed inset-0` on a narrow screen, which takes it out
+   * of `.page-main` and therefore out of that padding. Without this the last
+   * section of every drawer scrolls under the mobile tab bar and reads as the
+   * record simply ending there. Raising the drawer above the bar does not work:
+   * an ancestor creates a stacking context it cannot climb out of.
+   */
+  .drawer-scroll {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 1024px) {
+    .drawer-scroll {
+      padding-bottom: 1rem;
+    }
+  }
   .btn-primary {
     @apply bg-gold text-ink hover:bg-[#d6b986];
   }

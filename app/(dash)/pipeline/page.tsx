@@ -4,6 +4,7 @@ import {
   PIPELINE_STAGES,
   opportunityTable,
   opportunityTableCount,
+  oppPeek,
   OPP_SORTS,
 } from "@/lib/data";
 import { FilterToolbar } from "@/components/filter-toolbar";
@@ -33,6 +34,7 @@ import { SwipeRail } from "@/components/swipe-rail";
 import { CardPreview } from "@/components/card-preview";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
+import { OppPeek } from "@/components/opp-peek";
 
 /**
  * The simple (default) pipeline view groups by who the ball is with rather
@@ -175,6 +177,31 @@ export default async function PipelinePage({
     includeClosed: tableValues.closed === "1",
   };
   const tableTotal = view === "table" ? await opportunityTableCount(tableFilters) : 0;
+
+  /*
+   * The peek is a query parameter for the same reasons the conversation
+   * centre's selection is: back button, shareable link, and one place that
+   * decides what is open. An id that is not this org's returns nothing and the
+   * table renders without a drawer.
+   */
+  const peekId = typeof searchParams?.peek === "string" ? searchParams.peek : null;
+  const peeked = peekId ? await oppPeek(peekId) : null;
+
+  const peekQuery = (() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchParams ?? {})) {
+      if (k === "peek" || v == null) continue;
+      if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+      else p.set(k, v);
+    }
+    return p;
+  })();
+  const closePeekHref = peekQuery.toString()
+    ? `/pipeline?${peekQuery.toString()}`
+    : "/pipeline";
+  const peekBase = peekQuery.toString()
+    ? `/pipeline?${peekQuery.toString()}&`
+    : "/pipeline?";
   const tablePaging = parsePaging(searchParams ?? {}, tableTotal);
   const tableRows =
     view === "table"
@@ -285,8 +312,10 @@ export default async function PipelinePage({
                 : undefined
             }
           />
-          <div className="scroll-thin flex-1 overflow-auto p-4">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="scroll-thin min-w-0 flex-1 overflow-auto p-4">
             <OpportunitiesTable
+              peekBase={peekBase}
               rows={tableRows}
               total={tableTotal}
               filters={tableValues}
@@ -301,6 +330,8 @@ export default async function PipelinePage({
                 </p>
               }
             />
+          </div>
+          {peeked && <OppPeek data={peeked} closeHref={closePeekHref} />}
           </div>
         </>
       )}

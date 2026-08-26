@@ -703,6 +703,151 @@ export async function complianceBoard() {
   return items;
 }
 
+/*
+ * A peek id arrives from a query string, so it is whatever somebody typed.
+ * Postgres raises on `uuid = 'not-a-uuid'`, which took the whole roster page
+ * down on a malformed URL rather than simply showing no drawer. Checked here
+ * rather than at each call site because there is no shape of bad id that
+ * should reach the database.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * One opportunity, as the table's peek drawer needs it.
+ *
+ * The same four small indexed reads the board's hover preview does, for the
+ * same reason: this answers "should I open this" and must not cost what
+ * opening it costs. `opportunityDetail` pulls hundreds of communications,
+ * documents and log lines to render a page.
+ */
+export interface OppPeek {
+  opp: Record<string, unknown>;
+  requiredTrades: string[];
+  tradesCovered: number;
+  tradesRequired: number;
+  quoteCount: number;
+  subsContacted: number;
+  subsResponded: number;
+  bidSubmitted: boolean;
+  outcome: string | null;
+}
+
+export async function oppPeek(id: string): Promise<OppPeek | null> {
+  if (!UUID_RE.test(id)) return null;
+  const orgId = await currentOrg();
+  const opp = await queryOne<Record<string, unknown>>(
+    `select * from opportunities where id = $1 and org_id = $2`,
+    [id, orgId]
+  );
+  if (!opp) return null;
+
+  const [subs, quotes, bid] = await Promise.all([
+    query<{ trade: string | null; outreach_state: string | null; responded_at: string | null }>(
+      `select trade, outreach_state, responded_at from opportunity_subs
+        where opportunity_id = $1 limit 300`,
+      [id]
+    ),
+    query<{ trade: string | null }>(
+      `select trade from quotes where opportunity_id = $1 limit 200`,
+      [id]
+    ),
+    queryOne<{ submitted_at: string | null; outcome: string | null }>(
+      `select submitted_at::text as submitted_at, outcome from bids
+        where opportunity_id = $1 order by created_at desc limit 1`,
+      [id]
+    ),
+  ]);
+
+  const analysis = opp.solicitation_analysis as { required_trades?: string[] } | null;
+  const requiredTrades = analysis?.required_trades ?? [];
+  const quotedTrades = new Set(
+    quotes.map((q) => (q.trade ?? "").toLowerCase()).filter(Boolean)
+  );
+
+  return {
+    opp,
+    requiredTrades,
+    tradesRequired: requiredTrades.length,
+    tradesCovered: requiredTrades.filter((t) => quotedTrades.has(t.toLowerCase())).length,
+    quoteCount: quotes.length,
+    subsContacted: subs.filter((s) => s.outreach_state && s.outreach_state !== "pending").length,
+    subsResponded: subs.filter((s) => s.responded_at != null).length,
+    bidSubmitted: Boolean(bid?.submitted_at),
+    outcome: bid?.outcome ?? null,
+  };
+}
+
+/**
+ * One subcontractor, as the roster's peek drawer needs them.
+ *
+ * Includes the raw counts the reliability score is computed from, so the
+ * drawer can show the arithmetic rather than a bare number out of a hundred.
+ * They are counted here rather than read off a stored column because there is
+ * no stored column for them: the learning loop computes them, writes the
+ * score, and throws the inputs away.
+ */
+export interface SubPeekRow {
+  id: string;
+  company_name: string;
+  owner_name: string | null;
+  email: string | null;
+  email_verified: boolean;
+  contact_status: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  trade_categories: string[] | null;
+  license_number: string | null;
+  license_status: string | null;
+  sam_excluded: boolean;
+  blacklisted: boolean;
+  is_preferred: boolean;
+  reliability_score: number | null;
+  last_contacted: string | null;
+  google_rating: string | number | null;
+  review_count: number | null;
+  outreach: string | number;
+  responded_48h: string | number;
+  responded_any: string | number;
+  quote_count: string | number;
+  open_docs: string | number;
+  expired_docs: string | number;
+}
+
+export async function subPeek(id: string): Promise<SubPeekRow | null> {
+  if (!UUID_RE.test(id)) return null;
+  const orgId = await currentOrg();
+  return queryOne<SubPeekRow>(
+    `select s.id, s.company_name, s.owner_name, s.email, s.email_verified,
+            s.contact_status, s.phone, s.city, s.state, s.trade_categories,
+            s.license_number, s.license_status, s.sam_excluded, s.blacklisted,
+            s.is_preferred, s.reliability_score,
+            s.last_contacted::text as last_contacted,
+            s.google_rating, s.review_count,
+            (select count(*) from communications c
+              where c.subcontractor_id = s.id and c.direction = 'outbound'
+                and c.org_id = $2) as outreach,
+            (select count(*) from communications c
+              where c.subcontractor_id = s.id and c.direction = 'outbound'
+                and c.org_id = $2 and c.replied_at is not null
+                and c.replied_at <= c.created_at + interval '48 hours') as responded_48h,
+            (select count(*) from communications c
+              where c.subcontractor_id = s.id and c.direction = 'outbound'
+                and c.org_id = $2 and c.replied_at is not null) as responded_any,
+            (select count(*) from quotes q where q.subcontractor_id = s.id) as quote_count,
+            (select count(*) from subcontractor_documents d
+              where d.subcontractor_id = s.id
+                and d.status in ('pending','active','expiring')) as open_docs,
+            (select count(*) from subcontractor_documents d
+              where d.subcontractor_id = s.id
+                and (d.status = 'expired'
+                     or (d.expires_at is not null and d.expires_at <= now()))) as expired_docs
+       from subcontractors s
+      where s.id = $1 and s.org_id = $2`,
+    [id, orgId]
+  );
+}
+
 /**
  * Subcontractor paperwork for the compliance board.
  *

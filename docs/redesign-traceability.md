@@ -186,6 +186,25 @@ written in advance of the work.
 | "Assign" and per-conversation owner | Not built | - | - | - | There is no assignee column anywhere in the schema. Same reasoning as the attention system: a field that always says the same thing is worse than no field |
 | "Resend" as a button | Not built | The composer, with the corrected address | Communications | Communications | Resending the identical message to the identical bad address is the one thing that certainly will not work. Correcting the address and writing a line is the actual repair, and both are here |
 
+### Quick-detail drawer (Opportunities and Subcontractors)
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| (new) Quick-look drawer | Added | Right-hand column beside the table; a full sheet on a phone | Opportunities (table view), Subcontractors | Both, from the card list | The tables answer "which of these" and the record pages answer "everything about this one". Between them is the question people actually ask while scanning: is this the one. Answering it meant opening the record, reading four fields, and coming back to a table that had forgotten where you were |
+| Peek selection | Behaviour | `?peek=<id>` on the list URL | - | - | Back button works, the peek is a shareable link, filters and paging survive it, and the mobile behaviour is a CSS class rather than a second implementation |
+| Bare reliability score out of 100 | Changed | A breakdown that sums to the score | Subcontractors drawer | Subcontractors drawer | The audit asked for this specifically. A score nobody can explain is a score nobody can argue with, which sounds like an advantage until an operator disagrees and has no way to check whether the system or their memory is wrong. The arithmetic moved out of the learning loop into `lib/domain/reliability.ts` so the number stored and the breakdown shown cannot disagree |
+| Reliability, when the stored column is stale | Changed | Says so, and shows both | Subcontractors drawer | Subcontractors drawer | The column is rewritten nightly and outreach happens in between. Showing one number silently would leave an operator with two figures and no way to tell which is current |
+| Zero reliability on a blocked firm | Changed | "Zero here is a decision somebody made, not a measurement" | Subcontractors drawer | Subcontractors drawer | A blocked firm and a firm that performed badly read identically at 0 and are not the same thing |
+| Fit and confidence | Kept separate | Opportunity drawer | Opportunities | Opportunities | Averaging them would make a well-fitting job with a scanned PDF indistinguishable from a poor one that parsed cleanly |
+| A malformed `?peek=` value | Fixed | Returns no drawer, list intact | - | - | The id went straight into a `uuid =` comparison and Postgres raised, so a mistyped URL took the whole roster page down instead of showing no drawer |
+| Drawer bottom on a phone | Fixed | Clears the mobile tab bar | - | Both | A `fixed inset-0` sheet escapes the padding `.page-main` makes for the tab bar, so the last section of every drawer scrolled underneath it and read as the record ending there. Raising the z-index does not work: an ancestor creates a stacking context the sheet cannot climb out of |
+| Edge-case sweep teardown | Fixed | Deletes `agent_logs` and `conversation_flags` too | - | - | Rendering a page writes an automation-status log line, so teardown hit a foreign key violation and left the throwaway org behind for the next run to trip over |
+
+- **No quick-detail drawer on Contracts or Compliance.** Both are card
+  boards where every field the drawer would carry is already on the card, and
+  the compliance cards are editable in place. A drawer there would be a second
+  way to read the same thing.
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
