@@ -2038,12 +2038,48 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         // "unavailable" or "not a fit" mark lands on this solicitation alone,
         // so the sub is still offered the next job.
         if (decision.act && comm.opportunity_id) {
-          await applyOutcomeToSolicitation({
+          const applied = await applyOutcomeToSolicitation({
             opportunityId: comm.opportunity_id,
             subcontractorId: subId,
             trade: comm.trade ?? null,
             outcome: decision.outcome,
           });
+          /*
+           * The reply was confident and still could not be applied, because
+           * this firm is paired to several trades on this bid and the message
+           * named none of them.
+           *
+           * A refusal that is not surfaced is the same as the old behaviour
+           * with extra steps: the reply reads as handled, nothing changed, and
+           * nobody knows. Raising it here is what turns "we could not tell
+           * which trade" into somebody deciding.
+           */
+          if (!applied.applied && applied.refused === "ambiguous_trade") {
+            reviewCount++;
+            await query(
+              `update subcontractor_reply_events
+                  set needs_review = true, review_reason = $3
+                where opportunity_id = $1 and subcontractor_id = $2
+                  and reviewed_at is null`,
+              [
+                comm.opportunity_id,
+                subId,
+                `They are on this bid for ${applied.candidateTrades.join(", ")} and their reply did not say which. ` +
+                  "Nothing was changed. Pick the trade this answer is about.",
+              ]
+            ).catch(() => {});
+            await logAgent({
+              agent: "reply-poll",
+              action: "reply-trade-ambiguous",
+              opportunityId: comm.opportunity_id,
+              subcontractorId: subId,
+              level: "warn",
+              status: "skipped",
+              message:
+                `A reply could not be applied: this firm is on the bid for ${applied.candidateTrades.join(", ")} ` +
+                "and the message named no trade. Marking every one of them would claim coverage nobody committed to.",
+            }).catch(() => {});
+          }
         }
       }
 

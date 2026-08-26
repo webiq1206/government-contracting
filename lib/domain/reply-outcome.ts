@@ -39,6 +39,16 @@ export type ReplyOutcome =
   | "referred"
   /** Does not work in this trade at all. */
   | "does_not_perform_trade"
+  /**
+   * A reply arrived and nobody could say what it meant.
+   *
+   * Its own outcome rather than a flag on a guess. `decideReply` already
+   * refused to act on an unreadable or self-contradictory reply, but it still
+   * returned the model's proposed outcome, so a message nobody understood
+   * could sit on a screen labelled "Declined" with a review tick beside it.
+   * The label is the thing people read.
+   */
+  | "unclear"
   | "none";
 
 /** opportunity_subs.outreach_state written for each outcome. */
@@ -77,6 +87,7 @@ export const OUTCOME_LABEL: Record<ReplyOutcome, string> = {
   wrong_contact: "Wrong contact at this company",
   referred: "Referred us elsewhere",
   does_not_perform_trade: "Does not perform this trade",
+  unclear: "Unclear, needs review",
   none: "No change",
 };
 
@@ -127,6 +138,14 @@ export function outcomeForIntent(
 
 export interface ReplyDecision {
   outcome: ReplyOutcome;
+  /**
+   * What the reading suggested, when the outcome above is `unclear`.
+   *
+   * Kept so a reviewer starts from the model's guess rather than from
+   * nothing, and null when the outcome IS the reading, so nobody has to work
+   * out whether the two fields agree.
+   */
+  proposed: ReplyOutcome | null;
   /** False when the platform must not change records on its own. */
   act: boolean;
   needsReview: boolean;
@@ -159,7 +178,9 @@ export function decideReply(
 
   if (extracted.method !== "ai") {
     return {
-      outcome,
+      // Pattern matching produced a word, not an understanding of the reply.
+      outcome: "unclear",
+      proposed: outcome,
       act: false,
       needsReview: true,
       reviewReason:
@@ -168,7 +189,9 @@ export function decideReply(
   }
   if (extracted.conflicts.length > 0) {
     return {
-      outcome,
+      // A reply that contradicts itself has no single meaning to record.
+      outcome: "unclear",
+      proposed: outcome,
       act: false,
       needsReview: true,
       reviewReason: `Their reply contradicts itself: ${extracted.conflicts.join("; ")}`,
@@ -179,7 +202,13 @@ export function decideReply(
   // precisely when the sub did the normal thing and attached their quote.
   if (unread.length > 0 && extracted.quoteAmount == null) {
     return {
+      /*
+       * Not unclear. The reply may be perfectly plain ("our price is
+       * attached"); what is missing is the price, not the meaning, and
+       * relabelling it would lose the one thing the reading did establish.
+       */
       outcome,
+      proposed: null,
       act: false,
       needsReview: true,
       reviewReason: `They attached ${unread.join(", ")}, which could not be read. Open the email and check whether their price is in there.`,
@@ -187,14 +216,15 @@ export function decideReply(
   }
   if (extracted.confidence < MIN_ACT_CONFIDENCE) {
     return {
-      outcome,
+      outcome: "unclear",
+      proposed: outcome,
       act: false,
       needsReview: true,
       reviewReason:
         "The reply was unclear, so nothing was changed automatically. Please read it and decide.",
     };
   }
-  return { outcome, act: true, needsReview: false, reviewReason: null };
+  return { outcome, proposed: null, act: true, needsReview: false, reviewReason: null };
 }
 
 /**
@@ -227,29 +257,60 @@ export function blockingGaps(extracted: ExtractedReply, outcome: ReplyOutcome): 
   return gaps;
 }
 
-/** Apply the outcome to this one solicitation. Never touches other work. */
+export interface OutcomeApplied {
+  applied: boolean;
+  /** Why nothing was written, when nothing was. */
+  refused: "no_state_for_outcome" | "ambiguous_trade" | null;
+  /** The trades that would have been stamped, for the review task. */
+  candidateTrades: string[];
+}
+
+/**
+ * Apply the outcome to this one solicitation. Never touches other work.
+ *
+ * Returns what it did, because one case is a refusal a caller has to act on
+ * rather than ignore.
+ */
 export async function applyOutcomeToSolicitation(input: {
   opportunityId: string;
   subcontractorId: string;
   trade?: string | null;
   outcome: ReplyOutcome;
-}): Promise<void> {
+}): Promise<OutcomeApplied> {
   const state = OUTREACH_STATE[input.outcome];
-  if (!state) return;
-  // A null trade used to fall open and stamp every trade line for the pair.
-  // Resolve it first: when the pair has exactly one trade, that is the trade
-  // this reply is about. A genuinely multi-trade pair with no named trade
-  // still applies to all its lines, deliberately: "we can't take this on"
-  // and "we're in" are answers about the job, and a reply that priced ONE of
-  // several trades reaches here with the trade named from the comm's meta.
+  if (!state) return { applied: false, refused: "no_state_for_outcome", candidateTrades: [] };
+
   let trade = input.trade ?? null;
+  let candidateTrades: string[] = [];
   if (trade == null) {
     const rows = await query<{ trade: string | null }>(
       `select distinct trade from opportunity_subs
         where opportunity_id = $1 and subcontractor_id = $2`,
       [input.opportunityId, input.subcontractorId]
     ).catch(() => []);
+    candidateTrades = rows.map((r) => r.trade).filter((t): t is string => !!t);
+    // Exactly one trade on the pairing means that is the trade this reply is
+    // about, whether or not the message named it.
     if (rows.length === 1) trade = rows[0].trade;
+    else if (rows.length > 1) {
+      /*
+       * More than one trade, and the reply named none of them. Nothing is
+       * written.
+       *
+       * This used to stamp every trade line for the pairing, defended in a
+       * comment on the grounds that "we can't take this on" and "we're in"
+       * are answers about the whole job. Sometimes they are. But a firm
+       * paired to HVAC, Electrical and Plumbing who writes "we're in" gets
+       * two trades marked responsive that nobody has committed to, and the
+       * coverage graph then reads as satisfied for work with no quote behind
+       * it. The same sentence read as a decline writes off two trades on one
+       * ambiguous line.
+       *
+       * Either direction is a guess about which trades a person meant, and a
+       * person is exactly who should make it. The caller raises a review.
+       */
+      return { applied: false, refused: "ambiguous_trade", candidateTrades };
+    }
   }
   await query(
     `update opportunity_subs
@@ -310,6 +371,8 @@ export async function applyOutcomeToSolicitation(input: {
       });
     }
   }
+
+  return { applied: true, refused: null, candidateTrades };
 }
 
 /**

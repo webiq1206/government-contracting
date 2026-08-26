@@ -319,6 +319,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       extracted: emptyExtracted(),
       decision: {
         outcome: "none",
+        proposed: null,
         act: false,
         needsReview: true,
         reviewReason:
@@ -353,7 +354,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
         // A redelivery of something already handled. Nothing is read again and
         // nothing may act, and it is not a review case either: the first
         // delivery already decided that.
-        decision: { outcome: "none", act: false, needsReview: false, reviewReason: null },
+        decision: { outcome: "none", proposed: null, act: false, needsReview: false, reviewReason: null },
         quoteSaved: false,
         quoteSkippedExisting: false,
         senderVerified: false,
