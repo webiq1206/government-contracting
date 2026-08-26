@@ -364,11 +364,17 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
   // Template resolution is org-aware (own copy, else platform default) so a
   // follow-up never goes out with another tenant's wording.
   const { activeTemplate } = await import("../domain/template-store");
-  const [tmpl, fallbackTmpl, profile] = await Promise.all([
+  const { getAutomationRules } = await import("../app-settings");
+  const [tmpl, fallbackTmpl, profile, rules] = await Promise.all([
     activeTemplate("template_2_followup", orgId),
     activeTemplate("template_2_followup_new_thread", orgId),
     getProfileJson(),
+    getAutomationRules(),
   ]);
+  // Chasing switched off entirely. Markers already on file are left alone
+  // rather than cleared: turning the rule back on should resume the queue it
+  // was paused with, not start from an empty one.
+  if (rules.followup_max <= 0) return { sent: 0, due: 0 };
 
   const due = await query<{
     id: string;
@@ -450,8 +456,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
              and os2.outreach_state in
                  ('responsive','quoted','responded','declined','not_a_fit','unavailable')
         )
-      limit 50`,
-    [orgId]
+      limit $2`,
+    [orgId, rules.outreach_batch_limit]
   );
 
   const senderName = profile ? outreachDisplayName(profile) : "";
@@ -668,11 +674,35 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       attachments: attachments.length ? attachments : undefined,
     });
     if (!res.disabled && !res.error) {
+      /*
+       * Does the rule allow another one after this?
+       *
+       * Follow-ups sent so far, counted from the record rather than tracked in
+       * a column, because the record is what a subcontractor experienced. When
+       * the count is still below the limit the NEW row carries the next marker,
+       * which is how a second and third chase happen at all: the old code
+       * consumed the marker and never wrote another, so "one follow-up" was
+       * structural rather than chosen.
+       */
+      const priorRow = await queryOne<{ n: number }>(
+        `select count(*)::int as n from communications
+          where org_id = $1 and direction = 'outbound' and channel = 'email'
+            and subcontractor_id = $2
+            and opportunity_id is not distinct from $3
+            and meta->>'kind' = 'followup'`,
+        [orgId, row.subcontractor_id, row.opportunity_id]
+      ).catch(() => null);
+      // This send is not on the record yet, so it counts itself.
+      const sentSoFar = (priorRow?.n ?? 0) + 1;
+      const nextFollowUpAt =
+        sentSoFar < rules.followup_max
+          ? new Date(Date.now() + rules.followup_hours * 3_600_000).toISOString()
+          : null;
       await query(
         // gmail_thread_id + rfc822_message_id are carried forward so a SECOND
         // follow-up chains onto this one rather than restarting the thread.
-        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider, meta, gmail_thread_id, rfc822_message_id)
-         values ($1,$2,'email','outbound',$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider, meta, gmail_thread_id, rfc822_message_id, follow_up_at)
+         values ($1,$2,'email','outbound',$3,$4,$5,$6,$7::jsonb,$8,$9,$10)`,
         [
           row.subcontractor_id,
           row.opportunity_id,
@@ -707,6 +737,7 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
           // repeat the recovery; keeping the parent here means the chain is
           // never empty, and threadMessageId() repairs it properly next time.
           res.rfc822MessageId ?? inReplyTo ?? null,
+          nextFollowUpAt,
         ]
       );
 

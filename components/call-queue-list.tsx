@@ -3,10 +3,12 @@ import {
   callReason,
   contactQuality,
   localTimeFor,
+  callability,
   groupCalls,
   CONTACT_QUALITY_LABEL,
   type CallCardFacts,
   type CallGrouping,
+  type CallRules,
 } from "@/lib/domain/call-queue";
 import { shortDate, countdown } from "@/lib/format";
 
@@ -25,6 +27,7 @@ export function CallQueueList({
   selectedId,
   hrefBase,
   now,
+  rules,
 }: {
   cards: CallCardFacts[];
   grouping: CallGrouping;
@@ -32,6 +35,8 @@ export function CallQueueList({
   /** Prefix for a row's link, with the id appended. */
   hrefBase: string;
   now: Date;
+  /** The operator's calling window and attempt limit, from Automation Rules. */
+  rules: CallRules;
 }) {
   const groups = groupCalls(cards, grouping);
 
@@ -47,8 +52,12 @@ export function CallQueueList({
           )}
           <ul className="space-y-2">
             {g.cards.map((c) => {
-              const t = localTimeFor(c.state, now);
+              const t = localTimeFor(c.state, now, {
+                start: rules.call_hours_start,
+                end: rules.call_hours_end,
+              });
               const quality = contactQuality(c);
+              const call = callability(c, rules, now);
               const active = c.id === selectedId;
               return (
                 <li key={c.id}>
@@ -97,7 +106,27 @@ export function CallQueueList({
                       {[c.trade, c.opportunityTitle].filter(Boolean).join(" · ")}
                     </p>
 
-                    <p className="mt-1 text-xs text-slate-500">{callReason(c, now)}</p>
+                    {/*
+                      * Why we are calling, unless the attempt limit has
+                      * already answered that. Both lines describe the same
+                      * unanswered attempts, and printing them together read as
+                      * a stutter: "called 5 times already", then "called 5
+                      * times, which is the limit".
+                      */}
+                    {call.state !== "attempts_spent" && (
+                      <p className="mt-1 text-xs text-slate-500">{callReason(c, now)}</p>
+                    )}
+
+                    {/*
+                      * A card the rules say not to ring right now stays in the
+                      * list and says why. Hiding it would leave an operator
+                      * wondering where the work went, and the rule that
+                      * produced the silence is the one thing they would need
+                      * in order to change it.
+                      */}
+                    {!call.callable && (
+                      <p className="mt-1 text-xs text-review">{call.reason}</p>
+                    )}
 
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
                       <span

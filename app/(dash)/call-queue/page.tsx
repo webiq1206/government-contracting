@@ -2,7 +2,7 @@ import Link from "next/link";
 import { callQueue } from "@/lib/data";
 import { PageFrame } from "@/components/page-frame";
 import { PAGE_HELP } from "@/lib/help-content";
-import { areCallsEnabled } from "@/lib/app-settings";
+import { areCallsEnabled, getAutomationRules } from "@/lib/app-settings";
 import { EmptyState } from "@/components/empty-state";
 import { buildCallQueueGuide } from "@/lib/domain/call-queue-guide";
 import { GuidedPlanPanel } from "@/components/guided-plan";
@@ -66,7 +66,10 @@ export default async function CallQueuePage({
     lastContacted: c.last_contacted ?? null,
     attempts: Number(c.attempts ?? 0),
   }));
-  const counts = callQueueCounts(facts, now);
+  // The calling window and attempt limit are operator rules now, so the queue
+  // reads them rather than assuming 8 to 6 and no limit.
+  const rules = await getAutomationRules();
+  const counts = callQueueCounts(facts, now, rules);
   const shown = filterCalls(facts, q);
 
   function queueHref(over: { q?: string; group?: string; open?: string | null } = {}): string {
@@ -122,7 +125,10 @@ export default async function CallQueuePage({
               : [
                   `${counts.remaining} to make`,
                   counts.urgent > 0 ? `${counts.urgent} on a bid due inside two days` : null,
-                  counts.badHour > 0 ? `${counts.badHour} outside working hours there` : null,
+                  counts.badHour > 0 ? `${counts.badHour} outside your calling hours there` : null,
+                  counts.attemptsSpent > 0
+                    ? `${counts.attemptsSpent} past the attempt limit`
+                    : null,
                 ]
                   .filter(Boolean)
                   .join(" · ")
@@ -271,6 +277,7 @@ export default async function CallQueuePage({
                   selectedId={openId ?? null}
                   hrefBase={openBase}
                   now={now}
+          rules={rules}
                 />
               )}
             </section>

@@ -346,6 +346,21 @@ written in advance of the work.
 | What a list import costs | Added | Named, not counted | Comparison | Comparison | "Replaces your NAICS codes" and "drops 238210 and 238220, keeps 2, adds 238910" are the same fact at two very different levels of usefulness |
 | A field SAM does not carry | Behaviour | "Not on the registration", left alone | Comparison | Comparison | Treating "SAM has nothing" as "set it to nothing" is the version of this bug that empties a field instead of overwriting it |
 
+### Automation Rules
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| The 48-hour follow-up interval | Changed | An Outreach rule | Outreach tab | Outreach tab | It was `48 * 3_600_000` in the outreach agent. It is a rule about how often this account writes to other people's businesses, which is exactly the kind of thing the page called Automation Rules exists to hold |
+| One follow-up, ever | Changed | A rule, defaulting to one | Outreach tab | Outreach tab | One was not a decision, it was structure: the send consumed the follow-up marker and nothing ever wrote another. Now the count is chosen, and zero (never chase) is a choice somebody can make |
+| The 50-per-run send cap | Changed | An Outreach rule | Outreach tab | Outreach tab | A cap that decides how a backlog reaches a mail provider should be visible to the person whose sending reputation it protects |
+| (new) Plain-English summary of the chase | Added | Under the fields | Outreach tab | Outreach tab | "48 hours" and "1" are two numbers; "receives 2 emails in total, the last about 2 days after the first" is the thing being decided |
+| Calling hours | Added | A Calls rule, in the subcontractor's local time | Calls tab | Calls tab | The queue already worked out the hour where each firm is, and then offered the card anyway. Computing a fact and not acting on it is how somebody rings Hawaii at five in the morning |
+| Call attempt limit | Added | A Calls rule | Calls tab | Calls tab | Attempts were counted and displayed and never acted on, so a number that had rung out eleven times came back to the top of the day forever |
+| A card the rules say not to ring | Behaviour | Stays in the list, says why | Queue row | Queue row | Hiding it would leave an operator wondering where the work went, and the rule that produced the silence is the one thing they would need in order to change it |
+| Queue header counts | Changed | Count the configured window, and the spent numbers | Header | Header | The header counted a fixed 8-to-6 while the rows used the operator's window, which is two answers to one question |
+| (new) Conflicts before publishing | Added | Above the save button | Panel | Panel | Each field validated itself, but the interesting mistakes are pairs: a red warning further out than the amber one, a calling window an hour wide, every follow-up landing inside a day. No single field can catch those |
+| `null` stored for a numeric rule | Fixed | Falls back to the default | Everywhere | Everywhere | `Number(null)` is 0, and 0 means "no limit" for several of these rules, so an absent key was quietly storing the most permissive setting available |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

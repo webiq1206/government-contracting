@@ -64,18 +64,33 @@ const STATE_ZONE: Record<string, string> = {
 export interface LocalTime {
   /** "9:14 AM", or null when the state does not pin a single zone. */
   label: string | null;
-  /** True when it is between 8am and 6pm where they are. */
+  /** True when it is inside the configured calling window where they are. */
   reasonableHour: boolean | null;
+  /** The hour there, 0 to 23, or null when the zone is not known. */
+  hour: number | null;
   /** Why there is no time, when there is none. */
   note: string | null;
 }
 
-export function localTimeFor(state: string | null | undefined, now = new Date()): LocalTime {
+/** The window this module assumes when no rules are supplied. */
+export const DEFAULT_CALL_HOURS = { start: 8, end: 18 };
+
+export function localTimeFor(
+  state: string | null | undefined,
+  now = new Date(),
+  /**
+   * The operator's calling window, in the recipient's local time. Defaulted
+   * rather than required so every existing caller keeps its behaviour, and
+   * passed explicitly by the call queue, which knows the rules.
+   */
+  hours: { start: number; end: number } = DEFAULT_CALL_HOURS
+): LocalTime {
   const zone = STATE_ZONE[(state ?? "").trim().toUpperCase()];
   if (!zone) {
     return {
       label: null,
       reasonableHour: null,
+      hour: null,
       note: state
         ? "That state spans more than one time zone, so the hour there is not certain."
         : "No location on file, so the hour there is unknown.",
@@ -90,10 +105,98 @@ export function localTimeFor(state: string | null | undefined, now = new Date())
     const hour = Number(
       new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", hour12: false }).format(now)
     );
-    return { label, reasonableHour: hour >= 8 && hour < 18, note: null };
+    return {
+      label,
+      reasonableHour: hour >= hours.start && hour < hours.end,
+      hour,
+      note: null,
+    };
   } catch {
-    return { label: null, reasonableHour: null, note: "Could not work out the hour there." };
+    return {
+      label: null,
+      reasonableHour: null,
+      hour: null,
+      note: "Could not work out the hour there.",
+    };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Whether this card may be called at all
+// ---------------------------------------------------------------------------
+
+export type CallableState = "callable" | "outside_hours" | "attempts_spent" | "hour_unknown";
+
+export interface Callability {
+  state: CallableState;
+  /** True only for `callable`: everything else is a reason to leave it alone. */
+  callable: boolean;
+  /** What to tell the operator, in their words. */
+  reason: string;
+}
+
+export interface CallRules {
+  /** Earliest hour, in the recipient's local time. */
+  call_hours_start: number;
+  /** Latest hour, exclusive, in the recipient's local time. */
+  call_hours_end: number;
+  /** Unanswered attempts before the card stops being offered. 0 = no limit. */
+  call_max_attempts: number;
+}
+
+/**
+ * Whether the queue should be handing this card to somebody right now.
+ *
+ * Both rules here were previously observations rather than rules. The local
+ * hour was computed and displayed, so the queue would cheerfully put a card at
+ * the top of the list at five in the morning where that firm is; and attempts
+ * were counted and displayed, so a number that had rung out eleven times came
+ * back every day forever. Neither is a hard block: the card stays visible and
+ * says why, because hiding work is how an operator stops trusting the queue.
+ */
+export function callability(
+  c: Pick<CallCardFacts, "state" | "attempts">,
+  rules: CallRules,
+  now = new Date()
+): Callability {
+  if (rules.call_max_attempts > 0 && c.attempts >= rules.call_max_attempts) {
+    return {
+      state: "attempts_spent",
+      callable: false,
+      reason: `Called ${c.attempts} times with no answer, which is the limit you set. Try a different contact at this firm, or raise the limit in Automation Rules.`,
+    };
+  }
+  const local = localTimeFor(c.state, now, {
+    start: rules.call_hours_start,
+    end: rules.call_hours_end,
+  });
+  if (local.reasonableHour === false) {
+    return {
+      state: "outside_hours",
+      callable: false,
+      reason: `It is ${local.label} where they are, outside the ${formatHour(rules.call_hours_start)} to ${formatHour(rules.call_hours_end)} window you set.`,
+    };
+  }
+  if (local.reasonableHour === null) {
+    return {
+      state: "hour_unknown",
+      callable: true,
+      reason: local.note ?? "The hour there is unknown, so check before dialling.",
+    };
+  }
+  return {
+    state: "callable",
+    callable: true,
+    reason: `${local.label} where they are, inside your calling hours.`,
+  };
+}
+
+/** "8" reads as 8:00 AM, "17" as 5:00 PM. Nobody sets calling hours in 24-hour time. */
+export function formatHour(h: number): string {
+  const hour = ((Math.round(h) % 24) + 24) % 24;
+  const suffix = hour < 12 ? "am" : "pm";
+  const display = hour % 12 === 0 ? 12 : hour % 12;
+  return `${display}${suffix}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,25 +249,39 @@ export interface CallQueueCounts {
   remaining: number;
   /** Calls whose opportunity deadline has passed or is inside two days. */
   urgent: number;
-  /** Calls where it is outside working hours at the other end right now. */
+  /** Calls where it is outside the calling window at the other end right now. */
   badHour: number;
   /** Calls with no phone number, which cannot be made at all. */
   unreachable: number;
+  /** Calls that have used up the attempt limit and are no longer worth dialling. */
+  attemptsSpent: number;
 }
 
-export function callQueueCounts(cards: CallCardFacts[], now = new Date()): CallQueueCounts {
+export function callQueueCounts(
+  cards: CallCardFacts[],
+  now = new Date(),
+  /** The operator's rules, so the header counts the same window the rows use. */
+  rules: CallRules = {
+    call_hours_start: DEFAULT_CALL_HOURS.start,
+    call_hours_end: DEFAULT_CALL_HOURS.end,
+    call_max_attempts: 0,
+  }
+): CallQueueCounts {
   let urgent = 0;
   let badHour = 0;
   let unreachable = 0;
+  let attemptsSpent = 0;
   for (const c of cards) {
     if (c.deadline) {
       const days = (new Date(c.deadline).getTime() - now.getTime()) / 86_400_000;
       if (!Number.isNaN(days) && days < 2) urgent += 1;
     }
-    if (localTimeFor(c.state, now).reasonableHour === false) badHour += 1;
+    const call = callability(c, rules, now);
+    if (call.state === "outside_hours") badHour += 1;
+    if (call.state === "attempts_spent") attemptsSpent += 1;
     if (!c.phone) unreachable += 1;
   }
-  return { remaining: cards.length, urgent, badHour, unreachable };
+  return { remaining: cards.length, urgent, badHour, unreachable, attemptsSpent };
 }
 
 // ---------------------------------------------------------------------------

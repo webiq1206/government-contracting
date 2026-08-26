@@ -12,6 +12,9 @@ import {
   contactQuality,
   callReason,
   callQueueCounts,
+  callability,
+  formatHour,
+  DEFAULT_CALL_HOURS,
   groupCalls,
   filterCalls,
   parseCallGrouping,
@@ -19,6 +22,7 @@ import {
   CALL_GROUPINGS,
   CALL_GROUPING_LABEL,
   type CallCardFacts,
+  type CallRules,
 } from "@/lib/domain/call-queue";
 
 /*
@@ -220,5 +224,126 @@ describe("filterCalls", () => {
 
   it("returns everything for an empty search", () => {
     expect(filterCalls(cards, "   ")).toHaveLength(2);
+  });
+});
+
+/**
+ * The calling rules an operator sets, applied to the hour it actually is
+ * where the subcontractor answers the phone.
+ *
+ * Both of these used to be observations rather than rules: the local hour was
+ * computed and shown, and attempts were counted and shown, and neither ever
+ * stopped the queue handing over a card. So the queue would put a firm at the
+ * top of somebody's morning when it was five in the morning there, and would
+ * keep offering a number that had rung out eleven times.
+ */
+describe("callability", () => {
+  const RULES: CallRules = { call_hours_start: 8, call_hours_end: 17, call_max_attempts: 3 };
+
+  it("clears a call inside the window", () => {
+    // 15:00 UTC is 11am in New York in August.
+    const c = callability(card({ id: "1", state: "NY" }), RULES, NOW);
+    expect(c.state).toBe("callable");
+    expect(c.callable).toBe(true);
+    expect(c.reason).toContain("11:00 AM");
+  });
+
+  it("stops a call outside the window and says the hour and the rule", () => {
+    // 15:00 UTC is 5am in Honolulu, which does not observe daylight saving.
+    const c = callability(card({ id: "1", state: "HI" }), RULES, NOW);
+    expect(c.state).toBe("outside_hours");
+    expect(c.callable).toBe(false);
+    expect(c.reason).toContain("5:00 AM");
+    expect(c.reason).toContain("8am to 5pm");
+  });
+
+  it("respects a window the operator widened", () => {
+    const c = callability(
+      card({ id: "1", state: "HI" }),
+      { ...RULES, call_hours_start: 5 },
+      NOW
+    );
+    expect(c.state).toBe("callable");
+  });
+
+  it("puts the attempt limit ahead of the hour, because it is the more final answer", () => {
+    // Inside the window, but spent. Telling somebody the hour is fine when the
+    // number is finished with would send them to dial it.
+    const c = callability(card({ id: "1", state: "NY", attempts: 3 }), RULES, NOW);
+    expect(c.state).toBe("attempts_spent");
+    expect(c.reason).toContain("Called 3 times");
+    expect(c.reason).toContain("Automation Rules");
+  });
+
+  it("treats zero attempts as no limit, which is what the queue used to do", () => {
+    const c = callability(
+      card({ id: "1", state: "NY", attempts: 40 }),
+      { ...RULES, call_max_attempts: 0 },
+      NOW
+    );
+    expect(c.state).toBe("callable");
+  });
+
+  it("still offers a card whose local hour cannot be known, with the caveat", () => {
+    // Florida spans two zones, so there is no certain hour there. Refusing the
+    // call would be acting on a fact nobody has.
+    const c = callability(card({ id: "1", state: "FL" }), RULES, NOW);
+    expect(c.state).toBe("hour_unknown");
+    expect(c.callable).toBe(true);
+    expect(c.reason).toContain("more than one time zone");
+  });
+
+  it("says the hour is unknown when there is no location at all", () => {
+    const c = callability(card({ id: "1", state: null }), RULES, NOW);
+    expect(c.state).toBe("hour_unknown");
+    expect(c.reason).toContain("No location on file");
+  });
+});
+
+describe("callQueueCounts with rules", () => {
+  const RULES: CallRules = { call_hours_start: 8, call_hours_end: 17, call_max_attempts: 3 };
+
+  it("counts the bad hours and the spent numbers separately", () => {
+    const counts = callQueueCounts(
+      [
+        card({ id: "1", state: "NY" }),
+        card({ id: "2", state: "HI" }),
+        card({ id: "3", state: "NY", attempts: 5 }),
+        card({ id: "4", state: "NY", phone: null }),
+      ],
+      NOW,
+      RULES
+    );
+    expect(counts.remaining).toBe(4);
+    expect(counts.badHour).toBe(1);
+    expect(counts.attemptsSpent).toBe(1);
+    expect(counts.unreachable).toBe(1);
+  });
+
+  it("counts the same window the rows use, not a fixed one", () => {
+    const cards = [card({ id: "1", state: "NY" })];
+    // 11am in New York: inside 8 to 17, outside 12 to 17.
+    expect(callQueueCounts(cards, NOW, RULES).badHour).toBe(0);
+    expect(
+      callQueueCounts(cards, NOW, { ...RULES, call_hours_start: 12 }).badHour
+    ).toBe(1);
+  });
+
+  it("keeps its old behaviour for a caller that passes no rules", () => {
+    const counts = callQueueCounts([card({ id: "1", state: "HI", attempts: 99 })], NOW);
+    expect(counts.badHour).toBe(1);
+    // No limit by default, so a spent number is not counted as spent.
+    expect(counts.attemptsSpent).toBe(0);
+    expect(DEFAULT_CALL_HOURS).toEqual({ start: 8, end: 18 });
+  });
+});
+
+describe("formatHour", () => {
+  it("says hours the way somebody setting calling hours would", () => {
+    expect(formatHour(0)).toBe("12am");
+    expect(formatHour(8)).toBe("8am");
+    expect(formatHour(12)).toBe("12pm");
+    expect(formatHour(17)).toBe("5pm");
+    expect(formatHour(23)).toBe("11pm");
   });
 });
