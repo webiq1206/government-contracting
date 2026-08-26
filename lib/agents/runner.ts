@@ -245,9 +245,26 @@ export async function runAgent(
    * work, and the customer-facing queries exclude it rather than showing every
    * tenant a run they cannot account for.
    */
+  /*
+   * The record this job is about, when it names one.
+   *
+   * Recorded because a recovery has to decide what is worth replaying, and
+   * every one of those decisions is about the record: does the opportunity
+   * still exist, did the operator stop this pursuit, has the deadline passed,
+   * did a later run already do this work. Without it a recovery either replays
+   * everything blindly or replays nothing.
+   *
+   * Read from the payload rather than resolved, unlike `orgId`. It is not a
+   * permission claim, it is a note about what the job was doing, and if the
+   * payload names a record that turns out not to exist the run is abandoned a
+   * few lines below anyway.
+   */
+  const runOpportunityId =
+    typeof payload.opportunityId === "string" && payload.opportunityId ? payload.opportunityId : null;
   const jobRun = await queryOne<{ id: string }>(
-    `insert into job_runs (agent, trigger, status, org_id) values ($1,$2,'running',$3) returning id`,
-    [def.name, trigger, orgId]
+    `insert into job_runs (agent, trigger, status, org_id, opportunity_id)
+     values ($1,$2,'running',$3,$4) returning id`,
+    [def.name, trigger, orgId, runOpportunityId]
   ).catch(() => null);
 
   /**
