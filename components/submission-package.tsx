@@ -1,4 +1,5 @@
 "use client";
+import { MarkAsSent } from "@/components/mark-as-sent";
 
 /**
  * The submission package panel: priced bid, the full compliance matrix (every
@@ -47,6 +48,7 @@ export function SubmissionPackage({
   contact,
   solicitationNumber,
   opportunityTitle,
+  proofOptions = [],
 }: {
   opportunityId: string;
   bid: Bid;
@@ -57,6 +59,8 @@ export function SubmissionPackage({
   contact?: { name?: string; email?: string; phone?: string } | null;
   solicitationNumber?: string | null;
   opportunityTitle?: string | null;
+  /** Documents on this opportunity that could serve as the send receipt. */
+  proofOptions?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -83,7 +87,17 @@ export function SubmissionPackage({
       d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
   });
   const ready = bid.package_ready;
-  const submitted = Boolean(bid.submitted_at);
+  /*
+   * Three states where there used to be two.
+   *
+   * `submitted_at` was set by pressing a button on a screen that does not send
+   * anything, so it recorded an intention. Approving a package and delivering
+   * one are different acts by different parties, and the screen has to be able
+   * to say which has happened.
+   */
+  const submissionState = bid.submission_state ?? (bid.submitted_at ? "sent" : "package_ready");
+  const approved = submissionState === "approved";
+  const submitted = Boolean(bid.submitted_at) || submissionState === "sent";
   const blockers = validation?.blockers ?? [];
   const tradeBlockers = blockers.filter((b) => /pricing has not been received/i.test(b));
   const otherBlockers = blockers.filter((b) => !/pricing has not been received/i.test(b));
@@ -678,20 +692,37 @@ export function SubmissionPackage({
             * The override path below has always confirmed. The ordinary one,
             * which is the one everybody uses, did not.
             */}
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Record this bid as submitted? Brost Co does not send it to the agency, so press this only after you have delivered the files the way the solicitation asks."
+          {/*
+            Approving is not sending, and the button no longer pretends
+            otherwise. It used to say "Submit bid package" and set
+            `submitted_at`, on a screen that cannot submit anything: the
+            delivery is a person uploading files to a government portal in
+            another application. Pressing this clears the package; the form
+            underneath records what actually happened.
+          */}
+          {!approved && (
+            <button
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Approve this package? It will be cleared to send. Brost Co does not deliver it: you send it the way the solicitation asks, then record how and when."
+                  )
                 )
-              )
-                submit(false);
-            }}
-            disabled={submitting || !ready}
-            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {submitting ? "Submitting…" : "Submit bid package"}
-          </button>
+                  submit(false);
+              }}
+              disabled={submitting || !ready}
+              className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? "Approving" : "Approve this package"}
+            </button>
+          )}
+          {approved && (
+            <MarkAsSent
+              opportunityId={opportunityId}
+              proofOptions={proofOptions}
+              onUploadHref="#attachments"
+            />
+          )}
           {canForceOverride && (
             <button
               onClick={() => {

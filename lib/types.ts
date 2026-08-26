@@ -526,6 +526,22 @@ export interface Bid {
   documents_json: { name: string; storage_path: string; kind: string }[];
   human_flags: string[];
   submitted_at: string | null;
+  /**
+   * package_ready | approved | sending | sent | receipt_confirmed | accepted |
+   * rejected | withdrawn | failed.
+   *
+   * `submitted_at` alone cannot carry this. It was set by pressing a button on
+   * a screen that does not send anything, so it recorded an intention, and
+   * there was no column for the difference between "cleared to go", "a person
+   * uploaded it and here is the receipt" and "the agency acknowledged it".
+   */
+  submission_state?: string | null;
+  submission_method?: string | null;
+  submission_destination?: string | null;
+  sent_timezone?: string | null;
+  confirmation_number?: string | null;
+  submission_attestation?: string | null;
+  submitted_by?: string | null;
   outcome: "won" | "lost" | "no_award" | "pending" | null;
   award_amount: number | null;
   loss_reason: string | null;

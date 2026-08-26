@@ -922,6 +922,15 @@ export default async function OpportunityPage({ params }: { params: { id: string
                       opportunityId={opp.id}
                       bid={bid}
                       kindToPath={kindToPath}
+                      /*
+                       * Anything already uploaded that could be the send
+                       * receipt. Offered as a list rather than a free upload
+                       * here so the proof is a real stored document with a
+                       * path, not a filename somebody typed.
+                       */
+                      proofOptions={briefDocsSource
+                        .filter((d) => String(d.kind) !== "solicitation" && d.storage_path)
+                        .map((d) => ({ id: String(d.id), name: String(d.name) }))}
                       submissionMethod={
                         analysis?.submission_method &&
                         analysis.submission_method !== NA_TEXT
