@@ -290,6 +290,18 @@ written in advance of the work.
 | Guide Me on a phone | Fixed | The app bar | - | App bar | It was reachable only by opening the navigation drawer and scrolling to the top of it: three taps to ask for help with the screen you are already looking at |
 | `/more` at desktop width | Behaviour | Renders normally | Desktop | Mobile | Hiding it with a media query meant a direct visit or a bookmark showed a blank screen, which is a worse answer than a list of links somebody did not need |
 
+### Integrations
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| `Connected` / `Error` / `Not set up` | Changed | The six the audit names: Not configured, Saved never tested, Working, Degraded, Blocked, Expired | Integrations | Integrations | Three outcomes for a question with six answers, and the middle one was a claim the page could not support. `Connected` meant "a key is saved", and the page's own comment already recorded what that cost: it said `Connected` through a day in which the provider refused every request for want of credit |
+| A saved key reading as a working one | Fixed | "Saved, never tested" | Integrations | Integrations | "We have not checked" is a true thing to say. "It is working" is not |
+| A passing check with no expiry | Fixed | Stops counting after 30 days | Integrations | Integrations | A key that worked five weeks ago tells you about five weeks ago. The threshold is a named constant rather than a buried comparison, so it can be argued with |
+| (new) Blocked, separated from degraded | Added | Card state | Integrations | Integrations | A credit refusal and a rate limit look alike and need opposite responses: one needs somebody to go and pay, the other needs nobody to do anything because work retries. Classified with the same function the automation incidents use, so the two panels group failures the same way |
+| (new) Expired, ahead of the error it caused | Added | Card state | Integrations | Integrations | A lapsed OAuth connection produces an auth error, and reporting the symptom sends somebody to replace a key that is fine |
+| (new) Reason and next action per card | Added | Under the badge | Integrations | Integrations | A state without a reason is a colour |
+| "N of M connected" | Changed | "N of M confirmed working", and what needs attention | Integrations | Integrations | The header was making the same unsupported claim as the badge, one level up |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
