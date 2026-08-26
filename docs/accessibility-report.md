@@ -5,6 +5,6 @@ Measured in Chromium at three widths, signed in, on rendered output.
 
 The remote font stylesheet is stubbed empty, so the fallback stack is what gets measured. That is the more conservative reading and matches what an operator behind a proxy that blocks Google actually sees.
 
-16 routes x 3 widths. **0 findings.**
+26 routes x 3 widths. **0 findings.**
 
 No failures against the rules checked.

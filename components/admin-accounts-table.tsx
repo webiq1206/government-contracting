@@ -46,7 +46,7 @@ export function AdminAccountsTable({
         <>
           <Link
             href={`/admin/accounts/${r.id}`}
-            className="font-medium text-foreground hover:text-gold-text"
+            className="inline-flex min-h-11 items-center font-medium text-foreground hover:text-gold-text md:min-h-0"
           >
             {r.name}
           </Link>

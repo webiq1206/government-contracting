@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   }
 
   // Log the operator in immediately.
-  const token = await createSession(user.id);
+  const token = await createSession(user.id, req.headers.get("user-agent"));
   await setSessionCookie(token);
   return NextResponse.json({ ok: true, user: { email: user.email, role: "operator" } });
 }

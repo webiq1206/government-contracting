@@ -110,6 +110,13 @@ const SECTIONS: Section[] = [
       // Which alerts reach this account by email and which live only in the
       // product. Worth its own entry because the answer is surprising.
       { href: "/settings/notifications", label: "Notifications" },
+      /*
+       * Last in the section and named for the person rather than the company,
+       * because everything above it is organization-wide and this one is not.
+       * It is also the only place to change your own password without
+       * declaring you have lost it.
+       */
+      { href: "/settings/account", label: "Your account" },
     ],
   },
   {

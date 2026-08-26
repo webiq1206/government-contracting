@@ -14,8 +14,10 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  ALL_CAPABILITIES,
   can,
   capabilitiesOf,
+  capabilityLabel,
   normalizeRole,
   roleLabel,
   rolesWith,
@@ -117,5 +119,17 @@ describe("permission messages", () => {
     expect(roleLabel("operator")).toBe("Bid manager");
     expect(roleLabel("viewer")).toBe("Read-only");
     expect(roleLabel(null)).toBe("Read-only");
+  });
+});
+
+describe("the full capability list", () => {
+  it("names every capability exactly once", () => {
+    expect(new Set(ALL_CAPABILITIES).size).toBe(ALL_CAPABILITIES.length);
+    // The owner holds every capability, so its row is the complete set.
+    expect([...ALL_CAPABILITIES].sort()).toEqual([...capabilitiesOf("owner")].sort());
+  });
+
+  it("labels every one of them", () => {
+    for (const c of ALL_CAPABILITIES) expect(capabilityLabel(c).length).toBeGreaterThan(0);
   });
 });

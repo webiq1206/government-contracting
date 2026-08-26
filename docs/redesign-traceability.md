@@ -540,6 +540,28 @@ states when something is absent.
 | Conversation history | Six turns, unbounded length | Six turns, 2000 characters each | Q&A | Q&A | `slice(-6)` bounded how many turns reached the model, not how long each was, so a client could post six megabyte strings and have them billed as input tokens |
 | Setup capability gating on the quick start | Keyed `gmail` | Keyed `email` | Checklist | Checklist | The checklist calls that item "email". Keyed wrong it fell through to no capability at all, so a read-only account was told to connect an inbox it cannot connect. `tests/knowledge.test.ts` now asserts every checklist key is covered |
 
+### Your account (`/settings/account`)
+
+Brief section 8's last page group: the authentication and account screens
+(personal details, role, security, connected sessions, time zone, accessibility
+preferences, display density).
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| A screen for the person | Did not exist | Built | Page | Page | Every settings page was the company's: the profile, the rules, the templates, the integrations, the bill. There was nowhere at all for the person using them |
+| Changing your own password | Only by email reset | From inside the session | Form | Form | The only route was declaring you had lost it, waiting for mail, and being signed out of every device. It also left somebody who suspected their password was known depending on the mailbox most likely to be compromised alongside it. The current password is required, so a borrowed unlocked laptop is a session to end rather than a permanent takeover |
+| What a password change ends | Every session | Every session but this one | - | - | The reset link proves control of a mailbox, so ending everything is right there. Here you proved you know the old password from inside a live session, and signing you out of the device in your hand punishes the good case |
+| Connected sessions | No such thing | Every live session, with device and last use | List | List | A session row carried a token, a user and two timestamps, so "where am I signed in" had no answer and the only safe move on suspicion was a reset that signed out the devices you wanted to keep |
+| The device name | - | "Chrome on macOS", or "Not recorded" | List | List | Recognition, not fingerprinting. Deliberately no IP address: it would add a rough location and a durable identifier to every request, and the question here is "is that my laptop" |
+| A session with no user agent | - | "Not recorded" | List | List | Rows predating the column have none. Substituting the sign-in time for a missing last-seen would claim activity that was never recorded, on the one screen somebody reads when they suspect their account has been used |
+| Ending someone else's session | - | Scoped inside the delete | - | - | A session id is a bearer token. A delete that trusts an id from the body would let anyone signed in end anyone else's session by guessing one |
+| "Signed out" for a session already gone | - | 404 with the reason | List | List | Reporting success either way teaches somebody the button works when it did nothing |
+| What your role permits | Discovered on refusal | Both halves, listed | Two columns | Stacked | Listing only what you hold answers "what can I do" and leaves "why was I refused" to the moment of refusal, which is the expensive way to learn it. Each thing you cannot do names who can |
+| Time zone | - | Named as absent, with what is used instead | Card | Card | Nothing in the product reads a stored time zone yet. A control that changes nothing is worse than its absence, so the page says what actually governs each clock |
+| Display density | - | Pointed at, not duplicated | Card | Card | Density is already per table and already remembered. A second control here would be a second answer, and the two would disagree the first time somebody used the other |
+| The accessibility sweep's route list | 16 routes | 26, and a test that keeps it whole | - | - | It printed "0 findings" while seven operator pages were not in the list at all. Adding them found fourteen touch targets under 44px on the platform accounts table: the density buttons at 24px, every sortable column header at 13px, and the row links at 36px. A zero that covers less than the product is worse than a number nobody trusts, because this one does get trusted |
+| Table sort headers and density buttons | Under 44px on a phone | Thumb-sized on mobile, unchanged above it | Table | Table | Sorting is exactly what somebody does on a small screen to make a wide table usable |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

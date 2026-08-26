@@ -67,6 +67,24 @@ const ROUTES = [
   "/settings/content",
   "/settings/integrations",
   "/settings/billing",
+  /*
+   * Added as the product grew. A sweep that reports zero findings over a route
+   * list which lags the application is a sweep reporting on a smaller product
+   * than the one that shipped, and the number it prints gets believed.
+   *
+   * tests/a11y-coverage.test.ts now fails when an operator page exists with no
+   * entry here, so the list cannot fall behind again silently.
+   */
+  "/search",
+  "/settings/notifications",
+  "/settings/account",
+  "/admin/accounts",
+  "/admin/billing",
+  "/admin/audit",
+  "/admin/health",
+  "/admin/invitations",
+  "/authority",
+  "/more",
 ];
 
 interface Finding {

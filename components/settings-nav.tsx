@@ -19,6 +19,8 @@ const TABS = [
     label: "Notifications",
     match: "/settings/notifications",
   },
+  // Yours, not the company's: name, role, password, signed-in devices.
+  { href: "/settings/account", label: "Your account", match: "/settings/account" },
 ] as const;
 
 /**

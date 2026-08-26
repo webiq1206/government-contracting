@@ -214,6 +214,35 @@ export function capabilityLabel(capability: Capability): string {
   return CAPABILITY_LABELS[capability];
 }
 
+/**
+ * Every capability, in the order a person would read them: the bid work
+ * first, then the account-wide settings, then the destructive one.
+ *
+ * Exported so a screen can show what a role CANNOT do beside what it can.
+ * Listing only the permissions somebody holds answers "what may I do" and
+ * leaves "why can I not do this" to a refusal they meet later, which is the
+ * expensive way to learn it.
+ */
+export const ALL_CAPABILITIES: Capability[] = [
+  "view",
+  "decide",
+  "outreach",
+  "price",
+  "submit",
+  "manage_subs",
+  "manage_compliance",
+  "manage_contracts",
+  "run_agents",
+  "pause_automation",
+  "manage_rules",
+  "manage_content",
+  "manage_integrations",
+  "manage_profile",
+  "manage_team",
+  "manage_billing",
+  "delete_records",
+];
+
 /** The sentence shown when a control is unavailable. */
 export function permissionMessage(role: string | null | undefined, capability: Capability): string {
   return (
