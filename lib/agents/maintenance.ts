@@ -1627,6 +1627,9 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
         agent: "backlink-outreach-sweep",
         action: "poll-failed",
         level: "error",
+        // `automation-status` classifies on status, not level, so an error
+        // logged without it is counted as a healthy run.
+        status: "error",
         message: `Could not read the inbox for backlink replies: ${error}`,
       });
     }

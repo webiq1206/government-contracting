@@ -372,6 +372,7 @@ export const opportunityMonitor: AgentDefinition = {
           agent: "opportunity-monitor",
           action: "org-run-failed",
           level: "error",
+          status: "error",
           message: `Ingestion failed for org ${org.id}: ${(err as Error).message}. Other orgs continue; this org is retried on the next scheduled run.`,
         }).catch(() => undefined);
       }

@@ -167,6 +167,7 @@ export const subVerify: AgentDefinition = {
             agent: "sub-verify",
             action: "hunter-error",
             level: "error",
+            status: "error",
             opportunityId,
             subcontractorId,
             message: `Hunter domain search failed for ${domain}: ${ds.error}. If this repeats, test the Hunter key in Settings, then Integrations.`,
