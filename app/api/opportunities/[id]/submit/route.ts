@@ -176,20 +176,51 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   }
 
-  await query(`update bids set submitted_at=now(), outcome='pending' where id=$1`, [bid.id]);
+  /*
+   * This clears the package to go. It does not claim it went.
+   *
+   * The line here used to be `update bids set submitted_at=now()`, and it was
+   * a lie in the ordinary case: for almost every solicitation this product
+   * handles, Brost Co does not submit anything. A person opens a government
+   * portal, uploads the files themselves, and comes back. Pressing this button
+   * approved a package; it did not deliver one, and a bid recorded as
+   * submitted with no evidence is worse than one recorded as ready, because
+   * the first stops anybody checking.
+   *
+   * `submitted_at` is now set only by the mark-as-sent endpoint, which
+   * requires the evidence, and a check constraint refuses the column without
+   * it either way.
+   */
   await query(
-    `update opportunities set stage='submitted', human_action_required=false where id=$1`,
-    [params.id]
+    `update bids set submission_state='approved' where id=$1 and submission_state='package_ready'`,
+    [bid.id]
   );
+  await query(
+    `insert into bid_submission_events (bid_id, org_id, from_state, to_state, actor, proof)
+     values ($1,$2,'package_ready','approved',$3,$4)`,
+    [
+      bid.id,
+      orgId,
+      auth.email,
+      "Every check passed and the package was cleared to send. Nothing has been sent yet.",
+    ]
+  ).catch(() => {});
   await logAgent({
     agent: "operator",
-    action: "submit-bid",
+    action: "approve-bid",
     opportunityId: params.id,
     bidId: bid.id,
     level: "success",
-    message: `Operator ${auth.email} submitted the bid package.`,
-    reasoning: "Post-submission tracking now monitors SAM.gov for the award notice.",
+    message: `Operator ${auth.email} approved the bid package to be sent.`,
+    reasoning:
+      "The package is cleared. It counts as submitted only once somebody records how and when it reached the agency.",
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    state: "approved",
+    // Said plainly so the UI cannot imply the package has gone.
+    message:
+      "Approved. Send it through the agency's portal, then record how and when you did.",
+  });
 }
