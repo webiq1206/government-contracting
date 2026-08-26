@@ -3,6 +3,7 @@ import { overrideProblem, OVERRIDE_PROBLEM_MESSAGE } from "@/lib/domain/override
 import { assessReadiness } from "@/lib/domain/submission-readiness";
 import { MarkAsSent } from "@/components/mark-as-sent";
 import { ReceiptStatusCard } from "@/components/receipt-status-card";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { parseSubmissionState } from "@/lib/domain/submission-state";
 
 /**
@@ -70,6 +71,7 @@ export function SubmissionPackage({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingApproval, setConfirmingApproval] = useState(false);
 
   const matrix: ResolvedRequirement[] = bid.compliance_matrix ?? [];
   const manifest: PackageItem[] = bid.package_manifest ?? [];
@@ -764,20 +766,35 @@ export function SubmissionPackage({
             underneath records what actually happened.
           */}
           {!approved && (
-            <button
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Approve this package? It will be cleared to send. Brost Co does not deliver it: you send it the way the solicitation asks, then record how and when."
-                  )
-                )
+            <>
+              <ConfirmDialog
+                open={confirmingApproval}
+                title="Approve this package?"
+                body={
+                  <>
+                    <p>It will be cleared to send.</p>
+                    <p className="mt-2">
+                      Brost Co does not deliver it. You send it the way the solicitation asks,
+                      then record how and when, and only that counts as submitted.
+                    </p>
+                  </>
+                }
+                confirmLabel="Approve it"
+                busy={submitting}
+                onConfirm={() => {
+                  setConfirmingApproval(false);
                   submit();
-              }}
-              disabled={submitting || !ready}
-              className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? "Approving" : "Approve this package"}
-            </button>
+                }}
+                onCancel={() => setConfirmingApproval(false)}
+              />
+              <button
+                onClick={() => setConfirmingApproval(true)}
+                disabled={submitting || !ready}
+                className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? "Approving" : "Approve this package"}
+              </button>
+            </>
           )}
           {approved && (
             <MarkAsSent

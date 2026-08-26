@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export interface ComplianceCardData {
   id: string;
@@ -65,9 +66,10 @@ export function ComplianceItemCard({
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
 
   async function remove() {
-    if (!window.confirm(`Delete "${item.label}"?`)) return;
+    setAsking(false);
     setSaving(true);
     setError(null);
     try {
@@ -230,6 +232,16 @@ export function ComplianceItemCard({
         <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">{item.notes}</p>
       )}
 
+      <ConfirmDialog
+        open={asking}
+        title={`Delete "${item.label}"?`}
+        body="The item and its history go. Evidence files already uploaded against it stay on the account."
+        confirmLabel="Delete it"
+        danger
+        busy={saving}
+        onConfirm={() => void remove()}
+        onCancel={() => setAsking(false)}
+      />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button className="btn-ghost text-xs" onClick={() => setEditing(true)}>
           Edit
@@ -237,7 +249,7 @@ export function ComplianceItemCard({
         {item.manual && (
           <button
             className="btn-ghost text-xs text-risk"
-            onClick={remove}
+            onClick={() => setAsking(true)}
             disabled={saving}
           >
             Delete

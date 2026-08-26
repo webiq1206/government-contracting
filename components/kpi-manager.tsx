@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { KPI_METRICS, getMetric } from "@/lib/domain/kpi";
 
 /**
@@ -120,8 +121,9 @@ export function KpiManager() {
 export function KpiDeleteButton({ id }: { id: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   async function remove() {
-    if (!confirm("Remove this KPI?")) return;
+    setAsking(false);
     setBusy(true);
     try {
       await fetch(`/api/kpis/${id}`, { method: "DELETE" });
@@ -131,13 +133,25 @@ export function KpiDeleteButton({ id }: { id: string }) {
     }
   }
   return (
-    <button
-      className="text-xs text-slate-500 hover:text-risk"
-      onClick={remove}
-      disabled={busy}
-      aria-label="Remove KPI"
-    >
-      &times;
-    </button>
+    <>
+      <ConfirmDialog
+        open={asking}
+        title="Remove this KPI?"
+        body="The metric stops being tracked. The underlying data is untouched."
+        confirmLabel="Remove it"
+        danger
+        busy={busy}
+        onConfirm={() => void remove()}
+        onCancel={() => setAsking(false)}
+      />
+      <button
+        className="text-xs text-slate-500 hover:text-risk"
+        onClick={() => setAsking(true)}
+        disabled={busy}
+        aria-label="Remove KPI"
+      >
+        &times;
+      </button>
+    </>
   );
 }

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/toaster";
+import { ReasonDialog } from "@/components/confirm-dialog";
 import { snoozeUntilLabel, type SnoozeUntilChoice } from "@/lib/domain/snooze";
 
 interface BulkSelectionValue {
@@ -161,6 +162,7 @@ export function BulkActionBar({
   const { push } = useToast();
   const { selectedIds, clear, someSelected } = useBulkSelection();
   const [busy, setBusy] = useState(false);
+  const [askingWhy, setAskingWhy] = useState(false);
 
   if (!someSelected) return null;
 
@@ -283,29 +285,39 @@ export function BulkActionBar({
           </button>
         )}
         {dismiss && (
+          <ReasonDialog
+            open={askingWhy}
+            title={`Passing on ${n} ${plural}`}
+            body={
+              dismiss.confirm ??
+              "One line is enough, and it is what the scoring learns from."
+            }
+            placeholder="Too small, wrong trade, outside our area"
+            confirmLabel={`Pass on ${n} ${plural}`}
+            danger
+            busy={busy}
+            onConfirm={(reason) =>
+              void run({ action: "dismiss", reason }, `Passed on selected ${plural}`)
+            }
+            onCancel={() => setAskingWhy(false)}
+          />
+        )}
+        {dismiss && (
           <button
             type="button"
             className="btn-danger text-xs"
             disabled={busy}
-            onClick={() => {
-              /*
-               * A reason, not a confirmation. "Are you sure?" is answered yes
-               * every time and teaches nothing; the reason is what the scoring
-               * reads to learn what this company does not want. The endpoint
-               * refuses without one, so a bare confirm would have produced a
-               * button that fails.
-               */
-              const reason = window.prompt(
-                dismiss.confirm ??
-                  `Passing on ${n} ${plural}. Why? One line is enough, and it is what the scoring learns from.`
-              );
-              if (reason == null) return;
-              if (reason.trim().length < 3) {
-                push({ message: "Say why you are passing. One line is enough." });
-                return;
-              }
-              void run({ action: "dismiss", reason: reason.trim() }, `Passed on selected ${plural}`);
-            }}
+            /*
+             * A reason, not a confirmation. "Are you sure?" is answered yes
+             * every time and teaches nothing; the reason is what the scoring
+             * reads to learn what this company does not want.
+             *
+             * `window.prompt` could ask but could not validate, so a
+             * two-character answer closed the dialog, produced a toast, and
+             * made the operator reopen it and retype. The reason box now
+             * refuses in place.
+             */
+            onClick={() => setAskingWhy(true)}
           >
             {dismiss.label ?? "Pass"}
           </button>

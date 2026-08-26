@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/toaster";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 interface ActionButtonProps {
   endpoint: string;
@@ -10,7 +11,17 @@ interface ActionButtonProps {
   body?: Record<string, unknown>;
   className?: string;
   children: React.ReactNode;
+  /**
+   * A question to ask first. Rendered in the product's own dialog rather than
+   * the browser's: `window.confirm` cannot say what the action costs, cannot
+   * be styled to belong to the record it is about, and blocks the main thread
+   * while it is open.
+   */
   confirm?: string;
+  /** Names the act in the dialog's own button. Defaults to the button's label. */
+  confirmLabel?: string;
+  /** Red rather than accent, for the ones that remove something. */
+  danger?: boolean;
   /** Called with the JSON response on success. */
   onDone?: (data: unknown) => void;
   refresh?: boolean;
@@ -44,12 +55,15 @@ export function ActionButton({
   refresh = true,
   successText,
   toast,
+  confirmLabel,
+  danger = false,
 }: ActionButtonProps) {
   const router = useRouter();
   const { push } = useToast();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [asking, setAsking] = useState(false);
   const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function clearDoneTimer() {
@@ -73,7 +87,7 @@ export function ActionButton({
 
   async function go() {
     if (loading) return; // double-click guard
-    if (confirm && !window.confirm(confirm)) return;
+    setAsking(false);
     setLoading(true);
     setError(null);
     try {
@@ -109,7 +123,23 @@ export function ActionButton({
     // items-start: success/error copy must not stretch the button to its width
     // (flex-col defaults to stretch on the cross axis).
     <span className="inline-flex flex-col items-start">
-      <button className={className} onClick={go} disabled={loading} aria-busy={loading}>
+      {confirm && (
+        <ConfirmDialog
+          open={asking}
+          title={confirm}
+          confirmLabel={confirmLabel ?? "Yes, do it"}
+          danger={danger}
+          busy={loading}
+          onConfirm={go}
+          onCancel={() => setAsking(false)}
+        />
+      )}
+      <button
+        className={className}
+        onClick={() => (confirm ? setAsking(true) : void go())}
+        disabled={loading}
+        aria-busy={loading}
+      >
         {loading ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CONTENT_CATEGORIES } from "@/lib/domain/content";
 import { shortDate } from "@/lib/format";
 import type { ContentCategory, ContentLibraryItem } from "@/lib/types";
@@ -39,6 +40,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
   const [filter, setFilter] = useState<FilterId>("all");
   const [form, setForm] = useState<FormState | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<ContentLibraryItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   /*
@@ -140,7 +142,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
   }
 
   async function remove(item: ContentLibraryItem) {
-    if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
+    setDeleting(null);
     setBusyId(item.id);
     try {
       await fetch(`/api/content/${item.id}`, { method: "DELETE" });
@@ -158,6 +160,16 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
       <UnsavedGuard
         when={dirty}
         message="This snippet has unsaved changes. Leave without saving?"
+      />
+      <ConfirmDialog
+        open={deleting != null}
+        title={deleting ? `Delete "${deleting.title}"?` : ""}
+        body="This cannot be undone. Emails already sent using it are unaffected."
+        confirmLabel="Delete it"
+        danger
+        busy={busyId != null}
+        onConfirm={() => deleting && void remove(deleting)}
+        onCancel={() => setDeleting(null)}
       />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
@@ -339,7 +351,7 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
                   </button>
                   <button
                     className="btn-ghost text-xs text-risk"
-                    onClick={() => remove(item)}
+                    onClick={() => setDeleting(item)}
                     disabled={busyId === item.id}
                   >
                     Delete

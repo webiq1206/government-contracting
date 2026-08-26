@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   stateTone,
   INTEGRATION_STATE_LABEL,
@@ -70,6 +71,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
+  const [removing, setRemoving] = useState<{ def: IntegrationRow; env: string } | null>(null);
 
   useEffect(() => setItems(initial), [initial]);
 
@@ -145,8 +147,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   }
 
   async function removeKey(def: IntegrationRow, env: string) {
-    if (!window.confirm(`Remove the saved ${def.name} value? The platform falls back to the environment variable if one is set, otherwise the integration turns off.`))
-      return;
+    setRemoving(null);
     setBusy(`remove:${def.id}`);
     try {
       const res = await fetch("/api/integrations", {
@@ -166,6 +167,17 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   }
 
   return (
+    <>
+      <ConfirmDialog
+        open={removing != null}
+        title={removing ? `Remove the saved ${removing.def.name} value?` : ""}
+        body="The platform falls back to the environment variable if one is set, and otherwise the integration turns off."
+        confirmLabel="Remove it"
+        danger
+        busy={busy != null}
+        onConfirm={() => removing && void removeKey(removing.def, removing.env)}
+        onCancel={() => setRemoving(null)}
+      />
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       {items.map((def) => {
         const result = results[def.id];
@@ -298,7 +310,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                       {f.source === "ui" && (
                         <button
                           className="text-risk hover:underline"
-                          onClick={() => removeKey(def, f.env)}
+                          onClick={() => setRemoving({ def, env: f.env })}
                           disabled={busy != null}
                         >
                           Remove
@@ -389,5 +401,6 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
         );
       })}
     </div>
+    </>
   );
 }

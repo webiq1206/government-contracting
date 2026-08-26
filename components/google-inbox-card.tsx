@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export interface InboxConnection {
   connected: boolean;
@@ -24,6 +25,7 @@ export interface InboxConnection {
 export function GoogleInboxCard({ initial }: { initial: InboxConnection }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
 
   // "revoked" means a row exists but the grant is gone, usually because the
   // user removed access from their Google account. Treated as disconnected so
@@ -31,12 +33,7 @@ export function GoogleInboxCard({ initial }: { initial: InboxConnection }) {
   const live = initial.connected && initial.status !== "revoked";
 
   async function disconnect() {
-    if (
-      !window.confirm(
-        "Disconnect this inbox? Outreach stops sending and replies stop syncing until you reconnect. Nothing is deleted from your Gmail."
-      )
-    )
-      return;
+    setAsking(false);
     setBusy(true);
     try {
       await fetch("/api/integrations/gmail/disconnect", { method: "POST" });
@@ -48,6 +45,16 @@ export function GoogleInboxCard({ initial }: { initial: InboxConnection }) {
 
   return (
     <div className="card flex flex-col gap-4">
+      <ConfirmDialog
+        open={asking}
+        title="Disconnect this inbox?"
+        body="Outreach stops sending and replies stop syncing until you reconnect. Nothing is deleted from your Gmail."
+        confirmLabel="Disconnect it"
+        danger
+        busy={busy}
+        onConfirm={() => void disconnect()}
+        onCancel={() => setAsking(false)}
+      />
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-base font-semibold text-foreground">Your email</p>
@@ -101,7 +108,7 @@ export function GoogleInboxCard({ initial }: { initial: InboxConnection }) {
           </a>
         )}
         {live && (
-          <button className="btn-ghost text-xs" onClick={disconnect} disabled={busy}>
+          <button className="btn-ghost text-xs" onClick={() => setAsking(true)} disabled={busy}>
             {busy ? "Disconnecting…" : "Disconnect"}
           </button>
         )}
