@@ -95,6 +95,58 @@ describe("evaluateSolicitationCompleteness", () => {
     expect(result.ok).toBe(false);
     expect(result.riskFlags).toContain("unverified_set_aside");
   });
+  describe("documents the analysis had no room for", () => {
+    it("blocks on a document that was stored but never reached the analysis", () => {
+      /*
+       * A notice can carry more text than the prompt can hold, and something has
+       * to be left out. What must never happen is the brief reading the same
+       * either way. "fetched" would be literally true for this file, since it
+       * downloaded cleanly and sits in storage, and completely misleading, since
+       * nothing in it informed a single requirement.
+       */
+      const result = evaluateSolicitationCompleteness({
+        ...base,
+        storedDocumentCount: 3,
+        attachmentOutcomes: [
+          { name: "Solicitation.pdf", status: "fetched" as const },
+          {
+            name: "Amendment 0003.pdf",
+            status: "not_read" as const,
+            detail: "no room in the analysis for this document",
+          },
+        ],
+      });
+      expect(result.ok).toBe(false);
+      expect(result.riskFlags).toContain("documents_not_read");
+      const item = result.missing.find((m) => m.key === "documents_not_read");
+      expect(item?.critical).toBe(true);
+      expect(item?.resolution).toContain("Amendment 0003.pdf");
+    });
+
+    it("does not confuse it with a file that yielded no text", () => {
+      // Different problem, different answer. "Upload a text-based copy" is
+      // useless advice for a document that read perfectly and simply did not
+      // fit.
+      const result = evaluateSolicitationCompleteness({
+        ...base,
+        storedDocumentCount: 1,
+        attachmentOutcomes: [
+          { name: "Amendment 0003.pdf", status: "not_read" as const },
+        ],
+      });
+      expect(result.missing.some((m) => m.key === "unreadable_documents")).toBe(false);
+      expect(result.missing.some((m) => m.key === "documents_not_read")).toBe(true);
+    });
+
+    it("counts as a stored document, so it does not also report no attachments", () => {
+      const result = evaluateSolicitationCompleteness({
+        ...base,
+        storedDocumentCount: 0,
+        attachmentOutcomes: [{ name: "Amendment 0003.pdf", status: "not_read" as const }],
+      });
+      expect(result.missing.some((m) => m.key === "attachments")).toBe(false);
+    });
+  });
 });
 
 describe("outreachDisplayName", () => {

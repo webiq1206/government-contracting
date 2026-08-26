@@ -38,7 +38,15 @@ export type AttachmentFetchStatus =
    * not speak, or bounced through too many redirects. Separate from "failed"
    * because retrying changes nothing. The file has to come from a person.
    */
-  | "refused";
+  | "refused"
+  /**
+   * Fetched and stored, but its text never reached the analysis: there was
+   * not enough room in the prompt for every document. Separate from "no_text",
+   * where the file itself yielded nothing. Both mean the same thing to anyone
+   * relying on the brief, which is that the document was not read, and neither
+   * may be counted as a success.
+   */
+  | "not_read";
 
 export interface AttachmentFetchOutcome {
   name: string;
@@ -225,9 +233,10 @@ export function evaluateSolicitationCompleteness(
   // with its instructions-to-offerors still unread, and the requirements
   // silently coming from the portal summary instead.
   const fetchedOk = input.attachmentOutcomes.filter(
-    (o) => o.status === "fetched" || o.status === "unsupported"
+    (o) => o.status === "fetched" || o.status === "unsupported" || o.status === "not_read"
   ).length;
   const unread = input.attachmentOutcomes.filter((o) => o.status === "no_text");
+  const notRead = input.attachmentOutcomes.filter((o) => o.status === "not_read");
   const failed = input.attachmentOutcomes.filter(
     (o) =>
       o.status === "failed" ||
@@ -261,6 +270,21 @@ export function evaluateSolicitationCompleteness(
       critical: true,
     });
     riskFlags.push("missing_attachments");
+  }
+
+  if (notRead.length > 0) {
+    missing.push({
+      key: "documents_not_read",
+      what: "Documents the analysis had no room for",
+      why: "These files were downloaded and stored, but their text never reached the analysis, so any requirement, form, page limit or deadline inside them is missing from this brief.",
+      retrievable: "either",
+      resolution: `Not read: ${notRead
+        .map((f) => `${f.name}${f.detail ? ` (${f.detail})` : ""}`)
+        .join("; ")}. Open each one and enter what it requires, or narrow the document set and re-run analysis.`,
+      action: { label: "Review missing information", href: "#attachments", modal: "review-missing" },
+      critical: true,
+    });
+    riskFlags.push("documents_not_read");
   }
 
   if (unread.length > 0) {

@@ -19,6 +19,7 @@ import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { analysisInputHash, inputsUnchanged } from "../domain/analysis-inputs";
 import { tightenAnalysisProse } from "../domain/analysis-prose";
 import { requirementsFingerprint } from "../domain/package";
+import { assembleAttachmentContext, coverageSummary } from "../domain/extraction-budget";
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
 import { extractValueFromText } from "../domain/value-extract";
@@ -45,7 +46,27 @@ import type {
 } from "../types";
 
 /** Soft cap: prefer collecting the full linked packet when SAM provides many URLs. */
-const MAX_ATTACHMENT_URLS = 40;
+/**
+ * Attachments fetched at once. There is no cap on how many are processed, only
+ * on how many are in flight: forty concurrent downloads of up to 25MB each is
+ * a gigabyte of buffers, and the reason the old code got away with it was the
+ * forty-file limit that was losing amendments.
+ */
+const ATTACHMENT_CONCURRENCY = 5;
+
+/** Run over a list with a bounded number in flight, preserving input order. */
+async function inBatches<T, R>(
+  items: readonly T[],
+  size: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    const batch = items.slice(i, i + size);
+    out.push(...(await Promise.all(batch.map((item, j) => fn(item, i + j)))));
+  }
+  return out;
+}
 
 const NA = "Not specified in the provided documents";
 
@@ -705,40 +726,69 @@ export const solicitationAnalyst: AgentDefinition = {
     const attachments: Attachment[] = Array.isArray(opp.attachments_json)
       ? opp.attachments_json
       : [];
-    const processed = await Promise.all(
-      attachments
-        .slice(0, MAX_ATTACHMENT_URLS)
-        .map((att, i) => processAttachment(opportunityId, att, i))
-    );
-    /**
-     * Share the prompt budget across attachments rather than spending it on
-     * whichever happened to be first.
+    /*
+     * Every attachment, in bounded batches.
      *
-     * The joined text used to be sliced to a flat 60,000 characters, and SAM
-     * lists amendments and Q&A responses AFTER the base documents, so the
-     * files most likely to change the requirements were exactly the ones
-     * guaranteed to be cut. Each attachment now gets an equal share, and only
-     * the ones that exceed their share are trimmed.
+     * This was `.slice(0, 40)` inside a `Promise.all`, which is two problems
+     * wearing one line. Attachments past the fortieth were dropped without a
+     * disposition, and SAM appends amendments and Q and A responses AFTER the
+     * base documents, so the files that vanished were the ones most likely to
+     * have changed the requirements. The forty that survived were then all
+     * fetched at once, up to a gigabyte in flight.
      */
-    const perAttachment = Math.max(
-      8_000,
-      Math.floor(ATTACHMENT_PROMPT_BUDGET / Math.max(1, processed.length))
+    const processed = await inBatches(attachments, ATTACHMENT_CONCURRENCY, (att, i) =>
+      processAttachment(opportunityId, att, i)
     );
-    const attachmentContext = processed
-      .map((p) =>
-        p.context.length > perAttachment
-          ? `${p.context.slice(0, perAttachment)}\n[... this document continues; trimmed to fit the analysis budget]`
-          : p.context
-      )
-      .join("\n\n");
+
+    /*
+     * Decide what fits, and say what did not.
+     *
+     * Each document is offered an equal share of the prompt budget; one
+     * shorter than its share takes only what it needs and releases the rest.
+     * The previous version put an 8,000-character FLOOR under each share with
+     * no ceiling on the total, so past thirty documents the shares summed past
+     * the budget and a final slice on the joined text silently dropped whole
+     * documents off the end. The arithmetic lives in the domain module, where
+     * it can be tested without a database.
+     */
+    const { text: attachmentContext, plan } = assembleAttachmentContext(
+      processed.map((p) => ({ name: p.outcome.name, context: p.context })),
+      ATTACHMENT_PROMPT_BUDGET
+    );
+    const allocated = new Map(plan.allocations.map((a) => [a.id, a]));
     const parsedChars = processed.reduce((a, p) => a + p.parsedChars, 0);
-    const attachmentOutcomes = processed.map((p) => p.outcome);
+    /*
+     * A document that did not fit gets its own disposition rather than keeping
+     * the one it earned by downloading cleanly.
+     *
+     * "fetched" would be true and misleading at the same time: the file is in
+     * storage, and nothing in it reached the analysis. The completeness check
+     * treats that as a blocker, which is the whole point, because a brief
+     * assembled without a document must not read the same as one assembled
+     * with it. Only a clean fetch is downgraded; a refusal or a failure is
+     * already a more specific answer.
+     */
+    const attachmentOutcomes = processed.map((p, i) => {
+      const a = allocated.get(String(i));
+      if (a?.omitted && p.outcome.status === "fetched") {
+        return {
+          ...p.outcome,
+          status: "not_read" as const,
+          detail: "no room in the analysis for this document",
+        };
+      }
+      return p.outcome;
+    });
     await logAgent({
       agent: "solicitation-analyst",
       action: "attachments",
       opportunityId,
-      level: "info",
-      message: `processed ${attachments.length} attachment(s) (cap ${MAX_ATTACHMENT_URLS}), extracted ${parsedChars} chars of text; outcomes: ${attachmentOutcomes.map((o) => `${o.name}:${o.status}`).join(", ") || "none"}`,
+      level: plan.complete ? "info" : "warn",
+      // Counts what happened, not what was asked for. The old line reported
+      // `attachments.length` while the code had already discarded everything
+      // past the fortieth, so a notice with fifty-seven attachments logged
+      // fifty-seven processed and analysed forty.
+      message: `${attachments.length} attachment(s) on the notice, ${processed.length} processed, ${parsedChars} chars extracted. Coverage: ${coverageSummary(plan)}. Outcomes: ${attachmentOutcomes.map((o) => `${o.name}:${o.status}`).join(", ") || "none"}`,
     });
 
     let analysis: SolicitationAnalysis;
