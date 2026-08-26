@@ -15,15 +15,22 @@ The full brief is a multi-phase programme in the sequence its own section 20
 sets out. This document is appended to as each phase lands; it is not a plan
 written in advance of the work.
 
+This table is the programme's own status, so it is the one place a stale
+"in progress" would be the same defect this work keeps finding elsewhere. It
+said steps 10 to 12 were not started for some time after accessibility and
+performance had both been done and measured.
+
 | Sequence step | State |
 | --- | --- |
-| 1. Inventory and traceability | Done |
-| 2. Data truth: status, counts, scoring, activity | In progress. Automation health and account status done; scoring split and unified timeline landed earlier (see notes) |
+| 1. Inventory and traceability | Done. `npm run inventory`, 53 pages and 87 API routes, regenerated with each piece |
+| 2. Data truth: status, counts, scoring, activity | Done. Automation health, account status, the scoring split and the unified timeline landed earlier; the automation transparency pass closed nine more, including a compliance audit that cleared blockers it had never checked |
 | 3. Roles, permissions, terminology, task model | Done |
 | 4. Navigation and shared design system | Done. `docs/design-system.md`, with the statically checkable rules enforced |
-| 5. Desktop and mobile shells | Partly done |
-| 6-9. Page-by-page | Every operator page now carries a frame; deeper per-page work continues |
-| 10-12. Accessibility, performance, usability, release | Not started |
+| 5. Desktop and mobile shells | Done. Every workflow walked at 390px; the call workspace was the last gap and was one the sweep could not see |
+| 6-9. Page-by-page | Done. Every operator page carries a frame and each page in the brief has its own entry below |
+| 10. Accessibility | Done. 0 findings across 32 routes, 3 widths and both themes. The dark pass was added late and returned 23 findings on a run that had been reporting 0 |
+| 11. Performance | Done. Every route under 270ms at production scale, re-measured after the transparency work found the shell had regressed to 1.75s |
+| 12. Usability testing and release | **Blocked, and needs the user.** Five uncoached contractors for the task-based sessions in section 18, and a vendor and consent decision for section 19. The part of 19 that does not need a decision, what an analytics event is allowed to contain, is done |
 
 ## Decisions
 
