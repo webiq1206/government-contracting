@@ -17,6 +17,7 @@ import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/domain/roles";
 import {
   describeDocument,
+  inventoryCoverage,
   sortForReview,
   toDocumentRecord,
 } from "@/lib/domain/document-inventory";
@@ -102,6 +103,23 @@ export default async function OpportunityPage({ params }: { params: { id: string
     (documents as Record<string, unknown>[])
       .filter((d) => String(d.kind) === "solicitation")
       .map((d) => describeDocument(toDocumentRecord(d)))
+  );
+  /*
+   * The reconciliation, computed once and passed down.
+   *
+   * A panel that counts its own blockers and a completeness check that counts
+   * them separately are two numbers that will disagree eventually, and the one
+   * on the screen is the one people believe.
+   */
+  const documentCoverage = inventoryCoverage(
+    inventory.map((d) => ({
+      id: d.id,
+      name: d.name,
+      documentClass: d.documentClass,
+      disposition: d.disposition,
+      extractionState: d.extractionState,
+      excludedReason: d.excludedReason,
+    }))
   );
   /*
    * Everything that is not a source document: the generated package pieces,
@@ -871,6 +889,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </SectionHeading>
               <DocumentInventoryPanel
                 documents={inventory}
+                coverage={documentCoverage}
                 canDecide={can(viewer?.orgRole, "decide")}
                 canRunAgents={can(viewer?.orgRole, "run_agents")}
               />

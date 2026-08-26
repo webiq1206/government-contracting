@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { DocumentDisplay } from "@/lib/domain/document-inventory";
+import type { DocumentDisplay, InventoryCoverage } from "@/lib/domain/document-inventory";
 
 /**
  * Every source document on this opportunity, and what became of each one.
@@ -20,29 +20,36 @@ import type { DocumentDisplay } from "@/lib/domain/document-inventory";
  */
 export function DocumentInventoryPanel({
   documents,
+  coverage,
   canDecide,
   canRunAgents,
 }: {
   documents: DocumentDisplay[];
+  /**
+   * The reconciliation, from `inventoryCoverage`.
+   *
+   * Passed in rather than counted here on purpose. A panel that counts its own
+   * blockers and a completeness check that counts them separately are two
+   * numbers that will disagree eventually, and the one on the screen is the
+   * one people believe.
+   */
+  coverage: InventoryCoverage;
   /** Review, exclude and supersede: judgements about whether the bid is sound. */
   canDecide: boolean;
   /** Ask for another read. */
   canRunAgents: boolean;
 }) {
-  const blockers = documents.filter((d) => d.attention === "blocker");
-
   return (
     <div className="card scroll-mt-editorial" id="attachments" data-guide-target="attachments">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <p className="eyebrow">
           Documents · <span className="num">{documents.length}</span>
         </p>
-        {blockers.length > 0 && (
-          <p className="text-xs font-medium text-risk">
-            <span className="num">{blockers.length}</span> not read. Anything inside them is
-            missing from this brief.
-          </p>
-        )}
+        <p
+          className={`text-xs ${coverage.complete ? "text-muted-foreground" : "font-medium text-risk"}`}
+        >
+          {coverage.summary}
+        </p>
       </div>
 
       {documents.length === 0 ? (
