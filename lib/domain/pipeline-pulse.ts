@@ -90,7 +90,14 @@ export interface PulseInput {
    * job failed. This is the difference, and it comes from what actually
    * happened rather than from what is configured.
    */
-  claudeFailures?: { count: number; reason: string | null };
+  /**
+   * Failures against the AI inside a rolling window, with WHEN the most recent
+   * one was. The timestamp is not decoration: a count on its own cannot tell
+   * an ongoing outage from one that ended an hour ago, and this banner used to
+   * say "is refusing every request" in the present tense on the strength of
+   * rows written before the cause was fixed.
+   */
+  claudeFailures?: { count: number; reason: string | null; lastAt?: Date | null };
   /** Active organizations the engine has to work for; zero means idle by
    *  definition, not broken. */
   activeOrgCount?: number;
@@ -181,17 +188,40 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
     // Only when a key IS configured. Without one there is nothing to refuse
     // us, and "claude_off" above already owns that message.
     const n = input.claudeFailures.count;
-    findings.push({
-      key: "claude_failing",
-      severity: "down",
-      title: `The AI is refusing every request, so ${n} job${n === 1 ? " has" : "s have"} failed.`,
-      detail:
-        `${input.claudeFailures.reason ?? "Anthropic refused the request."} ` +
-        "Deals are still being found, but until this is fixed nothing gets scored, analysed, or drafted, " +
-        "so opportunities pile up unworked.",
-      href: "/settings/integrations",
-      cta: "Open Integrations",
-    });
+    const lastAt = input.claudeFailures.lastAt ?? null;
+    /*
+     * Thirty minutes, matching lib/integration-health: two cycles of the
+     * fastest AI-using agents. Past that, failures have stopped, and saying
+     * otherwise sends somebody to fix an account that is already fixed.
+     */
+    const stopped = lastAt !== null && input.now.getTime() - lastAt.getTime() > 30 * 60_000;
+    findings.push(
+      stopped
+        ? {
+            key: "claude_failing",
+            severity: "warn",
+            title: `The AI was refusing requests, and ${n} job${n === 1 ? " has" : "s have"} failed today.`,
+            detail:
+              "Nothing has failed in the last half hour, so whatever was wrong looks fixed. That count covers " +
+              "the last six hours and falls on its own as those failures age out; there is nothing to clear by hand. " +
+              `The work those jobs were doing was not retried, so anything queued during the outage still needs a run. Last failure said: ${
+                input.claudeFailures.reason ?? "the service refused the request."
+              }`,
+            href: "/settings/integrations",
+            cta: "Open Integrations",
+          }
+        : {
+            key: "claude_failing",
+            severity: "down",
+            title: `The AI is refusing every request, so ${n} job${n === 1 ? " has" : "s have"} failed.`,
+            detail:
+              `${input.claudeFailures.reason ?? "Anthropic refused the request."} ` +
+              "Deals are still being found, but until this is fixed nothing gets scored, analysed, or drafted, " +
+              "so opportunities pile up unworked.",
+            href: "/settings/integrations",
+            cta: "Open Integrations",
+          }
+    );
   }
 
   if (input.activeOrgCount === 0) {

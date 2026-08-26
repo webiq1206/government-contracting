@@ -26,7 +26,7 @@ import { orgHasKey } from "../lib/integration-keys";
 import { scheduledAgents } from "../lib/agents/registry";
 import { listActiveOrganizations } from "../lib/organizations";
 import { looksLikeTestOrg, hasGeneratedTag } from "../lib/domain/test-org-match";
-import { recentAiTrouble } from "../lib/integration-health";
+import { recentAiTrouble, troubleHasStopped, agoInWords } from "../lib/integration-health";
 
 type Status = "PASS" | "WARN" | "FAIL";
 const results: { status: Status; title: string; fix?: string }[] = [];
@@ -450,15 +450,32 @@ async function main() {
     if (!hasClaude) {
       check("FAIL", `[${org.name}] No Anthropic API key`, "Add the Anthropic key in Settings → Integrations. Deals are still found without it, but nothing is scored, analysed, or drafted, so they pile up unworked.");
     } else {
-      const ai = await recentAiTrouble(org.id).catch(() => ({ count: 0, reason: null }));
-      if (ai.count > 0) {
+      const ai = await recentAiTrouble(org.id).catch(() => ({ count: 0, reason: null, lastAt: null }));
+      if (ai.count === 0) {
+        check("PASS", `[${org.name}] Anthropic key present, no refusals in the last 6h`);
+      } else if (troubleHasStopped(ai) && ai.lastAt) {
+        /*
+         * The count is a six-hour history, not a live probe, and the two look
+         * identical in a number. Someone who tops up their Anthropic balance
+         * and immediately re-runs this saw "490 failed job(s) in 6h" and a
+         * FAIL, concluded the top-up had not worked, and went looking for a
+         * second cause that did not exist. The rows were written while the
+         * balance was empty; nothing deletes them, they expire.
+         *
+         * So say what the evidence supports and no more. Failures stopped is
+         * not the same as the AI works, and this is worded as the former.
+         */
         check(
-          "FAIL",
-          `[${org.name}] The AI is refusing requests (${ai.count} failed job(s) in 6h)`,
-          ai.reason ?? "Anthropic refused the request. Test the key in Settings → Integrations."
+          "WARN",
+          `[${org.name}] The AI was refusing requests (${ai.count} failed job(s) in 6h, most recent ${agoInWords(ai.lastAt)} ago)`,
+          `Nothing has failed in the last 30 minutes, and the AI-using agents run every 15, so whatever was wrong looks fixed. That count is history inside a rolling 6-hour window: it will fall on its own and reach zero 6 hours after the last failure. Nothing to dismiss and nothing to clear by hand. Last failure said: ${ai.reason ?? "the service refused the request."}`
         );
       } else {
-        check("PASS", `[${org.name}] Anthropic key present, no refusals in the last 6h`);
+        check(
+          "FAIL",
+          `[${org.name}] The AI is refusing requests (${ai.count} failed job(s) in 6h, most recent ${ai.lastAt ? `${agoInWords(ai.lastAt)} ago` : "at an unknown time"})`,
+          ai.reason ?? "Anthropic refused the request. Test the key in Settings → Integrations."
+        );
       }
     }
 
