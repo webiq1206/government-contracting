@@ -18,7 +18,8 @@
  * ok=true.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { readFileSync, globSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { sourceFiles } from "./helpers/source-files";
 
 const logged: { action: string; status?: string }[] = [];
 let listBehaviour: () => Promise<{ id: string }[]> = async () => [{ id: "org-1" }];
@@ -97,7 +98,7 @@ describe("choosing the accounts to sweep", () => {
 
 describe("nowhere still swallows the account lookup", () => {
   it("no agent catches listActiveOrganizations into an empty list", () => {
-    const offenders = globSync("lib/**/*.ts")
+    const offenders = sourceFiles("lib", [".ts"])
       .filter((f) => !f.endsWith("org-fanout.ts"))
       .filter((f) => /listActiveOrganizations\(\)\s*\.catch/.test(readFileSync(f, "utf8")));
     expect(offenders).toEqual([]);

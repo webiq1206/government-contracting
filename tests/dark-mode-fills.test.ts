@@ -16,7 +16,8 @@
  * to anybody working in light mode, which is most of the time.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync, globSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { sourceFiles } from "./helpers/source-files";
 
 /** Tokens whose value differs between the two themes. */
 const FLIPPING_FILLS = ["pursue", "risk", "review", "accent"];
@@ -24,7 +25,10 @@ const FLIPPING_FILLS = ["pursue", "risk", "review", "accent"];
 describe("text on a status fill", () => {
   it("never hard-codes white", () => {
     const offenders: string[] = [];
-    for (const file of [...globSync("components/**/*.tsx"), ...globSync("app/**/*.tsx")]) {
+    for (const file of [
+      ...sourceFiles("components", [".tsx"]),
+      ...sourceFiles("app", [".tsx"]),
+    ]) {
       // The marketing pages paint their own dark hero and do not use the
       // operator palette, so their white-on-dark is deliberate and stable.
       if (file.includes("/marketing/")) continue;

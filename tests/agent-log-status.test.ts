@@ -14,12 +14,10 @@
  * site.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync, globSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { sourceFiles } from "./helpers/source-files";
 
-const FILES = [
-  ...globSync("lib/**/*.ts"),
-  ...globSync("app/**/*.ts"),
-].filter((f) => !f.includes("node_modules"));
+const FILES = [...sourceFiles("lib", [".ts"]), ...sourceFiles("app", [".ts"])];
 
 describe("error logs and the health page", () => {
   it("every level error also sets status error", () => {
