@@ -119,16 +119,29 @@ describe("the pipeline pulse banner", () => {
     expect(f?.detail).toContain("looks fixed");
   });
 
-  it("still says the outage cost work, so recovery is not read as nothing happened", () => {
-    // The jobs that failed were not retried. A banner that only says "fixed"
-    // would leave that queue invisible, which is the same silence in a nicer
-    // colour.
+  it("says what happens to the work the outage cost, rather than leaving it unsaid", () => {
+    /*
+     * The first version of this claimed the failed jobs "were not retried",
+     * which is false: scoring-recovery-sweep re-queues unscored opportunities
+     * every 15 minutes, and stalled-pipeline-sweep re-runs every other stage
+     * once it passes its STALL_HOURS threshold. Telling an owner their
+     * backlog needs manual attention when it does not is the same defect as
+     * telling them a service is down when it is up, and it costs them an
+     * afternoon instead of five minutes.
+     *
+     * What the banner owes them is that recovery is automatic AND not
+     * instant, so a still-thin Review queue an hour later is expected rather
+     * than a second fault.
+     */
     const out = evaluatePulse({
       ...base,
       claudeFailures: { count: 490, reason: "Credit balance is too low.", lastAt: ago(120) },
     });
     const f = out.find((x) => x.key === "claude_failing");
-    expect(f?.detail).toContain("not retried");
+    expect(f?.detail).toContain("picked back up automatically");
+    expect(f?.detail).toContain("15 minutes");
+    expect(f?.detail).toContain("over the next few hours");
+    expect(f?.detail).not.toContain("not retried");
   });
 
   it("treats a missing timestamp as ongoing rather than assuming recovery", () => {

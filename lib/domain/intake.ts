@@ -82,6 +82,28 @@ export interface AutomationRules {
    * Zero means no limit, which is the old behaviour, stated.
    */
   call_max_attempts: number;
+  /**
+   * Whether the deadline-driven THIRD outreach email may be sent at all.
+   *
+   * Off by default, and deliberately not yet exposed as a settings toggle.
+   *
+   * The message it gates is not a first-class template. It is built from a
+   * hardcoded string in the follow-up agent: it is not in the Content Library,
+   * has no version, cannot be previewed, edited, approved or test-sent, and
+   * reports no metrics. It does not carry the outreach packet, so it starts a
+   * NEW thread containing none of the scope, requirements, questions or
+   * documents the subcontractor was originally sent. And it quotes the
+   * government bid deadline where every other subcontractor-facing message
+   * quotes the quote deadline, which are different dates and mean different
+   * things to the recipient.
+   *
+   * Until it has those things, turning it on would send an unvalidated email
+   * to somebody else's business over the operator's name, so there is nothing
+   * to turn on. The flag exists so the behaviour is one named decision rather
+   * than a deleted function, and so re-enabling it later is a deliberate act
+   * with a place to record the requirements it must meet first.
+   */
+  final_nudge_enabled: boolean;
 }
 
 export const DEFAULT_RULES: AutomationRules = {
@@ -99,6 +121,9 @@ export const DEFAULT_RULES: AutomationRules = {
   call_hours_start: 8,
   call_hours_end: 17,
   call_max_attempts: 3,
+  // Off. See the field comment: the message this gates cannot currently meet
+  // the bar every other outbound message is held to.
+  final_nudge_enabled: false,
 };
 
 /** Merge a stored partial config over the defaults, clamping nonsense. */
@@ -129,6 +154,11 @@ export function normalizeRules(v: Partial<AutomationRules> | null | undefined): 
     call_hours_start: num(v?.call_hours_start, DEFAULT_RULES.call_hours_start, 0, 23),
     call_hours_end: num(v?.call_hours_end, DEFAULT_RULES.call_hours_end, 0, 23),
     call_max_attempts: num(v?.call_max_attempts, DEFAULT_RULES.call_max_attempts, 0, 20),
+    // Explicit true only. Every other boolean here defaults to its old
+    // behaviour when the key is absent; this one must not, because the old
+    // behaviour is the thing being stopped. A stored config written before
+    // this key existed has no opinion about it, and no opinion means off.
+    final_nudge_enabled: v?.final_nudge_enabled === true,
   };
   // "Urgent" must be inside "approaching", or the badge tiers stop nesting.
   if (r.urgent_days > r.approaching_days) r.urgent_days = r.approaching_days;

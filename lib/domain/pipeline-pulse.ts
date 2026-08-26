@@ -204,9 +204,10 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
             detail:
               "Nothing has failed in the last half hour, so whatever was wrong looks fixed. That count covers " +
               "the last six hours and falls on its own as those failures age out; there is nothing to clear by hand. " +
-              `The work those jobs were doing was not retried, so anything queued during the outage still needs a run. Last failure said: ${
-                input.claudeFailures.reason ?? "the service refused the request."
-              }`,
+              "The work those jobs were doing is picked back up automatically: unscored opportunities are re-queued " +
+              "within 15 minutes, and every other stalled stage is re-run once it passes its own threshold, so the " +
+              "backlog drains over the next few hours rather than at once. " +
+              `Last failure said: ${input.claudeFailures.reason ?? "the service refused the request."}`,
             href: "/settings/integrations",
             cta: "Open Integrations",
           }
