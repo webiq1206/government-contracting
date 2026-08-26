@@ -58,8 +58,17 @@ export function AutomationSettings({
 
   const dirty = score !== pursueScore || review !== reviewFloor || block !== blockPrimeOnly;
 
-  const proposed = { pursue_min_score: score, review_min_score: review };
-  const problems = useMemo(() => thresholdProblems(proposed), [score, review]);
+  /*
+   * Memoized so the two memos below can list it as a dependency honestly.
+   * Built inline, it was a fresh object every render, which made
+   * react-hooks/exhaustive-deps warn and made the real dependencies
+   * (`score` and `review`) something a reader had to reconstruct.
+   */
+  const proposed = useMemo(
+    () => ({ pursue_min_score: score, review_min_score: review }),
+    [score, review]
+  );
+  const problems = useMemo(() => thresholdProblems(proposed), [proposed]);
   const blocking = problems.some((p) => p.severity === "error");
   // Only computed against a valid pair. Previewing the effect of thresholds
   // that cannot be saved would describe a state that will never exist.
@@ -72,7 +81,7 @@ export function AutomationSettings({
             { pursue_min_score: pursueScore, review_min_score: reviewFloor },
             proposed
           ),
-    [histogram, pursueScore, reviewFloor, score, review, blocking]
+    [histogram, pursueScore, reviewFloor, proposed, blocking]
   );
 
   return (

@@ -56,6 +56,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript() }} />
+        {/*
+          next/no-page-custom-font is off for this file in .eslintrc.json. The
+          rule warns that a custom font "will only load for a single page",
+          which is true of a Pages Router page and false of the App Router root
+          layout: this element renders on every route.
+        */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
