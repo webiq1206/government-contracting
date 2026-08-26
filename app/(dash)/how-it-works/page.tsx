@@ -45,7 +45,7 @@ const OWNER_BADGE: Record<string, string> = {
 
 const OWNER_DOT: Record<string, string> = {
   auto: "border-foreground bg-foreground text-background",
-  you: "border-pursue bg-pursue text-white",
+  you: "border-pursue bg-pursue text-on-status",
   subs: "border-review bg-review/15 text-review",
   agency: "border-accent bg-accent/10 text-accent-strong",
 };
@@ -602,7 +602,7 @@ function QuickStart({
                 aria-hidden
                 className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.65rem] font-semibold ${
                   item.done
-                    ? "border-pursue bg-pursue text-white"
+                    ? "border-pursue bg-pursue text-on-status"
                     : "border-border text-muted-foreground"
                 }`}
               >

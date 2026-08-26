@@ -692,6 +692,26 @@ Both reports predated ten commits, so both were re-run rather than cited.
 | "Do:" on a billing disagreement card | 2.39:1 | Passes | Label | Label | `.label` is muted-foreground at 0.7rem, which fails on the tinted card. It is the line telling an administrator what to do about an account whose access and Stripe disagree, so it is the last text on that page that should be hard to read. Only renders when such an account exists, which is why no sweep had seen it |
 | Both of those | Found by accident | Reproduced deliberately | - | - | They surfaced because my own test organizations were left behind by a script that threw before its teardown. Rather than delete the rows and move on, the conditions were recreated with accounts named "Ace" and "Bo" so the fixes were measured against the failing case |
 
+### Dark mode, which nothing had ever measured
+
+The accessibility sweep ran the light theme only. Dark is a shipped feature
+with a toggle in the sidebar, and the palette swaps through CSS variables, so
+anything written as a fixed colour keeps its light value on a dark background
+and was never checked. The first dark pass returned 23 findings on a run that
+had been reporting 0.
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| The sweep | Light only | Both themes | - | - | Reporting "0 findings" while half the shipped product goes unmeasured is the same failure as a health page that only looks at the agents which ran |
+| Pursue and Pass | 2.88:1 and 3.02:1 in dark | Pass | Buttons | Buttons | White on a status fill. The tokens lighten in dark so they can carry text on a dark page, which is right and is why they exist; it breaks anything using one as a fill under white type. These are the two most important controls in the product |
+| Every other status fill | Same defect | Same fix | Badges, banners | Badges, banners | The pipeline lane switcher, the deadline badge, the past-due badge, the call answer buttons, the workflow map, the admin delete button and the impersonation banner. The last two are in states the sweep cannot enter, and were found by reading rather than measuring |
+| How it is fixed | `text-white` | `--on-status`, which flips | - | - | White on a dark fill, ink on a light one. Changing the palette instead would have broken the same tokens where they are used as text, which is what they were lightened for |
+| The lane switcher's count | Kept `text-white/80` | `text-on-status/80` | Count | Count | The label beside it was converted and the count was not, which is how one half of a control ends up unreadable while the other half is fixed |
+| `--slate-500` in dark | 4.38:1 on `--accent-soft` | 4.68:1 | Text | Text | Marginally under. It carries "3 steps already done" and the percentage on Today, so it is reading text rather than decoration |
+| The dark pass's scope | - | Contrast only | - | - | Target sizes and accessible names do not change with the theme, so measuring them twice would list every finding twice without covering anything more. The report says so rather than leaving the count unexplained |
+| It coming back | Possible, and invisible | A failing test | - | - | `tests/dark-mode-fills.test.ts` scans for a flipping fill and a hard white in one class string, and checks the token is defined in both themes and exposed to Tailwind. A token defined only in light resolves to nothing in dark, which is a subtler version of the same bug |
+| The 745 slate uses | Suspected as the cause | Not the cause | - | - | The hypothesis going in was that fixed slate greys would fail on a dark page. Measuring first showed a dark override already exists for them and only one was marginal. The mechanical conversion of 745 call sites was not done, because it would have fixed almost nothing and risked a great deal |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
@@ -723,12 +743,13 @@ Both reports predated ten commits, so both were re-run rather than cited.
   trying to leave. Save draft is one tap away and keeps the answers.
 
 - **745 uses of raw `text-slate-*` are left in place.** The design system says
-  never to write a stock Tailwind colour, and these predate it. They are a real
-  conformance gap and not a contrast failure: the sweep measures what is
-  painted and finds none of them failing. Converting them is a mechanical
-  change across most of the interface, which is worth doing on its own with its
-  own verification rather than folded into a performance pass where a mistake
-  would be invisible.
+  never to write a stock Tailwind colour, and these predate it. They are a
+  conformance gap rather than a contrast failure: `--slate-500` and its
+  neighbours already have dark-mode overrides, so they do flip, and the
+  dual-theme sweep found exactly one of them marginal, now fixed. Converting
+  the call sites is a mechanical change across most of the interface that would
+  correct nothing an operator can see, so it is written down here rather than
+  done in passing.
 
 - **Site Authority stays admin-only.** It reports on our own marketing domain
   and means nothing to a contractor.

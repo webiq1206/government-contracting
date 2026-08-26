@@ -172,8 +172,8 @@ function Segmented({
             className={`min-h-11 flex-1 px-3 py-2 text-sm transition md:min-h-0 ${
               active
                 ? opt.value === "no"
-                  ? "bg-risk text-white"
-                  : "bg-accent text-white"
+                  ? "bg-risk text-on-status"
+                  : "bg-accent text-on-status"
                 : "text-muted-foreground hover:bg-surface"
             }`}
           >

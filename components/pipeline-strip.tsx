@@ -47,8 +47,8 @@ function StageNode({
         className={`num flex h-11 w-11 items-center justify-center rounded-full border-2 text-base font-semibold transition-all ${
           active
             ? needsYou
-              ? "border-review bg-review text-white shadow-sm group-hover:brightness-95"
-              : "border-pursue bg-pursue text-white shadow-sm group-hover:bg-pursue-strong"
+              ? "border-review bg-review text-on-status shadow-sm group-hover:brightness-95"
+              : "border-pursue bg-pursue text-on-status shadow-sm group-hover:bg-pursue-strong"
             : "border-border bg-background text-slate-300 group-hover:border-pursue/50"
         }`}
       >

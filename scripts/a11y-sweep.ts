@@ -397,21 +397,37 @@ async function measure(
   route: string,
   width: string,
   findings: Finding[],
+  /**
+   * Restrict this pass to one rule. The dark pass measures contrast only:
+   * target sizes and accessible names do not change with the theme, and
+   * reporting them twice would double every finding.
+   */
+  only: string | null = null,
 ): Promise<void> {
+  /*
+   * Collected here and filtered once, rather than at each site. `only` is a
+   * property of the pass, not of any individual check, and threading it
+   * through ten call sites is how one of them ends up forgotten.
+   */
+  const local: Finding[] = [];
+  const flush = () => {
+    for (const f of local) if (!only || f.rule === only) findings.push(f);
+  };
   try {
     await page.goto(BASE + route, {
       waitUntil: "domcontentloaded",
       timeout: 40000,
     });
   } catch {
-    findings.push({ route, width, rule: "load", detail: "timed out" });
+    local.push({ route, width, rule: "load", detail: "timed out" });
+    flush();
     return;
   }
 
   const r = (await page.evaluate(PROBE)) as any;
 
   for (const c of r.contrast) {
-    findings.push({
+    local.push({
       route,
       width,
       rule: "contrast",
@@ -421,7 +437,7 @@ async function measure(
   // Only mobile has a touch requirement; a mouse pointer is precise.
   if (width === "mobile") {
     for (const t of r.targets) {
-      findings.push({
+      local.push({
         route,
         width,
         rule: "touch-target",
@@ -431,9 +447,9 @@ async function measure(
   }
   const h1s = r.headings.filter((h: any) => h.level === 1);
   if (h1s.length === 0) {
-    findings.push({ route, width, rule: "heading", detail: "no h1" });
+    local.push({ route, width, rule: "heading", detail: "no h1" });
   } else if (h1s.length > 1) {
-    findings.push({
+    local.push({
       route,
       width,
       rule: "heading",
@@ -443,7 +459,7 @@ async function measure(
   for (let i = 1; i < r.headings.length; i++) {
     const jump = r.headings[i].level - r.headings[i - 1].level;
     if (jump > 1) {
-      findings.push({
+      local.push({
         route,
         width,
         rule: "heading",
@@ -452,7 +468,7 @@ async function measure(
     }
   }
   for (const l of r.labels) {
-    findings.push({
+    local.push({
       route,
       width,
       rule: "label",
@@ -460,10 +476,10 @@ async function measure(
     });
   }
   for (const im of r.images) {
-    findings.push({ route, width, rule: "img-alt", detail: im.src });
+    local.push({ route, width, rule: "img-alt", detail: im.src });
   }
   if (r.overflow) {
-    findings.push({
+    local.push({
       route,
       width,
       rule: "overflow",
@@ -471,13 +487,36 @@ async function measure(
     });
   }
   if (!(await focusVisible(page))) {
-    findings.push({
+    local.push({
       route,
       width,
       rule: "focus",
       detail: "no visible change on focus",
     });
   }
+  flush();
+}
+
+const THEMES = ["light", "dark"] as const;
+
+/**
+ * Put the page in dark mode the way the product does.
+ *
+ * `colorScheme: "dark"` on the context covers `prefers-color-scheme`, but the
+ * theme provider writes a `dark` class on the root element and remembers the
+ * choice in localStorage, so a page loaded without it renders light whatever
+ * the media query says. Both are set: the class for this load, the stored
+ * value for every navigation after it.
+ */
+async function forceDark(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("brost.theme", "dark");
+    } catch {
+      /* storage off: the class below still applies */
+    }
+    document.documentElement.classList.add("dark");
+  });
 }
 
 async function main() {
@@ -486,26 +525,47 @@ async function main() {
     executablePath: "/opt/pw-browsers/chromium",
   });
 
+  /*
+   * Both themes, because contrast is a property of the pair.
+   *
+   * This measured the light theme only, and dark is not a variant of it: the
+   * palette swaps through CSS variables, so anything written as a fixed colour
+   * rather than a token keeps its light-mode value on a dark background and is
+   * never checked. Reporting "0 findings" while half the shipped product went
+   * unmeasured is the same failure as a health page that only looks at the
+   * agents which ran.
+   *
+   * Touch targets and names do not change with the theme, so those rules are
+   * measured once, in light, and the dark pass reports contrast alone. That
+   * keeps the run from doubling and keeps one finding from being listed twice.
+   */
   for (const vp of WIDTHS) {
-    const ctx = await browser.newContext({
-      viewport: { width: vp.width, height: vp.height },
-      isMobile: vp.name === "mobile",
-      hasTouch: vp.name === "mobile",
-    });
-    const page = await ctx.newPage();
-    await stubFonts(page);
+    for (const theme of THEMES) {
+      const ctx = await browser.newContext({
+        viewport: { width: vp.width, height: vp.height },
+        isMobile: vp.name === "mobile",
+        hasTouch: vp.name === "mobile",
+        colorScheme: theme,
+      });
+      const page = await ctx.newPage();
+      await stubFonts(page);
+      if (theme === "dark") await forceDark(page);
 
-    // Signed out first, in a context that has never held a session cookie.
-    for (const route of SIGNED_OUT_ROUTES) {
-      await measure(page, route, vp.name, findings);
+      const label = theme === "dark" ? `${vp.name} dark` : vp.name;
+      const only = theme === "dark" ? "contrast" : null;
+
+      // Signed out first, in a context that has never held a session cookie.
+      for (const route of SIGNED_OUT_ROUTES) {
+        await measure(page, route, label, findings, only);
+      }
+
+      await login(page);
+
+      for (const route of ROUTES) {
+        await measure(page, route, label, findings, only);
+      }
+      await ctx.close();
     }
-
-    await login(page);
-
-    for (const route of ROUTES) {
-      await measure(page, route, vp.name, findings);
-    }
-    await ctx.close();
   }
   await browser.close();
 
@@ -523,7 +583,7 @@ async function main() {
     "Generated by `npx tsx scripts/a11y-sweep.ts` against a running server.",
   );
   out.push(
-    "Measured in Chromium at three widths on rendered output: one pass signed out " +
+    "Measured in Chromium at three widths and in both themes, on rendered output: one pass signed out " +
       "over the pages a customer meets before they have an account, then one signed in " +
       "over the operator pages.",
   );
@@ -536,7 +596,13 @@ async function main() {
   out.push("");
   out.push(
     `${SIGNED_OUT_ROUTES.length} signed-out and ${ROUTES.length} signed-in routes x ` +
-      `${WIDTHS.length} widths. **${findings.length} findings.**`,
+      `${WIDTHS.length} widths x ${THEMES.length} themes. **${findings.length} findings.**`,
+  );
+  out.push("");
+  out.push(
+    "The dark pass reports contrast only. Target sizes and accessible names do " +
+      "not change with the theme, so measuring them twice would list every " +
+      "finding twice without covering anything more.",
   );
   out.push("");
 

@@ -437,7 +437,7 @@ export function AccountActions({
                 />
                 <button
                   type="button"
-                  className="rounded-md bg-risk px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  className="rounded-md bg-risk px-3 py-2 text-sm font-semibold text-on-status transition-opacity hover:opacity-90 disabled:opacity-40"
                   disabled={busy !== null || confirmName !== orgName || !deleteReason.trim()}
                   onClick={() =>
                     run("schedule_deletion", {

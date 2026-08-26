@@ -6,7 +6,7 @@ const STYLE: Record<string, string> = {
   normal: "bg-pursue/10 text-pursue",
   approaching: "bg-review/15 text-review",
   urgent: "bg-risk/15 text-risk",
-  past_due: "bg-risk text-white",
+  past_due: "bg-risk text-on-status",
 };
 
 /**

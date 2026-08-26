@@ -252,7 +252,7 @@ export function AutomationRulesForm({
                   <span className="badge bg-risk/15 text-risk">
                     Urgent · under {Math.min(form.urgent_days, form.approaching_days)} days
                   </span>
-                  <span className="badge bg-risk text-white">Past due · deadline passed</span>
+                  <span className="badge bg-risk text-on-status">Past due · deadline passed</span>
                   <span className="badge bg-slate-200 text-slate-600">
                     Expired · archived automatically
                   </span>

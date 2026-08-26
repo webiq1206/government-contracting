@@ -38,7 +38,7 @@ export function ImpersonationBanner({
   return (
     <div
       role="status"
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b-2 border-risk bg-risk px-4 py-2 text-sm text-white"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b-2 border-risk bg-risk px-4 py-2 text-sm text-on-status"
     >
       <span className="font-semibold uppercase tracking-wide">Support session</span>
       <span className="min-w-0 flex-1">
