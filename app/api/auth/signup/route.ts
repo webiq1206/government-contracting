@@ -38,6 +38,7 @@ export async function POST(req: Request) {
     password: body.password ?? "",
     name: body.name ?? "",
     companyName: body.companyName ?? "",
+    userAgent: req.headers.get("user-agent"),
   });
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 400 });

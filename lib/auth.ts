@@ -7,6 +7,7 @@ import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypt
 import { cookies } from "next/headers";
 import { query, queryOne } from "./db";
 import { config } from "./config";
+import { sanitizeUserAgent } from "./domain/session-device";
 
 const SESSION_COOKIE = "brostco_session";
 const SESSION_TTL_DAYS = 30;
@@ -234,7 +235,17 @@ async function attachOrg(user: SessionUser): Promise<SessionUser> {
   }
 }
 
-export async function createSession(userId: string): Promise<string> {
+/**
+ * The device is recorded so a person can recognise their own sessions later.
+ *
+ * Optional, and null when the caller has no request to read it from: a session
+ * with no user agent shows as "Not recorded" rather than as some other device,
+ * which is the honest answer for a row created without one.
+ */
+export async function createSession(
+  userId: string,
+  userAgent?: string | null
+): Promise<string> {
   const token = randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + SESSION_TTL_DAYS * 86_400_000);
   // env-operator has no users row; issue a self-signed, time-limited token.
@@ -242,11 +253,23 @@ export async function createSession(userId: string): Promise<string> {
     return signEnvOperator(Date.now());
   }
   await query(
-    `insert into sessions (id, user_id, expires_at) values ($1, $2, $3)`,
-    [token, userId, expires.toISOString()]
+    `insert into sessions (id, user_id, expires_at, user_agent, last_seen_at)
+     values ($1, $2, $3, $4, now())`,
+    [token, userId, expires.toISOString(), sanitizeUserAgent(userAgent)]
   );
   return token;
 }
+
+/**
+ * How stale last_seen_at may get before it is worth a write.
+ *
+ * This runs on session validation, which is every authenticated request. At
+ * one write per request an idle tab polling the pulse endpoint would generate
+ * more writes than the product does real work. Five minutes is fine enough to
+ * tell "in use now" from "signed in last week", which is the only distinction
+ * the sessions list draws.
+ */
+const LAST_SEEN_THROTTLE_MS = 5 * 60_000;
 
 /**
  * How long a support session lasts. Short on purpose: an admin signed in as a
@@ -338,11 +361,32 @@ export async function resolveSession(token: string | undefined): Promise<Session
     expires_at: string;
     impersonator_email: string | null;
   }>(
-    `select u.id, u.email, u.name, u.role, s.expires_at, s.impersonator_email
-       from sessions s join users u on u.id = s.user_id
-      where s.id = $1 and s.expires_at > now()`,
-    [token]
-  );
+    // last_seen_at is touched here rather than in a separate round trip, and
+    // only when it is already stale, so the sessions list can tell "in use
+    // now" from "signed in last week" without a write per request.
+    `update sessions s
+        set last_seen_at = now()
+      where s.id = $1
+        and s.expires_at > now()
+        and (s.last_seen_at is null or s.last_seen_at < now() - $2::interval)`,
+    [token, `${Math.round(LAST_SEEN_THROTTLE_MS / 1000)} seconds`]
+  )
+    .catch(() => null)
+    .then(() =>
+      queryOne<{
+        id: string;
+        email: string;
+        name: string | null;
+        role: string;
+        expires_at: string;
+        impersonator_email: string | null;
+      }>(
+        `select u.id, u.email, u.name, u.role, s.expires_at, s.impersonator_email
+           from sessions s join users u on u.id = s.user_id
+          where s.id = $1 and s.expires_at > now()`,
+        [token]
+      )
+    );
   if (!row) return null;
   const user = await attachOrg({
     ...NO_ORG,
@@ -380,6 +424,19 @@ export async function clearSessionCookie(): Promise<void> {
 export async function currentUser(): Promise<SessionUser | null> {
   const token = cookies().get(SESSION_COOKIE)?.value;
   return resolveSession(token);
+}
+
+/**
+ * The id of the session making this request, or null.
+ *
+ * The sessions list needs it to mark which row is the reader's own, and
+ * "sign out everywhere else" needs it to know what to keep. Returns null for
+ * the self-signed env-operator token, which has no sessions row to point at.
+ */
+export async function currentSessionId(): Promise<string | null> {
+  const token = cookies().get(SESSION_COOKIE)?.value;
+  if (!token || token.startsWith("env-operator.")) return null;
+  return token;
 }
 
 export { SESSION_COOKIE };

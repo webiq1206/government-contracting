@@ -42,6 +42,46 @@ export interface AutomationRules {
    * true so an existing install keeps the calling workflow it already has.
    */
   calls_enabled: boolean;
+  /**
+   * Hours to wait after the first outreach email before following up.
+   *
+   * Was hardcoded at 48 in the outreach agent. It is a rule about how often
+   * this platform contacts other people's businesses, which makes it exactly
+   * the kind of thing the operator should be able to see and set rather than
+   * discover from a subcontractor's complaint.
+   */
+  followup_hours: number;
+  /**
+   * How many follow-ups a subcontractor may receive per opportunity, after
+   * the first email.
+   *
+   * Previously fixed at one, not by decision but by structure: the send
+   * consumed `follow_up_at` and nothing ever set it again. One remains the
+   * default, so an existing install behaves exactly as it did. Zero means
+   * never chase.
+   */
+  followup_max: number;
+  /** Follow-ups sent per run, so one sweep cannot empty a backlog in a burst. */
+  outreach_batch_limit: number;
+  /**
+   * The earliest and latest hour, in the subcontractor's own local time, at
+   * which the call queue will offer them up.
+   *
+   * The queue already worked out their local time and showed it. Nothing
+   * stopped it handing somebody a card at five in the morning their time,
+   * which is a rule this product was silently leaving to the operator to
+   * notice on the phone.
+   */
+  call_hours_start: number;
+  call_hours_end: number;
+  /**
+   * Unanswered call attempts before the queue stops offering a contact.
+   *
+   * Attempts were counted and displayed and never acted on, so a number that
+   * had rung out eleven times kept coming back to the top of somebody's day.
+   * Zero means no limit, which is the old behaviour, stated.
+   */
+  call_max_attempts: number;
 }
 
 export const DEFAULT_RULES: AutomationRules = {
@@ -51,11 +91,24 @@ export const DEFAULT_RULES: AutomationRules = {
   urgent_days: 3,
   retention_days: 30,  // 30 days; set to 0 in Settings to keep archived records forever
   calls_enabled: true, // calling is part of the pipeline unless the operator turns it off
+  // Every default below reproduces what the code already did, so turning these
+  // into settings changes nothing until somebody changes one.
+  followup_hours: 48,
+  followup_max: 1,
+  outreach_batch_limit: 50,
+  call_hours_start: 8,
+  call_hours_end: 17,
+  call_max_attempts: 3,
 };
 
 /** Merge a stored partial config over the defaults, clamping nonsense. */
 export function normalizeRules(v: Partial<AutomationRules> | null | undefined): AutomationRules {
   const num = (x: unknown, fallback: number, min = 0, max = 3650) => {
+    // null and "" both coerce to 0, and 0 is a meaningful value for several of
+    // these rules, so an absent key was being stored as "no limit" rather than
+    // as the default. Rejected before Number() rather than after it, because
+    // afterwards the two are indistinguishable.
+    if (x == null || x === "") return fallback;
     const n = Number(x);
     return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
   };
@@ -68,10 +121,87 @@ export function normalizeRules(v: Partial<AutomationRules> | null | undefined): 
     // Only an explicit false turns calling off. A stored config written before
     // this setting existed has no key at all, and must keep its calls.
     calls_enabled: v?.calls_enabled !== false,
+    // Never below an hour: a follow-up interval of nought would resend the
+    // moment the first message left, which is not a follow-up, it is a loop.
+    followup_hours: num(v?.followup_hours, DEFAULT_RULES.followup_hours, 1, 720),
+    followup_max: num(v?.followup_max, DEFAULT_RULES.followup_max, 0, 5),
+    outreach_batch_limit: num(v?.outreach_batch_limit, DEFAULT_RULES.outreach_batch_limit, 1, 500),
+    call_hours_start: num(v?.call_hours_start, DEFAULT_RULES.call_hours_start, 0, 23),
+    call_hours_end: num(v?.call_hours_end, DEFAULT_RULES.call_hours_end, 0, 23),
+    call_max_attempts: num(v?.call_max_attempts, DEFAULT_RULES.call_max_attempts, 0, 20),
   };
   // "Urgent" must be inside "approaching", or the badge tiers stop nesting.
   if (r.urgent_days > r.approaching_days) r.urgent_days = r.approaching_days;
+  // A window that ends before it starts is not a window. Rather than silently
+  // swapping the two, which would enforce hours nobody chose, it collapses to
+  // the start hour: one hour a day is visibly wrong and gets fixed, where a
+  // quietly reversed window looks correct and calls people at midnight.
+  if (r.call_hours_end < r.call_hours_start) r.call_hours_end = r.call_hours_start;
   return r;
+}
+
+/**
+ * Rules that contradict each other or contradict themselves.
+ *
+ * The audit asks for conflicts to be shown before publishing. These are the
+ * pairs that are individually legal and jointly incoherent, so no single
+ * field's validation can catch them.
+ */
+export interface RuleConflict {
+  severity: "error" | "warning";
+  message: string;
+}
+
+export function ruleConflicts(r: AutomationRules): RuleConflict[] {
+  const out: RuleConflict[] = [];
+  if (r.urgent_days > r.approaching_days) {
+    out.push({
+      severity: "error",
+      message:
+        "The red warning starts further out than the amber one, so nothing would ever be amber.",
+    });
+  }
+  if (r.call_hours_end < r.call_hours_start) {
+    out.push({
+      severity: "error",
+      message: "Calling hours end before they start, which leaves no hours at all.",
+    });
+  }
+  if (r.calls_enabled && r.call_hours_end - r.call_hours_start < 2) {
+    out.push({
+      severity: "warning",
+      message:
+        "A calling window under two hours wide means most of the queue is never callable, so calls will pile up rather than get made.",
+    });
+  }
+  if (r.min_lead_days > 0 && r.approaching_days > r.min_lead_days) {
+    out.push({
+      severity: "warning",
+      message:
+        "Every opportunity you accept arrives already inside the amber deadline window, so the colour will never mean anything.",
+    });
+  }
+  if (r.followup_max > 0 && r.followup_hours * r.followup_max < 24) {
+    out.push({
+      severity: "warning",
+      message:
+        "Every follow-up would land within a day of the first email. That reads as pestering and is the fastest way to a spam complaint.",
+    });
+  }
+  if (r.retention_days > 0 && r.retention_days < r.approaching_days) {
+    out.push({
+      severity: "warning",
+      message:
+        "Archived records are deleted sooner than an opportunity spends in its deadline warning window, so history will disappear while work is still live.",
+    });
+  }
+  if (!r.calls_enabled && r.call_max_attempts !== DEFAULT_RULES.call_max_attempts) {
+    out.push({
+      severity: "warning",
+      message: "Calling is switched off, so the call rules below have nothing to apply to.",
+    });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

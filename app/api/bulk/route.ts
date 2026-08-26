@@ -25,7 +25,7 @@ type BulkBody =
       until: SnoozeUntilChoice;
     }
   | { action: "pursue"; ids: string[] }
-  | { action: "dismiss"; ids: string[] };
+  | { action: "dismiss"; ids: string[]; reason?: string };
 
 function parseIds(raw: unknown): string[] | null {
   if (!Array.isArray(raw)) return null;
@@ -148,6 +148,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: AUTOMATION_PAUSED_ERROR }, { status: 409 });
     }
 
+    /*
+     * A pass needs a reason here too, and for the same reason as the single
+     * one: passing is what the scoring learns from, and a hundred passes with
+     * no reasons is a hundred rows nobody can use. Enforced at the endpoint
+     * rather than only in the form, because this is the endpoint.
+     */
+    let passReason = "";
+    if (body.action === "dismiss") {
+      passReason = typeof body.reason === "string" ? body.reason.trim() : "";
+      if (passReason.length < 3) {
+        return NextResponse.json(
+          { error: "Say why you are passing on these. One line is enough." },
+          { status: 400 }
+        );
+      }
+      if (passReason.length > 500) {
+        return NextResponse.json({ error: "That reason is too long." }, { status: 400 });
+      }
+    }
+
     let processed = 0;
     for (const id of ids) {
       const opp = await queryOne<{ id: string }>(
@@ -168,8 +188,13 @@ export async function POST(req: Request) {
       } else {
         await query(
           `update opportunities set tier='dismiss', stage='dismissed', status='archived',
-                  human_action_required=false, review_expires_at=null where id=$1`,
-          [id]
+                  human_action_required=false, review_expires_at=null,
+                  notes = case
+                    when coalesce(notes, '') = '' then $2
+                    else notes || E'\n' || $2
+                  end
+            where id=$1`,
+          [id, `Passed: ${passReason}`]
         );
       }
       processed += 1;
@@ -179,7 +204,10 @@ export async function POST(req: Request) {
       agent: "operator",
       action: body.action === "pursue" ? "bulk-pursue" : "bulk-dismiss",
       level: "info",
-      message: `Operator ${auth.email} ${body.action === "pursue" ? "pursued" : "dismissed"} ${processed} of ${ids.length} opportunity(ies).`,
+      message:
+        body.action === "pursue"
+          ? `Operator ${auth.email} pursued ${processed} of ${ids.length} opportunity(ies).`
+          : `Operator ${auth.email} passed on ${processed} of ${ids.length} opportunity(ies): ${passReason}`,
     });
     return NextResponse.json({ ok: true, processed });
   }

@@ -57,7 +57,7 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
   {
     id: "sam",
     name: "SAM.gov",
-    what: "Pulls new federal opportunities into your pipeline every 2 hours and checks subcontractors against the exclusion (debarment) list.",
+    what: "Pulls new federal opportunities into your pipeline on a schedule and checks subcontractors against the exclusion (debarment) list.",
     without: "No new opportunities enter the pipeline.",
     where: "sam.gov → sign in → Account Details → Request API Key (free; renew yearly).",
     fields: [{ env: "SAM_API_KEY", label: "API key", secret: true }],

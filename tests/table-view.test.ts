@@ -274,3 +274,33 @@ describe("in-memory views", () => {
     ]);
   });
 });
+
+/**
+ * What the filter bar remembers between visits is built from these functions
+ * rather than copied off the address bar, so a page-local parameter cannot end
+ * up stored and replayed days later. buildQuery emitting only filters, sort
+ * and page size is the mechanism that guarantees it.
+ */
+describe("what a remembered view can contain", () => {
+  it("emits only the filters it was given, the sort, and the page size", () => {
+    const q = buildQuery({
+      filters: { health: "verified", q: "roofing" },
+      sort: { key: "company_name", direction: "asc" },
+      page: 3,
+      perPage: 100,
+    });
+    const keys = [...new URLSearchParams(q).keys()].sort();
+    expect(keys).toEqual(["health", "page", "per", "q", "sort"]);
+  });
+
+  it("cannot carry a page-local parameter through, because it never sees one", () => {
+    const q = buildQuery({ filters: { health: "verified" } });
+    expect(q).toBe("health=verified");
+    expect(q).not.toContain("peek");
+  });
+
+  it("is empty when nothing is filtered, which is how a cleared view is stored", () => {
+    expect(buildQuery({ filters: {} })).toBe("");
+    expect(buildQuery({ filters: { health: "" } })).toBe("");
+  });
+});

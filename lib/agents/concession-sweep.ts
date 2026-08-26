@@ -104,6 +104,15 @@ async function readStripeState(subscriptionId: string): Promise<StripeDiscountSt
   }
 }
 
+/*
+ * Each pass below sits in its own try/catch that logs a `*-pass-failed`
+ * error, which is the right shape. Those handlers were dead: the query inside
+ * each pass ended in `.catch(() => [])`, so a failed read became an empty
+ * result and the outer catch never fired. The sweep reported "0 invitations
+ * nudged, 0 repaired, 0 flagged" for a database it could not read, which is
+ * the same sentence it prints when everything is in order. The inner catches
+ * are gone so the handlers that were written for this can do their job.
+ */
 export const concessionSweep: AgentDefinition = {
   name: AGENT,
   label: "Concession Sweep",
@@ -123,7 +132,7 @@ export const concessionSweep: AgentDefinition = {
         `select ${INVITATION_COLS} from account_invitations
           where accepted_at is null and revoked_at is null and expires_at > now()
           order by expires_at asc limit 100`
-      ).catch(() => []);
+      );
 
       for (const inv of pending) {
         const decision = nudgeDecision(inv);
@@ -147,6 +156,7 @@ export const concessionSweep: AgentDefinition = {
         agent: AGENT,
         action: "nudge-pass-failed",
         level: "error",
+        status: "error",
         message: `Could not check for expiring invitations: ${(err as Error).message}`,
       });
     }
@@ -161,7 +171,7 @@ export const concessionSweep: AgentDefinition = {
             and terms_applied_at is null
             and revoked_at is null
           order by accepted_at asc limit 50`
-      ).catch(() => []);
+      );
 
       for (const inv of stranded) {
         const org = inv.accepted_org_id ? await loadOrg(inv.accepted_org_id) : null;
@@ -205,6 +215,7 @@ export const concessionSweep: AgentDefinition = {
               agent: AGENT,
               action: "terms-repair-failed",
               level: "error",
+              status: "error",
               message: `${inv.email} is being charged full price and Stripe refused the coupon: ${applied.error}`,
             });
             continue;
@@ -228,6 +239,7 @@ export const concessionSweep: AgentDefinition = {
         agent: AGENT,
         action: "repair-pass-failed",
         level: "error",
+        status: "error",
         message: `Could not check for unapplied invitation terms: ${(err as Error).message}`,
       });
     }
@@ -245,7 +257,7 @@ export const concessionSweep: AgentDefinition = {
           where stripe_subscription_id is not null
             and (pending_coupon_id is not null or discount_percent_off is not null)
           limit 200`
-      ).catch(() => []);
+      );
 
       for (const org of withTerms) {
         const state = await readStripeState(org.stripe_subscription_id!);
@@ -268,6 +280,7 @@ export const concessionSweep: AgentDefinition = {
         agent: AGENT,
         action: "discount-pass-failed",
         level: "error",
+        status: "error",
         message: `Could not verify granted discounts against Stripe: ${(err as Error).message}`,
       });
     }

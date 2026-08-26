@@ -190,6 +190,7 @@ export const QUEUE_NAMES = [
   "scoring-recovery-sweep",
   "expired-opportunity-sweep",
   "retention-sweep",
+  "account-deletion-sweep",
   "compliance-sweep",
   "trial-sweep",
   "concession-sweep",

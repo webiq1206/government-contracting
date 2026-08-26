@@ -17,7 +17,12 @@ import { completeJson, ClaudeNotConfiguredError, claudeEnabled } from "../ai/cla
 import { config } from "../config";
 import { logAgent } from "../logger";
 import { noEmDash } from "../sanitize";
-import { computeReady, auditFindingKey } from "../domain/package";
+import {
+  computeReady,
+  auditFindingKey,
+  findingsAfterSkippedAudit,
+  aiAuditFindings,
+} from "../domain/package";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -145,6 +150,42 @@ export const complianceAuditor: AgentDefinition = {
     // Deterministic eligibility findings (elig_*) are preserved across audits,
     // keeping their acknowledged state; the AI findings (af_*) are refreshed.
     const preserved = (bid.audit_findings ?? []).filter((f) => f.id.startsWith("elig_"));
+    /*
+     * What a run that cannot audit is allowed to leave behind.
+     *
+     * Every early return below writes to the bid and then stops. They used to
+     * write `preserved`, which drops the AI findings from the last successful
+     * audit, and recompute readiness from what was left: a package held back
+     * by three blockers became ready to submit because the AI key had been
+     * removed, with a grey sentence as the only trace. A run that read nothing
+     * may report that it read nothing; it may not clear a blocker.
+     */
+    const kept = findingsAfterSkippedAudit(bid.audit_findings);
+    const keptReady = computeReady(validation, kept);
+    const carriedBlockers = aiAuditFindings(kept).filter(
+      (f) => f.severity === "blocker" && !f.acknowledged
+    ).length;
+    /** Records a run that could not audit, on the bid and in the timeline. */
+    const recordSkip = async (why: string) => {
+      await query(
+        `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
+        [bid.id, JSON.stringify(kept), keptReady]
+      );
+      await logAgent({
+        agent: "compliance-auditor",
+        action: "audit",
+        opportunityId,
+        bidId: bid.id,
+        level: "warn",
+        status: "skipped",
+        message: `Compliance audit could not run: ${why}.`.slice(0, 500),
+        reasoning:
+          carriedBlockers > 0
+            ? `Kept ${carriedBlockers} unresolved blocker(s) from the last completed audit. A run that could not read the solicitation must not clear a finding it never checked.`
+            : "Kept the findings from the last completed audit unchanged. Nothing was re-checked, so nothing was cleared.",
+        output: { carriedFindings: kept.length, carriedBlockers, packageReady: keptReady },
+      });
+    };
     // An acknowledgement belongs to the finding, not to its slot in the list.
     // AI findings are renumbered af_1..af_n each run, so without this every
     // re-audit handed the operator back the same sentences they had already
@@ -159,11 +200,7 @@ export const complianceAuditor: AgentDefinition = {
     // so) instead of leaving the audit "pending" forever; deterministic
     // eligibility findings still apply and still gate submission.
     if (!(await claudeEnabled())) {
-      const ready = computeReady(validation, preserved);
-      await query(
-        `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
-        [bid.id, JSON.stringify(preserved), ready]
-      );
+      await recordSkip("the AI key is not configured");
       return {
         ok: true,
         summary:
@@ -173,10 +210,8 @@ export const complianceAuditor: AgentDefinition = {
 
     // Nothing to audit against, keep eligibility findings, skip the AI pass.
     if (!profile || solText.trim().length < 40) {
-      const ready = computeReady(validation, preserved);
-      await query(
-        `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
-        [bid.id, JSON.stringify(preserved), ready]
+      await recordSkip(
+        profile ? "the solicitation text could not be read" : "the company profile is not filled in"
       );
       return { ok: true, summary: "AI audit skipped (no solicitation text or profile)" };
     }
@@ -213,26 +248,11 @@ export const complianceAuditor: AgentDefinition = {
       });
     } catch (err) {
       if (err instanceof ClaudeNotConfiguredError) {
-        const ready = computeReady(validation, preserved);
-        await query(
-          `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
-          [bid.id, JSON.stringify(preserved), ready]
-        );
+        await recordSkip("the AI key is not configured");
         return { ok: true, summary: "AI audit skipped (Claude not configured)" };
       }
-      // Any other error: keep eligibility findings, skip the AI pass.
-      const ready = computeReady(validation, preserved);
-      await query(
-        `update bids set audit_findings=$2, audit_status='skipped', package_ready=$3 where id=$1`,
-        [bid.id, JSON.stringify(preserved), ready]
-      );
-      await logAgent({
-        agent: "compliance-auditor",
-        action: "audit",
-        opportunityId,
-        level: "warn",
-        message: `Audit errored, skipped: ${(err as Error).message}`,
-      });
+      // Any other error: the pass did not complete, so nothing is cleared.
+      await recordSkip((err as Error).message);
       return { ok: true, summary: `audit skipped (error): ${(err as Error).message}` };
     }
 
@@ -243,8 +263,12 @@ export const complianceAuditor: AgentDefinition = {
         : "clean";
     const ready = computeReady(validation, findings);
 
+    // audit_ran_at is stamped here and nowhere else: it dates the findings, so
+    // it must move only when the AI pass actually produced them.
     await query(
-      `update bids set audit_findings=$2, audit_status=$3, package_ready=$4 where id=$1`,
+      `update bids set audit_findings=$2, audit_status=$3, package_ready=$4,
+              audit_ran_at=now()
+         where id=$1`,
       [bid.id, JSON.stringify(findings), status, ready]
     );
     // Surface an unmet audit as human-action so it shows on Today.

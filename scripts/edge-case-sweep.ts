@@ -40,7 +40,7 @@ const ROUTES = [
   "/review",
   "/call-queue",
   "/subs",
-  "/email-log",
+  "/communications",
   "/contracts",
   "/compliance",
   "/analytics",
@@ -148,9 +148,17 @@ function repeat(s: string, n: number): string {
 async function cleanup() {
   const orgs = await query<{ id: string }>(`select id from organizations where name like $1`, [`${TAG}%`]);
   for (const { id } of orgs) {
+    /*
+     * Every org-scoped table, not just the ones the sweep writes to directly.
+     * Rendering a page can write too -- `agent_logs` picks up a line from the
+     * automation status the moment a scenario loads a dashboard -- and the
+     * only symptom was a foreign key violation in teardown that left the
+     * throwaway org and its rows behind for the next run to trip over.
+     */
     for (const t of [
-      "compliance_items", "communications", "call_cards", "quotes", "bids",
-      "documents", "opportunities", "subcontractors", "organization_members",
+      "agent_logs", "conversation_flags", "compliance_items", "communications",
+      "call_cards", "quotes", "bids", "documents", "opportunities",
+      "subcontractors", "organization_members",
     ]) {
       await query(`delete from ${t} where org_id = $1`, [id]).catch(() => {});
     }

@@ -293,7 +293,10 @@ export function GuideWizard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          guide,
+          // The path, not the guide. The server rebuilds the facts from this
+          // account's live records, so an answer cannot be grounded in a
+          // snapshot this panel loaded an hour ago.
+          path: guide.pathname,
           question,
           history: askThread,
         }),
@@ -317,23 +320,19 @@ export function GuideWizard() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed z-[65] hidden items-center gap-2 rounded-md border border-gold/40 bg-surface px-4 py-3 text-sm font-medium text-foreground shadow-lg transition-colors hover:bg-surface-raised focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold dark:bg-shell md:bottom-6 md:right-6 md:flex"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
-        <span aria-hidden className="text-gold-text">
-          ?
-        </span>
-        Guide Me
-        {badge > 0 && (
-          <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-[11px] font-semibold text-ink">
-            {badge > 9 ? "9+" : badge}
-          </span>
-        )}
-      </button>
+      {/*
+        * The floating launcher is gone.
+        *
+        * It sat pinned to the bottom-right of every desktop page, over the
+        * content, which is the one thing the audit says not to do with this
+        * control. It was also the second way to open the same panel: the
+        * sidebar has carried a Guide Me entry the whole time, and the mobile
+        * app bar has one now. The panel below is unchanged; only the way in
+        * that covered things has been removed.
+        *
+        * Both remaining entries dispatch `open-guide-wizard`, which the
+        * effect below listens for.
+        */}
 
       {open && (
         <div className="fixed inset-0 z-[80]">

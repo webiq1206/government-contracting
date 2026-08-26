@@ -15,6 +15,7 @@ import { LEGACY_ORG_ID } from "./tenant-context";
 import { isAutomationPaused } from "./app-settings";
 import { listActiveOrganizations } from "./organizations";
 import { recentAiTrouble } from "./integration-health";
+import { agentCadence } from "./agent-cadence";
 
 export async function readPipelinePulse(): Promise<PulseFinding[]> {
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
@@ -80,6 +81,9 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
 
   return evaluatePulse({
     now: new Date(),
+    // From the registry, so the banner cannot promise a cadence the scheduler
+    // stopped keeping.
+    monitorCadence: agentCadence("opportunity-monitor"),
     workerLastRunAt: runs?.worker_last ?? null,
     workerHeartbeatAt: heartbeat?.updatedAt ?? null,
     workerPhase: heartbeat?.phase ?? null,

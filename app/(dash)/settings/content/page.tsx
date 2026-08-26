@@ -5,9 +5,11 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { ContentLibraryManager } from "@/components/content-library-manager";
 import { EmailTemplateEditor, type EmailTemplate } from "@/components/email-template-editor";
 import { EditorialTabs } from "@/components/editorial-tabs";
-import { contentLibrary } from "@/lib/data";
+import { contentLibrary, templateSendStats } from "@/lib/data";
+import { templateMetrics } from "@/lib/domain/template-health";
 import { activeTemplates } from "@/lib/domain/template-store";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
+import { getAutomationRules } from "@/lib/app-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +51,26 @@ export default async function ContentLibraryPage() {
   // them rather than letting them fill in a form that will be refused.
   const viewer = await currentUser().catch(() => null);
 
-  const [items, templates] = await Promise.all([
+  const [items, templates, stats, rules] = await Promise.all([
     contentLibrary(),
     activeOutreachTemplates(),
+    templateSendStats(),
+    getAutomationRules(),
   ]);
+  // What each template has actually done, attributed from the send record.
+  // A template nobody has used gets zero counts, which the metrics turn into
+  // absent rates rather than into a row of noughts.
+  const metricsFor = (slug: string) =>
+    templateMetrics(
+      stats[slug] ?? {
+        sent: 0,
+        delivered: 0,
+        opened: 0,
+        replied: 0,
+        bounced: 0,
+        lastSentAt: null,
+      }
+    );
 
   return (
     <>
@@ -107,7 +125,12 @@ export default async function ContentLibraryPage() {
                 ) : (
                   <div className="space-y-8">
                     {templates.map((t) => (
-                      <EmailTemplateEditor key={t.slug} template={t} />
+                      <EmailTemplateEditor
+                        key={t.slug}
+                        template={t}
+                        metrics={metricsFor(t.slug)}
+                        followupHours={rules.followup_hours}
+                      />
                     ))}
                   </div>
                 )}

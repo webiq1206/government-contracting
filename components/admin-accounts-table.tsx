@@ -5,6 +5,7 @@ import { DataTable, type Column } from "@/components/data-table";
 import { shortDate } from "@/lib/format";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { AdminAccountRow } from "@/lib/admin/accounts";
+import { activityOf } from "@/lib/domain/account-activity";
 
 const ACCESS_LABEL: Record<string, { text: string; tone: string }> = {
   full: { text: "Full access", tone: "bg-pursue/15 text-pursue" },
@@ -45,7 +46,15 @@ export function AdminAccountsTable({
         <>
           <Link
             href={`/admin/accounts/${r.id}`}
-            className="font-medium text-foreground hover:text-gold-text"
+            /*
+             * A width floor as well as a height one. The link is as wide as
+             * the account name, so a customer called "Ace" got a 32 by 44
+             * target while a long name got a comfortable one. Found by the
+             * sweep only because a fixture account happened to be named
+             * "Beta": the seeded account is "BROST CO", wide enough to pass,
+             * so this had never been visible.
+             */
+            className="inline-flex min-h-11 min-w-11 items-center font-medium text-foreground hover:text-gold-text md:min-h-0 md:min-w-0"
           >
             {r.name}
           </Link>
@@ -104,6 +113,31 @@ export function AdminAccountsTable({
       header: "Joined",
       sortable: true,
       render: (r) => <span className="text-muted-foreground">{shortDate(r.created_at)}</span>,
+    },
+    {
+      key: "last_active_at",
+      header: "Last used",
+      sortable: true,
+      hint: "The most recent real sign-in. Support sessions are not counted, or every account anyone looked at would read as freshly active.",
+      render: (r) => {
+        const a = activityOf(r.last_active_at, r.created_at);
+        return (
+          <span
+            className={
+              a.state === "never"
+                ? a.attention
+                  ? "text-review"
+                  : "text-muted-foreground"
+                : a.state === "dormant"
+                  ? "text-review"
+                  : "text-muted-foreground"
+            }
+            title={a.meaning}
+          >
+            {a.state === "never" ? "Never" : `${a.daysSince}d ago`}
+          </span>
+        );
+      },
     },
   ];
 

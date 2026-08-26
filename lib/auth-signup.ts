@@ -32,6 +32,8 @@ export async function signupAccount(input: {
   password: string;
   name: string;
   companyName: string;
+  /** For the sessions list, so the first device is recognisable later. */
+  userAgent?: string | null;
 }): Promise<{ user: SessionUser; orgId: string; token: string } | { error: string }> {
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@") || email.length < 5) {
@@ -68,7 +70,7 @@ export async function signupAccount(input: {
     return { user, org };
   });
 
-  const token = await createSession(user.id);
+  const token = await createSession(user.id, input.userAgent ?? null);
   await trackEvent({
     event: "account_created",
     orgId: org.id,

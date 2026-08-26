@@ -4,6 +4,7 @@ import { query, queryOne } from "@/lib/db";
 import { storage } from "@/lib/integrations/storage";
 import { logAgent } from "@/lib/logger";
 import { attachToRequirement } from "@/lib/bid-package-state";
+import { RESERVED_KINDS } from "@/lib/domain/package";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     "Operator upload";
   const kindRaw = typeof form.get("kind") === "string" ? String(form.get("kind")).trim() : "";
   const kind = (kindRaw || "operator_upload").replace(/[^a-z0-9_-]/gi, "_").slice(0, 60);
+  /*
+   * The generated kinds are the package builder's slots, and it clears each
+   * one before writing it: `delete from documents where opportunity_id = $1
+   * and kind = $2`. A file stored under one of those names is destroyed by the
+   * next package build, silently, with the operator's copy gone.
+   *
+   * The interface only ever sends "requirement_document", so this is not a
+   * defect anyone has hit. It is refused rather than left alone because the
+   * failure is deletion of an operator's own document, the parameter comes
+   * from the request, and the alternative guard, "remember not to send that",
+   * is not one the code can keep.
+   */
+  if ((RESERVED_KINDS as readonly string[]).includes(kind)) {
+    return NextResponse.json(
+      {
+        error:
+          "That document type is reserved for the package Brost Co generates, and anything stored under it is replaced on the next build. Upload it as an ordinary attachment instead.",
+      },
+      { status: 400 }
+    );
+  }
 
   /**
    * Which requirement this file answers.

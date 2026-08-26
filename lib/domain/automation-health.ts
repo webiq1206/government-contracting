@@ -75,6 +75,14 @@ export interface IncidentSpec {
   blocking: boolean;
 }
 
+/**
+ * Exported as INCIDENT_SPECS as well, for the platform-wide health page.
+ *
+ * That page groups failures by the same cause this module classifies, so it
+ * needs the same repair text. Two copies would drift, and the way anybody
+ * would find out is an administrator following the wrong instruction during
+ * an outage.
+ */
 const CAUSES: Record<IncidentCause, IncidentSpec> = {
   provider_credit: {
     title: "The AI account is out of credit",
@@ -233,10 +241,20 @@ export interface AutomationHealth {
   lastSuccessAt: string | null;
   backlog: number | null;
   affectedOpportunities: number;
-  failureRate: number;
+  /**
+   * Failed runs over all runs in the window, or null when there were too few
+   * runs to say anything. Nought is a claim of a perfect record, and an
+   * account where nothing ran at all has no record to be perfect: reporting
+   * that as `0%` is how a stopped machine reads as a flawless one.
+   */
+  failureRate: number | null;
+  /** How many runs the rate is computed over, so the caller can say why it is absent. */
+  runs24h: number;
   /** True when a banner should interrupt the operator rather than wait. */
   interrupt: boolean;
 }
+
+export { CAUSES as INCIDENT_SPECS };
 
 /** The worker is considered alive if it checked in within this window. */
 const HEARTBEAT_STALE_MS = 5 * 60_000;
@@ -263,7 +281,7 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
       .sort()
       .pop() ?? null;
 
-  const failureRate = runs.length >= MIN_RUNS_FOR_RATE ? failures.length / runs.length : 0;
+  const failureRate = runs.length >= MIN_RUNS_FOR_RATE ? failures.length / runs.length : null;
 
   // Group by cause rather than by agent. Five agents failing on one exhausted
   // credit balance is one problem with one fix, and showing it five times is
@@ -323,6 +341,7 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
     backlog,
     affectedOpportunities,
     failureRate,
+    runs24h: runs.length,
   };
 
   // Order below is the order of precedence, and each step is a claim about

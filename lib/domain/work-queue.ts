@@ -131,3 +131,121 @@ export function summarizeQueue(items: WorkItem[]): string {
     .map(([k, n]) => `${n} ${LABEL[k][n === 1 ? 0 : 1]}`);
   return `${items.length} to do: ${parts.join(", ")}`;
 }
+
+// ---------------------------------------------------------------------------
+// The four counters, and filtering the queue by them
+// ---------------------------------------------------------------------------
+
+/**
+ * The four numbers the audit asks Today to lead with.
+ *
+ * `Needs you` on its own answers "how much", which is the least useful of the
+ * questions somebody opening this page has. Overdue and due-today answer "how
+ * much of it is already late", which is what decides whether the morning is a
+ * normal one.
+ *
+ * `completedToday` is deliberately not in here. It is not a property of the
+ * queue -- the queue is what is left -- and deriving it from an empty queue
+ * would produce the same number for "nothing to do" and "everything done",
+ * which are opposite mornings. It comes from the activity ledger instead.
+ */
+export interface QueueCounts {
+  overdue: number;
+  dueToday: number;
+  /** Everything else still waiting, including work with no date at all. */
+  remaining: number;
+  total: number;
+}
+
+/** Local-day boundaries, so "today" means the operator's today. */
+function dayBounds(now: Date): { start: number; end: number } {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return { start, end: start + 86_400_000 };
+}
+
+export type QueueBucket = "overdue" | "due_today" | "remaining";
+
+/**
+ * Which counter an item belongs to.
+ *
+ * An item with no date is `remaining`, never `overdue`. Treating an absent
+ * deadline as a passed one is the same lie as showing 0 for an unknown count,
+ * and on this page it would fill the overdue counter with work that is not
+ * late and has no way of becoming late.
+ */
+export function bucketOf(item: WorkItem, now = new Date()): QueueBucket {
+  if (!item.due) return "remaining";
+  const t = new Date(item.due).getTime();
+  if (Number.isNaN(t)) return "remaining";
+  const { start, end } = dayBounds(now);
+  if (t < start) return "overdue";
+  if (t < end) return "due_today";
+  return "remaining";
+}
+
+export function queueCounts(items: WorkItem[], now = new Date()): QueueCounts {
+  const counts: QueueCounts = { overdue: 0, dueToday: 0, remaining: 0, total: items.length };
+  for (const item of items) {
+    const b = bucketOf(item, now);
+    if (b === "overdue") counts.overdue += 1;
+    else if (b === "due_today") counts.dueToday += 1;
+    else counts.remaining += 1;
+  }
+  return counts;
+}
+
+/** The filters the queue offers, in the order they are shown. */
+export const QUEUE_FILTERS = ["all", "overdue", "due_today", "remaining"] as const;
+export type QueueFilter = (typeof QUEUE_FILTERS)[number];
+
+export const QUEUE_FILTER_LABEL: Record<QueueFilter, string> = {
+  all: "Everything",
+  overdue: "Overdue",
+  due_today: "Due today",
+  remaining: "Remaining",
+};
+
+export function parseQueueFilter(raw: string | string[] | undefined): QueueFilter {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  return (QUEUE_FILTERS as readonly string[]).includes(v ?? "") ? (v as QueueFilter) : "all";
+}
+
+/** The kinds, as a filter. Same vocabulary the queue itself uses. */
+export const KIND_FILTER_LABEL: Record<WorkKind, string> = {
+  read_reply: "Replies",
+  review_bid: "Bids",
+  enter_quote: "Quotes",
+  call: "Calls",
+  decide: "Decisions",
+  fix_blocker: "Blockers",
+};
+
+export function parseKindFilter(raw: string | string[] | undefined): WorkKind | null {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  return v && v in KIND_FILTER_LABEL ? (v as WorkKind) : null;
+}
+
+/**
+ * Apply the filters. Text matches the ask, the record and the reason, because
+ * an operator searching "Rivera" is as likely to be thinking of the
+ * subcontractor named in the reason as of the one in the title.
+ */
+export function filterWorkItems(
+  items: WorkItem[],
+  opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string },
+  now = new Date()
+): WorkItem[] {
+  const needle = opts.q?.trim().toLowerCase() ?? "";
+  return items.filter((item) => {
+    if (opts.bucket && opts.bucket !== "all") {
+      const want = opts.bucket === "due_today" ? "due_today" : opts.bucket;
+      if (bucketOf(item, now) !== want) return false;
+    }
+    if (opts.kind && item.kind !== opts.kind) return false;
+    if (needle) {
+      const hay = `${item.title} ${item.context} ${item.reason ?? ""}`.toLowerCase();
+      if (!hay.includes(needle)) return false;
+    }
+    return true;
+  });
+}

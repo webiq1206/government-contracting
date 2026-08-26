@@ -37,6 +37,7 @@ import { useToast } from "@/components/toaster";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import { CallAnswer, type AnswerValue } from "@/components/call-answer";
 import { ScannableText } from "@/components/scannable-text";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 
 type Attachment = { name?: string; url?: string; storage_path?: string } & Record<
   string,
@@ -130,9 +131,15 @@ function initialWrapUp(card: CallCardRow): WrapUp {
 export function CallWorkspace({
   data,
   onClose,
+  variant = "overlay",
 }: {
   data: CallWorkspaceData;
   onClose: () => void;
+  /**
+   * "inline" drops the backdrop and the dialog semantics so the call can sit
+   * beside the queue rather than on top of it. Only the frame differs.
+   */
+  variant?: "overlay" | "inline";
 }) {
   const router = useRouter();
   const { push } = useToast();
@@ -140,6 +147,15 @@ export function CallWorkspace({
   const [card, setCard] = useState<CallCardRow>(data.card);
   const [answers, setAnswers] = useState(() => initialAnswers(card));
   const [wrap, setWrap] = useState<WrapUp>(() => initialWrapUp(card));
+  /*
+   * Notes taken during a call and a price somebody read out are the worst
+   * things in this product to lose: the subcontractor has hung up, and asking
+   * again means another call. Compared against the saved card, so a save
+   * clears it without anything having to remember to.
+   */
+  const dirty =
+    JSON.stringify(answers) !== JSON.stringify(initialAnswers(card)) ||
+    JSON.stringify(wrap) !== JSON.stringify(initialWrapUp(card));
   const [briefOpen, setBriefOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -343,19 +359,36 @@ export function CallWorkspace({
     [card.opportunity_location, card.location_state].filter(Boolean).join(", ") || null,
   ].filter(Boolean) as string[];
 
-  return (
-    <div
-      className="fixed inset-0 z-[80] flex justify-end bg-black/40"
-      onClick={onClose}
-      role="presentation"
-    >
+  /*
+   * Two shapes, one workspace.
+   *
+   * Inline is the desktop Call Queue, where the audit asks for a permanent
+   * split: the list stays on the left and the call lives beside it, so
+   * finishing one call and starting the next never closes and reopens a
+   * dialog. Overlay is everywhere else, and on a phone, where a call has to
+   * be the whole screen.
+   *
+   * The difference is deliberately only the frame. Making the inline one a
+   * separate component would be two copies of a twenty-field form, and the
+   * copy that gets fixed is never the one somebody is using.
+   */
+  const inline = variant === "inline";
+  const body = (
       <aside
-        onClick={(e) => e.stopPropagation()}
-        className="scroll-thin flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-background shadow-2xl"
-        role="dialog"
-        aria-modal="true"
+        onClick={inline ? undefined : (e) => e.stopPropagation()}
+        className={
+          inline
+            ? "scroll-thin flex h-full w-full flex-col overflow-y-auto bg-background"
+            : "scroll-thin flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-background shadow-2xl"
+        }
+        role={inline ? "region" : "dialog"}
+        aria-modal={inline ? undefined : true}
         aria-label={`Call workspace for ${card.company_name}`}
       >
+        <UnsavedGuard
+          when={dirty}
+          message="This call has notes or a price that are not saved yet. Leave without saving?"
+        />
         {/* Who, what, and the dial button. Nothing else competes for the top. */}
         <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur sm:px-5">
           <div className="flex items-start justify-between gap-3">
@@ -372,7 +405,9 @@ export function CallWorkspace({
             <button
               onClick={onClose}
               aria-label="Close"
-              className="rounded-md border border-border p-1.5 text-muted-foreground hover:bg-surface"
+              /* The way out of a full-screen workspace on a phone, and it was
+                 27 pixels wide. */
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-surface md:min-h-0 md:min-w-0 md:p-1.5"
             >
               ✕
             </button>
@@ -419,7 +454,13 @@ export function CallWorkspace({
               <button
                 type="button"
                 onClick={() => setBriefOpen((o) => !o)}
-                className="ml-auto text-xs font-medium text-accent-strong hover:underline"
+                /*
+                 * This opens the job details mid-call, and it was 28 by 16.
+                 * The height is fixed by min-h-11; the width needs its own
+                 * floor, because the label is one short word and a text
+                 * button is only as wide as its text.
+                 */
+                className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-end text-xs font-medium text-accent-strong hover:underline md:min-h-0 md:min-w-0"
                 aria-expanded={briefOpen}
               >
                 {briefOpen ? "Hide brief" : "Brief"}
@@ -604,7 +645,13 @@ export function CallWorkspace({
                       type="button"
                       onClick={() => setWrap((w) => ({ ...w, confidence: n }))}
                       aria-pressed={wrap.confidence === n}
-                      className={`h-9 flex-1 rounded-md border text-sm ${
+                      /*
+                       * 44 on a phone, because this is the last thing typed
+                       * before Complete call and the five targets sit side by
+                       * side: at 36 a slip records a different confidence in
+                       * a subcontractor, which is what later sourcing reads.
+                       */
+                      className={`min-h-11 flex-1 rounded-md border text-sm md:h-9 md:min-h-0 ${
                         wrap.confidence === n
                           ? "border-accent bg-accent-soft text-accent-strong"
                           : "border-border text-muted-foreground hover:bg-surface"
@@ -718,6 +765,16 @@ export function CallWorkspace({
           )}
         </footer>
       </aside>
+  );
+
+  if (inline) return body;
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex justify-end bg-black/40"
+      onClick={onClose}
+      role="presentation"
+    >
+      {body}
     </div>
   );
 }

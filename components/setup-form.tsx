@@ -42,8 +42,17 @@ export function SetupForm() {
   return (
     <form onSubmit={onSubmit} className="card space-y-4">
       <div>
-        <label className="label">Your name</label>
+        {/*
+          * Every label here rendered on screen and was tied to nothing, so
+          * a screen reader met four blank boxes on the screen that creates
+          * the first account on a deployment. Same defect as the sign-in
+          * form, and invisible for the same reason.
+          */}
+        <label className="label" htmlFor="setup-name">
+          Your name
+        </label>
         <input
+          id="setup-name"
           type="text"
           className="input mt-1"
           value={name}
@@ -53,8 +62,11 @@ export function SetupForm() {
         />
       </div>
       <div>
-        <label className="label">Email</label>
+        <label className="label" htmlFor="setup-email">
+          Email
+        </label>
         <input
+          id="setup-email"
           type="email"
           className="input mt-1"
           value={email}
@@ -64,8 +76,11 @@ export function SetupForm() {
         />
       </div>
       <div>
-        <label className="label">Password</label>
+        <label className="label" htmlFor="setup-password">
+          Password
+        </label>
         <input
+          id="setup-password"
           type="password"
           className="input mt-1"
           value={password}
@@ -77,8 +92,11 @@ export function SetupForm() {
         <p className="mt-1 text-xs text-muted-foreground">At least 12 characters.</p>
       </div>
       <div>
-        <label className="label">Confirm password</label>
+        <label className="label" htmlFor="setup-confirm">
+          Confirm password
+        </label>
         <input
+          id="setup-confirm"
           type="password"
           className="input mt-1"
           value={confirm}

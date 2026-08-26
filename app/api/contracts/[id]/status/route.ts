@@ -6,9 +6,15 @@ import { logAgent } from "@/lib/logger";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const ALLOWED = new Set(["active", "completed"]);
+/*
+ * Three, not two. A contract that was lost or ended early is not "completed",
+ * and filing it that way makes every win-rate and margin figure quietly wrong
+ * -- the kind of wrong nobody goes looking for, because the number still
+ * looks like a number.
+ */
+const ALLOWED = new Set(["active", "completed", "terminated"]);
 
-/** Move a contract between active and completed (past). */
+/** Move a contract between active, completed and terminated. */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const ctx = await requireOrgContext({ capability: "manage_contracts" });
   if (ctx instanceof NextResponse) return ctx;

@@ -56,7 +56,7 @@ const ROUTES = [
   "/review",
   "/call-queue",
   "/subs",
-  "/email-log",
+  "/communications",
   "/contracts",
   "/compliance",
   "/analytics",
@@ -67,6 +67,44 @@ const ROUTES = [
   "/settings/content",
   "/settings/integrations",
   "/settings/billing",
+  /*
+   * Added as the product grew. A sweep that reports zero findings over a route
+   * list which lags the application is a sweep reporting on a smaller product
+   * than the one that shipped, and the number it prints gets believed.
+   *
+   * tests/a11y-coverage.test.ts now fails when an operator page exists with no
+   * entry here, so the list cannot fall behind again silently.
+   */
+  "/search",
+  "/settings/notifications",
+  "/settings/account",
+  "/admin/accounts",
+  "/admin/billing",
+  "/admin/audit",
+  "/admin/health",
+  "/admin/invitations",
+  "/authority",
+  "/more",
+];
+
+/**
+ * The pages a customer meets before they have an account.
+ *
+ * Never measured until now, because the sweep signs in before it starts and
+ * these cannot be reached afterwards. They are the first thing every customer
+ * sees, and the one place where a contrast failure costs a signup rather than
+ * an inconvenience.
+ *
+ * Swept in their own pass with no session cookie, so a redirect to /today
+ * cannot silently turn "I measured the login page" into "I measured Today".
+ */
+const SIGNED_OUT_ROUTES = [
+  "/",
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/privacy",
+  "/terms",
 ];
 
 interface Finding {
@@ -95,9 +133,22 @@ const PROBE = `(() => {
   const lum = (c) => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
   const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); const hi = Math.max(l1, l2), lo = Math.min(l1, l2); return (hi + 0.05) / (lo + 0.05); };
 
-  // The nearest ancestor that actually paints, since a transparent parent
-  // does not decide what the text sits on.
-  const bgOf = (el) => {
+  /*
+   * What is actually painted behind the text.
+   *
+   * The ancestor walk alone reported the marketing site's navigation as
+   * 1.05:1, near-invisible, when it is light text sitting legibly on a dark
+   * hero. The header is positioned over that hero rather than inside it, so
+   * walking up the DOM left the hero out entirely and landed on the cream page
+   * background two levels higher. A confident wrong contrast number is worse
+   * than no check, because it sends somebody to "fix" a page that is correct.
+   *
+   * So hit-test the point instead, which is what a reader's eye does. Only
+   * possible while the element is in the viewport; below the fold the walk is
+   * still the best available answer, and it is right wherever the background
+   * comes from an ancestor, which is the ordinary case.
+   */
+  const walkUp = (el) => {
     let n = el;
     while (n && n !== document.documentElement) {
       const c = parse(getComputedStyle(n).backgroundColor);
@@ -106,10 +157,42 @@ const PROBE = `(() => {
     }
     return { r: 255, g: 255, b: 255, a: 1 };
   };
+  const bgOf = (el) => {
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    const inView = x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
+    if (inView) {
+      // Starting AT the element, not above it: a button paints its own
+      // background, and skipping it reported gold-on-black buttons as
+      // black-on-black.
+      for (const n of document.elementsFromPoint(x, y)) {
+        const c = parse(getComputedStyle(n).backgroundColor);
+        if (c && c.a > 0.5) return c;
+      }
+    }
+    return walkUp(el);
+  };
+
+  /*
+   * Deliberately hidden from sight but present for a screen reader.
+   *
+   * The .sr-only pattern is a 1px absolutely positioned box clipped to
+   * nothing, so it has a non-zero rect and passes every other visibility test.
+   * Measuring its contrast asks what colour invisible text is against, and the
+   * answer was being reported as a defect on a control that is correct.
+   */
+  const screenReaderOnly = (el, s, r) =>
+    r.width <= 1 &&
+    r.height <= 1 &&
+    s.position === "absolute" &&
+    s.overflow === "hidden" &&
+    (s.clip.indexOf("rect(0") === 0 || s.clipPath.indexOf("inset(50%)") === 0);
 
   const visible = (el) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
+    if (screenReaderOnly(el, s, r)) return false;
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none" && parseFloat(s.opacity) > 0.1;
   };
 
@@ -215,16 +298,36 @@ const PROBE = `(() => {
  */
 async function stubFonts(page: Page) {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) =>
-    route.fulfill({ status: 200, contentType: "text/css", body: "" })
+    route.fulfill({ status: 200, contentType: "text/css", body: "" }),
   );
 }
 
 async function login(page: Page) {
-  await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded", timeout: 40000 });
-  await page.fill("input[type=email]", EMAIL);
-  await page.fill("input[type=password]", PASSWORD);
-  await page.click("button[type=submit]");
-  await page.waitForURL((u) => !u.pathname.includes("login"), { timeout: 40000 });
+  /*
+   * Signed in through the API rather than by driving the form.
+   *
+   * Clicking the real button made the sweep depend on React hydration timing:
+   * once the signed-out pass runs first this page arrives with history behind
+   * it, and a press that lands early is swallowed, which the sweep then
+   * reported as a broken sign-in on a form that works. The form itself is
+   * measured in the signed-out pass, so nothing is lost by not using it here.
+   */
+  await page.goto(`${BASE}/login`, {
+    waitUntil: "domcontentloaded",
+    timeout: 40000,
+  });
+  const status = await page.evaluate(
+    async ([email, password]) => {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      return res.status;
+    },
+    [EMAIL, PASSWORD]
+  );
+  if (status !== 200) throw new Error(`sign-in failed with ${status}`);
 }
 
 /**
@@ -245,16 +348,36 @@ async function login(page: Page) {
  */
 async function focusVisible(page: Page): Promise<boolean> {
   return page.evaluate(() => {
-    const candidates = [...document.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea")];
+    const candidates = [
+      ...document.querySelectorAll<HTMLElement>(
+        "a[href], button, input, select, textarea",
+      ),
+    ];
     for (const el of candidates) {
       const r = el.getBoundingClientRect();
       const s = getComputedStyle(el);
-      if (r.width < 1 || r.height < 1 || s.visibility === "hidden" || s.display === "none") continue;
-      const b = [s.outlineWidth, s.outlineStyle, s.outlineColor, s.boxShadow].join("|");
+      if (
+        r.width < 1 ||
+        r.height < 1 ||
+        s.visibility === "hidden" ||
+        s.display === "none"
+      )
+        continue;
+      const b = [
+        s.outlineWidth,
+        s.outlineStyle,
+        s.outlineColor,
+        s.boxShadow,
+      ].join("|");
       el.focus();
       if (document.activeElement !== el) continue;
       const a2 = getComputedStyle(el);
-      const a = [a2.outlineWidth, a2.outlineStyle, a2.outlineColor, a2.boxShadow].join("|");
+      const a = [
+        a2.outlineWidth,
+        a2.outlineStyle,
+        a2.outlineColor,
+        a2.boxShadow,
+      ].join("|");
       return a !== b;
     }
     // Nothing focusable rendered: not a focus-ring failure to report.
@@ -262,79 +385,187 @@ async function focusVisible(page: Page): Promise<boolean> {
   });
 }
 
+/**
+ * Everything measured about one route at one width.
+ *
+ * Extracted so the signed-out pass and the signed-in pass cannot drift into
+ * checking different things, which is exactly how the route list came to cover
+ * less than the product.
+ */
+async function measure(
+  page: Page,
+  route: string,
+  width: string,
+  findings: Finding[],
+  /**
+   * Restrict this pass to one rule. The dark pass measures contrast only:
+   * target sizes and accessible names do not change with the theme, and
+   * reporting them twice would double every finding.
+   */
+  only: string | null = null,
+): Promise<void> {
+  /*
+   * Collected here and filtered once, rather than at each site. `only` is a
+   * property of the pass, not of any individual check, and threading it
+   * through ten call sites is how one of them ends up forgotten.
+   */
+  const local: Finding[] = [];
+  const flush = () => {
+    for (const f of local) if (!only || f.rule === only) findings.push(f);
+  };
+  try {
+    await page.goto(BASE + route, {
+      waitUntil: "domcontentloaded",
+      timeout: 40000,
+    });
+  } catch {
+    local.push({ route, width, rule: "load", detail: "timed out" });
+    flush();
+    return;
+  }
+
+  const r = (await page.evaluate(PROBE)) as any;
+
+  for (const c of r.contrast) {
+    local.push({
+      route,
+      width,
+      rule: "contrast",
+      detail: `${c.got}:1 needs ${c.need}:1 -- ${c.size}px ${c.color} on ${c.bg} -- "${c.text}"`,
+    });
+  }
+  // Only mobile has a touch requirement; a mouse pointer is precise.
+  if (width === "mobile") {
+    for (const t of r.targets) {
+      local.push({
+        route,
+        width,
+        rule: "touch-target",
+        detail: `${t.w}x${t.h} <${t.tag}> "${t.text}"`,
+      });
+    }
+  }
+  const h1s = r.headings.filter((h: any) => h.level === 1);
+  if (h1s.length === 0) {
+    local.push({ route, width, rule: "heading", detail: "no h1" });
+  } else if (h1s.length > 1) {
+    local.push({
+      route,
+      width,
+      rule: "heading",
+      detail: `${h1s.length} h1 elements`,
+    });
+  }
+  for (let i = 1; i < r.headings.length; i++) {
+    const jump = r.headings[i].level - r.headings[i - 1].level;
+    if (jump > 1) {
+      local.push({
+        route,
+        width,
+        rule: "heading",
+        detail: `h${r.headings[i - 1].level} to h${r.headings[i].level} -- "${r.headings[i].text}"`,
+      });
+    }
+  }
+  for (const l of r.labels) {
+    local.push({
+      route,
+      width,
+      rule: "label",
+      detail: `<${l.tag}${l.type ? ` type=${l.type}` : ""}> name="${l.name}" placeholder="${l.placeholder}"`,
+    });
+  }
+  for (const im of r.images) {
+    local.push({ route, width, rule: "img-alt", detail: im.src });
+  }
+  if (r.overflow) {
+    local.push({
+      route,
+      width,
+      rule: "overflow",
+      detail: "page scrolls horizontally",
+    });
+  }
+  if (!(await focusVisible(page))) {
+    local.push({
+      route,
+      width,
+      rule: "focus",
+      detail: "no visible change on focus",
+    });
+  }
+  flush();
+}
+
+const THEMES = ["light", "dark"] as const;
+
+/**
+ * Put the page in dark mode the way the product does.
+ *
+ * `colorScheme: "dark"` on the context covers `prefers-color-scheme`, but the
+ * theme provider writes a `dark` class on the root element and remembers the
+ * choice in localStorage, so a page loaded without it renders light whatever
+ * the media query says. Both are set: the class for this load, the stored
+ * value for every navigation after it.
+ */
+async function forceDark(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("brost.theme", "dark");
+    } catch {
+      /* storage off: the class below still applies */
+    }
+    document.documentElement.classList.add("dark");
+  });
+}
+
 async function main() {
   const findings: Finding[] = [];
-  const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
+  const browser = await chromium.launch({
+    executablePath: "/opt/pw-browsers/chromium",
+  });
 
+  /*
+   * Both themes, because contrast is a property of the pair.
+   *
+   * This measured the light theme only, and dark is not a variant of it: the
+   * palette swaps through CSS variables, so anything written as a fixed colour
+   * rather than a token keeps its light-mode value on a dark background and is
+   * never checked. Reporting "0 findings" while half the shipped product went
+   * unmeasured is the same failure as a health page that only looks at the
+   * agents which ran.
+   *
+   * Touch targets and names do not change with the theme, so those rules are
+   * measured once, in light, and the dark pass reports contrast alone. That
+   * keeps the run from doubling and keeps one finding from being listed twice.
+   */
   for (const vp of WIDTHS) {
-    const ctx = await browser.newContext({
-      viewport: { width: vp.width, height: vp.height },
-      isMobile: vp.name === "mobile",
-      hasTouch: vp.name === "mobile",
-    });
-    const page = await ctx.newPage();
-    await stubFonts(page);
-    await login(page);
+    for (const theme of THEMES) {
+      const ctx = await browser.newContext({
+        viewport: { width: vp.width, height: vp.height },
+        isMobile: vp.name === "mobile",
+        hasTouch: vp.name === "mobile",
+        colorScheme: theme,
+      });
+      const page = await ctx.newPage();
+      await stubFonts(page);
+      if (theme === "dark") await forceDark(page);
 
-    for (const route of ROUTES) {
-      try {
-        await page.goto(BASE + route, { waitUntil: "domcontentloaded", timeout: 40000 });
-      } catch {
-        findings.push({ route, width: vp.name, rule: "load", detail: "timed out" });
-        continue;
+      const label = theme === "dark" ? `${vp.name} dark` : vp.name;
+      const only = theme === "dark" ? "contrast" : null;
+
+      // Signed out first, in a context that has never held a session cookie.
+      for (const route of SIGNED_OUT_ROUTES) {
+        await measure(page, route, label, findings, only);
       }
 
-      const r = (await page.evaluate(PROBE)) as any;
+      await login(page);
 
-      for (const c of r.contrast) {
-        findings.push({
-          route,
-          width: vp.name,
-          rule: "contrast",
-          detail: `${c.got}:1 needs ${c.need}:1 -- ${c.size}px ${c.color} on ${c.bg} -- "${c.text}"`,
-        });
+      for (const route of ROUTES) {
+        await measure(page, route, label, findings, only);
       }
-      // Only mobile has a touch requirement; a mouse pointer is precise.
-      if (vp.name === "mobile") {
-        for (const t of r.targets) {
-          findings.push({
-            route, width: vp.name, rule: "touch-target",
-            detail: `${t.w}x${t.h} <${t.tag}> "${t.text}"`,
-          });
-        }
-      }
-      const h1s = r.headings.filter((h: any) => h.level === 1);
-      if (h1s.length === 0) {
-        findings.push({ route, width: vp.name, rule: "heading", detail: "no h1" });
-      } else if (h1s.length > 1) {
-        findings.push({ route, width: vp.name, rule: "heading", detail: `${h1s.length} h1 elements` });
-      }
-      for (let i = 1; i < r.headings.length; i++) {
-        const jump = r.headings[i].level - r.headings[i - 1].level;
-        if (jump > 1) {
-          findings.push({
-            route, width: vp.name, rule: "heading",
-            detail: `h${r.headings[i - 1].level} to h${r.headings[i].level} -- "${r.headings[i].text}"`,
-          });
-        }
-      }
-      for (const l of r.labels) {
-        findings.push({
-          route, width: vp.name, rule: "label",
-          detail: `<${l.tag}${l.type ? ` type=${l.type}` : ""}> name="${l.name}" placeholder="${l.placeholder}"`,
-        });
-      }
-      for (const im of r.images) {
-        findings.push({ route, width: vp.name, rule: "img-alt", detail: im.src });
-      }
-      if (r.overflow) {
-        findings.push({ route, width: vp.name, rule: "overflow", detail: "page scrolls horizontally" });
-      }
-      if (!(await focusVisible(page))) {
-        findings.push({ route, width: vp.name, rule: "focus", detail: "no visible change on focus" });
-      }
+      await ctx.close();
     }
-    await ctx.close();
   }
   await browser.close();
 
@@ -348,16 +579,31 @@ async function main() {
   const out: string[] = [];
   out.push("# Accessibility report");
   out.push("");
-  out.push("Generated by `npx tsx scripts/a11y-sweep.ts` against a running server.");
-  out.push("Measured in Chromium at three widths, signed in, on rendered output.");
+  out.push(
+    "Generated by `npx tsx scripts/a11y-sweep.ts` against a running server.",
+  );
+  out.push(
+    "Measured in Chromium at three widths and in both themes, on rendered output: one pass signed out " +
+      "over the pages a customer meets before they have an account, then one signed in " +
+      "over the operator pages.",
+  );
   out.push("");
   out.push(
     "The remote font stylesheet is stubbed empty, so the fallback stack is what gets " +
       "measured. That is the more conservative reading and matches what an operator behind " +
-      "a proxy that blocks Google actually sees."
+      "a proxy that blocks Google actually sees.",
   );
   out.push("");
-  out.push(`${ROUTES.length} routes x ${WIDTHS.length} widths. **${findings.length} findings.**`);
+  out.push(
+    `${SIGNED_OUT_ROUTES.length} signed-out and ${ROUTES.length} signed-in routes x ` +
+      `${WIDTHS.length} widths x ${THEMES.length} themes. **${findings.length} findings.**`,
+  );
+  out.push("");
+  out.push(
+    "The dark pass reports contrast only. Target sizes and accessible names do " +
+      "not change with the theme, so measuring them twice would list every " +
+      "finding twice without covering anything more.",
+  );
   out.push("");
 
   if (findings.length === 0) {
@@ -365,11 +611,15 @@ async function main() {
   } else {
     out.push("| Rule | Count |");
     out.push("| --- | --- |");
-    for (const [rule, fs] of [...byRule].sort((a, b) => b[1].length - a[1].length)) {
+    for (const [rule, fs] of [...byRule].sort(
+      (a, b) => b[1].length - a[1].length,
+    )) {
       out.push(`| ${rule} | ${fs.length} |`);
     }
     out.push("");
-    for (const [rule, fs] of [...byRule].sort((a, b) => b[1].length - a[1].length)) {
+    for (const [rule, fs] of [...byRule].sort(
+      (a, b) => b[1].length - a[1].length,
+    )) {
       out.push(`## ${rule} (${fs.length})`);
       out.push("");
       // Deduplicated: the same control on twelve pages is one thing to fix.
@@ -380,10 +630,15 @@ async function main() {
         const key = `${f.width}|${f.detail}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const routes = [...new Set(
-          fs.filter((x) => x.detail === f.detail && x.width === f.width).map((x) => x.route)
-        )];
-        const where = routes.length > 3 ? `${routes.length} routes` : routes.join(", ");
+        const routes = [
+          ...new Set(
+            fs
+              .filter((x) => x.detail === f.detail && x.width === f.width)
+              .map((x) => x.route),
+          ),
+        ];
+        const where =
+          routes.length > 3 ? `${routes.length} routes` : routes.join(", ");
         out.push(`- \`${f.width}\` ${f.detail} _(${where})_`);
       }
       out.push("");
@@ -391,9 +646,16 @@ async function main() {
   }
 
   mkdirSync(join(process.cwd(), "docs"), { recursive: true });
-  writeFileSync(join(process.cwd(), "docs/accessibility-report.md"), out.join("\n"));
-  console.error(`[a11y] ${findings.length} findings -> docs/accessibility-report.md`);
-  for (const [rule, fs] of [...byRule].sort((a, b) => b[1].length - a[1].length)) {
+  writeFileSync(
+    join(process.cwd(), "docs/accessibility-report.md"),
+    out.join("\n"),
+  );
+  console.error(
+    `[a11y] ${findings.length} findings -> docs/accessibility-report.md`,
+  );
+  for (const [rule, fs] of [...byRule].sort(
+    (a, b) => b[1].length - a[1].length,
+  )) {
     console.error(`[a11y]   ${rule}: ${fs.length}`);
   }
 }

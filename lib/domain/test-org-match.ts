@@ -58,3 +58,35 @@ export function looksLikeTestOrg(name: string | null | undefined): boolean {
 export function hasGeneratedTag(name: string | null | undefined): boolean {
   return TAG_SUFFIX.test((name ?? "").trim());
 }
+
+/**
+ * An address that cannot belong to a real customer.
+ *
+ * RFC 2606 reserves `.test` and the `example.*` domains precisely so nobody
+ * can register them, which makes this a signal with no false positives rather
+ * than a heuristic. That is why it needs no second discriminator, unlike the
+ * name matching above.
+ *
+ * Deliberately for HIDING rows, never for deleting them. The organization
+ * matcher is strict because a false positive there destroys a customer's
+ * account; this one only decides whether a log line appears in the default
+ * view, and `?tests=1` brings everything back regardless. Do not reach for it
+ * from the purge tool.
+ */
+export function looksLikeTestEmail(email: string | null | undefined): boolean {
+  const e = (email ?? "").trim().toLowerCase();
+  const at = e.lastIndexOf("@");
+  if (at < 0) return false;
+  const domain = e.slice(at + 1);
+  if (!domain) return false;
+  return (
+    domain === "test" ||
+    domain.endsWith(".test") ||
+    domain === "example.com" ||
+    domain === "example.org" ||
+    domain === "example.net" ||
+    domain.endsWith(".example.com") ||
+    domain.endsWith(".example.org") ||
+    domain.endsWith(".example.net")
+  );
+}

@@ -140,7 +140,7 @@ export function SwipeRail({
                  screen and were 30px tall, the smallest control on it. */
               className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition md:min-h-0 ${
                 current
-                  ? "border-accent bg-accent text-white"
+                  ? "border-accent bg-accent text-on-status"
                   : item.attention
                     ? "border-review/40 bg-review/10 text-review"
                     : "border-border bg-surface text-muted-foreground"
@@ -148,7 +148,11 @@ export function SwipeRail({
             >
               <span className="whitespace-nowrap font-medium">{item.label}</span>
               <span
-                className={`tabular-nums ${current ? "text-white/80" : "opacity-70"}`}
+                /* The same on-fill token as the label beside it, at the same
+                   opacity. Left as text-white when the label was converted,
+                   which is how one half of a control ends up unreadable while
+                   the other half is fixed. */
+                className={`tabular-nums ${current ? "text-on-status/80" : "opacity-70"}`}
               >
                 {item.count}
               </span>

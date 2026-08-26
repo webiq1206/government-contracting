@@ -46,7 +46,7 @@ const ROUTES = [
   "/review",
   "/call-queue",
   "/subs",
-  "/email-log",
+  "/communications",
   "/contracts",
   "/compliance",
   "/analytics",
@@ -275,7 +275,7 @@ async function main() {
   out.push("## Notes");
   out.push("");
   out.push(
-    "`/email-log` was the one route this measurement caught: 298ms on ninety rows and 652ms at " +
+    "`/communications` was the one route this measurement caught: 298ms on ninety rows and 652ms at " +
       "scale. The cause was not row count. Its query resolved \"did this conversation get a " +
       "reply\" with a LATERAL subquery, which runs once per row -- EXPLAIN showed `loops=20060` " +
       "for a query whose only job was to produce nine counters. The set of answered " +

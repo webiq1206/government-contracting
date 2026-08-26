@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AutomationRules } from "@/lib/domain/intake";
+import { ruleConflicts, type AutomationRules } from "@/lib/domain/intake";
+import { formatHour } from "@/lib/domain/call-queue";
 import { EditorialTabs } from "@/components/editorial-tabs";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 
 interface Preview {
   past_due_open: number;
@@ -33,6 +35,13 @@ export function AutomationRulesForm({
 }) {
   const router = useRouter();
   const [form, setForm] = useState<AutomationRules>(initial);
+  /*
+   * Compared against what was loaded rather than tracked with a flag. These
+   * rules govern how often other people's businesses hear from this company,
+   * so an edit abandoned by a sidebar click is a change somebody believes they
+   * made.
+   */
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,6 +92,35 @@ export function AutomationRulesForm({
     (key: keyof AutomationRules) => (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [key]: Number(e.target.value) }));
 
+  const conflicts = ruleConflicts(form);
+  const blocking = conflicts.some((c) => c.severity === "error");
+
+  const conflictPanel = conflicts.length > 0 && (
+    /*
+     * Rules that contradict each other, before publishing.
+     *
+     * Each field validates itself, but the interesting mistakes are pairs: a
+     * red warning further out than the amber one, or a calling window an hour
+     * wide. No single field can catch those, so they are checked together and
+     * shown here rather than discovered in the behaviour a fortnight later.
+     */
+    <ul className="mt-4 space-y-1.5">
+      {conflicts.map((c, i) => (
+        <li
+          key={i}
+          role={c.severity === "error" ? "alert" : undefined}
+          className={`rounded-md border px-3 py-2 text-sm leading-relaxed ${
+            c.severity === "error"
+              ? "border-risk/40 bg-risk/5 text-risk"
+              : "border-review/40 bg-review/5 text-review"
+          }`}
+        >
+          {c.message}
+        </li>
+      ))}
+    </ul>
+  );
+
   const saveBar = (
     <div className="mt-6 rounded-md border border-accent/40 bg-accent-soft/40 p-4">
       <h2 className="text-base font-semibold text-slate-900">
@@ -121,8 +159,14 @@ export function AutomationRulesForm({
           )}
         </ul>
       )}
+      {conflictPanel}
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button type="button" className="btn-primary" onClick={() => void save()} disabled={saving}>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => void save()}
+          disabled={saving || blocking}
+        >
           {saving ? "Saving…" : "Save rules"}
         </button>
         {savedAt && !saving && (
@@ -137,6 +181,10 @@ export function AutomationRulesForm({
 
   return (
     <fieldset disabled={readOnly} className="contents">
+    <UnsavedGuard
+      when={dirty && !readOnly}
+      message="Your automation rules have unsaved changes. Leave without saving?"
+    />
     <EditorialTabs
       ariaLabel="Automation rule sections"
       defaultTab="deadlines"
@@ -150,6 +198,9 @@ export function AutomationRulesForm({
         retention: "archive",
         calls: "calls",
         calling: "calls",
+        outreach: "outreach",
+        followup: "outreach",
+        "follow-up": "outreach",
       }}
       tabs={[
         {
@@ -201,7 +252,7 @@ export function AutomationRulesForm({
                   <span className="badge bg-risk/15 text-risk">
                     Urgent · under {Math.min(form.urgent_days, form.approaching_days)} days
                   </span>
-                  <span className="badge bg-risk text-white">Past due · deadline passed</span>
+                  <span className="badge bg-risk text-on-status">Past due · deadline passed</span>
                   <span className="badge bg-slate-200 text-slate-600">
                     Expired · archived automatically
                   </span>
@@ -263,6 +314,87 @@ export function AutomationRulesForm({
           ),
         },
         {
+          id: "outreach",
+          label: "Outreach",
+          content: (
+            <div className="mx-auto w-full max-w-4xl space-y-4 px-5 py-6 sm:px-6">
+              <section className="card">
+                <h2 className="font-display text-xl text-foreground">Chasing subcontractors</h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                  When a subcontractor does not reply to the first email, Brost Co sends a
+                  follow-up. These are rules about how often this account writes to other
+                  people&rsquo;s businesses, so they were worth putting where you can see them
+                  rather than leaving fixed in the code. Chasing stops the moment somebody
+                  replies, quotes, or declines, whichever follow-up they answer.
+                </p>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Hours to wait before following up"
+                    hint="Measured from the message that went unanswered, not from the first one."
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={720}
+                      className="input"
+                      value={form.followup_hours}
+                      onChange={num("followup_hours")}
+                    />
+                  </Field>
+                  <Field
+                    label="Follow-ups per subcontractor, per opportunity"
+                    hint="After the first email. 0 means never chase: one email and nothing more."
+                  >
+                    <input
+                      type="number"
+                      min={0}
+                      max={5}
+                      className="input"
+                      value={form.followup_max}
+                      onChange={num("followup_max")}
+                    />
+                  </Field>
+                  <Field
+                    label="Follow-ups sent per run"
+                    hint="The sweep runs every fifteen minutes. A smaller number spreads a backlog out rather than sending it in a burst, which reads better to a mail provider."
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      className="input"
+                      value={form.outreach_batch_limit}
+                      onChange={num("outreach_batch_limit")}
+                    />
+                  </Field>
+                </div>
+                <p className="mt-4 rounded-md border border-border bg-surface p-3 text-sm leading-relaxed text-slate-700">
+                  {form.followup_max === 0 ? (
+                    <>
+                      Nobody will be chased. Each subcontractor gets the first email and
+                      nothing else, whether or not they answer.
+                    </>
+                  ) : (
+                    <>
+                      A subcontractor who never replies receives{" "}
+                      <strong className="font-semibold">{1 + form.followup_max}</strong> email
+                      {form.followup_max === 0 ? "" : "s"} in total about one opportunity, the
+                      last of them about{" "}
+                      <strong className="font-semibold">
+                        {Math.round((form.followup_hours * form.followup_max) / 24) < 1
+                          ? `${form.followup_hours * form.followup_max} hours`
+                          : `${Math.round((form.followup_hours * form.followup_max) / 24)} days`}
+                      </strong>{" "}
+                      after the first.
+                    </>
+                  )}
+                </p>
+              </section>
+              {saveBar}
+            </div>
+          ),
+        },
+        {
           id: "calls",
           label: "Calls",
           content: (
@@ -289,7 +421,7 @@ export function AutomationRulesForm({
                     checked={!form.calls_enabled}
                     onChange={() => setForm((f) => ({ ...f, calls_enabled: false }))}
                     label="Email only, never ask me to call"
-                    hint="No call cards, no call step, nothing waiting on a phone call. Outreach emails, 48-hour follow-ups, and automatic quote capture from replies all keep running."
+                    hint="No call cards, no call step, nothing waiting on a phone call. Outreach emails, their follow-ups, and automatic quote capture from replies all keep running."
                   />
                 </div>
                 {!form.calls_enabled && (
@@ -300,6 +432,72 @@ export function AutomationRulesForm({
                   </p>
                 )}
               </section>
+
+              {form.calls_enabled && (
+                <section className="card">
+                  <h2 className="font-display text-xl text-foreground">When to call, and how often</h2>
+                  <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                    The queue already works out what time it is where each subcontractor is.
+                    These rules decide what it does with that: outside your window a card stays
+                    in the list and says it is the wrong hour there rather than being handed to
+                    you to dial. Attempts work the same way. Nothing is hidden, because a queue
+                    that quietly drops work is a queue nobody trusts.
+                  </p>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                    <Field
+                      label="Earliest hour to call"
+                      hint="In the subcontractor's own local time, not yours."
+                    >
+                      <input
+                        type="number"
+                        min={0}
+                        max={23}
+                        className="input"
+                        value={form.call_hours_start}
+                        onChange={num("call_hours_start")}
+                      />
+                    </Field>
+                    <Field
+                      label="Latest hour to call"
+                      hint="Exclusive: 17 means calls stop at five o'clock their time."
+                    >
+                      <input
+                        type="number"
+                        min={0}
+                        max={23}
+                        className="input"
+                        value={form.call_hours_end}
+                        onChange={num("call_hours_end")}
+                      />
+                    </Field>
+                    <Field
+                      label="Unanswered attempts before stopping"
+                      hint="0 means keep offering the card forever, which is what this used to do."
+                    >
+                      <input
+                        type="number"
+                        min={0}
+                        max={20}
+                        className="input"
+                        value={form.call_max_attempts}
+                        onChange={num("call_max_attempts")}
+                      />
+                    </Field>
+                  </div>
+                  <p className="mt-4 rounded-md border border-border bg-surface p-3 text-sm leading-relaxed text-slate-700">
+                    Calls are offered between{" "}
+                    <strong className="font-semibold">
+                      {formatHour(form.call_hours_start)} and {formatHour(form.call_hours_end)}
+                    </strong>{" "}
+                    where the subcontractor is.{" "}
+                    {form.call_max_attempts === 0
+                      ? "There is no attempt limit, so a number that never answers keeps coming back."
+                      : `After ${form.call_max_attempts} unanswered attempt${form.call_max_attempts === 1 ? "" : "s"} the card stops being offered and says why.`}{" "}
+                    A subcontractor in a state that spans two time zones has no certain hour, so
+                    those are always offered with the caveat rather than guessed at.
+                  </p>
+                </section>
+              )}
               {saveBar}
             </div>
           ),

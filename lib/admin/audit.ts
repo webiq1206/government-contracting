@@ -22,6 +22,12 @@ export type AdminAction =
   | "account_suspended"
   | "account_reactivated"
   | "account_deleted"
+  // The scheduling and the purge are separate entries on purpose. One is a
+  // decision somebody made and could still take back; the other is the moment
+  // the data actually went, and the gap between them is the whole point of the
+  // grace period.
+  | "account_deletion_scheduled"
+  | "account_deletion_cancelled"
   | "impersonation_started"
   | "impersonation_ended"
   | "discount_applied"
@@ -105,9 +111,27 @@ export async function recentAdminActions(
 
   if (opts?.includeTestAccounts) return rows;
 
-  const { looksLikeTestOrg } = await import("../domain/test-org-match");
+  const { looksLikeTestOrg, looksLikeTestEmail } = await import("../domain/test-org-match");
+  /*
+   * Two signals, because one of them cannot see half the rows.
+   *
+   * The name matcher only fires on a target organization, and an invitation
+   * action has none: revoking an invitation records the administrator and the
+   * invited address and nothing else. So every invitation the suite ever
+   * created and revoked sat in the production view looking like real history,
+   * which is the exact problem this filter exists to solve, on the rows it
+   * could not reach.
+   *
+   * The acting address settles it. `.test` and the `example.*` domains are
+   * reserved by RFC 2606 and cannot be registered, so an administrator at one
+   * is a fixture with certainty rather than by inference.
+   */
   return rows
-    .filter((r) => !(r.target_org_name && looksLikeTestOrg(r.target_org_name)))
+    .filter(
+      (r) =>
+        !(r.target_org_name && looksLikeTestOrg(r.target_org_name)) &&
+        !looksLikeTestEmail(r.admin_email)
+    )
     .slice(0, limit);
 }
 

@@ -20,7 +20,14 @@ export interface ContractPlanInput {
   /** Non-small-business subcontractor spend, percent of total (0-100). */
   nonSsPct: number;
   cparsStatus: string | null;
-  cparsDue: string | null;
+  /**
+   * Accepts a Date as well as a string, because node-postgres hands back a
+   * Date for a timestamptz and the page's `as string | null` cast was a lie
+   * TypeScript accepted. Any contract with a CPARS due date crashed the whole
+   * Contracts page on `.slice is not a function`, and none of the seeded
+   * contracts had one, so it never fired in development.
+   */
+  cparsDue: string | Date | null;
   /** Injected clock (ISO) so overdue detection is testable. */
   now: string;
 }
@@ -71,6 +78,13 @@ const DEFS: { key: string; title: string; plain: string; owner: PlanStep["owner"
     owner: "you",
   },
 ];
+
+/** yyyy-mm-dd from either shape, or empty when the value is unusable. */
+function isoDay(v: string | Date): string {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? "" : v.toISOString().slice(0, 10);
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? String(v).slice(0, 10) : d.toISOString().slice(0, 10);
+}
 
 export function buildContractPlan(input: ContractPlanInput): StepPlan {
   const now = new Date(input.now).getTime();
@@ -150,7 +164,7 @@ export function buildContractPlan(input: ContractPlanInput): StepPlan {
       case "cpars":
         if (cparsDone) return "Review complete";
         return input.cparsDue
-          ? `Status: ${cpars.replace(/_/g, " ")}, due ${input.cparsDue.slice(0, 10)}`
+          ? `Status: ${cpars.replace(/_/g, " ")}, due ${isoDay(input.cparsDue)}`
           : `Status: ${cpars.replace(/_/g, " ")}`;
       default:
         return undefined;

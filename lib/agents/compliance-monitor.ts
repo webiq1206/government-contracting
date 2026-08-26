@@ -12,12 +12,16 @@ import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { complete, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
+import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { sam } from "../integrations/sam";
 import { sms } from "../integrations/twilio";
 import { deadlineStatus, daysBetween, nonSsCapState } from "../domain/compliance";
 import { listActiveOrganizations } from "../organizations";
-import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
+import { runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
+
+/** Named once, because the fan-out helper logs under it. */
+const AGENT_NAME = "compliance-monitor";
 import type { AgentResult } from "../types";
 import type { ComplianceStatus } from "../domain/compliance";
 
@@ -112,10 +116,8 @@ export const complianceMonitor: AgentDefinition = {
      * to our alert number. The items it wrote had no org, so the compliance
      * page that exists to show them stayed empty.
      */
-    let orgs = await listActiveOrganizations().catch(() => []);
-    if (orgs.length === 0) {
-      orgs = [{ id: LEGACY_ORG_ID } as Awaited<ReturnType<typeof listActiveOrganizations>>[number]];
-    }
+    const fanout = await orgsToSweep(AGENT_NAME);
+    const orgs = fanout.orgs;
 
     const summaries: string[] = [];
     const failed: string[] = [];
@@ -155,14 +157,18 @@ export const complianceMonitor: AgentDefinition = {
     const failureNote = failed.length
       ? ` ${failed.length} organization(s) could not be checked and need attention.`
       : "";
+    const note = fanoutNote(fanout);
     return {
-      ok: true,
-      summary:
-        (summaries.length === 1 && failed.length === 0
-          ? summaries[0]
-          : `Compliance check across ${summaries.length} of ${summaries.length + failed.length} organizations. ${summaries.join(" | ")}`) +
-        failureNote,
-      humanActionRequired: humanAction,
+      ok: fanout.error == null,
+      summary: note
+        ? note
+        : (summaries.length === 1 && failed.length === 0
+            ? summaries[0]
+            : `Compliance check across ${summaries.length} of ${summaries.length + failed.length} organizations. ${summaries.join(" | ")}`) +
+          failureNote,
+      // Nobody checked is a person-shaped problem: it is the nightly
+      // compliance sweep, and a night it did not happen has to be visible.
+      humanActionRequired: humanAction || fanout.error != null,
     };
   },
 };

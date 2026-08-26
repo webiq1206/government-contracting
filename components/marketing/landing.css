@@ -82,8 +82,8 @@
 .mkt-lp .app-brand { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid var(--gold); color: var(--gold); font-family: "GFS Didot", serif; }
 .mkt-lp .app-body { padding: 28px; }
 .mkt-lp .queue-title { display: flex; justify-content: space-between; padding-bottom: 24px; }
-.mkt-lp .queue-title label, .mkt-lp .task label { font: 500 8px "JetBrains Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--gold-on-dark); }
-.mkt-lp .queue-title h3 { margin: 7px 0 0; font: 400 25px "GFS Didot", serif; }
+.mkt-lp .queue-title em, .mkt-lp .task em { display: block; font: 500 8px "JetBrains Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--gold-on-dark); }
+.mkt-lp .queue-title strong { display: block; margin: 7px 0 0; font: 400 25px "GFS Didot", serif; }
 .mkt-lp .queue-title > span { height: max-content; padding: 6px 9px; border: 1px solid rgba(144,182,154,.55); font: 9px "JetBrains Mono", monospace; color: #b6d0bc; }
 .mkt-lp .task { min-height: 90px; padding: 16px 16px 16px 0; display: grid; grid-template-columns: 48px 1fr auto; align-items: center; border-top: 1px solid rgba(255,255,255,.1); }
 .mkt-lp .task.priority { margin: 0 -10px; padding-left: 9px; background: linear-gradient(90deg,rgba(195,160,107,.1),transparent); border-left: 2px solid var(--gold); }
@@ -205,7 +205,8 @@
   right: 18px;
   bottom: 18px;
   z-index: 2;
-  min-height: 36px;
+  /* 44, not 36: this sits over a video and is the only way to stop it. */
+  min-height: 44px;
   padding: 0 16px;
   border: 1px solid rgba(255,255,255,.28);
   background: rgba(9,10,9,.72);
@@ -398,6 +399,7 @@
 .mkt-lp .hero h1 { font-size: 45px; }
 .mkt-lp .lead { font-size: 14px; }
 .mkt-lp .hero-actions { align-items: stretch; flex-direction: column; gap: 20px; }
+.mkt-lp .hero-actions > a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 .mkt-lp .hero-actions .btn { width: 100%; }
 .mkt-lp .under-link { align-self: flex-start; }
 .mkt-lp .proof { grid-template-columns: 1fr; gap: 16px; }
@@ -407,7 +409,7 @@
 .mkt-lp .hero-product { padding: 65px 0 42px; }
 .mkt-lp .app-window { transform: none; animation: none; }
 .mkt-lp .app-body { padding: 16px; }
-.mkt-lp .queue-title h3 { font-size: 20px; }
+.mkt-lp .queue-title strong { font-size: 20px; }
 .mkt-lp .task { grid-template-columns: 32px 1fr; }
 .mkt-lp .task button { display: none; }
 .mkt-lp .task b { font-size: 10px; }
@@ -455,6 +457,17 @@
 .mkt-lp .footer-top { padding: 58px 0; grid-template-columns: 1fr 1fr; gap: 42px 25px; }
 .mkt-lp .footer-top > div { grid-column: 1/-1; }
 .mkt-lp .footer-bottom { padding: 20px; flex-direction: column; align-items: flex-start; }
+/* Thumb-sized where a thumb is pressing. At 10px in a 13px-gapped column these
+   footer links were 15px tall, which is a coin toss on a phone. The column
+   keeps its own gap on a desktop pointer, where 15px is precise enough. */
+.mkt-lp .footer-top nav { gap: 0; }
+.mkt-lp .footer-top nav a { display: flex; align-items: center; min-height: 44px; }
+/* Same rule for the rest of the phone-sized targets the sweep measured: the
+   two wordmark links, the underlined secondary calls to action, and the
+   contact address. Each was between 14 and 28 pixels tall. */
+.mkt-lp .type-logo,
+.mkt-lp .under-link,
+.mkt-lp .faq-layout .sticky a { display: inline-flex; align-items: center; min-height: 44px; }
     }
     @media (max-width: 420px) {
 .mkt-lp .hero h1 { font-size: 40px; }

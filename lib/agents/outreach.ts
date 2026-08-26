@@ -2,10 +2,10 @@
  * OUTREACH, triggered when a sub clears verification.
  * Renders the active outreach template (Template 1) with the opportunity, sub,
  * and profile context, sends it from the real Gmail account with open/click
- * tracking, records the communication with a 48h follow-up timestamp, and moves
+ * tracking, records the communication with a follow-up timestamp, and moves
  * the opportunity into the outreach stage. If Gmail is not connected, the email
  * is still stored as a draft and flagged for a human to send. The worker's
- * scheduler handles the 48h follow-up by scanning communications.follow_up_at;
+ * scheduler handles the follow-up by scanning communications.follow_up_at;
  * reply handling is done by the reply-poller (which enqueues Call Prep).
  *
  * When the account has turned calling off, the send is identical and no call
@@ -53,7 +53,7 @@ export const outreach: AgentDefinition = {
   name: "outreach",
   label: "Outreach",
   description:
-    "Renders + sends the Template 1 outreach email to a verified sub (with tracking), records the communication, and sets a 48h follow-up.",
+    "Renders + sends the Template 1 outreach email to a verified sub (with tracking), records the communication, and schedules a follow-up per the automation rules.",
   worksWithoutClaude: true, // templated send; no Claude needed
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string;
@@ -457,7 +457,15 @@ export const outreach: AgentDefinition = {
     }
 
     const trackingId = randomUUID();
-    const followUpAt = new Date(Date.now() + 48 * 3_600_000).toISOString();
+    // The follow-up interval is a rule now rather than a constant here, and
+    // `followup_max: 0` means the operator has asked not to chase at all, so
+    // no marker is written and the sweep never picks this message up.
+    const { getAutomationRules } = await import("../app-settings");
+    const rules = await getAutomationRules();
+    const followUpAt =
+      rules.followup_max > 0
+        ? new Date(Date.now() + rules.followup_hours * 3_600_000).toISOString()
+        : null;
 
     let messageId: string | null = null;
     let threadId: string | null = null;
@@ -532,8 +540,8 @@ export const outreach: AgentDefinition = {
         messageId,
         threadId,
         trackingId,
-        // Only schedule the automated 48h follow-up when the initial message
-        // actually went out — following up on a draft/failed send would email
+        // Only schedule the automated follow-up when the initial message
+        // actually went out: following up on a draft or failed send would email
         // "following up on my note below" about a note that was never sent.
         sent ? followUpAt : null,
         provider,
@@ -562,7 +570,7 @@ export const outreach: AgentDefinition = {
             ? { document_links: gathered.links.map((l) => ({ name: l.name, url: l.url })) }
             : {}),
         }),
-        // The real Message-ID header, so the 48h follow-up can thread under
+        // The real Message-ID header, so the follow-up can thread under
         // this exact email in the subcontractor's own mail client.
         rfc822MessageId,
         // A draft or a failed send is NOT "sent". Recording it as sent is what
@@ -614,7 +622,7 @@ export const outreach: AgentDefinition = {
     //
     // With calling off there is no card and nothing to wait for: the email step
     // is complete, so the opportunity advances to collecting quotes on the same
-    // beat it would otherwise have entered the call queue. The 48h follow-up is
+    // beat it would otherwise have entered the call queue. The follow-up is
     // unaffected, it runs off communications.follow_up_at, not the stage.
     const enqueued: AgentResult["enqueued"] =
       sent && callsEnabled
@@ -633,7 +641,7 @@ export const outreach: AgentDefinition = {
     }
 
     const summary = sent
-      ? `Sent outreach to ${sub.company_name} <${sub.email}>; 48h follow-up scheduled, ${
+      ? `Sent outreach to ${sub.company_name} <${sub.email}>; ${followUpAt ? `follow-up in ${rules.followup_hours}h` : "no follow-up (chasing is off)"}, ${
           callsEnabled ? "call card queued" : "calling is off so no call card was created"
         }.`
       : `Outreach to ${sub.company_name} stored as draft (${

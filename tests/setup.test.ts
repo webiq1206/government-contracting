@@ -209,3 +209,48 @@ describe("borrowed keys during the trial", () => {
     expect(required).toEqual(["sam", "naics", "claude", "googleMaps"]);
   });
 });
+
+/**
+ * The inbox step used to read `integrationStatus().gmail`, which is whether
+ * the deployment holds Google OAuth credentials. That is one fact shared by
+ * every customer on the platform, so the step showed "done" for a brand-new
+ * account that had never connected a mailbox and could not send a single
+ * outreach email. lib/setup-facts.ts now passes this organization's own
+ * connection state; these guard what the module does with it.
+ */
+describe("the connected inbox step", () => {
+  const base: SetupInputs = {
+    profile: null,
+    integrations: { sam: true, claude: true, googleMaps: true, gmail: false },
+  };
+  const emailItem = (i: SetupInputs) =>
+    computeSetupChecklist(i).items.find((it) => it.key === "email")!;
+
+  it("is outstanding when this account has no mailbox connected", () => {
+    expect(emailItem(base).done).toBe(false);
+  });
+
+  it("is done only when a mailbox is actually connected", () => {
+    expect(emailItem({ ...base, integrations: { ...base.integrations, gmail: true } }).done).toBe(
+      true
+    );
+  });
+
+  it("stays outstanding, and says why, when the deployment cannot offer it", () => {
+    const item = emailItem({
+      ...base,
+      integrations: { ...base.integrations, gmail: true },
+      gmailOffered: false,
+    });
+    // Never done: there is no button to press, so calling it finished would
+    // be the same false reassurance in the other direction.
+    expect(item.done).toBe(false);
+    expect(item.hint).toContain("no Google connection configured");
+  });
+
+  it("treats an absent gmailOffered as offered, which every live deployment is", () => {
+    expect(emailItem({ ...base, integrations: { ...base.integrations, gmail: true } }).done).toBe(
+      true
+    );
+  });
+});

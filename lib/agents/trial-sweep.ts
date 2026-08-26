@@ -81,15 +81,44 @@ export const trialSweep: AgentDefinition = {
     const appUrl = config.appUrl;
 
     // 1. Close trials whose window has passed.
-    const expired = await query<{ id: string; name: string }>(
-      `update organizations
-          set subscription_status = $2, updated_at = now()
-        where subscription_status = $1
-          and trial_ends_at is not null
-          and trial_ends_at <= now()
-        returning id, name`,
-      [TRIAL_STATUS, TRIAL_EXPIRED_STATUS]
-    ).catch(() => []);
+    /*
+     * A failure here used to become an empty list, so the summary said "0
+     * closed" whether the flip had happened or the statement had thrown.
+     *
+     * The customer is not let in by this: the access gates read `trial_ends_at`
+     * directly and lock the account the moment the date passes, which is why
+     * this sweep is not the thing enforcing the limit. What breaks is that the
+     * stored status keeps saying `trial` while the gates behave as expired, so
+     * the admin views, the filters and the analytics that read the column all
+     * disagree with what the customer is experiencing, and nothing anywhere
+     * says which of the two is wrong.
+     */
+    let expired: { id: string; name: string }[];
+    let expiryError: string | null = null;
+    try {
+      expired = await query<{ id: string; name: string }>(
+        `update organizations
+            set subscription_status = $2, updated_at = now()
+          where subscription_status = $1
+            and trial_ends_at is not null
+            and trial_ends_at <= now()
+          returning id, name`,
+        [TRIAL_STATUS, TRIAL_EXPIRED_STATUS]
+      );
+    } catch (err) {
+      expired = [];
+      expiryError = (err as Error).message;
+      await logAgent({
+        agent: "trial-sweep",
+        action: "trial-expiry-failed",
+        level: "error",
+        status: "error",
+        message: `Could not close expired trials: ${expiryError}. Their stored status still says trial while the access gates treat them as expired, so admin views and analytics disagree with what those customers can actually do.`.slice(
+          0,
+          500
+        ),
+      });
+    }
 
     for (const org of expired) {
       await logAgent({
@@ -117,31 +146,63 @@ export const trialSweep: AgentDefinition = {
             and message like $2
             and created_at > now() - interval '36 hours'`,
         [`trial-warning-${org.days_left}d`, `%${org.id}%`]
+        // A failed lookup counts as "already warned" and skips this org for
+        // this sweep. Erring toward silence is right here: the alternative is
+        // emailing the same customer on every run of a sweep that runs hourly,
+        // and the next sweep retries anyway.
       ).catch(() => [{ n: 1 }]);
       if ((already[0]?.n ?? 0) > 0) continue;
 
+      /*
+       * Whether the warning actually went.
+       *
+       * The send swallowed its error and the log said "Warned {email}"
+       * regardless, so a mail outage produced a record of a warning nobody
+       * received. Worse, that log row IS the dedupe marker, so the customer
+       * was never warned at that threshold again: one transient failure
+       * permanently lost somebody's three-day notice, and the audit trail
+       * said they had been told.
+       */
+      let sendError: string | null = null;
       if (org.owner_email && mailReady) {
         const copy = warningCopy(org, appUrl);
-        await systemMail
-          .send({ to: org.owner_email, subject: copy.subject, text: copy.text })
-          .catch(() => undefined);
+        try {
+          await systemMail.send({ to: org.owner_email, subject: copy.subject, text: copy.text });
+        } catch (err) {
+          sendError = (err as Error).message;
+        }
       }
+      const sent = Boolean(org.owner_email && mailReady && !sendError);
       await logAgent({
         agent: "trial-sweep",
-        action: `trial-warning-${org.days_left}d`,
-        level: "info",
+        /*
+         * A failed send is logged under a different action on purpose. The
+         * dedupe above matches on `action = trial-warning-Nd`, so writing that
+         * action would suppress the retry; this way the next sweep tries
+         * again while the threshold is still in the past.
+         */
+        action: sent ? `trial-warning-${org.days_left}d` : `trial-warning-${org.days_left}d-unsent`,
+        level: sent ? "info" : "warn",
+        status: sent ? "ok" : "error",
         message: `${org.name} (${org.id}) has ${org.days_left} day${org.days_left === 1 ? "" : "s"} of trial left. ${
-          org.owner_email && mailReady
+          sent
             ? `Warned ${org.owner_email}.`
-            : "No warning email could be sent."
-        }`,
+            : sendError
+              ? `The warning email to ${org.owner_email} failed: ${sendError}. It will be tried again on the next sweep.`
+              : "No warning email could be sent: no owner address on file, or outbound mail is not configured."
+        }`.slice(0, 500),
       });
-      warned++;
+      if (sent) warned++;
     }
 
     return {
-      ok: true,
-      summary: `${live.length} trial${live.length === 1 ? "" : "s"} running, ${warned} warned, ${expired.length} closed.`,
+      ok: expiryError == null,
+      summary: expiryError
+        ? `${live.length} trial(s) running, ${warned} warned. Expired trials could NOT be marked closed, so their stored status disagrees with the access they actually have: ${expiryError}`.slice(
+            0,
+            500
+          )
+        : `${live.length} trial${live.length === 1 ? "" : "s"} running, ${warned} warned, ${expired.length} closed.`,
       // A trial closing is a sales event, not an operations failure. Nobody
       // needs to be paged; it belongs in the log and in the digest.
       humanActionRequired: false,

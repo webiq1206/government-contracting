@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 import { plainToHtml, renderTemplate } from "@/lib/domain/template-render";
 import {
   TEMPLATE_TOKENS,
@@ -16,6 +17,14 @@ import {
 import { renderOutreachBrief } from "@/lib/domain/outreach-email";
 import { buildOutreachSections } from "@/lib/domain/outreach-sections";
 import { validateTemplate } from "@/lib/domain/outreach-validation";
+import {
+  deliverabilityFindings,
+  formatMetric,
+  openRateLabel,
+  metricsSummary,
+  OPEN_RATE_CAVEAT,
+  type TemplateMetrics,
+} from "@/lib/domain/template-health";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,7 +73,15 @@ function humanSlug(slug: string): string {
  * does not, or that only one carries the attachments. Editing the wrong one is
  * silent: the change simply never appears in any email anyone receives.
  */
-function slugGuidance(slug: string): { when: string; subject: string; attachments: string } | null {
+function slugGuidance(
+  slug: string,
+  /**
+   * The account's own follow-up window. Typed into this sentence as "48
+   * hours" until it became a setting, at which point every operator who
+   * changed it was reading guidance about somebody else's account.
+   */
+  followupHours: number
+): { when: string; subject: string; attachments: string } | null {
   if (slug === "template_1_outreach") {
     return {
       when: "Sent once, when a subcontractor clears verification for a trade on a solicitation.",
@@ -75,7 +92,7 @@ function slugGuidance(slug: string): { when: string; subject: string; attachment
   }
   if (slug === "template_2_followup") {
     return {
-      when: "Sent 48 hours later, as a reply inside the original conversation, when nobody has answered.",
+      when: `Sent ${followupHours} hour${followupHours === 1 ? "" : "s"} later, as a reply inside the original conversation, when nobody has answered.`,
       subject:
         "Inherited from the original email. There is no subject field here because a reply must keep the thread's subject to stay in it.",
       attachments:
@@ -330,15 +347,25 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
 
 interface Props {
   template: EmailTemplate;
+  /** What this template has actually done, when it has done anything. */
+  metrics: TemplateMetrics;
+  /** From this account's automation rules, so the guidance is not a guess. */
+  followupHours: number;
 }
 
 /**
  * Edit one outreach template. Shows the subject + body with a draggable /
  * clickable token palette and a preview modal with sample values filled in.
  */
-export function EmailTemplateEditor({ template }: Props) {
+export function EmailTemplateEditor({ template, metrics, followupHours }: Props) {
   const [subject, setSubject] = useState(template.subject ?? "");
   const [body, setBody] = useState(template.body);
+  /*
+   * Derived rather than tracked with a flag: the saved template is right
+   * there, so comparing is both simpler and correct after a save, where a
+   * flag has to be remembered to be cleared.
+   */
+  const dirty = subject !== (template.subject ?? "") || body !== template.body;
 
   /*
    * Checked as they type, not only on save.
@@ -351,6 +378,19 @@ export function EmailTemplateEditor({ template }: Props) {
    */
   const problems = useMemo(
     () => validateTemplate({ subject, body }),
+    [subject, body]
+  );
+  /*
+   * Whether it will land, as distinct from whether it is correct.
+   *
+   * The problems above are refusals: a template with an unknown variable
+   * cannot be saved. These are not. A subject in block capitals is legal and
+   * ill-advised, and the operator is the one who decides. Separating the two
+   * matters, because a warning shown with the same weight as a refusal is
+   * either ignored or obeyed, and both are wrong.
+   */
+  const delivery = useMemo(
+    () => deliverabilityFindings({ subject, body }),
     [subject, body]
   );
   const [currentVersion, setCurrentVersion] = useState(template.version);
@@ -636,6 +676,10 @@ export function EmailTemplateEditor({ template }: Props) {
 
   return (
     <div className="card space-y-5">
+      <UnsavedGuard
+        when={dirty}
+        message="This email template has unsaved changes. Leave without saving?"
+      />
       {/* Header */}
       <div className="border-b border-border pb-4">
         <p className="font-medium text-foreground">{humanSlug(template.slug)}</p>
@@ -646,7 +690,7 @@ export function EmailTemplateEditor({ template }: Props) {
           Currently on version {currentVersion}
         </p>
         {(() => {
-          const g = slugGuidance(template.slug);
+          const g = slugGuidance(template.slug, followupHours);
           if (!g) return null;
           return (
             <dl className="mt-3 grid gap-2 rounded-md bg-muted/40 p-3 text-xs sm:grid-cols-3">
@@ -683,13 +727,54 @@ export function EmailTemplateEditor({ template }: Props) {
         </div>
       )}
 
+      {/*
+        * What this wording has done in practice.
+        *
+        * The page could tell an operator whether a template was correct and
+        * never whether it worked, so a subject line that had been quietly
+        * bouncing for months looked identical to one that got answered every
+        * time. Every rate can be absent, and absent says why.
+        */}
+      <TemplateMetricsStrip metrics={metrics} />
+
+      {/*
+        * Warnings, not refusals. A subject in block capitals is legal and
+        * ill-advised, and the person writing it decides. Shown at a different
+        * weight from the block above for exactly that reason.
+        */}
+      {delivery.length > 0 && (
+        <div className="rounded-md border border-review/40 bg-review/5 px-3 py-2.5 text-xs">
+          <p className="font-medium text-review">
+            {delivery.length === 1
+              ? "One thing that may keep this out of an inbox"
+              : `${delivery.length} things that may keep this out of an inbox`}
+          </p>
+          <ul className="mt-1.5 space-y-1.5">
+            {delivery.map((d, i) => (
+              <li key={i} className="leading-relaxed text-slate-700">
+                <span className={d.severity === "warning" ? "text-review" : "text-slate-600"}>
+                  {d.message}
+                </span>{" "}
+                <span className="text-slate-500">{d.fix}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Token palette */}
       <TokenPalette onInsert={insertToken} />
 
       {/* Subject */}
       <div className={template.slug === "template_2_followup" ? "hidden" : undefined}>
-        <label className="label mb-1.5 block">Subject line</label>
+        {/* Associated as well as visible, so clicking the label focuses the
+            field. The aria-label below named it for a screen reader and did
+            nothing for a mouse. */}
+        <label className="label mb-1.5 block" htmlFor="template-subject">
+          Subject line
+        </label>
         <input
+          id="template-subject"
           ref={subjectRef}
           className="input font-mono text-sm"
           value={subject}
@@ -700,14 +785,15 @@ export function EmailTemplateEditor({ template }: Props) {
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDropSubject}
           placeholder="e.g. Pricing request: {{trade}} | {{location_city_state}}"
-          aria-label="Email subject line"
         />
       </div>
 
       {/* Body */}
       <div>
         <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-          <label className="label block">Email body</label>
+          <label className="label block" htmlFor="template-body">
+            Email body
+          </label>
           <div
             className="flex flex-wrap items-center gap-1"
             role="toolbar"
@@ -727,6 +813,7 @@ export function EmailTemplateEditor({ template }: Props) {
           </div>
         </div>
         <textarea
+          id="template-body"
           ref={bodyRef}
           className="input min-h-[260px] resize-y font-mono text-sm leading-relaxed"
           value={body}
@@ -737,7 +824,6 @@ export function EmailTemplateEditor({ template }: Props) {
           onDragOver={(e) => e.preventDefault()}
           onDrop={onDropBody}
           placeholder="Write your email here. Select text, then use Bold, Highlight, or Bullets. Click or drag a fill-in field above to insert it."
-          aria-label="Email body"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           Highlight applies to each line, not a whole block. Fill-in fields look
@@ -960,5 +1046,61 @@ function FormatButton({
     >
       {label}
     </button>
+  );
+}
+
+/**
+ * Usage and delivery for one template.
+ *
+ * The audit asks the template list to carry usage, open rate, reply rate and
+ * bounce rate. Those four numbers are only worth showing if they refuse to
+ * lie, so each one is absent rather than nought when there is nothing behind
+ * it, a thin history says it is thin, and the open rate carries the caveat
+ * that it is counted by an image some clients fetch and others block.
+ */
+function TemplateMetricsStrip({ metrics }: { metrics: TemplateMetrics }) {
+  return (
+    <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+      <p className="text-xs leading-relaxed text-slate-700">{metricsSummary(metrics)}</p>
+      {metrics.sent > 0 && (
+        <>
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+            <Metric label="Times sent" value={String(metrics.sent)} />
+            <Metric label="Opened" value={openRateLabel(metrics)} note={OPEN_RATE_CAVEAT} />
+            <Metric label="Replied" value={formatMetric(metrics.replyRate, metrics.sent)} />
+            <Metric
+              label="Bounced"
+              value={formatMetric(metrics.bounceRate, metrics.sent)}
+              tone={metrics.bounceRate != null && metrics.bounceRate >= 5 ? "risk" : undefined}
+            />
+          </dl>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{OPEN_RATE_CAVEAT}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: "risk";
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground">{label}</dt>
+      <dd
+        className={`num truncate text-sm ${tone === "risk" ? "text-risk" : "text-foreground"}`}
+        title={note}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }

@@ -5,8 +5,7 @@ import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
-import { integrationStatus } from "@/lib/config";
-import { computeSetupChecklist } from "@/lib/domain/setup";
+import { accountSetup } from "@/lib/setup-facts";
 import { opportunityIdFromPath, pageKeyFromPath } from "@/lib/domain/page-guide";
 
 export const runtime = "nodejs";
@@ -69,11 +68,10 @@ export async function GET(req: Request) {
     })(),
   ]);
 
-  const integrations = integrationStatus();
-  const setup = computeSetupChecklist({
-    profile: profile?.profile_json ?? null,
-    integrations,
-  });
+  // Same source as /api/guide and Today: the badge over the Guide Me button
+  // counts outstanding setup steps, so a second opinion here means the badge
+  // and the panel it opens show different numbers.
+  const setup = await accountSetup(profile?.profile_json ?? null, auth);
   const setupLeft = setup.complete ? 0 : setup.total - setup.done;
 
   const needsYou = Number(pulse?.needs_you ?? 0);

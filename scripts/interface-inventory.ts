@@ -171,11 +171,14 @@ function main() {
    *                     pinned "back to Opportunities" bar.
    *   /settings         a redirect to the first tab. There is no page to
    *                     frame.
+   *   /email-log        a redirect to /communications, kept so links people
+   *                     already have do not 404. Same reason as /settings:
+   *                     there is no page here to frame.
    *
-   * Named individually so a fourth one has to be argued for rather than
+   * Named individually so a fifth one has to be argued for rather than
    * quietly joining them.
    */
-  const OWN_FRAME = new Set(["/today", "/opportunity/[id]", "/settings"]);
+  const OWN_FRAME = new Set(["/today", "/opportunity/[id]", "/settings", "/email-log"]);
 
   const out: string[] = [];
   out.push("# Interface inventory");

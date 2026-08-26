@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   activeChips,
   buildHref,
@@ -32,6 +32,13 @@ import {
  * Saved views live in this browser. They are one person's shortcuts, not
  * shared configuration, and putting them on the server would mean one
  * operator's "Due this week" quietly appearing in a colleague's toolbar.
+ *
+ * It also remembers the LAST view without being asked to. The filters lived
+ * only in the URL, so an operator who narrowed the list to the three agencies
+ * they work with, opened a record, and came back through the sidebar was
+ * handed everything again and had to set all of it a second time. Restoring is
+ * never silent: the chips show what is filtered, and a restored view says so
+ * with the way out beside it.
  */
 export function FilterToolbar({
   pathname,
@@ -41,6 +48,14 @@ export function FilterToolbar({
   perPage,
   /** Storage key for this page's saved views. */
   viewsKey,
+  /**
+   * Whether this bar remembers the last view itself.
+   *
+   * False on a page whose state is larger than the filters, where the page
+   * mounts RememberedView instead. Two things restoring the same URL on
+   * arrival would fight over it.
+   */
+  remember = true,
   /** Rendered on the right: the page's single primary action. */
   action,
   resultLabel,
@@ -51,15 +66,33 @@ export function FilterToolbar({
   sortParam?: string;
   perPage?: number;
   viewsKey: string;
+  remember?: boolean;
   action?: React.ReactNode;
   /** e.g. "Showing 1-50 of 312". Sits with the filters it describes. */
   resultLabel?: string;
 }) {
   const router = useRouter();
+  const search = useSearchParams();
   const [draft, setDraft] = useState<FilterValues>(values);
   const [views, setViews] = useState<SavedView[]>([]);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
+  /*
+   * Where the last view is kept, beside the saved ones. Separate key: a saved
+   * view is something a person named and expects to find again, and the last
+   * view is something they simply left behind.
+   */
+  const lastKey = `${viewsKey}.last`;
+  const restoredKey = `${viewsKey}.restored`;
+  const [restored, setRestored] = useState(false);
+  const checkedMemory = useRef(false);
+  /*
+   * The query this bar itself put back, so the write below can tell "the view
+   * changed because somebody changed it" from "the view changed because we
+   * restored it". Without the distinction the notice appeared and vanished in
+   * the same frame, which is worse than never showing it.
+   */
+  const restoredQuery = useRef<string | null>(null);
 
   // The URL is the truth; if it changes underneath (Back, a chip removed, a
   // saved view opened) the controls follow it rather than the other way round.
@@ -82,6 +115,43 @@ export function FilterToolbar({
       /* ignore */
     }
   }
+
+  /*
+   * Put back the view you left, and say that is what happened.
+   *
+   * Only on a bare URL. Anything with parameters was asked for by whoever
+   * followed the link, including a deliberately unfiltered one, and replacing
+   * that would override an explicit request with a remembered one.
+   */
+  useEffect(() => {
+    if (!remember) return;
+    if (checkedMemory.current) return;
+    checkedMemory.current = true;
+    let saved: string | null = null;
+    let wasRestored = false;
+    try {
+      saved = window.localStorage.getItem(lastKey);
+      wasRestored = window.sessionStorage.getItem(restoredKey) === "1";
+    } catch {
+      return;
+    }
+    if (search.toString() !== "") {
+      // Already showing something. If this render is the result of our own
+      // restore, keep the notice up: it survives the remount that replace
+      // can cause.
+      if (wasRestored) setRestored(true);
+      return;
+    }
+    if (!saved) return;
+    try {
+      window.sessionStorage.setItem(restoredKey, "1");
+    } catch {
+      /* the notice is a nicety; the restore is not */
+    }
+    setRestored(true);
+    restoredQuery.current = saved;
+    router.replace(`${pathname}?${saved}`);
+  }, [remember, lastKey, restoredKey, pathname, router, search]);
 
   function go(nextFilters: FilterValues) {
     // Any filter change returns to page 1. Staying on page 7 of a list that
@@ -111,6 +181,61 @@ export function FilterToolbar({
   );
   const activeView = views.find((v) => isSameView(v.query, currentQuery));
 
+  /*
+   * What gets remembered: the filters, the sort and the page size, and
+   * nothing else on the URL.
+   *
+   * Rebuilt from the parsed values rather than copied off the address bar, so
+   * a page-local parameter like an open quick-look drawer is never stored and
+   * never reopened days later on a record somebody has moved on from.
+   */
+  const rememberedQuery = useMemo(
+    () =>
+      buildHref(pathname, {
+        filters: values,
+        sort: sortParam ? parseSortParam(sortParam) : undefined,
+        perPage,
+      }).split("?")[1] ?? "",
+    [pathname, values, sortParam, perPage]
+  );
+
+  /*
+   * Written when the view changes, not when this bar navigates: sorting is
+   * done from the table header, which never comes through here, and a sort
+   * somebody set is as much a part of where they were as a filter is.
+   *
+   * The first pass after mount writes nothing. On a bare arrival the value is
+   * empty, and storing that would erase the memory before the restore above
+   * has had a chance to use it.
+   */
+  const firstPass = useRef(true);
+  useEffect(() => {
+    if (!remember) return;
+    /*
+     * Writes on the first pass only when something was asked for. A bare
+     * arrival is empty and must not erase the memory; an arrival carrying
+     * filters is somebody's bookmark, and skipping it meant every full page
+     * load forgot the view it landed on.
+     */
+    if (firstPass.current) {
+      firstPass.current = false;
+      if (rememberedQuery === "") return;
+    }
+    // The view settling into what we just restored is not somebody changing
+    // it, so the notice stays up.
+    const isOurRestore = rememberedQuery === restoredQuery.current;
+    try {
+      window.localStorage.setItem(lastKey, rememberedQuery);
+      if (!isOurRestore) window.sessionStorage.removeItem(restoredKey);
+    } catch {
+      // Storage off: the URL still holds the view for as long as you stay on it.
+    }
+    if (!isOurRestore) {
+      restoredQuery.current = null;
+      setRestored(false);
+    }
+  }, [remember, rememberedQuery, lastKey, restoredKey]);
+
   return (
     <div className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="flex flex-col gap-3 px-4 py-3 sm:px-5">
@@ -127,8 +252,18 @@ export function FilterToolbar({
           {action && <div className="ml-auto flex items-end">{action}</div>}
         </div>
 
-        {(chips.length > 0 || views.length > 0 || resultLabel) && (
+        {(chips.length > 0 || views.length > 0 || resultLabel || restored) && (
           <div className="flex flex-wrap items-center gap-2">
+            {/*
+              * A filtered list somebody did not filter is the "why is this
+              * empty" trap arrived at from a new direction, so the restore
+              * says so and puts the way out next to it.
+              */}
+            {restored && (
+              <span className="text-xs text-muted-foreground">
+                Showing the filters you left here.
+              </span>
+            )}
             {resultLabel && (
               <span className="text-xs text-muted-foreground">{resultLabel}</span>
             )}

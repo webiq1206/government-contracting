@@ -189,8 +189,31 @@ describe("assessAutomation", () => {
 
   it("does not compute a failure rate from too few runs", () => {
     // One failure out of two is not a 50% failure rate worth reporting, it is
-    // two data points.
+    // two data points. It is also not a 0% failure rate: that would be a claim
+    // of a clean record made about a sample too small to support one.
     const h = assessAutomation({ ...BEATING, runs: [run(), run({ status: "error", error: "boom" })] });
-    expect(h.failureRate).toBe(0);
+    expect(h.failureRate).toBeNull();
+    expect(h.runs24h).toBe(2);
+  });
+
+  it("has no failure rate at all when nothing ran", () => {
+    // The dangerous case. A stopped account reported 0% and read as flawless.
+    const h = assessAutomation({ ...BEATING, runs: [] });
+    expect(h.failureRate).toBeNull();
+    expect(h.runs24h).toBe(0);
+  });
+
+  it("computes a rate once there is enough to compute one from", () => {
+    const h = assessAutomation({
+      ...BEATING,
+      runs: [
+        run(),
+        run(),
+        run({ status: "error", error: "boom" }),
+        run({ status: "error", error: "boom" }),
+      ],
+    });
+    expect(h.failureRate).toBe(0.5);
+    expect(h.runs24h).toBe(4);
   });
 });

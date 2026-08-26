@@ -94,6 +94,14 @@ export interface PulseInput {
   /** Active organizations the engine has to work for; zero means idle by
    *  definition, not broken. */
   activeOrgCount?: number;
+  /**
+   * How often the monitor is scheduled, in English, from the registry.
+   *
+   * Absent rather than assumed: a caller that cannot reach the registry gets a
+   * sentence with no cadence in it, which is better than a sentence with the
+   * wrong one. That is the exact failure this field exists to end.
+   */
+  monitorCadence?: string | null;
 }
 
 const H = 3_600_000;
@@ -106,8 +114,13 @@ function hoursSince(iso: string | null, now: Date): number | null {
 }
 
 /**
- * The monitor runs every 3 hours; two missed slots plus slack means it is not
- * "between runs", it is not running.
+ * Two missed slots plus slack means the monitor is not "between runs", it is
+ * not running.
+ *
+ * Derived from a three-hourly schedule. tests/agent-cadence.test.ts asserts
+ * the registry still schedules the monitor at least that often, so making the
+ * schedule sparser fails there rather than quietly turning this into a
+ * threshold that never fires.
  */
 const MONITOR_STALL_HOURS = 7;
 /** Sweeps run every 10-20 min; hours of silence means the worker is down. */
@@ -285,8 +298,12 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
           title: "Deal discovery has not run recently.",
           detail:
             input.monitorLastOkAt == null
-              ? "The Opportunity Monitor has never completed a run, so nothing has been pulled from SAM.gov yet. It runs every 3 hours once the worker is up; you can also run it now from the Agents page."
-              : `The Opportunity Monitor last completed ${Math.floor(monitorAge ?? 0)} hour(s) ago; it should run every 3 hours. Check the Automation Log for what stopped it, or run it now from the Agents page.`,
+              ? `The Opportunity Monitor has never completed a run, so nothing has been pulled from SAM.gov yet. It runs ${
+                  input.monitorCadence ? input.monitorCadence.toLowerCase() : "on a schedule"
+                } once the worker is up; you can also run it now from the Agents page.`
+              : `The Opportunity Monitor last completed ${Math.floor(monitorAge ?? 0)} hour(s) ago; it should run ${
+                  input.monitorCadence ? input.monitorCadence.toLowerCase() : "on a schedule"
+                }. Check the Automation Log for what stopped it, or run it now from the Agents page.`,
           href: "/agents",
           cta: "Run it now",
         });

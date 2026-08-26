@@ -8,6 +8,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  stateTone,
+  INTEGRATION_STATE_LABEL,
+  INTEGRATION_STATE_MEANING,
+  type IntegrationState,
+} from "@/lib/domain/integration-state";
 
 interface FieldState {
   env: string;
@@ -32,7 +38,7 @@ interface IntegrationGuide {
   links: { label: string; url: string }[];
 }
 
-interface IntegrationState {
+interface IntegrationRow {
   id: string;
   name: string;
   what: string;
@@ -41,22 +47,33 @@ interface IntegrationState {
   testable: boolean;
   configured: boolean;
   gmailConnected?: boolean;
+  /** Decided on the server, so the card and the header cannot disagree. */
+  state: IntegrationState;
+  stateReason: string;
+  stateAction: string | null;
   last_error: string | null;
   last_validated_at: string | null;
   fields: FieldState[];
   guide?: IntegrationGuide;
 }
 
-export function IntegrationManager({ initial }: { initial: IntegrationState[] }) {
+const BADGE_TONE: Record<"red" | "amber" | "green" | "slate", string> = {
+  red: "bg-risk/15 text-risk",
+  amber: "bg-review/15 text-review",
+  green: "bg-pursue/15 text-pursue",
+  slate: "bg-slate-200 text-slate-600",
+};
+
+export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   const router = useRouter();
-  const [items, setItems] = useState<IntegrationState[]>(initial);
+  const [items, setItems] = useState<IntegrationRow[]>(initial);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, { ok: boolean; message: string }>>({});
 
   useEffect(() => setItems(initial), [initial]);
 
-  const draftsFor = (def: IntegrationState) => {
+  const draftsFor = (def: IntegrationRow) => {
     const out: Record<string, string> = {};
     for (const f of def.fields) {
       const v = drafts[f.env]?.trim();
@@ -65,7 +82,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
     return out;
   };
 
-  async function test(def: IntegrationState) {
+  async function test(def: IntegrationRow) {
     setBusy(`test:${def.id}`);
     setResults((r) => ({ ...r, [def.id]: { ok: true, message: "Testing…" } }));
     try {
@@ -86,7 +103,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
     }
   }
 
-  async function save(def: IntegrationState) {
+  async function save(def: IntegrationRow) {
     const values = draftsFor(def);
     if (Object.keys(values).length === 0) {
       setResults((r) => ({
@@ -127,7 +144,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
     }
   }
 
-  async function removeKey(def: IntegrationState, env: string) {
+  async function removeKey(def: IntegrationRow, env: string) {
     if (!window.confirm(`Remove the saved ${def.name} value? The platform falls back to the environment variable if one is set, otherwise the integration turns off.`))
       return;
     setBusy(`remove:${def.id}`);
@@ -169,20 +186,30 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
                 <p className="text-base font-semibold text-foreground">{def.name}</p>
                 <p className="mt-0.5 text-sm text-slate-600">{def.what}</p>
               </div>
+              {/*
+                * Six states, decided on the server. This used to be three --
+                * error, connected, not set up -- and the middle one was a
+                * claim the page could not support: it meant a key was saved,
+                * and it said so through a day when the provider was refusing
+                * every request for want of credit.
+                */}
               <span
-                className={`badge shrink-0 ${
-                  def.last_error
-                    ? "bg-risk/15 text-risk"
-                    : def.configured
-                      ? "bg-pursue/15 text-pursue"
-                      : "bg-slate-200 text-slate-600"
-                }`}
+                className={`badge shrink-0 ${BADGE_TONE[stateTone(def.state)]}`}
+                title={INTEGRATION_STATE_MEANING[def.state]}
               >
-                {def.last_error ? "Error" : def.configured ? "Connected" : "Not set up"}
+                {INTEGRATION_STATE_LABEL[def.state]}
               </span>
             </div>
 
-            {!def.configured && def.without && (
+            {/* Why it is in that state, and the one thing to do about it. */}
+            <p className="text-xs text-slate-600">{def.stateReason}</p>
+            {def.stateAction && (
+              <p className="text-xs text-foreground">
+                <span className="font-medium">Next: </span>
+                {def.stateAction}
+              </p>
+            )}
+            {def.state !== "healthy" && def.without && (
               <p className="text-xs text-review">Right now: {def.without}</p>
             )}
             {/* Not always a failed test any more: this also carries a service
@@ -256,7 +283,12 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
               ) : (
               <div key={f.env}>
                 <div className="flex items-center justify-between">
-                  <label className="label">{f.label}</label>
+                  {/* Tied to the field. A secret typed into a box a screen
+                      reader announces as blank is the worst place to leave
+                      this undone. */}
+                  <label className="label" htmlFor={`integration-${f.env}`}>
+                    {f.label}
+                  </label>
                   {f.source !== "none" && (
                     <span className="flex items-center gap-2 text-xs text-slate-500">
                       <span className="num">{f.masked}</span>
@@ -276,15 +308,16 @@ export function IntegrationManager({ initial }: { initial: IntegrationState[] })
                   )}
                 </div>
                 <input
+                  id={`integration-${f.env}`}
                   className="input mt-1"
                   type={f.secret ? "password" : "text"}
                   autoComplete="off"
-                  // The visible <label> above is a plain element, not tied to
-                  // this input, so a screen reader announced "password field"
-                  // and nothing else. Naming the credential matters more here
-                  // than most places: pasting a SAM key into the Anthropic
-                  // field is a silent, confusing failure.
-                  aria-label={f.label}
+                  // Named by the visible label above rather than by an
+                  // aria-label duplicating it. The aria-label was added when
+                  // that label was tied to nothing and a screen reader
+                  // announced "password field" and no more; now the label
+                  // itself carries the name, and clicking it focuses the
+                  // field, which an aria-label never did.
                   placeholder={
                     f.source === "none"
                       ? (f.placeholder ?? `Paste your ${f.label.toLowerCase()}`)

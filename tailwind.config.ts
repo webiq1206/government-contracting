@@ -39,6 +39,9 @@ const config: Config = {
         accent: "rgb(var(--accent) / <alpha-value>)",
         "accent-soft": "rgb(var(--accent-soft) / <alpha-value>)",
         "accent-strong": "rgb(var(--accent-strong) / <alpha-value>)",
+        // The foreground for anything sitting ON a status fill. Flips with the
+        // theme, because the fills do. See --on-status in globals.css.
+        "on-status": "rgb(var(--on-status) / <alpha-value>)",
         gold: "rgb(var(--gold) / <alpha-value>)",
         // Readable gold, for text. See --gold-text in globals.css: the brand
         // gold is 2.08:1 on the light page and cannot carry body copy.

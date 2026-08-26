@@ -35,8 +35,27 @@ export interface SetupInputs {
     sam: boolean;
     claude: boolean;
     googleMaps: boolean;
+    /**
+     * Whether THIS account has a mailbox connected and working.
+     *
+     * Not whether the deployment has Google OAuth credentials. It was the
+     * latter, which is a property of the platform shared by every customer, so
+     * the step read "done" for a brand-new account that had never connected an
+     * inbox and could not send a single outreach email. "Connected" has to
+     * mean the thing works, and for a mailbox that is a live grant on this
+     * organization.
+     */
     gmail: boolean;
   };
+  /**
+   * Whether the deployment can offer a Google connection at all.
+   *
+   * Absent OAuth credentials the step is impossible rather than outstanding,
+   * and an operator can spend a long time looking for a button that is not
+   * there. Defaults to true, which is the state of any deployment that has
+   * ever connected an inbox.
+   */
+  gmailOffered?: boolean;
   /**
    * True while the organization is on its free trial.
    *
@@ -203,8 +222,11 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
       // it is the mailbox we sync replies back out of.
       key: "email",
       label: "Connect your Google inbox",
-      hint: "Sends subcontractor outreach from your own address and reads their replies back into the record.",
-      done: i.integrations.gmail,
+      hint:
+        i.gmailOffered === false
+          ? "This deployment has no Google connection configured, so no inbox can be connected here yet. Until one is, outreach cannot send from your own address. Ask whoever administers this deployment."
+          : "Sends subcontractor outreach from your own address and reads their replies back into the record.",
+      done: i.gmailOffered === false ? false : i.integrations.gmail,
       href: INTEGRATIONS_HREF,
       required: false,
     },

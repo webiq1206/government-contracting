@@ -20,6 +20,33 @@ import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
 /**
+ * The records a run is about, for the log line that describes it.
+ *
+ * The opportunity was carried and the subcontractor was not, on all three of
+ * the runner's log calls, although the payload holds both and the mismatch log
+ * a few lines down already tagged both. That is the line with the summary and
+ * the reasoning on it, so `sub-verify` wrote "Verified Rivera Roofing: email
+ * verified, SAM clear, license active, standards gate sam_excluded=false,
+ * rating_ok=true, contact_ok=true, outreach queued" against no subcontractor
+ * at all. `subActivityLogs` selects on `subcontractor_id`, so the one place an
+ * operator goes to ask what happened to a subcontractor could not show the
+ * sentence that answers it, while the same sentence appeared on the
+ * opportunity.
+ *
+ * A dangling id is safe here: the logger retries without the offending column
+ * when a reference no longer resolves.
+ */
+export function recordRefs(payload: Record<string, unknown>): {
+  opportunityId: string | null;
+  subcontractorId: string | null;
+} {
+  return {
+    opportunityId: (payload.opportunityId as string) ?? null,
+    subcontractorId: (payload.subcontractorId as string) ?? null,
+  };
+}
+
+/**
  * The organization this job belongs to, and any record it can no longer work
  * on.
  *
@@ -204,7 +231,7 @@ export async function runAgent(
           level: "warn",
           status: "skipped",
           message: result.summary,
-          opportunityId: (payload.opportunityId as string) ?? null,
+          ...recordRefs(payload),
         })
       );
       await finishJobRun(jobRun?.id, "ok", result, Date.now() - started);
@@ -221,7 +248,7 @@ export async function runAgent(
         status: result.ok ? "ok" : "error",
         message: result.summary,
         reasoning: result.reasoning,
-        opportunityId: (payload.opportunityId as string) ?? null,
+        ...recordRefs(payload),
         output: result.data,
         durationMs: Date.now() - started,
       })
@@ -252,7 +279,7 @@ export async function runAgent(
         level: "error",
         status: "error",
         message,
-        opportunityId: (payload.opportunityId as string) ?? null,
+        ...recordRefs(payload),
       })
     );
     await finishJobRun(

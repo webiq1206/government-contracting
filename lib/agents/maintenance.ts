@@ -19,12 +19,18 @@ import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
  * Active organization ids for a cron sweep that must run per tenant. Falls
  * back to the founding org so a pre-migration single-tenant install still
  * sweeps. Every unscoped sweep uses this so no statement spans tenants.
+ *
+ * The fallback belongs to a genuinely empty list. It used to cover a failed
+ * lookup too, so a database hiccup on this one statement meant every customer
+ * was skipped and the sweep ran against the founding org alone, reporting
+ * success. `orgsToSweep` keeps the two apart and logs the failure.
  */
 async function activeOrgIds(): Promise<string[]> {
-  const orgs = await listActiveOrganizations().catch(() => []);
+  const { orgs } = await orgsToSweep("maintenance");
   return orgs.length ? orgs.map((o) => o.id) : [LEGACY_ORG_ID];
 }
 import { listActiveOrganizations } from "../organizations";
+import { orgsToSweep } from "./org-fanout";
 import {
   applyOutcomeToSolicitation,
   recordReplyEvent,
@@ -75,7 +81,14 @@ export const outreachFollowup: AgentDefinition = {
      * phone number, against our trial quota. Resolve the organizations, then
      * do each one's sweep inside its own context.
      */
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     let sentTotal = 0;
     let dueTotal = 0;
     let lastCalls = 0;
@@ -364,11 +377,17 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
   // Template resolution is org-aware (own copy, else platform default) so a
   // follow-up never goes out with another tenant's wording.
   const { activeTemplate } = await import("../domain/template-store");
-  const [tmpl, fallbackTmpl, profile] = await Promise.all([
+  const { getAutomationRules } = await import("../app-settings");
+  const [tmpl, fallbackTmpl, profile, rules] = await Promise.all([
     activeTemplate("template_2_followup", orgId),
     activeTemplate("template_2_followup_new_thread", orgId),
     getProfileJson(),
+    getAutomationRules(),
   ]);
+  // Chasing switched off entirely. Markers already on file are left alone
+  // rather than cleared: turning the rule back on should resume the queue it
+  // was paused with, not start from an empty one.
+  if (rules.followup_max <= 0) return { sent: 0, due: 0 };
 
   const due = await query<{
     id: string;
@@ -450,8 +469,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
              and os2.outreach_state in
                  ('responsive','quoted','responded','declined','not_a_fit','unavailable')
         )
-      limit 50`,
-    [orgId]
+      limit $2`,
+    [orgId, rules.outreach_batch_limit]
   );
 
   const senderName = profile ? outreachDisplayName(profile) : "";
@@ -668,11 +687,35 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       attachments: attachments.length ? attachments : undefined,
     });
     if (!res.disabled && !res.error) {
+      /*
+       * Does the rule allow another one after this?
+       *
+       * Follow-ups sent so far, counted from the record rather than tracked in
+       * a column, because the record is what a subcontractor experienced. When
+       * the count is still below the limit the NEW row carries the next marker,
+       * which is how a second and third chase happen at all: the old code
+       * consumed the marker and never wrote another, so "one follow-up" was
+       * structural rather than chosen.
+       */
+      const priorRow = await queryOne<{ n: number }>(
+        `select count(*)::int as n from communications
+          where org_id = $1 and direction = 'outbound' and channel = 'email'
+            and subcontractor_id = $2
+            and opportunity_id is not distinct from $3
+            and meta->>'kind' = 'followup'`,
+        [orgId, row.subcontractor_id, row.opportunity_id]
+      ).catch(() => null);
+      // This send is not on the record yet, so it counts itself.
+      const sentSoFar = (priorRow?.n ?? 0) + 1;
+      const nextFollowUpAt =
+        sentSoFar < rules.followup_max
+          ? new Date(Date.now() + rules.followup_hours * 3_600_000).toISOString()
+          : null;
       await query(
         // gmail_thread_id + rfc822_message_id are carried forward so a SECOND
         // follow-up chains onto this one rather than restarting the thread.
-        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider, meta, gmail_thread_id, rfc822_message_id)
-         values ($1,$2,'email','outbound',$3,$4,$5,$6,$7::jsonb,$8,$9)`,
+        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider, meta, gmail_thread_id, rfc822_message_id, follow_up_at)
+         values ($1,$2,'email','outbound',$3,$4,$5,$6,$7::jsonb,$8,$9,$10)`,
         [
           row.subcontractor_id,
           row.opportunity_id,
@@ -707,6 +750,7 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
           // repeat the recovery; keeping the parent here means the chain is
           // never empty, and threadMessageId() repairs it properly next time.
           res.rfc822MessageId ?? inReplyTo ?? null,
+          nextFollowUpAt,
         ]
       );
 
@@ -815,7 +859,14 @@ export const outreachRecoverySweep: AgentDefinition = {
     "Re-sends initial outreach that failed or was stored as a draft, once the organization's inbox is connected again.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     const enqueued: AgentResult["enqueued"] = [];
     let recovered = 0;
     let waiting = 0;
@@ -1122,7 +1173,14 @@ export const scoringRecoverySweep: AgentDefinition = {
     // whole budget and the customers behind it were never recovered at all.
     // Nothing about the org travels with the job (the queue carries only the
     // payload), so the scoring engine derives it from the opportunity.
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     const unscored: { id: string; title: string | null }[] = [];
     for (const org of orgs) {
       const rows = await query<{ id: string; title: string | null }>(
@@ -1171,7 +1229,14 @@ export const expiredOpportunitySweep: AgentDefinition = {
     "Archives opportunities whose submission deadline passed without a bid. Nothing is deleted: all documents, communications, and history stay on the archived record.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     let archived = 0;
     let deleted = 0;
     for (const org of orgs) {
@@ -1386,6 +1451,63 @@ async function purgeOpportunitiesWithBlobs(
   });
 }
 
+/**
+ * Accounts whose deletion grace period has run out.
+ *
+ * Separate from the retention sweep because it deletes a different thing for a
+ * different reason: retention removes old archived records inside a live
+ * account on that customer's own setting, this removes a whole account an
+ * administrator decided to close. Sharing one agent would mean a customer
+ * setting retention to nought could not tell which of the two it disabled.
+ *
+ * Each account is purged in its own try, so one that fails does not strand the
+ * rest, and a failure leaves the schedule in place: the next run tries again
+ * rather than silently giving up on a deletion somebody is expecting.
+ */
+export const accountDeletionSweep: AgentDefinition = {
+  name: "account-deletion-sweep",
+  label: "Account Deletion Sweep",
+  description:
+    "Permanently deletes accounts whose scheduled deletion date has passed. An administrator schedules a deletion, the account is suspended immediately, and this removes the data once the grace period runs out. Cancelling before then leaves everything untouched.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    const { accountsDueForPurge, purgeOrganization } = await import("../admin/accounts");
+    const { recordAdminAction } = await import("../admin/audit");
+    const due = await accountsDueForPurge();
+    if (due.length === 0) {
+      return { ok: true, summary: "No account has reached the end of its deletion window." };
+    }
+    const gone: string[] = [];
+    const failed: string[] = [];
+    for (const org of due) {
+      try {
+        await purgeOrganization(org.id);
+        // Written after the purge and outside it, so the record of the
+        // deletion cannot be rolled back along with the deletion.
+        await recordAdminAction({
+          adminEmail: "account-deletion-sweep",
+          action: "account_deleted",
+          orgId: org.id,
+          orgName: org.name,
+          detail: { via: "scheduled deletion, grace period elapsed" },
+        });
+        gone.push(org.name);
+      } catch (err) {
+        failed.push(`${org.name} (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+    return {
+      ok: failed.length === 0,
+      summary: [
+        gone.length ? `Deleted ${gone.length}: ${gone.join(", ")}.` : null,
+        failed.length ? `Failed ${failed.length}: ${failed.join("; ")}. Still scheduled.` : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    };
+  },
+};
+
 export const retentionSweep: AgentDefinition = {
   name: "retention-sweep",
   label: "Retention Sweep",
@@ -1402,7 +1524,14 @@ export const retentionSweep: AgentDefinition = {
      * my records forever, had them deleted on our schedule instead, and
      * deletion here is permanent.
      */
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     const summaries: string[] = [];
     for (const org of orgs) {
       const line = await runWithOrg(org.id, () => purgeRetentionForOrg(org.id));
@@ -1496,7 +1625,14 @@ export const backlinkOutreachSweep: AgentDefinition = {
     // sweep runs once per organization. Platform-wide it sent every tenant's
     // approved outreach from the founding org's inbox and matched replies
     // against every tenant's prospects at once.
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     let sent = 0;
     let followUps = 0;
     let errors = 0;
@@ -1539,6 +1675,9 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
         agent: "backlink-outreach-sweep",
         action: "poll-failed",
         level: "error",
+        // `automation-status` classifies on status, not level, so an error
+        // logged without it is counted as a healthy run.
+        status: "error",
         message: `Could not read the inbox for backlink replies: ${error}`,
       });
     }
@@ -2154,7 +2293,14 @@ export const contactRecheckSweep: AgentDefinition = {
   async handler(): Promise<AgentResult> {
     // Clear historical call cards that can never be dialed so Today / Call
     // Queue stay actionable.
-    const orgs = await listActiveOrganizations().catch(() => []);
+    /*
+     * Deliberately not caught. An empty list here means no customers; a
+     * failure means we could not find out who they are, and swallowing it
+     * turned a stopped sweep into "0 processed", which is what a quiet night
+     * looks like. Letting it throw hands it to the runner, which logs it at
+     * error status and marks the run failed.
+     */
+    const orgs = await listActiveOrganizations();
     // Per organization: this used to run once unscoped and skip uncallable
     // call cards across every tenant in a single statement.
     const cleared: { id: string }[] = [];

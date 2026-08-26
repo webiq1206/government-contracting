@@ -37,7 +37,11 @@ export function MarketingNav({
       }`}
     >
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:h-16 sm:px-6">
-        <Link href="/" className="inline-flex shrink-0 items-center" aria-label="Brost Co home">
+        <Link
+          href="/"
+          className="inline-flex min-h-11 shrink-0 items-center sm:min-h-0"
+          aria-label="Brost Co home"
+        >
           <Wordmark
             variant={dark ? "light" : "dark"}
             className="h-6 sm:h-7"
@@ -77,7 +81,7 @@ export function MarketingNav({
           </Link>
           <Link
             href={signupHref}
-            className={`inline-flex min-h-10 items-center justify-center rounded-md px-3.5 py-2 text-sm font-medium transition-colors ${
+            className={`inline-flex min-h-11 items-center justify-center rounded-md px-3.5 py-2 text-sm font-medium transition-colors ${
               dark
                 ? "bg-gold text-ink hover:bg-[#d6b986]"
                 : "btn-primary"

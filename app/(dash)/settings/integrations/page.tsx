@@ -10,6 +10,7 @@ import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-setting
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
 import { recentAiTrouble, troubleSummary } from "@/lib/integration-health";
 import { gmail } from "@/lib/integrations/gmail";
+import { integrationState } from "@/lib/domain/integration-state";
 
 const CORE_IDS = new Set(["sam", "claude"]);
 const OUTREACH_IDS = new Set(["gmail", "twilio", "hunter"]);
@@ -80,16 +81,45 @@ export default async function IntegrationsPage({
           .sort()
           .pop() ?? null,
     };
+  }).map((def) => {
+    /*
+     * The state, decided once here rather than by the card. The card used to
+     * do it inline as `last_error ? "Error" : configured ? "Connected" : ...`,
+     * which is three outcomes for a question with six answers, and the middle
+     * one was a claim the page could not support.
+     */
+    const verdict = integrationState(
+      {
+        configured: def.configured,
+        lastError: def.last_error,
+        lastValidatedAt: def.last_validated_at,
+        // Only the OAuth one has a connection that can lapse. Undefined for
+        // the key-based integrations, which have nothing to expire.
+        connectionLive: def.id === "gmail" ? gmailConnected : undefined,
+      }
+    );
+    return { ...def, state: verdict.state, stateReason: verdict.reason, stateAction: verdict.nextAction };
   });
 
-  const configuredCount = initial.filter((i) => i.configured).length;
+  /*
+   * Counted by what is working, not by what is saved. "5 of 7 configured" was
+   * the same claim the badge made, one level up.
+   */
+  const workingCount = initial.filter((i) => i.state === "healthy").length;
+  const troubleCount = initial.filter(
+    (i) => i.state === "blocked" || i.state === "expired" || i.state === "degraded"
+  ).length;
 
   return (
     <>
       <PageFrame
         help={PAGE_HELP["integrations"]}
         title="Integrations"
-        status={`${configuredCount} of ${initial.length} connected`}
+        status={
+          troubleCount > 0
+            ? `${troubleCount} need attention · ${workingCount} of ${initial.length} confirmed working`
+            : `${workingCount} of ${initial.length} confirmed working`
+        }
         explanation="Connect the services automation depends on. A key that is stored is not the same as a key that works, so each one shows when it was last used successfully."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />

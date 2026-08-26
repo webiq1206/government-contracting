@@ -288,7 +288,7 @@ export function pageKeyFromPath(pathname: string): GuidePageKey {
   if (p === "/compliance") return "compliance";
   if (p === "/analytics") return "analytics";
   if (p === "/authority") return "authority";
-  if (p === "/email-log") return "email-log";
+  if (p === "/communications" || p === "/email-log") return "email-log";
   if (p === "/agents") return "agents";
   if (p === "/how-it-works") return "how-it-works";
   if (p === "/settings/profile") return "profile";

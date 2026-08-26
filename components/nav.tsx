@@ -71,7 +71,7 @@ const SECTIONS: Section[] = [
     label: "Relationships",
     items: [
       { href: "/subs", label: "Subcontractors" },
-      { href: "/email-log", label: "Communications" },
+      { href: "/communications", label: "Communications" },
     ],
   },
   {
@@ -107,6 +107,16 @@ const SECTIONS: Section[] = [
       { href: "/settings/content", label: "Content" },
       { href: "/settings/integrations", label: "Integrations" },
       { href: "/settings/billing", label: "Billing" },
+      // Which alerts reach this account by email and which live only in the
+      // product. Worth its own entry because the answer is surprising.
+      { href: "/settings/notifications", label: "Notifications" },
+      /*
+       * Last in the section and named for the person rather than the company,
+       * because everything above it is organization-wide and this one is not.
+       * It is also the only place to change your own password without
+       * declaring you have lost it.
+       */
+      { href: "/settings/account", label: "Your account" },
     ],
   },
   {
@@ -117,6 +127,15 @@ const SECTIONS: Section[] = [
       { href: "/admin/accounts", label: "Accounts" },
       { href: "/admin/invitations", label: "Invitations" },
       { href: "/admin/billing", label: "Customer Billing" },
+      // Its own entry rather than fifteen rows at the foot of Accounts. The
+      // record of what we did to somebody's account is a different question
+      // from which account is in trouble, and it is the one somebody comes
+      // looking for months later.
+      { href: "/admin/audit", label: "Audit Log" },
+      // Platform-wide, as against the per-account Automation Health under
+      // Delivery. An outage affecting every customer used to be findable only
+      // by opening accounts one at a time until a pattern appeared.
+      { href: "/admin/health", label: "System Health" },
     ],
   },
   {
@@ -348,6 +367,24 @@ export function Nav({
         </Link>
 
         <div className="flex-1" />
+
+        {/*
+          * Guide Me on the app bar, where the audit puts it. It used to be
+          * reachable on a phone only by opening the navigation drawer and
+          * scrolling to the top of it, which is three taps to ask for help
+          * with the screen you are already looking at.
+          */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("open-guide-wizard"))}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-gold-text"
+          aria-label="Guide Me"
+          aria-haspopup="dialog"
+        >
+          <span aria-hidden className="text-lg leading-none">
+            ?
+          </span>
+        </button>
 
         <ThemeToggle compact className="mr-1 shrink-0" />
 

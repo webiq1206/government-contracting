@@ -4,6 +4,7 @@ import {
   PIPELINE_STAGES,
   opportunityTable,
   opportunityTableCount,
+  oppPeek,
   OPP_SORTS,
 } from "@/lib/data";
 import { FilterToolbar } from "@/components/filter-toolbar";
@@ -12,6 +13,7 @@ import {
   parseFilters,
   parseSort,
   parsePaging,
+  buildQuery,
   serializeSort,
   type FilterSpec,
 } from "@/lib/domain/table-view";
@@ -30,9 +32,12 @@ import { laneFor, type LaneKey } from "@/lib/domain/pipeline-lanes";
 import { focusSet } from "@/lib/domain/pipeline-focus";
 import { CALL_STAGE } from "@/lib/domain/call-step";
 import { SwipeRail } from "@/components/swipe-rail";
+import { agentCadence } from "@/lib/agent-cadence";
+import { RememberedView } from "@/components/remembered-view";
 import { CardPreview } from "@/components/card-preview";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
+import { OppPeek } from "@/components/opp-peek";
 
 /**
  * The simple (default) pipeline view groups by who the ball is with rather
@@ -175,7 +180,57 @@ export default async function PipelinePage({
     includeClosed: tableValues.closed === "1",
   };
   const tableTotal = view === "table" ? await opportunityTableCount(tableFilters) : 0;
+
+  /*
+   * The peek is a query parameter for the same reasons the conversation
+   * centre's selection is: back button, shareable link, and one place that
+   * decides what is open. An id that is not this org's returns nothing and the
+   * table renders without a drawer.
+   */
+  const peekId = typeof searchParams?.peek === "string" ? searchParams.peek : null;
+  const peeked = peekId ? await oppPeek(peekId) : null;
+
+  const peekQuery = (() => {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchParams ?? {})) {
+      if (k === "peek" || v == null) continue;
+      if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+      else p.set(k, v);
+    }
+    return p;
+  })();
+  const closePeekHref = peekQuery.toString()
+    ? `/pipeline?${peekQuery.toString()}`
+    : "/pipeline";
+  const peekBase = peekQuery.toString()
+    ? `/pipeline?${peekQuery.toString()}&`
+    : "/pipeline?";
   const tablePaging = parsePaging(searchParams ?? {}, tableTotal);
+
+  /*
+   * What this page remembers between visits: the view somebody chose and, in
+   * the table view, their filters, sort and page size.
+   *
+   * The filter bar cannot own this on its own, because it is only mounted in
+   * one of the three views: an operator working in the table left, came back
+   * through the sidebar, and landed in the lanes board with their filters
+   * gone. Built from the parsed values rather than the address bar, so the
+   * quick-look drawer is never stored and never reopened later.
+   */
+  const rememberedQuery = (() => {
+    const p = new URLSearchParams(
+      view === "table"
+        ? buildQuery({
+            filters: tableValues,
+            sort: tableSort.key ? tableSort : undefined,
+            page: tablePaging.page,
+            perPage: tablePaging.perPage,
+          })
+        : ""
+    );
+    if (view !== "lanes") p.set("view", view);
+    return p.toString();
+  })();
   const tableRows =
     view === "table"
       ? await opportunityTable(tableFilters, {
@@ -222,6 +277,12 @@ export default async function PipelinePage({
 
   return (
     <div className="flex page-shell">
+      <RememberedView
+        storageKey="brostco.opportunities.views"
+        pathname="/pipeline"
+        query={rememberedQuery}
+        label="Showing the view you left here."
+      />
       <PageFrame
         help={PAGE_HELP["pipeline"]}
         title="Opportunities"
@@ -243,13 +304,18 @@ export default async function PipelinePage({
         primaryAction={
           <>
         {focusLabel && (
-          <Link href="/pipeline" className="btn-ghost text-xs">
+          <Link href="/pipeline?view=lanes" className="btn-ghost text-xs">
             Show all ({allOpps.length})
           </Link>
         )}
         <div className="flex gap-1 rounded-md border border-border p-0.5">
+          {/*
+            * Explicit rather than the bare path: this page now puts back the
+            * view you left, so a link to /pipeline would be restored to
+            * whatever that was and choosing Simple would appear not to work.
+            */}
           <Link
-            href="/pipeline"
+            href="/pipeline?view=lanes"
             className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             Simple
@@ -279,14 +345,19 @@ export default async function PipelinePage({
             sortParam={serializeSort(tableSort)}
             perPage={tablePaging.perPage}
             viewsKey="brostco.opportunities.views"
+            /* The page remembers the view and the filters together, because
+               the view outlives this bar: it is only mounted in the table. */
+            remember={false}
             resultLabel={
               tableTotal > 0
                 ? `Showing ${tablePaging.from}-${tablePaging.to} of ${tableTotal}`
                 : undefined
             }
           />
-          <div className="scroll-thin flex-1 overflow-auto p-4">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="scroll-thin min-w-0 flex-1 overflow-auto p-4">
             <OpportunitiesTable
+              peekBase={peekBase}
               rows={tableRows}
               total={tableTotal}
               filters={tableValues}
@@ -301,6 +372,8 @@ export default async function PipelinePage({
                 </p>
               }
             />
+          </div>
+          {peeked && <OppPeek data={peeked} closeHref={closePeekHref} />}
           </div>
         </>
       )}
@@ -554,6 +627,10 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
  */
 async function PipelineOnboarding() {
   await hydrateIntegrationEnv();
+  // Read from the registry rather than typed into the sentence below, which
+  // is how this paragraph came to promise a two-hourly poll for months after
+  // the schedule moved to three.
+  const cadence = agentCadence("opportunity-monitor");
   const st = integrationStatus();
   const missing: string[] = [];
   if (!st.sam) missing.push("SAM.gov (opportunity ingestion)");
@@ -570,7 +647,8 @@ async function PipelineOnboarding() {
         No opportunities yet. That is expected on a fresh setup.
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">
-        Opportunities flow in from the Opportunity Monitor (SAM.gov, every 2 hours) and are
+        Opportunities flow in from the Opportunity Monitor (SAM.gov,{" "}
+        {cadence ? cadence.toLowerCase() : "on a schedule"}) and are
         scored, briefed, and routed through the 11 stages you see here automatically. Add the
         integration keys below in your deployment secrets, then the pipeline will start filling
         itself.

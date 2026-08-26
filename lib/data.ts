@@ -12,6 +12,9 @@
  */
 import { query, queryOne } from "./db";
 import type { KpiParams } from "./domain/kpi";
+import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
+import type { CredentialSource as ProviderCredentialSource } from "./domain/provider-usage";
+import type { TemplateCounts } from "./domain/template-health";
 import { resolveSubWork } from "./domain/sub-work";
 import {
   loadAwardCompliance,
@@ -20,10 +23,6 @@ import {
 } from "./sub-compliance-store";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
-import {
-  emailLogStatusSql,
-  type EmailLogStatusFilter,
-} from "./domain/email-log";
 
 /**
  * The organization every read in this module is scoped to.
@@ -32,8 +31,12 @@ import {
  * the signed-in user's membership. Falls back to the founding org so the
  * original single-tenant install, whose rows predate organization_members,
  * keeps working.
+ *
+ * Exported so lib/conversations.ts resolves the tenant the same way rather
+ * than growing a second answer to "which org is this". Two resolvers is one
+ * more than the number that can be right.
  */
-async function currentOrg(): Promise<string> {
+export async function currentOrg(): Promise<string> {
   const { tryResolveTenantOrgId } = await import("./tenant");
   const { LEGACY_ORG_ID } = await import("./tenant-context");
   return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
@@ -317,11 +320,19 @@ export interface CallCardRow {
   company_name: string;
   owner_name: string | null;
   email: string | null;
+  /** Whether that address was ever confirmed deliverable. */
+  email_verified?: boolean;
   phone: string | null;
   website: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
+  /** When we last wrote to them, ISO. Null when we never have. */
+  last_contacted?: string | null;
+  /** When this card was last dialled, ISO. Null when it never has been. */
+  called_at?: string | null;
+  /** Dials with no answer recorded against this card. */
+  attempts?: number | null;
   google_rating: number | null;
   reliability_score: number | null;
   license_status: string | null;
@@ -359,6 +370,15 @@ export async function callQueue(): Promise<CallCardRow[]> {
             o.value_estimated, o.value_estimated_source, o.location_state, o.location_text as opportunity_location,
             o.deadline, o.solicitation_number,
             o.description, o.solicitation_analysis, o.attachments_json,
+            /*
+             * What the queue needs before anybody dials: whether the address
+             * was ever confirmed, when we last wrote, how many times this card
+             * has been tried, and the state, which is only used to work out
+             * the hour where they are.
+             */
+            s.email_verified, s.last_contacted::text as last_contacted,
+            cc.called_at::text as called_at,
+            coalesce((cc.response_json->>'attempts')::int, 0) as attempts,
             (select trade from opportunity_subs os
               where os.opportunity_id=cc.opportunity_id and os.subcontractor_id=cc.subcontractor_id limit 1) as trade
        from call_cards cc
@@ -561,205 +581,15 @@ export async function subDatabase(
   );
 }
 
-export const EMAIL_LOG_PAGE_SIZE = 50;
-
-export interface EmailLogRow {
-  id: string;
-  created_at: string;
-  subject: string | null;
-  body: string | null;
-  provider: string | null;
-  recipient_email: string | null;
-  opened_at: string | null;
-  clicked_at: string | null;
-  replied_at: string | null;
-  direction: string;
-  responded: boolean;
-  /** What we actually know about delivery: sent | delivered | bounced | deferred | failed. */
-  delivery_state: string | null;
-  /** The provider's own words for a failure, e.g. a diagnostic code. */
-  delivery_detail: string | null;
-  // sub
-  subcontractor_id: string;
-  company_name: string | null;
-  // opportunity
-  opportunity_id: string | null;
-  opportunity_title: string | null;
-}
-
-export interface EmailLogCounts {
-  all: number;
-  sent: number;
-  opened: number;
-  clicked: number;
-  responded: number;
-  /*
-   * The failures. A chip with a number on it is the only way an operator
-   * learns these exist: "3 bounced" is a prompt to look, and a filter nobody
-   * knows about is a filter nobody uses.
-   */
-  bounced: number;
-  deferred: number;
-  failed: number;
-  inbound: number;
-}
-
-/**
- * Whether this message's conversation ever got a reply.
- *
- * `replies.responded` used to be `min(r.created_at)` from a LATERAL subquery,
- * and only its null-ness was ever read. That cost more than it sounds: the
- * lateral runs once per row, so producing the nine counters at the top of the
- * page meant resolving "did this thread get a reply" twenty thousand separate
- * times. EXPLAIN showed `loops=20060` and 557ms on one aggregate.
- *
- * The set of conversations that have an inbound message is the same set for
- * every row, so it is now computed once and hash-joined. Same answer, one
- * pass.
+/*
+ * The paged email log lived here. It is gone with the page it fed: a list of
+ * messages could not answer "who is waiting on me", which is a property of a
+ * conversation rather than of a row. lib/conversations.ts replaces it, and
+ * lib/domain/message-state.ts replaces its status vocabulary -- which could
+ * not tell a policy block apart from a bad address, so the two states that
+ * need opposite fixes read the same.
  */
-const EMAIL_LOG_RESPONDED = `(c.direction = 'inbound' or c.replied_at is not null or replied_by_opp.subcontractor_id is not null or replied_by_thread.subcontractor_id is not null)`;
 
-export async function emailLogPaged(opts: {
-  page: number;
-  q?: string;
-  status?: EmailLogStatusFilter;
-}): Promise<{ rows: EmailLogRow[]; total: number; counts: EmailLogCounts }> {
-  const { page, q } = opts;
-  const status: EmailLogStatusFilter = opts.status ?? "all";
-  const offset = (Math.max(1, page) - 1) * EMAIL_LOG_PAGE_SIZE;
-
-  const searchNeedle = q ? `%${q}%` : null;
-  const searchSql = (paramIndex: number) =>
-    searchNeedle
-      ? `and (lower(s.company_name) like lower($${paramIndex}) or lower(coalesce(c.subject,'')) like lower($${paramIndex}))`
-      : "";
-  const statusSql = emailLogStatusSql(status, EMAIL_LOG_RESPONDED);
-
-  /*
-   * The conversations that have ever received an inbound message, as two
-   * small sets: one keyed by (subcontractor, opportunity) and one by
-   * (subcontractor, Gmail thread). A message counts as answered if either
-   * matches, which is exactly what the old per-row lateral tested -- computed
-   * once for the whole page instead of once per row.
-   *
-   * Both sets are org-scoped, so a reply in one tenant can never mark another
-   * tenant's message as answered.
-   */
-  const withReplies = (orgParamIndex: number) => `
-    with inbound_by_opp as (
-      select distinct subcontractor_id, opportunity_id
-        from communications
-       where org_id = $${orgParamIndex}
-         and channel = 'email' and direction = 'inbound'
-         and subcontractor_id is not null and opportunity_id is not null
-    ),
-    inbound_by_thread as (
-      select distinct subcontractor_id, gmail_thread_id
-        from communications
-       where org_id = $${orgParamIndex}
-         and channel = 'email' and direction = 'inbound'
-         and subcontractor_id is not null and gmail_thread_id is not null
-    )`;
-
-  /*
-   * Plain LEFT JOINs rather than EXISTS in a lateral.
-   *
-   * EXISTS reads better but plans worse: Postgres inlines it as a SubPlan on
-   * the outer scan and evaluates it per row, which was still 350ms after the
-   * first rewrite. Joining the two sets lets it hash them once -- 15ms for
-   * the same answer. Both sets are DISTINCT, so neither join can multiply
-   * rows.
-   */
-  const from = (searchParamIndex: number, orgParamIndex: number) => `
-    from communications c
-    join subcontractors s on s.id = c.subcontractor_id
-    left join opportunities o on o.id = c.opportunity_id
-    left join inbound_by_opp replied_by_opp
-           on replied_by_opp.subcontractor_id = c.subcontractor_id
-          and replied_by_opp.opportunity_id = c.opportunity_id
-    left join inbound_by_thread replied_by_thread
-           on replied_by_thread.subcontractor_id = c.subcontractor_id
-          and replied_by_thread.gmail_thread_id = c.gmail_thread_id
-    where c.channel = 'email'
-      and c.org_id = $${orgParamIndex}
-      ${searchSql(searchParamIndex)}
-  `;
-
-  // The org is appended LAST to each array so the existing positional indexes
-  // ($1 limit, $2 offset, $3 search) keep their meaning.
-  const orgId = await currentOrg();
-  const listParams: unknown[] = [EMAIL_LOG_PAGE_SIZE, offset];
-  if (searchNeedle) listParams.push(searchNeedle);
-  listParams.push(orgId);
-  const listOrgIndex = listParams.length;
-  const countParams: unknown[] = searchNeedle ? [searchNeedle] : [];
-  countParams.push(orgId);
-  const countOrgIndex = countParams.length;
-
-  const [rows, totals, countRows] = await Promise.all([
-    query<EmailLogRow>(
-      `${withReplies(listOrgIndex)}
-       select c.id, c.created_at, c.subject, c.body, c.provider,
-              c.recipient_email, c.opened_at, c.clicked_at, c.replied_at, c.direction,
-              c.delivery_state, c.delivery_detail,
-              ${EMAIL_LOG_RESPONDED} as responded,
-              c.subcontractor_id, s.company_name,
-              c.opportunity_id, o.title as opportunity_title
-       ${from(3, listOrgIndex)}
-         and ${statusSql}
-       order by c.created_at desc
-       limit $1 offset $2`,
-      listParams
-    ),
-    query<{ count: string }>(
-      `${withReplies(countOrgIndex)}
-       select count(*)::text as count ${from(1, countOrgIndex)} and ${statusSql}`,
-      countParams
-    ),
-    query<{
-      all: string;
-      sent: string;
-      opened: string;
-      clicked: string;
-      responded: string;
-      bounced: string;
-      deferred: string;
-      failed: string;
-      inbound: string;
-    }>(
-      `${withReplies(countOrgIndex)}
-       select
-         count(*)::text as all,
-         count(*) filter (where c.direction = 'outbound')::text as sent,
-         count(*) filter (where c.direction = 'outbound' and c.opened_at is not null)::text as opened,
-         count(*) filter (where c.direction = 'outbound' and c.clicked_at is not null)::text as clicked,
-         count(*) filter (where ${EMAIL_LOG_RESPONDED})::text as responded,
-         count(*) filter (where c.delivery_state = 'bounced')::text as bounced,
-         count(*) filter (where c.delivery_state = 'deferred')::text as deferred,
-         count(*) filter (where c.delivery_state = 'failed')::text as failed,
-         count(*) filter (where c.direction = 'inbound')::text as inbound
-       ${from(1, countOrgIndex)}`,
-      countParams
-    ),
-  ]);
-
-  const c = countRows[0];
-  return {
-    rows,
-    total: parseInt(totals[0]?.count ?? "0", 10),
-    counts: {
-      all: parseInt(c?.all ?? "0", 10),
-      sent: parseInt(c?.sent ?? "0", 10),
-      opened: parseInt(c?.opened ?? "0", 10),
-      clicked: parseInt(c?.clicked ?? "0", 10),
-      bounced: parseInt(c?.bounced ?? "0", 10),
-      deferred: parseInt(c?.deferred ?? "0", 10),
-      failed: parseInt(c?.failed ?? "0", 10),
-      inbound: parseInt(c?.inbound ?? "0", 10),
-      responded: parseInt(c?.responded ?? "0", 10),
-    },
-  };
-}
 
 export interface SubCommRow {
   id: string;
@@ -893,6 +723,326 @@ export async function complianceBoard() {
   return items;
 }
 
+/**
+ * A timestamp column as an ISO string, whatever the driver handed back.
+ *
+ * node-postgres returns a `Date` for a `timestamptz`, and the row types here
+ * declare these columns as `string`. TypeScript accepts that and the runtime
+ * does not: a `Date` reaching anything that slices or compares strings throws,
+ * and the last time that happened it took down an entire page for every
+ * account that had one row with a date in it. Normalized once, here, so
+ * everything downstream gets the shape its type promises.
+ */
+function isoOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * What the operator actually finished today.
+ *
+ * Not derived from the queue. The queue is what is left, so an empty queue
+ * would give the same answer for "nothing to do" and "everything done", which
+ * are opposite mornings. These come from the timestamps the work itself
+ * leaves behind: a call placed, a quote entered, a bid submitted, a decision
+ * recorded, a compliance item resolved.
+ *
+ * The day boundary is the database's, which is the server's. That is a real
+ * limitation on an account whose operator is several timezones away, and it
+ * is named here rather than papered over: the alternative is passing a
+ * timezone from the browser into a server component, which arrives one render
+ * late and would make the counter flicker.
+ */
+export interface CompletedToday {
+  calls: number;
+  quotes: number;
+  bidsSubmitted: number;
+  decisions: number;
+  complianceResolved: number;
+  total: number;
+}
+
+export async function completedToday(): Promise<CompletedToday> {
+  const orgId = await currentOrg();
+  const row = await queryOne<Record<string, string>>(
+    `select
+       (select count(*) from call_cards cc
+          join opportunities o on o.id = cc.opportunity_id
+         where o.org_id = $1 and cc.called_at >= date_trunc('day', now()))::text as calls,
+       (select count(*) from quotes q
+         where q.org_id = $1 and q.created_at >= date_trunc('day', now()))::text as quotes,
+       (select count(*) from bids b
+         where b.org_id = $1 and b.submitted_at >= date_trunc('day', now()))::text as bids,
+       (select count(*) from opportunities o
+         where o.org_id = $1 and o.human_action_required = false
+           and o.updated_at >= date_trunc('day', now())
+           and o.stage <> 'discovered')::text as decisions,
+       (select count(*) from compliance_items ci
+         where ci.org_id = $1 and ci.status_override = 'resolved'
+           and ci.updated_at >= date_trunc('day', now()))::text as compliance`,
+    [orgId]
+  );
+
+  const n = (v: string | undefined) => {
+    const x = Number(v ?? 0);
+    return Number.isFinite(x) ? x : 0;
+  };
+  const calls = n(row?.calls);
+  const quotes = n(row?.quotes);
+  const bidsSubmitted = n(row?.bids);
+  const decisions = n(row?.decisions);
+  const complianceResolved = n(row?.compliance);
+  return {
+    calls,
+    quotes,
+    bidsSubmitted,
+    decisions,
+    complianceResolved,
+    total: calls + quotes + bidsSubmitted + decisions + complianceResolved,
+  };
+}
+
+/*
+ * A peek id arrives from a query string, so it is whatever somebody typed.
+ * Postgres raises on `uuid = 'not-a-uuid'`, which took the whole roster page
+ * down on a malformed URL rather than simply showing no drawer. Checked here
+ * rather than at each call site because there is no shape of bad id that
+ * should reach the database.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * One opportunity, as the table's peek drawer needs it.
+ *
+ * The same four small indexed reads the board's hover preview does, for the
+ * same reason: this answers "should I open this" and must not cost what
+ * opening it costs. `opportunityDetail` pulls hundreds of communications,
+ * documents and log lines to render a page.
+ */
+export interface OppPeek {
+  opp: Record<string, unknown>;
+  requiredTrades: string[];
+  tradesCovered: number;
+  tradesRequired: number;
+  quoteCount: number;
+  subsContacted: number;
+  subsResponded: number;
+  bidSubmitted: boolean;
+  outcome: string | null;
+}
+
+export async function oppPeek(id: string): Promise<OppPeek | null> {
+  if (!UUID_RE.test(id)) return null;
+  const orgId = await currentOrg();
+  const opp = await queryOne<Record<string, unknown>>(
+    `select * from opportunities where id = $1 and org_id = $2`,
+    [id, orgId]
+  );
+  if (!opp) return null;
+
+  const [subs, quotes, bid] = await Promise.all([
+    query<{ trade: string | null; outreach_state: string | null; responded_at: string | null }>(
+      `select trade, outreach_state, responded_at from opportunity_subs
+        where opportunity_id = $1 limit 300`,
+      [id]
+    ),
+    query<{ trade: string | null }>(
+      `select trade from quotes where opportunity_id = $1 limit 200`,
+      [id]
+    ),
+    queryOne<{ submitted_at: string | null; outcome: string | null }>(
+      `select submitted_at::text as submitted_at, outcome from bids
+        where opportunity_id = $1 order by created_at desc limit 1`,
+      [id]
+    ),
+  ]);
+
+  const analysis = opp.solicitation_analysis as { required_trades?: string[] } | null;
+  const requiredTrades = analysis?.required_trades ?? [];
+  const quotedTrades = new Set(
+    quotes.map((q) => (q.trade ?? "").toLowerCase()).filter(Boolean)
+  );
+
+  return {
+    opp,
+    requiredTrades,
+    tradesRequired: requiredTrades.length,
+    tradesCovered: requiredTrades.filter((t) => quotedTrades.has(t.toLowerCase())).length,
+    quoteCount: quotes.length,
+    subsContacted: subs.filter((s) => s.outreach_state && s.outreach_state !== "pending").length,
+    subsResponded: subs.filter((s) => s.responded_at != null).length,
+    bidSubmitted: Boolean(bid?.submitted_at),
+    outcome: bid?.outcome ?? null,
+  };
+}
+
+/**
+ * Agent and operator log lines about one subcontractor.
+ *
+ * The unified timeline existed and only the opportunity record used it, so a
+ * subcontractor's own page could show their emails and their quotes but not
+ * the decisions taken about them: who marked them preferred, when the sweep
+ * expired their certificate, why outreach skipped them. Those are exactly the
+ * lines somebody is looking for when they open a record and ask what happened.
+ */
+export async function subActivityLogs(subId: string) {
+  if (!UUID_RE.test(subId)) return [];
+  const orgId = await currentOrg();
+  return query<Record<string, unknown>>(
+    `select agent, action, message, reasoning, created_at::text as created_at
+       from agent_logs
+      where subcontractor_id = $1 and (org_id = $2 or org_id is null)
+      order by created_at desc
+      limit 200`,
+    [subId, orgId]
+  );
+}
+
+/**
+ * One subcontractor, as the roster's peek drawer needs them.
+ *
+ * Includes the raw counts the reliability score is computed from, so the
+ * drawer can show the arithmetic rather than a bare number out of a hundred.
+ * They are counted here rather than read off a stored column because there is
+ * no stored column for them: the learning loop computes them, writes the
+ * score, and throws the inputs away.
+ */
+export interface SubPeekRow {
+  id: string;
+  company_name: string;
+  owner_name: string | null;
+  email: string | null;
+  email_verified: boolean;
+  contact_status: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  trade_categories: string[] | null;
+  license_number: string | null;
+  license_status: string | null;
+  sam_excluded: boolean;
+  blacklisted: boolean;
+  is_preferred: boolean;
+  reliability_score: number | null;
+  last_contacted: string | null;
+  google_rating: string | number | null;
+  review_count: number | null;
+  outreach: string | number;
+  responded_48h: string | number;
+  responded_any: string | number;
+  quote_count: string | number;
+  open_docs: string | number;
+  expired_docs: string | number;
+}
+
+export async function subPeek(id: string): Promise<SubPeekRow | null> {
+  if (!UUID_RE.test(id)) return null;
+  const orgId = await currentOrg();
+  return queryOne<SubPeekRow>(
+    `select s.id, s.company_name, s.owner_name, s.email, s.email_verified,
+            s.contact_status, s.phone, s.city, s.state, s.trade_categories,
+            s.license_number, s.license_status, s.sam_excluded, s.blacklisted,
+            s.is_preferred, s.reliability_score,
+            s.last_contacted::text as last_contacted,
+            s.google_rating, s.review_count,
+            (select count(*) from communications c
+              where c.subcontractor_id = s.id and c.direction = 'outbound'
+                and c.org_id = $2) as outreach,
+            (select count(*) from communications c
+              where c.subcontractor_id = s.id and c.direction = 'outbound'
+                and c.org_id = $2 and c.replied_at is not null
+                and c.replied_at <= c.created_at + interval '48 hours') as responded_48h,
+            (select count(*) from communications c
+              where c.subcontractor_id = s.id and c.direction = 'outbound'
+                and c.org_id = $2 and c.replied_at is not null) as responded_any,
+            (select count(*) from quotes q where q.subcontractor_id = s.id) as quote_count,
+            (select count(*) from subcontractor_documents d
+              where d.subcontractor_id = s.id
+                and d.status in ('pending','active','expiring')) as open_docs,
+            (select count(*) from subcontractor_documents d
+              where d.subcontractor_id = s.id
+                and (d.status = 'expired'
+                     or (d.expires_at is not null and d.expires_at <= now()))) as expired_docs
+       from subcontractors s
+      where s.id = $1 and s.org_id = $2`,
+    [id, orgId]
+  );
+}
+
+/**
+ * Subcontractor paperwork for the compliance board.
+ *
+ * Scoped to engaged subcontractors -- ones with paperwork already started, or
+ * named on a contract. The alternative is every prospect ever sourced showing
+ * up as "missing W-9", which would be true, useless, and would bury the few
+ * that matter.
+ *
+ * Tenancy is enforced on the subcontractor's own org_id rather than on the
+ * document's, because subcontractor_documents.org_id is nullable and rows
+ * written before it existed carry null. Reading the gate off a nullable column
+ * is how a tenant boundary quietly stops holding.
+ */
+export async function subcontractorComplianceRows() {
+  const orgId = await currentOrg();
+  return query<Record<string, unknown>>(
+    `with engaged as (
+       select distinct d.subcontractor_id as id
+         from subcontractor_documents d
+         join subcontractors s2 on s2.id = d.subcontractor_id and s2.org_id = $1
+       union
+       select c.primary_sub_id from contracts c
+        where c.org_id = $1 and c.primary_sub_id is not null
+       union
+       select c.backup_sub_id from contracts c
+        where c.org_id = $1 and c.backup_sub_id is not null
+     ),
+     on_contract as (
+       select c.primary_sub_id as id from contracts c
+        where c.org_id = $1 and c.primary_sub_id is not null
+       union
+       select c.backup_sub_id from contracts c
+        where c.org_id = $1 and c.backup_sub_id is not null
+     )
+     select s.id as sub_id, s.company_name,
+            (oc.id is not null) as on_contract,
+            d.doc_type, d.status,
+            d.expires_at::text as expires_at,
+            d.signed_at::text as signed_at,
+            d.verified_at::text as verified_at
+       from engaged e
+       join subcontractors s on s.id = e.id and s.org_id = $1
+       left join on_contract oc on oc.id = s.id
+       left join subcontractor_documents d on d.subcontractor_id = s.id
+      order by s.company_name asc, d.doc_type asc`,
+    [orgId]
+  );
+}
+
+/**
+ * Every contract, with the columns the five views need.
+ *
+ * One query rather than two: the views are derived from dates and health
+ * signals, not from the stored status, so splitting by status in SQL would
+ * mean re-deriving in two places and getting a contract that is both
+ * "completed" and "at risk" depending on which list you opened it from.
+ */
+export async function allContracts() {
+  const orgId = await currentOrg();
+  return query<Record<string, unknown>>(
+    `select c.*, o.title as opportunity_title,
+            ps.company_name as primary_sub_name,
+            bs.company_name as backup_sub_name
+       from contracts c
+       left join opportunities o on o.id = c.opportunity_id
+       left join subcontractors ps on ps.id = c.primary_sub_id
+       left join subcontractors bs on bs.id = c.backup_sub_id
+      where c.org_id=$1
+      order by c.end_date asc nulls last`,
+    [orgId]
+  );
+}
+
 export async function activeContracts() {
   const orgId = await currentOrg();
   return query(
@@ -926,14 +1076,192 @@ export async function completedContracts() {
   );
 }
 
-export async function latestKpiSnapshot(): Promise<Record<string, unknown> | null> {
-  const row = await queryOne<{ output_json: Record<string, unknown> }>(
-    `select output_json from agent_logs
+export async function latestKpiSnapshot(): Promise<{
+  data: Record<string, unknown>;
+  generatedAt: Date | null;
+} | null> {
+  // `created_at` comes back too, because a breakdown with no date on it is
+  // presented as current no matter how old it is. A win rate by agency from
+  // six weeks ago is not wrong, but reading it as this week's is.
+  const row = await queryOne<{ output_json: Record<string, unknown>; created_at: Date | null }>(
+    `select output_json, created_at from agent_logs
       where agent='analytics-engine' and action='kpi-snapshot' and org_id=$1
       order by created_at desc limit 1`,
     [await currentOrg()]
   );
-  return row?.output_json ?? null;
+  if (!row?.output_json) return null;
+  return {
+    data: row.output_json,
+    generatedAt: row.created_at instanceof Date ? row.created_at : null,
+  };
+}
+
+/**
+ * Which AI credential this account is spending, and what it has spent.
+ *
+ * Three things can stop every agent overnight and none of them was visible
+ * anywhere in the interface: an exhausted credit balance, a borrowed key whose
+ * grant expires, and a trial allowance reaching its cap. All three are
+ * knowable in advance from data already stored, which is why this reads the
+ * grant and the meter rather than only the failures.
+ *
+ * Every field can be absent, and absent is reported as absent. A window with
+ * no recorded calls returns no rows, not a row of zeroes.
+ */
+export async function providerUsage(): Promise<{
+  source: ProviderCredentialSource;
+  grantExpiresAt: Date | null;
+  callsOnPlatformKey: number | null;
+  trialBudget: number | null;
+  usageRows: Record<string, unknown>[];
+}> {
+  const orgId = await currentOrg();
+  const KEY = "ANTHROPIC_API_KEY";
+  const [own, grant, meter, usageRows] = await Promise.all([
+    queryOne<{ ok: boolean }>(
+      `select true as ok from integration_settings where env_key = $1 and org_id = $2`,
+      [KEY, orgId]
+    ).catch(() => null),
+    queryOne<{ expires_at: Date | null }>(
+      `select expires_at from platform_key_grants
+        where org_id = $1 and env_key = $2
+          and (expires_at is null or expires_at > now())`,
+      [orgId, KEY]
+    ).catch(() => null),
+    queryOne<{ calls: number }>(
+      `select calls from platform_key_usage where org_id = $1 and env_key = $2`,
+      [orgId, KEY]
+    ).catch(() => null),
+    query<{ claude_usage: Record<string, unknown> }>(
+      `select claude_usage from agent_logs
+        where org_id = $1 and claude_usage is not null
+          and created_at >= now() - interval '24 hours'
+        limit 5000`,
+      [orgId]
+    ).catch(() => []),
+  ]);
+
+  // The same order the key resolver uses, so this panel cannot describe a
+  // credential the automation is not actually spending. Own key first: an
+  // account that has supplied one is never borrowing, whatever else exists.
+  const { TRIAL_PLATFORM_KEY_BUDGET } = await import("./billing/trial-keys");
+  const budget = TRIAL_PLATFORM_KEY_BUDGET[KEY] ?? null;
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  let source: ProviderCredentialSource;
+  if (own) source = "own_key";
+  else if (grant) source = "granted";
+  else if (meter && budget != null && meter.calls > 0) source = "trial";
+  // Last in the resolver's order, and easy to leave out: the founding
+  // organization falls back to the environment. Omitting this branch reported
+  // "no AI credential" on the one account where every agent was in fact
+  // running, which is a worse answer than none.
+  else if (orgId === LEGACY_ORG_ID && (process.env.ANTHROPIC_API_KEY ?? "").trim())
+    source = "environment";
+  else source = "none";
+
+  return {
+    source,
+    grantExpiresAt: grant?.expires_at instanceof Date ? grant.expires_at : null,
+    callsOnPlatformKey: meter ? Number(meter.calls) : null,
+    trialBudget: source === "trial" ? budget : null,
+    usageRows: usageRows
+      .map((r) => r.claude_usage)
+      .filter((u): u is Record<string, unknown> => !!u && typeof u === "object"),
+  };
+}
+
+/**
+ * How many opportunities sit at each score, for the threshold preview.
+ *
+ * Scoped to work whose recommendation still means something: anything that has
+ * already started running is not un-started by raising the threshold, and
+ * counting it would overstate the effect of the change. Dismissed rows ARE
+ * included, because lowering the review floor is precisely how they come back.
+ *
+ * Returned as a 101-slot histogram rather than a row per opportunity, so the
+ * preview recomputes in the browser as the number is typed without a request
+ * per keystroke, and no opportunity data leaves the server to do it.
+ */
+export async function scoreHistogram(): Promise<number[]> {
+  const rows = await query<{ score: number; n: number }>(
+    `select score, count(*)::int as n
+       from opportunities
+      where org_id = $1 and status = 'open' and score is not null
+        and stage in ('monitoring','scoring','analysis','dismissed')
+      group by score`,
+    [await currentOrg()]
+  );
+  const hist = new Array(101).fill(0);
+  for (const r of rows) {
+    const score = Number(r.score);
+    if (Number.isInteger(score) && score >= 0 && score <= 100) {
+      hist[score] += Number(r.n) || 0;
+    }
+  }
+  return hist;
+}
+
+/**
+ * What each outreach template has actually done, attributed from the send
+ * record rather than from a counter.
+ *
+ * The attribution is exact because the sender already stamped it. An initial
+ * outreach writes no `kind`; a follow-up writes `kind: "followup"` along with
+ * `threaded`, which says whether it went into the original conversation or
+ * fell back to a fresh one. Those three cases are precisely the three
+ * templates the Content Library edits, so nothing here is inferred from
+ * matching subject text, which would break the moment somebody edited a
+ * template, which is the one thing this page exists to let them do.
+ *
+ * Delivered counts anything past the handover: a message that opened, was
+ * clicked, was replied to, or that the provider confirmed. `sent` on its own
+ * means "handed over and nothing came back", which is not delivery.
+ */
+export async function templateSendStats(): Promise<Record<string, TemplateCounts>> {
+  const rows = await query<{
+    slug: string;
+    sent: number;
+    delivered: number;
+    opened: number;
+    replied: number;
+    bounced: number;
+    last_sent_at: Date | null;
+  }>(
+    `select
+       case
+         when c.meta->>'kind' = 'followup' and c.meta->>'threaded' = 'false'
+           then 'template_2_followup_new_thread'
+         when c.meta->>'kind' = 'followup' then 'template_2_followup'
+         else 'template_1_outreach'
+       end as slug,
+       count(*)::int as sent,
+       count(*) filter (
+         where c.delivery_state = 'delivered'
+            or c.opened_at is not null
+            or c.clicked_at is not null
+            or c.replied_at is not null
+       )::int as delivered,
+       count(*) filter (where c.opened_at is not null)::int as opened,
+       count(*) filter (where c.replied_at is not null)::int as replied,
+       count(*) filter (where c.delivery_state in ('bounced','failed'))::int as bounced,
+       max(c.created_at) as last_sent_at
+     from communications c
+    where c.org_id = $1 and c.channel = 'email' and c.direction = 'outbound'
+    group by 1`,
+    [await currentOrg()]
+  );
+  const out: Record<string, TemplateCounts> = {};
+  for (const r of rows) {
+    out[r.slug] = {
+      sent: Number(r.sent) || 0,
+      delivered: Number(r.delivered) || 0,
+      opened: Number(r.opened) || 0,
+      replied: Number(r.replied) || 0,
+      bounced: Number(r.bounced) || 0,
+      lastSentAt: r.last_sent_at instanceof Date ? r.last_sent_at.toISOString() : null,
+    };
+  }
+  return out;
 }
 
 /** Live-computed KPIs as a fallback when the Analytics Engine hasn't run yet. */
@@ -1024,6 +1352,249 @@ export async function analyticsExtras(): Promise<{
     counts: counts ?? { open_opps: 0, new_30d: 0, bids_30d: 0, active_contracts: 0 },
     byStage,
   };
+}
+
+/**
+ * The eight-step acquisition funnel over one cohort of opportunities.
+ *
+ * A cohort is everything found inside the window, followed wherever it got to
+ * since. That is the only reading that supports a conversion rate: counting
+ * "quotes received this month" against "opportunities found this month" mixes
+ * two different sets of work and produces a number that means nothing.
+ *
+ * Each opportunity is placed at the furthest step it reached, and the ones
+ * that stopped short are split by whether they are closed (a real loss) or
+ * still open (not a loss yet). The medians measure only spans that have two
+ * real timestamps on both ends; there is no stage-history table, so the steps
+ * without one report nothing rather than a plausible-looking zero.
+ */
+export async function funnelCounts(
+  from: Date | null,
+  to: Date | null = null
+): Promise<FunnelCounts> {
+  const orgId = await currentOrg();
+  const row = await queryOne<Record<string, unknown>>(
+    `with cohort as (
+       select o.id, o.status, o.stage, o.score, o.tier, o.created_at
+         from opportunities o
+        where o.org_id = $1
+          and ($2::timestamptz is null or o.created_at >= $2::timestamptz)
+          and ($3::timestamptz is null or o.created_at <  $3::timestamptz)
+     ),
+     /*
+      * Each of the three milestones, grouped once over the whole account and
+      * joined in, rather than looked up per opportunity.
+      *
+      * These were lateral subqueries correlated on the opportunity id, which
+      * is the obvious way to write the question and the wrong way to run it:
+      * at 5,000 opportunities the communications lookup alone touched 20,001
+      * heap blocks, once per row, and made the Analytics page take 837ms
+      * where every other page took under 120. One pass over each table
+      * answers the same question for every opportunity at once.
+      *
+      * Scoped by org_id inside each aggregate, exactly as the laterals were.
+      * That is what keeps one account's milestones out of another's funnel,
+      * and it has to stay on the inner query rather than move to the join.
+      */
+     out_first as (
+       select opportunity_id, min(created_at) as first_out
+         from communications
+        where org_id = $1 and direction = 'outbound' and opportunity_id is not null
+        group by opportunity_id
+     ),
+     quote_first as (
+       select opportunity_id, min(created_at) as first_quote
+         from quotes
+        where org_id = $1 and opportunity_id is not null
+        group by opportunity_id
+     ),
+     bid_first as (
+       select opportunity_id,
+              min(created_at) as first_bid,
+              min(submitted_at) as first_submit,
+              bool_or(outcome in ('won','lost')) as decided,
+              bool_or(outcome = 'won') as won,
+              bool_or(outcome = 'lost') as lost
+         from bids
+        where org_id = $1 and opportunity_id is not null
+        group by opportunity_id
+     ),
+     facts as (
+       select c.id, c.created_at,
+              (c.status = 'open' and c.stage not in ('dismissed','lost')) as still_open,
+              (c.score is not null) as scored,
+              (c.stage in ('sub_research','outreach','call_queue','quote_entry',
+                           'bid_building','submitted','won','lost')
+                or c.tier = 'pursue') as pursued,
+              cm.first_out, q.first_quote,
+              b.first_bid, b.first_submit, b.decided, b.won, b.lost
+         from cohort c
+         left join out_first cm on cm.opportunity_id = c.id
+         left join quote_first q on q.opportunity_id = c.id
+         left join bid_first b on b.opportunity_id = c.id
+     ),
+     ranked as (
+       select f.*,
+              case
+                when f.decided then 7
+                when f.first_submit is not null then 6
+                when f.first_bid is not null then 5
+                when f.first_quote is not null then 4
+                when f.first_out is not null then 3
+                when f.pursued then 2
+                when f.scored then 1
+                else 0
+              end as furthest
+         from facts f
+     )
+     select
+       count(*)::int as r0,
+       count(*) filter (where furthest >= 1)::int as r1,
+       count(*) filter (where furthest >= 2)::int as r2,
+       count(*) filter (where furthest >= 3)::int as r3,
+       count(*) filter (where furthest >= 4)::int as r4,
+       count(*) filter (where furthest >= 5)::int as r5,
+       count(*) filter (where furthest >= 6)::int as r6,
+       count(*) filter (where furthest >= 7)::int as r7,
+       count(*) filter (where furthest = 0 and not still_open)::int as d1,
+       count(*) filter (where furthest = 1 and not still_open)::int as d2,
+       count(*) filter (where furthest = 2 and not still_open)::int as d3,
+       count(*) filter (where furthest = 3 and not still_open)::int as d4,
+       count(*) filter (where furthest = 4 and not still_open)::int as d5,
+       count(*) filter (where furthest = 5 and not still_open)::int as d6,
+       count(*) filter (where furthest = 6 and not still_open)::int as d7,
+       count(*) filter (where furthest = 0 and still_open)::int as p1,
+       count(*) filter (where furthest = 1 and still_open)::int as p2,
+       count(*) filter (where furthest = 2 and still_open)::int as p3,
+       count(*) filter (where furthest = 3 and still_open)::int as p4,
+       count(*) filter (where furthest = 4 and still_open)::int as p5,
+       count(*) filter (where furthest = 5 and still_open)::int as p6,
+       count(*) filter (where furthest = 6 and still_open)::int as p7,
+       count(*) filter (where won)::int as won,
+       count(*) filter (where lost and not won)::int as lost,
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_out - created_at)) / 86400.0
+       ) filter (where first_out is not null) as m_contact,
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_quote - first_out)) / 86400.0
+       ) filter (where first_quote is not null and first_out is not null) as m_quote,
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_bid - first_quote)) / 86400.0
+       ) filter (where first_bid is not null and first_quote is not null) as m_bid,
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_submit - first_bid)) / 86400.0
+       ) filter (where first_submit is not null and first_bid is not null) as m_submit
+       from ranked`,
+    [orgId, from ? from.toISOString() : null, to ? to.toISOString() : null]
+  );
+  const n = (v: unknown): number => {
+    const x = typeof v === "string" ? Number(v) : v;
+    return typeof x === "number" && Number.isFinite(x) ? x : 0;
+  };
+  // A median over an empty set is null in Postgres, and it must stay null here:
+  // "no span was measured" and "the span was nought days" are different facts.
+  const median = (v: unknown): number | null => {
+    const x = typeof v === "string" ? Number(v) : v;
+    return typeof x === "number" && Number.isFinite(x) ? Math.max(0, x) : null;
+  };
+  const r = row ?? {};
+  return {
+    reached: {
+      found: n(r.r0),
+      scored: n(r.r1),
+      pursued: n(r.r2),
+      subs_contacted: n(r.r3),
+      quotes_received: n(r.r4),
+      bid_built: n(r.r5),
+      submitted: n(r.r6),
+      decided: n(r.r7),
+    },
+    droppedBefore: {
+      found: 0,
+      scored: n(r.d1),
+      pursued: n(r.d2),
+      subs_contacted: n(r.d3),
+      quotes_received: n(r.d4),
+      bid_built: n(r.d5),
+      submitted: n(r.d6),
+      decided: n(r.d7),
+    },
+    pendingBefore: {
+      found: 0,
+      scored: n(r.p1),
+      pursued: n(r.p2),
+      subs_contacted: n(r.p3),
+      quotes_received: n(r.p4),
+      bid_built: n(r.p5),
+      submitted: n(r.p6),
+      decided: n(r.p7),
+    },
+    medianDaysInto: {
+      subs_contacted: median(r.m_contact),
+      quotes_received: median(r.m_quote),
+      bid_built: median(r.m_bid),
+      submitted: median(r.m_submit),
+    },
+    won: n(r.won),
+    lost: n(r.lost),
+  };
+}
+
+/**
+ * The same cohort, cut by one dimension.
+ *
+ * The dimension is chosen from a fixed list and mapped to a fixed expression
+ * here, never interpolated from the request, so a drill-down cannot become a
+ * way to select arbitrary columns. Rows with no value on the dimension are
+ * kept and labelled, because dropping them would make the totals disagree with
+ * the funnel directly above them.
+ */
+export async function funnelBreakdown(
+  dimension: BreakdownKey,
+  from: Date | null,
+  to: Date | null = null
+): Promise<BreakdownRow[]> {
+  const EXPR: Record<BreakdownKey, string> = {
+    naics: `coalesce(nullif(o.naics_code, ''), 'Not stated')`,
+    state: `coalesce(nullif(o.location_state, ''), 'Not stated')`,
+    agency: `coalesce(nullif(o.agency, ''), 'Not stated')`,
+    set_aside: `coalesce(nullif(o.set_aside_type, ''), 'Not stated')`,
+    score_band: `case
+        when o.score is null then 'Not scored'
+        when o.score >= 80 then 'Strong (80 and above)'
+        when o.score >= 60 then 'Fair (60 to 79)'
+        when o.score >= 40 then 'Weak (40 to 59)'
+        else 'Poor (under 40)'
+      end`,
+  };
+  const expr = EXPR[dimension] ?? EXPR.agency;
+  const orgId = await currentOrg();
+  return query<BreakdownRow>(
+    `select ${expr} as key,
+            count(*)::int as found,
+            count(*) filter (
+              where o.stage in ('sub_research','outreach','call_queue','quote_entry',
+                                'bid_building','submitted','won','lost')
+                 or o.tier = 'pursue'
+            )::int as pursued,
+            count(*) filter (where b.first_submit is not null)::int as submitted,
+            count(*) filter (where b.won)::int as won,
+            count(*) filter (where b.lost and not b.won)::int as lost
+       from opportunities o
+       left join lateral (
+         select min(submitted_at) as first_submit,
+                bool_or(outcome = 'won') as won,
+                bool_or(outcome = 'lost') as lost
+           from bids where opportunity_id = o.id and org_id = $1
+       ) b on true
+      where o.org_id = $1
+        and ($2::timestamptz is null or o.created_at >= $2::timestamptz)
+        and ($3::timestamptz is null or o.created_at <  $3::timestamptz)
+      group by 1
+      order by count(*) desc, 1 asc
+      limit 25`,
+    [orgId, from ? from.toISOString() : null, to ? to.toISOString() : null]
+  );
 }
 
 export interface CustomKpiRow {
@@ -2313,7 +2884,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       kind: "read_reply" as const,
       title: `Read reply from ${r.company_name ?? "a subcontractor"}`,
       context: r.opp_title ?? "",
-      due: r.deadline,
+      due: isoOrNull(r.deadline),
       href: "/today#reply-reviews",
       actionLabel: "Read reply",
       reason: "The automatic reader was not confident enough to act on this, so the conversation is stopped until somebody reads it.",
@@ -2323,8 +2894,8 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       kind: "decide" as const,
       title: `Pursue or pass: ${d.title ?? "untitled opportunity"}`,
       context: "Borderline score",
-      due: d.deadline,
-      expiresAt: d.review_expires_at,
+      due: isoOrNull(d.deadline),
+      expiresAt: isoOrNull(d.review_expires_at),
       href: `/opportunity/${d.id}#next`,
       actionLabel: "Decide",
       reason: d.review_expires_at
@@ -2336,7 +2907,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       kind: "call" as const,
       title: `Call ${c.company_name}${c.trade ? ` about ${c.trade}` : ""}`,
       context: c.opp_title ?? "",
-      due: c.deadline,
+      due: isoOrNull(c.deadline),
       href: `/call-queue`,
       actionLabel: "Open call",
       reason: "Email has not produced a price on this trade, so the next move is a phone call.",
@@ -2356,7 +2927,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
             ? `Enter quotes: ${o.title ?? "untitled"}`
             : `Resolve blocker: ${o.title ?? "untitled"}`,
       context: o.stage.replace(/_/g, " "),
-      due: o.deadline,
+      due: isoOrNull(o.deadline),
       href:
         o.stage === "bid_building"
           ? `/opportunity/${o.id}#submission`

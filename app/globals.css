@@ -37,6 +37,20 @@
   --accent: 126 94 51; /* accessible gold-brown */
   --accent-soft: 246 241 232;
   --accent-strong: 126 94 51;
+  /*
+   * The colour that goes ON a status fill.
+   *
+   * The status tokens lighten in dark mode so they can carry text on a dark
+   * page, which is right. It breaks anything that uses one as a FILL with
+   * white type: `bg-pursue text-white` measured 5.75:1 in light and 2.88:1 in
+   * dark, on the Pursue and Pass buttons, which are the two most important
+   * controls in the product. Nothing had ever measured it, because the sweep
+   * only ran the light theme.
+   *
+   * So the foreground flips with the fill rather than being assumed. Light:
+   * white on a dark fill. Dark: ink on a light one.
+   */
+  --on-status: 255 255 255;
   --gold: 195 160 107; /* #c3a06b */
   --gold-deep: 166 130 80; /* #a68250 */
   /*
@@ -103,6 +117,8 @@
 
   --ink: 23 23 19;
 
+  /* Ink on the lightened fills. See --on-status above. */
+  --on-status: 23 23 19;
   --accent: 195 160 107;
   --accent-soft: 36 32 24;
   --accent-strong: 212 180 130;
@@ -124,7 +140,12 @@
   --slate-200: 36 37 33;
   --slate-300: 55 56 50;
   --slate-400: 107 100 88;
-  --slate-500: 140 132 118;
+  /*
+   * Nudged up from 140 132 118, which measured 4.38:1 on --accent-soft and
+   * needs 4.5. It carries "3 steps already done" and the percentage on Today,
+   * so it is ordinary reading text rather than decoration.
+   */
+  --slate-500: 145 137 123;
   --slate-600: 180 170 155;
   --slate-700: 210 200 185;
   --slate-800: 232 225 214;
@@ -256,6 +277,21 @@ body {
       padding-bottom: 0;
     }
   }
+  /*
+   * The peek drawer is `fixed inset-0` on a narrow screen, which takes it out
+   * of `.page-main` and therefore out of that padding. Without this the last
+   * section of every drawer scrolls under the mobile tab bar and reads as the
+   * record simply ending there. Raising the drawer above the bar does not work:
+   * an ancestor creates a stacking context it cannot climb out of.
+   */
+  .drawer-scroll {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 1024px) {
+    .drawer-scroll {
+      padding-bottom: 1rem;
+    }
+  }
   .btn-primary {
     @apply bg-gold text-ink hover:bg-[#d6b986];
   }
@@ -266,10 +302,10 @@ body {
     @apply border-white/25 hover:bg-white/5;
   }
   .btn-danger {
-    @apply bg-risk text-white hover:bg-red-800;
+    @apply bg-risk text-on-status hover:bg-red-800;
   }
   .btn-success {
-    @apply bg-pursue text-white hover:bg-pursue-strong;
+    @apply bg-pursue text-on-status hover:bg-pursue-strong;
   }
   /* Secondary action: quieter than primary, stronger than ghost. */
   .btn-secondary {

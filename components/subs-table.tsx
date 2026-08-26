@@ -22,6 +22,7 @@ export function SubsTable({
   sort,
   paging,
   emptyState,
+  peekBase,
 }: {
   rows: Subcontractor[];
   total: number;
@@ -29,6 +30,13 @@ export function SubsTable({
   sort: SortState;
   paging: PageState;
   emptyState: React.ReactNode;
+  /**
+   * The current list URL with the peek removed, ready to have one appended.
+   * Built on the server: a function prop cannot cross into a client component,
+   * and rebuilding the query here from `useSearchParams` would be a second
+   * implementation of the same string.
+   */
+  peekBase: string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -186,6 +194,19 @@ export function SubsTable({
             </span>
           )}
         </div>
+      ),
+    },
+    {
+      key: "peek",
+      header: "",
+      render: (s) => (
+        <Link
+          href={`${peekBase}peek=${s.id}`}
+          scroll={false}
+          className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+        >
+          Quick look
+        </Link>
       ),
     },
   ];

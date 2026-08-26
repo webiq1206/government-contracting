@@ -524,6 +524,15 @@ export interface Bid {
   // --- Independent compliance audit ---
   audit_findings: AuditFinding[] | null;
   audit_status: "pending" | "clean" | "issues" | "skipped" | null;
+  /**
+   * When the AI pass last completed, which is what dates the findings.
+   *
+   * Typed as Date because node-postgres returns one for a timestamptz, and
+   * every place in this codebase that typed such a column as string dropped
+   * the value silently. Null means the pass has never completed on this bid,
+   * which is not the same as a clean audit.
+   */
+  audit_ran_at: Date | string | null;
 }
 
 export interface QaChecklistItem {

@@ -19,6 +19,7 @@ import type {
   AuditFinding,
 } from "@/lib/types";
 import { currency, pct, timeAgo } from "@/lib/format";
+import { auditNotice, packageChecklist } from "@/lib/domain/package";
 import { ThemeWordmark } from "@/components/theme-wordmark";
 
 const STATUS_META: Record<
@@ -66,13 +67,34 @@ export function SubmissionPackage({
   const manifest: PackageItem[] = bid.package_manifest ?? [];
   const validation: PackageValidation | null = bid.validation_json;
   const findings: AuditFinding[] = bid.audit_findings ?? [];
-  const auditStatus = bid.audit_status;
+  /*
+   * One sentence about the audit, decided in the domain rather than by four
+   * conditions here. The case that used to be missing is a skipped run
+   * carrying blockers forward: three separate `auditStatus === ...` lines
+   * could not express "today's run did not happen and what you are reading is
+   * from last Tuesday", so the page said only that the audit could not run and
+   * left the findings looking current.
+   */
+  const notice = auditNotice({
+    status: bid.audit_status,
+    ranAt: bid.audit_ran_at,
+    findings,
+    formatDate: (d) =>
+      d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+  });
   const ready = bid.package_ready;
   const submitted = Boolean(bid.submitted_at);
   const blockers = validation?.blockers ?? [];
   const tradeBlockers = blockers.filter((b) => /pricing has not been received/i.test(b));
   const otherBlockers = blockers.filter((b) => !/pricing has not been received/i.test(b));
   const canForceOverride = !ready && tradeBlockers.length === 0;
+  /*
+   * Everything standing between this package and submission: the deterministic
+   * blockers and the unresolved audit blockers, which are two different lists
+   * gating the same button.
+   */
+  const outstanding =
+    blockers.length + findings.filter((f) => f.severity === "blocker" && !f.acknowledged).length;
 
   async function post(payload: Record<string, unknown>, busyKey: string) {
     setBusyId(busyKey);
@@ -154,49 +176,20 @@ export function SubmissionPackage({
     }
   }
 
-  const readyPct =
-    validation && validation.total_mandatory > 0
-      ? Math.round(
-          (validation.satisfied_count / validation.total_mandatory) * 100
-        )
-      : ready
-        ? 100
-        : 0;
-  const readinessRows = [
-    {
-      title: "Pricing rollup",
-      detail:
-        bid.bid_amount != null
-          ? `Bid ${currency(bid.bid_amount)} · margin ${pct(bid.margin_pct)}`
-          : "Margin and quote checks",
-      ok: bid.bid_amount != null && bid.bid_amount > 0,
-    },
-    {
-      title: "Required forms",
-      detail:
-        validation != null
-          ? `${validation.satisfied_count}/${validation.total_mandatory} required items done`
-          : "Compliance matrix",
-      ok: Boolean(ready || (validation && validation.blockers.length === 0)),
-    },
-    {
-      title: "Certifications",
-      detail:
-        findings.filter((f) => f.severity === "blocker" && !f.acknowledged).length === 0
-          ? "No open blocker findings"
-          : "Open audit blockers remain",
-      ok: findings.filter((f) => f.severity === "blocker" && !f.acknowledged).length === 0,
-    },
-    {
-      title: "Compliance review",
-      detail: ready
-        ? "No open exceptions"
-        : blockers.length > 0
-          ? `${blockers.length} item${blockers.length === 1 ? "" : "s"} to finish`
-          : "In progress",
-      ok: Boolean(ready),
-    },
-  ];
+  /*
+   * Rows and percentage from one place, so the headline cannot answer a
+   * different question from the list under it.
+   */
+  const { rows: readinessRows, percent: readyPct } = packageChecklist({
+    bidAmount: bid.bid_amount,
+    bidText: currency(bid.bid_amount),
+    marginText: pct(bid.margin_pct),
+    validation,
+    findings,
+    ready,
+    outstanding,
+    auditStatus: bid.audit_status,
+  });
 
   return (
     <div className="space-y-4">
@@ -308,8 +301,17 @@ export function SubmissionPackage({
           <p className="font-medium">
             {ready
               ? `Ready to submit, all ${validation.total_mandatory} required items are in place.`
-              : `Not ready yet, ${validation.blockers.length} thing${
-                  validation.blockers.length === 1 ? "" : "s"
+              : /*
+                 * Counts everything that holds the package back, not just the
+                 * deterministic half. Readiness is validation AND no open audit
+                 * blocker, so counting only `validation.blockers` produced
+                 * "Not ready yet, 0 things to finish" whenever the thing to
+                 * finish was an audit finding. A zero beside a refusal reads
+                 * as a bug in the product rather than as work to do, and it
+                 * sends somebody looking in the wrong place.
+                 */
+                `Not ready yet, ${outstanding} thing${
+                  outstanding === 1 ? "" : "s"
                 } to finish (${validation.satisfied_count}/${validation.total_mandatory} required items done).`}
           </p>
           {validation.blockers.length > 0 && (
@@ -330,25 +332,35 @@ export function SubmissionPackage({
       )}
 
       {/* Independent compliance audit */}
-      {auditStatus === "pending" && (
-        <p className="text-xs text-slate-500">
-          Independent compliance audit is running, it re-reads the solicitation
-          against this package and will flag anything missing or non-compliant.
-        </p>
-      )}
-      {auditStatus === "skipped" && (
-        <p className="text-xs text-slate-500">
-          The AI compliance audit could not run (no solicitation text or the AI
-          key is not set). Eligibility checks above still apply; give the
-          package one careful human read against the solicitation before
-          submitting.
-        </p>
-      )}
-      {auditStatus === "clean" && findings.length === 0 && (
-        <p className="text-xs text-pursue">
-          ✓ Independent compliance audit found no issues. Still worth a final
-          human cross-check against the solicitation.
-        </p>
+      {notice && (
+        <div
+          className={
+            notice.tone === "warn"
+              ? "rounded-md border border-review/40 bg-review/10 px-3 py-2"
+              : "rounded-md border border-border bg-surface px-3 py-2"
+          }
+          /*
+           * A run that did not happen used to be 11px grey text under a
+           * package marked ready. It is the one thing on this panel that
+           * changes what a careful person does next, so it is bordered rather
+           * than whispered.
+           *
+           * No role="status": this is rendered with the page rather than
+           * announced on a change, and a live region that never changes is
+           * either read out of order or not at all.
+           */
+        >
+          <p
+            className={`text-xs font-medium ${
+              notice.tone === "warn" ? "text-review" : "text-foreground"
+            }`}
+          >
+            {/* Colour is never the only signal. */}
+            {notice.tone === "warn" ? "\u25b2 " : ""}
+            {notice.headline}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{notice.detail}</p>
+        </div>
       )}
       {findings.length > 0 && (
         <div>
@@ -639,8 +651,26 @@ export function SubmissionPackage({
               </ul>
             </div>
           )}
+          {/*
+            * Confirmed, and the confirmation says what the press actually
+            * does. This records a delivery; it does not make one. The steps
+            * above explain that, but somebody who scrolled straight here gets
+            * an irreversible-looking button with no restatement, and a bid
+            * marked delivered that nobody uploaded is the product asserting
+            * something that did not happen.
+            *
+            * The override path below has always confirmed. The ordinary one,
+            * which is the one everybody uses, did not.
+            */}
           <button
-            onClick={() => submit(false)}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Record this bid as submitted? Brost Co does not send it to the agency, so press this only after you have delivered the files the way the solicitation asks."
+                )
+              )
+                submit(false);
+            }}
             disabled={submitting || !ready}
             className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
           >

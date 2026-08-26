@@ -9,6 +9,7 @@ import { AccountActions } from "@/components/admin/account-actions";
 import { PlatformKeyGrants } from "@/components/admin/platform-key-grants";
 import { platformKeyStates } from "@/lib/admin/platform-keys";
 import { shortDate } from "@/lib/format";
+import { deletionView } from "@/lib/domain/account-deletion";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,15 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
               {org.suspended_reason ? `: ${org.suspended_reason}` : ""}
             </p>
           )}
+          {/* The single most important thing about this account, so it sits
+              with the access line rather than only in the danger zone at the
+              foot of the page. */}
+          {org.deletion_scheduled_at && (
+            <p className="pt-1 text-sm font-medium text-risk">
+              {deletionView(org.deletion_scheduled_at).headline}, on{" "}
+              {shortDate(org.deletion_scheduled_at)}. It can still be cancelled.
+            </p>
+          )}
         </div>
 
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 panel-inset p-4 text-sm sm:grid-cols-3">
@@ -141,6 +151,9 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
           suspended={Boolean(org.suspended_at)}
           currentDiscount={currentDiscount}
           ownerEmail={org.owner_email}
+          deletionScheduledAt={org.deletion_scheduled_at}
+          deletionRequestedBy={org.deletion_requested_by}
+          deletionReason={org.deletion_reason}
           canImpersonate={
             Boolean(org.owner_user_id) &&
             org.owner_user_id !== auth.id &&

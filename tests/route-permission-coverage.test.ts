@@ -48,6 +48,17 @@ const EXEMPT: Record<string, string> = {
   "guide/narrate/route.ts": "Asks a question about the page you are already allowed to see.",
   "authority/draft/route.ts": "Site Authority is platform-owner tooling for our own domain.",
   "authority/outreach/[id]/route.ts": "Site Authority is platform-owner tooling for our own domain.",
+  /*
+   * Your own account, not the organization's. Every capability in the matrix
+   * is a permission over shared records; a read-only teammate must still be
+   * able to change their own name, rotate their own password and end their
+   * own sessions. Each of these is scoped to auth.id inside the statement it
+   * runs, which is the check that matters here.
+   */
+  "account/name/route.ts": "Changes your own display name; scoped to auth.id.",
+  "account/password/route.ts":
+    "Changes your own password, and requires the current one; scoped to auth.id.",
+  "account/sessions/route.ts": "Ends your own sessions; the delete is scoped to auth.id.",
 };
 
 function walk(dir: string, out: string[] = []): string[] {

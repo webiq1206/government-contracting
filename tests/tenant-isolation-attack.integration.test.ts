@@ -261,6 +261,60 @@ d("cross-tenant attack surface (integration)", () => {
     expect(row?.status).toBe("pending");
   });
 
+  it("the conversation centre never reads another org's mail", async () => {
+    /*
+     * The thread key arrives from a query string, so it is a string an
+     * attacker picks. Every read has to gate on communications.org_id itself
+     * rather than on a joined subcontractor: a null org_id on the join would
+     * otherwise open the whole thread.
+     */
+    asA();
+    const { conversationList, conversationMessages, conversationExists } = await import(
+      "../lib/conversations"
+    );
+    const { runWithOrg } = await import("../lib/tenant-context");
+
+    const bKeys = await runWithOrg(B.org, async () =>
+      (await conversationList()).map((c) => c.threadKey)
+    );
+
+    await runWithOrg(A.org, async () => {
+      const mine = await conversationList();
+      for (const key of bKeys) {
+        expect(mine.some((c) => c.threadKey === key)).toBe(false);
+        expect(await conversationMessages(key)).toEqual([]);
+        expect(await conversationExists(A.org, key)).toBe(false);
+      }
+      // A search crafted to match B's data must still find nothing of B's.
+      const searched = await conversationList({ q: "SECRET" });
+      expect(JSON.stringify(searched)).not.toContain("B-SECRET-SUB");
+    });
+  });
+
+  it("resolving a conversation cannot touch another org's thread", async () => {
+    asA();
+    const { conversationList } = await import("../lib/conversations");
+    const { runWithOrg } = await import("../lib/tenant-context");
+    const bKeys = await runWithOrg(B.org, async () =>
+      (await conversationList()).map((c) => c.threadKey)
+    );
+    if (bKeys.length === 0) return;
+
+    const mod = await import("../app/api/conversations/flags/route");
+    const res = await mod.POST(
+      new Request("http://x", {
+        method: "POST",
+        body: JSON.stringify({ threadKey: bKeys[0], resolved: true }),
+      })
+    );
+    expect(res.status).toBe(404);
+    const row = await queryOne<{ n: string }>(
+      `select count(*)::text as n from conversation_flags where thread_key = $1`,
+      [bKeys[0]]
+    );
+    expect(row?.n).toBe("0");
+  });
+
   it("search never returns another org's records", async () => {
     asA();
     const mod = await import("../app/api/search/route");

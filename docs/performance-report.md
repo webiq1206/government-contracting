@@ -8,29 +8,38 @@ Server render time: the interval from request to the last byte of HTML, median o
 | --- | ---: | ---: |
 | opportunities | 90 | 5,090 |
 | subcontractors | 120 | 3,120 |
-| communications | 60 | 20,060 |
-| agent_logs | 8 | 10,008 |
+| communications | 61 | 20,061 |
+| agent_logs | 14 | 10,014 |
 
 | Route | Small | At scale | Change |
 | --- | ---: | ---: | ---: |
-| `/today` | 63ms | 54ms | 0.9x |
-| `/pipeline` | 72ms | 204ms | 2.8x |
-| `/pipeline?view=table` | 40ms | 38ms | 0.9x |
-| `/review` | 25ms | 54ms | 2.2x |
-| `/call-queue` | 22ms | 21ms | 1.0x |
-| `/subs` | 42ms | 39ms | 0.9x |
-| `/email-log` | 35ms | 52ms | 1.5x |
-| `/contracts` | 19ms | 23ms | 1.2x |
-| `/compliance` | 21ms | 22ms | 1.0x |
-| `/analytics` | 24ms | 25ms | 1.0x |
-| `/agents` | 26ms | 32ms | 1.2x |
-| `/settings/profile` | 24ms | 23ms | 1.0x |
+| `/today` | 73ms | 117ms | 1.6x |
+| `/pipeline` | 75ms | 268ms | 3.6x |
+| `/pipeline?view=table` | 43ms | 93ms | 2.2x |
+| `/review` | 31ms | 127ms | 4.1x |
+| `/call-queue` | 26ms | 91ms | 3.5x |
+| `/subs` | 43ms | 99ms | 2.3x |
+| `/communications` | 30ms | 267ms | 8.9x |
+| `/contracts` | 25ms | 85ms | 3.4x |
+| `/compliance` | 26ms | 93ms | 3.6x |
+| `/analytics` | 36ms | 90ms | 2.5x |
+| `/agents` | 34ms | 93ms | 2.7x |
+| `/settings/profile` | 31ms | 93ms | 3.0x |
 
 No route exceeds one second at scale.
 
 ## Notes
 
-`/email-log` was the one route this measurement caught: 298ms on ninety rows and 652ms at scale. The cause was not row count. Its query resolved "did this conversation get a reply" with a LATERAL subquery, which runs once per row -- EXPLAIN showed `loops=20060` for a query whose only job was to produce nine counters. The set of answered conversations is the same for every row, so it is now computed once and hash-joined: 557ms to 15ms on the query, 652ms to 45ms on the page.
+Re-measured after the automation transparency work, against a build ten commits newer than the previous report. Every route had regressed to roughly 1.75 seconds, including `/settings/profile`, which reads almost nothing. A uniform floor across unrelated pages points at the shared shell rather than at any page's own queries, and that is what it was.
+
+**The sidebar badge, on every page.** `inboxNeedsReplyCount` built the entire conversation list and filtered it. The reasoning behind that was sound and is preserved: a badge computed a second way is a badge that eventually disagrees with the page it points at. The mechanism was not. That list also builds every thread's subject, preview body, subcontractor and opportunity joins, and an unread count from a subquery correlated per thread, none of which a count needs. The badge now runs a facts-only query and feeds the rows to the same `verdict()` the list feeds, so there is still one definition of "needs a reply", pinned by `tests/conversation-badge.integration.test.ts`. 1,744ms to 53ms, and `/settings/profile` from 1,846ms to 92ms.
+
+**The unread count on `/communications`.** The same correlated subquery, on the page that legitimately does build the list. Moved into the existing aggregate as a filtered `count(*)`, one pass instead of one per thread. Verified equal on 502 threads and 6,672 unread messages before shipping. 1,684ms to 296ms.
+
+**The funnel on `/analytics`.** Three LATERAL joins, one per opportunity, resolving each milestone. `EXPLAIN` showed the communications lookup touching 20,001 heap blocks once per row. Each milestone is now grouped once over the account and hash-joined. 837ms to 90ms, with output identical across 7, 30 and 90 days and all time. The org scoping stayed inside each aggregate, which is what keeps one account's milestones out of another's funnel; verified with two accounts and a message belonging to only one.
+
+
+`/communications` was the one route this measurement caught: 298ms on ninety rows and 652ms at scale. The cause was not row count. Its query resolved "did this conversation get a reply" with a LATERAL subquery, which runs once per row -- EXPLAIN showed `loops=20060` for a query whose only job was to produce nine counters. The set of answered conversations is the same for every row, so it is now computed once and hash-joined: 557ms to 15ms on the query, 652ms to 45ms on the page.
 
 `/pipeline` is the slowest remaining route at ~200ms. It renders every open opportunity as a draggable card, so it is linear in a way the others are not. Worth revisiting with virtualization if accounts start carrying more than a few thousand open at once.
 

@@ -86,11 +86,13 @@ export const PAGE_HELP: Record<string, HelpContent> = {
     ],
   },
   "email-log": {
-    title: "Every outreach email, and every reply",
+    title: "One conversation per subcontractor, and who is waiting on whom",
     points: [
-      "Shows emails Brost Co sent and replies that came back, newest first.",
-      "Filter by sent, opened, clicked, or responded. Click a row to read the full message.",
-      "Open and click badges update when tracking pixels fire. Responded means the sub wrote back.",
+      "Grouped into conversations rather than listed as messages, so a thread reads as a thread.",
+      "The chips count every conversation in the account: unread, needs your reply, did not arrive, follow-up overdue.",
+      "Each message says what happened to it. Bounced means the address is wrong; blocked means their server refused it on policy; never sent means the failure is ours.",
+      "Reply here. It goes out from your mailbox inside the existing thread, so they see the conversation they already have with you.",
+      "Out-of-office and bounce notices are not counted as replies.",
     ],
   },
   agents: {

@@ -14,6 +14,7 @@ import { TrialPlanPicker } from "@/components/trial-plan-picker";
 import { accountStatus } from "@/lib/domain/account-status";
 import { permissionMessage } from "@/lib/domain/roles";
 import { AccountStatusPanel } from "@/components/account-status-panel";
+import { paymentState } from "@/lib/domain/payment-state";
 import { getAutomationState } from "@/lib/app-settings";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +98,25 @@ export default async function BillingSettingsPage({
   // happening instead, or the owner reads "Canceled" on an account that works
   // perfectly and goes looking for a problem that does not exist.
   const comped = Boolean(org?.billing_exempt);
+  /*
+   * What happened to the last payment, and what happens next.
+   *
+   * The page used to print "Past due" and stop. Stripe had already told the
+   * webhook why the card was refused and when it would be tried again, the
+   * webhook put both in an email, and the page that email pointed at could
+   * not answer the question the email raised.
+   */
+  const payment = paymentState({
+    subscriptionStatus: org?.subscription_status ?? null,
+    lastPaymentStatus: org?.last_payment_status ?? null,
+    lastPaymentError: org?.last_payment_error ?? null,
+    lastPaymentAt: org?.last_payment_at ?? null,
+    nextPaymentAttemptAt: org?.next_payment_attempt_at ?? null,
+    invoiceUrl: org?.last_invoice_url ?? null,
+    cancelAtPeriodEnd: org?.cancel_at_period_end ?? null,
+    currentPeriodEnd: org?.current_period_end ?? null,
+    billingExempt: org?.billing_exempt ?? null,
+  });
   const statusLabel = comped ? "Comped" : subscriptionStatusLabel(status);
   const isActive = status === "active" || status === "trialing";
 
@@ -128,12 +148,35 @@ export default async function BillingSettingsPage({
   // it in the first place.
   const canCheckout = stripeEnabled() && !hasStripeCustomer && !comped;
 
-  const planLabel =
+  /*
+   * The plan, priced at what this account is actually charged.
+   *
+   * This line used to print the list price for the plan key while the Price
+   * row three inches below it printed what Stripe bills, so a grandfathered
+   * account read "Founding, $497/mo" in the largest text on the card and
+   * "$299 per month" in the small text underneath. The larger number was the
+   * wrong one, and the whole point of reading the amount from Stripe was to
+   * stop the page quoting a price nobody pays.
+   */
+  const planName =
     org?.plan_key === "founding"
-      ? `Founding · $${FOUNDING_MONTHLY_USD.toLocaleString()}/mo`
+      ? "Founding"
       : org?.plan_key === "standard"
-        ? `Standard · $${STANDARD_MONTHLY_USD.toLocaleString()}/mo`
-        : "No plan selected";
+        ? "Standard"
+        : null;
+  const listMonthly =
+    org?.plan_key === "founding"
+      ? FOUNDING_MONTHLY_USD
+      : org?.plan_key === "standard"
+        ? STANDARD_MONTHLY_USD
+        : null;
+  const planLabel = !planName
+    ? "No plan selected"
+    : cents != null
+      ? `${planName} · ${chargeLabel}`
+      : // Nothing from Stripe yet, so this is the published rate rather than a
+        // bill, and it says which of the two it is.
+        `${planName} · list price $${(listMonthly ?? 0).toLocaleString()}/mo`;
 
   // A comped account has nothing to check out for and nothing to manage in the
   // Stripe portal. Offering either would only lead somewhere confusing.
@@ -155,6 +198,43 @@ export default async function BillingSettingsPage({
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {/* The six facts first. Everything below is detail on one of them. */}
         <AccountStatusPanel status={accountFacts} />
+
+        {/*
+          * The payment, when there is anything to say about it. A healthy
+          * subscription needs no panel of its own; the status above already
+          * says so, and a green box saying "fine" on every visit is how
+          * somebody learns to stop reading this part of the page.
+          */}
+        {(payment.urgent || payment.state === "canceling") && (
+          <div
+            role={payment.urgent ? "alert" : undefined}
+            className={`card max-w-xl space-y-2 ${
+              payment.urgent ? "border-risk/40 bg-risk/5" : "border-review/40 bg-review/5"
+            }`}
+          >
+            <p className={`text-sm font-semibold ${payment.urgent ? "text-risk" : "text-review"}`}>
+              {payment.headline}
+            </p>
+            {payment.reason && (
+              <p className="text-sm leading-relaxed text-slate-700">
+                <span className="label mr-1.5 inline">Reason:</span>
+                {payment.reason}
+              </p>
+            )}
+            <p className="text-sm leading-relaxed text-slate-700">{payment.next}</p>
+            {payment.consequence && (
+              <p className="text-sm leading-relaxed text-slate-600">{payment.consequence}</p>
+            )}
+            {payment.actionHref && payment.actionLabel && (
+              <Link
+                href={payment.actionHref}
+                className={payment.urgent ? "btn-primary w-fit" : "btn-ghost w-fit"}
+              >
+                {payment.actionLabel}
+              </Link>
+            )}
+          </div>
+        )}
 
         {searchParams?.error === "not_permitted" ? (
           <div className="rounded-md border border-review/40 bg-review/10 px-4 py-3 text-sm text-foreground">
@@ -259,6 +339,32 @@ export default async function BillingSettingsPage({
           />
         )}
 
+        {/*
+          * A comped account has no plan, no price, no renewal and no portal,
+          * and the card below printed all four as dashes and "No plan
+          * selected". The audit asks for the irrelevant pricing and portal
+          * content to be removed rather than emptied, because an owner told
+          * their account is free reads a page full of blanks as a page that
+          * is broken.
+          */}
+        {comped ? (
+          <div className="card max-w-xl space-y-2">
+            <p className="eyebrow">Current subscription</p>
+            <p className="font-display text-2xl text-foreground">
+              Full access, no billing required
+            </p>
+            <p className="text-sm leading-relaxed text-slate-600">
+              There is no plan, no renewal date and no payment method on this account,
+              because nothing is charged.
+              {org?.billing_exempt_reason ? ` ${org.billing_exempt_reason}.` : ""}{" "}
+              Every feature is available exactly as it is on a paid account.
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              If this ever changes you will be told before anything is charged, and the
+              plan and payment sections will appear here.
+            </p>
+          </div>
+        ) : (
         <div className="card max-w-xl space-y-3">
           <p className="eyebrow">Current subscription</p>
           <p className="font-display text-2xl text-foreground">{planLabel}</p>
@@ -342,6 +448,7 @@ export default async function BillingSettingsPage({
                 : "Start a subscription to unlock the full platform. Founding rates stay in effect for the life of an active subscription."}
           </p>
         </div>
+        )}
       </div>
     </>
   );

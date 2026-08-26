@@ -1,27 +1,56 @@
 "use client";
 
 /**
- * Global search, opened with ⌘K / Ctrl+K or the nav's Search button. Finds
- * opportunities, subcontractors, and contracts by name and jumps straight to
- * the record, killing the "scroll the pipeline hoping to spot it" hunt.
- * Keyboard first: arrows move, Enter opens, Esc closes.
+ * Global search, opened with ⌘K / Ctrl+K or the nav's Search button.
+ *
+ * Finds opportunities, subcontractors, contracts, messages and documents and
+ * jumps straight to the record, killing the "scroll the pipeline hoping to
+ * spot it" hunt. Keyboard first: arrows move, Enter opens, Esc closes.
+ *
+ * Results are grouped rather than listed flat with a badge each, because a
+ * badge makes the reader do the sorting: they scan nineteen rows looking for
+ * the one subcontractor among the opportunities. The per-group counts are also
+ * what tell somebody their search matched four messages they had not thought
+ * to look in.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  groupResults,
+  highlight,
+  noResultAdvice,
+  KIND_LABEL,
+  type SearchResult as Result,
+} from "@/lib/domain/search-results";
 
-interface Result {
-  kind: "opportunity" | "subcontractor" | "contract";
-  title: string;
-  subtitle: string;
-  href: string;
+/** Remembered between visits, so the same lookup is not retyped every morning. */
+const RECENT_KEY = "brostco.search.recent";
+const RECENT_MAX = 5;
+
+function readRecent(): string[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    // A private window, blocked storage, or a value somebody hand-edited. A
+    // remembered search is a convenience, so failing to read one is not worth
+    // breaking search over.
+    return [];
+  }
 }
 
-const KIND_LABEL: Record<Result["kind"], string> = {
-  opportunity: "Opportunity",
-  subcontractor: "Subcontractor",
-  contract: "Contract",
-};
+function rememberSearch(q: string) {
+  const trimmed = q.trim();
+  if (trimmed.length < 2) return;
+  try {
+    const next = [trimmed, ...readRecent().filter((r) => r !== trimmed)].slice(0, RECENT_MAX);
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {
+    /* see readRecent */
+  }
+}
 
 export function CommandPalette() {
   const router = useRouter();
@@ -30,7 +59,15 @@ export function CommandPalette() {
   const [results, setResults] = useState<Result[]>([]);
   const [active, setActive] = useState(0);
   const [searching, setSearching] = useState(false);
+  const [recent, setRecent] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const groups = useMemo(() => groupResults(results), [results]);
+  /*
+   * One flat index across the groups, so the arrow keys still walk every row
+   * in the order they are drawn. Grouping is a rendering decision and must not
+   * change what Enter opens.
+   */
+  const flat = useMemo(() => groups.flatMap((g) => g.results), [groups]);
 
   // Open on ⌘K / Ctrl+K anywhere in the app; the nav Search button dispatches
   // the same custom event so there's a discoverable, clickable entry point.
@@ -55,6 +92,7 @@ export function CommandPalette() {
       setQ("");
       setResults([]);
       setActive(0);
+      setRecent(readRecent());
       setTimeout(() => inputRef.current?.focus(), 30);
     }
   }, [open]);
@@ -85,7 +123,8 @@ export function CommandPalette() {
   }, [q, open]);
 
   const go = useCallback(
-    (r: Result) => {
+    (r: Result, query: string) => {
+      rememberSearch(query);
       setOpen(false);
       router.push(r.href);
     },
@@ -111,52 +150,153 @@ export function CommandPalette() {
             if (e.key === "Escape") setOpen(false);
             else if (e.key === "ArrowDown") {
               e.preventDefault();
-              setActive((a) => Math.min(a + 1, results.length - 1));
+              setActive((a) => Math.min(a + 1, flat.length - 1));
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setActive((a) => Math.max(a - 1, 0));
-            } else if (e.key === "Enter" && results[active]) {
-              go(results[active]);
+            } else if (e.key === "Enter") {
+              if (flat[active]) go(flat[active], q);
+              else if (q.trim().length >= 2) {
+                // Nothing highlighted, so Enter means "show me everything".
+                rememberSearch(q);
+                setOpen(false);
+                router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+              }
             }
           }}
-          placeholder="Search opportunities, subcontractors, contracts…"
+          placeholder="Search opportunities, subs, contracts, messages, documents…"
           className="w-full border-b border-border bg-background px-4 py-3.5 text-sm text-foreground outline-none placeholder:text-slate-500"
         />
+        {/* A result count, and where to see the rest. */}
+        {flat.length > 0 && (
+          <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-1.5 text-xs text-slate-500">
+            <span>
+              {flat.length} result{flat.length === 1 ? "" : "s"}
+              {searching ? ", still looking" : ""}
+            </span>
+            <button
+              type="button"
+              className="font-medium text-accent hover:underline"
+              onClick={() => {
+                rememberSearch(q);
+                setOpen(false);
+                router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+              }}
+            >
+              View all results
+            </button>
+          </div>
+        )}
         <div className="scroll-thin max-h-[50vh] overflow-y-auto">
-          {q.trim().length >= 2 && !searching && results.length === 0 && (
-            <p className="px-4 py-6 text-center text-sm text-slate-500">
-              Nothing matches &ldquo;{q.trim()}&rdquo;. Try part of a title,
-              solicitation number, agency, or company name.
+          {/*
+            * The loading state. It was computed and never rendered, so a slow
+            * search showed an empty box: indistinguishable from no matches,
+            * which is the wrong conclusion to invite.
+            */}
+          {searching && flat.length === 0 && (
+            <p className="px-4 py-6 text-center text-sm text-slate-500" role="status">
+              Searching…
             </p>
+          )}
+          {q.trim().length >= 2 && !searching && flat.length === 0 && (
+            <div className="px-4 py-5 text-sm text-slate-600">
+              <p className="text-slate-900">Nothing matches &ldquo;{q.trim()}&rdquo;.</p>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500">
+                {noResultAdvice(q).map((a, i) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            </div>
           )}
           {q.trim().length < 2 && (
-            <p className="px-4 py-6 text-center text-xs text-slate-500">
-              Type at least 2 characters. Tip: open this anywhere with ⌘K.
-            </p>
+            <div className="px-4 py-5">
+              {recent.length > 0 ? (
+                <>
+                  <p className="label mb-1.5">Recent searches</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {recent.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-slate-600 hover:border-accent/50"
+                        onClick={() => setQ(r)}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    Type at least 2 characters. Open this anywhere with ⌘K.
+                  </p>
+                </>
+              ) : (
+                <p className="text-center text-xs text-slate-500">
+                  Type at least 2 characters. Tip: open this anywhere with ⌘K.
+                </p>
+              )}
+            </div>
           )}
-          {results.map((r, i) => (
-            <button
-              key={`${r.kind}-${r.href}-${i}`}
-              onClick={() => go(r)}
-              onMouseEnter={() => setActive(i)}
-              className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left ${
-                i === active ? "bg-gold/10" : ""
-              }`}
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-sm text-slate-900">{r.title}</span>
-                {r.subtitle && (
-                  <span className="block truncate text-xs text-slate-500">{r.subtitle}</span>
-                )}
-              </span>
-              <span className="badge shrink-0 border border-border bg-surface text-slate-600">
-                {KIND_LABEL[r.kind]}
-              </span>
-            </button>
+          {groups.map((group) => (
+            <div key={group.kind}>
+              <p className="sticky top-0 bg-surface px-4 pb-1 pt-2.5 text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground">
+                {group.label}
+                <span className="num ml-1.5">{group.results.length}</span>
+              </p>
+              {group.results.map((r) => {
+                const i = flat.indexOf(r);
+                return (
+                  <button
+                    key={`${r.kind}-${r.href}-${i}`}
+                    onClick={() => go(r, q)}
+                    onMouseEnter={() => setActive(i)}
+                    className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left ${
+                      i === active ? "bg-gold/10" : ""
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm text-slate-900">
+                        <Marked text={r.title} query={q} />
+                      </span>
+                      {r.subtitle && (
+                        <span className="block truncate text-xs text-slate-500">
+                          <Marked text={r.subtitle} query={q} />
+                        </span>
+                      )}
+                    </span>
+                    <span className="badge shrink-0 border border-border bg-surface text-slate-600">
+                      {KIND_LABEL[r.kind]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           ))}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The matched part of a result, marked.
+ *
+ * Segments rather than dangerouslySetInnerHTML: the text is a customer's own
+ * record, and this is the one component every record in the account passes
+ * through on its way to the screen.
+ */
+export function Marked({ text, query }: { text: string; query: string }) {
+  return (
+    <>
+      {highlight(text, query).map((seg, i) =>
+        seg.match ? (
+          <mark key={i} className="bg-gold/30 text-inherit">
+            {seg.text}
+          </mark>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        )
+      )}
+    </>
   );
 }
 
