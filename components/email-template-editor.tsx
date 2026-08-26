@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 import { plainToHtml, renderTemplate } from "@/lib/domain/template-render";
 import {
   TEMPLATE_TOKENS,
@@ -359,6 +360,12 @@ interface Props {
 export function EmailTemplateEditor({ template, metrics, followupHours }: Props) {
   const [subject, setSubject] = useState(template.subject ?? "");
   const [body, setBody] = useState(template.body);
+  /*
+   * Derived rather than tracked with a flag: the saved template is right
+   * there, so comparing is both simpler and correct after a save, where a
+   * flag has to be remembered to be cleared.
+   */
+  const dirty = subject !== (template.subject ?? "") || body !== template.body;
 
   /*
    * Checked as they type, not only on save.
@@ -669,6 +676,10 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
 
   return (
     <div className="card space-y-5">
+      <UnsavedGuard
+        when={dirty}
+        message="This email template has unsaved changes. Leave without saving?"
+      />
       {/* Header */}
       <div className="border-b border-border pb-4">
         <p className="font-medium text-foreground">{humanSlug(template.slug)}</p>

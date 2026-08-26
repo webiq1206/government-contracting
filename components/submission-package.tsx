@@ -639,8 +639,26 @@ export function SubmissionPackage({
               </ul>
             </div>
           )}
+          {/*
+            * Confirmed, and the confirmation says what the press actually
+            * does. This records a delivery; it does not make one. The steps
+            * above explain that, but somebody who scrolled straight here gets
+            * an irreversible-looking button with no restatement, and a bid
+            * marked delivered that nobody uploaded is the product asserting
+            * something that did not happen.
+            *
+            * The override path below has always confirmed. The ordinary one,
+            * which is the one everybody uses, did not.
+            */}
           <button
-            onClick={() => submit(false)}
+            onClick={() => {
+              if (
+                window.confirm(
+                  "Record this bid as submitted? Brost Co does not send it to the agency, so press this only after you have delivered the files the way the solicitation asks."
+                )
+              )
+                submit(false);
+            }}
             disabled={submitting || !ready}
             className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
           >

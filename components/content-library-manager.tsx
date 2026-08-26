@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CONTENT_CATEGORIES } from "@/lib/domain/content";
 import { shortDate } from "@/lib/format";
 import type { ContentCategory, ContentLibraryItem } from "@/lib/types";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 
 const CATEGORY_META = Object.fromEntries(
   CONTENT_CATEGORIES.map((c) => [c.value, c])
@@ -39,6 +40,29 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
   const [form, setForm] = useState<FormState | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  /*
+   * What the open form looked like when it was opened, derived from the record
+   * it is editing rather than copied into a second piece of state. A copy has
+   * to be cleared everywhere the form is, and one missed place is a guard that
+   * fires on a form nobody has touched.
+   */
+  const baseline = useMemo<FormState | null>(() => {
+    if (!form) return null;
+    if (!form.id) return { ...EMPTY_FORM, category: form.category };
+    const item = items.find((i) => i.id === form.id);
+    return item
+      ? {
+          id: item.id,
+          title: item.title,
+          category: item.category,
+          body: item.body,
+          tags: (item.tags ?? []).join(", "),
+        }
+      : null;
+  }, [form, items]);
+  const dirty =
+    form != null && baseline != null && JSON.stringify(form) !== JSON.stringify(baseline);
 
   const visible = useMemo(
     () => (filter === "all" ? items : items.filter((i) => i.category === filter)),
@@ -131,6 +155,10 @@ export function ContentLibraryManager({ items }: { items: ContentLibraryItem[] }
 
   return (
     <div className="space-y-5">
+      <UnsavedGuard
+        when={dirty}
+        message="This snippet has unsaved changes. Leave without saving?"
+      />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
           {activeHint}

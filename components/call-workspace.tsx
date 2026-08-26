@@ -37,6 +37,7 @@ import { useToast } from "@/components/toaster";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import { CallAnswer, type AnswerValue } from "@/components/call-answer";
 import { ScannableText } from "@/components/scannable-text";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 
 type Attachment = { name?: string; url?: string; storage_path?: string } & Record<
   string,
@@ -146,6 +147,15 @@ export function CallWorkspace({
   const [card, setCard] = useState<CallCardRow>(data.card);
   const [answers, setAnswers] = useState(() => initialAnswers(card));
   const [wrap, setWrap] = useState<WrapUp>(() => initialWrapUp(card));
+  /*
+   * Notes taken during a call and a price somebody read out are the worst
+   * things in this product to lose: the subcontractor has hung up, and asking
+   * again means another call. Compared against the saved card, so a save
+   * clears it without anything having to remember to.
+   */
+  const dirty =
+    JSON.stringify(answers) !== JSON.stringify(initialAnswers(card)) ||
+    JSON.stringify(wrap) !== JSON.stringify(initialWrapUp(card));
   const [briefOpen, setBriefOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -375,6 +385,10 @@ export function CallWorkspace({
         aria-modal={inline ? undefined : true}
         aria-label={`Call workspace for ${card.company_name}`}
       >
+        <UnsavedGuard
+          when={dirty}
+          message="This call has notes or a price that are not saved yet. Leave without saving?"
+        />
         {/* Who, what, and the dial button. Nothing else competes for the top. */}
         <header className="sticky top-0 z-10 border-b border-border bg-background/95 px-4 py-2.5 backdrop-blur sm:px-5">
           <div className="flex items-start justify-between gap-3">

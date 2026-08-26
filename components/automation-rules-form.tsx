@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ruleConflicts, type AutomationRules } from "@/lib/domain/intake";
 import { formatHour } from "@/lib/domain/call-queue";
 import { EditorialTabs } from "@/components/editorial-tabs";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 
 interface Preview {
   past_due_open: number;
@@ -34,6 +35,13 @@ export function AutomationRulesForm({
 }) {
   const router = useRouter();
   const [form, setForm] = useState<AutomationRules>(initial);
+  /*
+   * Compared against what was loaded rather than tracked with a flag. These
+   * rules govern how often other people's businesses hear from this company,
+   * so an edit abandoned by a sidebar click is a change somebody believes they
+   * made.
+   */
+  const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -173,6 +181,10 @@ export function AutomationRulesForm({
 
   return (
     <fieldset disabled={readOnly} className="contents">
+    <UnsavedGuard
+      when={dirty && !readOnly}
+      message="Your automation rules have unsaved changes. Leave without saving?"
+    />
     <EditorialTabs
       ariaLabel="Automation rule sections"
       defaultTab="deadlines"

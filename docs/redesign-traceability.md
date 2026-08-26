@@ -598,6 +598,18 @@ cookie.
 | Density and columns | Already remembered | Unchanged | Per table | Per table | Kept per page on the table itself: comfortable rows suit the opportunity list and compact ones suit the email log, and one switch for both would be wrong on one of them |
 | Scroll position | Router default | Unchanged | - | - | The App Router restores scroll on Back, which is the case that matters: returning to a long list from a record. A forward navigation from the sidebar starts at the top, which is right |
 
+### Error prevention (brief section 11)
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| Leaving a half-filled company profile | Silently discarded | Asks first | Prompt | Prompt | The page installed the browser's unload prompt, which fires when the tab closes and never for an in-app navigation. Clicking Today in the sidebar threw the form away with nothing on screen, and that is how people actually leave a page |
+| The template editor, automation rules, content library and call workspace | No guard at all | Guarded | Prompt | Prompt | Notes taken during a call and a price somebody read out are the worst of these to lose: the subcontractor has hung up, and asking again means another call |
+| Which state counts as unsaved | - | Compared against what was loaded | - | - | Derived rather than tracked with a flag, so a save clears it without anything having to remember to, and a flag left set cannot warn about a form nobody touched |
+| Clicks the guard must ignore | - | Modified clicks, new tabs, downloads, external links, same-page navigation | - | - | A document-level interceptor that catches too much breaks ordinary navigation, which is worse than the problem it solves. Verified in a browser: a clean page leaves silently, and in-page tabs are untouched |
+| The browser Back button | Unguarded | Unguarded, and said so | - | - | Guarding it means pushing a sentinel history entry and unwinding it, which goes wrong in ways that trap somebody on a page they are trying to leave. A missing guard costs an edit; a broken one costs the exit |
+| Recording a bid as submitted | No confirmation | Confirmed, and the confirmation says what it does | Prompt | Prompt | The override path has always confirmed and the ordinary one, which is the one everybody uses, did not. Pressing it does not send anything to the agency: it records that you did. A bid marked delivered that nobody uploaded is the product asserting something that did not happen |
+| A new editor shipping unguarded | Possible | A failing test | - | - | `tests/unsaved-guard.test.ts` lists the editors deliberately, because "is there unsaved work here" is a judgement about what a form holds rather than something a scan can decide. Adding one means making that decision on purpose |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

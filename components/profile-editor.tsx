@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 import { TokenMultiSelect, type TokenOption } from "@/components/token-multi-select";
 import { NAICS_CODES } from "@/lib/naics";
 import { US_SERVICE_AREAS, FEDERAL_CERTIFICATIONS } from "@/lib/us-states";
@@ -121,20 +122,18 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
-  // Any edit marks the form dirty (via onChangeCapture on the root, plus the
-  // click-driven rule add/remove below); the sticky bar says so, and leaving
-  // the page with unsaved edits asks first.
+  /*
+   * Any edit marks the form dirty (via onChangeCapture on the root, plus the
+   * click-driven rule add/remove below); the sticky bar says so, and
+   * UnsavedGuard asks before a click takes the work away.
+   *
+   * This page used to install the browser unload prompt on its own, which
+   * covers closing the tab and covers nothing else: clicking Today in the
+   * sidebar discarded a filled-in profile silently, and that is how people
+   * actually leave a page.
+   */
   const [dirty, setDirty] = useState(false);
 
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
 
   function updateExclusion(i: number, patch: Partial<HardExclusion>) {
     setDirty(true);
@@ -246,6 +245,10 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
 
   return (
     <div className="space-y-5" onChangeCapture={() => setDirty(true)}>
+      <UnsavedGuard
+        when={dirty}
+        message="Your company profile has unsaved changes. Leave without saving?"
+      />
       {/* Identity */}
       <Section title="Company identity" hint="The legal details that go on every bid.">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
