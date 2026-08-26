@@ -40,7 +40,11 @@ import {
 import type { AdminActionResult } from "./accounts";
 
 /** How long an invitation stays good for. */
-export const INVITATION_DAYS = 14;
+// Defined in the domain layer so the invitation builder, which runs in the
+// browser, can read it without importing this module and everything it pulls:
+// node:crypto, the database pool and the mail transport, for one integer.
+import { INVITATION_DAYS } from "../domain/invitation-offer";
+export { INVITATION_DAYS };
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");

@@ -434,6 +434,19 @@ written in advance of the work.
 | A purge that fails | Behaviour | Stays scheduled, tries next run | Sweep | Sweep | Clearing the schedule on failure would strand a deletion somebody is expecting, silently |
 | Scheduled state on the account | Added | Beside the access line | Banner | Banner | It is the single most important thing about the account, so it does not live only in the danger zone at the foot of a page that scrolls |
 
+### Invitations
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| (new) Live offer preview | Added | Beside the form | Right column | Under the form | The builder collected a plan, a period and a discount and showed none of the money. Choosing 25% off a founding annual plan meant doing the arithmetic in your head on a form whose output is a binding offer to a customer |
+| Where the figures come from | Behaviour | The same catalog checkout uses | Data | Data | A preview computed a second way would be worse than none, because it would be believed. The audit log already carries a repair action for terms that were agreed and never landed |
+| Free forever against free for now | Behaviour | Different readings | Preview | Preview | A free account never has an invoice; a free run is an invoice that comes later. Rendering both as "$0" would say a customer is billed nothing on a plan that in fact bills |
+| The discount note on a free account | Fixed | "No checkout and no card" | Preview | Preview | Saying a discount is applied at checkout describes a step that never happens on that path |
+| What it settles at | Added | "Then" line, only when it differs | Preview | Preview | Printing the same number twice reads as two different facts |
+| Expiry | Added | A date | Preview | Preview | The page said a link is good for 14 days; the preview says which day that is, which is what somebody writes in an email |
+| Role | Added | Preview | Preview | Preview | Named in the audit's list, and the answer carries a fact worth stating: the first person into a new account owns it |
+| `INVITATION_DAYS` | Moved | The domain layer | - | - | The preview is a client component, so importing it from the admin module would pull node:crypto, the database pool and the mail transport into the browser bundle's module graph for one integer |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
