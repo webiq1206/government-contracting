@@ -35,12 +35,15 @@ import {
   redactUrl,
   type GuardedFetchResult,
 } from "../integrations/guarded-fetch";
-import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
+import { extractPdfPages, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
 import { ocrPdf } from "../integrations/pdf-ocr";
 import { filenameFromResponse, isArchive, normalizeAttachmentMeta } from "../domain/attachment-meta";
 import {
   amendmentNumber,
   classifyDocumentName,
+  resolveCitation,
+  withPageMarkers,
+  type CitationTarget,
   type ExtractionState,
   type OcrState,
 } from "../domain/document-inventory";
@@ -220,6 +223,17 @@ export const AnalysisSchema = z.object({
         satisfied_by: z.unknown().transform(toSatisfiedBy),
         instructions: z.string().optional().catch(undefined),
         official_form: z.string().optional().catch(undefined),
+        /*
+         * Where this requirement actually came from, as an anchor rather than
+         * a sentence. `source` says "Section L.3", which is where it is
+         * stated; these say which file and which page, which is what lets a
+         * person open it and check. Resolved against the inventory after the
+         * model answers, so a name that matches nothing becomes no anchor
+         * rather than a link to the wrong document.
+         */
+        source_document: z.string().optional().catch(undefined),
+        source_page: z.number().optional().catch(undefined),
+        source_document_id: z.string().optional().catch(undefined),
       })
     )
     .default([]),
@@ -503,10 +517,11 @@ async function processAttachment(
       // gets built against a checklist nobody read. The per-attachment budget
       // below decides what actually fits in the prompt; this decides what is
       // available to choose from.
-      const { text, pages } = await extractPdfText(buf, 400_000);
+      const { pages: pageTexts, total: pages } = await extractPdfPages(buf, 400_000);
+      const text = withPageMarkers(pageTexts);
       if (text) {
         return {
-          context: `- ${label} (${pages} pp, extracted):\n${text}`,
+          context: `- ${label} (${pages} pp, extracted; [p.N] marks the start of page N):\n${text}`,
           parsedChars: text.length,
           documentId,
           pages,
@@ -723,10 +738,14 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '       "signature_required": boolean,        // does a person have to sign it',
     '       "satisfied_by": "auto_generated"|"from_profile"|"operator_signature"|"operator_provided",',
     '       "instructions": string,               // if the operator must supply/sign it, what exactly they do (omit otherwise)',
-    '       "official_form": string               // EXACT form/worksheet id if a SPECIFIC government or agency form is required (e.g. "SF-1449", "SF-33", "SF-18", "SF-1442", "agency pricing worksheet Attachment 3", "SAM.gov reps & certs"). Omit if no specific form is mandated.',
+    '       "official_form": string,              // EXACT form/worksheet id if a SPECIFIC government or agency form is required (e.g. "SF-1449", "SF-33", "SF-18", "SF-1442", "agency pricing worksheet Attachment 3", "SAM.gov reps & certs"). Omit if no specific form is mandated.',
+    '       "source_document": string,            // the document this came from, named EXACTLY as it is labelled in the ATTACHMENT TEXT above. Omit if it came from the portal description rather than a document.',
+    '       "source_page": number                 // the page number from the nearest [p.N] marker above the text you read it in. Omit if the document has no page markers or you are not certain.',
     '     }',
     "  ]",
     "}",
+    "",
+    "CITATIONS: for every compliance-matrix item, name the document it came from in `source_document`, spelled exactly as that document is labelled in the ATTACHMENT TEXT, and give `source_page` from the nearest preceding [p.N] marker. Omit both rather than guessing: an unsourced requirement is handled, a requirement attributed to the wrong page sends somebody to read the wrong thing.",
     "",
     "COMPLIANCE MATRIX, this is critical. List EVERY document, form, schedule, certification, acknowledgment, and attachment the bidder must include for the bid to be responsive. Base it on the instructions to offerors, the scope, and the attachments. Classify each item's `satisfied_by`:",
     '- "auto_generated": the platform can produce it from the bid data (pricing/bid schedule, technical approach or cover/transmittal letter).',
@@ -996,19 +1015,53 @@ export const solicitationAnalyst: AgentDefinition = {
       // Every requirement needs a stable handle and a name a person can read.
       // A blank id would collide with every other blank id when confirmations
       // are matched; a blank title is not a requirement anybody can act on.
+      /*
+       * Resolve every citation against the documents actually on this
+       * opportunity, rather than trusting the name the model wrote down.
+       *
+       * A model asked to cite a source will cite one. Checking it here is the
+       * difference between "open the source" being a link and being a
+       * suggestion: a name matching nothing becomes no anchor with a reason,
+       * and a page past the end of the file loses the page but keeps the
+       * document.
+       */
+      const citable: CitationTarget[] = processed
+        .filter((p) => p.documentId)
+        .map((p) => ({ id: p.documentId!, name: p.outcome.name, pageCount: p.pages }));
+      let unresolvedCitations = 0;
       analysis.compliance_matrix = (analysis.compliance_matrix ?? [])
         .filter((r) => r.title?.trim())
-        .map((r, i) => ({
-          ...r,
-          id:
-            r.id?.trim() ||
-            r.title
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "_")
-              .replace(/^_+|_+$/g, "")
-              .slice(0, 40) ||
-            `requirement_${i + 1}`,
-        }));
+        .map((r, i) => {
+          const cite = resolveCitation(r.source_document, r.source_page, citable);
+          if (cite.problem === "unknown_document" || cite.problem === "page_out_of_range") {
+            unresolvedCitations++;
+          }
+          return {
+            ...r,
+            id:
+              r.id?.trim() ||
+              r.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "_")
+                .replace(/^_+|_+$/g, "")
+                .slice(0, 40) ||
+              `requirement_${i + 1}`,
+            source_document: cite.documentName ?? undefined,
+            source_document_id: cite.documentId ?? undefined,
+            source_page: cite.page ?? undefined,
+          };
+        });
+      if (unresolvedCitations > 0) {
+        // Not fatal, and not silent. A citation the model invented is the
+        // signal that it was reading less carefully than it claimed.
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "citations",
+          opportunityId,
+          level: "warn",
+          message: `${unresolvedCitations} of ${analysis.compliance_matrix.length} requirement(s) cited a document or page that does not exist on this opportunity. Those requirements have no source anchor.`,
+        });
+      }
       await logAgent({
         agent: "solicitation-analyst",
         action: "analyze",

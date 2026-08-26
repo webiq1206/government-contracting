@@ -9,6 +9,8 @@ import {
   parseDocumentClass,
   parseExtractionState,
   parseOcrState,
+  resolveCitation,
+  withPageMarkers,
   type InventoryRow,
 } from "../lib/domain/document-inventory";
 
@@ -177,5 +179,94 @@ describe("inventory coverage", () => {
     ]) {
       expect(cov.summary, phrase).toContain(phrase);
     }
+  });
+});
+
+describe("resolving a citation to something openable", () => {
+  const docs = [
+    { id: "d1", name: "Attachment 2 - Wage Determination.pdf", pageCount: 12 },
+    { id: "d2", name: "PWS.pdf", pageCount: 210 },
+    { id: "d3", name: "SF-1449.pdf", pageCount: null },
+  ];
+
+  it("matches the exact name the model was shown", () => {
+    const c = resolveCitation("PWS.pdf", 45, docs);
+    expect(c.documentId).toBe("d2");
+    expect(c.page).toBe(45);
+    expect(c.problem).toBeNull();
+  });
+
+  it("matches on a partial name when only one document can be meant", () => {
+    const c = resolveCitation("Attachment 2", 3, docs);
+    expect(c.documentId).toBe("d1");
+  });
+
+  it("refuses to guess when two documents could be meant", () => {
+    /*
+     * Attributing a page limit to the wrong document sends somebody to read
+     * the wrong file and come away confident. Saying the citation could not
+     * be resolved is the smaller harm by a wide margin.
+     */
+    const ambiguous = [
+      { id: "a", name: "Amendment 0001.pdf", pageCount: 2 },
+      { id: "b", name: "Amendment 0002.pdf", pageCount: 2 },
+    ];
+    const c = resolveCitation("Amendment", 1, ambiguous);
+    expect(c.documentId).toBeNull();
+    expect(c.problem).toBe("unknown_document");
+  });
+
+  it("says so when the model named a document that does not exist", () => {
+    const c = resolveCitation("Section L Instructions.pdf", 2, docs);
+    expect(c.documentId).toBeNull();
+    expect(c.documentName).toBe("Section L Instructions.pdf");
+    expect(c.problem).toBe("unknown_document");
+  });
+
+  it("drops a page number past the end of the document, keeping the document", () => {
+    // A page past the end is a page the model made up, and a link to it opens
+    // on nothing.
+    const c = resolveCitation("Attachment 2 - Wage Determination.pdf", 400, docs);
+    expect(c.documentId).toBe("d1");
+    expect(c.page).toBeNull();
+    expect(c.problem).toBe("page_out_of_range");
+  });
+
+  it("keeps a page number when the page count is unknown", () => {
+    // Unknown is not zero. Refusing the page because the count was never
+    // recorded would throw away a citation that is probably right.
+    const c = resolveCitation("SF-1449.pdf", 2, docs);
+    expect(c.page).toBe(2);
+    expect(c.problem).toBeNull();
+  });
+
+  it("reports a missing citation as missing rather than inventing one", () => {
+    for (const bad of ["", "   ", null, undefined, 7]) {
+      const c = resolveCitation(bad, 3, docs);
+      expect(c.documentId).toBeNull();
+      expect(c.problem).toBe("no_citation");
+    }
+  });
+
+  it("ignores a page number that is not a real page", () => {
+    for (const bad of [0, -2, 1.5, "12", null]) {
+      expect(resolveCitation("PWS.pdf", bad, docs).page).toBeNull();
+    }
+  });
+});
+
+describe("page markers", () => {
+  it("numbers pages from the document, not from the ones with text on them", () => {
+    /*
+     * The blank second page is what makes this worth a test. Renumbering
+     * around it would label the third page as page two, and every citation
+     * into the rest of the document would be confidently one page out.
+     */
+    expect(withPageMarkers(["cover", "", "Section L"])).toBe("[p.1]\ncover\n\n[p.3]\nSection L");
+  });
+
+  it("spends nothing on pages with nothing on them", () => {
+    expect(withPageMarkers(["", "   ", "\n"])).toBe("");
+    expect(withPageMarkers([])).toBe("");
   });
 });

@@ -132,10 +132,46 @@ function Item({ req, showWhy }: { req: BriefRequirement; showWhy?: boolean }) {
         <p className="mt-1 text-sm text-slate-700">{req.disqualifyingReason}</p>
       )}
       {req.detail && <p className="mt-1 text-sm text-muted-foreground">{req.detail}</p>}
-      {req.source && (
-        <p className="mt-1 text-xs text-muted-foreground">Stated in {req.source}</p>
-      )}
+      <SourceLine req={req} />
     </li>
+  );
+}
+
+/**
+ * Where this requirement came from, and a way to go and read it.
+ *
+ * "Stated in Section L.3" is useful and unopenable: it tells an operator the
+ * requirement exists without giving them any way to check it, which for a
+ * two-hundred-page specification means taking the extraction on trust. When
+ * the analysis resolved a real document, the line becomes a link onto the page
+ * it was read from.
+ *
+ * When it did not resolve one, the line says only what is true. A requirement
+ * with no anchor is not hidden and not decorated with a dead link: it is shown
+ * with its stated location and nothing more, so the difference between
+ * "checkable" and "take our word for it" is visible rather than implied.
+ */
+function SourceLine({ req }: { req: BriefRequirement }) {
+  const stated = req.source ? `Stated in ${req.source}` : null;
+  if (!req.sourceDocumentId) {
+    return stated ? <p className="mt-1 text-xs text-muted-foreground">{stated}</p> : null;
+  }
+  const where = req.sourcePage ? `?page=${req.sourcePage}` : "";
+  const label = req.sourcePage
+    ? `${req.sourceDocumentName ?? "source document"}, page ${req.sourcePage}`
+    : (req.sourceDocumentName ?? "source document");
+  return (
+    <p className="mt-1 text-xs text-muted-foreground">
+      {stated ? `${stated} · ` : ""}
+      <a
+        className="underline underline-offset-2 hover:text-foreground"
+        href={`/api/documents/${req.sourceDocumentId}/open${where}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Read it in {label}
+      </a>
+    </p>
   );
 }
 

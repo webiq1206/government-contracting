@@ -51,6 +51,19 @@ export interface BriefRequirement {
   /** Plain-English gloss of any jargon in the label. */
   explain?: string;
   source?: string;
+  /**
+   * The document and page this requirement was read out of, when the analysis
+   * could resolve one against the opportunity's inventory.
+   *
+   * `source` is where the solicitation states it ("Section L.3"), which is
+   * useful and not openable. This is the anchor: it turns "stated in Section
+   * L.3" into a link onto the page it was read from, which is the difference
+   * between a requirement somebody can check and one they have to take on
+   * trust.
+   */
+  sourceDocumentId?: string;
+  sourceDocumentName?: string;
+  sourcePage?: number;
   needsSignature?: boolean;
   officialForm?: string;
 }
@@ -286,6 +299,9 @@ export function buildOpportunityBrief(
           : undefined,
         explain: explainFor(`${label} ${detail}`),
         source: clean(r.source) || undefined,
+        sourceDocumentId: clean(r.source_document_id) || undefined,
+        sourceDocumentName: clean(r.source_document) || undefined,
+        sourcePage: typeof r.source_page === "number" ? r.source_page : undefined,
         needsSignature: r.signature_required || undefined,
         officialForm: clean(r.official_form) || undefined,
       },

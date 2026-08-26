@@ -268,6 +268,20 @@ export interface ComplianceRequirement {
    * requirement with an official_form is always the operator's to complete.
    */
   official_form?: string;
+  /**
+   * Where this requirement came from, as an anchor a person can open rather
+   * than a sentence they have to go hunting with.
+   *
+   * `source` says where it is stated ("Section L.3"). These say which file and
+   * which page. Both are optional and both are resolved against the
+   * opportunity's document inventory before they are stored: a document name
+   * that matches nothing becomes no anchor at all, because a requirement
+   * attributed to the wrong file sends somebody to read the wrong thing and
+   * come away confident.
+   */
+  source_document?: string;
+  source_document_id?: string;
+  source_page?: number;
 }
 
 /** A finding from the independent compliance auditor. */

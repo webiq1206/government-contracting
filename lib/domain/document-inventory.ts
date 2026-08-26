@@ -255,3 +255,99 @@ export function inventoryCoverage(rows: readonly InventoryRow[]): InventoryCover
 
   return { total: rows.length, read, partial, notRead, unreadable, excluded, blocked, complete, summary };
 }
+
+export interface CitationTarget {
+  id: string;
+  name: string;
+  pageCount: number | null;
+}
+
+export interface ResolvedCitation {
+  documentId: string | null;
+  documentName: string | null;
+  page: number | null;
+  /** Why there is no anchor, when there is no anchor. */
+  problem: "no_citation" | "unknown_document" | "page_out_of_range" | null;
+}
+
+function normalizeName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\.[a-z0-9]{2,4}$/, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Turn "Attachment 2, page 14" into something that can be opened.
+ *
+ * A requirement whose source is a sentence is a requirement nobody can check.
+ * The model is asked to name the document exactly as it was labelled in the
+ * text it was given, and this maps that name back to a real inventory row.
+ *
+ * A name that matches nothing resolves to null with a reason rather than to
+ * the closest guess. Attributing a page limit to the wrong document sends
+ * somebody to read the wrong file and come away confident, which is worse than
+ * telling them the citation could not be resolved.
+ */
+export function resolveCitation(
+  documentName: unknown,
+  page: unknown,
+  documents: readonly CitationTarget[]
+): ResolvedCitation {
+  const rawName = typeof documentName === "string" ? documentName.trim() : "";
+  const rawPage = typeof page === "number" && Number.isInteger(page) && page > 0 ? page : null;
+  if (!rawName) {
+    return { documentId: null, documentName: null, page: rawPage, problem: "no_citation" };
+  }
+  const wanted = normalizeName(rawName);
+  const hit =
+    documents.find((d) => d.name === rawName) ??
+    documents.find((d) => normalizeName(d.name) === wanted) ??
+    // A model given "Attachment 2 - Wage Determination.pdf" may cite
+    // "Attachment 2". Containment is allowed only when exactly one document
+    // matches, because two matches means the citation does not identify one.
+    singleMatch(documents, (d) => {
+      const n = normalizeName(d.name);
+      return n.includes(wanted) || wanted.includes(n);
+    });
+  if (!hit) {
+    return { documentId: null, documentName: rawName, page: rawPage, problem: "unknown_document" };
+  }
+  if (rawPage !== null && hit.pageCount !== null && rawPage > hit.pageCount) {
+    // A page number past the end of the document is a hallucinated page, and
+    // a link to it would open on nothing. Keep the document, drop the page.
+    return {
+      documentId: hit.id,
+      documentName: hit.name,
+      page: null,
+      problem: "page_out_of_range",
+    };
+  }
+  return { documentId: hit.id, documentName: hit.name, page: rawPage, problem: null };
+}
+
+function singleMatch<T>(items: readonly T[], fn: (t: T) => boolean): T | undefined {
+  const hits = items.filter(fn);
+  return hits.length === 1 ? hits[0] : undefined;
+}
+
+/**
+ * Mark where each page begins, so a requirement can cite one.
+ *
+ * Without this the extracted text is a single wall, and the best a citation
+ * could say was which file it came from. For a two-hundred-page specification
+ * that means "open it and start looking", which is not a citation.
+ *
+ * The marker carries the page's real number, counted from the document rather
+ * than from the pages that happened to have text on them. Renumbering around
+ * blank pages would produce citations that are confidently one or two pages
+ * out, and a citation that points at the wrong page is worse than none because
+ * it will be believed.
+ */
+export function withPageMarkers(pages: readonly string[]): string {
+  return pages
+    .map((t, i) => (t.trim() ? `[p.${i + 1}]\n${t}` : ""))
+    .filter(Boolean)
+    .join("\n\n");
+}
