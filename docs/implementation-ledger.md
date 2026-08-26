@@ -31,8 +31,8 @@ Findings named in the instructions, checked before any code was changed.
 | WP2: `job_runs` lacks `org_id` | **Yes** | No `org_id` in any migration through 069. `/agents` read it unscoped through `agentStatuses()` and `jobRunsSummary()` |
 | WP2: customer-facing health functions read platform-wide rows | **Partly** | True of `/agents`. Not true of `lib/automation-status.ts`, which had already been written to read `agent_logs` instead precisely because only that table carries `org_id`, so sidebar and Today badges were never affected |
 | WP3: Today, Work Queue and Guide Me use different inclusion rules | **No, already fixed** | `buildWorkLedger` is the single decision, and the nav badges share the same SQL constants. But one of its eleven inputs was still passing a capped list's length, so the count was wrong for accounts with more than 8 compliance alerts. Fixed |
-| WP5: trade scope falls back to whole-project scope | Not yet checked | |
-| WP5: special-requirement trade filter is logically unreachable | Not yet checked | |
+| WP5: trade scope falls back to whole-project scope | **Yes** | `resolveSubWork` falls through draft_sow, scope_plain_language, project_overview, then the notice description, all of which describe the whole job. It reports this through `tradeSpecific`, which reached a `gaps` note and nothing else. `validateOutboundEmail` never looked at it, so the send went ahead |
+| WP5: special-requirement trade filter is logically unreachable | **Yes, and there was a second one missing entirely** | The scope loop's guard was `if (trade && !mentionsTrade(text, trade) && !SCOPE_RE.test(text)) continue;` one line after `if (!SCOPE_RE.test(text)) continue;`, so the last clause was always false and the `continue` never ran. The condition loop below it had no trade test at all |
 | WP2: scheduler checks pause before resolving the organization | **Yes, and worse than stated** | Proved against a real database. The check read `tryResolveTenantOrgId()` with no context, which falls back to LEGACY_ORG_ID, which `scopedKey` maps to the bare key. So it read the FOUNDING organization's switch for every job. Two failures at once: a customer who paused kept running, and the founding organization pausing stopped everybody. The in-file comment defending the ordering was describing an intent the code did not have |
 
 ## Work packages
@@ -53,6 +53,19 @@ Findings named in the instructions, checked before any code was changed.
 | 3 | Completed today | Verified, by a different route | Deliberately not derived from the queue: the queue is what is LEFT, so it would give the same answer for "nothing to do" and "everything done". Comes from the activity ledger, which records what happened |
 | 3 | `taskFingerprint` | Verified | Exported from the identity `dedupeWorkItems` already keyed on, so a count on one screen and a list on another can be checked against each other |
 | 3 | Waiting-on state and responsible party | Implemented | `WorkItem.waitingOn`. Populated from outreach in `sent` state, which was previously invisible: Today could report nothing waiting while eleven quote requests were in flight |
+| 5 | A whole-project scope cannot satisfy trade outreach | Verified | `trade_scope_not_ready` blocks the send in `validateOutboundEmail`. `tests/trade-scope-send-gate.test.ts`, 6 tests, including that a request naming no trade is not blocked and that an un-updated caller does not start failing |
+| 5 | Requirements from one trade do not reach another | Verified | `belongsToAnotherTrade` replaces the unreachable guard and is applied to the condition loop that had none. `tests/trade-requirement-ownership.test.ts`, 8 tests. Reverting both fixes fails 3 |
+| 6 | The exact 18-name variable catalogue | Verified, no change needed | `OUTREACH_VARS` in `lib/domain/outreach-vars.ts` carries exactly the 18 names the instructions list, no more and no fewer. Checked name by name |
+| 6 | Retired names blocked with their replacement named | Verified, no change needed | `RETIRED_VARS` maps all four (`contact_first_name_or_there`, `scope_summary_short`, `documents_url`, `reply_deadline_time_zone`) to their replacements. `documents_url` maps to the empty string because it has no replacement, which is a different and honest answer. Enforced at save: `/api/templates/[slug]` returns 422 |
+| 9 | Hard blockers cannot be force-overridden | Verified | `force` skipped the whole package check, taking `validation_json.blockers` with it: a missing mandatory form, an unsigned prefilled document, a required item nobody provided, a missing generated artifact, a missing bid PDF. Now refused regardless of force, with `needsForce: false`. `tests/submit-gate.integration.test.ts`, 5 tests |
+| 9 | Hard and soft are already separated in the data | Verified, no change needed | `lib/domain/package.ts` puts optional items and a non-reconciling pricing total in `warnings`, which never blocked. The split the instructions ask for existed; what was missing was force respecting it |
+| 9 | Skipped AI audit produces a human gate, not an unqualified block | Verified | The one case force still covers: nothing outstanding, audit unconfirmed. Worded as that rather than as "outstanding compliance checks" |
+| 7 | Same-thread follow-up uses stored references | Verified, no change needed | `lib/agents/maintenance.ts` requires all three of `gmail_thread_id`, a recoverable RFC822 Message-ID and an inherited `Re:` subject before it will thread. Its own comment names the trap it was written for: having only the thread id makes OUR conversation view look perfect while the recipient receives an unconnected email every time, which is invisible from our side |
+| 7 | A missing Message-ID is recovered rather than sent without | Verified, no change needed | Reads the thread back from Gmail and writes the id to `communications.rfc822_message_id`, so the next follow-up needs no repair |
+| 7 | A new thread is used only after confirming why, and the reason is stored | Verified, no change needed | `threadGap` names which of the three parts was missing, and is written to the communication's meta as `new_thread_reason` |
+| 7 | Provider thread mismatch is visible | Verified, no change needed | When Gmail returns a different thread id than the one asked for, a `thread-broken` warning is logged. Confirming the provider did what was asked, rather than assuming it |
+| 11 | No public fallback secret for externally reachable tokens | Verified | `fileToken` signed with `config.auth.secret`, which falls back to a literal in the open-source tree. Now refuses to mint or honour a file token in production on that default. `tests/file-token-secret.test.ts`, 5 tests |
+| 11 | Health fails safely without a real signing secret | Verified, no change needed | `/api/health` returns 503 in production on the default secret, and its comment already names document links among what would be forgeable. That is what stops a host routing traffic; it does not stop the process minting tokens, which is what the row above closes |
 | 7 | Third message disabled unless first-class | Verified | `final_nudge_enabled`, off by default and absent-key-means-off, plus `followup_max > 0`. `tests/final-nudge-gate.test.ts`, 8 tests. No settings toggle, because enabling it today would enable exactly the message the instructions object to |
 | 26 | Lint runs and passes | Verified | `.eslintrc.json`; three findings fixed rather than suppressed |
 
@@ -71,6 +84,18 @@ a ledger.
 | Requirement | State | What is missing |
 | --- | --- | --- |
 | Platform kill switch | Settable through `setPlatformAutomationPaused`, read by the runner, every enforcement point, and `doctor` | No platform-admin control yet. It belongs on the platform System Health page (WP22) and is listed there rather than bolted onto the customer Automation Health page, which is a different audience |
+
+## A note on the live-database baseline
+
+The 21 pre-existing failures recorded above were measured against a scratch
+database in one state. Integration tests in this suite share that database and
+several are order-sensitive, so the number moves as fixtures accumulate: the
+same commit later showed 28.
+
+The baseline is therefore only meaningful when re-measured at `main` against
+the database in its current state, immediately before the comparison. Diffing
+against a stored list would have reported 25 regressions that do not exist,
+which is worse than no baseline at all, because it looks like evidence.
 
 ## Blocked
 

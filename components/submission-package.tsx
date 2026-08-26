@@ -87,7 +87,23 @@ export function SubmissionPackage({
   const blockers = validation?.blockers ?? [];
   const tradeBlockers = blockers.filter((b) => /pricing has not been received/i.test(b));
   const otherBlockers = blockers.filter((b) => !/pricing has not been received/i.test(b));
-  const canForceOverride = !ready && tradeBlockers.length === 0;
+  /*
+   * The override mirrors what the server will actually accept, exactly.
+   *
+   * It used to appear whenever the only outstanding items were non-trade,
+   * which included a missing mandatory form. The server refuses those now, so
+   * the button would be a control that always fails: the operator presses it,
+   * confirms a dialog warning them it is risky, and gets a 409. A button that
+   * cannot work is worse than no button, because pressing it is how somebody
+   * finds out.
+   *
+   * What survives is the one case the server still allows: nothing is
+   * outstanding and the compliance audit simply has not confirmed the
+   * package, which usually means it could not run. That is a human gate, and
+   * a person clicking through it is the gate working.
+   */
+  const openAuditBlockers = findings.filter((f) => f.severity === "blocker" && !f.acknowledged);
+  const canForceOverride = !ready && blockers.length === 0 && openAuditBlockers.length === 0;
   /*
    * Everything standing between this package and submission: the deterministic
    * blockers and the unresolved audit blockers, which are two different lists
@@ -681,7 +697,7 @@ export function SubmissionPackage({
               onClick={() => {
                 if (
                   window.confirm(
-                    "This package has outstanding compliance checks (not trade pricing). Submit anyway?"
+                    "Nothing is outstanding on this package, but the compliance audit has not confirmed it. Record it as submitted anyway?"
                   )
                 )
                   submit(true);
@@ -689,12 +705,22 @@ export function SubmissionPackage({
               disabled={submitting}
               className="w-full text-xs text-slate-500 hover:text-slate-700"
             >
-              Submit anyway (override non-trade checks)
+              Record as submitted without audit confirmation
             </button>
           )}
-          {tradeBlockers.length > 0 && otherBlockers.length === 0 && (
+          {/*
+            Why there is no override, when there is not one.
+            This used to fire only for missing trade pricing, so an operator
+            blocked by a missing mandatory form saw the button vanish with no
+            explanation at all. It now covers every reason the server refuses.
+          */}
+          {!ready && !canForceOverride && (
             <p className="text-center text-xs text-slate-500">
-              Override is disabled until every required trade has pricing.
+              {tradeBlockers.length > 0 && otherBlockers.length === 0
+                ? "There is no override while a required trade has no pricing."
+                : openAuditBlockers.length > 0 && blockers.length === 0
+                  ? "There is no override while the audit has open blockers. Acknowledge each one above, against your name, or resolve it."
+                  : "There is no override while anything above is outstanding. Clear the items listed, then submit."}
             </p>
           )}
         </div>

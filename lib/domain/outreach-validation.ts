@@ -95,7 +95,8 @@ export interface SendProblem {
     | "placeholder_text"
     | "sample_data"
     | "deadline_order"
-    | "no_attachments";
+    | "no_attachments"
+    | "trade_scope_not_ready";
   message: string;
 }
 
@@ -125,6 +126,16 @@ export function validateOutboundEmail(input: {
   deadlineAt?: string | null;
   /** Sample values, so a preview's data can never be posted to a real inbox. */
   sampleValues?: Record<string, string>;
+  /** The trade this email is asking about, when it is asking about one. */
+  trade?: string | null;
+  /**
+   * True when the scope in the email is this trade's, not the whole project's.
+   *
+   * resolveSubWork falls back through draft_sow, scope_plain_language,
+   * project_overview and finally the notice description, and reports which one
+   * it used. Every one of those describes the WHOLE project.
+   */
+  tradeSpecific?: boolean;
 }): SendProblem[] {
   const problems: SendProblem[] = [];
   const whole = `${input.subject}\n${input.body}`;
@@ -184,6 +195,28 @@ export function validateOutboundEmail(input: {
           "The quote deadline is not earlier than our bid deadline, so this email asks for a price that would arrive too late to use.",
       });
     }
+  }
+
+  /*
+   * A trade-specific request built from a project-wide scope.
+   *
+   * This produced a gap, which is a note for the operator, and the send went
+   * ahead. So a roofer received a quote request describing the entire job:
+   * electrical, mechanical, sitework and all. They either price work three
+   * other trades are covering, which makes the number useless, or they read it
+   * as sent to the wrong company and stop replying. Both lose the trade, and
+   * the second loses the relationship.
+   *
+   * Only when a trade is actually named. A general request that names no trade
+   * is legitimately about the whole project and has nothing to be specific to.
+   */
+  if (input.trade && input.tradeSpecific === false) {
+    problems.push({
+      kind: "trade_scope_not_ready",
+      message:
+        `The analysis has no scope written specifically for ${input.trade}, so this email would describe the whole project instead. ` +
+        `A subcontractor pricing from it would be quoting work other trades are covering.`,
+    });
   }
 
   if (
