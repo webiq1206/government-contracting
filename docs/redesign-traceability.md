@@ -479,6 +479,19 @@ written in advance of the work.
 | (new) `/search` | Added | Full results page | Grouped, filterable | Same, full screen | Somewhere for "View all results" to go, and the audit's dedicated full-screen mobile search is simply this page on a phone |
 | Search queries | Moved | `lib/search`, one copy | - | - | The overlay and the page ask the same question and must get the same answer. Two copies would drift, and the way anybody would find out is a record appearing in one and not the other, which reads as data loss rather than a bug |
 
+### Notifications
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| (new) The whole surface | Added | `/settings/notifications` | Category list | Same, stacked | There was nowhere to find out what this account is told by email, and the answer turns out to be surprising enough to be worth a page |
+| Eight categories | Added | The ones the audit names | Cards | Cards | Critical account alerts, automation failures, deadlines, replies, assignments, compliance, summaries, product updates |
+| Toggles | Not built | - | - | - | Most of these messages are not sent to a customer at all: every digest is gated on the operations organization and one deployment-wide address. A switch that turns off something already silent is a promise the product does not keep, and the operator finds out the day the message they relied on does not arrive |
+| What is actually delivered | Added | Stated per category | Cards | Cards | An operator whose subcontractor's insurance lapses on a live contract receives no email and, before this, had no way to learn that none was coming |
+| Which alerts cannot be switched off | Added | With the reason | Cards | Cards | The audit asks for this explicitly. The reason is about consequence rather than policy: "you cannot turn this off" is an instruction, "a declined card nobody sees becomes an account locked mid-bid" is an explanation |
+| A mandatory alert that is not delivered | Added | Its own state, in red | Card | Card | The most dangerous state on the page and the easiest to render as reassurance: "always on" beside "no email is sent" reads as a promise where it is in fact a gap |
+| Assignments | Behaviour | "Not produced" | Card | Card | There is no assignee column anywhere in the schema, so nothing generates these. Calling them "in the product" would imply the information is on a page somewhere, and it is not |
+| Where each alert does appear | Added | A link per category | Card | Card | If the only way to see something is to open a page, the page is worth naming |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

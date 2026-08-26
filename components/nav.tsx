@@ -107,6 +107,9 @@ const SECTIONS: Section[] = [
       { href: "/settings/content", label: "Content" },
       { href: "/settings/integrations", label: "Integrations" },
       { href: "/settings/billing", label: "Billing" },
+      // Which alerts reach this account by email and which live only in the
+      // product. Worth its own entry because the answer is surprising.
+      { href: "/settings/notifications", label: "Notifications" },
     ],
   },
   {

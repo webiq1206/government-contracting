@@ -14,6 +14,11 @@ const TABS = [
     match: "/settings/integrations",
   },
   { href: "/settings/billing", label: "Billing", match: "/settings/billing" },
+  {
+    href: "/settings/notifications",
+    label: "Notifications",
+    match: "/settings/notifications",
+  },
 ] as const;
 
 /**
