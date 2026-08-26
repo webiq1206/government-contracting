@@ -2246,7 +2246,8 @@ export async function backlinkChanges(): Promise<{ recent: BacklinkChange[]; los
  * org's work.
  */
 export async function workQueue(): Promise<import("./domain/work-queue").WorkItem[]> {
-  const { sortWorkItems } = await import("./domain/work-queue");
+  const { dedupeWorkItems } = await import("./domain/work-queue");
+  const { flagSummary } = await import("./flag-labels");
   const { tryResolveTenantOrgId } = await import("./tenant");
   const { LEGACY_ORG_ID } = await import("./tenant-context");
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
@@ -2278,15 +2279,28 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       [orgId]
     ),
     query<{ id: string; company_name: string; trade: string | null; opp_title: string | null; deadline: string | null }>(
-      `select cc.id, s.company_name, cc.trade, o.title as opp_title, o.deadline
+      // The trade is inside card_json, not a column. `cc.trade` has never
+      // existed, so this whole function has been throwing -- and Today wraps
+      // it in .catch(() => []), so the work queue simply never appeared. A
+      // silent catch around a query is how a feature goes missing without a
+      // single error reaching anybody.
+      `select cc.id, s.company_name,
+              coalesce(cc.card_json->>'trade', s.trade_categories[1]) as trade,
+              o.title as opp_title, o.deadline
          from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
         where o.org_id=$1 and cc.status='pending' and o.status='open'`,
       [orgId]
     ),
-    query<{ id: string; title: string | null; stage: string; deadline: string | null }>(
-      `select id, title, stage, deadline from opportunities
+    query<{
+      id: string;
+      title: string | null;
+      stage: string;
+      deadline: string | null;
+      risk_flags: string[] | null;
+    }>(
+      `select id, title, stage, deadline, risk_flags from opportunities
         where org_id=$1 and human_action_required=true and status='open'
           and not (tier='review' and stage='scoring')`,
       [orgId]
@@ -2302,6 +2316,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       due: r.deadline,
       href: "/today#reply-reviews",
       actionLabel: "Read reply",
+      reason: "The automatic reader was not confident enough to act on this, so the conversation is stopped until somebody reads it.",
     })),
     ...decisions.map((d) => ({
       key: `decide:${d.id}`,
@@ -2312,6 +2327,9 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       expiresAt: d.review_expires_at,
       href: `/opportunity/${d.id}#next`,
       actionLabel: "Decide",
+      reason: d.review_expires_at
+        ? "Scored close enough to the line that a person has to call it. It is dismissed automatically if nobody does."
+        : "Scored close enough to the line that a person has to call it.",
     })),
     ...calls.map((c) => ({
       key: `call:${c.id}`,
@@ -2321,6 +2339,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       due: c.deadline,
       href: `/call-queue`,
       actionLabel: "Open call",
+      reason: "Email has not produced a price on this trade, so the next move is a phone call.",
     })),
     ...actionable.map((o) => ({
       key: `act:${o.id}`,
@@ -2346,7 +2365,22 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
             : `/opportunity/${o.id}#next`,
       actionLabel:
         o.stage === "bid_building" ? "Review bid" : o.stage === "quote_entry" ? "Enter quote" : "Resolve",
+      reason:
+        o.stage === "bid_building"
+          ? "The package is assembled. Nothing goes to the agency until a person reads it and signs."
+          : o.stage === "quote_entry"
+            ? "Subcontractor prices are in hand and have to be recorded before the bid can be built."
+            : "Automation stopped here and named what it could not resolve.",
+      // The flags are what automation could not get past, in its own words.
+      // Naming them is the difference between "resolve blocker" and knowing
+      // which blocker.
+      blocker: o.risk_flags?.length ? flagSummary(o.risk_flags) : null,
     })),
   ];
-  return sortWorkItems(items);
+  /*
+   * Dedupe before sorting: one opportunity can be flagged for attention AND
+   * sitting in bid_building, which produced two rows for one piece of work and
+   * made the count at the top of Today disagree with the list under it.
+   */
+  return dedupeWorkItems(items);
 }

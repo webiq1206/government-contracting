@@ -430,7 +430,17 @@ export default async function TodayPage() {
     getActiveProfile(),
     getAutomationState(),
     dailyDigest(),
-    workQueue().catch(() => []),
+    /*
+     * Still tolerant, but no longer silent. This exact catch hid a query
+     * referencing a column that has never existed (`cc.trade`), so the work
+     * queue -- the one list of everything waiting on a person, and the point
+     * of this page -- rendered as absent rather than as broken, with nothing
+     * anywhere saying why.
+     */
+    workQueue().catch((e) => {
+      console.error("[today] work queue failed to load:", e);
+      return [];
+    }),
     readPipelinePulse().catch(() => []),
     automationHealth().catch(() => null),
   ]);
