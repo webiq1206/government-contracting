@@ -32,6 +32,21 @@ const GROUPS: {
     ],
   },
   {
+    title: "Relationships",
+    items: [
+      /*
+       * Communications is here because Calls took the fourth tab, which is the
+       * five the brief names. It is the one destination behind More where
+       * somebody outside this company is waiting, so the More badge counts it.
+       */
+      {
+        href: "/communications",
+        label: "Communications",
+        hint: "Replies from subcontractors, and anything waiting on an answer",
+      },
+    ],
+  },
+  {
     title: "Delivery",
     items: [
       { href: "/contracts", label: "Contracts", hint: "Awarded work, from setup to closeout" },
