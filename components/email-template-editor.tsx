@@ -16,6 +16,14 @@ import {
 import { renderOutreachBrief } from "@/lib/domain/outreach-email";
 import { buildOutreachSections } from "@/lib/domain/outreach-sections";
 import { validateTemplate } from "@/lib/domain/outreach-validation";
+import {
+  deliverabilityFindings,
+  formatMetric,
+  openRateLabel,
+  metricsSummary,
+  OPEN_RATE_CAVEAT,
+  type TemplateMetrics,
+} from "@/lib/domain/template-health";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -330,13 +338,15 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
 
 interface Props {
   template: EmailTemplate;
+  /** What this template has actually done, when it has done anything. */
+  metrics: TemplateMetrics;
 }
 
 /**
  * Edit one outreach template. Shows the subject + body with a draggable /
  * clickable token palette and a preview modal with sample values filled in.
  */
-export function EmailTemplateEditor({ template }: Props) {
+export function EmailTemplateEditor({ template, metrics }: Props) {
   const [subject, setSubject] = useState(template.subject ?? "");
   const [body, setBody] = useState(template.body);
 
@@ -351,6 +361,19 @@ export function EmailTemplateEditor({ template }: Props) {
    */
   const problems = useMemo(
     () => validateTemplate({ subject, body }),
+    [subject, body]
+  );
+  /*
+   * Whether it will land, as distinct from whether it is correct.
+   *
+   * The problems above are refusals: a template with an unknown variable
+   * cannot be saved. These are not. A subject in block capitals is legal and
+   * ill-advised, and the operator is the one who decides. Separating the two
+   * matters, because a warning shown with the same weight as a refusal is
+   * either ignored or obeyed, and both are wrong.
+   */
+  const delivery = useMemo(
+    () => deliverabilityFindings({ subject, body }),
     [subject, body]
   );
   const [currentVersion, setCurrentVersion] = useState(template.version);
@@ -683,6 +706,41 @@ export function EmailTemplateEditor({ template }: Props) {
         </div>
       )}
 
+      {/*
+        * What this wording has done in practice.
+        *
+        * The page could tell an operator whether a template was correct and
+        * never whether it worked, so a subject line that had been quietly
+        * bouncing for months looked identical to one that got answered every
+        * time. Every rate can be absent, and absent says why.
+        */}
+      <TemplateMetricsStrip metrics={metrics} />
+
+      {/*
+        * Warnings, not refusals. A subject in block capitals is legal and
+        * ill-advised, and the person writing it decides. Shown at a different
+        * weight from the block above for exactly that reason.
+        */}
+      {delivery.length > 0 && (
+        <div className="rounded-md border border-review/40 bg-review/5 px-3 py-2.5 text-xs">
+          <p className="font-medium text-review">
+            {delivery.length === 1
+              ? "One thing that may keep this out of an inbox"
+              : `${delivery.length} things that may keep this out of an inbox`}
+          </p>
+          <ul className="mt-1.5 space-y-1.5">
+            {delivery.map((d, i) => (
+              <li key={i} className="leading-relaxed text-slate-700">
+                <span className={d.severity === "warning" ? "text-review" : "text-slate-600"}>
+                  {d.message}
+                </span>{" "}
+                <span className="text-slate-500">{d.fix}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Token palette */}
       <TokenPalette onInsert={insertToken} />
 
@@ -960,5 +1018,61 @@ function FormatButton({
     >
       {label}
     </button>
+  );
+}
+
+/**
+ * Usage and delivery for one template.
+ *
+ * The audit asks the template list to carry usage, open rate, reply rate and
+ * bounce rate. Those four numbers are only worth showing if they refuse to
+ * lie, so each one is absent rather than nought when there is nothing behind
+ * it, a thin history says it is thin, and the open rate carries the caveat
+ * that it is counted by an image some clients fetch and others block.
+ */
+function TemplateMetricsStrip({ metrics }: { metrics: TemplateMetrics }) {
+  return (
+    <div className="rounded-md border border-border bg-surface px-3 py-2.5">
+      <p className="text-xs leading-relaxed text-slate-700">{metricsSummary(metrics)}</p>
+      {metrics.sent > 0 && (
+        <>
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+            <Metric label="Times sent" value={String(metrics.sent)} />
+            <Metric label="Opened" value={openRateLabel(metrics)} note={OPEN_RATE_CAVEAT} />
+            <Metric label="Replied" value={formatMetric(metrics.replyRate, metrics.sent)} />
+            <Metric
+              label="Bounced"
+              value={formatMetric(metrics.bounceRate, metrics.sent)}
+              tone={metrics.bounceRate != null && metrics.bounceRate >= 5 ? "risk" : undefined}
+            />
+          </dl>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{OPEN_RATE_CAVEAT}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  note,
+  tone,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  tone?: "risk";
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground">{label}</dt>
+      <dd
+        className={`num truncate text-sm ${tone === "risk" ? "text-risk" : "text-foreground"}`}
+        title={note}
+      >
+        {value}
+      </dd>
+    </div>
   );
 }

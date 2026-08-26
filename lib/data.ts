@@ -14,6 +14,7 @@ import { query, queryOne } from "./db";
 import type { KpiParams } from "./domain/kpi";
 import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
 import type { CredentialSource as ProviderCredentialSource } from "./domain/provider-usage";
+import type { TemplateCounts } from "./domain/template-health";
 import { resolveSubWork } from "./domain/sub-work";
 import {
   loadAwardCompliance,
@@ -1198,6 +1199,69 @@ export async function scoreHistogram(): Promise<number[]> {
     }
   }
   return hist;
+}
+
+/**
+ * What each outreach template has actually done, attributed from the send
+ * record rather than from a counter.
+ *
+ * The attribution is exact because the sender already stamped it. An initial
+ * outreach writes no `kind`; a follow-up writes `kind: "followup"` along with
+ * `threaded`, which says whether it went into the original conversation or
+ * fell back to a fresh one. Those three cases are precisely the three
+ * templates the Content Library edits, so nothing here is inferred from
+ * matching subject text, which would break the moment somebody edited a
+ * template, which is the one thing this page exists to let them do.
+ *
+ * Delivered counts anything past the handover: a message that opened, was
+ * clicked, was replied to, or that the provider confirmed. `sent` on its own
+ * means "handed over and nothing came back", which is not delivery.
+ */
+export async function templateSendStats(): Promise<Record<string, TemplateCounts>> {
+  const rows = await query<{
+    slug: string;
+    sent: number;
+    delivered: number;
+    opened: number;
+    replied: number;
+    bounced: number;
+    last_sent_at: Date | null;
+  }>(
+    `select
+       case
+         when c.meta->>'kind' = 'followup' and c.meta->>'threaded' = 'false'
+           then 'template_2_followup_new_thread'
+         when c.meta->>'kind' = 'followup' then 'template_2_followup'
+         else 'template_1_outreach'
+       end as slug,
+       count(*)::int as sent,
+       count(*) filter (
+         where c.delivery_state = 'delivered'
+            or c.opened_at is not null
+            or c.clicked_at is not null
+            or c.replied_at is not null
+       )::int as delivered,
+       count(*) filter (where c.opened_at is not null)::int as opened,
+       count(*) filter (where c.replied_at is not null)::int as replied,
+       count(*) filter (where c.delivery_state in ('bounced','failed'))::int as bounced,
+       max(c.created_at) as last_sent_at
+     from communications c
+    where c.org_id = $1 and c.channel = 'email' and c.direction = 'outbound'
+    group by 1`,
+    [await currentOrg()]
+  );
+  const out: Record<string, TemplateCounts> = {};
+  for (const r of rows) {
+    out[r.slug] = {
+      sent: Number(r.sent) || 0,
+      delivered: Number(r.delivered) || 0,
+      opened: Number(r.opened) || 0,
+      replied: Number(r.replied) || 0,
+      bounced: Number(r.bounced) || 0,
+      lastSentAt: r.last_sent_at instanceof Date ? r.last_sent_at.toISOString() : null,
+    };
+  }
+  return out;
 }
 
 /** Live-computed KPIs as a fallback when the Analytics Engine hasn't run yet. */

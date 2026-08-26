@@ -361,6 +361,21 @@ written in advance of the work.
 | (new) Conflicts before publishing | Added | Above the save button | Panel | Panel | Each field validated itself, but the interesting mistakes are pairs: a red warning further out than the amber one, a calling window an hour wide, every follow-up landing inside a day. No single field can catch those |
 | `null` stored for a numeric rule | Fixed | Falls back to the default | Everywhere | Everywhere | `Number(null)` is 0, and 0 means "no limit" for several of these rules, so an absent key was quietly storing the most permissive setting available |
 
+### Content Library
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| (new) Spam-risk and length checks | Added | Under the blocking problems | Warning panel | Warning panel | Item on the audit's list, and the gap it filled is real: the editor could say whether a template was correct and never whether it would arrive. A subject in block capitals with two exclamation marks lands in a junk folder however correct its variables are |
+| Warnings against refusals | Behaviour | Separate panels, different weight | Editor | Editor | An unknown variable cannot be saved; a shouting subject is legal and ill-advised and the writer decides. A warning shown at the weight of a refusal is either ignored or obeyed, and both are wrong |
+| Placeholder length | Behaviour | Measured as its value | Editor | Editor | Counting `{{opportunity_title}}` as nineteen characters would tell somebody to shorten a subject that renders to nothing of the sort |
+| Bulk-phrase list | Behaviour | Short and specific to this trade | Editor | Editor | A long generic list flags "free issue material" and trains the operator to ignore the panel, which costs more than it saves |
+| (new) Usage, open, reply and bounce per template | Added | Above the editor | Metrics strip | Metrics strip | The audit asks the template list to carry them, and the page carried none. A subject line that had been quietly bouncing for months looked identical to one answered every time; the seeded account turns out to be bouncing 38.9% of its outreach |
+| Attribution | Behaviour | From the send record's own stamp | Data layer | Data layer | The sender already writes `kind` and `threaded`, which distinguish exactly the three templates this page edits. Matching subject text would break the moment somebody edited a template, which is the one thing this page exists to let them do |
+| Open rate of nought | Fixed | "None recorded" | Metrics strip | Metrics strip | An account whose tracking never fires, whose recipients block images, and one nobody opens all produce the same zero. `0%` sends somebody to rewrite wording that may be working perfectly well |
+| Reply rate of nought | Kept as a rate | Metrics strip | Metrics strip | Metrics strip | Replies arrive through the inbox poll rather than through a pixel, so nought replies means nought people wrote back, which is exactly what somebody rewriting wants to know. The two zeroes are not the same kind of fact and are not shown as though they were |
+| Opens over sends | Fixed | Opens over delivered | Metrics strip | Metrics strip | Counting a bounced message as an unopened one blames the wording for an address that never existed |
+| A thin history | Behaviour | Says it is thin | Metrics strip | Metrics strip | Three sends and one reply is a 33% reply rate and no evidence of anything |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
