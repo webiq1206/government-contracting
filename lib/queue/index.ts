@@ -116,6 +116,30 @@ export async function enqueue(
     console.warn(`[queue] enqueue skipped (automation paused): ${name}`);
     return null;
   }
+  /*
+   * Do not queue new work for a pursuit the operator has stopped.
+   *
+   * The runner refuses stopped pursuits when a job runs, which is what stops
+   * the work. This stops it being created, and the two are not the same: the
+   * recovery sweeps exist precisely to re-enqueue things that did not happen,
+   * so without this an aborted opportunity gets its scoring job recreated
+   * every fifteen minutes, forever, each one refused and logged. The queue
+   * fills with work whose only outcome is a refusal, and the Automation Log
+   * fills with it too.
+   *
+   * Reads the payload's opportunityId rather than a tenant claim: this asks
+   * about one record's state, not about permission, so the record is the
+   * right thing to ask.
+   */
+  const oppId = typeof payload.opportunityId === "string" ? payload.opportunityId : "";
+  if (oppId) {
+    const { pursuitStatus } = await import("../pursuit-guard");
+    const pursuit = await pursuitStatus(oppId);
+    if (!pursuit.mayAct && pursuit.known) {
+      console.warn(`[queue] enqueue skipped (pursuit stopped): ${name} for ${oppId}`);
+      return null;
+    }
+  }
   const q = await getQueue();
   return q.enqueue(name, await withEnqueuingOrg(payload, opts?.orgId), opts);
 }

@@ -208,6 +208,8 @@ async function lastCallForOrg(orgId: string): Promise<number> {
       html: plainToHtml(text),
       text,
       orgId,
+      // Re-checked at the provider boundary, not trusted from job start.
+      opportunityId: row.opportunity_id,
     });
     if (res.disabled || res.error) {
       // This is the one chance to get a price before the deadline; a silent
@@ -701,6 +703,9 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       inReplyTo: canReplyInThread ? inReplyTo ?? undefined : undefined,
       references: canReplyInThread ? references : [],
       attachments: attachments.length ? attachments : undefined,
+      // Re-checked at the provider boundary: assembling this packet takes
+      // long enough for an abort to land in between.
+      opportunityId: row.opportunity_id,
     });
     if (!res.disabled && !res.error) {
       /*

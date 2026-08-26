@@ -489,6 +489,10 @@ export const outreach: AgentDefinition = {
         text: fullPlain,
         trackingId,
         attachments: gathered.files,
+        // Re-checked at the provider boundary: this job has been assembling a
+        // packet since the runner's check, and that is long enough for an
+        // abort to land in between.
+        opportunityId,
       });
       if (res.disabled) {
         humanAction = true;
