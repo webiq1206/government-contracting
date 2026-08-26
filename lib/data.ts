@@ -12,6 +12,7 @@
  */
 import { query, queryOne } from "./db";
 import type { KpiParams } from "./domain/kpi";
+import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
 import { resolveSubWork } from "./domain/sub-work";
 import {
   loadAwardCompliance,
@@ -1073,14 +1074,24 @@ export async function completedContracts() {
   );
 }
 
-export async function latestKpiSnapshot(): Promise<Record<string, unknown> | null> {
-  const row = await queryOne<{ output_json: Record<string, unknown> }>(
-    `select output_json from agent_logs
+export async function latestKpiSnapshot(): Promise<{
+  data: Record<string, unknown>;
+  generatedAt: Date | null;
+} | null> {
+  // `created_at` comes back too, because a breakdown with no date on it is
+  // presented as current no matter how old it is. A win rate by agency from
+  // six weeks ago is not wrong, but reading it as this week's is.
+  const row = await queryOne<{ output_json: Record<string, unknown>; created_at: Date | null }>(
+    `select output_json, created_at from agent_logs
       where agent='analytics-engine' and action='kpi-snapshot' and org_id=$1
       order by created_at desc limit 1`,
     [await currentOrg()]
   );
-  return row?.output_json ?? null;
+  if (!row?.output_json) return null;
+  return {
+    data: row.output_json,
+    generatedAt: row.created_at instanceof Date ? row.created_at : null,
+  };
 }
 
 /** Live-computed KPIs as a fallback when the Analytics Engine hasn't run yet. */
@@ -1171,6 +1182,224 @@ export async function analyticsExtras(): Promise<{
     counts: counts ?? { open_opps: 0, new_30d: 0, bids_30d: 0, active_contracts: 0 },
     byStage,
   };
+}
+
+/**
+ * The eight-step acquisition funnel over one cohort of opportunities.
+ *
+ * A cohort is everything found inside the window, followed wherever it got to
+ * since. That is the only reading that supports a conversion rate: counting
+ * "quotes received this month" against "opportunities found this month" mixes
+ * two different sets of work and produces a number that means nothing.
+ *
+ * Each opportunity is placed at the furthest step it reached, and the ones
+ * that stopped short are split by whether they are closed (a real loss) or
+ * still open (not a loss yet). The medians measure only spans that have two
+ * real timestamps on both ends; there is no stage-history table, so the steps
+ * without one report nothing rather than a plausible-looking zero.
+ */
+export async function funnelCounts(
+  from: Date | null,
+  to: Date | null = null
+): Promise<FunnelCounts> {
+  const orgId = await currentOrg();
+  const row = await queryOne<Record<string, unknown>>(
+    `with cohort as (
+       select o.id, o.status, o.stage, o.score, o.tier, o.created_at
+         from opportunities o
+        where o.org_id = $1
+          and ($2::timestamptz is null or o.created_at >= $2::timestamptz)
+          and ($3::timestamptz is null or o.created_at <  $3::timestamptz)
+     ),
+     facts as (
+       select c.id, c.created_at,
+              (c.status = 'open' and c.stage not in ('dismissed','lost')) as still_open,
+              (c.score is not null) as scored,
+              (c.stage in ('sub_research','outreach','call_queue','quote_entry',
+                           'bid_building','submitted','won','lost')
+                or c.tier = 'pursue') as pursued,
+              cm.first_out, q.first_quote,
+              b.first_bid, b.first_submit, b.decided, b.won, b.lost
+         from cohort c
+         left join lateral (
+           select min(created_at) as first_out from communications
+            where opportunity_id = c.id and direction = 'outbound' and org_id = $1
+         ) cm on true
+         left join lateral (
+           select min(created_at) as first_quote from quotes
+            where opportunity_id = c.id and org_id = $1
+         ) q on true
+         left join lateral (
+           select min(created_at) as first_bid,
+                  min(submitted_at) as first_submit,
+                  bool_or(outcome in ('won','lost')) as decided,
+                  bool_or(outcome = 'won') as won,
+                  bool_or(outcome = 'lost') as lost
+             from bids where opportunity_id = c.id and org_id = $1
+         ) b on true
+     ),
+     ranked as (
+       select f.*,
+              case
+                when f.decided then 7
+                when f.first_submit is not null then 6
+                when f.first_bid is not null then 5
+                when f.first_quote is not null then 4
+                when f.first_out is not null then 3
+                when f.pursued then 2
+                when f.scored then 1
+                else 0
+              end as furthest
+         from facts f
+     )
+     select
+       count(*)::int as r0,
+       count(*) filter (where furthest >= 1)::int as r1,
+       count(*) filter (where furthest >= 2)::int as r2,
+       count(*) filter (where furthest >= 3)::int as r3,
+       count(*) filter (where furthest >= 4)::int as r4,
+       count(*) filter (where furthest >= 5)::int as r5,
+       count(*) filter (where furthest >= 6)::int as r6,
+       count(*) filter (where furthest >= 7)::int as r7,
+       count(*) filter (where furthest = 0 and not still_open)::int as d1,
+       count(*) filter (where furthest = 1 and not still_open)::int as d2,
+       count(*) filter (where furthest = 2 and not still_open)::int as d3,
+       count(*) filter (where furthest = 3 and not still_open)::int as d4,
+       count(*) filter (where furthest = 4 and not still_open)::int as d5,
+       count(*) filter (where furthest = 5 and not still_open)::int as d6,
+       count(*) filter (where furthest = 6 and not still_open)::int as d7,
+       count(*) filter (where furthest = 0 and still_open)::int as p1,
+       count(*) filter (where furthest = 1 and still_open)::int as p2,
+       count(*) filter (where furthest = 2 and still_open)::int as p3,
+       count(*) filter (where furthest = 3 and still_open)::int as p4,
+       count(*) filter (where furthest = 4 and still_open)::int as p5,
+       count(*) filter (where furthest = 5 and still_open)::int as p6,
+       count(*) filter (where furthest = 6 and still_open)::int as p7,
+       count(*) filter (where won)::int as won,
+       count(*) filter (where lost and not won)::int as lost,
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_out - created_at)) / 86400.0
+       ) filter (where first_out is not null) as m_contact,
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_quote - first_out)) / 86400.0
+       ) filter (where first_quote is not null and first_out is not null) as m_quote,
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_bid - first_quote)) / 86400.0
+       ) filter (where first_bid is not null and first_quote is not null) as m_bid,
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_submit - first_bid)) / 86400.0
+       ) filter (where first_submit is not null and first_bid is not null) as m_submit
+       from ranked`,
+    [orgId, from ? from.toISOString() : null, to ? to.toISOString() : null]
+  );
+  const n = (v: unknown): number => {
+    const x = typeof v === "string" ? Number(v) : v;
+    return typeof x === "number" && Number.isFinite(x) ? x : 0;
+  };
+  // A median over an empty set is null in Postgres, and it must stay null here:
+  // "no span was measured" and "the span was nought days" are different facts.
+  const median = (v: unknown): number | null => {
+    const x = typeof v === "string" ? Number(v) : v;
+    return typeof x === "number" && Number.isFinite(x) ? Math.max(0, x) : null;
+  };
+  const r = row ?? {};
+  return {
+    reached: {
+      found: n(r.r0),
+      scored: n(r.r1),
+      pursued: n(r.r2),
+      subs_contacted: n(r.r3),
+      quotes_received: n(r.r4),
+      bid_built: n(r.r5),
+      submitted: n(r.r6),
+      decided: n(r.r7),
+    },
+    droppedBefore: {
+      found: 0,
+      scored: n(r.d1),
+      pursued: n(r.d2),
+      subs_contacted: n(r.d3),
+      quotes_received: n(r.d4),
+      bid_built: n(r.d5),
+      submitted: n(r.d6),
+      decided: n(r.d7),
+    },
+    pendingBefore: {
+      found: 0,
+      scored: n(r.p1),
+      pursued: n(r.p2),
+      subs_contacted: n(r.p3),
+      quotes_received: n(r.p4),
+      bid_built: n(r.p5),
+      submitted: n(r.p6),
+      decided: n(r.p7),
+    },
+    medianDaysInto: {
+      subs_contacted: median(r.m_contact),
+      quotes_received: median(r.m_quote),
+      bid_built: median(r.m_bid),
+      submitted: median(r.m_submit),
+    },
+    won: n(r.won),
+    lost: n(r.lost),
+  };
+}
+
+/**
+ * The same cohort, cut by one dimension.
+ *
+ * The dimension is chosen from a fixed list and mapped to a fixed expression
+ * here, never interpolated from the request, so a drill-down cannot become a
+ * way to select arbitrary columns. Rows with no value on the dimension are
+ * kept and labelled, because dropping them would make the totals disagree with
+ * the funnel directly above them.
+ */
+export async function funnelBreakdown(
+  dimension: BreakdownKey,
+  from: Date | null,
+  to: Date | null = null
+): Promise<BreakdownRow[]> {
+  const EXPR: Record<BreakdownKey, string> = {
+    naics: `coalesce(nullif(o.naics_code, ''), 'Not stated')`,
+    state: `coalesce(nullif(o.location_state, ''), 'Not stated')`,
+    agency: `coalesce(nullif(o.agency, ''), 'Not stated')`,
+    set_aside: `coalesce(nullif(o.set_aside_type, ''), 'Not stated')`,
+    score_band: `case
+        when o.score is null then 'Not scored'
+        when o.score >= 80 then 'Strong (80 and above)'
+        when o.score >= 60 then 'Fair (60 to 79)'
+        when o.score >= 40 then 'Weak (40 to 59)'
+        else 'Poor (under 40)'
+      end`,
+  };
+  const expr = EXPR[dimension] ?? EXPR.agency;
+  const orgId = await currentOrg();
+  return query<BreakdownRow>(
+    `select ${expr} as key,
+            count(*)::int as found,
+            count(*) filter (
+              where o.stage in ('sub_research','outreach','call_queue','quote_entry',
+                                'bid_building','submitted','won','lost')
+                 or o.tier = 'pursue'
+            )::int as pursued,
+            count(*) filter (where b.first_submit is not null)::int as submitted,
+            count(*) filter (where b.won)::int as won,
+            count(*) filter (where b.lost and not b.won)::int as lost
+       from opportunities o
+       left join lateral (
+         select min(submitted_at) as first_submit,
+                bool_or(outcome = 'won') as won,
+                bool_or(outcome = 'lost') as lost
+           from bids where opportunity_id = o.id and org_id = $1
+       ) b on true
+      where o.org_id = $1
+        and ($2::timestamptz is null or o.created_at >= $2::timestamptz)
+        and ($3::timestamptz is null or o.created_at <  $3::timestamptz)
+      group by 1
+      order by count(*) desc, 1 asc
+      limit 25`,
+    [orgId, from ? from.toISOString() : null, to ? to.toISOString() : null]
+  );
 }
 
 export interface CustomKpiRow {

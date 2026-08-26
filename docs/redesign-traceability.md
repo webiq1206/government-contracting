@@ -302,6 +302,23 @@ written in advance of the work.
 | (new) Reason and next action per card | Added | Under the badge | Integrations | Integrations | A state without a reason is a colour |
 | "N of M connected" | Changed | "N of M confirmed working", and what needs attention | Integrations | Integrations | The header was making the same unsupported claim as the badge, one level up |
 
+### Analytics
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| (new) `Found -> Scored -> Pursued -> Subs contacted -> Quotes received -> Bid built -> Submitted -> Won or lost` | Added | Top of the page, under the range | Eight bands | Eight bands, full width | The audit names this funnel and the page had no funnel at all: it had a stage table showing where value sits today, which is a snapshot, not a conversion story |
+| Conversion rates | Added | Beside each band | Analytics | Analytics | Every rate is `number \| null`. A step whose predecessor is empty has no rate, and printing `0%` there says the work failed when it never started |
+| A step that converted nothing | Behaviour | "none of the step before" | Analytics | Analytics | A zero conversion and an absent one are different facts and looked identical as bare zeroes. One means the work stopped here, the other means there was no work to stop |
+| Time in stage | Added | Under each band, where measurable | Analytics | Analytics | There is no stage-history table, so only four spans have real timestamps on both ends. The other four say "not recorded" rather than showing a plausible zero |
+| Work that stopped short | Behaviour | Split into closed and still open | Analytics | Analytics | A cohort found last week has not had time to be won or lost. Counting "has not reached submitted" as a drop reads as "you lose everybody at bidding" when half of them are quoting right now |
+| Global date range | Added | Chips at the top of the page, in the URL | 4 chips | 4 chips | Item 1 of the desktop spec, and absent. In the URL so a period is a link and the back button works |
+| Comparison period | Added | Under the funnel | Analytics | Analytics | Item 1 also asks for a comparison. Growth from nothing gets no percentage, and a period where both sides are empty gets no sentence at all: comparing nothing with nothing is not a comparison |
+| Breakdowns with no date on them | Fixed | Dated on every stored panel | Analytics | Analytics | `latestKpiSnapshot` dropped `created_at`, and the page described the result as "the latest Analytics Engine run". A win rate by agency from six weeks ago is not wrong; reading it as this week's is. Past a week the page says so and asks for a re-run |
+| Known versus modelled | Added | Provenance panel under the range | Analytics | Analytics | Item 2 of the spec. The honest answer differs by section: the funnel and headline figures are counted at page load, the breakdowns are a dated copy, and exactly one panel (Cash Flow Projection) is a forecast. Each is labelled as what it is |
+| Cash flow with a missing horizon | Fixed | "Not projected" | Analytics | Analytics | `currency(null)` rendered a bare dash next to two real figures, which reads as nought |
+| (new) Drill-down by agency, NAICS, state, set-aside, score band | Added | Table under the funnel | 5 chips + table | Chips + scrolling table | Items 5 and 6 of the spec, over the same cohort as the funnel so the two always agree. The dimension is chosen from a fixed list and mapped to a fixed SQL expression, never interpolated, so a drill-down cannot become a column selector |
+| Win rate in the drill-down | Behaviour | Wins over decided bids | Analytics | Analytics | Dividing wins by submissions counts every bid still sitting with the agency as a loss. A row with nothing decided has no win rate and says so, rather than marking an agency you have never lost to as a losing one |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
@@ -324,3 +341,13 @@ written in advance of the work.
 
 - **Site Authority stays admin-only.** It reports on our own marketing domain
   and means nothing to a contractor.
+- **No breakdown by trade on Analytics.** Trade is a property of a
+  subcontractor and of a quote, not of an opportunity, so a trade column in a
+  funnel cut by opportunity would either double-count or quietly drop
+  everything not yet quoted. The trade view that does mean something lives on
+  the subcontractor side.
+- **Analytics has no charts.** Every figure on the page is a count with a
+  denominator beside it, and the funnel's bars are scaled bands rather than a
+  plotted series. The audit asks mobile to avoid miniature charts and crowded
+  legends; the same reasoning applies at every width when the underlying
+  numbers are this small, and a bar chart of four agencies is decoration.
