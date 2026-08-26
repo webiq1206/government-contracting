@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext, findOrgRecord, notFoundResponse } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
+import { pursuitImpact } from "@/lib/pursuit-impact";
 import { logAgent } from "@/lib/logger";
 import {
   abortRequestProblem,
@@ -12,6 +13,34 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/**
+ * What aborting this pursuit would stop, and what it could not undo.
+ *
+ * GET /api/opportunities/[id]/pursuit
+ *
+ * Read before the confirmation is shown, so the operator is deciding against
+ * counts rather than against an adjective. A dialog that only asks whether
+ * they are sure is a speed bump; the question they are actually asking is what
+ * happens if they do this.
+ */
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const ctx = await requireOrgContext({ capability: "outreach" });
+  if (ctx instanceof NextResponse) return ctx;
+  const owned = await findOrgRecord("opportunities", params.id, ctx.orgId, "id");
+  if (!owned) return notFoundResponse();
+  const impact = await pursuitImpact(params.id);
+  if (!impact) return notFoundResponse();
+  const row = await queryOne<{ pursuit_state: string; pursuit_reason: string | null }>(
+    `select pursuit_state, pursuit_reason from opportunities where id = $1`,
+    [params.id]
+  );
+  return NextResponse.json({
+    state: parsePursuitState(row?.pursuit_state),
+    reason: row?.pursuit_reason ?? null,
+    impact,
+  });
+}
 
 /**
  * Pause, resume, abort or restart a pursuit.
