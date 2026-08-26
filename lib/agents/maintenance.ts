@@ -6,6 +6,7 @@
  *   - reply-poll : detect sub replies via Gmail, mark responsive, trigger Call Prep
  */
 import { query, queryOne, transaction } from "../db";
+import { recordUnmatched } from "../needs-matching";
 import { gmail } from "../integrations/gmail";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { captureReply, matchInboundReply } from "../reply-capture";
@@ -1880,7 +1881,33 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
             where org_id = $1 and lower(email) = $2 limit 1`,
           [orgId, fromEmail]
         ).catch(() => null);
-        if (known) {
+        /*
+         * Into the Needs matching inbox, not into a log line.
+         *
+         * The warning that used to be written here was better than silence
+         * and still the wrong home: an agent log is a stream somebody reads
+         * when the automation is misbehaving, not a queue of work. It scrolled
+         * away, carried no body, and the only instruction it could give was
+         * "go and look in the mailbox".
+         *
+         * Filed whether or not the sender is on the roster. A firm writing
+         * from an address we have never seen is exactly the message most
+         * likely to be lost, and it is the one the roster check misses.
+         */
+        const filed = await recordUnmatched({
+          orgId,
+          fromEmail,
+          fromName: r.from,
+          subject: r.subject,
+          body: r.body || r.snippet,
+          gmailThreadId: r.threadId,
+          messageId: r.messageId,
+          subcontractorId: known?.id ?? null,
+        }).catch(() => null);
+        if (filed && known) {
+          // A log line as well, but only for a known subcontractor and only
+          // because this one is worth interrupting somebody about. The message
+          // itself is in the inbox either way.
           await logAgent({
             agent: "maintenance",
             action: "reply-unmatched",
@@ -1888,9 +1915,8 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
             status: "skipped",
             subcontractorId: known.id,
             message:
-              `${known.company_name} <${fromEmail}> replied, but the message could not be matched to any outreach we sent ` +
-              `(subject "${(r.subject || "(no subject)").slice(0, 120)}"). It has NOT been recorded against an opportunity. ` +
-              "Open the thread in the connected inbox and handle it by hand.",
+              `${known.company_name} <${fromEmail}> replied and the message could not be matched to any outreach we sent ` +
+              `(subject "${(r.subject || "(no subject)").slice(0, 120)}"). It is waiting in Needs matching.`,
           }).catch(() => {});
         }
         continue;
