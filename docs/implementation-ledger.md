@@ -205,6 +205,8 @@ Findings named in the instructions, checked before any code was changed.
 | 27 | Abort is a deliberate flow, not a browser dialog | Implemented | `window.confirm` records nothing, and the question it asks is not the one the operator has. Theirs is what stops, what has already gone out that cannot be taken back, and what is kept. All three are on the screen before the button is live |
 | 27 | Typed confirmation on the record's own number | Implemented | The solicitation number rather than the word ABORT, which is muscle memory and proves nothing about which record is on screen |
 | 27 | Pause, abort, resume and restart stay distinct | Implemented | A pause offers a resume because nothing was thrown away. An abort offers a restart, because resuming would silently reactivate work built against a solicitation that may have been amended twice since |
+| 27 | `Call later` is a distinct control, not a skip | Implemented | It moves the existing card rather than creating a second one, because the requirement is exactly one future task and a control that scheduled a new call while leaving the old one pending produces two tasks for one conversation. The operator finds that out by ringing somebody twice. Nothing is recorded about the subcontractor: no reason, no scope, no suppression, no outreach-state change |
+| 27 | The chosen time is bounded on both sides | Implemented | A past time puts the card straight back on the queue, which reads as the control having done nothing. A time years out is a typo, and a call task nobody sees again is the same as one deleted without a record |
 | 26 | Lint runs and passes | Verified | `.eslintrc.json`; three findings fixed rather than suppressed |
 
 ## Corrections made to my own work
@@ -233,7 +235,7 @@ a ledger.
 
 | Requirement | Built | Not built |
 | --- | --- | --- |
-| WP27 operator control | All of it. The pursuit state, the guard and its enforcement; the suppression model, its send-boundary and call-prep enforcement, and `Stop outreach for this subcontractor` with its preview; the structured skip with its reason and scope; and the deliberate abort confirmation with the impact summary, the reason list and the typed solicitation number | `Call later` as a distinct control that schedules one future call task. The other three call controls are the skip's three scopes and are shipped; this fourth one needs a scheduled task rather than a suppression, and the snooze mechanism it should reuse is per-card rather than per-pairing |
+| WP27 operator control | All of it, including `Call later` | Nothing outstanding |
 | WP29 reverification | The nine states, the outcome rules, the comparison model, the storage with its constraints, the agent, the API and the reconciliation report | A fresh independent extraction, which is why trade scopes are reported as unverified rather than re-derived. Also the narrower per-section Reverify entry points in Requirements, Subs and Pricing: the full control is on the Files tab, and the others are the same call with a different scope |
 
 Recorded this way deliberately. The guard was the half that prevents harm and

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { CallCardRow } from "@/lib/data";
 import { SkipCallControl } from "@/components/skip-call-control";
+import { CallLater } from "@/components/call-later";
 import { CallWorkspaceLauncher } from "@/components/call-workspace-launcher";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import { SubWorkNeeded } from "@/components/sub-work-needed";
@@ -167,6 +168,8 @@ export function CallCard({
               nobody was asked about, so the decision lasted until the next
               Call Prep run rebuilt the card.
             */}
+            {/* Two different decisions, side by side and worded so. */}
+            <CallLater callCardId={c.id} companyName={c.company_name} />
             <SkipCallControl
               callCardId={c.id}
               companyName={c.company_name}
