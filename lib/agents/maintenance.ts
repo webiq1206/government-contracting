@@ -96,7 +96,23 @@ export const outreachFollowup: AgentDefinition = {
       const res = await runWithOrg(org.id, () => followUpForOrg(org.id));
       sentTotal += res.sent;
       dueTotal += res.due;
-      lastCalls += await runWithOrg(org.id, () => lastCallForOrg(org.id)).catch(() => 0);
+      /*
+       * The third message is gated twice, and both gates were missing.
+       *
+       * `final_nudge_enabled` is off by default: see the rule's own comment
+       * for why this message cannot currently be turned on.
+       *
+       * `followup_max` is the second gate, and its absence was a plain
+       * contradiction. followUpForOrg returns early at `followup_max <= 0`,
+       * which is the operator having said "never chase". This call sat on the
+       * next line, outside that check, so an account configured never to
+       * follow up still sent a third email. The setting said one thing and the
+       * product did another.
+       */
+      const nudgeRules = await runWithOrg(org.id, () => getAutomationRules());
+      if (nudgeRules.final_nudge_enabled && nudgeRules.followup_max > 0) {
+        lastCalls += await runWithOrg(org.id, () => lastCallForOrg(org.id)).catch(() => 0);
+      }
     }
     return {
       ok: true,
