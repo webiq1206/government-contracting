@@ -20,6 +20,12 @@ import { analysisInputHash, inputsUnchanged } from "../domain/analysis-inputs";
 import { tightenAnalysisProse } from "../domain/analysis-prose";
 import { requirementsFingerprint } from "../domain/package";
 import { assembleAttachmentContext, coverageSummary } from "../domain/extraction-budget";
+import {
+  dedupeRequirements,
+  extractClauses,
+  extractPageLimits,
+  pageLimitContradictions,
+} from "../domain/extraction-checks";
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
 import { extractValueFromText } from "../domain/value-extract";
@@ -1111,6 +1117,65 @@ export const solicitationAnalyst: AgentDefinition = {
             source_page: cite.page ?? undefined,
           };
         });
+      /*
+       * The same requirement, listed twice under different words.
+       *
+       * A matrix carrying both "Signed SF-1449" and "SF-1449 offer form"
+       * makes an operator do one job twice, and makes the package validator
+       * demand two files where one exists. Merging keeps mandatory: if the
+       * same requirement appears once as required and once as optional,
+       * dropping the required one turns a disqualifier into a suggestion.
+       */
+      const beforeDedupe = analysis.compliance_matrix.length;
+      analysis.compliance_matrix = dedupeRequirements(
+        analysis.compliance_matrix.map((r) => ({ ...r, officialForm: r.official_form }))
+      ).map(({ officialForm: _ignored, ...r }) => r);
+      const merged = beforeDedupe - analysis.compliance_matrix.length;
+      if (merged > 0) {
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "requirements_deduplicated",
+          opportunityId,
+          level: "info",
+          message: `${merged} requirement(s) were the same thing listed twice and were merged.`,
+        });
+      }
+
+      /*
+       * What the documents say when read exactly, checked against what the
+       * model said they say.
+       *
+       * Nothing here overwrites the analysis. Where a deterministic reading
+       * and the model disagree, the disagreement IS the finding: replacing one
+       * with the other would trade an unverified answer for another
+       * unverified answer, and a page limit is the kind of thing that gets a
+       * bid thrown out for being wrong in either direction.
+       */
+      const limits = extractPageLimits(attachmentContext);
+      const conflicts = pageLimitContradictions(limits);
+      const clauses = extractClauses(attachmentContext);
+      if (conflicts.length > 0) {
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "contradictions",
+          opportunityId,
+          level: "warn",
+          message: conflicts.map((c) => c.detail).join(" "),
+        });
+      }
+      if (clauses.length > 0) {
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "clauses_found",
+          opportunityId,
+          level: "info",
+          message: `${clauses.length} clause(s) named in the documents: ${clauses
+            .slice(0, 20)
+            .map((c) => `${c.regulation} ${c.id}${c.page ? ` (p.${c.page})` : ""}`)
+            .join(", ")}${clauses.length > 20 ? ", and more" : ""}.`,
+        });
+      }
+
       if (unresolvedCitations > 0) {
         // Not fatal, and not silent. A citation the model invented is the
         // signal that it was reading less carefully than it claimed.
