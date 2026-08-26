@@ -712,6 +712,25 @@ had been reporting 0.
 | It coming back | Possible, and invisible | A failing test | - | - | `tests/dark-mode-fills.test.ts` scans for a flipping fill and a hard white in one class string, and checks the token is defined in both themes and exposed to Tailwind. A token defined only in light resolves to nothing in dark, which is a subtler version of the same bug |
 | The 745 slate uses | Suspected as the cause | Not the cause | - | - | The hypothesis going in was that fixed slate greys would fail on a dark page. Measuring first showed a dark override already exists for them and only one was marginal. The mechanical conversion of 745 call sites was not done, because it would have fixed almost nothing and risked a great deal |
 
+### Privacy-safe analytics (brief section 19, the part that is not blocked)
+
+Choosing a vendor and a consent model needs the user. What an event is allowed
+to contain does not, and that is the constraint the brief actually states:
+product analytics and error reporting must not expose sensitive solicitations,
+contacts, messages, documents, or account data.
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| What an event may carry | `Record<string, unknown>`, unfiltered | Counts, flags and single tokens | - | - | Nothing was sending anything sensitive. Nothing was stopping it either, and the API route behind `trackEvent` passed `meta` and `path` straight through from the request body. The first contact address to arrive would have looked exactly like every other value |
+| Where the filter runs | - | Inside `trackEvent` | - | - | Not at the call sites. There are a dozen, they are written by whoever is building the feature, and none is thinking about privacy at the moment they type `meta:` |
+| The rule for a string | 64 characters | No whitespace | - | - | The first version capped length, and a probe through the real route showed "Roof Replacement and Associated Sheet Metal Work, Building 402" landing in the table intact at 62. Every value this codebase legitimately sends is a single token; anything with a space is a sentence or a name. Length was also the wrong axis in the other direction: a Stripe session id is over sixty characters and has to survive |
+| A record passed by mistake | Stored whole | Dropped, not walked | - | - | Recursing into a nested object would preserve exactly what this exists to remove |
+| A path | Stored verbatim | Route only | - | - | `?q=rivera roofing` is a search for a named company, and `/opportunity/<uuid>` is a reference to one solicitation. `/opportunity/:id` is the fact a funnel is asking for |
+| A payload that lost something | Silently thinner | Says how many keys went | - | - | Otherwise somebody reads the events, sees no `error` key, and concludes the error never happened |
+| "Also forwards to window dataLayer (GTM/GA)" | In the file's own doc comment | Corrected | - | - | It does not, and never did: the only occurrence of the word in the repository was that sentence. Nothing leaving is the right answer, and a comment claiming a third-party forward sends a privacy audit looking for a tag manager that does not exist |
+| Third-party telemetry | - | None, confirmed | - | - | No Sentry, PostHog, Mixpanel, Segment or tag manager anywhere. The outbound hosts in server code are all functional integrations: SAM, Anthropic, Google Maps, Twilio, Hunter, BLS, USASpending and the state portals |
+| Proof | - | The real route, twice | - | - | An event carrying an email, a phone number, a solicitation title and a nested subcontractor record was posted through `/api/analytics` and the stored row read. The first pass kept the title; the second kept `plan` and `quotes` and recorded four drops |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

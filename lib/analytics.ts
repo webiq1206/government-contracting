@@ -1,8 +1,20 @@
 /**
- * Funnel / product analytics. Persists to analytics_events; also forwards to
- * window dataLayer when present (GTM/GA). Never throws to callers.
+ * Funnel / product analytics. Persists to `analytics_events` and nowhere else.
+ *
+ * The comment here used to say it "also forwards to window dataLayer when
+ * present (GTM/GA)". It does not, and there is no dataLayer code anywhere in
+ * the repository: the only occurrence of the word was that sentence. Nothing
+ * leaves the deployment, which is the right answer, but a comment claiming a
+ * third-party forward is worse than no comment. Somebody auditing privacy
+ * would go looking for a tag manager configuration that does not exist, and
+ * somebody adding an event would believe their payload was already going to
+ * an outside vendor.
+ *
+ * What an event may carry is decided by `safeMeta` and `safePath`, applied
+ * here rather than at the call sites. See `lib/domain/analytics-safety.ts`.
  */
 import { query } from "./db";
+import { safeMeta, safePath } from "./domain/analytics-safety";
 
 export type AnalyticsEventName =
   | "landing_view"
@@ -34,8 +46,14 @@ export async function trackEvent(input: {
         input.orgId ?? null,
         input.userId && input.userId !== "env-operator" ? input.userId : null,
         input.event,
-        input.path ?? null,
-        JSON.stringify(input.meta ?? {}),
+        /*
+         * Filtered here, at the one place every event passes through. A dozen
+         * call sites each remembering to strip a query string is a dozen
+         * chances to forget, and the one that forgets is the one that ships a
+         * search term.
+         */
+        safePath(input.path),
+        JSON.stringify(safeMeta(input.meta)),
       ]
     );
   } catch {
