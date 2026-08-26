@@ -95,6 +95,51 @@ describe("evaluateSolicitationCompleteness", () => {
     expect(result.ok).toBe(false);
     expect(result.riskFlags).toContain("unverified_set_aside");
   });
+  describe("archives", () => {
+    it("blocks on an archive whose contents were never opened", () => {
+      /*
+       * Nothing in this codebase extracts archives. A notice whose entire
+       * solicitation package arrives as one .zip used to report a single
+       * cleanly fetched attachment and advance into sourcing, with every
+       * requirement, form and drawing inside it unread and the analysis built
+       * from the portal blurb.
+       */
+      const result = evaluateSolicitationCompleteness({
+        ...base,
+        storedDocumentCount: 1,
+        attachmentOutcomes: [
+          {
+            name: "Solicitation Package.zip",
+            status: "archive" as const,
+            detail: "archive contents were not opened",
+          },
+        ],
+      });
+      expect(result.ok).toBe(false);
+      expect(result.riskFlags).toContain("unopened_archives");
+      const item = result.missing.find((m) => m.key === "unopened_archives");
+      expect(item?.critical).toBe(true);
+      expect(item?.resolution).toContain("Solicitation Package.zip");
+      // The archive IS a stored document, so it must not also claim there are
+      // no attachments at all. Two blockers for one problem is noise.
+      expect(result.missing.some((m) => m.key === "attachments")).toBe(false);
+    });
+
+    it("does not fire for an ordinary unsupported binary", () => {
+      // A .dwg drawing has no text and is not expected to. It is not a
+      // container of documents nobody opened.
+      const result = evaluateSolicitationCompleteness({
+        ...base,
+        storedDocumentCount: 2,
+        attachmentOutcomes: [
+          { name: "PWS.pdf", status: "fetched" as const },
+          { name: "Site Plan.dwg", status: "unsupported" as const },
+        ],
+      });
+      expect(result.missing.some((m) => m.key === "unopened_archives")).toBe(false);
+    });
+  });
+
   describe("documents the analysis had no room for", () => {
     it("blocks on a document that was stored but never reached the analysis", () => {
       /*

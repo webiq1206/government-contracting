@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GuardedFetchError, guardedFetch } from "../lib/integrations/guarded-fetch";
+import { GuardedFetchError, guardedFetch, redactUrl } from "../lib/integrations/guarded-fetch";
 import { evaluateSolicitationCompleteness } from "../lib/domain/solicitation-completeness";
 
 /**
@@ -391,5 +391,63 @@ describe("truncating instead of refusing", () => {
     expect(spy.mock.calls[0][1]).toMatchObject({
       headers: { "user-agent": "BROSTCO-SubVerify/1.0" },
     });
+  });
+});
+
+describe("a transfer that stalls", () => {
+  it("ends when no bytes arrive, without waiting out the whole budget", async () => {
+    /*
+     * The total timeout is not enough on its own. A server that accepts the
+     * connection and then trickles one byte a minute holds a worker for the
+     * full budget while transferring nothing, and the analyst had no timeout
+     * at all before this module: one such server took a worker out until the
+     * process was restarted.
+     */
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(10));
+      },
+      pull() {
+        // Never resolves. This is the stall.
+        return new Promise<void>(() => {});
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(stream)));
+    const err = await refusal("https://93.184.216.34/slow.pdf", {
+      maxBytes: 1_000_000,
+      timeoutMs: 60_000,
+      idleMs: 30,
+    });
+    expect(err.kind).toBe("timeout");
+    expect(err.message).toContain("stalled");
+    expect(err.retryable).toBe(true);
+    expect(cancelled).toBe(true);
+  });
+});
+
+describe("what reaches a log", () => {
+  it("keeps the credential out of the audit trail", async () => {
+    // SAM resource links carry api_key in the query string. An audit line
+    // saying where a fetch went must not be where a credential is written
+    // down, and the path answers the question the line is asking.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("ok", { headers: { "content-type": "text/plain" } }))
+    );
+    const out = await guardedFetch(
+      "https://93.184.216.34/opp/att.pdf?api_key=SECRET-KEY-VALUE&x=1",
+      { maxBytes: 1_000 }
+    );
+    expect(out.hops.join(" ")).not.toContain("SECRET-KEY-VALUE");
+    expect(out.hops[0]).toBe("https://93.184.216.34/opp/att.pdf (query redacted)");
+  });
+
+  it("says nothing about a query string that was not there", () => {
+    expect(redactUrl("https://sam.gov/a/b.pdf")).toBe("https://sam.gov/a/b.pdf");
+    expect(redactUrl("nonsense")).toBe("(unparseable url)");
   });
 });

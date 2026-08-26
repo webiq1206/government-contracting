@@ -64,6 +64,15 @@ export interface GuardedFetchOptions {
   maxBytes: number;
   /** Whole-operation budget, redirects included. */
   timeoutMs?: number;
+  /**
+   * Longest gap between bytes while reading the body.
+   *
+   * The total timeout alone is not enough on its own to be comfortable: a
+   * server that accepts the connection and then trickles one byte a minute
+   * holds a worker for the entire budget while transferring nothing. This
+   * ends it as soon as the transfer stalls.
+   */
+  idleMs?: number;
   maxRedirects?: number;
   /** When set, a response whose content-type matches none of these is refused. */
   allowedContentTypes?: readonly string[];
@@ -257,10 +266,41 @@ function assertScheme(u: URL, allowInsecure: boolean): void {
  * what gets parsed, not on what gets downloaded, and the machine is already
  * out of memory by the time it runs.
  */
+/**
+ * One read, abandoned if nothing arrives within the idle budget.
+ *
+ * The pending read is left to the reader's own cancellation, which the caller
+ * does on the way out: resolving the race is what matters, not tidying the
+ * promise nobody is waiting on any more.
+ */
+async function readWithin<T>(read: Promise<T>, idleMs: number): Promise<T> {
+  if (!idleMs || idleMs <= 0) return read;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      read,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new GuardedFetchError("timeout", `Refused: the transfer stalled for ${idleMs}ms.`, {
+                retryable: true,
+              })
+            ),
+          idleMs
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function readCapped(
   res: Response,
   maxBytes: number,
-  onOversize: "refuse" | "truncate"
+  onOversize: "refuse" | "truncate",
+  idleMs: number
 ): Promise<Buffer> {
   const declared = Number(res.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > maxBytes && onOversize === "refuse") {
@@ -273,25 +313,54 @@ async function readCapped(
   const reader = res.body.getReader();
   const chunks: Buffer[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      // Stop pulling. A declared length can lie, so this is the check that counts.
-      await reader.cancel().catch(() => {});
-      if (onOversize === "truncate") {
-        chunks.push(Buffer.from(value));
-        return Buffer.concat(chunks).subarray(0, maxBytes);
+  try {
+    for (;;) {
+      const { done, value } = await readWithin(reader.read(), idleMs);
+      if (done) break;
+      /*
+       * `value` is decoded bytes: fetch has already undone any content
+       * encoding by this point, so a response that claims 1KB gzipped and
+       * expands to 10GB is stopped here at the limit like anything else. The
+       * cap is on what this process holds, which is the number that matters.
+       */
+      total += value.byteLength;
+      if (total > maxBytes) {
+        // Stop pulling. A declared length can lie, so this is the check that counts.
+        if (onOversize === "truncate") {
+          chunks.push(Buffer.from(value));
+          return Buffer.concat(chunks).subarray(0, maxBytes);
+        }
+        throw new GuardedFetchError(
+          "too_large",
+          `Refused: the response passed the ${Math.round(maxBytes / 1e6)}MB limit while downloading.`
+        );
       }
-      throw new GuardedFetchError(
-        "too_large",
-        `Refused: the response passed the ${Math.round(maxBytes / 1e6)}MB limit while downloading.`
-      );
+      chunks.push(Buffer.from(value));
     }
-    chunks.push(Buffer.from(value));
+    return Buffer.concat(chunks, total);
+  } finally {
+    // Whether this ended at the limit, on a stall, or normally, nothing is
+    // left holding the connection open.
+    await reader.cancel().catch(() => {});
   }
-  return Buffer.concat(chunks, total);
+}
+
+/**
+ * A URL safe to write to a log, a prompt, or an error message.
+ *
+ * SAM resource links carry `api_key` in the query string, and other sources
+ * carry signed tokens there. An audit line naming where a fetch went must not
+ * be the place a credential is written down, and the path answers the question
+ * the audit line is asking.
+ */
+export function redactUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    const query = u.search ? " (query redacted)" : "";
+    return `${u.protocol}//${u.host}${u.pathname}${query}`;
+  } catch {
+    return "(unparseable url)";
+  }
 }
 
 export async function guardedFetch(
@@ -304,6 +373,7 @@ export async function guardedFetch(
     maxRedirects = 5,
     allowedContentTypes,
     allowInsecure = false,
+    idleMs = 20_000,
     headers,
     onOversize = "refuse",
   } = opts;
@@ -329,7 +399,7 @@ export async function guardedFetch(
       }
       assertScheme(url, allowInsecure);
       await assertHostIsPublic(url.hostname);
-      hops.push(`${url.protocol}//${url.host}${url.pathname}`);
+      hops.push(redactUrl(url.toString()));
 
       let res: Response;
       try {
@@ -387,7 +457,7 @@ export async function guardedFetch(
       }
 
       return {
-        body: await readCapped(res, maxBytes, onOversize),
+        body: await readCapped(res, maxBytes, onOversize, idleMs),
         contentType,
         contentDisposition: res.headers.get("content-disposition"),
         finalUrl: url.toString(),

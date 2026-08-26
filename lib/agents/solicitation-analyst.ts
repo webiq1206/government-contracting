@@ -32,11 +32,12 @@ import { storage } from "../integrations/storage";
 import {
   guardedFetch,
   GuardedFetchError,
+  redactUrl,
   type GuardedFetchResult,
 } from "../integrations/guarded-fetch";
 import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
 import { ocrPdf } from "../integrations/pdf-ocr";
-import { filenameFromResponse, normalizeAttachmentMeta } from "../domain/attachment-meta";
+import { filenameFromResponse, isArchive, normalizeAttachmentMeta } from "../domain/attachment-meta";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -308,7 +309,7 @@ async function processAttachment(
       if (err instanceof GuardedFetchError) {
         const status = attachmentStatusFor(err);
         return {
-          context: `- ${label} (${att.url}), not collected: ${err.message}`,
+          context: `- ${label} (${redactUrl(att.url)}), not collected: ${err.message}`,
           parsedChars: 0,
           outcome: { name: label, url: att.url, status, detail: err.message },
         };
@@ -377,7 +378,7 @@ async function processAttachment(
       // that is not stored will not be attached to any outreach email, so
       // the failure has to be visible, not "best-effort" silence.
       console.error(
-        `[solicitation-analyst] failed to store ${att.url}: ${(err as Error).message}`
+        `[solicitation-analyst] failed to store ${redactUrl(att.url)}: ${(err as Error).message}`
       );
     }
 
@@ -450,8 +451,31 @@ async function processAttachment(
         outcome: { name: label, url: att.url, status: "fetched" },
       };
     }
+    /*
+     * An archive is not merely unsupported, it is a container of documents
+     * nobody opened.
+     *
+     * Nothing in this codebase extracts archives, so a notice whose entire
+     * solicitation package arrives as `Solicitation.zip` used to report one
+     * cleanly fetched attachment and advance, with every requirement inside
+     * it unread and the analysis assembled from the portal blurb. Saying so
+     * is the honest state; extracting it is a separate decision with its own
+     * decompression-bomb problem.
+     */
+    if (isArchive(label, ct)) {
+      return {
+        context: `- ${label}: an ARCHIVE, stored but never opened. Its contents were not read by anything. Do NOT state or assume anything about what is inside it.`,
+        parsedChars: 0,
+        outcome: {
+          name: label,
+          url: att.url,
+          status: stored ? "archive" : "failed",
+          detail: "archive contents were not opened",
+        },
+      };
+    }
     return {
-      context: `- ${label} (${att.url}), ${ct || "binary"} stored (not text-parseable)`,
+      context: `- ${label} (${redactUrl(att.url)}), ${ct || "binary"} stored (not text-parseable)`,
       parsedChars: 0,
       outcome: {
         name: label,
@@ -462,7 +486,7 @@ async function processAttachment(
     };
   } catch (err) {
     return {
-      context: `- ${label} (${att.url}), processing failed (${(err as Error).message})`,
+      context: `- ${label} (${redactUrl(att.url)}), processing failed (${(err as Error).message})`,
       parsedChars: 0,
       outcome: {
         name: label,

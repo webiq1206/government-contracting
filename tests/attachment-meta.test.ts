@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  isArchive,
   looksLikeDocxBytes,
   normalizeAttachmentMeta,
   sanitizeAttachmentFilename,
@@ -97,5 +98,36 @@ describe("buildGmailRawMessage attachments", () => {
     expect(b64Match).toBeTruthy();
     const attached = Buffer.from((b64Match?.[1] ?? "").replace(/\s+/g, ""), "base64");
     expect(attached.equals(pdf)).toBe(true);
+  });
+});
+
+describe("isArchive", () => {
+  it("recognises an archive by name, whatever SAM calls its type", () => {
+    // SAM labels almost every resourceLink application/octet-stream, so the
+    // name is usually the only honest signal available.
+    for (const name of ["Solicitation Package.zip", "docs.RAR", "bundle.7z", "files.tar.gz"]) {
+      expect(isArchive(name, "application/octet-stream"), name).toBe(true);
+    }
+  });
+
+  it("recognises one by content type when the name says nothing", () => {
+    expect(isArchive("attachment", "application/zip")).toBe(true);
+    expect(isArchive("attachment", "application/x-7z-compressed")).toBe(true);
+  });
+
+  it("leaves ordinary documents alone", () => {
+    for (const [name, type] of [
+      ["PWS.pdf", "application/pdf"],
+      ["Site Plan.dwg", "application/octet-stream"],
+      ["Wage Determination.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+      ["pricing.xlsx", "application/vnd.ms-excel"],
+    ]) {
+      expect(isArchive(name, type), name).toBe(false);
+    }
+  });
+
+  it("does not trip over an empty content type", () => {
+    expect(isArchive("notes.txt", "")).toBe(false);
+    expect(isArchive("bundle.zip", "")).toBe(true);
   });
 });

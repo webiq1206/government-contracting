@@ -339,3 +339,20 @@ export function filenameFromPdfTitle(title: string | null | undefined): string |
   const safe = sanitizeAttachmentFilename(t);
   return safe === "attachment" ? null : safe;
 }
+
+const ARCHIVE_RE = /\.(zip|rar|7z|tar|tgz|gz)$/i;
+const ARCHIVE_MIME_RE = /zip|x-rar|x-7z|x-tar|gzip/i;
+
+/**
+ * Is this a container of documents rather than a document?
+ *
+ * Nothing in this codebase extracts archives, so the distinction is not
+ * cosmetic. An archive reported as a successfully collected attachment is an
+ * opportunity advancing into sourcing with every requirement inside it unread.
+ *
+ * Checks the name as well as the content type because SAM's own metadata calls
+ * almost everything `application/octet-stream`.
+ */
+export function isArchive(name: string, contentType: string): boolean {
+  return ARCHIVE_RE.test(name.trim()) || ARCHIVE_MIME_RE.test(contentType ?? "");
+}

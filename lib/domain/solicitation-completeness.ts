@@ -46,7 +46,17 @@ export type AttachmentFetchStatus =
    * relying on the brief, which is that the document was not read, and neither
    * may be counted as a success.
    */
-  | "not_read";
+  | "not_read"
+  /**
+   * A .zip, .rar or .7z: downloaded and stored, contents never opened.
+   *
+   * Nothing in this codebase extracts archives. Reporting one as a
+   * successfully collected document is how an opportunity whose entire
+   * solicitation package arrived as `Solicitation.zip` reached sourcing with
+   * every requirement inside it unread, and the analysis built from the
+   * portal blurb.
+   */
+  | "archive";
 
 export interface AttachmentFetchOutcome {
   name: string;
@@ -233,10 +243,15 @@ export function evaluateSolicitationCompleteness(
   // with its instructions-to-offerors still unread, and the requirements
   // silently coming from the portal summary instead.
   const fetchedOk = input.attachmentOutcomes.filter(
-    (o) => o.status === "fetched" || o.status === "unsupported" || o.status === "not_read"
+    (o) =>
+      o.status === "fetched" ||
+      o.status === "unsupported" ||
+      o.status === "not_read" ||
+      o.status === "archive"
   ).length;
   const unread = input.attachmentOutcomes.filter((o) => o.status === "no_text");
   const notRead = input.attachmentOutcomes.filter((o) => o.status === "not_read");
+  const archives = input.attachmentOutcomes.filter((o) => o.status === "archive");
   const failed = input.attachmentOutcomes.filter(
     (o) =>
       o.status === "failed" ||
@@ -270,6 +285,19 @@ export function evaluateSolicitationCompleteness(
       critical: true,
     });
     riskFlags.push("missing_attachments");
+  }
+
+  if (archives.length > 0) {
+    missing.push({
+      key: "unopened_archives",
+      what: "Archives whose contents were never opened",
+      why: "The archive is stored, but nothing inside it has been read, so every requirement, form, drawing and page limit it contains is missing from this brief.",
+      retrievable: "admin",
+      resolution: `Not opened: ${archives.map((f) => f.name).join("; ")}. Download each archive, extract it, and upload the files inside as documents.`,
+      action: { label: "Upload documents", href: "#attachments", modal: "upload" },
+      critical: true,
+    });
+    riskFlags.push("unopened_archives");
   }
 
   if (notRead.length > 0) {
