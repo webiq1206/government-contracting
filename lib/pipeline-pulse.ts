@@ -76,7 +76,7 @@ export async function readPipelinePulse(): Promise<PulseFinding[]> {
       .catch(() => null),
     // Did Anthropic actually refuse us recently? A configured key cannot
     // answer that; only what happened when we used it can.
-    recentAiTrouble(orgId).catch(() => ({ count: 0, reason: null })),
+    recentAiTrouble(orgId).catch(() => ({ count: 0, reason: null, lastAt: null })),
   ]);
 
   return evaluatePulse({

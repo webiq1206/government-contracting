@@ -38,7 +38,7 @@ export default async function IntegrationsPage({
     // "Connected" here has only ever meant "a key is saved". It said so
     // through a day in which Anthropic refused every request for want of
     // credits, which is the one day it mattered.
-    recentAiTrouble().catch(() => ({ count: 0, reason: null })),
+    recentAiTrouble().catch(() => ({ count: 0, reason: null, lastAt: null })),
   ]);
   const gmailConnected = inbox.connected;
   // Platform-owned integrations (our Ahrefs, our document storage) are hidden
