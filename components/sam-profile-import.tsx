@@ -3,6 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SamEntity } from "@/lib/integrations/sam";
+import {
+  diffProfile,
+  applicable,
+  defaultSelection,
+  summarize,
+  patchFor,
+  verdictLabel,
+  type FieldDiff,
+} from "@/lib/domain/sam-diff";
 
 /**
  * Fill the company profile from the customer's own SAM.gov registration.
@@ -12,11 +21,26 @@ import type { SamEntity } from "@/lib/integrations/sam";
  * set-aside certifications SAM records. Re-typing it into our form is
  * pointless work and a chance to fat-finger a UEI onto every future bid.
  *
- * The flow is search, review, apply. Nothing is written until the customer has
+ * The flow is search, compare, apply. Nothing is written until the customer has
  * seen the exact fields on screen and pressed the button, because a name
  * search can match a subsidiary or a stale registration and only they can tell.
+ *
+ * The comparison step is the audit's, and it is not decoration. This card used
+ * to show only what SAM holds, so somebody who had corrected a legal name or
+ * curated fourteen NAICS codes down from a registration listing forty pressed
+ * one button and lost that work silently. A registration is authoritative
+ * about how a company registered, not about how it has decided to bid. So
+ * every field says what it would replace, list fields say what they would
+ * drop, and an overwrite is unticked until the customer ticks it.
  */
-export function SamProfileImport({ samConnected }: { samConnected: boolean }) {
+export function SamProfileImport({
+  samConnected,
+  profile,
+}: {
+  samConnected: boolean;
+  /** What is on file now, so the import can say what it would change. */
+  profile: Record<string, unknown>;
+}) {
   const router = useRouter();
   const [mode, setMode] = useState<"uei" | "name">("uei");
   const [value, setValue] = useState("");
@@ -25,6 +49,9 @@ export function SamProfileImport({ samConnected }: { samConnected: boolean }) {
   const [message, setMessage] = useState<string | null>(null);
   const [matches, setMatches] = useState<SamEntity[] | null>(null);
   const [applied, setApplied] = useState(false);
+  /** The registration being compared, once one is picked out of the matches. */
+  const [comparing, setComparing] = useState<SamEntity | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
 
   async function search() {
     setBusy(true);
@@ -51,22 +78,32 @@ export function SamProfileImport({ samConnected }: { samConnected: boolean }) {
     }
   }
 
-  async function apply(entity: SamEntity) {
+  /** SAM's shape, in the profile's field names, so the two can be compared. */
+  function incomingOf(entity: SamEntity): Record<string, unknown> {
+    return {
+      legal_name: entity.legalName ?? null,
+      dba: entity.dba ?? null,
+      uei: entity.uei ?? null,
+      cage_code: entity.cageCode ?? null,
+      physical_address: entity.physicalAddress ?? null,
+      entity_state: entity.entityState ?? null,
+      business_structure: entity.structure ?? null,
+      naics_codes: entity.naicsCodes,
+      certifications: entity.certifications,
+    };
+  }
+
+  function compare(entity: SamEntity) {
+    const diffs = diffProfile(profile, incomingOf(entity));
+    setComparing(entity);
+    setSelected(defaultSelection(diffs));
+    setError(null);
+  }
+
+  async function apply(entity: SamEntity, patch: Record<string, unknown>) {
     setBusy(true);
     setError(null);
     try {
-      // Only fields SAM actually returned are sent, so an incomplete
-      // registration never blanks something the customer already typed.
-      const patch: Record<string, unknown> = {};
-      if (entity.legalName) patch.legal_name = entity.legalName;
-      if (entity.dba) patch.dba = entity.dba;
-      if (entity.uei) patch.uei = entity.uei;
-      if (entity.cageCode) patch.cage_code = entity.cageCode;
-      if (entity.physicalAddress) patch.physical_address = entity.physicalAddress;
-      if (entity.entityState) patch.entity_state = entity.entityState;
-      if (entity.structure) patch.business_structure = entity.structure;
-      if (entity.naicsCodes.length) patch.naics_codes = entity.naicsCodes;
-      if (entity.certifications.length) patch.certifications = entity.certifications;
 
       const res = await fetch("/api/profile", {
         method: "POST",
@@ -80,6 +117,7 @@ export function SamProfileImport({ samConnected }: { samConnected: boolean }) {
       }
       setApplied(true);
       setMatches(null);
+      setComparing(null);
       router.refresh();
     } catch {
       setError("Could not save those details. Try again.");
@@ -184,17 +222,37 @@ export function SamProfileImport({ samConnected }: { samConnected: boolean }) {
           {error && <p className="text-sm text-risk">{error}</p>}
           {message && <p className="text-sm text-slate-600">{message}</p>}
 
-          {matches && matches.length > 0 && (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">
-                {matches.length === 1
-                  ? "One registration found. Check it is yours before importing."
-                  : `${matches.length} registrations matched. Pick yours.`}
-              </p>
-              {matches.map((m, i) => (
-                <SamMatch key={m.uei ?? i} entity={m} busy={busy} onApply={() => apply(m)} />
-              ))}
-            </div>
+          {comparing ? (
+            <ImportComparison
+              diffs={diffProfile(profile, incomingOf(comparing))}
+              selected={selected}
+              onToggle={(key) =>
+                setSelected((cur) =>
+                  cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key]
+                )
+              }
+              busy={busy}
+              onBack={() => {
+                setComparing(null);
+                setSelected([]);
+              }}
+              onApply={(patch) => apply(comparing, patch)}
+              incoming={incomingOf(comparing)}
+            />
+          ) : (
+            matches &&
+            matches.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500">
+                  {matches.length === 1
+                    ? "One registration found. Check it is yours before importing."
+                    : `${matches.length} registrations matched. Pick yours.`}
+                </p>
+                {matches.map((m, i) => (
+                  <SamMatch key={m.uei ?? i} entity={m} busy={busy} onCompare={() => compare(m)} />
+                ))}
+              </div>
+            )
           )}
         </>
       )}
@@ -205,11 +263,11 @@ export function SamProfileImport({ samConnected }: { samConnected: boolean }) {
 function SamMatch({
   entity,
   busy,
-  onApply,
+  onCompare,
 }: {
   entity: SamEntity;
   busy: boolean;
-  onApply: () => void;
+  onCompare: () => void;
 }) {
   const inactive =
     entity.registrationStatus != null &&
@@ -268,8 +326,8 @@ function SamMatch({
         </p>
       )}
 
-      <button className="btn-primary mt-3 text-xs" onClick={onApply} disabled={busy}>
-        {busy ? "Importing..." : "Import these details"}
+      <button className="btn-primary mt-3 text-xs" onClick={onCompare} disabled={busy}>
+        Compare with your profile
       </button>
     </div>
   );
@@ -280,6 +338,153 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex flex-wrap gap-x-2">
       <dt className="text-slate-500">{label}:</dt>
       <dd className="min-w-0 flex-1 text-slate-700">{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * The field-by-field comparison, and the decision it exists to force.
+ *
+ * Fills are ticked, replacements are not. That asymmetry is the whole design:
+ * adding what you do not have is what somebody pressing "import" wants, and
+ * overwriting what you typed is a separate decision that should cost a
+ * deliberate click. List fields print what would be dropped by name, because
+ * "replaces your NAICS codes" and "drops 238210 and 238220" are the same fact
+ * told at two very different levels of usefulness.
+ */
+function ImportComparison({
+  diffs,
+  selected,
+  onToggle,
+  busy,
+  onBack,
+  onApply,
+  incoming,
+}: {
+  diffs: FieldDiff[];
+  selected: string[];
+  onToggle: (key: string) => void;
+  busy: boolean;
+  onBack: () => void;
+  onApply: (patch: Record<string, unknown>) => void;
+  incoming: Record<string, unknown>;
+}) {
+  const choices = applicable(diffs);
+  const unchanged = diffs.filter((d) => d.verdict === "same");
+  const missing = diffs.filter((d) => d.verdict === "absent");
+  const s = summarize(diffs, selected);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-900">
+          What this would change
+        </h3>
+        <button type="button" className="tap text-xs text-slate-500 hover:text-accent" onClick={onBack}>
+          Pick a different registration
+        </button>
+      </div>
+
+      {choices.length === 0 ? (
+        <p className="rounded-md border border-border bg-surface px-3 py-2.5 text-sm leading-relaxed text-slate-600">
+          Nothing to import. Every field this registration carries already matches what you
+          have on file, so applying it would change nothing.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs leading-relaxed text-slate-500">
+            Ticked fields will be saved. Anything that would overwrite something you already
+            have starts unticked, because the registration is a record of how you registered,
+            not of how you have decided to bid.
+          </p>
+          <ul className="space-y-2">
+            {choices.map((d) => (
+              <li
+                key={d.key}
+                className={`rounded-md border px-3 py-2.5 ${
+                  d.verdict === "replace" ? "border-review/40 bg-review/5" : "border-border bg-surface"
+                }`}
+              >
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 shrink-0 accent-accent"
+                    checked={selected.includes(d.key)}
+                    onChange={() => onToggle(d.key)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-sm font-medium text-slate-900">{d.label}</span>
+                      <span
+                        className={`text-xs ${
+                          d.verdict === "replace" ? "text-review" : "text-slate-500"
+                        }`}
+                      >
+                        {verdictLabel(d.verdict)}
+                      </span>
+                    </span>
+                    <span className="mt-1 block text-xs leading-relaxed text-slate-600">
+                      {d.current == null ? (
+                        <>Nothing on file. SAM has <strong className="font-medium">{d.incoming}</strong>.</>
+                      ) : (
+                        <>
+                          You have <strong className="font-medium">{d.current}</strong>. SAM has{" "}
+                          <strong className="font-medium">{d.incoming}</strong>.
+                        </>
+                      )}
+                    </span>
+                    {d.removed && d.removed.length > 0 && (
+                      <span className="mt-1 block text-xs leading-relaxed text-risk">
+                        Importing drops {d.removed.length}: {d.removed.join(", ")}.
+                        {d.kept && d.kept.length > 0 ? ` Keeps ${d.kept.length}.` : ""}
+                      </span>
+                    )}
+                    {d.added && d.added.length > 0 && d.verdict === "replace" && (
+                      <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">
+                        Adds {d.added.length}: {d.added.join(", ")}.
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {(unchanged.length > 0 || missing.length > 0) && (
+        <p className="text-xs leading-relaxed text-slate-500">
+          {unchanged.length > 0 && (
+            <>
+              Already matching: {unchanged.map((d) => d.label).join(", ")}.{" "}
+            </>
+          )}
+          {missing.length > 0 && (
+            <>Not on this registration, so left alone: {missing.map((d) => d.label).join(", ")}.</>
+          )}
+        </p>
+      )}
+
+      {choices.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            className="btn-primary text-xs"
+            disabled={busy || s.empty}
+            onClick={() => onApply(patchFor(diffs, selected, incoming))}
+          >
+            {busy
+              ? "Importing..."
+              : s.empty
+                ? "Nothing selected"
+                : `Import ${s.fills + s.replaces} field${s.fills + s.replaces === 1 ? "" : "s"}`}
+          </button>
+          {s.losing > 0 && (
+            <span className="text-xs text-risk">
+              This will drop {s.losing} entr{s.losing === 1 ? "y" : "ies"} you have on file.
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

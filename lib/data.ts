@@ -1169,6 +1169,37 @@ export async function providerUsage(): Promise<{
   };
 }
 
+/**
+ * How many opportunities sit at each score, for the threshold preview.
+ *
+ * Scoped to work whose recommendation still means something: anything that has
+ * already started running is not un-started by raising the threshold, and
+ * counting it would overstate the effect of the change. Dismissed rows ARE
+ * included, because lowering the review floor is precisely how they come back.
+ *
+ * Returned as a 101-slot histogram rather than a row per opportunity, so the
+ * preview recomputes in the browser as the number is typed without a request
+ * per keystroke, and no opportunity data leaves the server to do it.
+ */
+export async function scoreHistogram(): Promise<number[]> {
+  const rows = await query<{ score: number; n: number }>(
+    `select score, count(*)::int as n
+       from opportunities
+      where org_id = $1 and status = 'open' and score is not null
+        and stage in ('monitoring','scoring','analysis','dismissed')
+      group by score`,
+    [await currentOrg()]
+  );
+  const hist = new Array(101).fill(0);
+  for (const r of rows) {
+    const score = Number(r.score);
+    if (Number.isInteger(score) && score >= 0 && score <= 100) {
+      hist[score] += Number(r.n) || 0;
+    }
+  }
+  return hist;
+}
+
 /** Live-computed KPIs as a fallback when the Analytics Engine hasn't run yet. */
 export async function computeKpisFallback() {
   const orgId = await currentOrg();

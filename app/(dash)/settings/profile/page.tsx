@@ -1,5 +1,6 @@
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { query } from "@/lib/db";
+import { scoreHistogram } from "@/lib/data";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { PageFrame } from "@/components/page-frame";
 import { ReadOnlyBanner } from "@/components/permission-gate";
@@ -38,6 +39,10 @@ export default async function ProfilePage() {
   // environment, so hydrate before asking whether import is available.
   await hydrateIntegrationEnv();
   const samConnected = (await orgIntegrationStatus()).sam;
+
+  // Scores per bucket, so the threshold control can preview its own effect
+  // without a request per keystroke and without any opportunity leaving here.
+  const histogram = await scoreHistogram();
 
   // Scoped to the caller's org: unfiltered, this listed every tenant's
   // pending proposals, including their rationale text. The approve route was
@@ -157,7 +162,10 @@ export default async function ProfilePage() {
                     {/* Above the form on purpose: importing fills most of it,
                         so offering it after the fields would be offering it
                         after the work. */}
-                    <SamProfileImport samConnected={samConnected} />
+                    <SamProfileImport
+                      samConnected={samConnected}
+                      profile={json as unknown as Record<string, unknown>}
+                    />
                     <ProfileEditor json={json} />
                   </div>
                 ),
@@ -171,6 +179,7 @@ export default async function ProfilePage() {
                       pursueScore={json.decision_thresholds.pursue_min_score}
                       reviewFloor={json.decision_thresholds.review_min_score}
                       blockPrimeOnly={json.decision_thresholds.block_prime_only ?? false}
+                      histogram={histogram}
                     />
                     <p className="text-xs text-muted-foreground">
                       Pipeline deadline colors and archive retention live under Settings → Rules.

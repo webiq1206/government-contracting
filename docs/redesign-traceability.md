@@ -333,6 +333,19 @@ written in advance of the work.
 | (new) Token usage and cache hit rate | Added | Provider panel | Panel | Panel | Absent as an absence, never as a row of zeroes: "we made no calls" and "we made calls that consumed nothing" cannot both be true |
 | Credential source | Fixed | Five sources, including the founding account's environment key | Panel | Panel | The first draft mirrored four of the resolver's five branches and reported "no AI credential" on the one account where every agent was in fact running |
 
+### Company Profile
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Auto-pursue threshold, changed blind | Fixed | Live preview under the fields | Preview panel | Preview panel | This is the only control on the platform that starts outbound email with no further human step. Moving it from 70 to 60 sends real mail to real subcontractors about work nobody decided to bid, and the page gave no indication of that. The preview counts the opportunities that would change recommendation and says "which includes emailing subcontractors" in those words |
+| (new) Threshold validation | Added | Beside the fields | Inline | Inline | A review floor at or above the pursue score leaves no review band, so nothing is ever offered for a decision. That is refused. Auto-pursuing at 30 is legal and alarming, so it warns and still saves: refusing it would be the page overriding its user |
+| Threshold preview scope | Behaviour | Scored work that has not started running | Preview | Preview | Raising the threshold does not un-start work already in progress, and counting it would overstate the change. Dismissed rows are included, because lowering the floor is exactly how they come back |
+| SAM.gov import, applied blind | Fixed | Field-by-field comparison before applying | Comparison list | Comparison list | The card showed what SAM holds and never what it would replace. Somebody who had corrected a legal name or curated fourteen NAICS codes down from a registration listing forty pressed one button and lost that work with no warning and no undo |
+| Import, all or nothing | Changed | Per-field selection | Checkbox per field | Checkbox per field | The common case is wanting the UEI and the address from SAM while keeping the NAICS list you built, and an all-or-nothing import cannot express it |
+| Which fields are ticked | Behaviour | Fills ticked, overwrites not | Comparison | Comparison | Adding what you do not have is what somebody pressing import wants. Overwriting what you typed is a separate decision and should cost a deliberate click |
+| What a list import costs | Added | Named, not counted | Comparison | Comparison | "Replaces your NAICS codes" and "drops 238210 and 238220, keeps 2, adds 238910" are the same fact at two very different levels of usefulness |
+| A field SAM does not carry | Behaviour | "Not on the registration", left alone | Comparison | Comparison | Treating "SAM has nothing" as "set it to nothing" is the version of this bug that empties a field instead of overwriting it |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
