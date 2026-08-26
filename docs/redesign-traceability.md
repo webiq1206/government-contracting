@@ -676,6 +676,22 @@ only invisible but wrong.
 
 
 
+### Performance and isolation, re-verified (brief sections 14 and 15)
+
+Both reports predated ten commits, so both were re-run rather than cited.
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| Every route at scale | ~1,750ms | Under 270ms | All | All | A uniform floor across unrelated pages, including `/settings/profile` which reads almost nothing, points at the shared shell rather than at any page's queries |
+| The sidebar needs-reply badge | Built the whole conversation list | A facts-only query, same `verdict()` | Badge | Badge | The one-ledger reasoning was right and is kept: the badge and the page still run the same function over the same facts. What is dropped is the subjects, preview bodies, joins and per-thread unread subquery a count never needed. 1,744ms to 53ms |
+| The badge drifting from the page | Prevented by rebuilding the page | Prevented by a test | - | - | `tests/conversation-badge.integration.test.ts` builds the cases that separate needs_reply from the states that resemble it, a bounced thread and one marked finished after they wrote, and requires both paths to agree. It also pins the absolute count, because two functions that are both wrong agree perfectly |
+| The unread count on `/communications` | A subquery correlated per thread | One filtered aggregate | Count | Count | Verified equal on 502 threads and 6,672 unread messages before shipping, because a faster wrong number is worse than a slow right one. 1,684ms to 296ms |
+| The Analytics funnel | Three LATERAL joins per opportunity | Three grouped aggregates, hash-joined | Funnel | Funnel | `EXPLAIN` showed the communications lookup touching 20,001 heap blocks once per row. 837ms to 90ms, with output identical across 7, 30 and 90 days and all time |
+| Tenant scoping in that rewrite | Inside each lateral | Inside each aggregate | - | - | Moving org scoping is exactly where a leak gets introduced, so it was proved rather than reasoned: two accounts, a message belonging to one, and each funnel seeing only its own. The 13 isolation attack tests were re-run against the real database as well |
+| An account name under 44px | Height floor only | Width floor too | Link | 44px | The link is as wide as the name, so a customer called "Ace" got a 32 by 44 target. Invisible until a fixture account happened to be named "Beta"; the seeded account is "BROST CO", wide enough to pass |
+| "Do:" on a billing disagreement card | 2.39:1 | Passes | Label | Label | `.label` is muted-foreground at 0.7rem, which fails on the tinted card. It is the line telling an administrator what to do about an account whose access and Stripe disagree, so it is the last text on that page that should be hard to read. Only renders when such an account exists, which is why no sweep had seen it |
+| Both of those | Found by accident | Reproduced deliberately | - | - | They surfaced because my own test organizations were left behind by a script that threw before its teardown. Rather than delete the rows and move on, the conditions were recreated with accounts named "Ace" and "Bo" so the fixes were measured against the failing case |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
@@ -705,6 +721,14 @@ only invisible but wrong.
 - **The browser Back button in the call workspace is not guarded.** Same
   reasoning as everywhere else: a broken guard traps somebody on a page they are
   trying to leave. Save draft is one tap away and keeps the answers.
+
+- **745 uses of raw `text-slate-*` are left in place.** The design system says
+  never to write a stock Tailwind colour, and these predate it. They are a real
+  conformance gap and not a contrast failure: the sweep measures what is
+  painted and finds none of them failing. Converting them is a mechanical
+  change across most of the interface, which is worth doing on its own with its
+  own verification rather than folded into a performance pass where a mistake
+  would be invisible.
 
 - **Site Authority stays admin-only.** It reports on our own marketing domain
   and means nothing to a contractor.

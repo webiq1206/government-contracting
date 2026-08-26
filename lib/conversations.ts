@@ -26,6 +26,7 @@ import {
   type CentreMessage,
   type ConversationSummary,
   type ConversationFacts,
+  type ConversationVerdict,
 } from "./domain/conversation-centre";
 
 /**
@@ -109,10 +110,21 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
       * needs. A filtered aggregate keeps this to a single scan rather than one
       * correlated subquery per fact.
       */
+     /* Read marks, joined in before the aggregate so unread is counted in the
+      * same pass as everything else. It used to be a subquery correlated on
+      * thread_key, evaluated once per thread against a CTE with no index:
+      * O(threads x messages), and the single largest cost on this page. */
+     flags as (
+       select thread_key, read_at from conversation_flags where org_id = $1
+     ),
      agg as (
        select m.thread_key,
               count(*) as message_count,
               max(m.created_at) as last_at,
+              count(*) filter (
+                where m.direction = 'inbound'
+                  and (f.read_at is null or m.created_at > f.read_at)
+              ) as unread_count,
               max(m.created_at) filter (
                 where m.direction = 'inbound' and coalesce(m.subject,'') !~* $3
               ) as last_genuine_inbound_at,
@@ -123,6 +135,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
               min(m.subcontractor_id::text) as any_sub_id,
               min(m.opportunity_id::text) as any_opp_id
          from msg m
+         left join flags f on f.thread_key = m.thread_key
         group by m.thread_key
      ),
      /* The newest message in each thread, for the subject line and preview. */
@@ -165,10 +178,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
             nw.body as last_body,
             a.last_at::text as last_at,
             a.message_count,
-            (select count(*) from msg m2
-              where m2.thread_key = a.thread_key
-                and m2.direction = 'inbound'
-                and (cf.read_at is null or m2.created_at > cf.read_at)) as unread_count,
+            a.unread_count,
             a.last_genuine_inbound_at::text as last_genuine_inbound_at,
             a.last_outbound_at::text as last_outbound_at,
             no2.delivery_state as last_outbound_delivery_state,
@@ -387,12 +397,126 @@ export async function conversationExists(orgId: string, threadKey: string): Prom
 /**
  * Conversations waiting on a reply, for the navigation badge.
  *
- * Counted with the same predicate the Communications page uses, by calling the
- * same list rather than a shortcut query. A badge computed a second way is a
- * badge that eventually disagrees with the page it points at, which is the
- * exact failure the one-ledger rule exists to prevent.
+ * The same predicate the Communications page uses, because it is the same
+ * function: these rows are fed to `verdict()`, exactly as `conversationList`
+ * feeds it. A badge computed a second way is a badge that eventually disagrees
+ * with the page it points at, which is the failure the one-ledger rule exists
+ * to prevent, and re-expressing "needs a reply" in SQL would be that second
+ * way. `tests/conversation-badge.test.ts` pins the two against each other.
+ *
+ * What is dropped is the work the badge never uses. `conversationList` also
+ * builds each thread's subject, preview body, subcontractor and opportunity
+ * joins, and an unread count from a subquery correlated per thread. The badge
+ * renders in the sidebar of every signed-in page, so at 20,000 messages that
+ * was 1.7 seconds added to every route in the product, including ones with no
+ * conversations on them at all: measured at 1,846ms on /settings/profile,
+ * against 23ms before the account grew.
+ *
+ * unreadCount and messageCount are set to 0 rather than counted. Neither is
+ * read by `verdict()`, and counting them is most of what made the list query
+ * expensive. If a future state ever depends on either, this has to start
+ * counting them, which is what the paired test is there to catch.
  */
 export async function inboxNeedsReplyCount(): Promise<number> {
-  const list = await conversationList();
-  return list.filter((c) => c.state === "needs_reply").length;
+  const orgId = await currentOrg();
+  const rows = await query<{
+    last_at: string | null;
+    last_genuine_inbound_at: string | null;
+    last_outbound_at: string | null;
+    last_outbound_delivery_state: string | null;
+    last_outbound_delivery_detail: string | null;
+    last_outbound_opened_at: string | null;
+    last_outbound_clicked_at: string | null;
+    last_outbound_replied_at: string | null;
+    follow_up_at: string | null;
+    resolved_at: string | null;
+  }>(
+    `with msg as (
+       select c.*, ${THREAD_KEY_SQL} as thread_key
+         from communications c
+        where c.org_id = $1 and c.channel = 'email'
+     ),
+     agg as (
+       select m.thread_key,
+              max(m.created_at) as last_at,
+              max(m.created_at) filter (
+                where m.direction = 'inbound' and coalesce(m.subject,'') !~* $2
+              ) as last_genuine_inbound_at,
+              max(m.created_at) filter (where m.direction = 'outbound') as last_outbound_at,
+              min(m.follow_up_at) filter (
+                where m.direction = 'outbound' and m.replied_at is null
+              ) as follow_up_at
+         from msg m
+        group by m.thread_key
+     ),
+     newest_out as (
+       select distinct on (m.thread_key)
+              m.thread_key, m.delivery_state, m.delivery_detail,
+              m.opened_at, m.clicked_at, m.replied_at
+         from msg m
+        where m.direction = 'outbound'
+        order by m.thread_key, m.created_at desc
+     )
+     select a.last_at::text as last_at,
+            a.last_genuine_inbound_at::text as last_genuine_inbound_at,
+            a.last_outbound_at::text as last_outbound_at,
+            no2.delivery_state as last_outbound_delivery_state,
+            no2.delivery_detail as last_outbound_delivery_detail,
+            no2.opened_at::text as last_outbound_opened_at,
+            no2.clicked_at::text as last_outbound_clicked_at,
+            no2.replied_at::text as last_outbound_replied_at,
+            a.follow_up_at::text as follow_up_at,
+            cf.resolved_at::text as resolved_at
+       from agg a
+       left join newest_out no2 on no2.thread_key = a.thread_key
+       left join conversation_flags cf on cf.org_id = $1 and cf.thread_key = a.thread_key`,
+    [orgId, AUTOMATIC_SUBJECT_SQL]
+  );
+
+  return rows.filter((r) => factsFrom(r).state === "needs_reply").length;
+}
+
+/**
+ * One row's facts, and the verdict the state machine draws from them.
+ *
+ * Shared by the list and the badge so neither can drift from the other. The
+ * shape is deliberately the row, not the summary: it is the last point where
+ * the two agree by construction rather than by inspection.
+ */
+function factsFrom(r: {
+  last_at: string | null;
+  message_count?: number | string | null;
+  unread_count?: number | string | null;
+  last_genuine_inbound_at: string | null;
+  last_outbound_at: string | null;
+  last_outbound_delivery_state: string | null;
+  last_outbound_delivery_detail: string | null;
+  last_outbound_opened_at: string | null;
+  last_outbound_clicked_at: string | null;
+  last_outbound_replied_at: string | null;
+  follow_up_at: string | null;
+  resolved_at: string | null;
+}): ConversationVerdict & { facts: ConversationFacts } {
+  const lastOutboundState: MessageState | null = r.last_outbound_at
+    ? messageState({
+        direction: "outbound",
+        delivery_state: r.last_outbound_delivery_state,
+        delivery_detail: r.last_outbound_delivery_detail,
+        opened_at: r.last_outbound_opened_at,
+        clicked_at: r.last_outbound_clicked_at,
+        replied_at: r.last_outbound_replied_at,
+        subject: null,
+      })
+    : null;
+  const facts: ConversationFacts = {
+    lastAt: isoOrNull(r.last_at) ?? new Date(0).toISOString(),
+    messageCount: n(r.message_count),
+    unreadCount: n(r.unread_count),
+    lastGenuineInboundAt: isoOrNull(r.last_genuine_inbound_at),
+    lastOutboundAt: isoOrNull(r.last_outbound_at),
+    lastOutboundState,
+    followUpAt: isoOrNull(r.follow_up_at),
+    resolvedAt: isoOrNull(r.resolved_at),
+  };
+  return { ...verdict(facts), facts };
 }

@@ -46,7 +46,15 @@ export function AdminAccountsTable({
         <>
           <Link
             href={`/admin/accounts/${r.id}`}
-            className="inline-flex min-h-11 items-center font-medium text-foreground hover:text-gold-text md:min-h-0"
+            /*
+             * A width floor as well as a height one. The link is as wide as
+             * the account name, so a customer called "Ace" got a 32 by 44
+             * target while a long name got a comfortable one. Found by the
+             * sweep only because a fixture account happened to be named
+             * "Beta": the seeded account is "BROST CO", wide enough to pass,
+             * so this had never been visible.
+             */
+            className="inline-flex min-h-11 min-w-11 items-center font-medium text-foreground hover:text-gold-text md:min-h-0 md:min-w-0"
           >
             {r.name}
           </Link>

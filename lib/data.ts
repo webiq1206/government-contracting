@@ -1381,6 +1381,44 @@ export async function funnelCounts(
           and ($2::timestamptz is null or o.created_at >= $2::timestamptz)
           and ($3::timestamptz is null or o.created_at <  $3::timestamptz)
      ),
+     /*
+      * Each of the three milestones, grouped once over the whole account and
+      * joined in, rather than looked up per opportunity.
+      *
+      * These were lateral subqueries correlated on the opportunity id, which
+      * is the obvious way to write the question and the wrong way to run it:
+      * at 5,000 opportunities the communications lookup alone touched 20,001
+      * heap blocks, once per row, and made the Analytics page take 837ms
+      * where every other page took under 120. One pass over each table
+      * answers the same question for every opportunity at once.
+      *
+      * Scoped by org_id inside each aggregate, exactly as the laterals were.
+      * That is what keeps one account's milestones out of another's funnel,
+      * and it has to stay on the inner query rather than move to the join.
+      */
+     out_first as (
+       select opportunity_id, min(created_at) as first_out
+         from communications
+        where org_id = $1 and direction = 'outbound' and opportunity_id is not null
+        group by opportunity_id
+     ),
+     quote_first as (
+       select opportunity_id, min(created_at) as first_quote
+         from quotes
+        where org_id = $1 and opportunity_id is not null
+        group by opportunity_id
+     ),
+     bid_first as (
+       select opportunity_id,
+              min(created_at) as first_bid,
+              min(submitted_at) as first_submit,
+              bool_or(outcome in ('won','lost')) as decided,
+              bool_or(outcome = 'won') as won,
+              bool_or(outcome = 'lost') as lost
+         from bids
+        where org_id = $1 and opportunity_id is not null
+        group by opportunity_id
+     ),
      facts as (
        select c.id, c.created_at,
               (c.status = 'open' and c.stage not in ('dismissed','lost')) as still_open,
@@ -1391,22 +1429,9 @@ export async function funnelCounts(
               cm.first_out, q.first_quote,
               b.first_bid, b.first_submit, b.decided, b.won, b.lost
          from cohort c
-         left join lateral (
-           select min(created_at) as first_out from communications
-            where opportunity_id = c.id and direction = 'outbound' and org_id = $1
-         ) cm on true
-         left join lateral (
-           select min(created_at) as first_quote from quotes
-            where opportunity_id = c.id and org_id = $1
-         ) q on true
-         left join lateral (
-           select min(created_at) as first_bid,
-                  min(submitted_at) as first_submit,
-                  bool_or(outcome in ('won','lost')) as decided,
-                  bool_or(outcome = 'won') as won,
-                  bool_or(outcome = 'lost') as lost
-             from bids where opportunity_id = c.id and org_id = $1
-         ) b on true
+         left join out_first cm on cm.opportunity_id = c.id
+         left join quote_first q on q.opportunity_id = c.id
+         left join bid_first b on b.opportunity_id = c.id
      ),
      ranked as (
        select f.*,

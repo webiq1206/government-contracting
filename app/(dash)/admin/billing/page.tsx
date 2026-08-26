@@ -123,7 +123,17 @@ export default async function AdminBillingPage() {
                 <p className="mt-1 text-sm text-foreground">{c.disagreement}</p>
                 <p className="mt-1 text-sm leading-relaxed text-slate-600">{c.cost}</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-slate-700">
-                  <span className="label mr-1.5 inline">Do:</span>
+                  {/*
+                    * The label style, with a colour that survives the tinted
+                    * card behind it. `.label` is muted-foreground at 0.7rem,
+                    * which measures 2.39:1 on `bg-review/5` and fails 4.5:1.
+                    * This is the line telling an administrator what to do
+                    * about an account whose access and Stripe disagree, so it
+                    * is the last text on the page that should be hard to read.
+                    */}
+                  <span className="mr-1.5 inline text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-foreground">
+                    Do:
+                  </span>
                   {c.action}
                 </p>
               </article>
