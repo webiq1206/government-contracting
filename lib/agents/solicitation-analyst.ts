@@ -38,6 +38,18 @@ import {
 import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
 import { ocrPdf } from "../integrations/pdf-ocr";
 import { filenameFromResponse, isArchive, normalizeAttachmentMeta } from "../domain/attachment-meta";
+import {
+  amendmentNumber,
+  classifyDocumentName,
+  type ExtractionState,
+  type OcrState,
+} from "../domain/document-inventory";
+import { createHash } from "node:crypto";
+
+/** Identity of the bytes, so a re-fetch can tell unchanged from amended. */
+function sha256(buf: Buffer): string {
+  return createHash("sha256").update(buf).digest("hex");
+}
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -54,6 +66,31 @@ import type {
  * forty-file limit that was losing amendments.
  */
 const ATTACHMENT_CONCURRENCY = 5;
+
+/**
+ * What the inventory should say about a document, once it is known whether its
+ * text reached the analysis.
+ *
+ * `unsupported` maps to "no text to read" rather than to a failure: a .dwg
+ * drawing has no text and was never going to. An archive is the opposite case
+ * and maps to "stored but not read", because it certainly contains documents
+ * and none of them were opened.
+ */
+function extractionStateFor(status: AttachmentFetchStatus, trimmed: boolean): ExtractionState {
+  switch (status) {
+    case "fetched":
+      return trimmed ? "partial" : "extracted";
+    case "not_read":
+    case "archive":
+      return "not_read";
+    case "no_text":
+      return "unreadable";
+    case "unsupported":
+      return "not_applicable";
+    default:
+      return "pending";
+  }
+}
 
 /** Run over a list with a bounded number in flight, preserving input order. */
 async function inBatches<T, R>(
@@ -281,13 +318,30 @@ async function processAttachment(
   opportunityId: string,
   att: Attachment,
   index: number
-): Promise<{ context: string; parsedChars: number; outcome: AttachmentFetchOutcome }> {
+): Promise<{
+  context: string;
+  parsedChars: number;
+  outcome: AttachmentFetchOutcome;
+  documentId: string | null;
+  pages: number | null;
+  ocrState: OcrState | null;
+}> {
   const ingestLabel = att.name || `attachment-${index + 1}`;
   let label = ingestLabel;
+  /**
+   * The inventory row this attachment became, so the caller can record what
+   * happened to it once the analysis budget has decided what fit. Null when
+   * no row was written, which is itself a fact the caller has to handle
+   * rather than a blank to skip over.
+   */
+  let documentId: string | null = null;
   if (!att.url) {
     return {
       context: `- ${label} (no url)`,
       parsedChars: 0,
+      documentId,
+      pages: null,
+      ocrState: null,
       outcome: { name: label, url: null, status: "no_url", detail: "No download URL on the notice" },
     };
   }
@@ -311,6 +365,9 @@ async function processAttachment(
         return {
           context: `- ${label} (${redactUrl(att.url)}), not collected: ${err.message}`,
           parsedChars: 0,
+          documentId,
+          pages: null,
+          ocrState: null,
           outcome: { name: label, url: att.url, status, detail: err.message },
         };
       }
@@ -346,6 +403,26 @@ async function processAttachment(
     const safeKeyStem = ingestLabel.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "attachment";
     const key = `solicitations/${opportunityId}/${index + 1}_${safeKeyStem}`;
     let stored = false;
+    /*
+     * The inventory row, not just a filename and a path.
+     *
+     * `documents` recorded that a file existed and where the bytes went, and
+     * nothing else: whether the text was ever read, whether an amendment
+     * replaced it, whether the link still works, all lived in a jsonb blob or
+     * nowhere. A file dropped for want of room in the prompt was
+     * indistinguishable from one read cover to cover.
+     *
+     * `extraction_state` is deliberately left at whatever the row already has
+     * (pending on a new row) and set later, once it is known whether the text
+     * actually fit in the analysis. Writing "extracted" here would be a claim
+     * made before the fact it describes.
+     */
+    const inventory = {
+      hash: sha256(buf),
+      size: buf.byteLength,
+      klass: classifyDocumentName(meta.filename, meta.mime),
+      amendment: amendmentNumber(meta.filename),
+    };
     try {
       const up = await storage.upload(key, buf, meta.mime);
       // Upsert-by-path so re-running the analyst does not duplicate document rows.
@@ -354,9 +431,18 @@ async function processAttachment(
         [opportunityId, up.path]
       );
       if (!existing) {
-        await query(
-          `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, meta)
-           values ($1,'solicitation',$2,$3,$4,$5,$6)`,
+        const row = await queryOne<{ id: string }>(
+          `insert into documents (
+             opportunity_id, kind, name, storage_path, storage_backend, mime, meta,
+             source_system, source_url, original_filename,
+             content_hash, byte_size, document_class, amendment_number,
+             disposition, access_state, received_at, last_verified_at
+           )
+           values ($1,'solicitation',$2,$3,$4,$5,$6,
+                   'sam.gov',$7,$8,
+                   $9,$10,$11,$12,
+                   'delivered','available',now(),now())
+           returning id`,
           [
             opportunityId,
             meta.filename,
@@ -364,12 +450,37 @@ async function processAttachment(
             up.backend,
             meta.mime,
             JSON.stringify({ source_url: att.url }),
+            att.url,
+            ingestLabel,
+            inventory.hash,
+            inventory.size,
+            inventory.klass,
+            inventory.amendment,
           ]
         );
+        documentId = row?.id ?? null;
       } else {
+        documentId = existing.id;
         await query(
-          `update documents set name=$1, mime=$2, storage_backend=$3 where id=$4`,
-          [meta.filename, meta.mime, up.backend, existing.id]
+          `update documents set
+             name=$1, mime=$2, storage_backend=$3,
+             source_system='sam.gov', source_url=$5, original_filename=$6,
+             content_hash=$7, byte_size=$8, document_class=$9, amendment_number=$10,
+             disposition='delivered', access_state='available',
+             last_verified_at=now(), last_error=null
+           where id=$4`,
+          [
+            meta.filename,
+            meta.mime,
+            up.backend,
+            existing.id,
+            att.url,
+            ingestLabel,
+            inventory.hash,
+            inventory.size,
+            inventory.klass,
+            inventory.amendment,
+          ]
         );
       }
       stored = true;
@@ -397,6 +508,10 @@ async function processAttachment(
         return {
           context: `- ${label} (${pages} pp, extracted):\n${text}`,
           parsedChars: text.length,
+          documentId,
+          pages,
+          // A text layer was there. Nothing needed transcribing.
+          ocrState: "not_needed" as const,
           outcome: {
             name: label,
             url: att.url,
@@ -422,6 +537,9 @@ async function processAttachment(
         return {
           context: `- ${label} (${ocr.pagesTotal} pp, SCANNED DOCUMENT, transcribed from the page images; anything marked [illegible] was not readable and must not be guessed):\n${ocr.text}${truncNote}`,
           parsedChars: ocr.text.length,
+          documentId,
+          pages: ocr.pagesTotal,
+          ocrState: (ocr.truncated ? "partial" : "done") as OcrState,
           outcome: {
             name: label,
             url: att.url,
@@ -435,6 +553,9 @@ async function processAttachment(
       return {
         context: `- ${label}, scanned PDF stored but it could not be read (${ocr.error ?? "no readable text"}). Do NOT assume anything about its contents.`,
         parsedChars: 0,
+        documentId,
+        pages: ocr.pagesTotal,
+        ocrState: "failed" as const,
         outcome: {
           name: label,
           url: att.url,
@@ -448,6 +569,9 @@ async function processAttachment(
       return {
         context: `- ${label}:\n${text}`,
         parsedChars: text.length,
+        documentId,
+        pages: null,
+        ocrState: null,
         outcome: { name: label, url: att.url, status: "fetched" },
       };
     }
@@ -466,6 +590,9 @@ async function processAttachment(
       return {
         context: `- ${label}: an ARCHIVE, stored but never opened. Its contents were not read by anything. Do NOT state or assume anything about what is inside it.`,
         parsedChars: 0,
+        documentId,
+        pages: null,
+        ocrState: null,
         outcome: {
           name: label,
           url: att.url,
@@ -477,6 +604,9 @@ async function processAttachment(
     return {
       context: `- ${label} (${redactUrl(att.url)}), ${ct || "binary"} stored (not text-parseable)`,
       parsedChars: 0,
+      documentId,
+      pages: null,
+      ocrState: null,
       outcome: {
         name: label,
         url: att.url,
@@ -488,6 +618,9 @@ async function processAttachment(
     return {
       context: `- ${label} (${redactUrl(att.url)}), processing failed (${(err as Error).message})`,
       parsedChars: 0,
+      documentId,
+      pages: null,
+      ocrState: null,
       outcome: {
         name: label,
         url: att.url,
@@ -803,6 +936,39 @@ export const solicitationAnalyst: AgentDefinition = {
       }
       return p.outcome;
     });
+    /*
+     * Record what became of each document, now that it is known.
+     *
+     * This is the write that makes "nothing was silently skipped" a query
+     * rather than a hope. `extraction_state` could not be set when the row was
+     * written, because whether the text reached the analysis is decided by the
+     * budget, several steps later. Writing "extracted" at insert time would
+     * have been a claim made before the fact it describes, which is the same
+     * mistake as the log line that counted forty files as fifty-seven.
+     */
+    await Promise.all(
+      processed.map(async (p, i) => {
+        if (!p.documentId) return;
+        const a = allocated.get(String(i));
+        const state = extractionStateFor(p.outcome.status, a?.trimmed ?? false);
+        await query(
+          `update documents set
+             extraction_state=$2, ocr_state=coalesce($3, ocr_state),
+             page_count=coalesce($4, page_count),
+             extraction_model=$5, extracted_at=now()
+           where id=$1`,
+          [p.documentId, state, p.ocrState, p.pages, config.claude.modelSmart]
+        ).catch((err) => {
+          // The analysis itself is not lost over a bookkeeping write, but the
+          // inventory being wrong is exactly the failure this exists to
+          // prevent, so it is never silent.
+          console.error(
+            `[solicitation-analyst] failed to record inventory for ${p.documentId}: ${(err as Error).message}`
+          );
+        });
+      })
+    );
+
     await logAgent({
       agent: "solicitation-analyst",
       action: "attachments",
