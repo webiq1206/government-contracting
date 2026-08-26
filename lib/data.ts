@@ -894,6 +894,55 @@ export async function complianceBoard() {
 }
 
 /**
+ * Subcontractor paperwork for the compliance board.
+ *
+ * Scoped to engaged subcontractors -- ones with paperwork already started, or
+ * named on a contract. The alternative is every prospect ever sourced showing
+ * up as "missing W-9", which would be true, useless, and would bury the few
+ * that matter.
+ *
+ * Tenancy is enforced on the subcontractor's own org_id rather than on the
+ * document's, because subcontractor_documents.org_id is nullable and rows
+ * written before it existed carry null. Reading the gate off a nullable column
+ * is how a tenant boundary quietly stops holding.
+ */
+export async function subcontractorComplianceRows() {
+  const orgId = await currentOrg();
+  return query<Record<string, unknown>>(
+    `with engaged as (
+       select distinct d.subcontractor_id as id
+         from subcontractor_documents d
+         join subcontractors s2 on s2.id = d.subcontractor_id and s2.org_id = $1
+       union
+       select c.primary_sub_id from contracts c
+        where c.org_id = $1 and c.primary_sub_id is not null
+       union
+       select c.backup_sub_id from contracts c
+        where c.org_id = $1 and c.backup_sub_id is not null
+     ),
+     on_contract as (
+       select c.primary_sub_id as id from contracts c
+        where c.org_id = $1 and c.primary_sub_id is not null
+       union
+       select c.backup_sub_id from contracts c
+        where c.org_id = $1 and c.backup_sub_id is not null
+     )
+     select s.id as sub_id, s.company_name,
+            (oc.id is not null) as on_contract,
+            d.doc_type, d.status,
+            d.expires_at::text as expires_at,
+            d.signed_at::text as signed_at,
+            d.verified_at::text as verified_at
+       from engaged e
+       join subcontractors s on s.id = e.id and s.org_id = $1
+       left join on_contract oc on oc.id = s.id
+       left join subcontractor_documents d on d.subcontractor_id = s.id
+      order by s.company_name asc, d.doc_type asc`,
+    [orgId]
+  );
+}
+
+/**
  * Every contract, with the columns the five views need.
  *
  * One query rather than two: the views are derived from dates and health

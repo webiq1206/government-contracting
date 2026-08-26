@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { complianceBoard } from "@/lib/data";
+import { complianceBoard, subcontractorComplianceRows } from "@/lib/data";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { AddComplianceItem } from "@/components/add-compliance-item";
@@ -7,6 +7,16 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate, complianceColorClass } from "@/lib/format";
 import { statusColor } from "@/lib/domain/compliance";
 import type { ComplianceStatus } from "@/lib/domain/compliance";
+import {
+  areaFor,
+  subcontractorComplianceBoard,
+  AREA_LABEL,
+  AREA_EXPLANATION,
+  AREA_ORDER,
+  type ComplianceArea,
+  type SubComplianceInput,
+  type SubComplianceItem,
+} from "@/lib/domain/compliance-areas";
 import {
   ComplianceItemCard,
   type ComplianceCardData,
@@ -179,10 +189,51 @@ function categoryLabel(cat: string): string {
     .join(" ");
 }
 
-export default async function CompliancePage() {
-  const rows = (await complianceBoard()) as Row[];
+/**
+ * Flat document rows into one entry per subcontractor.
+ *
+ * The query left-joins documents, so a subcontractor with no paperwork arrives
+ * as a single row with every document column null. That is a real state -- on
+ * a contract, nothing on file -- and it has to survive into an empty docs
+ * array rather than being read as a document of type "".
+ */
+function groupSubRows(rows: Row[]): SubComplianceInput[] {
+  const bySub = new Map<string, SubComplianceInput>();
+  for (const r of rows) {
+    const id = str(r.sub_id);
+    if (!id) continue;
+    let entry = bySub.get(id);
+    if (!entry) {
+      entry = {
+        subId: id,
+        companyName: str(r.company_name) || "Unnamed subcontractor",
+        docs: [],
+        onContract: r.on_contract === true,
+      };
+      bySub.set(id, entry);
+    }
+    const docType = str(r.doc_type);
+    if (!docType) continue;
+    entry.docs.push({
+      doc_type: docType,
+      status: str(r.status),
+      expires_at: str(r.expires_at) || null,
+      signed_at: str(r.signed_at) || null,
+      verified_at: str(r.verified_at) || null,
+    });
+  }
+  return [...bySub.values()];
+}
 
-  if (rows.length === 0) {
+export default async function CompliancePage() {
+  const [rows, subRows] = (await Promise.all([
+    complianceBoard(),
+    subcontractorComplianceRows(),
+  ])) as [Row[], Row[]];
+
+  const subBoard = subcontractorComplianceBoard(groupSubRows(subRows));
+
+  if (rows.length === 0 && subBoard.items.length === 0 && subBoard.currentCount === 0) {
     return (
       <div className="flex page-shell">
         <PageFrame
@@ -218,14 +269,38 @@ export default async function CompliancePage() {
 
   // Highlight overdue/blocking items up top.
   const urgent = deadlineRows.filter((r) => cardById.get(str(r.id))?.color === "red");
-  const groups = new Map<string, Row[]>();
+  /*
+   * Grouped by area, not by the raw category column. The category is kept as a
+   * subheading inside an area that holds more than one of them, so no heading
+   * that existed before has been taken away -- SAM registration and the state
+   * filing still say which is which, they just now sit under the one question
+   * they both answer.
+   */
+  const urgentIds = new Set(urgent.map((r) => str(r.id)));
+  const groups = new Map<ComplianceArea, Map<string, Row[]>>();
+  /*
+   * Counted per area rather than dropped silently: an item pinned to the
+   * attention section has left its area, and an area that just looks emptier
+   * than it is would send someone looking for an item that is on the page.
+   */
+  const pinnedByArea = new Map<ComplianceArea, number>();
   for (const r of deadlineRows) {
     const cat = str(r.category) || "other";
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat)!.push(r);
+    const area = areaFor(cat);
+    if (urgentIds.has(str(r.id))) {
+      pinnedByArea.set(area, (pinnedByArea.get(area) ?? 0) + 1);
+      continue;
+    }
+    if (!groups.has(area)) groups.set(area, new Map());
+    const byCat = groups.get(area)!;
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat)!.push(r);
   }
 
   const urgentCount = urgent.length;
+  const subUrgent = subBoard.items.filter((i) => i.color === "red").length;
+  const attentionCount = urgentCount + subUrgent;
+  const trackedCount = deadlineRows.length + subBoard.items.length + subBoard.currentCount;
 
   return (
     <div className="flex page-shell">
@@ -233,9 +308,9 @@ export default async function CompliancePage() {
         help={PAGE_HELP["compliance"]}
         title="Compliance Board"
         status={
-          urgentCount > 0
-            ? `${urgentCount} need${urgentCount === 1 ? "s" : ""} attention now · ${deadlineRows.length} tracked`
-            : `${deadlineRows.length} tracked item${deadlineRows.length === 1 ? "" : "s"}${
+          attentionCount > 0
+            ? `${attentionCount} need${attentionCount === 1 ? "s" : ""} attention now · ${trackedCount} tracked`
+            : `${trackedCount} tracked item${trackedCount === 1 ? "" : "s"}${
                 capRows.length ? ` · ${capRows.length} cap gauge${capRows.length === 1 ? "" : "s"}` : ""
               }`
         }
@@ -262,7 +337,7 @@ export default async function CompliancePage() {
           </div>
         </div>
 
-        {urgent.length > 0 && (
+        {(urgent.length > 0 || subUrgent > 0) && (
           <section data-guide-target="compliance-attention">
             <h2 className="label mb-2 text-risk">Needs attention now</h2>
             <p className="mb-2 text-xs text-slate-500">
@@ -278,6 +353,17 @@ export default async function CompliancePage() {
                   highlight
                 />
               ))}
+              {/*
+                * Lapsed subcontractor coverage belongs here for the same reason
+                * a lapsed registration does: it is one attention list, and an
+                * exposure that only shows up further down the page is one the
+                * person scanning the top of the board will not see.
+                */}
+              {subBoard.items
+                .filter((i) => i.color === "red")
+                .map((i) => (
+                  <SubComplianceCard key={i.subId} item={i} />
+                ))}
             </div>
           </section>
         )}
@@ -297,20 +383,57 @@ export default async function CompliancePage() {
           </section>
         )}
 
-        {[...groups.entries()].map(([cat, items]) => (
-          <section key={cat}>
-            <h2 className="label mb-2">{categoryLabel(cat)}</h2>
-            <div className="grid gap-2 md:grid-cols-2">
-              {items.map((r) => (
-                <ComplianceItemCard
-                  key={str(r.id)}
-                  item={cardById.get(str(r.id))!}
-                  info={infoFor(cat)}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+        {AREA_ORDER.map((area) => {
+          if (area === "subcontractor") {
+            return (
+              <SubcontractorArea key={area} board={subBoard} />
+            );
+          }
+          const byCat = groups.get(area);
+          const pinned = pinnedByArea.get(area) ?? 0;
+          if ((!byCat || byCat.size === 0) && pinned === 0) return null;
+          const cats = byCat ? [...byCat.entries()] : [];
+          const multipleCategories = cats.length > 1;
+          return (
+            <section key={area}>
+              <h2 className="label mb-1">{AREA_LABEL[area]}</h2>
+              <p className="mb-3 text-xs text-slate-500">{AREA_EXPLANATION[area]}</p>
+              <div className="space-y-4">
+                {cats.map(([cat, items]) => {
+                  /*
+                   * A heading over a single card whose own title says the same
+                   * thing is noise. It earns its place when it groups.
+                   */
+                  const showHeading = multipleCategories && items.length > 1;
+                  return (
+                    <div key={cat}>
+                      {showHeading && (
+                        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {categoryLabel(cat)}
+                        </h3>
+                      )}
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {items.map((r) => (
+                          <ComplianceItemCard
+                            key={str(r.id)}
+                            item={cardById.get(str(r.id))!}
+                            info={infoFor(cat)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {pinned > 0 && (
+                <p className={cats.length > 0 ? "mt-2 text-xs text-slate-500" : "text-xs text-slate-500"}>
+                  {pinned} item{pinned === 1 ? " in this area needs" : "s in this area need"} attention
+                  now and {pinned === 1 ? "is" : "are"} shown at the top of the page.
+                </p>
+              )}
+            </section>
+          );
+        })}
       </div>
     </div>
   );
@@ -366,6 +489,92 @@ function CapGauge({ row }: { row: Row }) {
         <span className="num">{utilPct.toFixed(0)}% of cap used</span>
         <span>cap {capPct}%</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The sixth area: paperwork the company does not hold itself.
+ *
+ * Rendered even when there is nothing to act on, because an empty area here is
+ * information -- it says the check ran and found nothing -- while an absent
+ * area is indistinguishable from a feature that does not exist. That was the
+ * state this board was in before.
+ */
+function SubcontractorArea({ board }: { board: ReturnType<typeof subcontractorComplianceBoard> }) {
+  const { items, currentCount } = board;
+  if (items.length === 0 && currentCount === 0) return null;
+
+  const pinned = items.filter((i) => i.color === "red");
+  const rest = items.filter((i) => i.color !== "red");
+
+  return (
+    <section>
+      <h2 className="label mb-1">{AREA_LABEL.subcontractor}</h2>
+      <p className="mb-3 text-xs text-slate-500">{AREA_EXPLANATION.subcontractor}</p>
+
+      {rest.length > 0 ? (
+        <div className="grid gap-2 md:grid-cols-2">
+          {rest.map((item) => (
+            <SubComplianceCard key={item.subId} item={item} />
+          ))}
+        </div>
+      ) : (
+        pinned.length === 0 && (
+          <p className="text-sm text-slate-600">
+            Every subcontractor you are working with has current paperwork on file.
+          </p>
+        )
+      )}
+
+      {pinned.length > 0 && (
+        <p className={rest.length > 0 ? "mt-2 text-xs text-slate-500" : "text-xs text-slate-500"}>
+          {pinned.length} subcontractor{pinned.length === 1 ? "" : "s"} in this area need
+          {pinned.length === 1 ? "s" : ""} attention now and {pinned.length === 1 ? "is" : "are"}{" "}
+          shown at the top of the page.
+        </p>
+      )}
+
+      {currentCount > 0 && (
+        <p className="mt-2 text-xs text-slate-500">
+          {currentCount} other subcontractor{currentCount === 1 ? " has" : "s have"} current
+          paperwork on file.{" "}
+          <Link href="/subs" className="underline underline-offset-2">
+            See all subcontractors
+          </Link>
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SubComplianceCard({ item }: { item: SubComplianceItem }) {
+  const badge = item.color === "red" ? "bg-risk/15 text-risk" : "bg-review/15 text-review";
+  return (
+    <div className="card p-3">
+      <div className="flex items-start justify-between gap-2">
+        {/*
+          * The name is text, not a second link to the same place. One target
+          * per destination: a 20px-tall title link is below the 44px minimum
+          * and only repeated the button at the foot of the card.
+          */}
+        <p className="text-sm font-medium text-foreground">{item.companyName}</p>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${badge}`}>
+          {item.statusLabel}
+        </span>
+      </div>
+      <p className="mt-1.5 text-sm text-slate-600">{item.reason}</p>
+      <p className="mt-1 text-sm text-slate-600">{item.nextAction}</p>
+      {item.dueDay && (
+        <p className="mt-1.5 text-xs text-slate-500">Date on the document: {shortDate(item.dueDay)}</p>
+      )}
+      <Link
+        href={`/subs/${item.subId}`}
+        className="btn-ghost mt-2 inline-flex text-xs"
+        data-guide-target="sub-compliance-open"
+      >
+        Open subcontractor
+      </Link>
     </div>
   );
 }

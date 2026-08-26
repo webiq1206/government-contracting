@@ -261,13 +261,19 @@ export function ComplianceItemCard({
             View document ↗
           </a>
         )}
+        {/*
+          * Lighter than the buttons beside them on purpose -- these leave the
+          * product -- but `tap` still gives each one a 44px hit area on a
+          * touch screen. Weight and target size are separate decisions, and
+          * the sweep caught these once the board had data in it.
+          */}
         {info?.links.map((l) => (
           <a
             key={l.url}
             href={l.url}
             target="_blank"
             rel="noreferrer noopener"
-            className="text-xs text-accent hover:underline"
+            className="tap text-xs text-accent hover:underline"
           >
             {l.label} ↗
           </a>

@@ -145,6 +145,22 @@ written in advance of the work.
 | "Mark complete" as the only exit | Changed | Plus "Lost or terminated" | Contracts | Contracts | A contract lost or ended early was being filed as completed, which makes every win-rate and margin figure quietly wrong |
 | `buildContractPlan` `cparsDue` | Fixed | Accepts a Date | - | - | node-postgres returns a Date for a timestamptz; the page cast it `as string`, which TypeScript accepted and the runtime did not. Any contract with a CPARS due date crashed the entire page, and no seeded contract had one |
 
+### Compliance
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Headings taken from the raw `category` column | Changed | Six named areas | Compliance | Compliance | The board printed whatever categories the data happened to contain, in whatever order they arrived. Two items that answer one question ("can this company legally be awarded work") appeared as two unrelated headings, and a new category would have silently created a heading nobody designed |
+| `SAM.gov Registration`, `State / LLC Registration` | Combined | Under "Company registrations" | Compliance | Compliance | Both gate an award. Checking one and not the other is checking nothing. Each item keeps its own title and its own renewal instructions, so nothing was lost |
+| `Insurance` | Combined | Under "Insurance and bonding" | Compliance | Compliance | Bonding capacity had no heading of its own and shares the question insurance answers |
+| `CPARS`, `Contract Deadlines` | Combined | Under "Contract-specific" | Compliance | Compliance | Both are obligations attached to work already won |
+| Per-category headings | Kept, conditional | Rendered as a subheading inside an area holding more than one category, and only when the category groups more than one item | Compliance | Compliance | A heading over a single card whose own title says the same thing is noise. It earns its place when it groups |
+| (new) Area explanations | Added | Under each area heading | Compliance | Compliance | "Certifications" says nothing. "Lose the set-aside you bid under" says why the date matters |
+| (new) Subcontractor compliance | Added | Compliance, sixth area | Compliance | Compliance | Subcontractor paperwork lives in `subcontractor_documents` and had never appeared on the compliance board at all. The only way to see a lapsed certificate was to open each subcontractor in turn. A prime whose subcontractor's insurance has lapsed has a compliance problem whether or not the interface files it under compliance |
+| (new) Engaged-only scope for the sixth area | Added | - | - | - | Most subcontractor records are prospects sourced for outreach with no paperwork because none was ever asked for. Listing all of them as "missing W-9" would be true, useless, and would bury the handful that matter. Scope is subcontractors with paperwork started or named on a contract |
+| Urgent items rendered twice, once pinned and once in their category | Fixed | Pinned only, with a per-area line saying how many moved and where | Compliance | Compliance | One problem, one alert. An area that just looked emptier than it is would send someone hunting for an item that is already on the page |
+| Category renewal links (`Renew on SAM.gov`, `CPARS`, `SBA certifications`, `acquisition.gov`) | Fixed | `.tap` hit area | Compliance | Compliance | 16px tall on a touch screen, well under the 44px minimum. The sweep only caught them once the board had data in it; the previous clean run measured an empty board |
+| Subcontractor card title as a second link | Removed | The card's button is the single target | Compliance | Compliance | A 20px-tall title link duplicating the button below it: two targets for one destination, one of them too small to hit |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
