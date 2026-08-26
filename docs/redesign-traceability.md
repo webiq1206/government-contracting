@@ -128,6 +128,13 @@ written in advance of the work.
 | One record producing two rows | Removed | `dedupeWorkItems` | Today | Today | An opportunity flagged for attention while in bid_building appeared twice, so the count at the top disagreed with the list underneath |
 | Per-item owner | Not built | - | - | - | There is no assignee column. Every item is owned by whoever is looking, because the product is one queue per organization today. A field that always says the same thing is worse than no field; assignment is a feature, not a display fix |
 
+### Edge cases
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| "0 wins - 0 losses" under the win rate | Changed | "No bids decided yet" | Analytics | Analytics | An account that has never submitted anything was being shown a track record of failure. `?? 0` turned an uncounted value into a real-looking zero |
+| "-" for average margin | Changed | "No wins yet" / "Not recorded" | Analytics | Analytics | A dash cannot say which of the two it means |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

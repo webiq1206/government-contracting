@@ -146,4 +146,6 @@ the browser rather than statically, because they depend on what actually
 renders: `npm run a11y` against a running server, which writes
 `docs/accessibility-report.md`. `npm run perf` does the same for render time at
 a size the application has not reached yet, writing
-`docs/performance-report.md`.
+`docs/performance-report.md`, and `npm run edge-cases` sweeps every page
+against an empty account, a one-record account and one full of long names and
+missing values, writing `docs/edge-case-report.md`.
