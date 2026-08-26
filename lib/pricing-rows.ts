@@ -20,6 +20,7 @@ import {
   type QuoteCandidate,
   emptyRow,
 } from "./domain/pricing-row";
+import type { ProposedRow } from "./domain/quote-fields";
 
 const COMPONENTS: CostComponent[] = [
   "baseQuote",
@@ -591,4 +592,86 @@ export async function snapshotsFor(bidId: string, orgId: string): Promise<Calcul
     calculation: r.calculation,
     calculationHash: r.calculation_hash,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Rows proposed by an automatic reading
+// ---------------------------------------------------------------------------
+
+/**
+ * Write a row the reply extractor proposed.
+ *
+ * `onlyIfAbsent` is the whole safety of this path. An automatic read of an
+ * email may fill a trade nobody has priced; it may never change one somebody
+ * typed. A person who entered 104,000 after a phone call and then received an
+ * email saying 98,000 has a decision to make, and the product taking it
+ * silently is the failure mode.
+ *
+ * Every field is written as proposed, including `unknown` confidence and an
+ * unassigned exclusion. Nothing is upgraded on the way in: the row says what
+ * the reply said, and the gaps stay gaps.
+ */
+export async function saveProposedRow(input: {
+  orgId: string;
+  opportunityId: string;
+  subcontractorId: string | null;
+  sourceQuoteId?: string | null;
+  proposal: ProposedRow;
+  onlyIfAbsent: boolean;
+}): Promise<"written" | "kept_existing"> {
+  const p = input.proposal;
+  const conflict = input.onlyIfAbsent
+    ? "do nothing"
+    : `do update set
+         base_quote = excluded.base_quote,
+         taxes = excluded.taxes,
+         freight = excluded.freight,
+         mobilization = excluded.mobilization,
+         bonding = excluded.bonding,
+         pending_components = excluded.pending_components,
+         alternates = excluded.alternates,
+         exclusions = excluded.exclusions,
+         payment_terms = excluded.payment_terms,
+         quote_expires_on = excluded.quote_expires_on,
+         availability = excluded.availability,
+         lead_time_days = excluded.lead_time_days,
+         confidence = excluded.confidence,
+         updated_at = now()`;
+
+  const row = await queryOne<{ id: string }>(
+    `insert into trade_pricing_rows
+       (org_id, opportunity_id, scope_key, trade, selected_sub_id,
+        base_quote, taxes, freight, mobilization, bonding, pending_components,
+        alternates, exclusions, payment_terms, quote_expires_on, availability,
+        lead_time_days, confidence, source_quote_id, updated_by)
+     select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18,$19,
+            'reply-capture'
+      where exists (select 1 from opportunities where id = $2 and org_id = $1)
+     on conflict (opportunity_id, scope_key) ${conflict}
+     returning id`,
+    [
+      input.orgId,
+      input.opportunityId,
+      p.scopeKey,
+      p.trade,
+      input.subcontractorId,
+      p.baseQuote,
+      p.taxes,
+      p.freight,
+      p.mobilization,
+      p.bonding,
+      p.pendingComponents,
+      JSON.stringify(p.alternates),
+      JSON.stringify(
+        p.exclusions.map((e) => ({ text: e.text, covered_by: e.coveredBy, note: e.note ?? null }))
+      ),
+      p.paymentTerms,
+      p.quoteExpiresOn,
+      p.availability,
+      p.leadTimeDays,
+      p.confidence,
+      input.sourceQuoteId ?? null,
+    ]
+  );
+  return row ? "written" : "kept_existing";
 }

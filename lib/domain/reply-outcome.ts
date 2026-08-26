@@ -249,8 +249,25 @@ export function blockingGaps(extracted: ExtractedReply, outcome: ReplyOutcome): 
   const gaps: string[] = [];
   if (extracted.quoteAmount == null) gaps.push("price");
   if (!extracted.scopeSummary) gaps.push("scope");
-  // Only chase what the model itself flagged, plus the two above; inventing
-  // requirements would turn every quote into a clarification loop.
+  /*
+   * Two more, chased whether or not the model flagged them, because each one
+   * leaves the pricing row unusable rather than merely thin.
+   *
+   * A subcontractor who says tax is NOT in the number and does not say what it
+   * is has given a price whose total cannot be worked out; the row records the
+   * tax as applicable-but-unknown and refuses to sum. And a price with no
+   * stated validity is one nobody can tell is still good on the day the bid
+   * goes in.
+   *
+   * Everything else stays as it was, chased only when the model itself flagged
+   * it. Turning payment terms or firmness into automatic clarification would
+   * make a chase email out of most ordinary quotes.
+   */
+  if (extracted.taxesIncluded === false && extracted.taxesAmount == null) {
+    gaps.push("taxes");
+  }
+  if (!extracted.quoteValidUntil) gaps.push("quote_validity");
+
   for (const f of extracted.missingFields) {
     if (!gaps.includes(f)) gaps.push(f);
   }
