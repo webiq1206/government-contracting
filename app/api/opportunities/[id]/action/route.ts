@@ -52,7 +52,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 
-  const { action, stage: targetStage } = await req.json().catch(() => ({}));
+  const { action, stage: targetStage, reason } = await req.json().catch(() => ({}));
   const opp = await queryOne<{ id: string; stage: string }>(
     `select id, stage from opportunities where id=$1 and org_id=$2`,
     [params.id, orgId]
@@ -121,19 +121,75 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   if (action === "dismiss") {
+    /*
+     * A reason is required, and it is required here rather than only in the
+     * form, because this is the endpoint. Passing on work is the decision the
+     * learning loop reads to understand what this company does not want, and
+     * a pile of passes with no reasons is a pile of data nobody can use.
+     * Anything under a few words is somebody clicking through a prompt.
+     */
+    const passReason = typeof reason === "string" ? reason.trim() : "";
+    if (passReason.length < 3) {
+      return NextResponse.json(
+        { error: "Say why you are passing. One line is enough." },
+        { status: 400 }
+      );
+    }
+    if (passReason.length > 500) {
+      return NextResponse.json({ error: "That reason is too long." }, { status: 400 });
+    }
     await query(
       `update opportunities set tier='dismiss', stage='dismissed', status='archived',
-              human_action_required=false, review_expires_at=null where id=$1`,
-      [params.id]
+              human_action_required=false, review_expires_at=null,
+              notes = case
+                when coalesce(notes, '') = '' then $2
+                else notes || E'\n' || $2
+              end
+        where id=$1`,
+      [params.id, `Passed: ${passReason}`]
     );
     await logAgent({
       agent: "operator",
       action: "dismiss",
       opportunityId: params.id,
       level: "info",
-      message: `Operator ${auth.email} dismissed opportunity.`,
+      message: `Operator ${auth.email} passed on this opportunity: ${passReason}`,
     });
     return NextResponse.json({ ok: true, stage: "dismissed" });
+  }
+
+  /*
+   * More time on the clock, not a decision.
+   *
+   * A borderline opportunity is dismissed automatically when its timer runs
+   * out, which is right for the ones nobody looks at and wrong for the one
+   * somebody is waiting on a phone call about. Without this the only way to
+   * keep it was to pursue it, which files a decision that has not been made.
+   */
+  if (action === "extend_review") {
+    if (opp.stage === "dismissed") {
+      return NextResponse.json(
+        { error: "This one has already been passed on. Restore it first." },
+        { status: 400 }
+      );
+    }
+    const row = await queryOne<{ review_expires_at: string | null }>(
+      `update opportunities
+          set review_expires_at = greatest(coalesce(review_expires_at, now()), now())
+                                  + interval '24 hours',
+              human_action_required = true
+        where id=$1
+        returning review_expires_at::text as review_expires_at`,
+      [params.id]
+    );
+    await logAgent({
+      agent: "operator",
+      action: "extend_review",
+      opportunityId: params.id,
+      level: "info",
+      message: `Operator ${auth.email} gave this opportunity another 24 hours before it is dismissed automatically.`,
+    });
+    return NextResponse.json({ ok: true, reviewExpiresAt: row?.review_expires_at ?? null });
   }
 
   // Undo a dismissal: back to the review queue with a fresh decision timer.

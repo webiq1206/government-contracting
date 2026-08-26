@@ -218,6 +218,24 @@ written in advance of the work.
 | An item with no deadline | Behaviour | Counts as Remaining, never Overdue | Today | Today | Treating an absent date as a passed one is the same lie as showing 0 for an unknown count, and here it would fill the overdue counter with work that is not late and cannot become late |
 | `WorkItem.due` typed `string`, holding a `Date` | Fixed | Normalized to ISO at the query boundary | - | - | node-postgres returns a Date for a timestamptz. Nothing sliced it yet, so nothing had crashed yet -- which is exactly the state the Contracts page was in until one row with a CPARS date took the whole page down |
 
+### Review
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| A flat list of cards | Changed | Two panels: queue left, decision brief right | Review | Queue, then a full-screen brief once one is chosen | Review is a page whose entire job is a yes or no, and it was a list of summaries. A card is a summary; a decision needs the argument |
+| (new) Decision brief | Added | Right panel | Review | Full screen after selection | In the order somebody actually makes the call: recommendation, why, what is in its favour, what is against, what is not known, the dates, what pursuing it costs |
+| (new) Three-outcome recommendation | Added | Head of the brief | Review | Review | Pursue, pass, or "needs a person to look". The third is the honest answer for a solicitation nobody could read: recommending a pass on thin data teaches an operator that the system rejects whatever it does not understand, and scanned PDFs are common |
+| (new) Effort estimate | Added | Foot of the brief | Review | Review | Stated in work -- trades to source, a package to assemble -- never in minutes. The last effort estimate this product printed was the item count times six, a constant wearing the costume of a measurement |
+| Pass with no reason | Changed | Pass requires a reason, enforced at the endpoint | Review, and bulk | Review | Passing is what the scoring learns from. A pile of passes with no reasons is a pile of rows nobody can use. Enforced in the route rather than only in the form, because the route is what other callers reach |
+| Per-card "Pass on this" | Removed | The brief's Pass, which asks for the reason | Review | Review | It passed with no reason, which is the thing being fixed, and the brief beside the card now carries the same decision with the reason box attached |
+| Bulk pass confirmation | Changed | Asks for the reason instead of "are you sure" | Review | Review | "Are you sure?" is answered yes every time and teaches nothing. Without the change the button would simply have started failing, since the endpoint now refuses a reasonless pass |
+| (new) Extend the review timer | Added | Brief controls | Review | Review | A borderline opportunity is dismissed automatically when its timer runs out, which is right for the ones nobody looks at and wrong for the one somebody is waiting on a call about. The only way to keep it was to pursue it, which files a decision that has not been made |
+| (new) Request more analysis | Added | Brief controls | Review | Review | Re-queues the stage's agents. Existed as an endpoint, was not offered on the page whose job is deciding |
+| Deadline and auto-dismiss shown together | Changed | Two labelled dates | Review | Review | One is the government's and one is ours. Conflating them is how somebody misses a bid because a review timer expired |
+| Confidence absent | Fixed | "Data confidence not measured on this one" | Review | Review | A missing confidence is unmeasured, not certain. The brief was saying "everything the scoring needed was in the notice" about records nobody had ever assessed |
+| Confidence read from `solicitation_analysis` | Fixed | Read from `score_breakdown` | Review, Opportunities drawer | Both | It was never there, so every record reported "not assessed". It describes how much of the notice could be read at scoring time, which is a property of the scoring |
+| `hrefFor` function prop into a client component | Fixed | A string prefix | - | - | TypeScript accepted a function prop across the server/client boundary and the render threw. The page returned nothing at all until it was found |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

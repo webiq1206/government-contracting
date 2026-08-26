@@ -288,8 +288,23 @@ export function BulkActionBar({
             className="btn-danger text-xs"
             disabled={busy}
             onClick={() => {
-              if (dismiss.confirm && !window.confirm(dismiss.confirm)) return;
-              void run({ action: "dismiss" }, `Passed on selected ${plural}`);
+              /*
+               * A reason, not a confirmation. "Are you sure?" is answered yes
+               * every time and teaches nothing; the reason is what the scoring
+               * reads to learn what this company does not want. The endpoint
+               * refuses without one, so a bare confirm would have produced a
+               * button that fails.
+               */
+              const reason = window.prompt(
+                dismiss.confirm ??
+                  `Passing on ${n} ${plural}. Why? One line is enough, and it is what the scoring learns from.`
+              );
+              if (reason == null) return;
+              if (reason.trim().length < 3) {
+                push({ message: "Say why you are passing. One line is enough." });
+                return;
+              }
+              void run({ action: "dismiss", reason: reason.trim() }, `Passed on selected ${plural}`);
             }}
           >
             {dismiss.label ?? "Pass"}

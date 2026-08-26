@@ -22,7 +22,15 @@ const PAST_PERF_LABEL: Record<string, string> = {
   prime_only: "Must be our own (blocked)",
 };
 
-function ReviewCard({ o }: { o: Opportunity }) {
+function ReviewCard({
+  o,
+  href,
+  selected,
+}: {
+  o: Opportunity;
+  href: string;
+  selected: boolean;
+}) {
   const dims = o.score_breakdown?.dimensions ?? [];
   const expiry = countdown(o.review_expires_at);
   const topRisks = (o.risk_flags ?? []).slice(0, 3);
@@ -33,8 +41,16 @@ function ReviewCard({ o }: { o: Opportunity }) {
 
   return (
     <Link
-      href={`/opportunity/${o.id}`}
-      className="card block space-y-3 border-border transition-all hover:border-accent/60 hover:shadow-md"
+      href={href}
+      aria-current={selected ? "true" : undefined}
+      /*
+       * Selects the brief beside it rather than jumping to the record. The
+       * record is one click further on, from the brief, which is where
+       * somebody goes when the brief did not settle it.
+       */
+      className={`card block space-y-3 transition-all hover:border-accent/60 hover:shadow-md ${
+        selected ? "border-gold bg-gold/[0.06]" : "border-border"
+      }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
@@ -166,31 +182,39 @@ function ReviewCard({ o }: { o: Opportunity }) {
           >
             Pursue opportunity
           </ActionButton>
-          <ActionButton
-            endpoint={`/api/opportunities/${o.id}/action`}
-            body={{ action: "dismiss" }}
-            className="btn-danger"
-            toast={{
-              message: `Dismissed "${o.title ?? "opportunity"}". It's archived, not deleted.`,
-              undo: {
-                endpoint: `/api/opportunities/${o.id}/action`,
-                body: { action: "restore" },
-              },
-            }}
-          >
-            Pass on this
-          </ActionButton>
+          {/*
+            * The per-card Pass is gone. It passed with no reason, which is the
+            * thing the audit asked to stop, and the brief beside this card now
+            * carries Pass with the reason box attached. Two controls for one
+            * decision, one of which skipped the requirement, is worse than one
+            * that asks.
+            */}
         </div>
       </StopClickPropagation>
     </Link>
   );
 }
 
-export function BulkReviewList({ opps }: { opps: Opportunity[] }) {
+export function BulkReviewList({
+  opps,
+  selectedId = null,
+  hrefBase,
+}: {
+  opps: Opportunity[];
+  selectedId?: string | null;
+  /**
+   * Prefix for a card's link, with the id appended. A string rather than a
+   * function because this is a client component and a function prop cannot
+   * cross that boundary -- TypeScript accepts it and the render throws, which
+   * is how this was found. Absent, cards go to the record, so the component
+   * still works anywhere it is used outside the two-panel Review page.
+   */
+  hrefBase?: string;
+}) {
   const ids = opps.map((o) => o.id);
   return (
     <BulkSelectionProvider ids={ids}>
-      <div className="mx-auto max-w-4xl space-y-3">
+      <div className="space-y-3">
         <div className="flex items-center justify-between gap-3 px-0.5">
           <BulkSelectAllCheckbox label={`Select all ${opps.length}`} />
           <p className="text-xs text-muted-foreground">
@@ -199,7 +223,12 @@ export function BulkReviewList({ opps }: { opps: Opportunity[] }) {
         </div>
         <div className="grid grid-cols-1 gap-4">
           {opps.map((o) => (
-            <ReviewCard key={o.id} o={o} />
+            <ReviewCard
+              key={o.id}
+              o={o}
+              href={hrefBase ? `${hrefBase}${o.id}` : `/opportunity/${o.id}`}
+              selected={String(o.id) === selectedId}
+            />
           ))}
         </div>
       </div>
@@ -210,7 +239,8 @@ export function BulkReviewList({ opps }: { opps: Opportunity[] }) {
           {
             kind: "dismiss",
             label: "Pass",
-            confirm: "Pass on the selected opportunities? They will be archived.",
+            confirm:
+              "Passing on the selected opportunities. Why? One line is enough, and it is what the scoring learns from.",
           },
           { kind: "snooze_opps" },
         ]}

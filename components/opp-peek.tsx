@@ -61,12 +61,14 @@ export function OppPeek({
   const days = deadline ? daysTo(deadline) : null;
   const fit = num(o.score);
   /*
-   * Confidence is a stored object, not a column. It lives inside the analysis
-   * because it describes how much of the solicitation could be read, which is
-   * a property of the reading rather than of the opportunity.
+   * Confidence is a stored object, not a column, and it lives on the score
+   * breakdown rather than on the analysis: it describes how much of the notice
+   * could be read at scoring time, which is a property of the scoring. Reading
+   * it off the analysis returned undefined for every opportunity, so the
+   * drawer said "Not assessed yet" even where it had been.
    */
-  const analysis = o.solicitation_analysis as { data_confidence?: DataConfidence } | null;
-  const confidence = analysis?.data_confidence ?? null;
+  const breakdown = o.score_breakdown as { data_confidence?: DataConfidence } | null;
+  const confidence = breakdown?.data_confidence ?? null;
   const risks = Array.isArray(o.risk_flags) ? (o.risk_flags as string[]) : [];
 
   const coverage =
