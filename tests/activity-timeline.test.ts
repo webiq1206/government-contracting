@@ -159,3 +159,52 @@ describe("the record is more than logs and emails", () => {
     ]);
   });
 });
+
+describe("timestamps from the database", () => {
+  /*
+   * node-postgres returns a Date for a timestamptz, and every row fed to this
+   * builder comes straight from a query. The string-only check that used to
+   * guard these dropped every event, so a record with a hundred emails on it
+   * rendered "No activity yet" -- not an empty state but a false statement,
+   * and invisible because the failure mode of a timeline is silence.
+   */
+  const when = new Date("2026-08-26T09:30:00.000Z");
+
+  it("accepts a Date on a log line", () => {
+    const events = buildActivityTimeline({
+      logs: [{ agent: "scoring-engine", action: "scored", created_at: when }],
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].at).toBe(when.toISOString());
+  });
+
+  it("accepts a Date on every source", () => {
+    const events = buildActivityTimeline({
+      logs: [{ agent: "operator", action: "note", created_at: when }],
+      communications: [{ channel: "email", direction: "outbound", subject: "Quote request", created_at: when }],
+      quotes: [{ company_name: "Acme", trade: "electrical", quote_amount: 1000, created_at: when }],
+      documents: [{ filename: "sow.pdf", doc_type: "solicitation", created_at: when }],
+      calls: [{ company_name: "Acme", created_at: when }],
+    });
+    expect(events.length).toBeGreaterThanOrEqual(5);
+    for (const e of events) expect(e.at).toBe(when.toISOString());
+  });
+
+  it("still accepts an ISO string", () => {
+    const events = buildActivityTimeline({
+      logs: [{ agent: "scoring-engine", action: "scored", created_at: when.toISOString() }],
+    });
+    expect(events[0].at).toBe(when.toISOString());
+  });
+
+  it("drops a row with no usable date rather than dating it to the epoch", () => {
+    const events = buildActivityTimeline({
+      logs: [
+        { agent: "a", action: "x", created_at: null },
+        { agent: "b", action: "y", created_at: new Date("nonsense") },
+        { agent: "c", action: "z", created_at: 1234 },
+      ],
+    });
+    expect(events).toHaveLength(0);
+  });
+});

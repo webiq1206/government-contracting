@@ -266,6 +266,17 @@ written in advance of the work.
 | `#submission`, `#more`, `#workflow`, `#overview`, `#docs`, `#quotes` | Kept | All still resolve | - | - | Links to `#submission` are in Today's queue, in the guide, and in emails people sent themselves. `#more` is in nothing anyone wrote, and it cost nothing to keep working |
 | Submission with no bid | Changed | "Nothing to submit yet", with what will appear there | Opportunity | Opportunity | The section previously did not exist at all before a bid was assembled, so the answer to "where do I submit this" was nowhere |
 
+### Subcontractor record
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| A stack of collapsibles in a two-column grid | Changed | Seven named sections | Subcontractor record | Subcontractor record | The audit names them, and the old shape meant the answer to "can we send this company work" was a panel somebody had to find |
+| (new) Activity | Added | Its own section | Subcontractor record | Subcontractor record | The unified timeline existed and only the opportunity record used it, so a subcontractor's page could show their emails and their quotes but not the decisions taken about them |
+| Compliance and Documents | Combined | One section | Subcontractor record | Subcontractor record | A subcontractor's documents are their compliance. The file and whether it is still valid are the same row, and splitting them would put a certificate on one tab and the fact that it expired on another |
+| Notes in a permanent right-hand column | Changed | Its own section | Subcontractor record | Subcontractor record | A column that is always there is a column that is always taking a third of the width, on a page where six other things want it |
+| `#compliance`, `#sub-contact`, `#pairings`, `#conversations`, `#notes` | Kept | All still resolve | - | - | The compliance badge in the record header links to `#compliance`, and the guide points at `#sub-contact` |
+| `buildActivityTimeline` rejecting a `Date` | Fixed | Accepts either | Both records | Both records | node-postgres returns a Date for a timestamptz and every row fed to the builder came straight from a query, so the string-only check dropped every event. Both activity timelines rendered "No activity yet" over records with a hundred emails on them. Not an empty state but a false statement, and invisible because the failure mode of a timeline is silence. The subcontractor record went from 0 events to 478 |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

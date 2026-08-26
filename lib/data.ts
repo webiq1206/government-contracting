@@ -875,6 +875,28 @@ export async function oppPeek(id: string): Promise<OppPeek | null> {
 }
 
 /**
+ * Agent and operator log lines about one subcontractor.
+ *
+ * The unified timeline existed and only the opportunity record used it, so a
+ * subcontractor's own page could show their emails and their quotes but not
+ * the decisions taken about them: who marked them preferred, when the sweep
+ * expired their certificate, why outreach skipped them. Those are exactly the
+ * lines somebody is looking for when they open a record and ask what happened.
+ */
+export async function subActivityLogs(subId: string) {
+  if (!UUID_RE.test(subId)) return [];
+  const orgId = await currentOrg();
+  return query<Record<string, unknown>>(
+    `select agent, action, message, reasoning, created_at::text as created_at
+       from agent_logs
+      where subcontractor_id = $1 and (org_id = $2 or org_id is null)
+      order by created_at desc
+      limit 200`,
+    [subId, orgId]
+  );
+}
+
+/**
  * One subcontractor, as the roster's peek drawer needs them.
  *
  * Includes the raw counts the reliability score is computed from, so the

@@ -52,6 +52,23 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
+/**
+ * A timestamp from any of the five sources, as an ISO string.
+ *
+ * Every one of these rows comes straight from node-postgres, which returns a
+ * `Date` for a `timestamptz`. The string check above rejected all of them, so
+ * every event was dropped and the timeline said "No activity yet" over records
+ * with a hundred emails on them. It is not an empty state, it is a false
+ * statement, and it was invisible precisely because the failure mode of a
+ * timeline is silence.
+ */
+function isoAt(v: unknown): string | null {
+  if (v == null) return null;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString();
+  if (typeof v === "string" && v.length > 0) return v;
+  return null;
+}
+
 function channelKind(channel: string | null): ActivityKind {
   if (channel === "email") return "email";
   if (channel === "call") return "call";
@@ -111,7 +128,7 @@ export function buildActivityTimeline(input: {
   const events: ActivityEvent[] = [];
 
   for (const [i, l] of (input.logs ?? []).entries()) {
-    const at = str(l.created_at);
+    const at = isoAt(l.created_at);
     if (!at) continue;
     const agent = str(l.agent) ?? "system";
     const action = str(l.action);
@@ -128,7 +145,7 @@ export function buildActivityTimeline(input: {
   }
 
   for (const c of input.communications ?? []) {
-    const at = str(c.created_at);
+    const at = isoAt(c.created_at);
     if (!at) continue;
     const channel = str(c.channel) ?? "note";
     const direction = str(c.direction);
@@ -155,7 +172,7 @@ export function buildActivityTimeline(input: {
   // A price arriving is the single most consequential thing that happens on a
   // solicitation, and it was the one event the feed did not carry.
   for (const q of input.quotes ?? []) {
-    const at = str(q.created_at);
+    const at = isoAt(q.created_at);
     if (!at) continue;
     const amount = num(q.quote_amount);
     const who = str(q.company_name) ?? "A subcontractor";
@@ -171,7 +188,7 @@ export function buildActivityTimeline(input: {
   }
 
   for (const d of input.documents ?? []) {
-    const at = str(d.created_at);
+    const at = isoAt(d.created_at);
     if (!at) continue;
     const name = str(d.filename) ?? str(d.doc_type) ?? "a document";
     // A file we pulled from the solicitation and a file a person uploaded are
@@ -188,7 +205,7 @@ export function buildActivityTimeline(input: {
   }
 
   for (const c of input.calls ?? []) {
-    const at = str(c.created_at);
+    const at = isoAt(c.created_at);
     if (!at) continue;
     const who = str(c.company_name) ?? "a subcontractor";
     const trade = str(c.trade);
