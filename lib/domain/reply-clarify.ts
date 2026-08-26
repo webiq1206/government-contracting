@@ -108,6 +108,7 @@ export async function requestClarification(input: {
     threadId: input.threadId ?? undefined,
     inReplyTo: input.inReplyToMessageId ?? undefined,
     orgId: input.orgId ?? undefined,
+    opportunityId: input.opportunityId ?? undefined,
   });
 
   if (res.disabled || res.blocked || res.error) {

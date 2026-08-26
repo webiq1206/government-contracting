@@ -66,6 +66,12 @@ Findings named in the instructions, checked before any code was changed.
 | 7 | Provider thread mismatch is visible | Verified, no change needed | When Gmail returns a different thread id than the one asked for, a `thread-broken` warning is logged. Confirming the provider did what was asked, rather than assuming it |
 | 11 | No public fallback secret for externally reachable tokens | Verified | `fileToken` signed with `config.auth.secret`, which falls back to a literal in the open-source tree. Now refuses to mint or honour a file token in production on that default. `tests/file-token-secret.test.ts`, 5 tests |
 | 11 | Health fails safely without a real signing secret | Verified, no change needed | `/api/health` returns 503 in production on the default secret, and its comment already names document links among what would be forgeable. That is what stops a host routing traffic; it does not stop the process minting tokens, which is what the row above closes |
+| 27 | A pursuit state automation checks before acting | Verified | Migration `071` adds `pursuit_state` with `active`/`paused`/`aborted`, separate from `status` (what the solicitation is doing) and `stage` (how far the work got). Overloading either would make an abort indistinguishable from an agency cancellation in every report |
+| 27 | The guard is enforced, not merely available | Verified | Checked in `lib/agents/runner.ts` for every queued job, and again in `sendOutreachEmail` at the provider boundary. `tests/pursuit-guard.integration.test.ts` includes the race: read active, abort, read again |
+| 27 | No post-abort external send | Verified | The transport re-reads at the boundary rather than trusting the runner's check minutes earlier. A single check at job start passes every test written against a fast fixture and fails exactly once in production, on the message somebody was trying to stop |
+| 27 | Fails closed | Verified | An unreadable row, a missing row, and an unrecognised state all answer "may not act". `tests/pursuit-state.test.ts` pins eight unrecognised values, including `"ACTIVE"` and `"activ"` |
+| 27 | Abort reasons are structured, with a note required for Other | Verified | `ABORT_REASONS` plus `abortRequestProblem`. A free-text-only reason makes "why do we abandon pursuits" unanswerable in analytics |
+| 27 | Restarting is not resuming | Implemented | `RESTART_REVALIDATION` names the checks in one place so the restart path and the confirmation screen cannot describe different work. The restart path itself is not built yet |
 | 7 | Third message disabled unless first-class | Verified | `final_nudge_enabled`, off by default and absent-key-means-off, plus `followup_max > 0`. `tests/final-nudge-gate.test.ts`, 8 tests. No settings toggle, because enabling it today would enable exactly the message the instructions object to |
 | 26 | Lint runs and passes | Verified | `.eslintrc.json`; three findings fixed rather than suppressed |
 
@@ -78,6 +84,17 @@ a ledger.
 | --- | --- | --- |
 | Jobs that failed during an AI outage "was not retried, so anything queued during the outage still needs a run" | False. `scoring-recovery-sweep` re-queues unscored opportunities every 15 minutes, `stalled-pipeline-sweep` re-runs any stage past its `STALL_HOURS` threshold every 2 hours on a two-strike policy, and `outreach-recovery-sweep` re-sends failed or drafted outreach. Every automated stage has a threshold | Shipped in one commit, corrected in the next. `docs/redesign-traceability.md` carries the full note |
 | GitHub Actions had stopped dispatching because a spending limit was reached | Unfounded. Three missed dispatches established that dispatch was failing, not why. It recovered on its own, which a spending limit does not do | Corrected on PR #85 |
+
+## Partly built, and honest about which part
+
+| Requirement | Built | Not built |
+| --- | --- | --- |
+| WP27 operator control | The pursuit state, the guard, and its enforcement at the runner and the send boundary. Nothing automatic reaches a subcontractor once a pursuit is stopped | The API routes and UI for Abort, Pause, Restart, Stop outreach, and the four distinct call controls (`Skip this call`, `Call later`, `Do not call for this trade`, `Do not call this subcontractor`). The state can currently only be set directly |
+
+Recorded this way deliberately. The guard is the half that prevents harm, and
+shipping it before the controls means an abort set by any route is honoured
+everywhere. Shipping the buttons first would have been the half that looks
+finished.
 
 ## Implemented but not yet surfaced
 

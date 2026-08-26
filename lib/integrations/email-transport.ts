@@ -18,6 +18,7 @@ import {
   describeEmailSafetyIssues,
 } from "../domain/email-safety";
 import { resolveOutreachSender } from "../domain/sender-identity";
+import { pursuitStatus } from "../pursuit-guard";
 import { tryResolveTenantOrgId } from "../tenant";
 
 /**
@@ -52,6 +53,19 @@ export interface OutreachSendParams {
   references?: string[];
   /** Which tenant is sending. Defaults to the ambient org context. */
   orgId?: string;
+  /**
+   * The opportunity this message is about, when it is about one.
+   *
+   * Re-read here, immediately before the provider call, rather than trusted
+   * from whenever the job started. A follow-up can spend minutes assembling
+   * its packet, and that is long enough for somebody to press Abort while
+   * watching the email they did not want go out anyway.
+   *
+   * Optional because not every outbound message belongs to a pursuit: a
+   * digest, a password reset, an invitation. Absent means there is nothing to
+   * check, not that the check passed.
+   */
+  opportunityId?: string;
 }
 
 export type OutreachProvider = "gmail";
@@ -101,6 +115,24 @@ export async function outreachTransport(
 export async function sendOutreachEmail(
   params: OutreachSendParams
 ): Promise<OutreachSendResult> {
+  /*
+   * The last possible moment to find out this pursuit was stopped.
+   *
+   * Ahead of content safety and everything else, because the cheapest refusal
+   * is the one that happens before any work. The agent runner already checked
+   * when the job started; this is the check that catches an abort committed
+   * while the job was assembling attachments.
+   *
+   * Fails closed by construction: pursuitStatus returns mayAct false when it
+   * cannot read the row at all.
+   */
+  if (params.opportunityId) {
+    const pursuit = await pursuitStatus(params.opportunityId);
+    if (!pursuit.mayAct) {
+      return { provider: null, disabled: true, error: pursuit.reason ?? "This pursuit is stopped." };
+    }
+  }
+
   // Content safety runs before anything else, so no configuration or transport
   // state can bypass it. An email that is never sent is recoverable; one that
   // reaches a subcontractor with a hole in it is not.

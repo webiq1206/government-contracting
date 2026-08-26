@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { claudeEnabled } from "../ai/claude";
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
+import { pursuitStatus } from "../pursuit-guard";
 import { enqueue, ENQUEUED_BY_ORG_KEY } from "../queue";
 import { config } from "../config";
 import { runWithOrg } from "../tenant-context";
@@ -192,6 +193,43 @@ export async function runAgent(
       ok: true,
       summary: `${def.name} skipped: this account has automation paused`,
     };
+  }
+
+  /*
+   * And the third stop: has the operator stopped THIS pursuit?
+   *
+   * Dismissing an opportunity and moving its stage never stopped work already
+   * in flight, so a queued follow-up still went out and a recovery sweep still
+   * re-enqueued scoring for a bid nobody was submitting. From the
+   * subcontractor's side that is an email about an abandoned job, over the
+   * operator's name, days later.
+   *
+   * Checked here rather than in each agent for the same reason the org check
+   * is: there are two dozen agents, and the next one somebody writes gets this
+   * without having to know to ask. Agents that then send do their own check
+   * immediately before sending, because this one is minutes stale by then.
+   *
+   * `permanent: true` so the queue does not retry. A stopped pursuit is a
+   * decision, not a transient failure, and retrying it with backoff would fill
+   * the log with the same refusal three times per job.
+   */
+  const pursuitId = typeof payload.opportunityId === "string" ? payload.opportunityId : "";
+  if (pursuitId) {
+    const pursuit = await pursuitStatus(pursuitId);
+    if (!pursuit.mayAct && pursuit.known) {
+      const summary = `${def.name} skipped: ${pursuit.reason}`;
+      await inOrg(() =>
+        logAgent({
+          agent: def.name,
+          action: "pursuit-stopped",
+          level: "info",
+          status: "skipped",
+          opportunityId: pursuitId,
+          message: summary,
+        })
+      );
+      return { ok: true, permanent: true, summary };
+    }
   }
   const runId = randomUUID();
   const started = Date.now();
