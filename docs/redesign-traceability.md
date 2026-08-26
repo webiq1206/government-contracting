@@ -463,6 +463,22 @@ written in advance of the work.
 | Provider capacity | Behaviour | Read from failures already classified | Card | Card | Calling the provider would cost money on a page that gets refreshed, and would answer about this second rather than the window everything else describes |
 | Last refresh | Added | Under the headline | Banner | Banner | Item 1 of the spec. The page does not poll, and saying so is the difference between a stale reading and a believed one |
 
+### Global search
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Messages and documents | Added | Two more groups | Overlay + page | Overlay + page | They were never searched at all. Somebody looking for a line from an email, or for the scope sheet they attached last week, got nothing back and no sign that those records had simply never been looked at |
+| A flat list with a badge per row | Changed | Grouped by kind, with counts | Overlay + page | Overlay + page | A badge makes the reader do the sorting: they scan nineteen rows looking for the one subcontractor among the opportunities. The counts are also what say a search matched four messages nobody thought to look in |
+| Arrow-key order | Behaviour | One flat index across the groups | Overlay | Overlay | Grouping is a rendering decision and must not change what Enter opens |
+| The loading state | Fixed | Rendered | Overlay | Overlay | It was computed and never shown, so a slow search displayed an empty box, which is indistinguishable from no matches and invites the wrong conclusion |
+| Match highlighting | Added | Title and subtitle | Overlay + page | Overlay + page | Returned as plain segments rather than as markup: the text is a customer's own record, and this is the one path every record in the account travels to reach the screen, so there is nothing to escape because nothing is parsed |
+| Message subtitles | Behaviour | A window around the match | Overlay + page | Overlay + page | The opening of a long email is its greeting. The line that matched is the reason it is in the list |
+| A truncated snippet | Behaviour | Marked with an ellipsis | Overlay + page | Overlay + page | Cutting text without saying so hides that there is more |
+| The no-results state | Changed | Suggestions, not a tip | Overlay + page | Overlay + page | The commonest reason for no results is looking for something that was never indexed, so the most useful correction is saying what is actually searched. Anything cleverer would guess at intent |
+| (new) Recent searches | Added | Idle state of the overlay | Chips | Chips | Kept in browser storage, and every read and write is guarded: a remembered search is a convenience, and a private window should not break search |
+| (new) `/search` | Added | Full results page | Grouped, filterable | Same, full screen | Somewhere for "View all results" to go, and the audit's dedicated full-screen mobile search is simply this page on a phone |
+| Search queries | Moved | `lib/search`, one copy | - | - | The overlay and the page ask the same question and must get the same answer. Two copies would drift, and the way anybody would find out is a record appearing in one and not the other, which reads as data loss rather than a bug |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
