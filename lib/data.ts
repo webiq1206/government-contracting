@@ -20,10 +20,6 @@ import {
 } from "./sub-compliance-store";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
-import {
-  emailLogStatusSql,
-  type EmailLogStatusFilter,
-} from "./domain/email-log";
 
 /**
  * The organization every read in this module is scoped to.
@@ -32,8 +28,12 @@ import {
  * the signed-in user's membership. Falls back to the founding org so the
  * original single-tenant install, whose rows predate organization_members,
  * keeps working.
+ *
+ * Exported so lib/conversations.ts resolves the tenant the same way rather
+ * than growing a second answer to "which org is this". Two resolvers is one
+ * more than the number that can be right.
  */
-async function currentOrg(): Promise<string> {
+export async function currentOrg(): Promise<string> {
   const { tryResolveTenantOrgId } = await import("./tenant");
   const { LEGACY_ORG_ID } = await import("./tenant-context");
   return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
@@ -561,205 +561,15 @@ export async function subDatabase(
   );
 }
 
-export const EMAIL_LOG_PAGE_SIZE = 50;
-
-export interface EmailLogRow {
-  id: string;
-  created_at: string;
-  subject: string | null;
-  body: string | null;
-  provider: string | null;
-  recipient_email: string | null;
-  opened_at: string | null;
-  clicked_at: string | null;
-  replied_at: string | null;
-  direction: string;
-  responded: boolean;
-  /** What we actually know about delivery: sent | delivered | bounced | deferred | failed. */
-  delivery_state: string | null;
-  /** The provider's own words for a failure, e.g. a diagnostic code. */
-  delivery_detail: string | null;
-  // sub
-  subcontractor_id: string;
-  company_name: string | null;
-  // opportunity
-  opportunity_id: string | null;
-  opportunity_title: string | null;
-}
-
-export interface EmailLogCounts {
-  all: number;
-  sent: number;
-  opened: number;
-  clicked: number;
-  responded: number;
-  /*
-   * The failures. A chip with a number on it is the only way an operator
-   * learns these exist: "3 bounced" is a prompt to look, and a filter nobody
-   * knows about is a filter nobody uses.
-   */
-  bounced: number;
-  deferred: number;
-  failed: number;
-  inbound: number;
-}
-
-/**
- * Whether this message's conversation ever got a reply.
- *
- * `replies.responded` used to be `min(r.created_at)` from a LATERAL subquery,
- * and only its null-ness was ever read. That cost more than it sounds: the
- * lateral runs once per row, so producing the nine counters at the top of the
- * page meant resolving "did this thread get a reply" twenty thousand separate
- * times. EXPLAIN showed `loops=20060` and 557ms on one aggregate.
- *
- * The set of conversations that have an inbound message is the same set for
- * every row, so it is now computed once and hash-joined. Same answer, one
- * pass.
+/*
+ * The paged email log lived here. It is gone with the page it fed: a list of
+ * messages could not answer "who is waiting on me", which is a property of a
+ * conversation rather than of a row. lib/conversations.ts replaces it, and
+ * lib/domain/message-state.ts replaces its status vocabulary -- which could
+ * not tell a policy block apart from a bad address, so the two states that
+ * need opposite fixes read the same.
  */
-const EMAIL_LOG_RESPONDED = `(c.direction = 'inbound' or c.replied_at is not null or replied_by_opp.subcontractor_id is not null or replied_by_thread.subcontractor_id is not null)`;
 
-export async function emailLogPaged(opts: {
-  page: number;
-  q?: string;
-  status?: EmailLogStatusFilter;
-}): Promise<{ rows: EmailLogRow[]; total: number; counts: EmailLogCounts }> {
-  const { page, q } = opts;
-  const status: EmailLogStatusFilter = opts.status ?? "all";
-  const offset = (Math.max(1, page) - 1) * EMAIL_LOG_PAGE_SIZE;
-
-  const searchNeedle = q ? `%${q}%` : null;
-  const searchSql = (paramIndex: number) =>
-    searchNeedle
-      ? `and (lower(s.company_name) like lower($${paramIndex}) or lower(coalesce(c.subject,'')) like lower($${paramIndex}))`
-      : "";
-  const statusSql = emailLogStatusSql(status, EMAIL_LOG_RESPONDED);
-
-  /*
-   * The conversations that have ever received an inbound message, as two
-   * small sets: one keyed by (subcontractor, opportunity) and one by
-   * (subcontractor, Gmail thread). A message counts as answered if either
-   * matches, which is exactly what the old per-row lateral tested -- computed
-   * once for the whole page instead of once per row.
-   *
-   * Both sets are org-scoped, so a reply in one tenant can never mark another
-   * tenant's message as answered.
-   */
-  const withReplies = (orgParamIndex: number) => `
-    with inbound_by_opp as (
-      select distinct subcontractor_id, opportunity_id
-        from communications
-       where org_id = $${orgParamIndex}
-         and channel = 'email' and direction = 'inbound'
-         and subcontractor_id is not null and opportunity_id is not null
-    ),
-    inbound_by_thread as (
-      select distinct subcontractor_id, gmail_thread_id
-        from communications
-       where org_id = $${orgParamIndex}
-         and channel = 'email' and direction = 'inbound'
-         and subcontractor_id is not null and gmail_thread_id is not null
-    )`;
-
-  /*
-   * Plain LEFT JOINs rather than EXISTS in a lateral.
-   *
-   * EXISTS reads better but plans worse: Postgres inlines it as a SubPlan on
-   * the outer scan and evaluates it per row, which was still 350ms after the
-   * first rewrite. Joining the two sets lets it hash them once -- 15ms for
-   * the same answer. Both sets are DISTINCT, so neither join can multiply
-   * rows.
-   */
-  const from = (searchParamIndex: number, orgParamIndex: number) => `
-    from communications c
-    join subcontractors s on s.id = c.subcontractor_id
-    left join opportunities o on o.id = c.opportunity_id
-    left join inbound_by_opp replied_by_opp
-           on replied_by_opp.subcontractor_id = c.subcontractor_id
-          and replied_by_opp.opportunity_id = c.opportunity_id
-    left join inbound_by_thread replied_by_thread
-           on replied_by_thread.subcontractor_id = c.subcontractor_id
-          and replied_by_thread.gmail_thread_id = c.gmail_thread_id
-    where c.channel = 'email'
-      and c.org_id = $${orgParamIndex}
-      ${searchSql(searchParamIndex)}
-  `;
-
-  // The org is appended LAST to each array so the existing positional indexes
-  // ($1 limit, $2 offset, $3 search) keep their meaning.
-  const orgId = await currentOrg();
-  const listParams: unknown[] = [EMAIL_LOG_PAGE_SIZE, offset];
-  if (searchNeedle) listParams.push(searchNeedle);
-  listParams.push(orgId);
-  const listOrgIndex = listParams.length;
-  const countParams: unknown[] = searchNeedle ? [searchNeedle] : [];
-  countParams.push(orgId);
-  const countOrgIndex = countParams.length;
-
-  const [rows, totals, countRows] = await Promise.all([
-    query<EmailLogRow>(
-      `${withReplies(listOrgIndex)}
-       select c.id, c.created_at, c.subject, c.body, c.provider,
-              c.recipient_email, c.opened_at, c.clicked_at, c.replied_at, c.direction,
-              c.delivery_state, c.delivery_detail,
-              ${EMAIL_LOG_RESPONDED} as responded,
-              c.subcontractor_id, s.company_name,
-              c.opportunity_id, o.title as opportunity_title
-       ${from(3, listOrgIndex)}
-         and ${statusSql}
-       order by c.created_at desc
-       limit $1 offset $2`,
-      listParams
-    ),
-    query<{ count: string }>(
-      `${withReplies(countOrgIndex)}
-       select count(*)::text as count ${from(1, countOrgIndex)} and ${statusSql}`,
-      countParams
-    ),
-    query<{
-      all: string;
-      sent: string;
-      opened: string;
-      clicked: string;
-      responded: string;
-      bounced: string;
-      deferred: string;
-      failed: string;
-      inbound: string;
-    }>(
-      `${withReplies(countOrgIndex)}
-       select
-         count(*)::text as all,
-         count(*) filter (where c.direction = 'outbound')::text as sent,
-         count(*) filter (where c.direction = 'outbound' and c.opened_at is not null)::text as opened,
-         count(*) filter (where c.direction = 'outbound' and c.clicked_at is not null)::text as clicked,
-         count(*) filter (where ${EMAIL_LOG_RESPONDED})::text as responded,
-         count(*) filter (where c.delivery_state = 'bounced')::text as bounced,
-         count(*) filter (where c.delivery_state = 'deferred')::text as deferred,
-         count(*) filter (where c.delivery_state = 'failed')::text as failed,
-         count(*) filter (where c.direction = 'inbound')::text as inbound
-       ${from(1, countOrgIndex)}`,
-      countParams
-    ),
-  ]);
-
-  const c = countRows[0];
-  return {
-    rows,
-    total: parseInt(totals[0]?.count ?? "0", 10),
-    counts: {
-      all: parseInt(c?.all ?? "0", 10),
-      sent: parseInt(c?.sent ?? "0", 10),
-      opened: parseInt(c?.opened ?? "0", 10),
-      clicked: parseInt(c?.clicked ?? "0", 10),
-      bounced: parseInt(c?.bounced ?? "0", 10),
-      deferred: parseInt(c?.deferred ?? "0", 10),
-      failed: parseInt(c?.failed ?? "0", 10),
-      inbound: parseInt(c?.inbound ?? "0", 10),
-      responded: parseInt(c?.responded ?? "0", 10),
-    },
-  };
-}
 
 export interface SubCommRow {
   id: string;

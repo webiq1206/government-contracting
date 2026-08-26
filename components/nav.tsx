@@ -71,7 +71,7 @@ const SECTIONS: Section[] = [
     label: "Relationships",
     items: [
       { href: "/subs", label: "Subcontractors" },
-      { href: "/email-log", label: "Communications" },
+      { href: "/communications", label: "Communications" },
     ],
   },
   {

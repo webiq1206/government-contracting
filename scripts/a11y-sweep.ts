@@ -56,7 +56,7 @@ const ROUTES = [
   "/review",
   "/call-queue",
   "/subs",
-  "/email-log",
+  "/communications",
   "/contracts",
   "/compliance",
   "/analytics",
