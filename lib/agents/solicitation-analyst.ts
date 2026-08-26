@@ -25,8 +25,14 @@ import { extractValueFromText } from "../domain/value-extract";
 import {
   evaluateSolicitationCompleteness,
   type AttachmentFetchOutcome,
+  type AttachmentFetchStatus,
 } from "../domain/solicitation-completeness";
 import { storage } from "../integrations/storage";
+import {
+  guardedFetch,
+  GuardedFetchError,
+  type GuardedFetchResult,
+} from "../integrations/guarded-fetch";
 import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
 import { ocrPdf } from "../integrations/pdf-ocr";
 import { filenameFromResponse, normalizeAttachmentMeta } from "../domain/attachment-meta";
@@ -211,6 +217,35 @@ function toSatisfiedBy(v: unknown): SatisfiedBy {
 }
 
 const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25MB cap per file
+/**
+ * Whole-download budget per attachment. There was no timeout at all before, so
+ * one server that accepted the connection and then sent nothing held a worker
+ * slot until the process was restarted.
+ */
+const ATTACH_TIMEOUT_MS = 60_000;
+
+/**
+ * What a refused or failed download means to the completeness check.
+ *
+ * The distinction that matters: "failed" is worth retrying and "refused" is
+ * not. A link that points at a private address will point at a private address
+ * again tomorrow, so telling an operator to re-run analysis wastes their time.
+ * The file has to come from a person.
+ */
+function attachmentStatusFor(err: GuardedFetchError): AttachmentFetchStatus {
+  switch (err.kind) {
+    case "blocked_scheme":
+    case "blocked_host":
+    case "blocked_address":
+    case "too_many_redirects":
+    case "unsupported_type":
+      return "refused";
+    case "too_large":
+      return "too_large";
+    default:
+      return "failed";
+  }
+}
 
 /**
  * Download a solicitation attachment, persist it (Supabase Storage or local
@@ -235,43 +270,42 @@ async function processAttachment(
     };
   }
   try {
-    const res = await fetch(att.url, { method: "GET" });
-    if (!res.ok) {
-      return {
-        context: `- ${label} (${att.url}), could not fetch (HTTP ${res.status})`,
-        parsedChars: 0,
-        outcome: {
-          name: label,
-          url: att.url,
-          status: "failed",
-          detail: `HTTP ${res.status}`,
-        },
-      };
+    /*
+     * `att.url` is a resourceLink copied out of a SAM.gov notice. Nobody here
+     * wrote it, so it is fetched through the guard: scheme and destination
+     * address checked before connecting and re-checked on every redirect hop,
+     * and the size limit applied while the bytes are arriving rather than
+     * after the whole response is already in memory.
+     */
+    let fetched: GuardedFetchResult;
+    try {
+      fetched = await guardedFetch(att.url, {
+        maxBytes: MAX_ATTACH_BYTES,
+        timeoutMs: ATTACH_TIMEOUT_MS,
+      });
+    } catch (err) {
+      if (err instanceof GuardedFetchError) {
+        const status = attachmentStatusFor(err);
+        return {
+          context: `- ${label} (${att.url}), not collected: ${err.message}`,
+          parsedChars: 0,
+          outcome: { name: label, url: att.url, status, detail: err.message },
+        };
+      }
+      throw err;
     }
-    const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+    const ct = fetched.contentType;
     // SAM's notice JSON names every resourceLink "attachment"; the server's
     // Content-Disposition carries the real filename ("Wage Determination.pdf").
     // Recover it here so document names mean something everywhere downstream:
     // the Files tab, trade prioritisation, official-form linking, and the
     // filenames a subcontractor sees on the outreach email.
     label = filenameFromResponse({
-      contentDisposition: res.headers.get("content-disposition"),
+      contentDisposition: fetched.contentDisposition,
       url: att.url,
       fallback: label,
     });
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > MAX_ATTACH_BYTES) {
-      return {
-        context: `- ${label}, too large to parse (${Math.round(buf.byteLength / 1e6)}MB)`,
-        parsedChars: 0,
-        outcome: {
-          name: label,
-          url: att.url,
-          status: "too_large",
-          detail: `${Math.round(buf.byteLength / 1e6)}MB`,
-        },
-      };
-    }
+    const buf = fetched.body;
 
     // Persist the raw file + a documents row (best-effort).
     // Sniff bytes so SAM's generic "attachment" / octet-stream metadata does not

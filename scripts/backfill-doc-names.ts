@@ -21,6 +21,7 @@
  *   npm run backfill:doc-names
  */
 import { query } from "../lib/db";
+import { guardedFetch } from "../lib/integrations/guarded-fetch";
 import { closePool } from "../lib/db";
 import {
   filenameFromPdfHeading,
@@ -72,12 +73,31 @@ async function main() {
     try {
       let recovered = row.name;
       let via = "";
-      const res = await fetch(row.source_url!, { method: "GET" }).catch(() => null);
-      // Headers are all we need; drop the body without reading it.
-      await res?.body?.cancel().catch(() => undefined);
-      if (res?.ok) {
+      /*
+       * source_url is a link copied out of a SAM.gov notice, so it goes
+       * through the guard like every other outside URL, even here: this
+       * script runs with the same credentials the server has.
+       *
+       * Only the headers are wanted. The cap stops the download a long way
+       * short of the file rather than pulling a 25MB PDF to read its name.
+       */
+      let res: Awaited<ReturnType<typeof guardedFetch>> | null = null;
+      // The guard throws rather than handing back a failed response, so the
+      // reason is captured here: "HTTP 404" and "refused: the host resolves to
+      // loopback" are different problems and the log should say which.
+      let fetchProblem: string | null = null;
+      try {
+        res = await guardedFetch(row.source_url!, {
+          maxBytes: 64 * 1024,
+          timeoutMs: 20_000,
+          onOversize: "truncate",
+        });
+      } catch (err) {
+        fetchProblem = (err as Error).message;
+      }
+      if (res) {
         recovered = filenameFromResponse({
-          contentDisposition: res.headers.get("content-disposition"),
+          contentDisposition: res.contentDisposition,
           url: row.source_url,
           fallback: row.name,
         });
@@ -135,12 +155,12 @@ async function main() {
       }
 
       if (recovered === row.name || GENERIC_NAME.test(recovered)) {
-        if (res?.ok) {
+        if (res) {
           unchanged++;
         } else {
           failed++;
           console.log(
-            `  ! ${row.id}: ${res ? `HTTP ${res.status}` : "unreachable"} and no usable PDF title, kept "${row.name}"`
+            `  ! ${row.id}: ${fetchProblem ?? "unreachable"} and no usable PDF title, kept "${row.name}"`
           );
         }
         continue;

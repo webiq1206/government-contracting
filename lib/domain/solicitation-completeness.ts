@@ -31,7 +31,14 @@ export type AttachmentFetchStatus =
   | "too_large"
   | "unsupported"
   | "no_url"
-  | "no_text";
+  | "no_text"
+  /**
+   * The link was refused before anything was downloaded: it pointed somewhere
+   * a server-side fetch has no business reaching, used a protocol this does
+   * not speak, or bounced through too many redirects. Separate from "failed"
+   * because retrying changes nothing. The file has to come from a person.
+   */
+  | "refused";
 
 export interface AttachmentFetchOutcome {
   name: string;
@@ -222,7 +229,11 @@ export function evaluateSolicitationCompleteness(
   ).length;
   const unread = input.attachmentOutcomes.filter((o) => o.status === "no_text");
   const failed = input.attachmentOutcomes.filter(
-    (o) => o.status === "failed" || o.status === "too_large" || o.status === "no_url"
+    (o) =>
+      o.status === "failed" ||
+      o.status === "too_large" ||
+      o.status === "no_url" ||
+      o.status === "refused"
   );
   const hasStoredDocs = input.storedDocumentCount > 0 || fetchedOk > 0;
   if (!input.attachmentsWaived && !hasStoredDocs) {

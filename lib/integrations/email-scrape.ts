@@ -5,8 +5,8 @@
  * Small contractors overwhelmingly publish an email on their homepage or
  * contact page, so this recovers a large share of contacts without any API key.
  */
-import { resolveMx, lookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { resolveMx } from "node:dns/promises";
+import { guardedFetch } from "./guarded-fetch";
 
 const CONTACT_PATHS = ["", "/contact", "/contact-us", "/about", "/about-us"];
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
@@ -32,84 +32,37 @@ function normalizeDomain(website: string): string | null {
 const MAX_BODY_BYTES = 500_000;
 const MAX_REDIRECTS = 3;
 
-/** Reject loopback/private/link-local/reserved addresses (SSRF guard). */
-function isPublicIp(ip: string): boolean {
-  if (isIP(ip) === 4) {
-    const [a, b] = ip.split(".").map(Number);
-    if (a === 0 || a === 10 || a === 127) return false;
-    if (a === 169 && b === 254) return false; // link-local / cloud metadata
-    if (a === 172 && b >= 16 && b <= 31) return false;
-    if (a === 192 && b === 168) return false;
-    if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT
-    if (a >= 224) return false; // multicast/reserved
-    return true;
-  }
-  const v6 = ip.toLowerCase();
-  if (v6 === "::1" || v6 === "::") return false;
-  if (v6.startsWith("fe80") || v6.startsWith("fc") || v6.startsWith("fd")) return false;
-  if (v6.startsWith("::ffff:")) return isPublicIp(v6.slice(7));
-  return true;
-}
-
-/** The website field is operator-editable, so treat every URL as untrusted. */
-async function isSafeUrl(url: URL): Promise<boolean> {
-  if (url.protocol !== "https:" && url.protocol !== "http:") return false;
-  const host = url.hostname;
-  if (isIP(host)) return isPublicIp(host);
-  try {
-    const { address } = await lookup(host);
-    return isPublicIp(address);
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Fetch a page with SSRF + resource guards: http(s) only, public IPs only
- * (re-validated on every redirect hop), manual redirects capped at 3, and a
- * streaming body-size cap so a hostile site can't force an unbounded read.
+ * Fetch one page of a subcontractor's own website.
+ *
+ * The website field is operator-editable and website-finder guesses hosts, so
+ * every URL here is untrusted and goes through the shared guard.
+ *
+ * This module used to carry its own copy of that guard, and the copy had a
+ * hole: its IPv6 branch tested `startsWith("::ffff:")` and then re-checked the
+ * remainder as a v4 address, but URL parsing rewrites `[::ffff:169.254.169.254]`
+ * to `[::ffff:a9fe:a9fe]` long before the guard sees it, so the remainder was
+ * "a9fe:a9fe", matched nothing, and the function returned true. The cloud
+ * metadata endpoint was reachable through the website field. Two
+ * implementations of one rule is how that survived, so there is now one.
  */
 export async function safeFetchPage(rawUrl: string): Promise<string | null> {
   try {
-    let url = new URL(rawUrl);
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      if (!(await isSafeUrl(url))) return null;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 10_000);
-      let res: Response;
-      try {
-        res = await fetch(url, {
-          signal: ctrl.signal,
-          headers: { "user-agent": "Mozilla/5.0 (compatible; BROSTCO-SubVerify/1.0)" },
-          redirect: "manual",
-        });
-      } finally {
-        clearTimeout(timer);
-      }
-      if (res.status >= 300 && res.status < 400) {
-        const loc = res.headers.get("location");
-        if (!loc) return null;
-        url = new URL(loc, url); // next hop is re-validated at loop top
-        continue;
-      }
-      if (!res.ok || !res.body) return null;
-      const type = res.headers.get("content-type") ?? "";
-      if (!type.includes("html") && !type.includes("text")) return null;
-      // Stream with a hard byte cap instead of buffering the whole body.
-      const reader = res.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let total = 0;
-      while (total < MAX_BODY_BYTES) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        total += value.byteLength;
-        chunks.push(value);
-      }
-      await reader.cancel().catch(() => undefined);
-      return Buffer.concat(chunks).toString("utf8").slice(0, MAX_BODY_BYTES);
-    }
-    return null; // too many redirects
+    const res = await guardedFetch(rawUrl, {
+      maxBytes: MAX_BODY_BYTES,
+      timeoutMs: 10_000,
+      maxRedirects: MAX_REDIRECTS,
+      // A contractor site on plain http is common and still worth reading.
+      allowInsecure: true,
+      // A heavy page truncated at 500KB still yields its contact address;
+      // refusing it outright would lose the contact for no safety gain.
+      onOversize: "truncate",
+      headers: { "user-agent": "Mozilla/5.0 (compatible; BROSTCO-SubVerify/1.0)" },
+    });
+    if (!res.contentType.includes("html") && !res.contentType.includes("text")) return null;
+    return res.body.toString("utf8");
   } catch {
+    // Every refusal is the same answer to the caller: no page to read.
     return null;
   }
 }
