@@ -1,4 +1,5 @@
 "use client";
+import { assessReadiness } from "@/lib/domain/submission-readiness";
 import { MarkAsSent } from "@/components/mark-as-sent";
 
 /**
@@ -118,6 +119,28 @@ export function SubmissionPackage({
    */
   const openAuditBlockers = findings.filter((f) => f.severity === "blocker" && !f.acknowledged);
   const canForceOverride = !ready && blockers.length === 0 && openAuditBlockers.length === 0;
+  /*
+   * How much assurance actually stands behind this package.
+   *
+   * Five separate facts rather than one boolean, because "the files are all
+   * there" and "something read the solicitation back" are different
+   * assurances and only the second catches a package assembled correctly
+   * against the wrong requirements.
+   */
+  const readiness = assessReadiness({
+    mechanicallyComplete: Boolean(bid.package_ready),
+    blockerCount: blockers.length,
+    auditStatus: bid.audit_status,
+    openAuditBlockers: openAuditBlockers.length,
+    // No sign-off column yet, so nobody has verified anything by hand.
+    verifiedBy: null,
+    submissionState,
+    // Not yet a per-account setting. Left off so the only thing that turns it
+    // on is the audit being unavailable, which is the case the instructions
+    // name and the one that actually matters.
+    humanGateRequired: false,
+  });
+
   /*
    * Everything standing between this package and submission: the deterministic
    * blockers and the unresolved audit blockers, which are two different lists
@@ -328,9 +351,19 @@ export function SubmissionPackage({
               : "border-review/40 bg-review/5 text-slate-700"
           }`}
         >
+          {/*
+            The headline is never stronger than the weakest assurance behind
+            it. This used to read "Ready to submit, all 14 required items are
+            in place" whenever the MECHANICAL checks passed, which is true and
+            is not the whole truth: the compliance audit is a separate pass, it
+            can be skipped, and when it is, nothing has read the solicitation
+            back against the package. The audit notice saying so sat further
+            down the page. Two true statements, one of which is the one people
+            read.
+          */}
           <p className="font-medium">
             {ready
-              ? `Ready to submit, all ${validation.total_mandatory} required items are in place.`
+              ? readiness.headline
               : /*
                  * Counts everything that holds the package back, not just the
                  * deterministic half. Readiness is validation AND no open audit
