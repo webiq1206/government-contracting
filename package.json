@@ -31,6 +31,7 @@
     "repair:sub-locations": "tsx scripts/repair-sub-locations.ts",
     "queue:retire-dead-jobs": "tsx scripts/retire-dead-jobs.ts",
     "doctor": "tsx scripts/doctor.ts",
+    "org-status": "tsx scripts/org-status.ts",
     "inventory": "tsx scripts/interface-inventory.ts",
     "a11y": "tsx scripts/a11y-sweep.ts",
     "perf": "tsx scripts/perf-sweep.ts",
