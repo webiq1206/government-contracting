@@ -9,6 +9,7 @@ import { ToastProvider } from "@/components/toaster";
 import { getAutomationState } from "@/lib/app-settings";
 import { queueCounts } from "@/lib/data";
 import { automationHealth } from "@/lib/automation-status";
+import { inboxNeedsReplyCount } from "@/lib/conversations";
 import { accessLevel, entitlementOf, trialDaysLeft } from "@/lib/billing/entitlements";
 import { isPlatformAdmin } from "@/lib/platform-admin";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
@@ -29,12 +30,18 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   // the customer sees what they built while deciding. Enforcement is not this
   // panel, it is the 402 that every mutating route returns independently.
 
-  const [counts, health, automation, quotas] = await Promise.all([
+  const [counts, health, automation, quotas, inboxWaiting] = await Promise.all([
     queueCounts().catch(() => ({ review: 0, callQueue: 0 })),
     automationHealth().catch(() => null),
     getAutomationState().catch(() => ({ paused: false, changed_at: null, changed_by: null })),
     // Only a trial has meters to show; a paid org pays for none of this work.
     access === "trial" ? allQuotaStates(user.organizationId).catch(() => []) : [],
+    /*
+     * Zero on failure rather than a badge that lies upward. An inbox badge
+     * that over-counts sends somebody to a page with nothing on it; one that
+     * under-counts costs them the trip they were going to make anyway.
+     */
+    inboxNeedsReplyCount().catch(() => 0),
   ]);
   return (
     <ToastProvider>
@@ -73,7 +80,11 @@ export default async function DashLayout({ children }: { children: React.ReactNo
       <Suspense fallback={null}>
         <GuideWizard />
       </Suspense>
-      <MobileTabBar reviewCount={counts.review} callCount={counts.callQueue} />
+      <MobileTabBar
+        reviewCount={counts.review}
+        callCount={counts.callQueue}
+        inboxCount={inboxWaiting}
+      />
     </ToastProvider>
   );
 }

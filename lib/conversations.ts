@@ -383,3 +383,16 @@ export async function conversationExists(orgId: string, threadKey: string): Prom
   );
   return row != null;
 }
+
+/**
+ * Conversations waiting on a reply, for the navigation badge.
+ *
+ * Counted with the same predicate the Communications page uses, by calling the
+ * same list rather than a shortcut query. A badge computed a second way is a
+ * badge that eventually disagrees with the page it points at, which is the
+ * exact failure the one-ledger rule exists to prevent.
+ */
+export async function inboxNeedsReplyCount(): Promise<number> {
+  const list = await conversationList();
+  return list.filter((c) => c.state === "needs_reply").length;
+}

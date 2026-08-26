@@ -349,6 +349,24 @@ export function Nav({
 
         <div className="flex-1" />
 
+        {/*
+          * Guide Me on the app bar, where the audit puts it. It used to be
+          * reachable on a phone only by opening the navigation drawer and
+          * scrolling to the top of it, which is three taps to ask for help
+          * with the screen you are already looking at.
+          */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event("open-guide-wizard"))}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-gold-text"
+          aria-label="Guide Me"
+          aria-haspopup="dialog"
+        >
+          <span aria-hidden className="text-lg leading-none">
+            ?
+          </span>
+        </button>
+
         <ThemeToggle compact className="mr-1 shrink-0" />
 
         {localPaused && (

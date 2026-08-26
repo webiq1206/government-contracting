@@ -277,6 +277,19 @@ written in advance of the work.
 | `#compliance`, `#sub-contact`, `#pairings`, `#conversations`, `#notes` | Kept | All still resolve | - | - | The compliance badge in the record header links to `#compliance`, and the guide points at `#sub-contact` |
 | `buildActivityTimeline` rejecting a `Date` | Fixed | Accepts either | Both records | Both records | node-postgres returns a Date for a timestamptz and every row fed to the builder came straight from a query, so the string-only check dropped every event. Both activity timelines rendered "No activity yet" over records with a hundred emails on them. Not an empty state but a false statement, and invisible because the failure mode of a timeline is silence. The subcontractor record went from 0 events to 478 |
 
+### Mobile application shell
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Four bottom tabs: Today, Opportunities, Subs, Calls | Changed | The five the audit names: Today, Opportunities, Subcontractors, Inbox, More | - | Bottom bar | - |
+| (new) Inbox tab | Added | Fourth slot | - | Bottom bar | It takes the slot over Calls because of who is waiting: a subcontractor who has written and had no answer is waiting on a person right now, while a call is something to go and do. Its badge counts conversations needing a reply, from the same list the Communications page renders rather than a shortcut query |
+| (new) More screen | Added | `/more` | Reachable, never linked | Bottom bar | Contracts, Compliance, Analytics, Automation Health, the Knowledge Center, Settings and Platform Admin were reachable on a phone only by opening the navigation drawer, which is the desktop sidebar wearing a different coat |
+| Calls tab | Moved | Work group on More, with its badge still on Today | - | More | Batch calling is a real work mode and it keeps its own entry. The work queue on Today is the other door into it |
+| Full labels on narrow tabs | Behaviour | Visible text shortened, accessible name full | - | Bottom bar | The audit asks for accessible full labels for Subs and Inbox. Five slots on a 390px screen cannot hold "Subcontractors", so the full word is the accessible name and the visible text is short |
+| Floating "Guide Me" launcher | Removed | The sidebar entry, and a new one in the mobile app bar | Sidebar | App bar | It sat pinned to the bottom-right of every desktop page, over the content, which is the one thing the audit says not to do with this control. It was also the second way to open the same panel |
+| Guide Me on a phone | Fixed | The app bar | - | App bar | It was reachable only by opening the navigation drawer and scrolling to the top of it: three taps to ask for help with the screen you are already looking at |
+| `/more` at desktop width | Behaviour | Renders normally | Desktop | Mobile | Hiding it with a media query meant a direct visit or a bookmark showed a blank screen, which is a worse answer than a list of links somebody did not need |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
