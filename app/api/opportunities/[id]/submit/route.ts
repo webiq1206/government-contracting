@@ -4,6 +4,13 @@ import { query, queryOne } from "@/lib/db";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { logAgent } from "@/lib/logger";
 import { currentRequirementsFingerprint } from "@/lib/bid-package-state";
+import {
+  mayOverride,
+  overrideProblem,
+  overrideRisk,
+  overrideSummary,
+  OVERRIDE_PROBLEM_MESSAGE,
+} from "@/lib/domain/override";
 import type { Opportunity } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -14,7 +21,31 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const ctx = await requireOrgContext({ capability: "submit" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
-  const { force } = await req.json().catch(() => ({}));
+  /*
+   * An override is a decision with a name against it, not a boolean.
+   *
+   * `force: true` used to be enough. It got a package past the lead-hours rule
+   * and past a package not marked ready, and left a log line saying somebody
+   * submitted; nothing recorded which warning was overridden, why, or what the
+   * person believed at the time. A contracting officer asking six weeks later
+   * why a bid went out ninety minutes before close has a fair question, and
+   * "somebody passed force" is not an answer.
+   *
+   * The old shape is still accepted at the type level and rejected at the
+   * gate: a request carrying `force` with no reason gets told what is missing
+   * rather than silently doing nothing.
+   */
+  const body = (await req.json().catch(() => ({}))) as {
+    force?: boolean;
+    override?: { requirement?: string; reason?: string };
+  };
+  const overrideReq = {
+    requirement: body.override?.requirement ?? "",
+    reason: body.override?.reason ?? "",
+  };
+  const wantsOverride = Boolean(body.force) || Boolean(body.override);
+  const overrideOk = wantsOverride && mayOverride(overrideReq);
+  const force = overrideOk;
 
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -145,6 +176,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
    * out of credit, unreachable, or skipped. The instructions call for a human
    * gate here rather than an unqualified block, which is what force is.
    */
+  /*
+   * Validate the override here, and not a line earlier.
+   *
+   * Every hard blocker above refuses regardless of `force`, so an operator who
+   * sent one should be told the blocker is not overridable, not asked to write
+   * a reason they will never be allowed to use. Asking first would be a form
+   * that wastes somebody's time and then refuses them anyway.
+   */
+  if (wantsOverride && !overrideOk) {
+    const problem = overrideProblem(overrideReq)!;
+    return NextResponse.json(
+      { error: OVERRIDE_PROBLEM_MESSAGE[problem], overrideProblem: problem },
+      { status: 400 }
+    );
+  }
+
   if (!bid.package_ready && !force) {
     return NextResponse.json(
       {
@@ -168,8 +215,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (hoursLeft < leadHours && !force) {
       return NextResponse.json(
         {
-          error: `Deadline is ${hoursLeft.toFixed(1)}h away; policy requires submitting at least ${leadHours}h before. Pass force to override.`,
+          error: `Deadline is ${hoursLeft.toFixed(1)}h away; policy requires submitting at least ${leadHours}h before. To go ahead, say which warning you are overriding and why.`,
           needsForce: true,
+          // Named so the UI can prefill the requirement and the operator is
+          // writing about a specific thing rather than "the checks".
+          requirement: `Submitting ${hoursLeft.toFixed(1)}h before the deadline, inside the ${leadHours}h policy`,
         },
         { status: 409 }
       );
@@ -195,6 +245,34 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     `update bids set submission_state='approved' where id=$1 and submission_state='package_ready'`,
     [bid.id]
   );
+  if (overrideOk) {
+    /*
+     * Written before the approval event, so an override can never end up
+     * without the approval it justified, and so the two read in the order
+     * they happened.
+     */
+    const at = new Date();
+    await query(
+      `insert into bid_overrides (bid_id, org_id, requirement, reason, risk, actor)
+       values ($1,$2,$3,$4,$5,$6)`,
+      [
+        bid.id,
+        orgId,
+        overrideReq.requirement.trim(),
+        overrideReq.reason.trim(),
+        overrideRisk(overrideReq.requirement),
+        auth.email,
+      ]
+    ).catch(() => {});
+    await logAgent({
+      agent: "operator",
+      action: "submit-override",
+      opportunityId: params.id,
+      bidId: bid.id,
+      level: "warn",
+      message: overrideSummary(overrideReq, auth.email, at),
+    });
+  }
   await query(
     `insert into bid_submission_events (bid_id, org_id, from_state, to_state, actor, proof)
      values ($1,$2,'package_ready','approved',$3,$4)`,
@@ -202,7 +280,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       bid.id,
       orgId,
       auth.email,
-      "Every check passed and the package was cleared to send. Nothing has been sent yet.",
+      overrideOk
+        ? `Cleared to send with a warning overridden by ${auth.email}: ${overrideReq.reason.trim()}`
+        : "Every check passed and the package was cleared to send. Nothing has been sent yet.",
     ]
   ).catch(() => {});
   await logAgent({

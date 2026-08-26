@@ -1,4 +1,5 @@
 "use client";
+import { overrideProblem, OVERRIDE_PROBLEM_MESSAGE } from "@/lib/domain/override";
 import { assessReadiness } from "@/lib/domain/submission-readiness";
 import { MarkAsSent } from "@/components/mark-as-sent";
 
@@ -209,14 +210,23 @@ export function SubmissionPackage({
     info: { className: "text-slate-500", label: "Note" },
   };
 
-  async function submit(force: boolean) {
+  /**
+   * Approve the package, optionally overriding one named warning.
+   *
+   * `force: true` used to be the whole story: a boolean that got a package
+   * past the lead-hours rule with nothing recorded about which warning was
+   * waved or why. An override is a decision somebody may be asked to defend
+   * six weeks later, so it carries the warning it applies to and a sentence
+   * in the operator's own words.
+   */
+  async function submit(override?: { requirement: string; reason: string }) {
     setSubmitting(true);
     setError(null);
     try {
       const res = await fetch(`/api/opportunities/${opportunityId}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
+        body: JSON.stringify(override ? { override } : {}),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -741,7 +751,7 @@ export function SubmissionPackage({
                     "Approve this package? It will be cleared to send. Brost Co does not deliver it: you send it the way the solicitation asks, then record how and when."
                   )
                 )
-                  submit(false);
+                  submit();
               }}
               disabled={submitting || !ready}
               className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
@@ -756,21 +766,24 @@ export function SubmissionPackage({
               onUploadHref="#attachments"
             />
           )}
+          {/*
+            An override asks for a sentence, not a click.
+            `window.confirm` collected agreement and recorded nothing: the log
+            said somebody submitted, and which warning they waved, and why,
+            existed nowhere. An operator with a genuine reason types it in a
+            few seconds; the point is that it is written down.
+          */}
           {canForceOverride && (
-            <button
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Nothing is outstanding on this package, but the compliance audit has not confirmed it. Record it as submitted anyway?"
-                  )
-                )
-                  submit(true);
-              }}
-              disabled={submitting}
-              className="w-full text-xs text-slate-500 hover:text-slate-700"
-            >
-              Record as submitted without audit confirmation
-            </button>
+            <OverrideForm
+              requirement="Approving without a compliance audit confirming the package"
+              busy={submitting}
+              onConfirm={(reason) =>
+                submit({
+                  requirement: "Approving without a compliance audit confirming the package",
+                  reason,
+                })
+              }
+            />
           )}
           {/*
             Why there is no override, when there is not one.
@@ -791,5 +804,86 @@ export function SubmissionPackage({
       )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Ask for the reason before waving a warning through.
+ *
+ * Deliberately not a dialog. A dialog is dismissed; a field that has to be
+ * filled in is a moment where somebody decides what they actually believe, and
+ * that sentence is the whole value of the record.
+ */
+function OverrideForm({
+  requirement,
+  busy,
+  onConfirm,
+}: {
+  requirement: string;
+  busy: boolean;
+  onConfirm: (reason: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const problem = overrideProblem({ requirement, reason });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full text-xs text-slate-500 hover:text-slate-700"
+      >
+        Approve without audit confirmation
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="rounded-md border border-review/40 bg-review/5 px-3 py-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!problem) onConfirm(reason.trim());
+      }}
+    >
+      <p className="text-sm font-medium text-slate-900">{requirement}</p>
+      <label className="mt-2 block text-xs text-muted-foreground" htmlFor="override-reason">
+        What do you know that the check does not? This goes on the record with your
+        name against it.
+      </label>
+      <textarea
+        id="override-reason"
+        className="input mt-1 w-full text-sm"
+        rows={2}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Read the package against Sections L and M myself; every listed item is present."
+        required
+      />
+      {/*
+        The specific objection, not a disabled button with no explanation.
+        Shown only once somebody has typed something, so it reads as feedback
+        rather than as a telling-off before they started.
+      */}
+      {problem && reason.trim().length > 0 && (
+        <p className="mt-1 text-xs text-review">{OVERRIDE_PROBLEM_MESSAGE[problem]}</p>
+      )}
+      <div className="mt-2 flex items-center gap-2">
+        <button type="submit" className="btn-secondary text-xs" disabled={busy || Boolean(problem)}>
+          {busy ? "Approving" : "Approve anyway"}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost text-xs"
+          onClick={() => {
+            setOpen(false);
+            setReason("");
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
