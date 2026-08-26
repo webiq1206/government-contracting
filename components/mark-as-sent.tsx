@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { SentConfirmationFlow } from "@/components/sent-confirmation-flow";
 import {
   SUBMISSION_METHOD_LABEL,
   SUBMISSION_METHODS,
@@ -54,6 +55,7 @@ export function MarkAsSent({
   const [attestation, setAttestation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [guided, setGuided] = useState(false);
 
   const submit = async () => {
     setBusy(true);
@@ -86,8 +88,33 @@ export function MarkAsSent({
   };
 
   return (
-    <form
-      className="space-y-3 border-t border-border pt-3"
+    <>
+      {/*
+        On a phone, one question at a time.
+        The grid below is eight fields and a proof selector that refuses to
+        submit until a document already exists on the bid, which on a phone
+        meant leaving this screen for the Files tab and starting again. The
+        guided flow captures the confirmation with the camera, in the minute
+        while the portal's success screen is still on the operator's screen.
+      */}
+      {guided && (
+        <SentConfirmationFlow
+          opportunityId={opportunityId}
+          proofOptions={proofOptions}
+          onClose={() => setGuided(false)}
+        />
+      )}
+      <div className="border-t border-border pt-3 lg:hidden">
+        <p className="text-sm font-medium text-foreground">Record how you sent it</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Four short steps, and you can photograph the confirmation as you go.
+        </p>
+        <button type="button" className="btn-primary mt-3 w-full" onClick={() => setGuided(true)}>
+          Record the send
+        </button>
+      </div>
+      <form
+      className="hidden space-y-3 border-t border-border pt-3 lg:block"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -215,6 +242,7 @@ export function MarkAsSent({
         {busy ? "Recording" : "Mark as sent"}
       </button>
       {error && <p className="text-xs text-risk">{error}</p>}
-    </form>
+      </form>
+    </>
   );
 }

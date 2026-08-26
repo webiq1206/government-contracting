@@ -2,6 +2,8 @@
 import { overrideProblem, OVERRIDE_PROBLEM_MESSAGE } from "@/lib/domain/override";
 import { assessReadiness } from "@/lib/domain/submission-readiness";
 import { MarkAsSent } from "@/components/mark-as-sent";
+import { ReceiptStatusCard } from "@/components/receipt-status-card";
+import { parseSubmissionState } from "@/lib/domain/submission-state";
 
 /**
  * The submission package panel: priced bid, the full compliance matrix (every
@@ -698,6 +700,24 @@ export function SubmissionPackage({
           </ol>
         </div>
       )}
+
+      {/*
+        What is proven about the send, kept on the screen.
+        "Sent" is the state that quietly loses bids: a rejected upload and a
+        successful one look identical from inside this product, and the
+        difference surfaces when the award goes to somebody else. So the card
+        stays while the acknowledgement is outstanding rather than a status
+        word appearing once and the question closing.
+      */}
+      <ReceiptStatusCard
+        state={parseSubmissionState(submissionState)}
+        sentAt={bid.submitted_at ? new Date(bid.submitted_at) : null}
+        method={bid.submission_method ?? null}
+        destination={bid.submission_destination ?? null}
+        timezone={bid.sent_timezone ?? null}
+        confirmationNumber={bid.confirmation_number ?? null}
+        proofName={proofOptions.find((p) => p.id === bid.proof_document_id)?.name ?? null}
+      />
 
       {/* Submit / submitted state */}
       {!submitted && (

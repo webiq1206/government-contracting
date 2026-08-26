@@ -542,6 +542,8 @@ export interface Bid {
   confirmation_number?: string | null;
   submission_attestation?: string | null;
   submitted_by?: string | null;
+  /** The stored receipt or screenshot that proves the send. */
+  proof_document_id?: string | null;
   outcome: "won" | "lost" | "no_award" | "pending" | null;
   award_amount: number | null;
   loss_reason: string | null;
