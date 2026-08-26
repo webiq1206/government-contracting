@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  deletionView,
+  DELETION_GRACE_DAYS,
+  RETENTION_EXPLANATION,
+} from "@/lib/domain/account-deletion";
 
 /**
  * The dangerous half of the account detail page.
@@ -16,6 +21,9 @@ export function AccountActions({
   orgName,
   billingExempt,
   suspended,
+  deletionScheduledAt,
+  deletionRequestedBy,
+  deletionReason,
   canImpersonate,
   ownerEmail,
   currentDiscount,
@@ -24,6 +32,10 @@ export function AccountActions({
   orgName: string;
   billingExempt: boolean;
   suspended: boolean;
+  /** Set when a deletion is already scheduled, so the zone shows the countdown instead. */
+  deletionScheduledAt: string | null;
+  deletionRequestedBy: string | null;
+  deletionReason: string | null;
   canImpersonate: boolean;
   ownerEmail: string | null;
   /** What they are on today, running at Stripe or still just promised. */
@@ -35,6 +47,8 @@ export function AccountActions({
 
   const [compReason, setCompReason] = useState("");
   const [suspendReason, setSuspendReason] = useState("");
+  const [deleteReason, setDeleteReason] = useState("");
+  const deletion = deletionView(deletionScheduledAt);
   const [days, setDays] = useState(14);
   const [confirmName, setConfirmName] = useState("");
 
@@ -385,29 +399,95 @@ export function AccountActions({
         )}
       </Card>
 
+      {/*
+        * The danger zone.
+        *
+        * Deletion used to be one button that committed a transaction removing
+        * everything, with the copy admitting there was no undo and no backup.
+        * The confirmation is typing the account name, which rules out
+        * misclicks, so what it could not protect against were decisions: the
+        * wrong one of two similar accounts, a cancellation reversed the next
+        * morning, a support request misread. A scheduled deletion suspends the
+        * account now, which is the part that was actually wanted, and defers
+        * the part that cannot be taken back.
+        */}
       <div className="rounded-lg border-2 border-risk/50 bg-risk/5 p-4">
-        <h3 className="font-semibold text-risk">Delete this account</h3>
-        <p className="pt-1 text-sm text-muted-foreground">
-          Removes the organization and every opportunity, subcontractor, quote,
-          document and message in it. There is no undo and no backup. Consider
-          suspending instead. Type <strong>{orgName}</strong> to confirm.
-        </p>
-        <div className="flex flex-wrap items-center gap-2 pt-3">
-          <input
-            className="input flex-1"
-            placeholder={orgName}
-            value={confirmName}
-            onChange={(e) => setConfirmName(e.target.value)}
-          />
-          <button
-            type="button"
-            className="rounded-md bg-risk px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            disabled={busy !== null || confirmName !== orgName}
-            onClick={() => run("delete", { confirmName }, "DELETE")}
-          >
-            {busy === "delete" ? "Deleting…" : "Delete permanently"}
-          </button>
-        </div>
+        {deletion.state === "none" ? (
+          <>
+            <h3 className="font-semibold text-risk">Delete this account</h3>
+            <p className="pt-1 text-sm text-muted-foreground">
+              {orgName} is suspended immediately and the data is deleted{" "}
+              {DELETION_GRACE_DAYS} days later. Cancel any time before then and nothing is
+              lost, because nothing has been touched until the window runs out.
+            </p>
+            <p className="pt-2 text-sm text-muted-foreground">{RETENTION_EXPLANATION}</p>
+            <div className="space-y-2 pt-3">
+              <input
+                className="input w-full"
+                placeholder="Why is this account being deleted?"
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  className="input flex-1"
+                  placeholder={`Type ${orgName} to confirm`}
+                  value={confirmName}
+                  onChange={(e) => setConfirmName(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="rounded-md bg-risk px-3 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  disabled={busy !== null || confirmName !== orgName || !deleteReason.trim()}
+                  onClick={() =>
+                    run("schedule_deletion", {
+                      action: "schedule_deletion",
+                      confirmName,
+                      reason: deleteReason,
+                    })
+                  }
+                >
+                  {busy === "schedule_deletion" ? "Scheduling…" : "Schedule deletion"}
+                </button>
+              </div>
+            </div>
+            <details className="pt-4">
+              <summary className="cursor-pointer text-xs text-muted-foreground">
+                Delete immediately instead
+              </summary>
+              <p className="pt-2 text-xs leading-relaxed text-muted-foreground">
+                Skips the grace period and destroys everything now. Only for a request that
+                cannot wait, such as an erasure demand with a deadline. There is no undo.
+              </p>
+              <button
+                type="button"
+                className="mt-2 rounded-md border border-risk px-3 py-2 text-xs font-semibold text-risk transition-opacity hover:opacity-80 disabled:opacity-40"
+                disabled={busy !== null || confirmName !== orgName}
+                onClick={() => run("delete", { confirmName }, "DELETE")}
+              >
+                {busy === "delete" ? "Deleting…" : "Delete permanently, now"}
+              </button>
+            </details>
+          </>
+        ) : (
+          <>
+            <h3 className="font-semibold text-risk">{deletion.headline}</h3>
+            <p className="pt-1 text-sm text-muted-foreground">
+              Suspended now, and the data goes when the window runs out.
+              {deletionRequestedBy ? ` Requested by ${deletionRequestedBy}.` : ""}
+              {deletionReason ? ` Reason: ${deletionReason}` : ""}
+            </p>
+            <p className="pt-2 text-sm text-muted-foreground">{deletion.retention}</p>
+            <button
+              type="button"
+              className="btn-primary mt-3"
+              disabled={busy !== null}
+              onClick={() => run("cancel_deletion", { action: "cancel_deletion" })}
+            >
+              {busy === "cancel_deletion" ? "Cancelling…" : "Cancel deletion and restore access"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

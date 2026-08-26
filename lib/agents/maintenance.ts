@@ -1417,6 +1417,63 @@ async function purgeOpportunitiesWithBlobs(
   });
 }
 
+/**
+ * Accounts whose deletion grace period has run out.
+ *
+ * Separate from the retention sweep because it deletes a different thing for a
+ * different reason: retention removes old archived records inside a live
+ * account on that customer's own setting, this removes a whole account an
+ * administrator decided to close. Sharing one agent would mean a customer
+ * setting retention to nought could not tell which of the two it disabled.
+ *
+ * Each account is purged in its own try, so one that fails does not strand the
+ * rest, and a failure leaves the schedule in place: the next run tries again
+ * rather than silently giving up on a deletion somebody is expecting.
+ */
+export const accountDeletionSweep: AgentDefinition = {
+  name: "account-deletion-sweep",
+  label: "Account Deletion Sweep",
+  description:
+    "Permanently deletes accounts whose scheduled deletion date has passed. An administrator schedules a deletion, the account is suspended immediately, and this removes the data once the grace period runs out. Cancelling before then leaves everything untouched.",
+  worksWithoutClaude: true,
+  async handler(): Promise<AgentResult> {
+    const { accountsDueForPurge, purgeOrganization } = await import("../admin/accounts");
+    const { recordAdminAction } = await import("../admin/audit");
+    const due = await accountsDueForPurge();
+    if (due.length === 0) {
+      return { ok: true, summary: "No account has reached the end of its deletion window." };
+    }
+    const gone: string[] = [];
+    const failed: string[] = [];
+    for (const org of due) {
+      try {
+        await purgeOrganization(org.id);
+        // Written after the purge and outside it, so the record of the
+        // deletion cannot be rolled back along with the deletion.
+        await recordAdminAction({
+          adminEmail: "account-deletion-sweep",
+          action: "account_deleted",
+          orgId: org.id,
+          orgName: org.name,
+          detail: { via: "scheduled deletion, grace period elapsed" },
+        });
+        gone.push(org.name);
+      } catch (err) {
+        failed.push(`${org.name} (${err instanceof Error ? err.message : String(err)})`);
+      }
+    }
+    return {
+      ok: failed.length === 0,
+      summary: [
+        gone.length ? `Deleted ${gone.length}: ${gone.join(", ")}.` : null,
+        failed.length ? `Failed ${failed.length}: ${failed.join("; ")}. Still scheduled.` : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    };
+  },
+};
+
 export const retentionSweep: AgentDefinition = {
   name: "retention-sweep",
   label: "Retention Sweep",

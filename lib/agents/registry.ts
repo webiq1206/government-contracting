@@ -33,6 +33,7 @@ import {
   scoringRecoverySweep,
   expiredOpportunitySweep,
   retentionSweep,
+  accountDeletionSweep,
   logRetentionSweep,
   backlinkOutreachSweep,
   contactRecheckSweep,
@@ -72,6 +73,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   scoringRecoverySweep,
   expiredOpportunitySweep,
   retentionSweep,
+  accountDeletionSweep,
   complianceSweep,
   trialSweep,
   concessionSweep,
@@ -108,6 +110,11 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     { agent: scoringRecoverySweep, cron: "*/15 * * * *" }, // every 15 min
     { agent: expiredOpportunitySweep, cron: "15 * * * *" }, // hourly at :15
     { agent: retentionSweep, cron: "45 3 * * *" }, // daily at 03:45
+    // Daily, an hour after retention. A scheduled deletion is measured in
+    // days, so checking more often would only spend queries; running it at all
+    // matters because a purge nobody performs is a promise this page made and
+    // did not keep.
+    { agent: accountDeletionSweep, cron: "50 4 * * *" }, // daily at 04:50
     { agent: complianceSweep, cron: "20 6 * * *" }, // daily at 06:20, before the working day
     // Hourly: the gates already refuse a lapsed trial, so this only needs to
     // keep stored state honest and get warnings out on the right day.

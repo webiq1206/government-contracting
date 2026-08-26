@@ -44,6 +44,10 @@ export interface AdminAccountRow {
    * page that ever asks.
    */
   last_active_at: string | null;
+  /** Set when a deletion has been scheduled but the grace period has not run out. */
+  deletion_scheduled_at: string | null;
+  deletion_requested_by: string | null;
+  deletion_reason: string | null;
   /** Computed, never stored: what this account can actually do right now. */
   access: AccessLevel;
 }
@@ -67,6 +71,9 @@ const ACCOUNT_SELECT = `
          o.pending_concession_code,
          o.pending_concession_label,
          o.created_at::text     as created_at,
+         o.deletion_scheduled_at::text as deletion_scheduled_at,
+         o.deletion_requested_by,
+         o.deletion_reason,
          owner.email            as owner_email,
          owner.name             as owner_name,
          owner.id               as owner_user_id,
@@ -518,6 +525,128 @@ export async function purgeOrganization(orgId: string): Promise<void> {
  * The guards are the point of this wrapper: it refuses our own account, and it
  * requires the name typed back exactly. purgeOrganization does the work.
  */
+/**
+ * Schedule a deletion rather than performing one.
+ *
+ * The account is suspended in the same statement, which is the part the
+ * administrator actually wanted immediately: use stops, billing stops being
+ * collectable, and the customer cannot carry on in an account somebody has
+ * decided to remove. The data is untouched, which is what makes the window
+ * recoverable at all.
+ */
+export async function scheduleAccountDeletion(input: {
+  orgId: string;
+  confirmName: string;
+  reason: string;
+  adminEmail: string;
+}): Promise<AdminActionResult> {
+  const org = await adminAccount(input.orgId);
+  if (!org) return { ok: false, error: "That account no longer exists." };
+
+  const { deletionBlockedReason, purgeDueAt, DELETION_GRACE_DAYS } = await import(
+    "../domain/account-deletion"
+  );
+  const blocked = deletionBlockedReason({
+    isOwnAccount: await isOwnAccount(input.orgId),
+    alreadyScheduled: Boolean(org.deletion_scheduled_at),
+  });
+  if (blocked) return { ok: false, error: blocked };
+
+  // Typing the name is the whole safety mechanism, and it stays on the
+  // scheduled path too: this still ends in the data going.
+  if (input.confirmName.trim() !== org.name) {
+    return {
+      ok: false,
+      error: `Type the account name exactly ("${org.name}") to confirm.`,
+    };
+  }
+
+  const dueAt = purgeDueAt();
+  await query(
+    `update organizations
+        set deletion_scheduled_at = $2,
+            deletion_requested_at = now(),
+            deletion_requested_by = $3,
+            deletion_reason = nullif($4, ''),
+            suspended_at = coalesce(suspended_at, now()),
+            suspended_reason = coalesce(suspended_reason, 'Scheduled for deletion'),
+            updated_at = now()
+      where id = $1`,
+    [input.orgId, dueAt.toISOString(), input.adminEmail, input.reason.trim()]
+  );
+
+  await recordAdminAction({
+    adminEmail: input.adminEmail,
+    action: "account_deletion_scheduled",
+    orgId: input.orgId,
+    orgName: org.name,
+    detail: {
+      due_at: dueAt.toISOString(),
+      grace_days: DELETION_GRACE_DAYS,
+      reason: input.reason.trim() || null,
+    },
+  });
+
+  return {
+    ok: true,
+    message: `${org.name} is suspended now and will be deleted in ${DELETION_GRACE_DAYS} days. Cancel any time before then and nothing is lost.`,
+  };
+}
+
+/**
+ * Call off a scheduled deletion.
+ *
+ * The suspension is lifted with it, because it was applied by the scheduling
+ * and leaving it would restore an account that still does not work. A
+ * suspension applied separately, before the deletion was scheduled, is not
+ * touched: it was somebody else's decision about something else.
+ */
+export async function cancelAccountDeletion(input: {
+  orgId: string;
+  adminEmail: string;
+}): Promise<AdminActionResult> {
+  const org = await adminAccount(input.orgId);
+  if (!org) return { ok: false, error: "That account no longer exists." };
+  if (!org.deletion_scheduled_at) {
+    return { ok: false, error: "No deletion is scheduled for this account." };
+  }
+
+  await query(
+    `update organizations
+        set deletion_scheduled_at = null,
+            deletion_requested_at = null,
+            deletion_requested_by = null,
+            deletion_reason = null,
+            suspended_at = case when suspended_reason = 'Scheduled for deletion'
+                                then null else suspended_at end,
+            suspended_reason = case when suspended_reason = 'Scheduled for deletion'
+                                    then null else suspended_reason end,
+            updated_at = now()
+      where id = $1`,
+    [input.orgId]
+  );
+
+  await recordAdminAction({
+    adminEmail: input.adminEmail,
+    action: "account_deletion_cancelled",
+    orgId: input.orgId,
+    orgName: org.name,
+    detail: { was_due_at: org.deletion_scheduled_at },
+  });
+
+  return { ok: true, message: `${org.name} is no longer scheduled for deletion.` };
+}
+
+/** Accounts whose grace period has run out, for the sweep to purge. */
+export async function accountsDueForPurge(): Promise<{ id: string; name: string }[]> {
+  return query<{ id: string; name: string }>(
+    `select id, name from organizations
+      where deletion_scheduled_at is not null and deletion_scheduled_at <= now()
+      order by deletion_scheduled_at asc
+      limit 25`
+  ).catch(() => []);
+}
+
 export async function deleteAccount(input: {
   orgId: string;
   confirmName: string;

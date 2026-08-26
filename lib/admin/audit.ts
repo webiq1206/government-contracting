@@ -22,6 +22,12 @@ export type AdminAction =
   | "account_suspended"
   | "account_reactivated"
   | "account_deleted"
+  // The scheduling and the purge are separate entries on purpose. One is a
+  // decision somebody made and could still take back; the other is the moment
+  // the data actually went, and the gap between them is the whole point of the
+  // grace period.
+  | "account_deletion_scheduled"
+  | "account_deletion_cancelled"
   | "impersonation_started"
   | "impersonation_ended"
   | "discount_applied"

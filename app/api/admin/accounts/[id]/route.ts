@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import {
+  cancelAccountDeletion,
   cancelSubscription,
   deleteAccount,
+  scheduleAccountDeletion,
   extendTrial,
   restartTrial,
   setBillingExempt,
@@ -39,6 +41,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     months?: number;
     envKey?: string;
     expiresAt?: string | null;
+    confirmName?: string;
   };
   const orgId = params.id;
   const adminEmail = auth.email;
@@ -66,6 +69,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       break;
     case "reactivate":
       result = await setSuspended({ orgId, suspended: false, reason, adminEmail });
+      break;
+    // The ordinary way to delete an account: suspended now, purged after the
+    // grace period, cancellable throughout. The immediate DELETE below stays
+    // for the cases that cannot wait.
+    case "schedule_deletion":
+      result = await scheduleAccountDeletion({
+        orgId,
+        confirmName: String(body.confirmName ?? ""),
+        reason,
+        adminEmail,
+      });
+      break;
+    case "cancel_deletion":
+      result = await cancelAccountDeletion({ orgId, adminEmail });
       break;
     case "discount":
       result = await grantConcession({

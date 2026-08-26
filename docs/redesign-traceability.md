@@ -420,6 +420,20 @@ written in advance of the work.
 | Test history in the audit view | Fixed | Filtered by the acting address too | Audit page | Audit page | The name matcher only fires on a target organization, and an invitation action has none, so every test invitation ever revoked sat in the production view looking like real history. On the seeded database that was fourteen rows of it. RFC 2606 reserves `.test` and the `example.*` domains, so an administrator at one is a fixture with certainty rather than by inference |
 | That address signal | Not used for deletion | - | - | - | The organization matcher is strict because a false positive there destroys a customer account. This one decides only whether a log line appears by default, and the toggle brings everything back |
 
+### Platform Admin Account Detail
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| "There is no undo and no backup" | Fixed | A scheduled deletion with a 30-day window | Danger zone | Danger zone | The audit requires a recoverable grace period where technically possible, and it plainly was. The confirmation is typing the account name, which rules out misclicks, so what the old button could not protect against were decisions: the wrong one of two similar accounts, a cancellation reversed the next morning, a support request misread |
+| Deletion and suspension | Behaviour | Scheduling suspends immediately | Danger zone | Danger zone | Stopping the account is the part the administrator actually wanted now. Destroying the data is the part that cannot be taken back, and only that half is deferred |
+| Cancelling a scheduled deletion | Added | Danger zone | Button | Button | Nothing was touched during the window, so cancelling restores everything. It also lifts the suspension it applied, and leaves alone a suspension that predates it, because that was a different decision about something else |
+| (new) A reason, required | Added | Danger zone | Field | Field | "Who deleted this and why" is the question asked six months later, and the audit row can only answer it if somebody was asked at the time |
+| What deletion keeps | Added | Stated in both states | Danger zone | Danger zone | The audit asks permanent deletion to explain retention. The honest answer has two halves that are easy to conflate: the customer's data goes completely, and the record that an administrator deleted it does not, because a log that erases its own deletions is not one |
+| Immediate deletion | Kept, behind a disclosure | Danger zone | Disclosure | Disclosure | An erasure demand with a legal deadline cannot wait 30 days. Removing the option would have traded one unusable state for another; it is simply no longer the default |
+| (new) Account deletion sweep | Added | Automation Health roster | Agent | Agent | A purge nobody performs is a promise this page makes and does not keep. Its own agent rather than a branch of the retention sweep, so a customer setting retention to nought cannot accidentally disable account deletion |
+| A purge that fails | Behaviour | Stays scheduled, tries next run | Sweep | Sweep | Clearing the schedule on failure would strand a deletion somebody is expecting, silently |
+| Scheduled state on the account | Added | Beside the access line | Banner | Banner | It is the single most important thing about the account, so it does not live only in the danger zone at the foot of a page that scrolls |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
