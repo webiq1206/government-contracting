@@ -1793,7 +1793,30 @@ export interface AgentStatusRow {
   last_summary: unknown;
 }
 
-export async function agentStatuses(): Promise<AgentStatusRow[]> {
+/**
+ * This organization's agent runs. Never anybody else's.
+ *
+ * Both this and jobRunsSummary below feed `/agents`, the customer-facing
+ * Automation Health page, and both read job_runs, which had no org_id at all.
+ * So every customer was shown platform-wide run and error counts, plus the
+ * error text and summary JSON of whichever tenant happened to run an agent
+ * most recently. A summary reading "Compliance monitor: 3 orgs checked" is
+ * another customer's business on this customer's screen, and last_error can
+ * name a record outright.
+ *
+ * Legacy rows written before migration 070 have a null org_id and are
+ * excluded rather than attributed. Nothing in such a row says who it belonged
+ * to, and a guess here would put a stranger's failure rate in somebody's
+ * sidebar with a straight face. They remain visible to platform admin, where
+ * a platform-wide question is the question being asked.
+ */
+export async function agentStatuses(orgId?: string): Promise<AgentStatusRow[]> {
+  // currentOrg, not tryResolveTenantOrgId: this file resolves the tenant one
+  // way, and that way falls back to the founding organization so the original
+  // single-tenant install, whose rows predate organization_members, still sees
+  // its own page. LEGACY_ORG_ID is a real organization id, so that fallback is
+  // still a scope and not a fall-open.
+  const org = orgId ?? (await currentOrg());
   return query<AgentStatusRow>(
     `select r.agent,
             count(*) filter (where r.started_at > now() - interval '24 hours')::int as runs_24h,
@@ -1806,23 +1829,53 @@ export async function agentStatuses(): Promise<AgentStatusRow[]> {
             last.summary as last_summary
        from job_runs r
        -- The most recent run for this agent, which is the one the operator is
-       -- asking about; the counts beside it are the context for it.
+       -- asking about; the counts beside it are the context for it. Scoped
+       -- inside the lateral as well as outside: without it the counts would be
+       -- this organization's and the error text beside them somebody else's,
+       -- which is the same leak wearing a filter.
        join lateral (
          select status, error, summary, finished_at
            from job_runs x
-          where x.agent = r.agent
+          where x.agent = r.agent and x.org_id = $1
           order by x.started_at desc
           limit 1
        ) last on true
-      group by r.agent, last.status, last.error, last.summary, last.finished_at`
+      where r.org_id = $1
+      group by r.agent, last.status, last.error, last.summary, last.finished_at`,
+    [org]
   ).catch(() => []);
 }
 
-export async function jobRunsSummary() {
+/** This organization's run tallies. See agentStatuses for why the scope. */
+export async function jobRunsSummary(orgId?: string) {
+  const org = orgId ?? (await currentOrg());
   return query(
     `select agent,
             count(*) filter (where status='ok') as ok,
             count(*) filter (where status='error') as error,
+            max(started_at) as last_run
+       from job_runs
+      where org_id = $1
+      group by agent order by max(started_at) desc nulls last`,
+    [org]
+  );
+}
+
+/**
+ * Every organization's runs, for platform admin only.
+ *
+ * Deliberately a separate function rather than an optional argument on the two
+ * above. An unscoped read is a different question with a different audience,
+ * and making it opt-in by name means no customer-facing caller reaches it by
+ * forgetting to pass something. Includes the legacy null-org rows, which is
+ * the only place they can honestly be shown.
+ */
+export async function platformJobRunsSummary() {
+  return query(
+    `select agent,
+            count(*) filter (where status='ok') as ok,
+            count(*) filter (where status='error') as error,
+            count(*) filter (where org_id is null) as unattributed,
             max(started_at) as last_run
        from job_runs
       group by agent order by max(started_at) desc nulls last`

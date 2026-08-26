@@ -173,9 +173,21 @@ export async function runAgent(
 
   const runId = randomUUID();
   const started = Date.now();
+  /*
+   * `orgId` and not `payload.orgId`. payloadOrgId resolves it from the OWNER
+   * of the records the payload names, and a record always beats the payload's
+   * own claim; the raw field is only a seed for a job that names no record at
+   * all. Writing the unverified field here would let whatever enqueued the job
+   * choose which customer's Automation Health page its run appears on.
+   *
+   * Null when nothing could establish an owner: a cron sweep with no payload,
+   * which does its own per-organization loop below this. Null means platform
+   * work, and the customer-facing queries exclude it rather than showing every
+   * tenant a run they cannot account for.
+   */
   const jobRun = await queryOne<{ id: string }>(
-    `insert into job_runs (agent, trigger, status) values ($1,$2,'running') returning id`,
-    [def.name, trigger]
+    `insert into job_runs (agent, trigger, status, org_id) values ($1,$2,'running',$3) returning id`,
+    [def.name, trigger, orgId]
   ).catch(() => null);
 
   /**
