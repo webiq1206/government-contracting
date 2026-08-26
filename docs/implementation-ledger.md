@@ -71,7 +71,10 @@ Findings named in the instructions, checked before any code was changed.
 | 27 | No post-abort external send | Verified | The transport re-reads at the boundary rather than trusting the runner's check minutes earlier. A single check at job start passes every test written against a fast fixture and fails exactly once in production, on the message somebody was trying to stop |
 | 27 | Fails closed | Verified | An unreadable row, a missing row, and an unrecognised state all answer "may not act". `tests/pursuit-state.test.ts` pins eight unrecognised values, including `"ACTIVE"` and `"activ"` |
 | 27 | Abort reasons are structured, with a note required for Other | Verified | `ABORT_REASONS` plus `abortRequestProblem`. A free-text-only reason makes "why do we abandon pursuits" unanswerable in analytics |
-| 27 | Restarting is not resuming | Implemented | `RESTART_REVALIDATION` names the checks in one place so the restart path and the confirmation screen cannot describe different work. The restart path itself is not built yet |
+| 27 | Restarting is not resuming | Verified | `POST /api/opportunities/[id]/pursuit` refuses `resume` on an aborted pursuit with a 409 that names the revalidation, rather than quietly performing a restart. `tests/pursuit-api.integration.test.ts` |
+| 27 | Pause, resume, abort and restart are distinct | Verified | Four actions with different effects: pause preserves and does not bump the version, abort requires a structured reason and bumps it, restart bumps again and promises nothing sends until packets are approved. 10 tests |
+| 27 | Abort is idempotent | Verified | Repeating it returns `alreadyAborted` without a second version bump, which would otherwise make an unrelated restart look stale |
+| 27 | Recovery sweeps cannot recreate stopped work | Verified | `enqueue` refuses a payload naming a stopped opportunity. Without it, scoring recovery re-queues an aborted opportunity every 15 minutes forever, each refused and logged |
 | 7 | Third message disabled unless first-class | Verified | `final_nudge_enabled`, off by default and absent-key-means-off, plus `followup_max > 0`. `tests/final-nudge-gate.test.ts`, 8 tests. No settings toggle, because enabling it today would enable exactly the message the instructions object to |
 | 26 | Lint runs and passes | Verified | `.eslintrc.json`; three findings fixed rather than suppressed |
 
@@ -89,7 +92,7 @@ a ledger.
 
 | Requirement | Built | Not built |
 | --- | --- | --- |
-| WP27 operator control | The pursuit state, the guard, and its enforcement at the runner and the send boundary. Nothing automatic reaches a subcontractor once a pursuit is stopped | The API routes and UI for Abort, Pause, Restart, Stop outreach, and the four distinct call controls (`Skip this call`, `Call later`, `Do not call for this trade`, `Do not call this subcontractor`). The state can currently only be set directly |
+| WP27 operator control | The pursuit state, the guard, its enforcement at the runner, the send boundary and the enqueue path, and the API for pause, resume, abort and restart | The UI: the deliberate abort confirmation flow with its impact summary and typed confirmation, and the Opportunity Workspace controls. Also `Stop outreach for this subcontractor` and the four distinct call controls (`Skip this call`, `Call later`, `Do not call for this trade`, `Do not call this subcontractor`), which need their own suppression records |
 
 Recorded this way deliberately. The guard is the half that prevents harm, and
 shipping it before the controls means an abort set by any route is honoured
