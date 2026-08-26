@@ -8,7 +8,7 @@ import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
 import { automationHealth } from "@/lib/automation-status";
 import { AutomationBlockerBanner } from "@/components/automation-incidents";
 import { SetupChecklist } from "@/components/setup-checklist";
-import { workQueue } from "@/lib/data";
+import { workQueue, completedToday } from "@/lib/data";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { integrationStatus } from "@/lib/config";
@@ -36,6 +36,17 @@ import { withGuideQuery } from "@/lib/guide-links";
 import { TodayBulkCalls } from "@/components/today-bulk-calls";
 import { TodayBulkTriage } from "@/components/today-bulk-triage";
 import { ReplyReviewList } from "@/components/reply-review-list";
+import { TodayCounters, CompletedTodayPanel } from "@/components/today-counters";
+import { QueueFilters } from "@/components/queue-filters";
+import {
+  queueCounts,
+  filterWorkItems,
+  parseQueueFilter,
+  parseKindFilter,
+  KIND_FILTER_LABEL,
+  type WorkKind,
+  type QueueFilter,
+} from "@/lib/domain/work-queue";
 
 export const dynamic = "force-dynamic";
 
@@ -423,9 +434,13 @@ function PipelineHealthRail({
   );
 }
 
-export default async function TodayPage() {
+export default async function TodayPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const rules = await getAutomationRules();
-  const [data, profile, automation, digest, queueItems, pulse, health] = await Promise.all([
+  const [data, profile, automation, digest, queueItems, pulse, health, done] = await Promise.all([
     actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
     getAutomationState(),
@@ -443,7 +458,54 @@ export default async function TodayPage() {
     }),
     readPipelinePulse().catch(() => []),
     automationHealth().catch(() => null),
+    /*
+     * Not tolerant of a silent failure either, but a broken count is worth
+     * less than a broken queue: a zero here reads as "nothing done yet",
+     * which is a real state, so it is logged and the page still renders.
+     */
+    completedToday().catch((e) => {
+      console.error("[today] completed-today count failed:", e);
+      return { calls: 0, quotes: 0, bidsSubmitted: 0, decisions: 0, complianceResolved: 0, total: 0 };
+    }),
   ]);
+
+  /*
+   * The filters, read from the URL. Counts are always over the whole queue,
+   * never over the filtered view: a counter that changes when a filter is
+   * applied is describing the filter.
+   */
+  const queueQ = (() => {
+    const raw = searchParams?.q;
+    return (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
+  })();
+  const queueBucket: QueueFilter = parseQueueFilter(searchParams?.due);
+  const queueKind: WorkKind | null = parseKindFilter(searchParams?.kind);
+  const counts = queueCounts(queueItems);
+  const kindCounts = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).reduce(
+    (acc, k) => {
+      acc[k] = queueItems.filter((i) => i.kind === k).length;
+      return acc;
+    },
+    {} as Record<WorkKind, number>
+  );
+  const shownQueue = filterWorkItems(queueItems, {
+    bucket: queueBucket,
+    kind: queueKind,
+    q: queueQ,
+  });
+  const queueFiltered = queueBucket !== "all" || queueKind != null || queueQ !== "";
+
+  function queueHref(opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string } = {}): string {
+    const p = new URLSearchParams();
+    const bucket = opts.bucket ?? queueBucket;
+    const kind = opts.kind === undefined ? queueKind : opts.kind;
+    const q = opts.q ?? queueQ;
+    if (bucket !== "all") p.set("due", bucket);
+    if (kind) p.set("kind", kind);
+    if (q) p.set("q", q);
+    const s = p.toString();
+    return s ? `/today?${s}#queue` : "/today#queue";
+  }
   const digestParts = [
     digest.found > 0 && `${digest.found} new opportunit${digest.found === 1 ? "y" : "ies"} found`,
     digest.autoPursued > 0 && `${digest.autoPursued} auto-pursued`,
@@ -556,8 +618,36 @@ export default async function TodayPage() {
                   themed sections. The sections stay for context; this answers
                   "what should I do next" before any of them are opened. */}
               {queueItems.length > 0 && (
-                <div id="queue" className="scroll-mt-6">
-                  <WorkQueue items={queueItems} limit={6} />
+                <div id="queue" className="scroll-mt-6 space-y-4">
+                  <TodayCounters
+                    counts={counts}
+                    done={done}
+                    active={queueBucket}
+                    hrefFor={(f) => queueHref({ bucket: f })}
+                    completedHref="/today#completed"
+                  />
+                  <QueueFilters
+                    q={queueQ}
+                    bucket={queueBucket}
+                    kind={queueKind}
+                    kindCounts={kindCounts}
+                    hrefFor={(o) => queueHref(o)}
+                    clearHref="/today#queue"
+                  />
+                  {shownQueue.length > 0 ? (
+                    <WorkQueue items={shownQueue} limit={5} />
+                  ) : (
+                    <EmptyState
+                      tone="success"
+                      title="Nothing in the queue matches that"
+                      description="The counters above are for the whole queue. Clear the filter to see the rest."
+                      action={
+                        <Link href="/today#queue" className="shell-ghost text-sm">
+                          Show everything
+                        </Link>
+                      }
+                    />
+                  )}
                 </div>
               )}
 
@@ -1011,6 +1101,14 @@ export default async function TodayPage() {
                   )}
                 </div>
               </details>
+
+              {/*
+                * Last, and quieter than everything above it. What is left
+                * outranks what is finished on a page whose job is the day
+                * ahead, but a day with nothing recorded and a day with
+                * everything recorded should not look the same either.
+                */}
+              <CompletedTodayPanel done={done} />
 
             </div>
 

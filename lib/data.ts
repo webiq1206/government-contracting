@@ -703,6 +703,86 @@ export async function complianceBoard() {
   return items;
 }
 
+/**
+ * A timestamp column as an ISO string, whatever the driver handed back.
+ *
+ * node-postgres returns a `Date` for a `timestamptz`, and the row types here
+ * declare these columns as `string`. TypeScript accepts that and the runtime
+ * does not: a `Date` reaching anything that slices or compares strings throws,
+ * and the last time that happened it took down an entire page for every
+ * account that had one row with a date in it. Normalized once, here, so
+ * everything downstream gets the shape its type promises.
+ */
+function isoOrNull(v: unknown): string | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * What the operator actually finished today.
+ *
+ * Not derived from the queue. The queue is what is left, so an empty queue
+ * would give the same answer for "nothing to do" and "everything done", which
+ * are opposite mornings. These come from the timestamps the work itself
+ * leaves behind: a call placed, a quote entered, a bid submitted, a decision
+ * recorded, a compliance item resolved.
+ *
+ * The day boundary is the database's, which is the server's. That is a real
+ * limitation on an account whose operator is several timezones away, and it
+ * is named here rather than papered over: the alternative is passing a
+ * timezone from the browser into a server component, which arrives one render
+ * late and would make the counter flicker.
+ */
+export interface CompletedToday {
+  calls: number;
+  quotes: number;
+  bidsSubmitted: number;
+  decisions: number;
+  complianceResolved: number;
+  total: number;
+}
+
+export async function completedToday(): Promise<CompletedToday> {
+  const orgId = await currentOrg();
+  const row = await queryOne<Record<string, string>>(
+    `select
+       (select count(*) from call_cards cc
+          join opportunities o on o.id = cc.opportunity_id
+         where o.org_id = $1 and cc.called_at >= date_trunc('day', now()))::text as calls,
+       (select count(*) from quotes q
+         where q.org_id = $1 and q.created_at >= date_trunc('day', now()))::text as quotes,
+       (select count(*) from bids b
+         where b.org_id = $1 and b.submitted_at >= date_trunc('day', now()))::text as bids,
+       (select count(*) from opportunities o
+         where o.org_id = $1 and o.human_action_required = false
+           and o.updated_at >= date_trunc('day', now())
+           and o.stage <> 'discovered')::text as decisions,
+       (select count(*) from compliance_items ci
+         where ci.org_id = $1 and ci.status_override = 'resolved'
+           and ci.updated_at >= date_trunc('day', now()))::text as compliance`,
+    [orgId]
+  );
+
+  const n = (v: string | undefined) => {
+    const x = Number(v ?? 0);
+    return Number.isFinite(x) ? x : 0;
+  };
+  const calls = n(row?.calls);
+  const quotes = n(row?.quotes);
+  const bidsSubmitted = n(row?.bids);
+  const decisions = n(row?.decisions);
+  const complianceResolved = n(row?.compliance);
+  return {
+    calls,
+    quotes,
+    bidsSubmitted,
+    decisions,
+    complianceResolved,
+    total: calls + quotes + bidsSubmitted + decisions + complianceResolved,
+  };
+}
+
 /*
  * A peek id arrives from a query string, so it is whatever somebody typed.
  * Postgres raises on `uuid = 'not-a-uuid'`, which took the whole roster page
@@ -2341,7 +2421,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       kind: "read_reply" as const,
       title: `Read reply from ${r.company_name ?? "a subcontractor"}`,
       context: r.opp_title ?? "",
-      due: r.deadline,
+      due: isoOrNull(r.deadline),
       href: "/today#reply-reviews",
       actionLabel: "Read reply",
       reason: "The automatic reader was not confident enough to act on this, so the conversation is stopped until somebody reads it.",
@@ -2351,8 +2431,8 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       kind: "decide" as const,
       title: `Pursue or pass: ${d.title ?? "untitled opportunity"}`,
       context: "Borderline score",
-      due: d.deadline,
-      expiresAt: d.review_expires_at,
+      due: isoOrNull(d.deadline),
+      expiresAt: isoOrNull(d.review_expires_at),
       href: `/opportunity/${d.id}#next`,
       actionLabel: "Decide",
       reason: d.review_expires_at
@@ -2364,7 +2444,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       kind: "call" as const,
       title: `Call ${c.company_name}${c.trade ? ` about ${c.trade}` : ""}`,
       context: c.opp_title ?? "",
-      due: c.deadline,
+      due: isoOrNull(c.deadline),
       href: `/call-queue`,
       actionLabel: "Open call",
       reason: "Email has not produced a price on this trade, so the next move is a phone call.",
@@ -2384,7 +2464,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
             ? `Enter quotes: ${o.title ?? "untitled"}`
             : `Resolve blocker: ${o.title ?? "untitled"}`,
       context: o.stage.replace(/_/g, " "),
-      due: o.deadline,
+      due: isoOrNull(o.deadline),
       href:
         o.stage === "bid_building"
           ? `/opportunity/${o.id}#submission`

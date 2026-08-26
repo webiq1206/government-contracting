@@ -205,6 +205,19 @@ written in advance of the work.
   the compliance cards are editable in place. A drawer there would be a second
   way to read the same thing.
 
+### Today
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| "Needs you: N" as the only count | Changed | Four counters: Overdue, Due today, Remaining, Completed today | Today | Today | "How much" is the least useful of the questions somebody opening this page has. How much of it is already late is what decides whether this is a normal morning, and it was not on the page at all |
+| (new) Counters double as the filter | Added | The counter row | Today | Today | Reading a number and acting on it is one click rather than reading a number and then finding the control that matches it |
+| (new) Queue search and kind filters | Added | Above the queue | Today | Today | At a dozen items the queue is a list you read; at eighty it is a haystack. Filtering by kind is how somebody with half an hour and a phone works only the calls. Driven through the URL, so a filtered queue is a link and there is one definition of "overdue calls" rather than one on the server and one in the browser |
+| Queue showed six items | Changed | Five, as specified | Today | Today | - |
+| (new) Completed today | Added | Foot of the page, quieter than the queue | Today | Today | Counted from what the work leaves behind -- calls placed, quotes entered, bids submitted, decisions recorded, compliance resolved -- and never from the queue. The queue is what is left, so deriving it from an empty queue would give the same answer for "nothing to do" and "everything done", which are opposite mornings |
+| Completed-today day boundary | Behaviour | The server's day | Today | Today | Named on the page rather than papered over. Passing a timezone from the browser arrives one render late and would make the counter flicker |
+| An item with no deadline | Behaviour | Counts as Remaining, never Overdue | Today | Today | Treating an absent date as a passed one is the same lie as showing 0 for an unknown count, and here it would fill the overdue counter with work that is not late and cannot become late |
+| `WorkItem.due` typed `string`, holding a `Date` | Fixed | Normalized to ISO at the query boundary | - | - | node-postgres returns a Date for a timestamptz. Nothing sliced it yet, so nothing had crashed yet -- which is exactly the state the Contracts page was in until one row with a CPARS date took the whole page down |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
