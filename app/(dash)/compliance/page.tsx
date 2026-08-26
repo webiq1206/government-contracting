@@ -9,13 +9,18 @@ import { statusColor } from "@/lib/domain/compliance";
 import type { ComplianceStatus } from "@/lib/domain/compliance";
 import {
   areaFor,
+  parseArea,
+  parseState,
+  stateOf,
   subcontractorComplianceBoard,
+  STATE_LABEL,
   AREA_LABEL,
   AREA_EXPLANATION,
   AREA_ORDER,
   type ComplianceArea,
   type SubComplianceInput,
   type SubComplianceItem,
+  type BoardState,
 } from "@/lib/domain/compliance-areas";
 import {
   ComplianceItemCard,
@@ -164,6 +169,7 @@ function buildCard(row: Row): ComplianceCardData {
     statusValue: statusOverride, // "" = automatic
     statusLabel: STATUS_LABEL[effStatus] ?? effStatus,
     countdownText,
+    daysLeft: days,
     color,
     notes: str(row.notes),
     link_url: str(row.link_url),
@@ -225,11 +231,38 @@ function groupSubRows(rows: Row[]): SubComplianceInput[] {
   return [...bySub.values()];
 }
 
-export default async function CompliancePage() {
+/** How far out a date sits across the timeline window, as a percentage. */
+const TIMELINE_DAYS = 90;
+
+/** Chip styling shared by the state and area filters, matching Contracts. */
+function chipClass(active: boolean, empty: boolean): string {
+  const base =
+    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5";
+  if (active) return `${base} border-gold bg-gold/15 text-foreground`;
+  if (empty) return `${base} border-border text-muted-foreground`;
+  return `${base} border-border text-foreground hover:border-foreground/30`;
+}
+
+function filterHref(area: ComplianceArea | null, state: BoardState | null): string {
+  const params = new URLSearchParams();
+  if (area) params.set("area", area);
+  if (state) params.set("state", state);
+  const q = params.toString();
+  return q ? `/compliance?${q}` : "/compliance";
+}
+
+export default async function CompliancePage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   const [rows, subRows] = (await Promise.all([
     complianceBoard(),
     subcontractorComplianceRows(),
   ])) as [Row[], Row[]];
+
+  const stateFilter = parseState(searchParams?.state);
+  const areaFilter = parseArea(searchParams?.area);
 
   const subBoard = subcontractorComplianceBoard(groupSubRows(subRows));
 
@@ -267,8 +300,77 @@ export default async function CompliancePage() {
     deadlineRows.map((r) => [str(r.id), buildCard(r)])
   );
 
+  /*
+   * Counted across everything, then filtered. A summary that only counts what
+   * is currently on screen would change every time a filter is applied, which
+   * makes it a description of the filter rather than of the account.
+   */
+  const stateCounts: Record<BoardState, number> = {
+    attention: 0,
+    expiring: 0,
+    cannot_monitor: 0,
+    on_track: 0,
+  };
+  for (const r of deadlineRows) {
+    const card = cardById.get(str(r.id));
+    if (card) stateCounts[stateOf(card.color)] += 1;
+  }
+  for (const item of subBoard.items) {
+    stateCounts[item.color === "red" ? "attention" : "expiring"] += 1;
+  }
+  stateCounts.on_track += subBoard.currentCount;
+
+  /*
+   * The next ninety days, in date order. Everything on this strip is also in
+   * its area below; it exists because "which of these lands first" is the one
+   * question an area listing cannot answer, and it was being answered by
+   * reading every card and doing the arithmetic by hand.
+   */
+  const timeline: {
+    key: string;
+    label: string;
+    daysLeft: number;
+    dueDisplay: string;
+    color: "red" | "amber" | "green";
+  }[] = [];
+  for (const r of deadlineRows) {
+    const card = cardById.get(str(r.id));
+    if (!card || card.daysLeft == null) continue;
+    if (card.daysLeft < 0 || card.daysLeft > TIMELINE_DAYS) continue;
+    timeline.push({
+      key: card.id,
+      label: card.label,
+      daysLeft: card.daysLeft,
+      dueDisplay: card.dueDisplay,
+      color: card.color === "slate" ? "green" : card.color,
+    });
+  }
+  for (const item of subBoard.items) {
+    if (!item.dueDay) continue;
+    const d = new Date(item.dueDay);
+    if (Number.isNaN(d.getTime())) continue;
+    const daysLeft = Math.ceil((d.getTime() - Date.now()) / 86_400_000);
+    if (daysLeft < 0 || daysLeft > TIMELINE_DAYS) continue;
+    timeline.push({
+      key: item.subId,
+      label: `${item.companyName}: ${item.statusLabel.toLowerCase()}`,
+      daysLeft,
+      dueDisplay: shortDate(item.dueDay),
+      color: item.color,
+    });
+  }
+  timeline.sort((a, b) => a.daysLeft - b.daysLeft);
+
+  const visibleRows = deadlineRows.filter((r) => {
+    const card = cardById.get(str(r.id));
+    if (!card) return false;
+    if (stateFilter && stateOf(card.color) !== stateFilter) return false;
+    if (areaFilter && areaFor(str(r.category)) !== areaFilter) return false;
+    return true;
+  });
+
   // Highlight overdue/blocking items up top.
-  const urgent = deadlineRows.filter((r) => cardById.get(str(r.id))?.color === "red");
+  const urgent = visibleRows.filter((r) => cardById.get(str(r.id))?.color === "red");
   /*
    * Grouped by area, not by the raw category column. The category is kept as a
    * subheading inside an area that holds more than one of them, so no heading
@@ -284,7 +386,7 @@ export default async function CompliancePage() {
    * than it is would send someone looking for an item that is on the page.
    */
   const pinnedByArea = new Map<ComplianceArea, number>();
-  for (const r of deadlineRows) {
+  for (const r of visibleRows) {
     const cat = str(r.category) || "other";
     const area = areaFor(cat);
     if (urgentIds.has(str(r.id))) {
@@ -297,9 +399,31 @@ export default async function CompliancePage() {
     byCat.get(cat)!.push(r);
   }
 
+  /*
+   * The sixth area obeys the same filters. Leaving it unfiltered would make it
+   * the one part of the board that ignores what was asked for, which reads as
+   * a bug long before it reads as a feature.
+   */
+  const subVisible =
+    areaFilter && areaFilter !== "subcontractor"
+      ? { items: [], currentCount: 0 }
+      : {
+          items: subBoard.items.filter((i) => {
+            if (!stateFilter) return true;
+            return stateFilter === (i.color === "red" ? "attention" : "expiring");
+          }),
+          currentCount:
+            !stateFilter || stateFilter === "on_track" ? subBoard.currentCount : 0,
+        };
+
   const urgentCount = urgent.length;
-  const subUrgent = subBoard.items.filter((i) => i.color === "red").length;
-  const attentionCount = urgentCount + subUrgent;
+  const subUrgent = subVisible.items.filter((i) => i.color === "red").length;
+  /*
+   * The headline describes the account, not the current filter. A number in
+   * the page title that moves when a filter is applied is answering a
+   * different question than the one it looks like it is answering.
+   */
+  const attentionCount = stateCounts.attention;
   const trackedCount = deadlineRows.length + subBoard.items.length + subBoard.currentCount;
 
   return (
@@ -337,6 +461,113 @@ export default async function CompliancePage() {
           </div>
         </div>
 
+        {/*
+          * Summary and filter are one control rather than two. A summary row
+          * that only reports, sitting above a filter row that only filters,
+          * makes a person read a count and then find the matching filter --
+          * two steps to answer "show me those four".
+          */}
+        <nav aria-label="Compliance status" className="flex flex-wrap gap-2">
+          <Link
+            href={areaFilter ? `/compliance?area=${areaFilter}` : "/compliance"}
+            aria-current={stateFilter == null ? "page" : undefined}
+            className={chipClass(stateFilter == null, false)}
+          >
+            Everything
+            <span className="num text-muted-foreground">
+              {stateCounts.attention +
+                stateCounts.expiring +
+                stateCounts.cannot_monitor +
+                stateCounts.on_track}
+            </span>
+          </Link>
+          {(["attention", "expiring", "cannot_monitor", "on_track"] as BoardState[]).map((st) => (
+            <Link
+              key={st}
+              href={filterHref(areaFilter, stateFilter === st ? null : st)}
+              aria-current={stateFilter === st ? "page" : undefined}
+              className={chipClass(stateFilter === st, stateCounts[st] === 0)}
+            >
+              {STATE_LABEL[st]}
+              <span className="num text-muted-foreground">{stateCounts[st]}</span>
+            </Link>
+          ))}
+        </nav>
+
+        <nav aria-label="Compliance areas" className="flex flex-wrap gap-2">
+          {AREA_ORDER.map((a) => (
+            <Link
+              key={a}
+              href={filterHref(areaFilter === a ? null : a, stateFilter)}
+              aria-current={areaFilter === a ? "page" : undefined}
+              className={chipClass(areaFilter === a, false)}
+            >
+              {AREA_LABEL[a]}
+            </Link>
+          ))}
+        </nav>
+
+        {timeline.length > 0 && (
+          <section aria-labelledby="expiring-soon">
+            <h2 id="expiring-soon" className="label mb-1">
+              Landing in the next 90 days
+            </h2>
+            <p className="mb-3 text-xs text-slate-500">
+              In date order. Everything here is also in its area below; this is
+              the one question an area listing cannot answer.
+            </p>
+            <ol className="space-y-1.5">
+              {timeline.map((t) => (
+                <li key={t.key} className="flex items-center gap-3 text-sm">
+                  <span className="w-24 shrink-0 text-xs text-slate-500">{t.dueDisplay}</span>
+                  <span className="hidden h-1.5 flex-1 rounded-full bg-slate-200 sm:block">
+                    {/*
+                      * Position, not width: the bar is a ruler across the
+                      * ninety days, and the marker is where this item falls
+                      * on it. A bar that grew with the number would read as
+                      * "more" when it means "later".
+                      */}
+                    <span
+                      className={`block h-1.5 w-1.5 rounded-full ${
+                        t.color === "red"
+                          ? "bg-risk"
+                          : t.color === "amber"
+                            ? "bg-review"
+                            : "bg-pursue"
+                      }`}
+                      style={{
+                        marginLeft: `${Math.min(99, (t.daysLeft / TIMELINE_DAYS) * 100)}%`,
+                      }}
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-foreground sm:flex-none sm:basis-1/3">
+                    {t.label}
+                  </span>
+                  <span className="shrink-0 text-xs text-slate-500">
+                    {t.daysLeft === 0 ? "due today" : `${t.daysLeft}d`}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {(stateFilter || areaFilter) &&
+          visibleRows.length === 0 &&
+          subVisible.items.length === 0 &&
+          subVisible.currentCount === 0 && (
+            <EmptyState
+              tone="success"
+              title="Nothing matches that filter"
+              description="The counts above are for the whole board. Pick another one, or go back to everything."
+              action={
+                <Link href="/compliance" className="btn-ghost text-sm">
+                  Show everything
+                </Link>
+              }
+            />
+          )}
+
         {(urgent.length > 0 || subUrgent > 0) && (
           <section data-guide-target="compliance-attention">
             <h2 className="label mb-2 text-risk">Needs attention now</h2>
@@ -359,7 +590,7 @@ export default async function CompliancePage() {
                 * exposure that only shows up further down the page is one the
                 * person scanning the top of the board will not see.
                 */}
-              {subBoard.items
+              {subVisible.items
                 .filter((i) => i.color === "red")
                 .map((i) => (
                   <SubComplianceCard key={i.subId} item={i} />
@@ -385,9 +616,7 @@ export default async function CompliancePage() {
 
         {AREA_ORDER.map((area) => {
           if (area === "subcontractor") {
-            return (
-              <SubcontractorArea key={area} board={subBoard} />
-            );
+            return <SubcontractorArea key={area} board={subVisible} />;
           }
           const byCat = groups.get(area);
           const pinned = pinnedByArea.get(area) ?? 0;

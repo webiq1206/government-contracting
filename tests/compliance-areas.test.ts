@@ -14,6 +14,10 @@ import {
   AREA_LABEL,
   AREA_EXPLANATION,
   AREA_ORDER,
+  parseArea,
+  parseState,
+  stateOf,
+  STATE_LABEL,
   type SubComplianceInput,
 } from "@/lib/domain/compliance-areas";
 import type { ComplianceDoc } from "@/lib/domain/sub-compliance";
@@ -227,5 +231,52 @@ describe("subcontractorComplianceBoard", () => {
   it("reads a subcontractor with no documents at all rather than throwing", () => {
     expect(() => subcontractorComplianceBoard([], NOW)).not.toThrow();
     expect(subcontractorComplianceBoard([], NOW)).toEqual({ items: [], currentCount: 0 });
+  });
+});
+
+describe("board filters", () => {
+  it("maps each card colour to the state a person filters by", () => {
+    expect(stateOf("red")).toBe("attention");
+    expect(stateOf("amber")).toBe("expiring");
+    expect(stateOf("slate")).toBe("cannot_monitor");
+    expect(stateOf("green")).toBe("on_track");
+  });
+
+  it("labels every state", () => {
+    for (const st of ["attention", "expiring", "cannot_monitor", "on_track"] as const) {
+      expect(STATE_LABEL[st]).toBeTruthy();
+    }
+  });
+
+  it("never says On track for something with no date", () => {
+    /*
+     * The colour for a dateless item is slate, and slate must not land in
+     * on_track. A green badge asserting an item is fine when the system has
+     * nothing to check it against is the exact failure the audit named, and
+     * the filter is a second place it could reappear.
+     */
+    expect(stateOf("slate")).not.toBe("on_track");
+    expect(STATE_LABEL[stateOf("slate")]).toBe("Cannot monitor");
+  });
+
+  it("falls open to the unfiltered board on a bad parameter", () => {
+    /*
+     * Null means no filter, which shows everything. A bad parameter must not
+     * be able to hide compliance items -- guessing at what was meant, or
+     * failing closed to an empty board, both end with somebody looking at a
+     * page that is missing an expiry they needed to see.
+     */
+    expect(parseState("nonsense")).toBeNull();
+    expect(parseState(undefined)).toBeNull();
+    expect(parseState("")).toBeNull();
+    expect(parseArea("nonsense")).toBeNull();
+    expect(parseArea(undefined)).toBeNull();
+  });
+
+  it("reads a valid parameter, including a repeated one", () => {
+    expect(parseState("expiring")).toBe("expiring");
+    expect(parseState(["attention", "on_track"])).toBe("attention");
+    expect(parseArea("subcontractor")).toBe("subcontractor");
+    expect(parseArea(["regulatory"])).toBe("regulatory");
   });
 });

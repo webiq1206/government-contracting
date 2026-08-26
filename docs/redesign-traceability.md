@@ -160,6 +160,10 @@ written in advance of the work.
 | Urgent items rendered twice, once pinned and once in their category | Fixed | Pinned only, with a per-area line saying how many moved and where | Compliance | Compliance | One problem, one alert. An area that just looked emptier than it is would send someone hunting for an item that is already on the page |
 | Category renewal links (`Renew on SAM.gov`, `CPARS`, `SBA certifications`, `acquisition.gov`) | Fixed | `.tap` hit area | Compliance | Compliance | 16px tall on a touch screen, well under the 44px minimum. The sweep only caught them once the board had data in it; the previous clean run measured an empty board |
 | Subcontractor card title as a second link | Removed | The card's button is the single target | Compliance | Compliance | A 20px-tall title link duplicating the button below it: two targets for one destination, one of them too small to hit |
+| (new) Status summary | Added | Chip row at the top of the board | Compliance | Compliance | Four counts, always for the whole account rather than the current filter. A number in a summary that moves when a filter is applied is answering a different question than the one it looks like it is answering |
+| (new) State and area filters | Added | The same chip row, and a second row of areas | Compliance | Compliance | Summary and filter are one control. A summary that only reports, above a filter that only filters, makes a person read a count and then hunt for the matching filter |
+| (new) Expiring-soon timeline | Added | "Landing in the next 90 days", above the areas | Compliance | Compliance | Which of these lands first is the one question an area listing cannot answer, and it was being answered by reading every card and doing the arithmetic by hand. Position on the strip, not bar width: a bar that grows with the number reads as "more" when it means "later" |
+| Bad `?state=` / `?area=` parameter | Behaviour | Falls open to the unfiltered board | Compliance | Compliance | Guessing at what was meant, or failing closed to an empty board, both end with somebody looking at a page that is missing an expiry they needed to see |
 
 ## Not changed, deliberately
 
@@ -170,5 +174,16 @@ written in advance of the work.
   draggable card, so it is linear where the others are not. Virtualizing it is
   worth doing when an account carries thousands of open opportunities, and is
   not worth the complexity before then.
+- **Compliance stays a card board, not a table with a detail drawer.** The
+  cards already carry every field the drawer would, and they are editable in
+  place: setting a renewal date is two clicks, where a table plus drawer makes
+  it four. Converting would be a lateral move that removes inline editing.
+- **No owner field on a compliance item.** There is no assignee column
+  anywhere in the schema, and a field that always says the same thing is worse
+  than no field. Same reasoning as the attention system.
+- **Recurrence, reminder policy, calendar view and bulk document upload are
+  not built.** Each needs schema and a background job rather than a layout, and
+  they are worth doing on their own rather than inside a page restructure.
+
 - **Site Authority stays admin-only.** It reports on our own marketing domain
   and means nothing to a contractor.

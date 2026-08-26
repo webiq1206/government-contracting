@@ -12,6 +12,8 @@ export interface ComplianceCardData {
   statusValue: string; // effective status override default ("" = automatic)
   statusLabel: string; // "On track", "Cannot monitor", "Critical", ...
   countdownText: string;
+  /** Days until the effective due date. Null when there is no date at all. */
+  daysLeft: number | null;
   color: "green" | "amber" | "red" | "slate";
   notes: string;
   link_url: string;

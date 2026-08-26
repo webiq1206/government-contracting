@@ -249,3 +249,47 @@ export function subcontractorComplianceBoard(
 
   return { items, currentCount };
 }
+
+/** The colours a compliance card can carry. Mirrors ComplianceCardData. */
+export type CardColor = "green" | "amber" | "red" | "slate";
+
+/**
+ * The four states a person filters this board by.
+ *
+ * Derived from the card's colour rather than stored, for the same reason the
+ * contract risk views are derived: a stored state is one somebody has to
+ * remember to update, and this one changes by itself every night as dates
+ * pass.
+ */
+export type BoardState = "attention" | "expiring" | "cannot_monitor" | "on_track";
+
+export const STATE_LABEL: Record<BoardState, string> = {
+  attention: "Needs attention now",
+  expiring: "Expiring within 30 days",
+  cannot_monitor: "Cannot monitor",
+  on_track: "On track",
+};
+
+/*
+ * Deliberately not "0 items" for a state nobody has any of. A count is a real
+ * measurement here -- every item has been classified -- so zero is the truth
+ * rather than an unknown dressed up as one.
+ */
+export function stateOf(color: CardColor): BoardState {
+  if (color === "red") return "attention";
+  if (color === "amber") return "expiring";
+  if (color === "slate") return "cannot_monitor";
+  return "on_track";
+}
+
+export function parseState(v: string | string[] | undefined): BoardState | null {
+  const s = Array.isArray(v) ? v[0] : v;
+  if (s === "attention" || s === "expiring" || s === "cannot_monitor" || s === "on_track") return s;
+  return null;
+}
+
+export function parseArea(v: string | string[] | undefined): ComplianceArea | null {
+  const s = Array.isArray(v) ? v[0] : v;
+  return AREA_ORDER.find((a) => a === s) ?? null;
+}
+
