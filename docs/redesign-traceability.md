@@ -376,6 +376,20 @@ written in advance of the work.
 | Opens over sends | Fixed | Opens over delivered | Metrics strip | Metrics strip | Counting a bounced message as an unopened one blames the wording for an address that never existed |
 | A thin history | Behaviour | Says it is thin | Metrics strip | Metrics strip | Three sends and one reply is a 33% reply rate and no evidence of anything |
 
+### Billing
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| `Past due`, and nothing else | Fixed | A panel with the reason, the retry date and the consequence | Under the status | Under the status | Stripe told the webhook why the card was refused and when it would be tried again, the webhook put both in an email, and the page that email pointed at could not answer the question the email raised |
+| The retry date | Fixed | Stored, not only emailed | Data layer | Data layer | `next_payment_attempt` and the hosted invoice URL arrive on the failure event and were dropped on the floor. The invoice URL is per-invoice, so it cannot be reconstructed from the customer id later |
+| A retry with no date | Behaviour | "No further attempt is scheduled" | Panel | Panel | Stripe stops scheduling attempts on the last one. "We will try again" with no when reads as a reason to do nothing, on the one occasion where doing nothing costs the account |
+| A retry date in the past | Behaviour | Treated as no retry | Panel | Panel | A stale date is worse than none: it tells somebody to wait for a moment that has already gone |
+| A bank confirmation | Changed | Its own state | Panel | Panel | `action_required` is not a decline, and no retry clears it. Folding the two together sends somebody to wait for an attempt that will fail the same way |
+| The consequence of not paying | Added | Under the reason | Panel | Panel | "Past due" says there is a problem without saying what it costs, and the cost, losing the pipeline mid-bid, is what decides whether it gets dealt with today or on Friday. It also says nothing is deleted, which is true and is the other half of the anxiety |
+| Plan headline price | Fixed | What this account is actually charged | Subscription card | Subscription card | The card printed the list price for the plan key in its largest text and the real Stripe amount in small text three inches below. A grandfathered account read "Founding, $497/mo" over "$299 per month", and the bigger number was the wrong one |
+| A comped account's plan, price, renewal and portal | Removed | Replaced by what applies | Subscription card | Subscription card | The audit asks for the irrelevant pricing and portal content to be removed rather than emptied. An owner told their account is free reads a card of dashes and "No plan selected" as a page that is broken |
+| A healthy subscription | Behaviour | No panel of its own | Billing | Billing | The status panel already says payments are up to date. A green box saying "fine" on every visit is how somebody learns to stop reading this part of the page, which is the part that will one day say something urgent |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

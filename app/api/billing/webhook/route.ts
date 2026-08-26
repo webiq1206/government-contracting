@@ -308,10 +308,16 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       const orgId = await orgIdForCustomer(asId(inv.customer));
       if (!orgId) break;
       await query(
+        // The retry date and the invoice link are cleared alongside the error.
+        // A stale "we will try again on the 4th" surviving a successful
+        // payment is the same class of lie as the failure that never showed:
+        // a page stating something that stopped being true.
         `update organizations
             set last_payment_status = 'succeeded',
                 last_payment_at = now(),
                 last_payment_error = null,
+                next_payment_attempt_at = null,
+                last_invoice_url = null,
                 updated_at = now()
           where id = $1`,
         [orgId]
@@ -339,25 +345,36 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       const reason =
         (inv as unknown as { last_finalization_error?: { message?: string } })
           .last_finalization_error?.message ?? null;
+      // Stored, not only emailed. The customer's next move after reading that
+      // email is to open the Billing page, and until now it could not tell
+      // them why the payment failed or when it would be tried again.
+      const nextAttemptAt = iso(
+        (inv as { next_payment_attempt?: number | null }).next_payment_attempt
+      );
+      const invoiceUrl = inv.hosted_invoice_url ?? null;
       await query(
         `update organizations
             set last_payment_status = $2,
                 last_payment_at = now(),
                 last_payment_error = $3,
+                next_payment_attempt_at = $4,
+                last_invoice_url = $5,
                 updated_at = now()
           where id = $1`,
         [
           orgId,
           event.type === "invoice.payment_failed" ? "failed" : "action_required",
           reason,
+          nextAttemptAt,
+          invoiceUrl,
         ]
       );
       await notifyPaymentFailed({
         orgId,
         amountCents: inv.amount_due ?? null,
         reason,
-        nextAttemptAt: iso((inv as { next_payment_attempt?: number | null }).next_payment_attempt),
-        invoiceUrl: inv.hosted_invoice_url ?? null,
+        nextAttemptAt,
+        invoiceUrl,
       });
       // Subscription status itself (past_due, unpaid) arrives on the
       // subscription.updated event, so access is not changed here.

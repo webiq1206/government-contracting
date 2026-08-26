@@ -33,6 +33,10 @@ export interface Organization {
   last_payment_status: string | null;
   last_payment_at: string | null;
   last_payment_error: string | null;
+  /** When Stripe will try the card again, or null when nothing is scheduled. */
+  next_payment_attempt_at: string | null;
+  /** Stripe's hosted page for the failed invoice: the only place to pay it directly. */
+  last_invoice_url: string | null;
   /** Comped: full access whatever the subscription says. */
   billing_exempt: boolean;
   billing_exempt_reason: string | null;
