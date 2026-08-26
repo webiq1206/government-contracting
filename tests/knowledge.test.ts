@@ -19,6 +19,7 @@ import {
 } from "@/lib/domain/knowledge";
 import { GLOSSARY, termLabel } from "@/lib/domain/glossary";
 import { DEFAULT_RULES } from "@/lib/domain/intake";
+import { computeSetupChecklist } from "@/lib/domain/setup";
 import { describeCron } from "@/lib/domain/cron-describe";
 import { scheduledAgents } from "@/lib/agents/registry";
 
@@ -388,6 +389,22 @@ describe("quick start", () => {
     const items = quickStart("owner", SETUP, FACTS, label);
     expect(items.find((i) => i.key === "first:watch")?.done).toBe(true);
     expect(items.find((i) => i.key === "first:decide")?.done).toBe(false);
+  });
+
+  /**
+   * The keys come from computeSetupChecklist, and one of them is "email"
+   * rather than "gmail". Mapped wrong, an item silently gets no capability
+   * and stops being gated at all.
+   */
+  it("gates every step the real setup checklist emits", () => {
+    const real = computeSetupChecklist({
+      profile: null,
+      integrations: { sam: false, claude: false, googleMaps: false, gmail: false },
+    });
+    const items = quickStart("viewer", real.items, FACTS, label);
+    for (const item of items.filter((i) => i.key.startsWith("setup:"))) {
+      expect(item.blockedBy, item.key).not.toBeNull();
+    }
   });
 
   it("never marks reading the rules done, because reading leaves no record", () => {

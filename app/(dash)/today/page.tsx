@@ -11,11 +11,8 @@ import { SetupChecklist } from "@/components/setup-checklist";
 import { workQueue, completedToday } from "@/lib/data";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
-import { integrationStatus } from "@/lib/config";
-import { orgIntegrationStatus } from "@/lib/integration-keys";
-import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
-import { computeSetupChecklist } from "@/lib/domain/setup";
+import { accountSetup } from "@/lib/setup-facts";
 import { flagSummary } from "@/lib/flag-labels";
 import { buildWorkLedger, ledgerHeadline, ledgerBreakdown } from "@/lib/domain/work-ledger";
 import { stageParty, PARTY_LABEL, STAGE_LABEL } from "@/lib/domain/journey";
@@ -514,21 +511,12 @@ export default async function TodayPage({
     digest.bidsPriced > 0 && `${digest.bidsPriced} bid${digest.bidsPriced === 1 ? "" : "s"} priced`,
     digest.expiredArchived > 0 && `${digest.expiredArchived} expired archived`,
   ].filter(Boolean) as string[];
-  await hydrateIntegrationEnv();
-  // Per-organization, not per-deployment: the setup checklist must reflect
-  // the keys THIS customer has entered, never the platform's environment.
-  const integrations = { ...integrationStatus(), ...(await orgIntegrationStatus()) };
-  // Trial organizations borrow the platform's Anthropic and Maps keys, so
-  // those steps are due before the trial ends rather than immediately.
-  const { accessLevel, entitlementOf } = await import("@/lib/billing/entitlements");
+  // accountSetup holds the per-organization and trial reasoning that used to
+  // live here, so the Guide Me panel and its badge answer this the same way
+  // rather than from the deployment's own environment.
   const { currentUser } = await import("@/lib/auth");
   const setupUser = await currentUser().catch(() => null);
-  const onTrial = setupUser ? accessLevel(entitlementOf(setupUser)) === "trial" : false;
-  const setup = computeSetupChecklist({
-    profile: profile?.profile_json ?? null,
-    integrations,
-    onTrial,
-  });
+  const setup = await accountSetup(profile?.profile_json ?? null, setupUser);
 
   const urgentIds = new Set(data.urgent.map((o) => o.id));
   const bidWork = data.bidWork.filter((o) => !urgentIds.has(o.id));

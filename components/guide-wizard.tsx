@@ -293,7 +293,10 @@ export function GuideWizard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          guide,
+          // The path, not the guide. The server rebuilds the facts from this
+          // account's live records, so an answer cannot be grounded in a
+          // snapshot this panel loaded an hour ago.
+          path: guide.pathname,
           question,
           history: askThread,
         }),

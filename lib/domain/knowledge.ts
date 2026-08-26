@@ -814,7 +814,11 @@ const SETUP_CAPABILITY: Record<string, Capability> = {
   sam: "manage_integrations",
   claude: "manage_integrations",
   googleMaps: "manage_integrations",
-  gmail: "manage_integrations",
+  // The checklist calls the connected inbox "email", not "gmail". Keyed wrong,
+  // it fell through to no capability at all, which meant a read-only account
+  // was told to connect an inbox it cannot connect. tests/knowledge.test.ts
+  // now asserts every checklist key is covered.
+  email: "manage_integrations",
   naics: "manage_profile",
   service_areas: "manage_profile",
   identity: "manage_profile",

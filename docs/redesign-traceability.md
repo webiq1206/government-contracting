@@ -524,6 +524,22 @@ relevant Knowledge Center guidance. Do not allow instructions to become stale."
 | The header count | - | "1 step needs you" | Header | Header | "8 waiting on you" beside a page about the workflow reads as eight steps. The per-step detail carries the real counts |
 | The honest note on bid packages | Kept | Kept | Callout | Callout | It is the most important sentence on the page and none of this changes it |
 
+### Guide Me (`/api/guide`, `/api/guide/pulse`, `/api/guide/ask`)
+
+Audited to the same standard as the Knowledge Center: no invented facts, no
+number typed into prose that the code can change underneath it, and honest
+states when something is absent.
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| "Connect your Google inbox" | Marked done for every account | Done only when a mailbox is connected | Checklist | Checklist | It read `integrationStatus().gmail`, which is whether the PLATFORM holds Google OAuth credentials. That is one fact shared by every customer on the deployment, so a brand-new account was told the step was finished while no inbox was connected and no outreach could send. "Connected" has to mean the thing works |
+| A deployment with no Google credentials at all | Silently done | Outstanding, with the reason | Checklist | Checklist | The step is impossible rather than undone, and an operator can spend a long time looking for a button that is not there |
+| Setup progress | Four callers, three answers | `accountSetup`, one caller's worth | Panel + Today | Panel + Today | Today mixed the deployment's keys with the customer's own and passed the trial flag; both Guide Me routes read the environment alone and passed neither. On a trial account with its own SAM key, Today said a step was done and the panel beside it said it was outstanding, and marked two borrowed credentials "Required" |
+| The facts behind an answer | Posted by the browser | Rebuilt server-side from the path | Q&A | Q&A | A guide supplied by the client is grounded in whatever the client says, and in whatever was true when the panel loaded, which on a page left open all morning is not now. The endpoint's whole promise is that the answer comes from the account's real state |
+| The path the answer is built from | - | Same-origin app paths only | Q&A | Q&A | It selects which of the account's records are read, so it must not be able to name anything else |
+| Conversation history | Six turns, unbounded length | Six turns, 2000 characters each | Q&A | Q&A | `slice(-6)` bounded how many turns reached the model, not how long each was, so a client could post six megabyte strings and have them billed as input tokens |
+| Setup capability gating on the quick start | Keyed `gmail` | Keyed `email` | Checklist | Checklist | The checklist calls that item "email". Keyed wrong it fell through to no capability at all, so a read-only account was told to connect an inbox it cannot connect. `tests/knowledge.test.ts` now asserts every checklist key is covered |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

@@ -6,11 +6,8 @@ import { requireOrgContext } from "@/lib/org-guard";
 import { roleLabel } from "@/lib/domain/roles";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { getAutomationRules } from "@/lib/app-settings";
-import { hydrateIntegrationEnv } from "@/lib/integration-settings";
-import { integrationStatus } from "@/lib/config";
-import { orgIntegrationStatus } from "@/lib/integration-keys";
 import { gmail } from "@/lib/integrations/gmail";
-import { computeSetupChecklist } from "@/lib/domain/setup";
+import { accountSetup } from "@/lib/setup-facts";
 import { agentSchedules } from "@/lib/agent-cadence";
 import { describeCron } from "@/lib/domain/cron-describe";
 import { knowledgeFacts } from "@/lib/knowledge-facts";
@@ -103,24 +100,18 @@ export default async function KnowledgeCenterPage({
   const q = (one(searchParams?.q) ?? "").trim();
   const full = one(searchParams?.full) === "1";
 
-  await hydrateIntegrationEnv();
-  const [profile, rules, facts, inbox, integrations] = await Promise.all([
+  const [profile, rules, facts, inbox] = await Promise.all([
     getActiveProfile().catch(() => null),
     getAutomationRules(),
     knowledgeFacts(),
     gmail
       .connection()
       .catch(() => ({ connected: false, email: null, status: "none", lastError: null })),
-    (async () => ({ ...integrationStatus(), ...(await orgIntegrationStatus()) }))(),
   ]);
 
-  const { accessLevel, entitlementOf } = await import("@/lib/billing/entitlements");
-  const onTrial = accessLevel(entitlementOf(ctx.user)) === "trial";
-  const setup = computeSetupChecklist({
-    profile: profile?.profile_json ?? null,
-    integrations,
-    onTrial,
-  });
+  // The same checklist Today shows, from the same helper. Two answers to "is
+  // setup finished" is one more than the number that can be right.
+  const setup = await accountSetup(profile?.profile_json ?? null, ctx.user);
 
   /*
    * The cadence every scheduled step shows comes from here, which is the same
