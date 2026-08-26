@@ -135,6 +135,16 @@ written in advance of the work.
 | "0 wins - 0 losses" under the win rate | Changed | "No bids decided yet" | Analytics | Analytics | An account that has never submitted anything was being shown a track record of failure. `?? 0` turned an uncounted value into a real-looking zero |
 | "-" for average margin | Changed | "No wins yet" / "Not recorded" | Analytics | Analytics | A dash cannot say which of the two it means |
 
+### Contracts
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| Active / Past, the two stored statuses | Changed | Five views: At risk, Starting soon, Active, Completed, Lost or terminated | Contracts | Contracts | Two statuses are enough to file a contract and not enough to run one |
+| (new) At risk | Added | Derived, never stored | Contracts | Contracts | A stored risk flag is one somebody has to remember to clear, and the one nobody clears stops being believed. Derived from overdue milestones, a passed end date, the non-small-business cap and overdue CPARS |
+| (new) Starting soon | Added | Derived from the start date | Contracts | Contracts | Insurance, subcontractor paperwork and mobilisation all have to be in hand before day one, and there was no view that showed that window |
+| "Mark complete" as the only exit | Changed | Plus "Lost or terminated" | Contracts | Contracts | A contract lost or ended early was being filed as completed, which makes every win-rate and margin figure quietly wrong |
+| `buildContractPlan` `cparsDue` | Fixed | Accepts a Date | - | - | node-postgres returns a Date for a timestamptz; the page cast it `as string`, which TypeScript accepted and the runtime did not. Any contract with a CPARS due date crashed the entire page, and no seeded contract had one |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

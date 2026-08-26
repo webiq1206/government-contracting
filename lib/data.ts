@@ -893,6 +893,30 @@ export async function complianceBoard() {
   return items;
 }
 
+/**
+ * Every contract, with the columns the five views need.
+ *
+ * One query rather than two: the views are derived from dates and health
+ * signals, not from the stored status, so splitting by status in SQL would
+ * mean re-deriving in two places and getting a contract that is both
+ * "completed" and "at risk" depending on which list you opened it from.
+ */
+export async function allContracts() {
+  const orgId = await currentOrg();
+  return query<Record<string, unknown>>(
+    `select c.*, o.title as opportunity_title,
+            ps.company_name as primary_sub_name,
+            bs.company_name as backup_sub_name
+       from contracts c
+       left join opportunities o on o.id = c.opportunity_id
+       left join subcontractors ps on ps.id = c.primary_sub_id
+       left join subcontractors bs on bs.id = c.backup_sub_id
+      where c.org_id=$1
+      order by c.end_date asc nulls last`,
+    [orgId]
+  );
+}
+
 export async function activeContracts() {
   const orgId = await currentOrg();
   return query(
