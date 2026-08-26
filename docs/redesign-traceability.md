@@ -777,6 +777,17 @@ contacts, messages, documents, or account data.
   correct nothing an operator can see, so it is written down here rather than
   done in passing.
 
+- **The Batch API is not used for the overnight agents.** It halves the cost of
+  a large asynchronous run, and the runs here are not large: the agents each
+  make one or two Claude calls per record, and a busy account holds tens of
+  opportunities rather than thousands. Against that, batching means results
+  arrive up to 24 hours later, so an operator who pursues an opportunity in the
+  morning would not see its analysis until the next day. The current path
+  returns in seconds and the work is already queued and idempotent, so the
+  saving is small and the cost is the thing the product is for. Worth
+  revisiting if a single account starts scoring thousands of notices a night,
+  which is the condition that would change the arithmetic.
+
 - **Site Authority stays admin-only.** It reports on our own marketing domain
   and means nothing to a contractor.
 - **No breakdown by trade on Analytics.** Trade is a property of a
