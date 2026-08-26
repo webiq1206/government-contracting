@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/page-frame";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
-import { adminBillingRows, summarise } from "@/lib/billing/admin";
+import { adminBillingRows, summarise, webhookPulse } from "@/lib/billing/admin";
+import { reconcile, webhookHealth } from "@/lib/domain/billing-reconciliation";
 import { billingConfigured, isLiveMode } from "@/lib/billing/catalog";
 import { shortDate } from "@/lib/format";
 
@@ -49,8 +50,19 @@ export default async function AdminBillingPage() {
   // them it exists and is worth attacking.
   if (auth instanceof Response) notFound();
 
-  const rows = await adminBillingRows();
+  const [rows, pulse] = await Promise.all([adminBillingRows(), webhookPulse()]);
   const s = summarise(rows);
+  /*
+   * The two things the audit asks to be at the top of this page.
+   *
+   * The footnote at the bottom used to tell the reader that anything
+   * disagreeing with Stripe meant webhook delivery was failing and was worth
+   * checking, which left the checking to a person who would have to compare
+   * every row by hand on a page they open when something has already gone
+   * wrong. Nobody does that.
+   */
+  const webhook = webhookHealth(pulse.lastEventAt, pulse.billableAccounts);
+  const conflicts = reconcile(rows);
   const config = billingConfigured();
   const live = isLiveMode();
 
@@ -66,6 +78,59 @@ export default async function AdminBillingPage() {
           this wrapper the customer table clipped at the viewport and the page
           could not scroll at all once real rows accumulated. */}
       <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
+        {/* Whether the events that keep this page true are still arriving. */}
+        <div
+          className={`card text-sm ${
+            webhook.suspect ? "border-risk/40 bg-risk/5" : "border-border"
+          }`}
+        >
+          <p className={`font-medium ${webhook.suspect ? "text-risk" : "text-foreground"}`}>
+            {webhook.label}
+          </p>
+          <p className="mt-1 leading-relaxed text-slate-600">{webhook.detail}</p>
+        </div>
+
+        {/*
+          * Accounts whose access and whose subscription cannot both be right.
+          * None of these is fixed automatically: several are legitimate states
+          * somebody chose, and a deliberate choice and an accident look
+          * identical from here.
+          */}
+        {conflicts.length > 0 && (
+          <section aria-labelledby="billing-conflicts" className="space-y-2">
+            <h2 id="billing-conflicts" className="label">
+              {conflicts.length === 1
+                ? "One account where access and billing disagree"
+                : `${conflicts.length} accounts where access and billing disagree`}
+            </h2>
+            {conflicts.map((c) => (
+              <article
+                key={`${c.orgId}:${c.kind}`}
+                className={`card ${
+                  c.severity === "high" ? "border-risk/40 bg-risk/5" : "border-review/40 bg-review/5"
+                }`}
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">{c.orgName}</p>
+                  <span
+                    className={`badge ${
+                      c.severity === "high" ? "bg-risk/15 text-risk" : "bg-review/15 text-review"
+                    }`}
+                  >
+                    {c.severity === "high" ? "Costs money now" : "Worth a look"}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-foreground">{c.disagreement}</p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-600">{c.cost}</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-700">
+                  <span className="label mr-1.5 inline">Do:</span>
+                  {c.action}
+                </p>
+              </article>
+            ))}
+          </section>
+        )}
+
         {!config.ok && (
           <div className="card border-risk/40 bg-risk/5 text-sm text-risk">
             Billing is not fully configured, so nobody can subscribe. Missing:{" "}
@@ -111,6 +176,7 @@ export default async function AdminBillingPage() {
                   <th className="py-2 pr-3 font-medium">Trial ends</th>
                   <th className="py-2 pr-3 font-medium">Renews</th>
                   <th className="py-2 font-medium">Last payment</th>
+                  <th className="py-2 font-medium">Next attempt</th>
                 </tr>
               </thead>
               <tbody>
@@ -176,6 +242,19 @@ export default async function AdminBillingPage() {
                         "-"
                       )}
                     </td>
+                    {/* Stored from the failure event rather than inferred: a
+                        retry that Stripe has not scheduled must not be shown
+                        as one that it has. */}
+                    <td className="num py-2 text-xs">
+                      {r.next_payment_attempt_at ? (
+                        shortDate(r.next_payment_attempt_at)
+                      ) : r.last_payment_status === "failed" ||
+                        r.last_payment_status === "action_required" ? (
+                        <span className="text-risk">none scheduled</span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -183,10 +262,11 @@ export default async function AdminBillingPage() {
           )}
         </div>
 
-        <p className="text-xs text-slate-500">
+        <p className="text-xs leading-relaxed text-slate-500">
           Read from this application&apos;s own records, which the Stripe webhook keeps
-          current. Anything here that disagrees with Stripe means webhook delivery is
-          failing and is worth checking.
+          current. The panels at the top say when an event last arrived and which accounts
+          hold two facts that cannot both be true, so a disagreement does not depend on
+          somebody comparing every row by hand.
         </p>
       </div>
     </>

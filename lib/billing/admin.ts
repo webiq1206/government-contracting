@@ -6,7 +6,7 @@
  * would make it slow and rate-limited. The webhook keeps these columns
  * current, so anything stale here is a webhook problem worth seeing.
  */
-import { query } from "../db";
+import { query, queryOne } from "../db";
 
 export interface AdminBillingRow {
   org_id: string;
@@ -30,6 +30,11 @@ export interface AdminBillingRow {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   created_at: string;
+  /** When Stripe will try the card again, when it has said. */
+  next_payment_attempt_at: string | null;
+  /** Comped and suspended, so the reconciliation can see what access actually is. */
+  billing_exempt: boolean;
+  suspended_at: string | null;
 }
 
 export interface AdminBillingSummary {
@@ -69,7 +74,10 @@ export async function adminBillingRows(): Promise<AdminBillingRow[]> {
             o.last_payment_error,
             o.stripe_customer_id,
             o.stripe_subscription_id,
-            o.created_at
+            o.created_at,
+            o.next_payment_attempt_at,
+            o.billing_exempt,
+            o.suspended_at
        from organizations o
       order by
         -- Problems first: a past-due account is the reason to open this page.
@@ -112,4 +120,28 @@ export function summarise(rows: AdminBillingRow[]): AdminBillingSummary {
   }
 
   return { total: rows.length, trialing, active, pastDue, canceled, mrrCents };
+}
+
+/**
+ * When Stripe last told us anything, and how much there is to hear about.
+ *
+ * Both halves matter together: silence on a deployment with nothing
+ * subscribed is correct, and silence on one with live subscriptions means
+ * every figure on the page has stopped being maintained.
+ */
+export async function webhookPulse(): Promise<{
+  lastEventAt: string | null;
+  billableAccounts: number;
+}> {
+  const row = await queryOne<{ last_event_at: Date | null; billable: number }>(
+    `select
+       (select max(processed_at) from stripe_events) as last_event_at,
+       (select count(*)::int from organizations
+         where subscription_status in ('active','past_due','trialing','unpaid','incomplete')
+       ) as billable`
+  ).catch(() => null);
+  return {
+    lastEventAt: row?.last_event_at instanceof Date ? row.last_event_at.toISOString() : null,
+    billableAccounts: Number(row?.billable ?? 0),
+  };
 }

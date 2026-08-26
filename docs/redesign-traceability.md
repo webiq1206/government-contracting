@@ -390,6 +390,21 @@ written in advance of the work.
 | A comped account's plan, price, renewal and portal | Removed | Replaced by what applies | Subscription card | Subscription card | The audit asks for the irrelevant pricing and portal content to be removed rather than emptied. An owner told their account is free reads a card of dashes and "No plan selected" as a page that is broken |
 | A healthy subscription | Behaviour | No panel of its own | Billing | Billing | The status panel already says payments are up to date. A green box saying "fine" on every visit is how somebody learns to stop reading this part of the page, which is the part that will one day say something urgent |
 
+### Customer billing admin
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| "Anything here that disagrees with Stripe ... is worth checking" | Fixed | A reconciliation panel at the top | Conflict cards | Conflict cards | The page ended by telling the reader to go and compare every row by hand, on a page they open when something has already gone wrong. Nobody does that, so nobody found the account that had been past due since March and using the product throughout |
+| (new) Webhook freshness | Added | Top of the page | Panel | Panel | Renewals, failures and cancellations all arrive by webhook. When delivery stops, every figure here quietly stops being maintained and the page carries on looking authoritative |
+| Webhook silence | Behaviour | Judged against whether there is anything to hear | Panel | Panel | A deployment with nothing subscribed hears nothing from Stripe for weeks, correctly. Calling that broken would cry wolf on every new install and teach the reader to ignore the one that matters |
+| (new) Comped and still billing | Added | Conflict card | Card | Card | An account told it pays nothing, being charged. Whichever way round it happened, it gets found on a bank statement rather than here |
+| (new) Suspended and still billing | Added | Conflict card | Card | Card | Charging an account for a product it cannot open is a refund and a complaint |
+| (new) Past due beyond the grace | Added | Conflict card | Card | Card | `past_due` grants full access deliberately, so a failed renewal does not lock somebody out mid-bid, and nothing ever ended that window. Stripe stops retrying long before three weeks |
+| (new) A Stripe subscription with no status on file | Added | Conflict card | Card | Card | The exact shape a dropped webhook leaves behind, and the customer may be locked out of something they are paying for |
+| (new) Active with no price | Added | Conflict card | Card | Card | Counted as paying, contributing nothing, so the MRR on this page is understated by however many of these there are |
+| A past-due row's next attempt | Added | Table column | Column | Column | Stored from the failure event rather than inferred. A retry Stripe has not scheduled reads "none scheduled" rather than as one it has |
+| Conflicts fixed automatically | Not done | - | - | - | Several of these are legitimate states somebody chose, and a deliberate choice and an accident look identical from here. Each card says what disagrees and what it costs; a person decides |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
