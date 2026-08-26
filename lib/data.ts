@@ -2893,7 +2893,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
   if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
 
-  const [replies, decisions, calls, actionable] = await Promise.all([
+  const [replies, decisions, calls, actionable, awaitingReply] = await Promise.all([
     // Unread subcontractor replies. These go to the very front of the queue:
     // the reply-poll flags a reply it could not act on confidently, and until
     // a person reads it, the solicitation it belongs to is stuck.
@@ -2943,6 +2943,53 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       `select id, title, stage, deadline, risk_flags from opportunities
         where org_id=$1 and human_action_required=true and status='open'
           and not (tier='review' and stage='scoring')`,
+      [orgId]
+    ),
+    /*
+     * Outreach that is out and not yet answered.
+     *
+     * Nothing is wrong with these and nobody needs to do anything: the packet
+     * went, the follow-up has not come due, and the right action is to let the
+     * clock run. They were invisible, which meant Today could say "nothing
+     * waiting on you" while eleven quote requests were in flight, and an
+     * operator had no way to see the pipeline was moving without opening each
+     * opportunity.
+     *
+     * Deliberately excludes 'followed_up' and 'unresponsive': those are the
+     * subFollowUps bucket, where we have already chased and a person now has
+     * to decide whether to call or replace them. That is our move, not theirs.
+     */
+    query<{
+      id: string;
+      company_name: string | null;
+      trade: string | null;
+      opp_id: string;
+      opp_title: string | null;
+      deadline: string | null;
+      sent_at: string | null;
+    }>(
+      /*
+       * The send time comes from the communication, not the pairing.
+       * opportunity_subs has no last_contacted_at column; it carries
+       * created_at and responded_at only. Asking it for one would throw at
+       * runtime and be swallowed by the caller's catch, which is exactly how
+       * the call_cards query above lost `cc.trade` and took this whole
+       * function with it, silently, until somebody noticed the queue was
+       * always empty.
+       */
+      `select os.id, s.company_name, os.trade,
+              o.id as opp_id, o.title as opp_title, o.deadline,
+              (select max(c.created_at) from communications c
+                where c.opportunity_id = os.opportunity_id
+                  and c.subcontractor_id = os.subcontractor_id
+                  and c.direction = 'outbound') as sent_at
+         from opportunity_subs os
+         join opportunities o on o.id = os.opportunity_id
+         join subcontractors s on s.id = os.subcontractor_id
+        where o.org_id=$1 and o.status='open'
+          and os.outreach_state = 'sent'
+        order by os.created_at asc
+        limit 25`,
       [orgId]
     ),
   ]);
@@ -3015,6 +3062,31 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       // Naming them is the difference between "resolve blocker" and knowing
       // which blocker.
       blocker: o.risk_flags?.length ? flagSummary(o.risk_flags) : null,
+    })),
+    /*
+     * Quote requests that are out and unanswered.
+     *
+     * `fix_blocker` would be wrong and `call` would be wrong: nothing is
+     * broken and nobody should be dialling yet. The kind is decide because
+     * that is what the row eventually becomes, and stateOf() reads waitingOn
+     * before anything else, so it never appears under "Needs you" while the
+     * subcontractor still has it.
+     */
+    ...awaitingReply.map((w) => ({
+      key: `awaiting:${w.id}`,
+      kind: "decide" as const,
+      title: `Waiting on ${w.company_name ?? "a subcontractor"}${w.trade ? ` for ${w.trade}` : ""}`,
+      context: w.opp_title ?? "",
+      due: isoOrNull(w.deadline),
+      href: `/opportunity/${w.opp_id}`,
+      actionLabel: "Open opportunity",
+      reason: w.sent_at
+        ? `The quote request went out on ${new Date(w.sent_at).toISOString().slice(0, 10)} and they have not answered yet.`
+        : "The quote request has gone out and they have not answered yet.",
+      waitingOn: {
+        party: w.company_name ?? "a subcontractor",
+        since: isoOrNull(w.sent_at),
+      },
     })),
   ];
   /*

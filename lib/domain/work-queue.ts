@@ -52,6 +52,36 @@ export interface WorkItem {
    * not, which is exactly the case where a person cannot guess what happened.
    */
   blocker?: string | null;
+  /**
+   * Who owes us the next move, when it is not us.
+   *
+   * Distinct from `blocker`, and the distinction is the whole point. A blocker
+   * is something that went wrong and needs fixing. Waiting on somebody is the
+   * system working correctly: the packet went out, the deadline has not
+   * arrived, and there is nothing for the operator to do but let the clock
+   * run.
+   *
+   * Without the separation both look the same on a list, so an operator
+   * reading a long queue cannot tell the eight items that need them from the
+   * twelve that do not, and the honest answer to "how much is on me this
+   * morning" is unavailable on the page built to answer it.
+   */
+  waitingOn?: { party: string; since?: string | null } | null;
+}
+
+/**
+ * The stable identity of a task, across every surface that shows it.
+ *
+ * Two rows are the same task when they are about the same record, whatever
+ * kind they arrived as: an opportunity flagged for attention can surface as a
+ * blocker and as a bid to review, and those are one thing to do. dedupe has
+ * always keyed on this; naming it makes it something a caller can ask for,
+ * which is what a count on one screen needs in order to match a list on
+ * another.
+ */
+export function taskFingerprint(item: WorkItem): string {
+  const at = item.key.indexOf(":");
+  return at === -1 ? item.key : item.key.slice(at + 1) || item.key;
 }
 
 /**
@@ -166,6 +196,25 @@ function dayBounds(now: Date): { start: number; end: number } {
 export type QueueBucket = "overdue" | "due_today" | "remaining";
 
 /**
+ * Whose move it is. A separate axis from the date buckets above.
+ *
+ * Every item is exactly one of these three, and an item also sits in exactly
+ * one date bucket, so the two cut across each other: work can be overdue AND
+ * waiting on somebody else, which is a specific and common situation worth
+ * being able to see.
+ */
+export type QueueState = "needs_attention" | "blocked" | "waiting_on_others";
+
+export function stateOf(item: WorkItem): QueueState {
+  // Blocked first: something that went wrong outranks something merely
+  // pending, and an item can carry both when a send failed to a contact we
+  // were already waiting on.
+  if (item.blocker) return "blocked";
+  if (item.waitingOn) return "waiting_on_others";
+  return "needs_attention";
+}
+
+/**
  * Which counter an item belongs to.
  *
  * An item with no date is `remaining`, never `overdue`. Treating an absent
@@ -194,15 +243,46 @@ export function queueCounts(items: WorkItem[], now = new Date()): QueueCounts {
   return counts;
 }
 
-/** The filters the queue offers, in the order they are shown. */
-export const QUEUE_FILTERS = ["all", "overdue", "due_today", "remaining"] as const;
+/**
+ * The filters the queue offers, in the order they are shown.
+ *
+ * Two axes in one control, deliberately. `overdue`, `due_today` and
+ * `remaining` cut by date; `needs_attention`, `waiting_on_others` and
+ * `blocked` cut by whose move it is. Selecting one applies one cut, which is
+ * how somebody actually narrows a list: "what is late" and "what is on me"
+ * are separate questions and either can be the one being asked.
+ *
+ * `completed_today` is deliberately absent. The queue is what is LEFT, so
+ * deriving completions from it would give the same answer for "nothing to do"
+ * and "everything done", which are opposite mornings. It comes from the
+ * activity ledger, which records what happened rather than what remains.
+ */
+export const QUEUE_FILTERS = [
+  "all",
+  "needs_attention",
+  "overdue",
+  "due_today",
+  "waiting_on_others",
+  "blocked",
+  "remaining",
+] as const;
 export type QueueFilter = (typeof QUEUE_FILTERS)[number];
 
 export const QUEUE_FILTER_LABEL: Record<QueueFilter, string> = {
   all: "Everything",
+  needs_attention: "Needs you",
   overdue: "Overdue",
   due_today: "Due today",
+  waiting_on_others: "Waiting on others",
+  blocked: "Blocked",
   remaining: "Remaining",
+};
+
+/** Which axis a filter cuts on, so callers do not have to know the list. */
+const STATE_FILTERS: Partial<Record<QueueFilter, QueueState>> = {
+  needs_attention: "needs_attention",
+  waiting_on_others: "waiting_on_others",
+  blocked: "blocked",
 };
 
 export function parseQueueFilter(raw: string | string[] | undefined): QueueFilter {
@@ -238,8 +318,12 @@ export function filterWorkItems(
   const needle = opts.q?.trim().toLowerCase() ?? "";
   return items.filter((item) => {
     if (opts.bucket && opts.bucket !== "all") {
-      const want = opts.bucket === "due_today" ? "due_today" : opts.bucket;
-      if (bucketOf(item, now) !== want) return false;
+      const wantState = STATE_FILTERS[opts.bucket];
+      if (wantState) {
+        if (stateOf(item) !== wantState) return false;
+      } else if (bucketOf(item, now) !== opts.bucket) {
+        return false;
+      }
     }
     if (opts.kind && item.kind !== opts.kind) return false;
     if (needle) {
