@@ -122,6 +122,10 @@ const SECTIONS: Section[] = [
       // from which account is in trouble, and it is the one somebody comes
       // looking for months later.
       { href: "/admin/audit", label: "Audit Log" },
+      // Platform-wide, as against the per-account Automation Health under
+      // Delivery. An outage affecting every customer used to be findable only
+      // by opening accounts one at a time until a pattern appeared.
+      { href: "/admin/health", label: "System Health" },
     ],
   },
   {

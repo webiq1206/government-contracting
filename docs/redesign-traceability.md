@@ -447,6 +447,22 @@ written in advance of the work.
 | Role | Added | Preview | Preview | Preview | Named in the audit's list, and the answer carries a fact worth stating: the first person into a new account owns it |
 | `INVITATION_DAYS` | Moved | The domain layer | - | - | The preview is a client component, so importing it from the admin module would pull node:crypto, the database pool and the mail transport into the browser bundle's module graph for one integer |
 
+### Platform Admin System Health
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| (new) The whole page | Added | `/admin/health` | Seven sections | Stacked, same order | Automation Health answers whether one customer's automation is working, and answers it well. Nothing answered whether the platform was, so an outage affecting every account had to be found one organization at a time by an administrator who happened to open the right one. The platform's worst failures were the ones it was slowest to notice |
+| Service definitions | Behaviour | The agents that perform them | Data | Data | A status flag has to be remembered by whoever changes the code. A run either happened or it did not |
+| A service that has not run | Behaviour | "Not run", never healthy | Card | Card | The distinction the page turns on: a platform whose agents have all stopped shows no failures at all, and a table of failures is empty in both the best case and the worst |
+| A platform where nothing has run | Behaviour | "Nothing has run" | Banner | Banner | Rather than "operating normally", which is what a naive reading of zero failures produces on a dead deployment |
+| Services that ran clean beside services that did not run | Behaviour | Named as unproven | Banner | Banner | "No failures anywhere" is true and incomplete when four of nine services have no evidence either way |
+| Incidents | Behaviour | Grouped by cause across every tenant | Cards | Cards | Grouping per organization would report one exhausted credit balance once per customer it stopped, which is the wrong shape for a reader who fixes it once. The account count is what turns a cause into a priority |
+| Incident repair text | Behaviour | The same specs Automation Health uses | Data | Data | Two copies would drift, and the way anybody would find out is an administrator following the wrong instruction during an outage |
+| Failure sampling | Behaviour | Capped, and the cap is stated | Cards | Cards | An outage produces thousands of identical rows. A truncated count that does not say it is truncated reads as a total |
+| Queue depth | Behaviour | "Not measured" | Card | Card | The queue lives in a different backend depending on deployment and nothing here can read a depth from all of them. Reporting nought is how a growing backlog stays invisible on the page that exists to notice it. Its badge says "Not measured" rather than "Not run", which would say the queue had stopped |
+| Provider capacity | Behaviour | Read from failures already classified | Card | Card | Calling the provider would cost money on a page that gets refreshed, and would answer about this second rather than the window everything else describes |
+| Last refresh | Added | Under the headline | Banner | Banner | Item 1 of the spec. The page does not poll, and saying so is the difference between a stale reading and a believed one |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

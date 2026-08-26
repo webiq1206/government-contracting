@@ -75,6 +75,14 @@ export interface IncidentSpec {
   blocking: boolean;
 }
 
+/**
+ * Exported as INCIDENT_SPECS as well, for the platform-wide health page.
+ *
+ * That page groups failures by the same cause this module classifies, so it
+ * needs the same repair text. Two copies would drift, and the way anybody
+ * would find out is an administrator following the wrong instruction during
+ * an outage.
+ */
 const CAUSES: Record<IncidentCause, IncidentSpec> = {
   provider_credit: {
     title: "The AI account is out of credit",
@@ -245,6 +253,8 @@ export interface AutomationHealth {
   /** True when a banner should interrupt the operator rather than wait. */
   interrupt: boolean;
 }
+
+export { CAUSES as INCIDENT_SPECS };
 
 /** The worker is considered alive if it checked in within this window. */
 const HEARTBEAT_STALE_MS = 5 * 60_000;
