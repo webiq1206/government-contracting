@@ -582,6 +582,22 @@ cookie.
 | A `<label>` and an `<h3>` inside the marketing mock | Form control and document heading | Inline elements | Mock | Mock | The mock is a picture of the product. Its caption was a form label attached to no control, and its title was an h3 directly under the page h1, which is a skipped level for anyone navigating by headings |
 | The sweep's own sign-in | Drove the form | Calls the API | - | - | Once the signed-out pass runs first, a click can land before hydration and be swallowed, which the sweep reported as a broken sign-in on a form that works. The form is measured in the signed-out pass, so nothing is lost |
 
+### Context preservation (brief section 12)
+
+"Remembered filters, sorting, density, columns, view, and scroll position."
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| Filters and sort | In the URL only | Remembered per page | List pages | List pages | An operator who narrowed the list to the three agencies they work with, opened a record, and came back through the sidebar was handed everything again and set it all a second time. The URL held the view only for as long as they stayed on it |
+| The pipeline's view | In the URL only | Remembered with its filters | Header | Header | Its three views are a real choice, and the filter bar could not remember it: the bar is only mounted in one of the three, so leaving the table and coming back dropped them into the lanes board with their filters gone |
+| A restored view | - | Says so, with the way out | One line | One line | A filtered list somebody did not filter is the "why is this empty" trap arrived at from a new direction. The line names what happened and puts Start fresh beside it |
+| "Clear all" and "Start fresh" | - | Forget before they navigate | Controls | Controls | Both land on the bare path, which is exactly what a restore acts on. Without the forget they would be undone on arrival, which is a control that appears not to work: you press it, the page reloads, and nothing has changed |
+| A view arrived at by link or bookmark | - | Remembered | - | - | The first render deliberately writes nothing, so a bare arrival cannot erase the memory before the restore reads it. Applied to every first render, that skipped real arrivals too, because a full page load remounts the component: a bookmark to the filtered table was forgotten the moment somebody left it |
+| An explicit query | - | Wins over the memory | - | - | Anything with parameters was asked for by whoever followed the link, including a deliberately unfiltered one. Replacing that would override an explicit request with a remembered one |
+| The quick-look drawer | - | Never remembered | - | - | What is stored is rebuilt from the parsed filters, sort and page size rather than copied off the address bar, so a page-local parameter cannot be stored and reopened days later on a record somebody has moved on from |
+| Density and columns | Already remembered | Unchanged | Per table | Per table | Kept per page on the table itself: comfortable rows suit the opportunity list and compact ones suit the email log, and one switch for both would be wrong on one of them |
+| Scroll position | Router default | Unchanged | - | - | The App Router restores scroll on Back, which is the case that matters: returning to a long list from a record. A forward navigation from the sidebar starts at the top, which is right |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
