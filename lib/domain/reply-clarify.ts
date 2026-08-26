@@ -113,6 +113,10 @@ export async function requestClarification(input: {
     inReplyTo: input.inReplyToMessageId ?? undefined,
     orgId: input.orgId ?? undefined,
     opportunityId: input.opportunityId ?? undefined,
+    // A clarification request is still an automated approach, and stopping
+    // outreach for a firm has to stop it too.
+    subcontractorId: input.subcontractorId,
+    trade: input.trade ?? null,
   });
 
   if (res.disabled || res.blocked || res.error) {

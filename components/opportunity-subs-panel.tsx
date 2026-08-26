@@ -13,6 +13,7 @@ import { timeAgo } from "@/lib/format";
 import { resolveSubWork } from "@/lib/domain/sub-work";
 import type { OppSubCommRow, OppSubRow } from "@/lib/data";
 import { SubWorkNeeded } from "@/components/sub-work-needed";
+import { StopOutreach } from "@/components/stop-outreach";
 
 /** One-line next human/system action so each row answers "what now?" */
 function nextActionForSub(s: OppSubRow): string | null {
@@ -51,9 +52,15 @@ export function OpportunitySubsPanel({
   communications,
   analysis = null,
   description = null,
+  opportunityId = null,
+  canStopOutreach = false,
 }: {
   subs: OppSubRow[];
   communications: OppSubCommRow[];
+  /** The bid these pairings belong to, so a stop can be scoped to it. */
+  opportunityId?: string | null;
+  /** Stopping outreach is an outreach decision, not a viewing one. */
+  canStopOutreach?: boolean;
   /** Solicitation analysis — used for per-trade "what we need them to do". */
   analysis?: Record<string, unknown> | null;
   description?: string | null;
@@ -189,6 +196,23 @@ export function OpportunitySubsPanel({
                             </p>
                           ) : null;
                         })()}
+
+                        {/*
+                          The control lives beside the pairing it acts on.
+                          Somewhere in Settings is where a stop goes to be
+                          hunted for; here is where an operator is standing
+                          when they decide this firm has had enough emails.
+                        */}
+                        {canStopOutreach && (
+                          <div className="mt-2">
+                            <StopOutreach
+                              subcontractorId={s.subcontractor_id}
+                              companyName={s.company_name}
+                              opportunityId={opportunityId ?? null}
+                              trade={s.trade ?? null}
+                            />
+                          </div>
+                        )}
 
                         {history.length > 0 && (
                           <details className="mt-2">

@@ -733,6 +733,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   communications={subComms}
                   analysis={analysis as unknown as Record<string, unknown> | null}
                   description={opp.description}
+                  opportunityId={opp.id}
+                  canStopOutreach={can(viewer?.orgRole, "outreach")}
                 />
               </div>
             </div>

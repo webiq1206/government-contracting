@@ -22,6 +22,9 @@ import { advancePastCallStep } from "../domain/advance-stage";
 import { CALLS_DISABLED_REASON } from "../domain/call-step";
 import { resolveSubWork } from "../domain/sub-work";
 import { coerceQuestions, type CallQuestion } from "../domain/call-guide";
+import { suppressionBlocking } from "../suppressions";
+import { describeSuppression } from "../domain/suppression";
+import { actingOrgId } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -145,6 +148,39 @@ export const callPrep: AgentDefinition = {
        order by created_at asc limit 1`,
       [opportunityId, subcontractorId]
     );
+
+    /*
+     * The operator said not to ring them, and this is the run that would
+     * otherwise put the card back.
+     *
+     * The skip already survived within one opportunity: the upsert below keeps
+     * a `skipped` status rather than resetting it. What it could not survive
+     * was a decision meant to reach further, because a stop scoped to the firm
+     * has no skipped row to preserve on the next bid they match.
+     *
+     * Checked before the Claude call, so a suppressed pairing costs nothing
+     * rather than generating a script nobody will read.
+     */
+    const stopped = await suppressionBlocking(
+      {
+        subcontractorId,
+        opportunityId,
+        trade: oppSub?.trade ?? null,
+        channel: "call",
+      },
+      opp.org_id ?? (await actingOrgId()) ?? ""
+    ).catch(() => null);
+    if (stopped) {
+      await logAgent({
+        agent: "call-prep",
+        action: "suppressed",
+        opportunityId,
+        subcontractorId,
+        level: "info",
+        message: `No call card built: ${describeSuppression(stopped)}`,
+      });
+      return { ok: true, summary: `call suppressed for ${sub.company_name}` };
+    }
 
     const profile = await getProfileJson();
     const analysis = opp.solicitation_analysis;

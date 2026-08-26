@@ -12,6 +12,12 @@ import {
   CALLS_DISABLED_REASON,
   STAGE_AFTER_CALLS,
 } from "@/lib/domain/call-step";
+import {
+  SKIP_REASON_LABEL,
+  suppressionForSkip,
+  type SkipReason,
+  type SuppressionScope,
+} from "@/lib/domain/suppression";
 
 export interface SkipCallResult {
   opportunityId: string;
@@ -21,14 +27,34 @@ export interface SkipCallResult {
 
 export async function skipCallCard(
   callCardId: string,
-  opts: { reason?: string; undo?: boolean } = {}
+  opts: {
+    reason?: string;
+    undo?: boolean;
+    /** One of the structured reasons, so skips can be counted. */
+    skipReason?: SkipReason | null;
+    note?: string | null;
+    /**
+     * How far the decision reaches. `once` writes no suppression, which is
+     * why it is the default: a one-time skip that quietly created a standing
+     * rule is how an operator stops speaking to a firm because they were busy
+     * on a Tuesday.
+     */
+    scope?: SuppressionScope;
+    /** Whether somebody actually dialled before giving up. */
+    dialed?: boolean;
+    orgId?: string;
+    actor?: string;
+  } = {}
 ): Promise<SkipCallResult> {
   if (opts.undo) {
     return restoreSkippedCallCard(callCardId);
   }
 
-  const reason =
-    typeof opts.reason === "string" && opts.reason.trim().length > 0
+  const structured = opts.skipReason ?? null;
+  const scope = opts.scope ?? "once";
+  const reason = structured
+    ? `${SKIP_REASON_LABEL[structured]}${opts.note?.trim() ? `: ${opts.note.trim()}` : ""}`
+    : typeof opts.reason === "string" && opts.reason.trim().length > 0
       ? opts.reason.trim()
       : "Operator chose not to call.";
 
@@ -40,9 +66,14 @@ export async function skipCallCard(
         status: string;
         response_json: Record<string, unknown> | null;
         company_name: string;
+        trade: string | null;
       }>(
         `select cc.opportunity_id, cc.subcontractor_id, cc.status, cc.response_json,
-                s.company_name
+                s.company_name,
+                (select os.trade from opportunity_subs os
+                  where os.opportunity_id = cc.opportunity_id
+                    and os.subcontractor_id = cc.subcontractor_id
+                  order by os.created_at asc limit 1) as trade
            from call_cards cc
            join subcontractors s on s.id = cc.subcontractor_id
           where cc.id = $1`,
@@ -60,6 +91,7 @@ export async function skipCallCard(
         opportunityId: card.opportunity_id,
         subcontractorId: card.subcontractor_id,
         companyName: card.company_name,
+        trade: card.trade,
         alreadySkipped: true as const,
       };
     }
@@ -79,9 +111,25 @@ export async function skipCallCard(
       `update call_cards
           set status = 'skipped',
               response_json = $2,
-              snoozed_until = null
+              snoozed_until = null,
+              skip_reason = $3,
+              skip_note = $4,
+              skip_scope = $5,
+              skipped_by = $6,
+              -- Only a real dial counts. Without this a firm the queue offered
+              -- four times and nobody rang reads as one that was chased four
+              -- times and never answered, which is the opposite fact.
+              dialed = $7
         where id = $1`,
-      [callCardId, JSON.stringify(response)]
+      [
+        callCardId,
+        JSON.stringify(response),
+        structured,
+        opts.note?.trim() || null,
+        scope,
+        opts.actor ?? null,
+        opts.dialed === true,
+      ]
     );
 
     // History on the sub, not last_contacted — we did not reach them.
@@ -100,9 +148,42 @@ export async function skipCallCard(
       opportunityId: card.opportunity_id,
       subcontractorId: card.subcontractor_id,
       companyName: card.company_name,
+      trade: card.trade,
       alreadySkipped: false as const,
     };
   });
+
+  /*
+   * The suppression, which is what makes the decision outlive the click.
+   *
+   * Written after the card is closed rather than before, so a failure here
+   * leaves a skipped call and no standing rule, which is the recoverable
+   * order. The other way round leaves a firm suppressed on the strength of a
+   * skip that did not happen.
+   */
+  if (!result.alreadySkipped && opts.orgId && scope !== "once") {
+    const proposed = suppressionForSkip({
+      scope,
+      subcontractorId: result.subcontractorId,
+      opportunityId: result.opportunityId,
+      trade: result.trade,
+      reason: structured ?? "other",
+      note: opts.note ?? null,
+    });
+    if (proposed) {
+      const { suppress } = await import("./suppressions");
+      await suppress({
+        orgId: opts.orgId,
+        subcontractorId: proposed.subcontractorId,
+        opportunityId: proposed.opportunityId,
+        trade: proposed.trade,
+        channel: proposed.channel,
+        reason: proposed.reason,
+        note: proposed.note,
+        actor: opts.actor ?? "operator",
+      }).catch(() => undefined);
+    }
+  }
 
   if (!result.alreadySkipped) {
     await logAgent({

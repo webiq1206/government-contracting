@@ -211,6 +211,8 @@ async function lastCallForOrg(orgId: string): Promise<number> {
       orgId,
       // Re-checked at the provider boundary, not trusted from job start.
       opportunityId: row.opportunity_id,
+      subcontractorId: row.subcontractor_id ?? undefined,
+      trade: row.trade ?? null,
     });
     if (res.disabled || res.error) {
       // This is the one chance to get a price before the deadline; a silent
@@ -707,6 +709,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       // Re-checked at the provider boundary: assembling this packet takes
       // long enough for an abort to land in between.
       opportunityId: row.opportunity_id,
+      subcontractorId: row.subcontractor_id ?? undefined,
+      trade: row.trade ?? null,
     });
     if (!res.disabled && !res.error) {
       /*

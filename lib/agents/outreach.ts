@@ -493,6 +493,11 @@ export const outreach: AgentDefinition = {
         // packet since the runner's check, and that is long enough for an
         // abort to land in between.
         opportunityId,
+        // So a stop the operator recorded for this firm, or for this trade on
+        // this bid, is honoured at the moment of sending rather than at the
+        // moment this job was queued.
+        subcontractorId: sub.id,
+        trade,
       });
       if (res.disabled) {
         humanAction = true;

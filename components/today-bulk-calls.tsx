@@ -3,8 +3,8 @@
 import Link from "next/link";
 import type { ActionCallRow } from "@/lib/data";
 import type { AutomationRules } from "@/lib/domain/intake";
-import { ActionButton } from "@/components/action-button";
 import { SnoozeButton } from "@/components/snooze-button";
+import { SkipCallControl } from "@/components/skip-call-control";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
 import { withGuideQuery } from "@/lib/guide-links";
@@ -91,25 +91,19 @@ export function TodayBulkCalls({
                 id={c.id}
                 className="shell-ghost min-h-11 text-xs md:min-h-0"
               />
-              <ActionButton
-                endpoint={`/api/call-cards/${c.id}/skip`}
-                /*
-                 * min-h-11 on touch, like the control beside it. It was 40px
-                 * tall and had been since it was written; the sweep only saw
-                 * it once there were call cards in the account for this
-                 * section to render at all.
-                 */
+              {/*
+                The same two questions as everywhere else. Skipping from
+                Today used to record a reason nobody chose and a scope nobody
+                was asked about, which is how the decision came back tomorrow.
+
+                min-h-11 on touch, like the control beside it.
+              */}
+              <SkipCallControl
+                callCardId={c.id}
+                companyName={c.company_name}
+                trade={c.trade ?? null}
                 className="shell-ghost min-h-11 text-xs md:min-h-0"
-                toast={{
-                  message: `Skipped calling ${c.company_name}. Recorded on their history.`,
-                  undo: {
-                    endpoint: `/api/call-cards/${c.id}/skip`,
-                    body: { undo: true },
-                  },
-                }}
-              >
-                Skip
-              </ActionButton>
+              />
             </StopClickPropagation>
             <CtaArrow label="Start call" />
           </div>
