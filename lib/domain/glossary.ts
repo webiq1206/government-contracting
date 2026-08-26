@@ -66,3 +66,52 @@ export const GLOSSARY: Record<string, string> = {
 export function termTip(key: string): string | undefined {
   return GLOSSARY[key];
 }
+
+/**
+ * How each term is written when it is a heading rather than a tooltip.
+ *
+ * Spelled out rather than derived from the key, because deriving gives "Uei",
+ * "Naics" and "Comp P25". An acronym that a solicitation writes in capitals
+ * has to appear in capitals here, or the glossary is teaching the wrong word.
+ */
+const LABELS: Record<string, string> = {
+  uei: "UEI",
+  cage: "CAGE code",
+  naics: "NAICS code",
+  psc: "PSC",
+  set_aside: "Set-aside",
+  sources_sought: "Sources sought",
+  solicitation: "Solicitation",
+  score: "Fit score",
+  tier_pursue: "Pursue tier",
+  tier_review: "Review tier",
+  tier_ignore: "Skipped tier",
+  place_of_performance: "Place of performance",
+  past_performance: "Past performance",
+  outreach_state: "Outreach state",
+  contact_status: "Contact status",
+  quote_entry: "Quote entry",
+  call_queue: "Call queue",
+  package_ready: "Package ready",
+  follow_up_due: "Follow-up due",
+  stage: "Stage",
+  overview: "Overview",
+  workflow: "Workflow",
+  documents: "Documents",
+  activity: "Activity",
+  sub_coverage: "Subcontractor coverage",
+  pricing_comps: "Pricing comps",
+  cpi_adjusted: "CPI adjusted",
+  comp_median: "Comp median",
+  comp_p25: "Comp 25th percentile",
+  comp_p75: "Comp 75th percentile",
+};
+
+/**
+ * The heading form of a term. Falls back to the key with underscores opened
+ * out, which is wrong-looking on purpose: a term added to GLOSSARY without a
+ * label should look unfinished rather than blend in.
+ */
+export function termLabel(key: string): string {
+  return LABELS[key] ?? key.replace(/_/g, " ");
+}

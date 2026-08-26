@@ -7,8 +7,9 @@
  * purely pay-per-use, and meter them.
  *
  * SAM is deliberately NOT lent, and cost is not the reason. The opportunity
- * monitor makes up to 150 requests per run every two hours, roughly 1,800 a
- * day per organization, against a public key rate limited near 1,000 a day.
+ * monitor makes up to 100 requests per run on its own schedule, several
+ * hundred a day per organization, against a public key rate limited near
+ * 1,000 a day.
  * Two or three concurrent trials on our key would exhaust the quota and stop
  * OUR pipeline and every other trial at the same time. It is also the one
  * credential a contractor must hold to bid at all, so asking for it is asking

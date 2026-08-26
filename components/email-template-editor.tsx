@@ -72,7 +72,15 @@ function humanSlug(slug: string): string {
  * does not, or that only one carries the attachments. Editing the wrong one is
  * silent: the change simply never appears in any email anyone receives.
  */
-function slugGuidance(slug: string): { when: string; subject: string; attachments: string } | null {
+function slugGuidance(
+  slug: string,
+  /**
+   * The account's own follow-up window. Typed into this sentence as "48
+   * hours" until it became a setting, at which point every operator who
+   * changed it was reading guidance about somebody else's account.
+   */
+  followupHours: number
+): { when: string; subject: string; attachments: string } | null {
   if (slug === "template_1_outreach") {
     return {
       when: "Sent once, when a subcontractor clears verification for a trade on a solicitation.",
@@ -83,7 +91,7 @@ function slugGuidance(slug: string): { when: string; subject: string; attachment
   }
   if (slug === "template_2_followup") {
     return {
-      when: "Sent 48 hours later, as a reply inside the original conversation, when nobody has answered.",
+      when: `Sent ${followupHours} hour${followupHours === 1 ? "" : "s"} later, as a reply inside the original conversation, when nobody has answered.`,
       subject:
         "Inherited from the original email. There is no subject field here because a reply must keep the thread's subject to stay in it.",
       attachments:
@@ -340,13 +348,15 @@ interface Props {
   template: EmailTemplate;
   /** What this template has actually done, when it has done anything. */
   metrics: TemplateMetrics;
+  /** From this account's automation rules, so the guidance is not a guess. */
+  followupHours: number;
 }
 
 /**
  * Edit one outreach template. Shows the subject + body with a draggable /
  * clickable token palette and a preview modal with sample values filled in.
  */
-export function EmailTemplateEditor({ template, metrics }: Props) {
+export function EmailTemplateEditor({ template, metrics, followupHours }: Props) {
   const [subject, setSubject] = useState(template.subject ?? "");
   const [body, setBody] = useState(template.body);
 
@@ -669,7 +679,7 @@ export function EmailTemplateEditor({ template, metrics }: Props) {
           Currently on version {currentVersion}
         </p>
         {(() => {
-          const g = slugGuidance(template.slug);
+          const g = slugGuidance(template.slug, followupHours);
           if (!g) return null;
           return (
             <dl className="mt-3 grid gap-2 rounded-md bg-muted/40 p-3 text-xs sm:grid-cols-3">

@@ -1,5 +1,5 @@
 /**
- * OPPORTUNITY MONITOR, cron every 2 hours.
+ * OPPORTUNITY MONITOR, on the schedule the registry gives it.
  * Polls SAM.gov (and optional state/local scrapers), deduplicates against
  * existing records by (org_id, source_id) and open solicitation_number,
  * normalizes to the opportunities schema, stores new rows, triggers the
@@ -20,8 +20,8 @@ import type { AgentResult } from "../types";
 
 // SAM's ncode/ptype/state are all single-value, so federal ingestion queries
 // ONE NAICS code per request and filters notice types client-side. These bounds
-// keep a busy profile within the ~1000/day SAM key quota (the 2-hour cron picks
-// up anything skipped on the next run; dedup by source_id prevents re-ingest).
+// keep a busy profile within the ~1000/day SAM key quota (the next scheduled run
+// picks up anything skipped; dedup by source_id prevents re-ingest).
 const SAM_MAX_NAICS = 60; // codes queried per run (most profiles have far fewer)
 const SAM_PAGES_PER_NAICS = 3; // 300 notices/code/run is ample for a 3-day window
 /**

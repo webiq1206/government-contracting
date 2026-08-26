@@ -492,6 +492,38 @@ written in advance of the work.
 | Assignments | Behaviour | "Not produced" | Card | Card | There is no assignee column anywhere in the schema, so nothing generates these. Calling them "in the product" would imply the information is on a page somewhere, and it is not |
 | Where each alert does appear | Added | A link per category | Card | Card | If the only way to see something is to open a page, the page is worth naming |
 
+### Knowledge Center (`/how-it-works`)
+
+Brief section 8: "explain the platform, workflows, terminology, and recovery
+steps without forcing users to contact support", with a prominent
+natural-language search, a role-specific quick-start checklist, an interactive
+workflow map, contextually relevant articles, a searchable glossary, and a full
+reference mode; each workflow step showing current status, owner, trigger,
+input, output, failure recovery, related page, and a recent example. Also
+section 8's standing rule: "All user-facing platform changes must update the
+relevant Knowledge Center guidance. Do not allow instructions to become stale."
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| "About every 2 hours, new federal opportunities are pulled from SAM.gov" | Wrong | Read from the registry | Step 3 | Step 3 | The registry had been scheduling that agent every three hours for months. The sentence was true when it was typed and had no reason to stay true, and nothing in the repository would have noticed. Same claim, same staleness, in three other places: the integration description on the setup checklist, the empty-pipeline banner, and the trial-key reasoning |
+| "A polite follow-up goes out after about 48 hours" | Wrong for any account that changed it | This account's own follow-up rule | Step 9 | Step 9 | The window became an operator setting between 1 and 720 hours. An operator who set it to 24 was reading documentation about somebody else's account. The same sentence was in the Content Library beside the follow-up template |
+| Cadences and limits | Typed into prose | Generated from the registry and the account's rules | Every step | Every step | Prose cannot be wrong loudly. A cadence stated anywhere other than the registry is a copy, and a copy of a number nothing checks drifts |
+| A cadence in any page or component | Allowed | A test failure | - | - | `tests/agent-cadence.test.ts` scans `app`, `components` and `lib` for a hardcoded run frequency and fails on one. The registry is the single file allowed to write one down |
+| Search | Not on the page | Ranked across steps, glossary and page help | Form + results | Form + results | The page had no search at all, which for a reference page means reading all sixteen steps to find one |
+| A question typed as a sentence | - | Answered, or answered partially and said so | Results | Results | Requiring every word returned nothing for "why did nothing get emailed", which is exactly the phrasing the search box invites. It now falls back to a ranked partial match and says which it gave, because results answering half a question presented as the whole answer are worse than none |
+| Current status per step | Absent | From this account's own records | Badge + sentence | Badge + sentence | The page described a pipeline in general and dodged "is that happening to me", which is the question the reader arrived with. Silence is not health: a step that has never run reads "Nothing yet", a step whose records could not be read reads "Not recorded", and neither is allowed to look like a step that is working |
+| "Waiting on you" counts | - | From `queueCounts` | Badge | Badge | The same figures the sidebar badge and Today already count. Writing the predicates again here produced a second answer to "how many decisions are waiting", on a page whose job is explaining the first one |
+| A recent example per step | Absent | A real record from this account | Sentence | Sentence | "90 in the last 7 days, most recently 15 hours ago. Most recent: Roof replacement." is a step you can check. A description is not |
+| Trigger, input, output, recovery | Absent | Per step, behind a disclosure | `<details>` | `<details>` | The brief asks for all four. They are folded away by default because sixteen steps times six facts is a wall, and opened together by the full reference mode |
+| Failure recovery | Absent | Per step, with the page that fixes it | `<details>` | `<details>` | The stated purpose of the section is not contacting support. Every step names what to do when it does not happen and links to where |
+| Full reference mode | Absent | `?full=1` | Header action | Header action | Server-rendered, so it works with no JavaScript and survives a page reload, unlike an expand-all button |
+| Quick start | Absent | The setup checklist plus four first runs | Checklist | Checklist | The setup half comes from `computeSetupChecklist`, which is what Today shows. Two answers to "is setup finished" is one more than the number that can be right |
+| Role specificity | Absent | Capability-filtered, never hidden | Checklist | Checklist | A step the reader's role cannot perform is shown with who can. Hiding it gives a read-only account a checklist that looks finished and an operator who never learns the step exists |
+| Glossary | Tooltips only | Listed, searchable, linkable | Two columns | One column | Thirty definitions existed and could only be found by hovering the right word on the right page. A term you have to already know where to find is not a glossary |
+| The calling step when calling is off | Shown as a normal step | "Turned off", with what happens instead | Step 10 | Step 10 | An email-only account was being told to make calls that no card is ever prepared for |
+| The header count | - | "1 step needs you" | Header | Header | "8 waiting on you" beside a page about the workflow reads as eight steps. The per-step detail carries the real counts |
+| The honest note on bid packages | Kept | Kept | Callout | Callout | It is the most important sentence on the page and none of this changes it |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

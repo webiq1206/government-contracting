@@ -9,6 +9,7 @@ import { contentLibrary, templateSendStats } from "@/lib/data";
 import { templateMetrics } from "@/lib/domain/template-health";
 import { activeTemplates } from "@/lib/domain/template-store";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
+import { getAutomationRules } from "@/lib/app-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -50,10 +51,11 @@ export default async function ContentLibraryPage() {
   // them rather than letting them fill in a form that will be refused.
   const viewer = await currentUser().catch(() => null);
 
-  const [items, templates, stats] = await Promise.all([
+  const [items, templates, stats, rules] = await Promise.all([
     contentLibrary(),
     activeOutreachTemplates(),
     templateSendStats(),
+    getAutomationRules(),
   ]);
   // What each template has actually done, attributed from the send record.
   // A template nobody has used gets zero counts, which the metrics turn into
@@ -127,6 +129,7 @@ export default async function ContentLibraryPage() {
                         key={t.slug}
                         template={t}
                         metrics={metricsFor(t.slug)}
+                        followupHours={rules.followup_hours}
                       />
                     ))}
                   </div>

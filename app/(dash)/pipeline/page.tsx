@@ -31,6 +31,7 @@ import { laneFor, type LaneKey } from "@/lib/domain/pipeline-lanes";
 import { focusSet } from "@/lib/domain/pipeline-focus";
 import { CALL_STAGE } from "@/lib/domain/call-step";
 import { SwipeRail } from "@/components/swipe-rail";
+import { agentCadence } from "@/lib/agent-cadence";
 import { CardPreview } from "@/components/card-preview";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
@@ -585,6 +586,10 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
  */
 async function PipelineOnboarding() {
   await hydrateIntegrationEnv();
+  // Read from the registry rather than typed into the sentence below, which
+  // is how this paragraph came to promise a two-hourly poll for months after
+  // the schedule moved to three.
+  const cadence = agentCadence("opportunity-monitor");
   const st = integrationStatus();
   const missing: string[] = [];
   if (!st.sam) missing.push("SAM.gov (opportunity ingestion)");
@@ -601,7 +606,8 @@ async function PipelineOnboarding() {
         No opportunities yet. That is expected on a fresh setup.
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">
-        Opportunities flow in from the Opportunity Monitor (SAM.gov, every 2 hours) and are
+        Opportunities flow in from the Opportunity Monitor (SAM.gov,{" "}
+        {cadence ? cadence.toLowerCase() : "on a schedule"}) and are
         scored, briefed, and routed through the 11 stages you see here automatically. Add the
         integration keys below in your deployment secrets, then the pipeline will start filling
         itself.
