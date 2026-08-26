@@ -88,11 +88,24 @@ export async function accountSessions(userId: string): Promise<SessionRow[]> {
  * Returns how many rows went, so the caller can tell "signed out" from "that
  * session was already gone" instead of reporting success either way.
  */
+/**
+ * These two do not catch, deliberately.
+ *
+ * Both used to swallow the error and return 0, and 0 is not distinguishable
+ * from "the row was already gone". So a database that refused the delete
+ * produced "That session had already ended" for one device, and `ok: true`
+ * for every other device, while the sessions stayed live. Somebody who opens
+ * this page because they think their account has been used is exactly the
+ * person who must not be told a sign-out worked when it did not.
+ *
+ * The caller reports the failure instead. A revocation that cannot be
+ * confirmed is a failure, not a quiet zero.
+ */
 export async function revokeSession(userId: string, sessionId: string): Promise<number> {
   const rows = await query<{ id: string }>(
     `delete from sessions where id = $1 and user_id = $2 returning id`,
     [sessionId, userId]
-  ).catch(() => [] as { id: string }[]);
+  );
   return rows.length;
 }
 
@@ -104,6 +117,6 @@ export async function revokeOtherSessions(
   const rows = await query<{ id: string }>(
     `delete from sessions where user_id = $1 and id <> $2 returning id`,
     [userId, keepSessionId]
-  ).catch(() => [] as { id: string }[]);
+  );
   return rows.length;
 }

@@ -33,7 +33,28 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const ended = await revokeOtherSessions(auth.id, current);
+    /*
+     * A failure here is reported as one.
+     *
+     * The revoke used to swallow its error and return 0, so a database that
+     * refused the delete produced `ok: true, ended: 0` and an interface saying
+     * "0 devices signed out" in the same green tone as a success. The person
+     * pressing this button is usually the person who thinks somebody else is
+     * in their account, and they would have walked away believing every other
+     * session was gone.
+     */
+    let ended: number;
+    try {
+      ended = await revokeOtherSessions(auth.id, current);
+    } catch {
+      return NextResponse.json(
+        {
+          error:
+            "Those devices could not be signed out and are still signed in. Try again, and change your password if you think somebody else is using the account.",
+        },
+        { status: 500 }
+      );
+    }
     void trackEvent({
       event: "sessions_revoked_others",
       userId: auth.id,
@@ -58,7 +79,21 @@ export async function POST(req: Request) {
     );
   }
 
-  const ended = await revokeSession(auth.id, sessionId);
+  let ended: number;
+  try {
+    ended = await revokeSession(auth.id, sessionId);
+  } catch {
+    // Distinct from the 404 below: "already ended" is a true statement about a
+    // session that is gone, and would be a false one about a session that is
+    // still live because the delete failed.
+    return NextResponse.json(
+      {
+        error:
+          "That device could not be signed out and is still signed in. Try again, and change your password if you think somebody else is using the account.",
+      },
+      { status: 500 }
+    );
+  }
   if (ended === 0) {
     // Distinguished from success on purpose: "signed out" for a session that
     // was already gone teaches somebody the button works when it did nothing.
