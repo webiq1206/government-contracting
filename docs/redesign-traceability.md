@@ -738,6 +738,45 @@ contacts, messages, documents, or account data.
 | Third-party telemetry | - | None, confirmed | - | - | No Sentry, PostHog, Mixpanel, Segment or tag manager anywhere. The outbound hosts in server code are all functional integrations: SAM, Anthropic, Google Maps, Twilio, Hunter, BLS, USASpending and the state portals |
 | Proof | - | The real route, twice | - | - | An event carrying an email, a phone number, a solicitation title and a nested subcontractor record was posted through `/api/analytics` and the stored row read. The first pass kept the title; the second kept `plan` and `quotes` and recorded four drops |
 
+### The AI outage report, and a correction I had to make to my own fix
+
+An operator topped up an empty Anthropic balance, re-ran `doctor`, and was told
+`FAIL ... The AI is refusing requests (490 failed job(s) in 6h)`. They
+concluded the top-up had not worked. It had.
+
+| Item | Before | After | Desktop | Mobile | Why |
+| --- | --- | --- | --- | --- | --- |
+| What the check reads | A count of failures in a rolling 6h window | Same count, plus when the most recent one was | - | - | The count is history. Fixing the cause deletes none of the rows already written; they expire, over six hours. So the number stays high for hours after the problem is gone, and a number cannot say which of those two states it is describing |
+| The doctor verdict | FAIL or PASS | FAIL, WARN or PASS | - | - | A live outage and a cleared one are different facts and had the same badge |
+| The wording | "The AI **is** refusing requests" | "**was** refusing ... most recent 3 hours ago" past 30 minutes | - | - | Present tense on historical evidence. This is the same defect as a screen claiming health it has not verified, pointed the other way, and it costs the same thing: the reader acts on the wrong reading |
+| The banner on Today and Integrations | `down`, "is refusing every request" | `warn` past 30 minutes | - | - | Driven by the same count, with the same tense, in the place an owner looks first |
+| The threshold | - | 30 minutes | - | - | Two cycles of the fastest AI-using agents, which run every fifteen. Shorter and a quiet gap between runs clears the alarm on its own |
+| What the helper is called | - | `troubleHasStopped`, not `isHealthy` | - | - | The evidence supports "nothing has failed recently", not "the service works". Silence is not health, and the name is the place that claim gets made or overstated |
+| A missing timestamp | - | Treated as ongoing | - | - | Guessing recovery from absent evidence is the failure mode this whole section exists to prevent |
+
+**The correction.** The first version of the recovered wording told the owner
+that the failed jobs "was not retried, so anything queued during the outage
+still needs a run". That is false, and I wrote it from an assumption without
+reading the code. Three sweeps already cover every automated stage:
+`scoring-recovery-sweep` re-queues unscored opportunities every 15 minutes,
+`stalled-pipeline-sweep` re-runs the responsible agent for any stage past its
+`STALL_HOURS` threshold every 2 hours on a two-strike policy, and
+`outreach-recovery-sweep` re-sends outreach that failed or was drafted. Every
+stage in `STALL_HOURS` has a threshold, so nothing queued during an outage is
+abandoned.
+
+Telling somebody their backlog needs manual attention when it does not costs
+them an afternoon of hunting for work already being redone. It is the same
+class of error as the bug the section fixes: a confident sentence about system
+state that nobody checked. The replacement says recovery is automatic **and**
+not instant, because an owner who reads "fixed" and finds a thin Review queue
+an hour later needs to know that is the sweep cadence rather than a second
+fault. A test asserts the corrected wording and asserts the old claim is
+absent.
+
+I also checked whether the same claim appeared anywhere else in the repository
+rather than assuming it did not. It does not.
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**
