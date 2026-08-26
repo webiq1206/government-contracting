@@ -10,7 +10,7 @@ export interface ComplianceCardData {
   dueDisplay: string; // human date or "-"
   dateInputValue: string; // yyyy-mm-dd for the date input, or ""
   statusValue: string; // effective status override default ("" = automatic)
-  statusLabel: string; // "On track" / "warning" / ...
+  statusLabel: string; // "On track", "Cannot monitor", "Critical", ...
   countdownText: string;
   color: "green" | "amber" | "red" | "slate";
   notes: string;
@@ -27,6 +27,9 @@ export interface CategoryInfo {
 }
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
+  // "Automatic" only produces a meaningful status when there is a date to
+  // judge against; without one the card reads "Cannot monitor" rather than
+  // asserting the item is fine.
   { value: "", label: "Automatic (let the system decide)" },
   { value: "ok", label: "On track" },
   { value: "warning", label: "Warning" },

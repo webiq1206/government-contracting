@@ -36,6 +36,13 @@ function detailObj(v: unknown): Record<string, unknown> {
 }
 
 const STATUS_LABEL: Record<string, string> = {
+  /*
+   * "On track" is a claim about a date, so it is only sayable when there is
+   * one. An item with no expiry was reading as a green "On track" -- the
+   * system asserting an item was fine when it had nothing at all to check it
+   * against. See cannotMonitor below.
+   */
+  cannot_monitor: "Cannot monitor",
   ok: "On track",
   resolved: "Resolved",
   warning: "Warning",
@@ -107,7 +114,15 @@ function buildCard(row: Row): ComplianceCardData {
   }
 
   const statusOverride = str(row.status_override);
-  const monitorStatus = str(row.status) || "ok";
+  /*
+   * No date and nobody has said otherwise: there is nothing to be on track
+   * against. Reporting that as "On track" is the exact failure the audit
+   * named -- a green badge asserting an item is fine when the system has no
+   * way to know. An override still wins, because a person saying "this is
+   * handled" is information the system does not otherwise have.
+   */
+  const cannotMonitor = !statusOverride && effDue == null;
+  const monitorStatus = cannotMonitor ? "cannot_monitor" : str(row.status) || "ok";
   const effStatus = statusOverride || monitorStatus;
 
   let color: ComplianceCardData["color"];
@@ -116,12 +131,14 @@ function buildCard(row: Row): ComplianceCardData {
   } else if (days != null) {
     color = days < 0 ? "red" : days <= 30 ? "amber" : "green";
   } else {
+    // Slate rather than green: neutral, because nothing is known, and a
+    // colour that reads as "fine" would be the same lie in another form.
     color = effDue ? "green" : "slate";
   }
 
   const countdownText =
     days == null
-      ? "no date set"
+      ? "No expiry date, so this cannot be tracked"
       : days < 0
         ? `${Math.abs(days)}d overdue`
         : days === 0
@@ -335,7 +352,9 @@ function CapGauge({ row }: { row: Row }) {
     <div className="card">
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-sm font-medium text-slate-900">{label}</p>
-        <span className={`badge ${complianceColorClass(color)}`}>{status === "ok" ? "On track" : status}</span>
+        <span className={`badge ${complianceColorClass(color)}`}>
+          {STATUS_LABEL[status] ?? status}
+        </span>
       </div>
       <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
         <div
