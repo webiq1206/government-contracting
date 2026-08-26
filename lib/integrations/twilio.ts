@@ -42,8 +42,8 @@ export const sms = {
 
   /** Send an SMS to an arbitrary recipient. */
   async send(to: string, body: string): Promise<SmsResult> {
-    const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
-    if (await isAutomationPaused()) {
+    const { isAutomationStopped, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
+    if (await isAutomationStopped()) {
       console.warn("[twilio] Automation paused, skipping send");
       return { disabled: true, error: AUTOMATION_PAUSED_ERROR };
     }

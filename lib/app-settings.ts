@@ -100,9 +100,90 @@ export async function getAutomationState(): Promise<AutomationState> {
   return state;
 }
 
-/** True when the master switch has stopped all automation side effects. */
+/** True when THIS organization's switch has stopped its automation. */
 export async function isAutomationPaused(): Promise<boolean> {
   return (await getAutomationState()).paused;
+}
+
+/**
+ * The platform kill switch, which is a different thing from any one
+ * organization's pause and now has its own row.
+ *
+ * It used to be the same row. `getAutomationState` scopes its key by tenant,
+ * and the founding organization keeps the bare key, so a read with no tenant
+ * context landed on the founding organization's own setting. The worker read
+ * it that way for every job, which produced two wrong answers at once:
+ *
+ *   - a customer paused their automation and their queued jobs kept running,
+ *     because their switch was never the one being read
+ *   - the founding organization paused its own automation and every customer
+ *     on the platform stopped
+ *
+ * A separate key ends the conflation. It is deliberately NOT scoped, has no
+ * default row, and defaults to running: an operator who has never touched it
+ * has not asked for anything to stop.
+ */
+const PLATFORM_AUTOMATION_KEY = "platform_automation";
+
+export async function getPlatformAutomationState(): Promise<AutomationState> {
+  const hit = stateCache.get(PLATFORM_AUTOMATION_KEY);
+  if (hit && Date.now() - hit.at < STATE_CACHE_MS) return hit.state;
+  // Read the key directly rather than through getSetting, which would scope it.
+  const row = await queryOne<{ value_json: Partial<AutomationState> }>(
+    `select value_json from app_settings where key = $1`,
+    [PLATFORM_AUTOMATION_KEY]
+  ).catch(() => null);
+  const v = row?.value_json ?? {};
+  const state: AutomationState = {
+    paused: v.paused === true,
+    changed_at: v.changed_at ?? null,
+    changed_by: v.changed_by ?? null,
+  };
+  stateCache.set(PLATFORM_AUTOMATION_KEY, { at: Date.now(), state });
+  return state;
+}
+
+/** True when the platform-wide kill switch has stopped every organization. */
+export async function isPlatformAutomationPaused(): Promise<boolean> {
+  return (await getPlatformAutomationState()).paused;
+}
+
+/**
+ * Either switch. This is what an enforcement point wants to ask.
+ *
+ * A kill switch that does not stop sending is not a kill switch, so every
+ * place that refuses to act while automation is paused has to consider both:
+ * the platform switch and this organization's own. Separating the two states
+ * without giving the enforcement points one question to ask would have made
+ * the platform switch a label rather than a control.
+ *
+ * The runner deliberately does NOT use this: it checks the two separately so
+ * its summary can say which one stopped the job, which is the difference
+ * between "we are down" and "you turned this off".
+ */
+export async function isAutomationStopped(): Promise<boolean> {
+  if (await isPlatformAutomationPaused()) return true;
+  return isAutomationPaused();
+}
+
+export async function setPlatformAutomationPaused(
+  paused: boolean,
+  by: string
+): Promise<AutomationState> {
+  const state: AutomationState = {
+    paused,
+    changed_at: new Date().toISOString(),
+    changed_by: by,
+  };
+  await query(
+    `insert into app_settings (key, value_json, updated_at, updated_by)
+     values ($1, $2::jsonb, now(), $3)
+     on conflict (key) do update
+       set value_json = excluded.value_json, updated_at = now(), updated_by = excluded.updated_by`,
+    [PLATFORM_AUTOMATION_KEY, JSON.stringify(state), by]
+  );
+  stateCache.set(PLATFORM_AUTOMATION_KEY, { at: Date.now(), state });
+  return state;
 }
 
 export async function setAutomationPaused(paused: boolean, by: string): Promise<AutomationState> {

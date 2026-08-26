@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser, requireCapability } from "@/lib/api-auth";
-import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
+import { AUTOMATION_PAUSED_ERROR, isAutomationStopped } from "@/lib/app-settings";
 import { enqueue } from "@/lib/queue";
 import { getAgent } from "@/lib/agents/registry";
 import { lookupPayloadRecords } from "@/lib/agents/payload-records";
@@ -13,7 +13,7 @@ export async function POST(req: Request, { params }: { params: { name: string } 
   const auth = await requireCapability("run_agents");
   if (auth instanceof NextResponse) return auth;
 
-  if (await isAutomationPaused()) {
+  if (await isAutomationStopped()) {
     return NextResponse.json({ error: AUTOMATION_PAUSED_ERROR }, { status: 409 });
   }
 

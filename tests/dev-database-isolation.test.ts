@@ -17,6 +17,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // block do not need a live database to prove they got past it.
 vi.mock("../lib/app-settings", () => ({
   isAutomationPaused: vi.fn(async () => false),
+  isAutomationStopped: vi.fn(async () => false),
+  isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "Automation is fully paused.",
 }));
 

@@ -556,8 +556,8 @@ export const gmail = {
       };
     }
 
-    const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
-    if (await isAutomationPaused()) {
+    const { isAutomationStopped, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
+    if (await isAutomationStopped()) {
       return { disabled: true, error: AUTOMATION_PAUSED_ERROR };
     }
     const org = await resolveOrg(params.orgId);

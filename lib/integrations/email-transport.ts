@@ -165,8 +165,8 @@ export async function sendOutreachEmail(
     };
   }
 
-  const { isAutomationPaused, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
-  if (await isAutomationPaused()) {
+  const { isAutomationStopped, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
+  if (await isAutomationStopped()) {
     return { provider: null, disabled: true, error: AUTOMATION_PAUSED_ERROR };
   }
 

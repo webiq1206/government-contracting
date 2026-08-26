@@ -27,6 +27,8 @@ vi.mock("../lib/integrations/gmail", () => ({
 
 vi.mock("../lib/app-settings", () => ({
   isAutomationPaused: vi.fn(async () => false),
+  isAutomationStopped: vi.fn(async () => false),
+  isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "Automation is fully paused.",
 }));
 

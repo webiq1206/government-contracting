@@ -52,6 +52,8 @@ vi.mock("../lib/app-settings", () => ({
   getAutomationRules: async () => ({ submit_lead_hours: 24, urgent_days: 3, retention_days: 0 }),
   areCallsEnabled: async () => false,
   isAutomationPaused: async () => false,
+  isAutomationStopped: async () => false,
+  isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "paused",
 }));
 vi.mock("../lib/ai/companyProfile", () => ({

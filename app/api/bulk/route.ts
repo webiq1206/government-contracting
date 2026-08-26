@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSubscriber, requireCapability } from "@/lib/api-auth";
-import { AUTOMATION_PAUSED_ERROR, isAutomationPaused } from "@/lib/app-settings";
+import { AUTOMATION_PAUSED_ERROR, isAutomationStopped } from "@/lib/app-settings";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
@@ -144,7 +144,7 @@ export async function POST(req: Request) {
   }
 
   if (body.action === "pursue" || body.action === "dismiss") {
-    if (body.action === "pursue" && (await isAutomationPaused())) {
+    if (body.action === "pursue" && (await isAutomationStopped())) {
       return NextResponse.json({ error: AUTOMATION_PAUSED_ERROR }, { status: 409 });
     }
 

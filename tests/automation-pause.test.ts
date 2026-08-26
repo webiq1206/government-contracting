@@ -7,6 +7,8 @@ const isPaused = vi.fn(async () => false);
 
 vi.mock("../lib/app-settings", () => ({
   isAutomationPaused: (...args: unknown[]) => isPaused(...args),
+  isAutomationStopped: (...args: unknown[]) => isPaused(...args),
+  isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "Automation is fully paused.",
   getAutomationState: vi.fn(async () => ({
     paused: false,

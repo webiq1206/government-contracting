@@ -151,26 +151,48 @@ export async function runAgent(
     return { ok: true, summary: `${def.name} is disabled via DISABLED_AGENTS` };
   }
 
-  const { isAutomationPaused } = await import("../app-settings");
-  if (await isAutomationPaused()) {
+  /*
+   * Two pause checks, because there are two different questions and they used
+   * to be one row answering both badly.
+   *
+   * This one is the platform kill switch: an Anthropic-side or infrastructure
+   * emergency where nothing should run for anybody. It has its own unscoped
+   * key, so reading it needs no tenant context and it is checked first.
+   */
+  const { isPlatformAutomationPaused, isAutomationPaused } = await import("../app-settings");
+  if (await isPlatformAutomationPaused()) {
     return {
       ok: true,
-      summary: `${def.name} skipped: automation is fully paused`,
+      summary: `${def.name} skipped: automation is paused platform-wide`,
     };
   }
 
-  /**
-   * Everything from here down runs as the organization the job belongs to.
-   *
-   * The pause check above is deliberately outside it: that switch is read at
-   * the platform level for a queue job today and stopping every tenant is what
-   * an operator reaching for it expects. Wrapping it would turn a global kill
-   * switch into a per-customer one, which is a decision, not a bug fix.
-   */
   const { orgId, missing } = await payloadOrgId(def.name, payload);
   const inOrg = <T>(fn: () => Promise<T>): Promise<T> =>
     orgId === null ? fn() : runWithOrg(orgId, fn);
 
+  /*
+   * And this one is the customer's own switch, which is why it has to come
+   * AFTER the organization is resolved.
+   *
+   * app_settings keys are tenant-scoped as "<orgId>:automation", with the
+   * founding organization keeping the bare key. Read before this line there is
+   * no async-local context and no signed-in user, so tryResolveTenantOrgId
+   * falls back to LEGACY_ORG_ID and the lookup lands on the founding
+   * organization's row. That produced two wrong answers at once: a customer
+   * who paused their automation had their queued jobs keep running, and the
+   * founding organization pausing its own automation stopped every customer on
+   * the platform.
+   *
+   * Nothing below this point reads, writes, enqueues, calls the AI, or
+   * contacts anybody, so a paused organization stops here before any of it.
+   */
+  if (orgId !== null && (await inOrg(() => isAutomationPaused()))) {
+    return {
+      ok: true,
+      summary: `${def.name} skipped: this account has automation paused`,
+    };
+  }
   const runId = randomUUID();
   const started = Date.now();
   /*

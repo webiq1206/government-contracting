@@ -22,6 +22,8 @@ vi.mock("@/lib/app-settings", () => ({
   areCallsEnabled: () => areCallsEnabled(),
   getAutomationRules: vi.fn(),
   isAutomationPaused: vi.fn(async () => false),
+  isAutomationStopped: vi.fn(async () => false),
+  isPlatformAutomationPaused: async () => false,
 }));
 vi.mock("@/lib/domain/advance-stage", () => ({
   advancePastCallStep: (...a: unknown[]) => advancePastCallStep(...(a as [])),

@@ -57,6 +57,8 @@ vi.mock("../lib/opportunity-attachments", () => ({
 vi.mock("../lib/app-settings", () => ({
   areCallsEnabled: async () => false,
   isAutomationPaused: async () => false,
+  isAutomationStopped: async () => false,
+  isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "paused",
 }));
 vi.mock("../lib/domain/advance-stage", () => ({ advancePastCallStep: vi.fn(async () => true) }));
