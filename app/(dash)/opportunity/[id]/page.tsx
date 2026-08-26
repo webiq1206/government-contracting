@@ -44,6 +44,9 @@ import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { compareScenarios, pricingSheet } from "@/lib/domain/pricing-row";
 import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
 import { pricingRowsWithQuotes } from "@/lib/pricing-rows";
+import { ReverifyPanel } from "@/components/reverify-panel";
+import { lastFullVerificationAt, lastVerification, liveVerification } from "@/lib/reverification";
+import { recommendScope } from "@/lib/domain/reverification";
 import { actingOrgId } from "@/lib/tenant-context";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
@@ -155,6 +158,37 @@ export default async function OpportunityPage({ params }: { params: { id: string
       contingencyPct,
     })
   );
+  /*
+   * What the last check against the source established.
+   *
+   * Read here rather than fetched by the panel so the page renders the answer
+   * rather than a spinner, and so the recommendation is computed once on the
+   * server against one clock.
+   */
+  const [liveCheck, lastCheck, lastFullCheckAt] = pricingOrgId
+    ? await Promise.all([
+        liveVerification(params.id, pricingOrgId).catch(() => null),
+        lastVerification(params.id, pricingOrgId).catch(() => null),
+        lastFullVerificationAt(params.id, pricingOrgId).catch(() => null),
+      ])
+    : [null, null, null];
+  const hoursToClose = opp.deadline
+    ? (new Date(opp.deadline).getTime() - Date.now()) / 3_600_000
+    : null;
+  const checkRecommendation = recommendScope({
+    now: new Date(),
+    lastFullAt: lastFullCheckAt,
+    freshnessHours: 72,
+    amendmentDetected: (lastCheck?.findings ?? []).some(
+      (f) => f.scope === "documents" && f.kind === "added"
+    ),
+    documentsChanged: (lastCheck?.findings ?? []).some(
+      (f) => f.scope === "documents" && f.kind === "changed"
+    ),
+    conflictOpen: lastCheck?.state === "conflicts_found" && lastCheck.acceptedAt == null,
+    approachingSubmission: hoursToClose != null && hoursToClose > 0 && hoursToClose <= 96,
+  });
+
   // Null when nothing has been priced. "Never" is a fact; "just now" would be
   // a false one.
   const lastPricedAt = pricingRows.reduce<Date | null>((latest, r) => {
@@ -974,6 +1008,19 @@ export default async function OpportunityPage({ params }: { params: { id: string
               >
                 Solicitation attachments, generated package pieces, and downloads.
               </SectionHeading>
+              {/*
+                Placed above the inventory rather than in a settings menu.
+                The question "is anything on this screen still true" belongs
+                next to the documents that answer it.
+              */}
+              <ReverifyPanel
+                opportunityId={opp.id}
+                last={lastCheck}
+                live={liveCheck}
+                recommendation={checkRecommendation}
+                canRun={can(viewer?.orgRole, "decide")}
+                canAccept={can(viewer?.orgRole, "decide")}
+              />
               <DocumentInventoryPanel
                 documents={inventory}
                 coverage={documentCoverage}
