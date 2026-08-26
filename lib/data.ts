@@ -2235,6 +2235,16 @@ export interface ActionCenterData {
     subFollowUps: number;
     quoteReviews: number;
     replyReviews: number;
+    /**
+     * Compliance alerts, uncounted by the list above it.
+     *
+     * complianceAlerts is `limit 8`, because it also renders a preview strip.
+     * Today fed that array's LENGTH into the work ledger, so an account with
+     * twenty overdue registrations was told in its headline number that it
+     * had eight. Same defect this totals block exists to fix, in one of the
+     * two inputs it did not cover.
+     */
+    compliance: number;
   };
 }
 
@@ -2493,6 +2503,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
       sub_follow_ups: number;
       quote_reviews: number;
       reply_reviews: number;
+      compliance: number;
     }>(
       `select
          (${actionOppCount(orgId)} ${ACTION_OPP_WHERE.triage}) as triage,
@@ -2509,7 +2520,11 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          (select count(*)::int from subcontractor_reply_events e
             left join opportunities o on o.id = e.opportunity_id
            where e.needs_review and e.reviewed_at is null
-             and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))) as reply_reviews`,
+             and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))) as reply_reviews,
+         (select count(*)::int from compliance_items ci
+           where ci.org_id = '${orgId}'
+             and coalesce(ci.status_override, ci.status)
+                 in ('warning','critical','blocked')) as compliance`,
       [urgentDays]
     ).catch(() => null),
   ]);
@@ -2575,6 +2590,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
       subFollowUps: totalsRow?.sub_follow_ups ?? followUpsWithWork.length,
       quoteReviews: totalsRow?.quote_reviews ?? quoteReviews.length,
       replyReviews: totalsRow?.reply_reviews ?? replyReviews.length,
+      compliance: totalsRow?.compliance ?? complianceAlerts.length,
     },
   };
 }
