@@ -4,6 +4,7 @@ import {
   agentLogsPaged,
   agentStatuses,
   jobRunsSummary,
+  providerUsage,
   LOG_PAGE_SIZE,
   type AgentStatusRow,
 } from "@/lib/data";
@@ -18,9 +19,10 @@ import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { AutomationControl } from "@/components/automation-control";
+import { ProviderUsagePanel } from "@/components/provider-usage-panel";
 import { getAutomationState } from "@/lib/app-settings";
 import { timeAgo } from "@/lib/format";
-import { scheduleLabel } from "@/lib/domain/cron-describe";
+import { scheduleLabel, nextRunAt, nextRunAcross } from "@/lib/domain/cron-describe";
 
 export const dynamic = "force-dynamic";
 
@@ -116,15 +118,21 @@ export default async function AgentsPage({
   const levelFilter = searchParams?.level;
   const q = searchParams?.q ?? "";
   const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
-  const [runs, paged, automation, health, statuses, live] = await Promise.all([
+  const [runs, paged, automation, health, statuses, live, provider] = await Promise.all([
     jobRunsSummary() as Promise<Row[]>,
     agentLogsPaged({ agent: agentFilter, level: levelFilter, q, page }),
     getAutomationState(),
     agentHealth(),
     agentStatuses(),
     automationHealth(),
+    providerUsage(),
   ]);
   const statusByAgent = new Map(statuses.map((s) => [s.agent, s]));
+  // "When will anything happen next" is one of the seven facts the audit asks
+  // this page's summary to carry, and it is the one that stops somebody
+  // re-running by hand work that was about to run on its own.
+  const nextRun = nextRunAcross(ROSTER.map((a) => a.cron));
+  const agentNext = new Map(ROSTER.map((a) => [a.name, nextRunAt(a.cron)]));
   const logs = paged.rows as Row[];
   const totalPages = Math.max(1, Math.ceil(paged.total / LOG_PAGE_SIZE));
 
@@ -166,8 +174,23 @@ export default async function AgentsPage({
           them, which put the single fixable cause on page nine underneath its
           own symptoms.
         */}
-        <AutomationStatusPanel health={live} />
+        <AutomationStatusPanel health={live} nextRun={nextRun ? nextRun.toISOString() : null} />
         <AutomationIncidents health={live} />
+
+        {/*
+          * Item 6 of the audit's structure, and the half of it that was
+          * missing entirely. Placed under the incidents because it answers the
+          * question the incidents raise: the balance ran out, so what is the
+          * balance, and how much of it is left.
+          */}
+        <ProviderUsagePanel
+          source={provider.source}
+          grantExpiresAt={provider.grantExpiresAt ? provider.grantExpiresAt.toISOString() : null}
+          callsOnPlatformKey={provider.callsOnPlatformKey}
+          trialBudget={provider.trialBudget}
+          usageRows={provider.usageRows}
+          incidentCauses={live.incidents.map((i) => i.cause)}
+        />
 
         {health.errors24h > 0 && (
           <p className="text-xs text-muted-foreground">
@@ -197,6 +220,13 @@ export default async function AgentsPage({
                         a.cron
                           ? "badge shrink-0 bg-accent/10 text-accent"
                           : "badge shrink-0 bg-slate-200 text-slate-600"
+                      }
+                      title={
+                        // The schedule says how often; the title says when, so
+                        // "it has not run" can be told apart from "it is not due".
+                        agentNext.get(a.name)
+                          ? `Next run ${agentNext.get(a.name)!.toISOString().replace("T", " ").slice(0, 16)} UTC`
+                          : undefined
                       }
                     >
                       {scheduleLabel(a.cron)}

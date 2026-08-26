@@ -319,6 +319,20 @@ written in advance of the work.
 | (new) Drill-down by agency, NAICS, state, set-aside, score band | Added | Table under the funnel | 5 chips + table | Chips + scrolling table | Items 5 and 6 of the spec, over the same cohort as the funnel so the two always agree. The dimension is chosen from a fixed list and mapped to a fixed SQL expression, never interpolated, so a drill-down cannot become a column selector |
 | Win rate in the drill-down | Behaviour | Wins over decided bids | Analytics | Analytics | Dividing wins by submissions counts every bid still sitting with the agency as a loss. A row with nothing decided has no win rate and says so, rather than marking an agency you have never lost to as a losing one |
 
+### Automation Health
+
+| Existing item | Decision | New location | Desktop | Mobile | Reason |
+| --- | --- | --- | --- | --- | --- |
+| `Failure rate (24h): 0%` | Fixed | "No runs in 24 hours" / "Too few runs to say (N)" / "19% of 32" | Summary | Summary | A rate of nought is a claim of a perfect record, and an account where nothing ran has no record to be perfect. The stopped machine read as the flawless one, which is the exact failure this page exists to prevent |
+| Four summary facts | Changed | Seven, the ones the audit lists | Summary | Summary | Active incidents, workflows affected, and next scheduled run were absent. Every rate now carries its denominator |
+| (new) Next scheduled run | Added | Summary, and each roster card | Summary + roster | Summary | The sentence that stops somebody re-running by hand work that was about to run on its own. Computed from the cron rather than stored, and null wherever the expression is unrecognised, event-triggered, or fires beyond a week: a confident wrong time on this page is worse than no time |
+| "77 open opportunities affected" beside "no active incidents" | Fixed | "77 open opportunities waiting, while paused" | Summary | Summary | On a paused account nothing was failing, the work was switched off. The number was right and the word was wrong, and together they read as a contradiction |
+| (new) Provider usage and credit | Added | Under the incidents | Panel | Panel | Item 6 of the audit's structure, absent entirely. Three things stop every agent overnight and none of them announced itself: a spent balance, a lapsing grant, and a trial allowance reaching its cap |
+| (new) Expiring key grant | Added | Provider panel | Panel | Panel | A grant with an end date is a scheduled outage. Nothing in the product mentioned it until after every agent had stopped |
+| (new) Trial allowance bar | Added | Provider panel | Panel | Panel | Drawn only where a cap actually exists. An account on its own key is bounded by its own billing, and a progress bar against a number this system did not set would be fiction |
+| (new) Token usage and cache hit rate | Added | Provider panel | Panel | Panel | Absent as an absence, never as a row of zeroes: "we made no calls" and "we made calls that consumed nothing" cannot both be true |
+| Credential source | Fixed | Five sources, including the founding account's environment key | Panel | Panel | The first draft mirrored four of the resolver's five branches and reported "no AI credential" on the one account where every agent was in fact running |
+
 ## Not changed, deliberately
 
 - **404 rather than a permission state on `/authority` and `/admin/accounts`.**

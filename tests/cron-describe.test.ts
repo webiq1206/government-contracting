@@ -5,7 +5,12 @@
  * as itself rather than as a confident guess.
  */
 import { describe, it, expect } from "vitest";
-import { describeCron, scheduleLabel } from "../lib/domain/cron-describe";
+import {
+  describeCron,
+  scheduleLabel,
+  nextRunAt,
+  nextRunAcross,
+} from "../lib/domain/cron-describe";
 import { scheduledAgents } from "../lib/agents/registry";
 
 describe("describeCron", () => {
@@ -70,5 +75,92 @@ describe("scheduleLabel", () => {
       .filter((c): c is string => Boolean(c))
       .filter((c) => describeCron(c) === c);
     expect(undescribed).toEqual([]);
+  });
+});
+
+describe("nextRunAt", () => {
+  // A Tuesday, 09:07:33 UTC.
+  const now = new Date("2026-08-25T09:07:33.000Z");
+
+  it("finds the next slot of an every-N-minutes schedule", () => {
+    expect(nextRunAt("*/15 * * * *", now)?.toISOString()).toBe("2026-08-25T09:15:00.000Z");
+    expect(nextRunAt("*/10 * * * *", now)?.toISOString()).toBe("2026-08-25T09:10:00.000Z");
+  });
+
+  it("drops the seconds rather than firing in the past", () => {
+    const at = nextRunAt("*/15 * * * *", now);
+    expect(at!.getUTCSeconds()).toBe(0);
+    expect(at!.getTime()).toBeGreaterThan(now.getTime());
+  });
+
+  it("rolls to the next hour when this hour's slot has gone", () => {
+    expect(nextRunAt("5 * * * *", now)?.toISOString()).toBe("2026-08-25T10:05:00.000Z");
+    expect(nextRunAt("15 * * * *", now)?.toISOString()).toBe("2026-08-25T09:15:00.000Z");
+  });
+
+  it("handles every-N-hours", () => {
+    expect(nextRunAt("0 */2 * * *", now)?.toISOString()).toBe("2026-08-25T10:00:00.000Z");
+    expect(nextRunAt("0 */6 * * *", now)?.toISOString()).toBe("2026-08-25T12:00:00.000Z");
+  });
+
+  it("rolls a daily schedule to tomorrow once today's time has passed", () => {
+    expect(nextRunAt("45 3 * * *", now)?.toISOString()).toBe("2026-08-26T03:45:00.000Z");
+    expect(nextRunAt("20 6 * * *", now)?.toISOString()).toBe("2026-08-26T06:20:00.000Z");
+    expect(nextRunAt("40 9 * * *", now)?.toISOString()).toBe("2026-08-25T09:40:00.000Z");
+  });
+
+  it("finds the next weekday for a weekly schedule", () => {
+    // Tuesday is day 2, so the next Monday is six days out.
+    expect(nextRunAt("0 9 * * 1", now)?.toISOString()).toBe("2026-08-31T09:00:00.000Z");
+  });
+
+  it("says nothing rather than guessing when there is no schedule", () => {
+    expect(nextRunAt(null, now)).toBeNull();
+    expect(nextRunAt("", now)).toBeNull();
+    expect(nextRunAt("   ", now)).toBeNull();
+  });
+
+  it("says nothing for an expression it cannot parse", () => {
+    expect(nextRunAt("not a cron", now)).toBeNull();
+    expect(nextRunAt("0 9 * *", now)).toBeNull();
+    expect(nextRunAt("0 9 * * * *", now)).toBeNull();
+    expect(nextRunAt("*/0 * * * *", now)).toBeNull();
+    expect(nextRunAt("99 * * * *", now)).toBeNull();
+    expect(nextRunAt("0 JAN * * *", now)).toBeNull();
+  });
+
+  it("says nothing for a schedule that fires beyond the lookahead", () => {
+    // The 1st of February from a Tuesday in August is far outside a week.
+    expect(nextRunAt("0 6 1 2 *", now)).toBeNull();
+  });
+
+  it("treats a restricted day-of-month and day-of-week as an or, the way cron does", () => {
+    // The 27th, or any Friday. Friday the 28th is later than Thursday the 27th.
+    expect(nextRunAt("0 0 27 * 5", now)?.toISOString()).toBe("2026-08-27T00:00:00.000Z");
+  });
+
+  it("accepts lists and ranges", () => {
+    expect(nextRunAt("0,30 * * * *", now)?.toISOString()).toBe("2026-08-25T09:30:00.000Z");
+    expect(nextRunAt("0 10-14 * * *", now)?.toISOString()).toBe("2026-08-25T10:00:00.000Z");
+  });
+});
+
+describe("nextRunAcross", () => {
+  const now = new Date("2026-08-25T09:07:33.000Z");
+
+  it("returns the soonest of several schedules", () => {
+    expect(nextRunAcross(["45 3 * * *", "*/10 * * * *", "0 */6 * * *"], now)?.toISOString()).toBe(
+      "2026-08-25T09:10:00.000Z"
+    );
+  });
+
+  it("ignores the ones it cannot predict rather than being defeated by them", () => {
+    expect(nextRunAcross([null, "gibberish", "0 */6 * * *"], now)?.toISOString()).toBe(
+      "2026-08-25T12:00:00.000Z"
+    );
+  });
+
+  it("returns nothing when nothing is predictable", () => {
+    expect(nextRunAcross([null, "", "gibberish"], now)).toBeNull();
   });
 });

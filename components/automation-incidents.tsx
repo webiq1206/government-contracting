@@ -25,8 +25,19 @@ const TONE: Record<AutomationState, { border: string; text: string; glyph: strin
   not_configured: { border: "border-border bg-surface", text: "text-muted-foreground", glyph: "○", word: "Not set up" },
 };
 
-export function AutomationStatusPanel({ health }: { health: AutomationHealth }) {
+export function AutomationStatusPanel({
+  health,
+  nextRun,
+}: {
+  health: AutomationHealth;
+  /** The soonest scheduled run, as an ISO string, or null when none is predictable. */
+  nextRun?: string | null;
+}) {
   const tone = TONE[health.state];
+  const blocking = health.incidents.filter((i) => i.spec.blocking).length;
+  // One workflow hit by three causes is one affected workflow, not three.
+  const workflows = new Set(health.incidents.flatMap((i) => i.affectedWorkflows));
+  const idle = health.state === "healthy" || health.state === "not_configured";
   return (
     <section
       aria-labelledby="automation-state"
@@ -43,27 +54,94 @@ export function AutomationStatusPanel({ health }: { health: AutomationHealth }) 
         <p className="min-w-0 flex-1 text-sm text-foreground">{health.detail}</p>
       </div>
 
+      {/* The seven facts the audit asks this summary to carry. Each one has a
+          reading for "we do not know", and none of them uses nought to mean it. */}
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-        <Fact label="Last successful run" value={health.lastSuccessAt ? timeAgo(health.lastSuccessAt) : "None in 24 hours"} />
         <Fact
-          label="Open opportunities affected"
+          label="Active incidents"
           value={
-            health.state === "healthy" || health.state === "not_configured"
+            health.incidents.length === 0
               ? "None"
-              : `${health.affectedOpportunities}`
+              : `${health.incidents.length}${blocking > 0 ? `, ${blocking} blocking` : ""}`
           }
         />
         <Fact
-          label="Failure rate (24h)"
-          value={health.failureRate > 0 ? `${Math.round(health.failureRate * 100)}%` : "0%"}
+          label="Workflows affected"
+          value={workflows.size === 0 ? "None" : `${workflows.size}`}
+        />
+        {/*
+          * "77 affected" beside "no active incidents" reads as a
+          * contradiction, and on a paused account it was one: nothing was
+          * failing, the work was simply switched off. The number is worth
+          * saying either way; what it means depends on the state.
+          */}
+        <Fact
+          label={health.state === "paused" ? "Open opportunities waiting" : "Open opportunities affected"}
+          value={
+            idle
+              ? "None"
+              : health.state === "paused"
+                ? `${health.affectedOpportunities}, while paused`
+                : `${health.affectedOpportunities}`
+          }
         />
         {/* Not known rather than zero: the queue lives in a different backend
             depending on deployment, and an unknown shown as 0 is how a growing
             backlog stays invisible. */}
         <Fact label="Jobs waiting" value={health.backlog == null ? "Not measured" : `${health.backlog}`} />
+        {/*
+          * A rate of nought claims a perfect record, and an account where
+          * nothing ran has no record to be perfect. The two absences read
+          * differently on purpose: nothing ran at all, or too little ran to
+          * draw a rate from.
+          */}
+        <Fact
+          label="Failure rate (24h)"
+          value={
+            health.failureRate == null
+              ? health.runs24h === 0
+                ? "No runs in 24 hours"
+                : `Too few runs to say (${health.runs24h})`
+              : `${Math.round(health.failureRate * 100)}% of ${health.runs24h}`
+          }
+        />
+        <Fact
+          label="Last successful run"
+          value={health.lastSuccessAt ? timeAgo(health.lastSuccessAt) : "None in 24 hours"}
+        />
+        <Fact
+          label="Next scheduled run"
+          value={
+            health.state === "paused"
+              ? "Paused, nothing scheduled"
+              : nextRun
+                ? timeUntil(nextRun)
+                : "Not scheduled"
+          }
+        />
       </dl>
     </section>
   );
+}
+
+/**
+ * How long until a moment, in the words somebody waiting would use.
+ *
+ * Deliberately not `timeAgo` with a sign flipped: "in 12 minutes" is the
+ * sentence that stops an operator manually re-running work that was about to
+ * happen on its own, and it has to read forward.
+ */
+function timeUntil(iso: string): string {
+  const ms = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(ms)) return "Not scheduled";
+  if (ms <= 0) return "Due now";
+  const mins = Math.round(ms / 60_000);
+  if (mins < 1) return "In under a minute";
+  if (mins < 60) return `In ${mins} minute${mins === 1 ? "" : "s"}`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `In ${hours} hour${hours === 1 ? "" : "s"}`;
+  const days = Math.round(hours / 24);
+  return `In ${days} day${days === 1 ? "" : "s"}`;
 }
 
 function Fact({ label, value }: { label: string; value: string }) {

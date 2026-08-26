@@ -13,6 +13,7 @@
 import { query, queryOne } from "./db";
 import type { KpiParams } from "./domain/kpi";
 import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
+import type { CredentialSource as ProviderCredentialSource } from "./domain/provider-usage";
 import { resolveSubWork } from "./domain/sub-work";
 import {
   loadAwardCompliance,
@@ -1091,6 +1092,80 @@ export async function latestKpiSnapshot(): Promise<{
   return {
     data: row.output_json,
     generatedAt: row.created_at instanceof Date ? row.created_at : null,
+  };
+}
+
+/**
+ * Which AI credential this account is spending, and what it has spent.
+ *
+ * Three things can stop every agent overnight and none of them was visible
+ * anywhere in the interface: an exhausted credit balance, a borrowed key whose
+ * grant expires, and a trial allowance reaching its cap. All three are
+ * knowable in advance from data already stored, which is why this reads the
+ * grant and the meter rather than only the failures.
+ *
+ * Every field can be absent, and absent is reported as absent. A window with
+ * no recorded calls returns no rows, not a row of zeroes.
+ */
+export async function providerUsage(): Promise<{
+  source: ProviderCredentialSource;
+  grantExpiresAt: Date | null;
+  callsOnPlatformKey: number | null;
+  trialBudget: number | null;
+  usageRows: Record<string, unknown>[];
+}> {
+  const orgId = await currentOrg();
+  const KEY = "ANTHROPIC_API_KEY";
+  const [own, grant, meter, usageRows] = await Promise.all([
+    queryOne<{ ok: boolean }>(
+      `select true as ok from integration_settings where env_key = $1 and org_id = $2`,
+      [KEY, orgId]
+    ).catch(() => null),
+    queryOne<{ expires_at: Date | null }>(
+      `select expires_at from platform_key_grants
+        where org_id = $1 and env_key = $2
+          and (expires_at is null or expires_at > now())`,
+      [orgId, KEY]
+    ).catch(() => null),
+    queryOne<{ calls: number }>(
+      `select calls from platform_key_usage where org_id = $1 and env_key = $2`,
+      [orgId, KEY]
+    ).catch(() => null),
+    query<{ claude_usage: Record<string, unknown> }>(
+      `select claude_usage from agent_logs
+        where org_id = $1 and claude_usage is not null
+          and created_at >= now() - interval '24 hours'
+        limit 5000`,
+      [orgId]
+    ).catch(() => []),
+  ]);
+
+  // The same order the key resolver uses, so this panel cannot describe a
+  // credential the automation is not actually spending. Own key first: an
+  // account that has supplied one is never borrowing, whatever else exists.
+  const { TRIAL_PLATFORM_KEY_BUDGET } = await import("./billing/trial-keys");
+  const budget = TRIAL_PLATFORM_KEY_BUDGET[KEY] ?? null;
+  const { LEGACY_ORG_ID } = await import("./tenant-context");
+  let source: ProviderCredentialSource;
+  if (own) source = "own_key";
+  else if (grant) source = "granted";
+  else if (meter && budget != null && meter.calls > 0) source = "trial";
+  // Last in the resolver's order, and easy to leave out: the founding
+  // organization falls back to the environment. Omitting this branch reported
+  // "no AI credential" on the one account where every agent was in fact
+  // running, which is a worse answer than none.
+  else if (orgId === LEGACY_ORG_ID && (process.env.ANTHROPIC_API_KEY ?? "").trim())
+    source = "environment";
+  else source = "none";
+
+  return {
+    source,
+    grantExpiresAt: grant?.expires_at instanceof Date ? grant.expires_at : null,
+    callsOnPlatformKey: meter ? Number(meter.calls) : null,
+    trialBudget: source === "trial" ? budget : null,
+    usageRows: usageRows
+      .map((r) => r.claude_usage)
+      .filter((u): u is Record<string, unknown> => !!u && typeof u === "object"),
   };
 }
 
