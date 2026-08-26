@@ -36,6 +36,17 @@ export interface TradeCostInput {
    */
   manualAdjustment?: number | null;
   manualAdjustmentReason?: string | null;
+  /**
+   * Components the operator has said apply to this trade but has no figure
+   * for yet.
+   *
+   * A nullable column cannot tell "this trade has no freight" from "there is
+   * freight and nobody has asked how much". Both are absent, and treating the
+   * second as the first produces a total that is too low by exactly the amount
+   * nobody has found out. Naming the component here makes the total unknown,
+   * which is the honest answer until somebody supplies the number.
+   */
+  pending?: CostComponent[];
 }
 
 export type CostComponent =
@@ -91,7 +102,14 @@ export function tradeCost(input: TradeCostInput): TradeCost {
 
   const unknown: CostComponent[] = [];
   const parts: { component: CostComponent; amount: number }[] = [];
+  const pending = new Set(input.pending ?? []);
   for (const [component, value] of entries) {
+    // A component flagged as applicable-but-unpriced is unknown even when a
+    // stale figure is still sitting in the field: the flag is the newer fact.
+    if (pending.has(component)) {
+      unknown.push(component);
+      continue;
+    }
     if (value == null) {
       // Undefined is "not applicable to this trade"; null is "nobody knows".
       // Only the second is a gap, and only on a required component.
