@@ -35,6 +35,25 @@ export function QueueFilters({
     (k) => kindCounts[k] > 0 || kind === k
   );
 
+  /*
+   * Completed work is a different list, so it gets different controls.
+   *
+   * The search box and the kind chips are cuts of the queue, and the queue is
+   * what is left. Leaving them on screen over a list of finished work would
+   * offer filters that either do nothing or, worse, appear to return no
+   * matches. One sentence and the way back is the honest version.
+   */
+  if (bucket === "completed_today") {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm text-foreground">What you finished today</p>
+        <Link href={clearHref} className="tap text-xs text-slate-500 hover:text-accent">
+          Back to the queue
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <form method="get" action="/today" className="flex flex-wrap items-center gap-2">

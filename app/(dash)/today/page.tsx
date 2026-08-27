@@ -8,7 +8,7 @@ import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
 import { automationHealth } from "@/lib/automation-status";
 import { AutomationBlockerBanner } from "@/components/automation-incidents";
 import { SetupChecklist } from "@/components/setup-checklist";
-import { workQueue, completedToday } from "@/lib/data";
+import { workQueue, completedToday, completedTodayItems } from "@/lib/data";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
@@ -33,11 +33,12 @@ import { withGuideQuery } from "@/lib/guide-links";
 import { TodayBulkCalls } from "@/components/today-bulk-calls";
 import { TodayBulkTriage } from "@/components/today-bulk-triage";
 import { ReplyReviewList } from "@/components/reply-review-list";
-import { TodayCounters, CompletedTodayPanel } from "@/components/today-counters";
+import { TodayCounters, CompletedList, CompletedTodayPanel } from "@/components/today-counters";
 import { QueueFilters } from "@/components/queue-filters";
 import {
   queueCounts,
   filterWorkItems,
+  isCompletedFilter,
   parseQueueFilter,
   parseKindFilter,
   KIND_FILTER_LABEL,
@@ -485,11 +486,29 @@ export default async function TodayPage({
     },
     {} as Record<WorkKind, number>
   );
-  const shownQueue = filterWorkItems(queueItems, {
-    bucket: queueBucket,
-    kind: queueKind,
-    q: queueQ,
-  });
+  /*
+   * The one filter served from somewhere else.
+   *
+   * Completed today is a cut of the same list from the operator's side, and
+   * the queue cannot answer it: the queue is what is left. So it comes from
+   * the ledger of what happened, and filterWorkItems refuses it outright
+   * rather than returning an empty array that would read as a day on which
+   * nothing was finished.
+   */
+  const showingCompleted = isCompletedFilter(queueBucket);
+  const completedItems = showingCompleted
+    ? await completedTodayItems().catch((e) => {
+        console.error("[today] completed-today list failed:", e);
+        return null;
+      })
+    : [];
+  const shownQueue = showingCompleted
+    ? []
+    : filterWorkItems(queueItems, {
+        bucket: queueBucket,
+        kind: queueKind,
+        q: queueQ,
+      });
   const queueFiltered = queueBucket !== "all" || queueKind != null || queueQ !== "";
 
   function queueHref(opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string } = {}): string {
@@ -612,14 +631,22 @@ export default async function TodayPage({
               {/* The one list of everything waiting on a person, above the
                   themed sections. The sections stay for context; this answers
                   "what should I do next" before any of them are opened. */}
-              {queueItems.length > 0 && (
+              {/*
+                Shown when there is work left OR when there was work done.
+                Gating on the queue alone meant an operator who cleared the
+                whole list lost the counters, the Completed today filter and
+                any record that the day had happened at all: "nothing to do"
+                and "everything done" rendered identically, which is the one
+                pair this page exists to tell apart.
+              */}
+              {(queueItems.length > 0 || done.total > 0 || showingCompleted) && (
                 <div id="queue" className="scroll-mt-6 space-y-4">
                   <TodayCounters
                     counts={counts}
                     done={done}
                     active={queueBucket}
                     hrefFor={(f) => queueHref({ bucket: f })}
-                    completedHref="/today#completed"
+                    completedHref={queueHref({ bucket: "completed_today" })}
                   />
                   <QueueFilters
                     q={queueQ}
@@ -629,7 +656,9 @@ export default async function TodayPage({
                     hrefFor={(o) => queueHref(o)}
                     clearHref="/today#queue"
                   />
-                  {shownQueue.length > 0 ? (
+                  {showingCompleted ? (
+                    <CompletedList items={completedItems} />
+                  ) : shownQueue.length > 0 ? (
                     <WorkQueue items={shownQueue} limit={5} />
                   ) : (
                     <EmptyState

@@ -15,6 +15,7 @@ import type { KpiParams } from "./domain/kpi";
 import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
 import type { CredentialSource as ProviderCredentialSource } from "./domain/provider-usage";
 import type { TemplateCounts } from "./domain/template-health";
+import type { WorkKind } from "./domain/work-queue";
 import { resolveSubWork } from "./domain/sub-work";
 import {
   loadAwardCompliance,
@@ -801,6 +802,123 @@ export async function completedToday(): Promise<CompletedToday> {
     complianceResolved,
     total: calls + quotes + bidsSubmitted + decisions + complianceResolved,
   };
+}
+
+/**
+ * One finished piece of work, for the Completed today filter.
+ *
+ * The counters answer "how much"; this answers "what", which is the question
+ * somebody actually has at five o'clock. A count of 6 and a list of the six
+ * are different objects and only one of them can be checked against memory.
+ */
+export interface CompletedItem {
+  key: string;
+  kind: WorkKind;
+  /** What was done, in the words the rest of the queue uses. */
+  title: string;
+  /** The record it happened to. */
+  context: string;
+  href: string;
+  /** When it happened, ISO. */
+  at: string;
+}
+
+/**
+ * What was finished today, as records rather than as a total.
+ *
+ * From the five places the work leaves its mark, which is the same five the
+ * counter above adds up. Deliberately not from the queue: the queue holds what
+ * is LEFT, so deriving completions from it would give the same answer for
+ * "nothing to do" and "everything done", which are opposite mornings.
+ *
+ * Capped, and ordered newest first. An operator scanning what they finished
+ * wants the last hour before the first, and a day that produced two hundred
+ * rows is one where the top fifty answer the question.
+ */
+export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> {
+  const orgId = await currentOrg();
+  const rows = await query<{
+    key: string;
+    kind: string;
+    title: string;
+    context: string;
+    href: string;
+    at: Date;
+  }>(
+    `select * from (
+       select
+         'call:' || cc.id::text as key,
+         'call' as kind,
+         'Called ' || coalesce(s.company_name, 'a subcontractor') as title,
+         coalesce(o.title, 'An opportunity') as context,
+         '/opportunity/' || o.id::text as href,
+         cc.called_at as at
+       from call_cards cc
+       join opportunities o on o.id = cc.opportunity_id
+       left join subcontractors s on s.id = cc.subcontractor_id
+       where o.org_id = $1 and cc.called_at >= date_trunc('day', now())
+
+       union all
+       select
+         'quote:' || q.id::text,
+         'enter_quote',
+         'Entered a quote' || coalesce(' for ' || q.trade, ''),
+         coalesce(o.title, 'An opportunity'),
+         '/opportunity/' || o.id::text,
+         q.created_at
+       from quotes q
+       join opportunities o on o.id = q.opportunity_id
+       where q.org_id = $1 and q.created_at >= date_trunc('day', now())
+
+       union all
+       select
+         'bid:' || b.id::text,
+         'review_bid',
+         'Submitted the bid',
+         coalesce(o.title, 'An opportunity'),
+         '/opportunity/' || o.id::text,
+         b.submitted_at
+       from bids b
+       join opportunities o on o.id = b.opportunity_id
+       where b.org_id = $1 and b.submitted_at >= date_trunc('day', now())
+
+       union all
+       select
+         'decision:' || o.id::text,
+         'decide',
+         'Decided: ' || o.stage,
+         coalesce(o.title, 'An opportunity'),
+         '/opportunity/' || o.id::text,
+         o.updated_at
+       from opportunities o
+       where o.org_id = $1 and o.human_action_required = false
+         and o.updated_at >= date_trunc('day', now())
+         and o.stage <> 'discovered'
+
+       union all
+       select
+         'compliance:' || ci.id::text,
+         'fix_blocker',
+         'Resolved ' || ci.label,
+         ci.category,
+         '/compliance',
+         ci.updated_at
+       from compliance_items ci
+       where ci.org_id = $1 and ci.status_override = 'resolved'
+         and ci.updated_at >= date_trunc('day', now())
+     ) done
+     order by at desc
+     limit $2`,
+    [orgId, limit]
+  );
+  return rows.map((r) => ({
+    key: r.key,
+    kind: r.kind as WorkKind,
+    title: r.title,
+    context: r.context,
+    href: r.href,
+    at: r.at.toISOString(),
+  }));
 }
 
 /*

@@ -252,10 +252,13 @@ export function queueCounts(items: WorkItem[], now = new Date()): QueueCounts {
  * how somebody actually narrows a list: "what is late" and "what is on me"
  * are separate questions and either can be the one being asked.
  *
- * `completed_today` is deliberately absent. The queue is what is LEFT, so
- * deriving completions from it would give the same answer for "nothing to do"
- * and "everything done", which are opposite mornings. It comes from the
- * activity ledger, which records what happened rather than what remains.
+ * `completed_today` is one of them, and it is the one this queue cannot
+ * answer. The queue is what is LEFT, so deriving completions from it would
+ * give the same answer for "nothing to do" and "everything done", which are
+ * opposite mornings. It is listed here because it is a cut of the same list
+ * from the operator's side of the screen, and served from the ledger of what
+ * happened rather than from what remains. See filterQueue below, which refuses
+ * it rather than quietly returning the wrong rows.
  */
 export const QUEUE_FILTERS = [
   "all",
@@ -265,6 +268,7 @@ export const QUEUE_FILTERS = [
   "waiting_on_others",
   "blocked",
   "remaining",
+  "completed_today",
 ] as const;
 export type QueueFilter = (typeof QUEUE_FILTERS)[number];
 
@@ -276,7 +280,20 @@ export const QUEUE_FILTER_LABEL: Record<QueueFilter, string> = {
   waiting_on_others: "Waiting on others",
   blocked: "Blocked",
   remaining: "Remaining",
+  completed_today: "Completed today",
 };
+
+/**
+ * The one filter that is not a cut of the queue.
+ *
+ * Callers have to fetch it from somewhere else, and this is how they know to.
+ * A helper rather than a string comparison at four call sites, because the
+ * failure mode of getting it wrong is a page that says nothing was finished
+ * today.
+ */
+export function isCompletedFilter(f: QueueFilter): boolean {
+  return f === "completed_today";
+}
 
 /** Which axis a filter cuts on, so callers do not have to know the list. */
 const STATE_FILTERS: Partial<Record<QueueFilter, QueueState>> = {
@@ -315,6 +332,18 @@ export function filterWorkItems(
   opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string },
   now = new Date()
 ): WorkItem[] {
+  if (opts.bucket && isCompletedFilter(opts.bucket)) {
+    /*
+     * Refused rather than answered.
+     *
+     * This list is what is LEFT, so every completed item is by definition
+     * absent from it. Falling through would return an empty array, and an
+     * empty array here looks exactly like a day on which nothing was
+     * finished: the wrong answer, delivered confidently. Callers fetch
+     * completions from the ledger instead.
+     */
+    throw new Error("completed_today is not a cut of the queue; read the ledger");
+  }
   const needle = opts.q?.trim().toLowerCase() ?? "";
   return items.filter((item) => {
     if (opts.bucket && opts.bucket !== "all") {

@@ -308,12 +308,52 @@ export function Nav({
         body: JSON.stringify({ paused: next }),
       });
       if (!res.ok) setLocalPaused(!next);
+      /*
+       * Refresh so the authoritative health state catches up.
+       *
+       * Without it the optimistic boolean and the measured state disagreed
+       * until the next navigation, which is the whole reason the mobile strip
+       * below reads the state rather than the boolean: pausing an account
+       * whose credits are exhausted and then resuming it must go back to
+       * saying the credits are exhausted, not to saying everything is fine.
+       */
+      else router.refresh();
     } catch {
       setLocalPaused(!next);
     } finally {
       setTogglingAutomation(false);
     }
   }
+
+  /*
+   * What the mobile strip says, and where each part comes from.
+   *
+   * The pause Boolean answers "did somebody press Pause". The health state
+   * answers "is the work getting done", and those are different questions:
+   * an account with no AI key is not paused and is not working.
+   *
+   * The one moment the Boolean wins is the optimistic window between pressing
+   * the button and the server component coming back, when the measured state
+   * is describing the account as it was a second ago.
+   */
+  const togglePending = localPaused !== automationPaused;
+  const mobileState: AutomationState = togglePending
+    ? localPaused
+      ? "paused"
+      : "healthy"
+    : (automationState ?? (localPaused ? "paused" : "healthy"));
+  const mobileHeadline = togglePending
+    ? localPaused
+      ? "Pausing automation"
+      : "Resuming automation"
+    : (automationHeadline ??
+      (localPaused ? "Automation paused" : "Automation running"));
+  const mobileDetail = togglePending
+    ? "Saving that now"
+    : (automationDetail ??
+      (localPaused
+        ? "No agents, emails, or jobs will run"
+        : "Agents and scheduled jobs are live"));
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   const sections = SECTIONS.filter((sec) => !sec.adminOnly || isPlatformAdmin);
@@ -468,23 +508,28 @@ export function Nav({
           </button>
         </div>
 
+        {/*
+          The authoritative state, not the local Boolean.
+          This strip used to read `localPaused` alone, so an account whose
+          every job was failing on an exhausted credit balance was told
+          "Automation running. Agents and scheduled jobs are live", which is
+          the same lie the sidebar chip was rebuilt to stop telling. The
+          Boolean says whether anybody pressed Pause; it does not say whether
+          the work is getting done.
+        */}
         <div className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10 lg:hidden">
           <div className="flex items-center gap-3">
             <span
               aria-hidden
-              className={`h-2 w-2 shrink-0 rounded-full ${
-                localPaused ? "bg-review" : "animate-pulse bg-pursue"
+              className={`shrink-0 font-mono text-xs ${
+                mobileState === "healthy" ? "text-pursue" : "text-foreground"
               }`}
-            />
+            >
+              {CHIP_GLYPH[mobileState]}
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground">
-                {localPaused ? "Automation paused" : "Automation running"}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {localPaused
-                  ? "No agents, emails, or jobs will run"
-                  : "Agents and scheduled jobs are live"}
-              </p>
+              <p className="text-sm font-medium text-foreground">{mobileHeadline}</p>
+              <p className="text-[11px] text-muted-foreground">{mobileDetail}</p>
             </div>
             <button
               type="button"
