@@ -11,6 +11,7 @@ import { platformKeyStates } from "@/lib/admin/platform-keys";
 import { shortDate } from "@/lib/format";
 import { deletionView } from "@/lib/domain/account-deletion";
 import { EditorialTabs } from "@/components/editorial-tabs";
+import { MemberRoles } from "@/components/admin/member-roles";
 import {
   accountIntegrations,
   accountSessions,
@@ -156,6 +157,20 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
                   <Count label="Outreach sent" n={usage.outreachSent} />
                   <Count label="Replies in" n={usage.repliesIn} />
                 </dl>
+                <div>
+                  <a
+                    href={`/api/admin/accounts/${org.id}/export`}
+                    className="btn-ghost inline-flex text-xs"
+                    download
+                  >
+                    Export this account&rsquo;s data (JSON)
+                  </a>
+                  <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                    Business records only: never sessions, credentials or payment
+                    internals. Every export is recorded in this account&rsquo;s admin
+                    history.
+                  </p>
+                </div>
               </div>
             ),
           },
@@ -164,25 +179,7 @@ export default async function AdminAccountPage({ params }: { params: { id: strin
             label: `People (${members.length})`,
             content: (
               <div className="p-5">
-                <ul className="divide-y divide-border/60 panel-inset text-sm">
-                  {members.map((m) => (
-                    <li key={m.user_id} className="flex flex-wrap items-baseline gap-x-2 px-4 py-2">
-                      <span className="font-medium">{m.email}</span>
-                      <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                        {m.role}
-                      </span>
-                      {m.name && <span className="text-muted-foreground">{m.name}</span>}
-                      {m.aliases.length > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          also signs in as {m.aliases.join(", ")}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                  {members.length === 0 && (
-                    <li className="px-4 py-4 text-muted-foreground">Nobody is on this account.</li>
-                  )}
-                </ul>
+                <MemberRoles orgId={org.id} members={members} />
                 <div className="mt-6">
                   <h2 className="text-sm font-semibold">Recent sign-ins</h2>
                   {sessions.length === 0 ? (

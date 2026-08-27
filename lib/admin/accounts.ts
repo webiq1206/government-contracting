@@ -7,7 +7,7 @@
  * from ordinary customer code paths. These are not, and having them in a
  * separate file named `admin` makes an accidental import obvious in review.
  */
-import { query, queryOne } from "../db";
+import { query, queryOne, transaction } from "../db";
 import { accessLevel, type AccessLevel } from "../billing/entitlements";
 import { TRIAL_DAYS } from "../billing/catalog";
 import { recordAdminAction } from "./audit";
@@ -467,7 +467,6 @@ export async function setSuspended(input: {
  * page had accumulated a hundred and ninety-eight of them.
  */
 export async function purgeOrganization(orgId: string): Promise<void> {
-  const { transaction } = await import("../db");
   await transaction(async (tx) => {
     // File bytes first, while the documents that name them still exist. Legacy
     // blobs were written with a null org_id, so path-join to this org's
@@ -736,4 +735,105 @@ export async function deleteAccount(input: {
   });
 
   return { ok: true, message: `${org.name} and all of its data are gone.` };
+}
+
+/**
+ * Change one member's role on an account.
+ *
+ * The rule that cannot be broken here: an account must never be left without
+ * an owner. An account nobody can administer is the recurring support case
+ * the "No owner" filter exists to find, and this function must not be able
+ * to create one.
+ */
+export async function setMemberRole(input: {
+  orgId: string;
+  userId: string;
+  role: string;
+  adminEmail: string;
+}): Promise<AdminActionResult> {
+  const allowed = ["owner", "admin", "operator", "estimator", "member", "viewer"];
+  if (!allowed.includes(input.role)) {
+    return { ok: false, error: `Role must be one of: ${allowed.join(", ")}.` };
+  }
+
+  const current = await queryOne<{ role: string; email: string }>(
+    `select m.role, u.email from organization_members m
+       join users u on u.id = m.user_id
+      where m.org_id = $1 and m.user_id = $2`,
+    [input.orgId, input.userId]
+  ).catch(() => null);
+  if (!current) return { ok: false, error: "That person is not on this account." };
+
+  if (current.role === "owner" && input.role !== "owner") {
+    const owners = await queryOne<{ n: string }>(
+      `select count(*) as n from organization_members where org_id = $1 and role = 'owner'`,
+      [input.orgId]
+    );
+    if (Number(owners?.n ?? 0) <= 1) {
+      return {
+        ok: false,
+        error:
+          "That is the only owner. Make somebody else the owner first, or this account has nobody who can administer it.",
+      };
+    }
+  }
+
+  await query(
+    `update organization_members set role = $3 where org_id = $1 and user_id = $2`,
+    [input.orgId, input.userId, input.role]
+  );
+  await recordAdminAction({
+    orgId: input.orgId,
+    adminEmail: input.adminEmail,
+    action: "member_role_changed",
+    detail: { email: current.email, from: current.role, to: input.role },
+  });
+  return { ok: true, message: `${current.email} is now ${input.role}.` };
+}
+
+/**
+ * Hand the account to a different member.
+ *
+ * One step rather than two role edits, because the two-step version has a
+ * failure mode in the middle: promote the new owner, get interrupted, and
+ * the account has two owners; demote first and it briefly has none, which
+ * setMemberRole above rightly refuses.
+ */
+export async function transferOwnership(input: {
+  orgId: string;
+  toUserId: string;
+  adminEmail: string;
+}): Promise<AdminActionResult> {
+  const target = await queryOne<{ email: string; role: string }>(
+    `select u.email, m.role from organization_members m
+       join users u on u.id = m.user_id
+      where m.org_id = $1 and m.user_id = $2`,
+    [input.orgId, input.toUserId]
+  ).catch(() => null);
+  if (!target) return { ok: false, error: "That person is not on this account." };
+  if (target.role === "owner") return { ok: false, error: `${target.email} already owns this account.` };
+
+  await transaction(async (client) => {
+    // The outgoing owner keeps admin: handing an account over is not the
+    // same as being removed from it, and the difference matters to whoever
+    // built the company the account belongs to.
+    await client.query(
+      `update organization_members set role = 'admin' where org_id = $1 and role = 'owner'`,
+      [input.orgId]
+    );
+    await client.query(
+      `update organization_members set role = 'owner' where org_id = $1 and user_id = $2`,
+      [input.orgId, input.toUserId]
+    );
+  });
+  await recordAdminAction({
+    orgId: input.orgId,
+    adminEmail: input.adminEmail,
+    action: "ownership_transferred",
+    detail: { to: target.email },
+  });
+  return {
+    ok: true,
+    message: `${target.email} now owns this account. The previous owner keeps admin.`,
+  };
 }
