@@ -6,6 +6,19 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { OwnerPicker } from "@/components/owner-picker";
 import type { Owner } from "@/lib/domain/ownership";
 
+/** A file on the item, as the card needs it. */
+export interface ComplianceDocView {
+  id: string;
+  original_filename: string;
+  kind: string | null;
+  note: string | null;
+  size_bytes: number | null;
+  uploaded_at: string | null;
+  uploaded_by_name: string | null;
+  /** Set when a later file replaced this one. Kept, not deleted. */
+  superseded: boolean;
+}
+
 export interface ComplianceCardData {
   id: string;
   /** Who here is renewing it. Null means nobody has said. */
@@ -48,6 +61,13 @@ export interface ComplianceCardData {
   verifiedAt: string | null;
   /** True when the platform has something it can actually check. */
   monitorable: boolean;
+  /** Files actually stored against this item, newest current one first. */
+  documents: ComplianceDocView[];
+  /**
+   * Where a pasted link said the file was, carried over from the old doc_url
+   * box. Not a stored file, and the card says so rather than showing it as one.
+   */
+  docUrlNote: string | null;
 }
 
 export interface CategoryInfo {
@@ -95,6 +115,242 @@ function countdownClass(color: ComplianceCardData["color"]): string {
   if (color === "red") return "text-risk";
   if (color === "amber") return "text-review";
   return "text-slate-600";
+}
+
+/** Bytes as somebody would say them. Null size is left blank, not called 0. */
+function sizeText(bytes: number | null): string {
+  if (bytes == null || !Number.isFinite(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * The certificates themselves, on the item they belong to.
+ *
+ * The old card offered a link box labelled "e.g. a Drive link". A link is not
+ * evidence: it breaks when somebody leaves, a folder moves, or a share setting
+ * tightens, and it cannot be produced when a contracting officer asks for the
+ * policy that was in force in March.
+ */
+export function ComplianceDocuments({
+  itemId,
+  documents,
+  docUrlNote,
+  canManage,
+}: {
+  itemId: string;
+  documents: ComplianceDocView[];
+  docUrlNote: string | null;
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [failures, setFailures] = useState<{ name: string; error: string }[]>([]);
+  const [replacing, setReplacing] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<ComplianceDocView | null>(null);
+
+  const current = documents.filter((d) => !d.superseded);
+  const replaced = documents.filter((d) => d.superseded);
+
+  async function upload(files: FileList | null, replaces?: string | null) {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    setError(null);
+    setFailures([]);
+    try {
+      const body = new FormData();
+      for (const file of Array.from(files)) body.append("file", file);
+      if (replaces) body.append("replaces", replaces);
+      const res = await fetch(`/api/compliance/${itemId}/documents`, {
+        method: "POST",
+        body,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        failed?: { name: string; error: string }[];
+      };
+      /*
+       * Per file, not per post. Somebody who attaches four certificates and
+       * one oversized scan should keep the four, and be told which one did
+       * not land, by name.
+       */
+      if (data.failed?.length) setFailures(data.failed);
+      if (!res.ok) setError(data.error ?? "Nothing was stored.");
+      else router.refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      setReplacing(null);
+    }
+  }
+
+  async function remove(doc: ComplianceDocView) {
+    setRemoving(null);
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/compliance/documents/${doc.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Could not remove it.");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="label">Documents on file</p>
+        {canManage && (
+          <label className={`btn-ghost text-xs ${busy ? "opacity-60" : "cursor-pointer"}`}>
+            {busy && !replacing ? "Uploading..." : "Add file"}
+            <input
+              type="file"
+              className="sr-only"
+              multiple
+              disabled={busy}
+              onChange={(e) => {
+                void upload(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        )}
+      </div>
+
+      {current.length === 0 ? (
+        /*
+         * Says what is missing and what it costs, rather than showing nothing.
+         * A date being watched is not the same as a certificate being holdable,
+         * and the board could not tell those apart.
+         */
+        <p className="mt-1 text-xs text-muted-foreground">
+          Nothing stored here. The date is tracked, but there is no file to produce if
+          somebody asks for the certificate.
+        </p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {current.map((doc) => (
+            <li key={doc.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+              <a
+                href={`/api/compliance/documents/${doc.id}`}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="font-medium text-accent hover:underline"
+              >
+                {doc.original_filename}
+              </a>
+              <span className="text-muted-foreground">
+                {[
+                  doc.kind,
+                  sizeText(doc.size_bytes),
+                  doc.uploaded_at ? `filed ${doc.uploaded_at.slice(0, 10)}` : null,
+                  doc.uploaded_by_name ? `by ${doc.uploaded_by_name}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+              {canManage && (
+                <>
+                  <label className="tap cursor-pointer text-xs text-muted-foreground hover:underline">
+                    Replace
+                    <input
+                      type="file"
+                      className="sr-only"
+                      disabled={busy}
+                      onChange={(e) => {
+                        setReplacing(doc.id);
+                        void upload(e.target.files, doc.id);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                  <button
+                    className="tap text-xs text-risk hover:underline"
+                    onClick={() => setRemoving(doc)}
+                    disabled={busy}
+                  >
+                    Remove
+                  </button>
+                </>
+              )}
+              {doc.note && <span className="basis-full text-muted-foreground">{doc.note}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {replaced.length > 0 && (
+        <details className="mt-2">
+          {/*
+            Kept rather than deleted. "What was on file in March" is a question
+            an audit asks, and a record holding only the current certificate
+            cannot answer it.
+          */}
+          <summary className="cursor-pointer text-xs text-muted-foreground">
+            {replaced.length} replaced {replaced.length === 1 ? "file" : "files"}, still on record
+          </summary>
+          <ul className="mt-1 space-y-1">
+            {replaced.map((doc) => (
+              <li key={doc.id} className="text-xs text-muted-foreground">
+                <a
+                  href={`/api/compliance/documents/${doc.id}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="hover:underline"
+                >
+                  {doc.original_filename}
+                </a>
+                {doc.uploaded_at ? ` · filed ${doc.uploaded_at.slice(0, 10)}` : ""}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {docUrlNote && current.length === 0 && (
+        /*
+         * A link somebody pasted before this item could hold files. Shown as
+         * what it is: a note about where the file was said to be, not a
+         * document on file, because nothing here was ever stored. Hidden once
+         * a real file lands, where it would only be noise.
+         */
+        <p className="mt-2 text-xs text-muted-foreground">
+          {docUrlNote} A link stops working when a folder moves, and cannot be produced
+          in an audit.
+        </p>
+      )}
+
+      {failures.length > 0 && (
+        <ul className="mt-2 space-y-0.5">
+          {failures.map((f) => (
+            <li key={f.name} className="text-xs text-risk">
+              {f.error}
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && <p className="mt-2 text-xs text-risk">{error}</p>}
+
+      <ConfirmDialog
+        open={removing !== null}
+        title={`Remove "${removing?.original_filename ?? ""}"?`}
+        body="The file and its stored copy go for good. Replacing a certificate keeps the old one; removing does not, so use this for something filed by mistake."
+        confirmLabel="Remove it"
+        danger
+        busy={busy}
+        onConfirm={() => removing && void remove(removing)}
+        onCancel={() => setRemoving(null)}
+      />
+    </div>
+  );
 }
 
 export function ComplianceItemCard({
@@ -251,13 +507,23 @@ export function ComplianceItemCard({
           />
         </label>
         <label className="block">
-          <span className="label mb-1 block">Link to your document</span>
+          <span className="label mb-1 block">Link to the document somewhere else</span>
           <input
             className="input"
-            placeholder="Paste a link to the certificate or policy (e.g. a Drive link)"
+            placeholder="https://"
             value={form.doc_url}
             onChange={(e) => set("doc_url", e.target.value)}
           />
+          <span className="mt-1 block text-xs text-slate-500">
+            {/*
+              The field used to suggest a Drive link, which was the only option
+              before the item could hold files. It still works, and it is still
+              the weaker one: a link breaks when somebody leaves or a folder
+              moves, and it cannot be produced when a contracting officer asks.
+            */}
+            Kept for documents that genuinely live elsewhere. Where you have the file,
+            attach it on the card instead: a link cannot be produced in an audit.
+          </span>
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
@@ -490,6 +756,13 @@ export function ComplianceItemCard({
       {item.notes && (
         <p className="mt-2 whitespace-pre-wrap text-xs text-slate-600">{item.notes}</p>
       )}
+
+      <ComplianceDocuments
+        itemId={item.id}
+        documents={item.documents}
+        docUrlNote={item.docUrlNote}
+        canManage={canAssign}
+      />
 
       <ConfirmDialog
         open={asking}

@@ -438,7 +438,12 @@ export function needsAttentionOnWonWork(row: AwardComplianceRow): boolean {
 /** Certificates are a page or two. Anything larger is a scan nobody needs. */
 export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 
-const ALLOWED_UPLOAD_MIME = new Set([
+/*
+ * Exported so the company's own compliance uploader shares it. A certificate
+ * is a certificate whichever side of the relationship it came from, and two
+ * different answers to "can I send this file" is one somebody hits.
+ */
+export const ALLOWED_UPLOAD_MIME = new Set([
   "application/pdf",
   "image/png",
   "image/jpeg",

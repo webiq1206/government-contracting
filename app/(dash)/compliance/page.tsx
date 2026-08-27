@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { complianceBoard, subcontractorComplianceRows } from "@/lib/data";
+import { complianceBoard, currentOrg, subcontractorComplianceRows } from "@/lib/data";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { AddComplianceItem } from "@/components/add-compliance-item";
@@ -33,8 +33,17 @@ import {
 import {
   ComplianceItemCard,
   type ComplianceCardData,
+  type ComplianceDocView,
   type CategoryInfo,
 } from "@/components/compliance-item";
+import {
+  documentsFor,
+  type ComplianceDocument,
+} from "@/lib/compliance-documents";
+import {
+  ComplianceBulkDocuments,
+  type BulkDocTarget,
+} from "@/components/compliance-bulk-documents";
 import { assignableMembers } from "@/lib/ownership";
 import type { Owner } from "@/lib/domain/ownership";
 import { currentUser } from "@/lib/auth";
@@ -43,6 +52,29 @@ import { can } from "@/lib/domain/roles";
 export const dynamic = "force-dynamic";
 
 type Row = Record<string, unknown>;
+
+/**
+ * A stored document as the card needs it.
+ *
+ * size_bytes comes back as a string for a bigint, which is why the card takes
+ * a number or null rather than whatever the driver felt like: a "1024" that
+ * silently formats as bytes-not-kilobytes is the sort of thing nobody checks.
+ */
+function viewDocs(docs: ComplianceDocument[]): ComplianceDocView[] {
+  return docs.map((d) => {
+    const size = d.size_bytes == null ? null : Number(d.size_bytes);
+    return {
+      id: String(d.id),
+      original_filename: d.original_filename,
+      kind: d.kind,
+      note: d.note,
+      size_bytes: Number.isFinite(size as number) ? (size as number) : null,
+      uploaded_at: d.uploaded_at ? String(d.uploaded_at) : null,
+      uploaded_by_name: d.uploaded_by_name ?? null,
+      superseded: d.superseded_by != null,
+    };
+  });
+}
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -124,7 +156,7 @@ function infoFor(cat: string): CategoryInfo | undefined {
 }
 
 /** Build the serializable card projection (all date math done here on the server). */
-function buildCard(row: Row): ComplianceCardData {
+function buildCard(row: Row, documents: ComplianceDocView[]): ComplianceCardData {
   const override = str(row.due_at_override) || null;
   const monitorDue = str(row.due_at) || null;
   const effDue = override || monitorDue;
@@ -217,6 +249,14 @@ function buildCard(row: Row): ComplianceCardData {
     notes: str(row.notes),
     link_url: str(row.link_url),
     doc_url: str(row.doc_url),
+    /*
+     * The certificates themselves. The board tracked dates and offered a box
+     * for a link to the document, which is not the same thing: a link breaks
+     * when a folder moves and cannot be produced when somebody asks for the
+     * policy that was in force in March.
+     */
+    documents,
+    docUrlNote: str(row.doc_url_note) || null,
     manual: str(row.source) === "operator",
   };
 }
@@ -359,9 +399,37 @@ export default async function CompliancePage({
   const deadlineRows = rows.filter((r) => str(r.category) !== "non_ss_cap");
 
   // Build each card's display projection once (respects operator overrides).
+  /*
+   * One query for every card's files rather than one per card. Loaded after
+   * the split so the cap gauges, which have no documents, do not go looking.
+   */
+  const documentsByItem = await documentsFor(
+    await currentOrg(),
+    deadlineRows.map((r) => str(r.id)).filter(Boolean)
+  ).catch(() => new Map<string, ComplianceDocument[]>());
+
   const cardById = new Map<string, ComplianceCardData>(
-    deadlineRows.map((r) => [str(r.id), buildCard(r)])
+    deadlineRows.map((r) => [
+      str(r.id),
+      buildCard(r, viewDocs(documentsByItem.get(str(r.id)) ?? [])),
+    ])
   );
+
+  /*
+   * Every item with nothing stored against it, in board order, so the bulk
+   * panel works the same set the cards do.
+   */
+  const missingDocTargets: BulkDocTarget[] = deadlineRows
+    .filter((r) => (cardById.get(str(r.id))?.documents ?? []).length === 0)
+    .map((r) => {
+      const card = cardById.get(str(r.id))!;
+      return {
+        id: card.id,
+        label: card.label,
+        area: AREA_LABEL[areaFor(str(r.category))],
+        dueDisplay: card.dueDisplay,
+      };
+    });
 
   /*
    * Counted across everything, then filtered. A summary that only counts what
@@ -538,9 +606,16 @@ export default async function CompliancePage({
           <p className="mt-1 text-sm text-slate-600">
             Every day it checks each item and warns you before anything lapses.
             For it to count down, it needs a date. Open any item, set its renewal
-            date, add the renewal link and a link to your document, and you&rsquo;ll
-            get alerts as the deadline gets close. Items showing &ldquo;no date
-            set&rdquo; can&rsquo;t be tracked yet.
+            date, and you&rsquo;ll get alerts as the deadline gets close. Items
+            showing &ldquo;no date set&rdquo; can&rsquo;t be tracked yet.
+            {/*
+              Attaching the certificate is now the thing worth telling people to
+              do. The line used to point at a link box, which was all the board
+              could offer: a link breaks when a folder moves and cannot be
+              produced when a contracting officer asks.
+            */}{" "}
+            Attach the certificate itself to each item, so you can produce it
+            when somebody asks for it.
           </p>
           <div className="mt-3">
             <AddComplianceItem />
@@ -731,6 +806,16 @@ export default async function CompliancePage({
               ))}
             </div>
           </section>
+        )}
+
+        {/*
+          * Bulk filing, for the folder of scans that arrives all at once.
+          * Listed only where there is nothing stored, because that is the
+          * working set, and an item that already has its certificate in this
+          * list is one more row to read past.
+          */}
+        {can(viewer?.orgRole, "manage_compliance") && (
+          <ComplianceBulkDocuments targets={missingDocTargets} />
         )}
 
         {AREA_ORDER.map((area) => {
