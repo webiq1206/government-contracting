@@ -54,6 +54,13 @@ function num(v: unknown): number | null {
 function asState(v: unknown): ComplianceState | null {
   return fromLegacyStatus(str(v) || null);
 }
+/** A timestamp column as an ISO string, whatever the driver handed back. */
+function iso(v: unknown): string | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function detailObj(v: unknown): Record<string, unknown> {
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   return {};
@@ -139,9 +146,14 @@ function buildCard(row: Row): ComplianceCardData {
    */
   const verdict = complianceState({
     required: row.required !== false,
-    satisfiedAt: str(row.satisfied_at) || null,
+    /*
+     * iso(), not String(). node-postgres hands back a Date for a timestamptz,
+     * so String() gives "Thu Aug 27 2026 ..." and the card's ten-character
+     * slice cut that to "Thu Aug 27".
+     */
+    satisfiedAt: iso(row.satisfied_at),
     expiresAt: effDue,
-    verifiedAt: str(row.verified_at) || null,
+    verifiedAt: iso(row.verified_at),
     monitorable: row.monitorable !== false,
     blockedBy: str(row.blocked_by) || null,
     conflict: str(row.conflict_detail) || null,
@@ -187,7 +199,12 @@ function buildCard(row: Row): ComplianceCardData {
     blockedBy: str(row.blocked_by),
     conflictDetail: str(row.conflict_detail),
     needsReviewReason: str(row.needs_review_reason),
-    verifiedAt: str(row.verified_at) || null,
+    /*
+     * Normalized rather than stringified. node-postgres hands back a Date for
+     * a timestamptz, so String() gives "Thu Aug 27 2026 ..." and the card's
+     * ten-character slice cut that to "Thu Aug 27".
+     */
+    verifiedAt: iso(row.verified_at),
     monitorable: row.monitorable !== false,
     statusDetail: verdict.detail,
     statusFix: verdict.fix,
