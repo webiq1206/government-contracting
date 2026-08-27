@@ -73,3 +73,27 @@ describe("dedupeOpportunityHits", () => {
     expect(out).toHaveLength(2);
   });
 });
+
+/**
+ * A folded duplicate has to be reachable, not merely counted.
+ *
+ * Collapsing is right for somebody jumping to the record they are working.
+ * But three copies of one solicitation at three different stages is a data
+ * problem, and a count with nowhere to click is that problem stated and then
+ * withheld: the operator can see there are two more and cannot see which
+ * stage either of them is at.
+ */
+describe("the copies that were folded", () => {
+  it("counts every copy, including the one that survived", () => {
+    const rows = dedupeOpportunityHits([
+      { id: "a", title: "Roof", agency: "GSA", solicitation_number: "SOL-1", stage: "pricing", status: "open" },
+      { id: "b", title: "Roof", agency: "GSA", solicitation_number: "SOL-1", stage: "watching", status: "archived" },
+      { id: "c", title: "Roof", agency: "GSA", solicitation_number: "SOL-1", stage: "watching", status: "archived" },
+    ]);
+    expect(rows).toHaveLength(1);
+    // Two folded, so three copies exist. The row that survived is the one
+    // carrying the work.
+    expect(rows[0].duplicates).toBe(2);
+    expect(rows[0].id).toBe("a");
+  });
+});

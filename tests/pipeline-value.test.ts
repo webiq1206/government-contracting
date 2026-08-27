@@ -26,9 +26,19 @@ describe("value totals disclose their coverage", () => {
 
   it("never prints a bare $0 for an unmeasured pipeline", () => {
     const page = read("app/(dash)/analytics/page.tsx");
-    // The all-null case must reach a "Not published" branch rather than
-    // formatting zero as currency.
-    expect(page).toMatch(/pipelineValued === 0 \? "Not published"/);
+    /*
+     * The all-null case must branch away from the currency formatter and say
+     * why, rather than formatting zero. Matched on the guard and on a stated
+     * reason rather than on one exact sentence: the wording is allowed to
+     * improve, and pinning it made this fail for a change that made the card
+     * more honest, not less.
+     */
+    expect(page, "the zero case is not guarded before currency()").toMatch(
+      /pipelineValued === 0 \? null : currency\(pipelineValue\)/
+    );
+    expect(page, "the zero case gives no reason").toMatch(
+      /pipelineValued === 0\s*\?\s*"[^"]*publishes? a value/
+    );
     expect(page).toMatch(/s\.valued === 0 \? \(/);
   });
 

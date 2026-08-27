@@ -90,6 +90,51 @@ describe("workflow is held until the bid information is complete", () => {
       intent: "quote",
       quoteAmount: 42000,
       scopeSummary: "Grounds maintenance, 12 months",
+      quoteValidUntil: "30 days",
+    });
+    expect(blockingGaps(e, "quoted")).toEqual([]);
+  });
+
+  /*
+   * Two gaps are chased whether or not the model flagged them, because each
+   * leaves the pricing row unusable rather than merely thin. This test used to
+   * call a quote with no stated validity complete; it is not, and the rule
+   * changed rather than the assertion being relaxed.
+   */
+  it("chases a price with no stated validity, even when the model flagged nothing", () => {
+    const e = reply({
+      isQuote: true,
+      intent: "quote",
+      quoteAmount: 42000,
+      scopeSummary: "Grounds maintenance, 12 months",
+    });
+    expect(blockingGaps(e, "quoted")).toEqual(["quote_validity"]);
+  });
+
+  it("chases the tax amount when they say the price excludes it", () => {
+    const e = reply({
+      isQuote: true,
+      intent: "quote",
+      quoteAmount: 42000,
+      scopeSummary: "Grounds maintenance, 12 months",
+      quoteValidUntil: "30 days",
+      taxesIncluded: false,
+      taxesAmount: null,
+    });
+    // Without the number the total cannot be worked out, and a null tax column
+    // would let it add up as though there were none.
+    expect(blockingGaps(e, "quoted")).toEqual(["taxes"]);
+  });
+
+  it("does not chase the tax amount when they gave it", () => {
+    const e = reply({
+      isQuote: true,
+      intent: "quote",
+      quoteAmount: 42000,
+      scopeSummary: "Grounds maintenance, 12 months",
+      quoteValidUntil: "30 days",
+      taxesIncluded: false,
+      taxesAmount: 3_465,
     });
     expect(blockingGaps(e, "quoted")).toEqual([]);
   });
@@ -99,6 +144,7 @@ describe("workflow is held until the bid information is complete", () => {
       isQuote: true,
       quoteAmount: 42000,
       scopeSummary: "Mowing only",
+      quoteValidUntil: "good through 30 June 2026",
       missingFields: ["lead_time", "insurance"],
     });
     expect(blockingGaps(e, "quoted")).toEqual(["lead_time", "insurance"]);

@@ -67,6 +67,33 @@ describe("the map itself", () => {
     }
   });
 
+  /**
+   * Owner is one word, and one word cannot say which half of a step is the
+   * platform's. A step that runs on its own still has a human edge somewhere,
+   * and somebody waiting on automation that was never going to happen is
+   * waiting because nobody wrote these two sentences down.
+   */
+  it("says what is automatic and what needs a person, for every step", () => {
+    for (const s of WORKFLOW_STEPS) {
+      expect(s.automatic.length, `${s.key} automatic`).toBeGreaterThan(20);
+      expect(s.manual.length, `${s.key} manual`).toBeGreaterThan(5);
+    }
+  });
+
+  it("names what stops every step", () => {
+    for (const s of WORKFLOW_STEPS) {
+      expect(s.blockers.length, `${s.key} blockers`).toBeGreaterThan(0);
+      for (const b of s.blockers) expect(b.length, `${s.key} blocker`).toBeGreaterThan(20);
+    }
+  });
+
+  it("finds a step by the symptom rather than by its name", () => {
+    // What somebody actually types is what went wrong, not what the step is
+    // called, and the symptom is written in the blocker list.
+    const hits = searchKnowledge("daily quota", []);
+    expect(hits.steps.map((s) => s.key)).toContain("found");
+  });
+
   it("only teaches terms the glossary actually defines", () => {
     for (const s of WORKFLOW_STEPS) {
       for (const t of s.terms) expect(GLOSSARY[t], `${s.key} teaches ${t}`).toBeTruthy();
@@ -395,16 +422,43 @@ describe("quick start", () => {
    * The keys come from computeSetupChecklist, and one of them is "email"
    * rather than "gmail". Mapped wrong, an item silently gets no capability
    * and stops being gated at all.
+   *
+   * Two steps genuinely need no capability: having an account, and waiting
+   * for the platform to find the first opportunity. They are named here, so
+   * a key that is ungated by accident cannot hide among them.
    */
+  const UNGATED = new Set(["setup:account", "setup:first_opportunity"]);
+
   it("gates every step the real setup checklist emits", () => {
     const real = computeSetupChecklist({
       profile: null,
       integrations: { sam: false, claude: false, googleMaps: false, gmail: false },
+      access: { level: "trial", trialDaysLeft: 9 },
+      firstRun: { opportunities: 0 },
     });
     const items = quickStart("viewer", real.items, FACTS, label);
     for (const item of items.filter((i) => i.key.startsWith("setup:"))) {
+      if (UNGATED.has(item.key)) {
+        expect(item.blockedBy, item.key).toBeNull();
+        continue;
+      }
       expect(item.blockedBy, item.key).not.toBeNull();
     }
+  });
+
+  it("labels each link by where it actually goes", () => {
+    const real = computeSetupChecklist({
+      profile: null,
+      integrations: { sam: false, claude: false, googleMaps: false, gmail: false },
+      access: { level: "none" },
+      firstRun: { opportunities: 0 },
+    });
+    const items = quickStart("owner", real.items, FACTS, label);
+    const byKey = (k: string) => items.find((i) => i.key === k)!;
+    expect(byKey("setup:rules").hrefLabel).toBe("Open automation rules");
+    expect(byKey("setup:access").hrefLabel).toBe("Open billing");
+    expect(byKey("setup:sam").hrefLabel).toBe("Open integrations");
+    expect(byKey("setup:naics").hrefLabel).toBe("Open company profile");
   });
 
   it("never marks reading the rules done, because reading leaves no record", () => {

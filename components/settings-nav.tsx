@@ -47,8 +47,8 @@ export function SettingsNav() {
             href={t.href}
             className={
               active
-                ? "dash-tab dash-tab--active shrink-0 whitespace-nowrap text-xs uppercase tracking-[0.12em]"
-                : "dash-tab shrink-0 whitespace-nowrap text-xs uppercase tracking-[0.12em]"
+                ? "dash-tab dash-tab--active whitespace-nowrap text-xs uppercase tracking-[0.12em]"
+                : "dash-tab whitespace-nowrap text-xs uppercase tracking-[0.12em]"
             }
             aria-current={active ? "page" : undefined}
           >

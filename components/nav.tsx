@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ThemeWordmark } from "./theme-wordmark";
 import { ThemeToggle } from "./theme-toggle";
 import { SearchButton } from "./command-palette";
+import { CloseIcon, MenuIcon } from "./tab-icons";
 import type { AutomationState } from "@/lib/domain/automation-health";
 
 /**
@@ -31,6 +32,23 @@ import type { AutomationState } from "@/lib/domain/automation-health";
  * On phones the menu is a full-screen overlay (100vw × 100dvh) so the
  * operator has enough room to read labels and the thumb reaches everywhere.
  * The automation on/off toggle lives here so it's always one tap away.
+ *
+ * The overlay is kept through tablet portrait, and the sidebar appears at
+ * 1024 rather than 768.
+ *
+ * At 768 the sidebar was 256px, which is a third of an iPad in portrait spent
+ * on navigation, on the device where the content column is already tightest:
+ * a table that fits at 768 does not fit at 512. The brief offers two ways out,
+ * a compact icon rail or keeping the bottom bar to the wider breakpoint, and
+ * the rail is the wrong one here. There are twenty-five destinations in eight
+ * named groups, and an icon rail either shows twenty-five glyphs, which is
+ * unreadable and is the thing the tab-bar icons were just rescued from, or
+ * hides the groups behind hover, which does not exist on a tablet.
+ *
+ * So tablet portrait is a touch layout: the drawer, the five bottom tabs, and
+ * the full width for the work. Everything keyed to that decision moves with
+ * it, including the 44px minimum on buttons, which a device held in one hand
+ * needs at 900px exactly as much as at 390.
  */
 
 interface Item {
@@ -96,7 +114,17 @@ const SECTIONS: Section[] = [
     // Guide Me is a panel rather than a page -- it opens over whatever you are
     // looking at, because its whole value is knowing where you are. Listing it
     // as a destination here would be a link that navigates nowhere.
-    items: [{ href: "/how-it-works", label: "Knowledge Center" }],
+    items: [
+      { href: "/how-it-works", label: "Knowledge Center" },
+      // Every role can reach this, including the read-only ones. Somebody
+      // looking at a figure that does not add up is the person who should be
+      // able to say so, and there was previously nowhere to say it.
+      {
+        href: "/feedback",
+        label: "Feedback",
+        hint: "Something broken, a number that reads wrong, or a thing this should do",
+      },
+    ],
   },
   {
     key: "settings",
@@ -290,12 +318,52 @@ export function Nav({
         body: JSON.stringify({ paused: next }),
       });
       if (!res.ok) setLocalPaused(!next);
+      /*
+       * Refresh so the authoritative health state catches up.
+       *
+       * Without it the optimistic boolean and the measured state disagreed
+       * until the next navigation, which is the whole reason the mobile strip
+       * below reads the state rather than the boolean: pausing an account
+       * whose credits are exhausted and then resuming it must go back to
+       * saying the credits are exhausted, not to saying everything is fine.
+       */
+      else router.refresh();
     } catch {
       setLocalPaused(!next);
     } finally {
       setTogglingAutomation(false);
     }
   }
+
+  /*
+   * What the mobile strip says, and where each part comes from.
+   *
+   * The pause Boolean answers "did somebody press Pause". The health state
+   * answers "is the work getting done", and those are different questions:
+   * an account with no AI key is not paused and is not working.
+   *
+   * The one moment the Boolean wins is the optimistic window between pressing
+   * the button and the server component coming back, when the measured state
+   * is describing the account as it was a second ago.
+   */
+  const togglePending = localPaused !== automationPaused;
+  const mobileState: AutomationState = togglePending
+    ? localPaused
+      ? "paused"
+      : "healthy"
+    : (automationState ?? (localPaused ? "paused" : "healthy"));
+  const mobileHeadline = togglePending
+    ? localPaused
+      ? "Pausing automation"
+      : "Resuming automation"
+    : (automationHeadline ??
+      (localPaused ? "Automation paused" : "Automation running"));
+  const mobileDetail = togglePending
+    ? "Saving that now"
+    : (automationDetail ??
+      (localPaused
+        ? "No agents, emails, or jobs will run"
+        : "Agents and scheduled jobs are live"));
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   const sections = SECTIONS.filter((sec) => !sec.adminOnly || isPlatformAdmin);
@@ -322,8 +390,8 @@ export function Nav({
       <Link
         href={item.href}
         onClick={() => setOpen(false)}
-        className={`flex min-h-11 items-center justify-between gap-2 rounded-md pr-2 transition-colors md:min-h-0 ${
-          compact ? "py-2.5 pl-3 text-sm md:py-1.5" : "py-2.5 pl-3 md:py-2"
+        className={`flex min-h-11 items-center justify-between gap-2 rounded-md pr-2 transition-colors lg:min-h-0 ${
+          compact ? "py-2.5 pl-3 text-sm lg:py-1.5" : "py-2.5 pl-3 lg:py-2"
         } ${
           active
             ? "bg-gold/15 font-medium text-gold-text"
@@ -351,7 +419,7 @@ export function Nav({
 
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 bg-background px-3 dark:border-white/10 md:hidden">
+      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 bg-background px-3 dark:border-white/10 lg:hidden">
         {/*
           The app bar's route home, and it was a 24px-tall target: the smallest
           interactive thing on every mobile screen, and the one people reach
@@ -408,27 +476,25 @@ export function Nav({
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
         >
-          <span aria-hidden className="text-xl leading-none">
-            {open ? "✕" : "☰"}
-          </span>
+          {open ? <CloseIcon /> : <MenuIcon />}
         </button>
       </div>
 
       <nav
         aria-label="Main"
         aria-hidden={isMobile && !open ? true : undefined}
-        className={`fixed inset-0 z-[71] flex flex-col border-border/55 bg-background transition-transform duration-200 ease-out dark:border-white/10 md:static md:inset-auto md:z-auto md:h-full md:w-64 md:translate-x-0 md:border-r md:transition-none ${
+        className={`fixed inset-0 z-[71] flex flex-col border-border/55 bg-background transition-transform duration-200 ease-out dark:border-white/10 lg:static lg:inset-auto lg:z-auto lg:h-full lg:w-64 lg:translate-x-0 lg:border-r lg:transition-none ${
           open
             ? "translate-x-0"
-            : "pointer-events-none -translate-x-full md:pointer-events-auto"
+            : "pointer-events-none -translate-x-full lg:pointer-events-auto"
         }`}
       >
-        <div className="hidden shrink-0 px-5 py-6 md:block">
+        <div className="hidden shrink-0 px-5 py-6 lg:block">
           {/* min-h-11 on touch: the wordmark is the app bar's route home and
               was a 24px-tall target, the smallest on every mobile screen. */}
           <Link
             href="/today"
-            className="flex min-h-11 items-center md:block md:min-h-0"
+            className="flex min-h-11 items-center lg:block lg:min-h-0"
             aria-label="Brost Co Today"
           >
             <ThemeWordmark className="h-7 w-auto" />
@@ -438,7 +504,7 @@ export function Nav({
           </Link>
         </div>
 
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/55 px-4 dark:border-white/10 md:hidden">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border/55 px-4 dark:border-white/10 lg:hidden">
           <div className="inline-flex items-center" style={{ height: "1.75rem" }}>
             <ThemeWordmark className="h-full w-auto" />
           </div>
@@ -448,29 +514,32 @@ export function Nav({
             onClick={() => setOpen(false)}
             aria-label="Close menu"
           >
-            <span aria-hidden className="text-xl leading-none">
-              ✕
-            </span>
+            <CloseIcon />
           </button>
         </div>
 
-        <div className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10 md:hidden">
+        {/*
+          The authoritative state, not the local Boolean.
+          This strip used to read `localPaused` alone, so an account whose
+          every job was failing on an exhausted credit balance was told
+          "Automation running. Agents and scheduled jobs are live", which is
+          the same lie the sidebar chip was rebuilt to stop telling. The
+          Boolean says whether anybody pressed Pause; it does not say whether
+          the work is getting done.
+        */}
+        <div className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10 lg:hidden">
           <div className="flex items-center gap-3">
             <span
               aria-hidden
-              className={`h-2 w-2 shrink-0 rounded-full ${
-                localPaused ? "bg-review" : "animate-pulse bg-pursue"
+              className={`shrink-0 font-mono text-xs ${
+                mobileState === "healthy" ? "text-pursue" : "text-foreground"
               }`}
-            />
+            >
+              {CHIP_GLYPH[mobileState]}
+            </span>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground">
-                {localPaused ? "Automation paused" : "Automation running"}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {localPaused
-                  ? "No agents, emails, or jobs will run"
-                  : "Agents and scheduled jobs are live"}
-              </p>
+              <p className="text-sm font-medium text-foreground">{mobileHeadline}</p>
+              <p className="text-[11px] text-muted-foreground">{mobileDetail}</p>
             </div>
             <button
               type="button"
@@ -485,15 +554,15 @@ export function Nav({
           </div>
         </div>
 
-        <div className="shrink-0 space-y-1.5 px-3 pb-2 pt-3 md:px-4 md:pt-0">
-          <SearchButton className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-surface px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground dark:border-white/15 md:min-h-0 md:py-1.5" />
+        <div className="shrink-0 space-y-1.5 px-3 pb-2 pt-3 lg:px-4 lg:pt-0">
+          <SearchButton className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-surface px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground dark:border-white/15 lg:min-h-0 lg:py-1.5" />
           <button
             type="button"
             onClick={() => {
               setOpen(false);
               window.dispatchEvent(new Event("open-guide-wizard"));
             }}
-            className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-gold/40 hover:bg-gold/10 hover:text-gold-text dark:border-white/15 md:min-h-0 md:py-1.5"
+            className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-gold/40 hover:bg-gold/10 hover:text-gold-text dark:border-white/15 lg:min-h-0 lg:py-1.5"
           >
             <span aria-hidden className="text-gold-text">
               ?
@@ -502,7 +571,7 @@ export function Nav({
           </button>
         </div>
 
-        <div className="scroll-thin flex-1 space-y-0.5 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:px-4 md:pb-3">
+        <div className="scroll-thin flex-1 space-y-0.5 overflow-y-auto p-3 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:overflow-y-auto lg:px-4 lg:pb-3">
           {sections.map((sec) => {
             const open = isSectionOpen(sec);
             const waiting = sectionBadgeTotal(sec);
@@ -514,7 +583,7 @@ export function Nav({
                     setOpenSections((prev) => ({ ...prev, [sec.key]: !open }))
                   }
                   aria-expanded={open}
-                  className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left transition-colors hover:text-foreground md:min-h-0 md:py-1.5"
+                  className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left transition-colors hover:text-foreground lg:min-h-0 lg:py-1.5"
                 >
                   {/* A heading, not another dim menu item: a rule above it,
                       real weight, and separation from the links beneath. */}
@@ -587,7 +656,7 @@ export function Nav({
             Now it is a real control with a thumb-sized target. */}
         <div className="shrink-0 space-y-3 border-t border-border/55 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10">
           {/* Desktop: theme lives in the sidebar. Mobile header already has the toggle. */}
-          <ThemeToggle className="hidden w-full justify-stretch md:inline-flex [&>button]:flex-1" />
+          <ThemeToggle className="hidden w-full justify-stretch lg:inline-flex [&>button]:flex-1" />
           <div className="flex items-center gap-3">
             <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-border-strong/40 text-xs font-medium text-foreground dark:border-white/20">
               {initials}

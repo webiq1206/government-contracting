@@ -51,6 +51,19 @@ export interface BriefRequirement {
   /** Plain-English gloss of any jargon in the label. */
   explain?: string;
   source?: string;
+  /**
+   * The document and page this requirement was read out of, when the analysis
+   * could resolve one against the opportunity's inventory.
+   *
+   * `source` is where the solicitation states it ("Section L.3"), which is
+   * useful and not openable. This is the anchor: it turns "stated in Section
+   * L.3" into a link onto the page it was read from, which is the difference
+   * between a requirement somebody can check and one they have to take on
+   * trust.
+   */
+  sourceDocumentId?: string;
+  sourceDocumentName?: string;
+  sourcePage?: number;
   needsSignature?: boolean;
   officialForm?: string;
 }
@@ -244,6 +257,35 @@ const ORDER: Record<Importance, number> = {
   info: 3,
 };
 
+/**
+ * The seven analysis fields the brief is built from.
+ *
+ * Extracted so the page and the card cannot drift. The requirements checklist
+ * now needs the requirement ids on the server, to look up what has been
+ * recorded against each one, and building the brief from a different subset of
+ * the analysis in the two places would mean an id that exists in one and not
+ * the other: a requirement whose state silently stops being read.
+ */
+export function briefInputFrom(analysis: {
+  compliance_matrix?: ComplianceRequirement[] | null;
+  submission_requirements?: string[] | null;
+  required_forms?: RequiredForm[] | null;
+  qualifications?: Qualifications | null;
+  prebid_meeting?: MeetingInfo | null;
+  site_visit?: MeetingInfo | null;
+  special_requirements?: string[] | null;
+}): OpportunityBriefInput {
+  return {
+    complianceMatrix: analysis.compliance_matrix,
+    submissionRequirements: analysis.submission_requirements,
+    requiredForms: analysis.required_forms,
+    qualifications: analysis.qualifications,
+    prebidMeeting: analysis.prebid_meeting,
+    siteVisit: analysis.site_visit,
+    specialRequirements: analysis.special_requirements,
+  };
+}
+
 export function buildOpportunityBrief(
   input: OpportunityBriefInput
 ): OpportunityBrief {
@@ -286,6 +328,9 @@ export function buildOpportunityBrief(
           : undefined,
         explain: explainFor(`${label} ${detail}`),
         source: clean(r.source) || undefined,
+        sourceDocumentId: clean(r.source_document_id) || undefined,
+        sourceDocumentName: clean(r.source_document) || undefined,
+        sourcePage: typeof r.source_page === "number" ? r.source_page : undefined,
         needsSignature: r.signature_required || undefined,
         officialForm: clean(r.official_form) || undefined,
       },

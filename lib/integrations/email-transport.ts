@@ -66,6 +66,17 @@ export interface OutreachSendParams {
    * check, not that the check passed.
    */
   opportunityId?: string;
+  /**
+   * The subcontractor being written to, when it is one.
+   *
+   * Carried so this transport can ask whether outreach to them has been
+   * stopped. Absent means there is nobody to check, not that the check
+   * passed: an operator who stops outreach for a firm and then watches the
+   * follow-up go out anyway has learned that the control is decoration.
+   */
+  subcontractorId?: string;
+  /** The trade this message is about, so a trade-scoped stop can apply. */
+  trade?: string | null;
 }
 
 export type OutreachProvider = "gmail";
@@ -169,6 +180,49 @@ export async function sendOutreachEmail(
         blocked: true,
         error: `${params.to} asked not to be contacted, so nothing was sent.`,
       };
+    }
+  }
+
+  /*
+   * The operator's own stop, asked at the moment of sending.
+   *
+   * Separate from the do-not-contact list above, and deliberately so. That one
+   * is the subcontractor's decision, is keyed on an address, and is
+   * account-wide. This one is the operator's, is keyed on the relationship,
+   * and can be as narrow as one trade on one bid.
+   *
+   * Asked here rather than when the job was queued, because a follow-up
+   * enqueued on Monday and running on Wednesday has to see Tuesday's decision.
+   * A failure to read is treated as a stop: the moment the check cannot run is
+   * exactly the moment it is least safe to send.
+   */
+  if (suppressionOrg && params.subcontractorId) {
+    const { suppressionBlocking } = await import("../suppressions");
+    const { describeSuppression } = await import("../domain/suppression");
+    let stopped: Awaited<ReturnType<typeof suppressionBlocking>> | "unreadable";
+    try {
+      stopped = await suppressionBlocking(
+        {
+          subcontractorId: params.subcontractorId,
+          opportunityId: params.opportunityId ?? null,
+          trade: params.trade ?? null,
+          channel: "email",
+        },
+        suppressionOrg
+      );
+    } catch {
+      stopped = "unreadable";
+    }
+    if (stopped === "unreadable") {
+      return {
+        provider: null,
+        blocked: true,
+        error:
+          "Whether outreach to this subcontractor has been stopped could not be established, so nothing was sent.",
+      };
+    }
+    if (stopped) {
+      return { provider: null, blocked: true, error: describeSuppression(stopped) };
     }
   }
 

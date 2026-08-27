@@ -99,12 +99,27 @@ Minimum target 44x44px on touch: `min-h-11` on anything a thumb has to hit.
 | `Breadcrumbs` | Replaced by the back control in the app bar | Shown | Shown |
 | `Nav` | Hidden; opens as a full-screen overlay from the app bar | Collapsed rail, 72px | Expanded, 248px |
 | `MobileTabBar` | Fixed bottom, 64px, five destinations | Hidden | Hidden |
-| `DataTable` | Becomes compact cards, one record per card | Table, fewer columns | Full table, sticky header |
+| `DataTable` | Cards, one record per card, where the page supplies a `card` renderer | Table, fewer columns | Full table, sticky header |
 | `FilterToolbar` | Button opening a full-screen sheet | Inline, wrapping | Inline, sticky |
 | `ContextDrawer` | Full-screen page | Right panel, `max-w-md` | Right panel, `max-w-lg` |
 | `AutomationStatusPanel` | Facts stack two-up | Four across | Four across |
 | `AccountStatusPanel` | Label above value | Label beside value | Label beside value |
 | Long forms | One section per screen, sticky bottom bar | Grouped sections | Grouped sections, sticky save |
+
+`DataTable`'s card lane is opt-in per page, and the reason is that a card is
+not a smaller table. The table renders every column; a card carries the two or
+three facts that survive the trip to a 390px screen, and only the page knows
+which those are. A page that supplies no `card` keeps the horizontal scroller
+it had.
+
+Where a card renderer is given, the table is hidden rather than both being
+rendered, and the column and density controls go with it: they change nothing
+a card reader can see.
+
+Contact actions belong inside the card, not fixed to the viewport. A bar
+pinned to the screen can only act on one record, and a list is exactly where
+somebody is choosing between them. Channels that do not work are dimmed rather
+than removed, so the row doubles as a data-health check.
 
 Rules that hold for every one of them:
 

@@ -2,10 +2,36 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DataTable, type Column } from "@/components/data-table";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { Subcontractor } from "@/lib/types";
+import { subState, SUB_STATE_TONE } from "@/lib/domain/sub-state";
+
+/**
+ * The roster's read of a row, from the same function every other surface uses.
+ *
+ * `unmet_required_docs` is optional on the type: a read that did not count
+ * them leaves it undefined, and undefined is not zero. Treating it as zero
+ * here would have the roster promise clean paperwork it never checked.
+ */
+function rowState(s: Subcontractor) {
+  const unmet = s.unmet_required_docs;
+  return subState({
+    samExcluded: Boolean(s.sam_excluded),
+    blacklisted: Boolean(s.blacklisted),
+    blacklistReason: s.blacklist_reason ?? null,
+    archivedAt: s.archived_at ?? null,
+    archivedReason: s.archived_reason ?? null,
+    mergedInto: s.merged_into ?? null,
+    email: s.email,
+    emailVerified: Boolean(s.email_verified),
+    phone: s.phone,
+    missingDocuments: unmet && unmet > 0 ? [`${unmet} required for award`] : [],
+    preferred: Boolean(s.is_preferred),
+  });
+}
 
 /**
  * The roster, as a table you can actually work.
@@ -38,7 +64,15 @@ export function SubsTable({
    */
   peekBase: string;
 }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  /*
+   * Held here rather than inside the bulk bar. The bar only exists while rows
+   * are selected, so a result kept there vanished the moment the action
+   * cleared the selection, taking the sentence saying what changed and the
+   * control that undoes it with it. Those are the whole point.
+   */
+  const [outcome, setOutcome] = useState<{ message: string; batchId: string | null } | null>(null);
 
   const columns: Column<Subcontractor>[] = [
     {
@@ -122,12 +156,19 @@ export function SubsTable({
       header: "Reliability",
       sortable: true,
       numeric: true,
-      hint: "0-100, from how consistently this firm answers, quotes on time, and delivers.",
+      hint: "0-100, from six things: whether they answer, whether they quote, whether the quote arrives by the date they were given, whether it covers the scope, how the work went, and how often they have backed out. Blank means not enough history to score, which is not a low score.",
       render: (s) =>
         s.reliability_score != null ? (
           <span className="font-semibold text-foreground">{s.reliability_score}</span>
         ) : (
-          <span className="text-muted-foreground">-</span>
+          /*
+            Words, not a dash. A dash reads as a gap in the table; this is a
+            statement about the firm, and the difference matters on the column
+            an operator sorts by to decide who to approach first.
+          */
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            No history yet
+          </span>
         ),
     },
     {
@@ -178,23 +219,38 @@ export function SubsTable({
         ),
     },
     {
+      key: "state",
+      header: "State",
+      /*
+       * One badge, from the same function the record page and the quick look
+       * use. The roster used to show SAM exclusion and a block side by side
+       * and say nothing at all about lapsed paperwork or an unusable address,
+       * so a firm could read clean here and blocked on its own page.
+       */
+      render: (s) => {
+        const v = rowState(s);
+        return (
+          <span className={`badge ${SUB_STATE_TONE[v.state]}`} title={v.detail}>
+            {v.label}
+          </span>
+        );
+      },
+    },
+    {
       key: "flags",
       header: "Flags",
       optional: true,
-      render: (s) => (
-        <div className="flex flex-wrap gap-1">
-          {s.sam_excluded && <span className="badge bg-risk/15 text-risk">SAM excluded</span>}
-          {s.blacklisted && <span className="badge bg-risk/15 text-risk">Blocked</span>}
-          {s.sb_certified && (
-            <span
-              className="badge bg-gold/15 text-gold-text"
-              title="Certified small business: counts toward federal small-business requirements"
-            >
-              Small business
-            </span>
-          )}
-        </div>
-      ),
+      render: (s) =>
+        s.sb_certified ? (
+          <span
+            className="badge bg-gold/15 text-gold-text"
+            title="Certified small business: counts toward federal small-business requirements"
+          >
+            Small business
+          </span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        ),
     },
     {
       key: "peek",
@@ -212,7 +268,18 @@ export function SubsTable({
   ];
 
   return (
-    <DataTable
+    <>
+      {outcome && (
+        <BulkOutcomeBanner
+          outcome={outcome}
+          onDismiss={() => setOutcome(null)}
+          onUndone={(message) => {
+            setOutcome({ message, batchId: null });
+            router.refresh();
+          }}
+        />
+      )}
+      <DataTable
       rows={rows}
       columns={columns}
       pathname="/subs"
@@ -221,6 +288,13 @@ export function SubsTable({
       paging={paging}
       total={total}
       prefsKey="brostco.subs.table"
+      card={(s) => <SubCard row={s} peekBase={peekBase} selected={selected.has(s.id)}
+        onToggle={() => setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(s.id)) next.delete(s.id);
+          else next.add(s.id);
+          return next;
+        })} />}
       emptyState={emptyState}
       selection={{
         selected,
@@ -243,22 +317,269 @@ export function SubsTable({
             return next;
           }),
         bar: (ids) => (
-          <>
-            {/*
-              Export is the one bulk action that is safe to ship before the
-              others: it reads. Bulk verify, tag and archive each write to a
-              roster shared across live bids, and an undo path matters more
-              than the button.
-            */}
-            <a
-              className="btn-ghost h-8 text-xs"
-              href={`/api/subs/export?ids=${encodeURIComponent(ids.join(","))}`}
-            >
-              Export {ids.length} as CSV
-            </a>
-          </>
+          <BulkBar
+            ids={ids}
+            onResult={(r) => {
+              setOutcome(r);
+              // Cleared only when something actually happened, so a refused
+              // action leaves the selection to try again with.
+              if (r.batchId !== undefined) setSelected(new Set());
+              router.refresh();
+            }}
+          />
         ),
       }}
-    />
+      />
+    </>
+  );
+}
+
+/**
+ * One firm on a phone.
+ *
+ * The table is 52rem wide inside a horizontal scroller, so reading one row on
+ * a 390px screen means scrolling sideways until the company name has left the
+ * screen, and the state badge and the way to reach them are at opposite ends
+ * of that scroll. Here the three things a phone is actually used for are
+ * together: who they are, where they stand, and the two taps that reach them.
+ */
+function SubCard({
+  row, peekBase, selected, onToggle,
+}: {
+  row: Subcontractor;
+  peekBase: string;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const v = rowState(row);
+  const area = [row.city, row.state].filter(Boolean).join(", ");
+  const trades = (row.trade_categories ?? []).join(", ");
+  const tel = row.phone ? `tel:${row.phone.replace(/[^\d+]/g, "")}` : null;
+  /*
+   * The address is offered only when outreach would actually use it. An
+   * unverified address opens a mail client addressed to somewhere that has
+   * not passed a check, which is how a bid loses a quote to a bounce nobody
+   * saw.
+   */
+  const mail = row.email && row.email_verified ? `mailto:${row.email}` : null;
+
+  return (
+    <div className="rounded-md border border-border bg-surface">
+      <div className="flex items-start gap-3 p-3">
+        <input
+          type="checkbox"
+          className="mt-1 h-5 w-5 shrink-0"
+          checked={selected}
+          onChange={onToggle}
+          aria-label={`Select ${row.company_name}`}
+        />
+        <div className="min-w-0 flex-1">
+          <Link href={`/subs/${row.id}`} className="block truncate font-medium text-foreground">
+            {row.company_name}
+          </Link>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {[trades, area].filter(Boolean).join(" \u00b7 ") || "Nothing on file about where they work"}
+          </p>
+          <span className={`badge mt-1.5 inline-block ${SUB_STATE_TONE[v.state]}`}>{v.label}</span>
+          <p className="mt-1 text-xs text-muted-foreground">{v.detail}</p>
+        </div>
+      </div>
+
+      {/*
+        The contact bar. Pinned to the bottom of the card rather than to the
+        viewport: a bar fixed to the screen can only ever act on one firm, and
+        a list of firms is exactly where somebody is choosing between them.
+        Dimmed rather than hidden when a channel is missing, so the row
+        doubles as a contact-data health check.
+      */}
+      <div className="flex divide-x divide-border border-t border-border">
+        {tel ? (
+          <a href={tel} className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent">
+            Call
+          </a>
+        ) : (
+          <span className="flex min-h-11 flex-1 items-center justify-center text-sm text-muted-foreground">
+            No phone
+          </span>
+        )}
+        {mail ? (
+          <a href={mail} className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent">
+            Email
+          </a>
+        ) : (
+          <span className="flex min-h-11 flex-1 items-center justify-center text-sm text-muted-foreground">
+            {row.email ? "Email unverified" : "No email"}
+          </span>
+        )}
+        <Link
+          href={`${peekBase}peek=${row.id}`}
+          scroll={false}
+          className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent"
+        >
+          Quick look
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What the last bulk change did, and the control that takes it back.
+ *
+ * Outside the selection bar on purpose: acting clears the selection, and a
+ * message that disappears with it is one nobody reads. It stays until
+ * dismissed, because "173 updated, 27 left alone because they are marked do
+ * not use" is a sentence somebody may want to act on rather than glance at.
+ */
+function BulkOutcomeBanner({
+  outcome, onDismiss, onUndone,
+}: {
+  outcome: { message: string; batchId: string | null };
+  onDismiss: () => void;
+  onUndone: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface-raised px-3 py-2">
+      <span role="status" className="text-sm text-foreground">{outcome.message}</span>
+      {outcome.batchId && (
+        <button
+          type="button"
+          className="tap text-xs text-accent hover:underline"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              const res = await fetch("/api/subs/bulk", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "undo", batch_id: outcome.batchId }),
+              });
+              const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+              onUndone(res.ok ? (data.message ?? "Taken back.") : (data.error ?? "That could not be taken back."));
+            } catch {
+              onUndone("Could not reach the server. Nothing was taken back.");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {busy ? "Taking it back\u2026" : "Take that back"}
+        </button>
+      )}
+      <button type="button" className="tap ml-auto text-xs text-muted-foreground hover:text-foreground"
+        onClick={onDismiss}>
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The bulk actions, each one recorded so it can be taken back.
+ *
+ * These were left unbuilt with a note saying why: they write to a roster
+ * shared across live bids, and a button that changes two hundred rows with no
+ * way back is worse than no button. So the result of every write is a
+ * sentence saying what changed, what it left alone and why, and a control
+ * that undoes exactly the rows it touched.
+ */
+function BulkBar({
+  ids, onResult,
+}: {
+  ids: string[];
+  onResult: (r: { message: string; batchId: string | null }) => void;
+}) {
+  const [panel, setPanel] = useState<"tag" | "archive" | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
+
+  async function run(body: Record<string, unknown>) {
+    setBusy(true);
+    setRefusal(null);
+    try {
+      const res = await fetch("/api/subs/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string; message?: string; batchId?: string | null;
+      };
+      if (!res.ok) {
+        /*
+         * A refusal stays in the bar with the selection intact. Nothing
+         * happened, so there is nothing to undo and no reason to make
+         * somebody pick the same rows again.
+         */
+        setRefusal(data.error ?? "That did not work.");
+        return;
+      }
+      setPanel(null);
+      setText("");
+      onResult({ message: data.message ?? "Done.", batchId: data.batchId ?? null });
+    } catch {
+      setRefusal("Could not reach the server. Nothing changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2">
+      <a
+        className="btn-ghost h-8 text-xs"
+        href={`/api/subs/export?ids=${encodeURIComponent(ids.join(","))}`}
+      >
+        Export {ids.length} as CSV
+      </a>
+      <button type="button" className="btn-ghost h-8 text-xs" disabled={busy}
+        onClick={() => void run({ action: "verify", ids })}>
+        Re-check contact details
+      </button>
+      <button type="button" className="btn-ghost h-8 text-xs" aria-expanded={panel === "tag"}
+        onClick={() => setPanel(panel === "tag" ? null : "tag")}>
+        Tag
+      </button>
+      <button type="button" className="btn-ghost h-8 text-xs" aria-expanded={panel === "archive"}
+        onClick={() => setPanel(panel === "archive" ? null : "archive")}>
+        Put aside
+      </button>
+
+      {panel && (
+        <div className="flex w-full flex-wrap items-center gap-2">
+          <input
+            className="input h-9 w-full sm:w-64"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={panel === "tag" ? "Tag name" : "Why, so the next person is not guessing"}
+          />
+          <button type="button" className="btn h-8 text-xs" disabled={busy || !text.trim()}
+            onClick={() =>
+              void run(
+                panel === "tag"
+                  ? { action: "tag", ids, tag: text.trim() }
+                  : { action: "archive", ids, reason: text.trim() }
+              )
+            }>
+            {busy ? "Working\u2026" : panel === "tag" ? `Tag ${ids.length}` : `Put ${ids.length} aside`}
+          </button>
+          {panel === "tag" && (
+            <button type="button" className="btn-ghost h-8 text-xs" disabled={busy || !text.trim()}
+              onClick={() => void run({ action: "untag", ids, tag: text.trim() })}>
+              Remove instead
+            </button>
+          )}
+          <button type="button" className="btn-ghost h-8 text-xs" onClick={() => setPanel(null)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {refusal && (
+        <p role="status" className="w-full text-xs text-risk">{refusal}</p>
+      )}
+    </div>
   );
 }

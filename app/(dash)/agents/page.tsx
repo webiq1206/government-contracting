@@ -15,6 +15,10 @@ import {
   AutomationIncidents,
 } from "@/components/automation-incidents";
 import { automationHealth } from "@/lib/automation-status";
+import { syncAutomationIncidents } from "@/lib/incidents";
+import { currentOrg } from "@/lib/data";
+import { INCIDENT_NEXT_ACTION, INCIDENT_STATE_LABEL } from "@/lib/domain/incident";
+import { RecoveryPanel } from "@/components/recovery-panel";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
@@ -132,6 +136,21 @@ export default async function AgentsPage({
   // this page's summary to carry, and it is the one that stops somebody
   // re-running by hand work that was about to run on its own.
   const nextRun = nextRunAcross(ROSTER.map((a) => a.cron));
+  const nextRunLater = nextRun ?? null;
+  /*
+   * Record what the assessment just found, and read back the open incidents.
+   *
+   * Here rather than inside `automationHealth`, which the nav badge calls on
+   * every page render: a write on every page load is a write nobody asked for
+   * and would contend on the partial unique index under any real traffic.
+   * This is the page where an incident matters.
+   */
+  const openIncidents = await syncAutomationIncidents(
+    await currentOrg(),
+    live,
+    nextRunLater
+  ).catch(() => []);
+
   const agentNext = new Map(ROSTER.map((a) => [a.name, nextRunAt(a.cron)]));
   const logs = paged.rows as Row[];
   const totalPages = Math.max(1, Math.ceil(paged.total / LOG_PAGE_SIZE));
@@ -176,6 +195,32 @@ export default async function AgentsPage({
         */}
         <AutomationStatusPanel health={live} nextRun={nextRun ? nextRun.toISOString() : null} />
         <AutomationIncidents health={live} />
+
+        {/*
+          What happens AFTER the fix at the provider, which is the part nobody
+          had. An operator who has just topped up an account had no way to find
+          out whether it worked except by waiting to see if the red went away.
+        */}
+        <RecoveryPanel
+          incidents={openIncidents.map((i) => ({
+            id: i.id,
+            state: i.state,
+            stateLabel: INCIDENT_STATE_LABEL[i.state],
+            nextAction: INCIDENT_NEXT_ACTION[i.state],
+            cause: i.cause,
+            startedAt: i.startedAt.toISOString(),
+            failedCount: i.failedCount,
+            requeuedCount: i.requeuedCount,
+            remainingCount: i.remainingCount,
+            recommendedAction: i.recommendedAction,
+            repairAttempts: i.repairAttempts,
+            recoveryOwner: i.recoveryOwner,
+            testRanAt: i.testRanAt?.toISOString() ?? null,
+            testPassed: i.testPassed,
+            recoveryNote: i.recoveryNote,
+            history: [],
+          }))}
+        />
 
         {/*
           * Item 6 of the audit's structure, and the half of it that was
@@ -255,7 +300,7 @@ export default async function AgentsPage({
                   <div className="mt-auto flex items-center justify-between gap-2 pt-1">
                     <Link
                       href={`/agents?agent=${a.name}`}
-                      className="inline-flex min-h-11 items-center text-xs text-slate-600 hover:text-accent md:min-h-0"
+                      className="inline-flex min-h-11 items-center text-xs text-slate-600 hover:text-accent lg:min-h-0"
                     >
                       See what it did
                     </Link>
@@ -348,7 +393,7 @@ export default async function AgentsPage({
           <div className="mb-2 flex flex-wrap gap-1.5">
             <Link
               href={link({ agent: undefined, page: undefined })}
-              className={`badge min-h-11 md:min-h-0 ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
+              className={`badge min-h-11 lg:min-h-0 ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
             >
               All agents
             </Link>
@@ -356,7 +401,7 @@ export default async function AgentsPage({
               <Link
                 key={a.name}
                 href={link({ agent: a.name, page: undefined })}
-                className={`badge min-h-11 md:min-h-0 ${
+                className={`badge min-h-11 lg:min-h-0 ${
                   agentFilter === a.name
                     ? "bg-accent/10 text-accent"
                     : "bg-slate-200 text-slate-600 hover:text-slate-800"

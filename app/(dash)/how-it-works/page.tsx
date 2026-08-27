@@ -516,7 +516,7 @@ function StepRow({
         ))}
 
         <details open={open} className="group mt-2">
-          <summary className="tap inline-flex min-h-11 cursor-pointer items-center text-xs font-medium text-accent hover:underline md:min-h-0">
+          <summary className="tap inline-flex min-h-11 cursor-pointer items-center text-xs font-medium text-accent hover:underline lg:min-h-0">
             How this step works
           </summary>
           <dl className="mt-2 space-y-1.5 border-l-2 border-border pl-3 text-sm">
@@ -524,7 +524,32 @@ function StepRow({
             <Fact label="Starts">{view.triggerText}</Fact>
             <Fact label="Needs">{step.input}</Fact>
             <Fact label="Produces">{step.output}</Fact>
+            {/*
+              * Which half is the platform's and which half is yours.
+              *
+              * "Owner" above is one word, and one word cannot carry this: a
+              * step that runs on its own still has a human edge somewhere,
+              * and a step that needs you has usually had most of the work
+              * done for it already. Somebody waiting on automation that was
+              * never going to happen is waiting because nobody said this.
+              */}
+            <Fact label="Done for you">{step.automatic}</Fact>
+            <Fact label="Needs a person">{step.manual}</Fact>
             <Fact label="Then">{step.next}</Fact>
+            {step.blockers.length > 0 && (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  What usually stops it
+                </dt>
+                <dd className="leading-relaxed text-muted-foreground">
+                  <ul className="list-disc space-y-1 pl-4">
+                    {step.blockers.map((b) => (
+                      <li key={b}>{b}</li>
+                    ))}
+                  </ul>
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                 If it does not happen
@@ -545,7 +570,7 @@ function StepRow({
             /* This is the step's action, not a link inside a sentence, so it
                gets a thumb-sized box rather than the 16px a bare inline-block
                collapses to. */
-            className="mt-1.5 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline md:min-h-0"
+            className="mt-1.5 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0"
           >
             {step.hrefLabel ?? "Go there"} &rarr;
           </Link>
@@ -621,7 +646,7 @@ function QuickStart({
               !item.done && (
                 <Link
                   href={item.href}
-                  className="ml-7 mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline md:min-h-0"
+                  className="ml-7 mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0"
                 >
                   {item.hrefLabel} &rarr;
                 </Link>
@@ -693,7 +718,7 @@ function AlwaysOn() {
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
             <Link
               href={item.href}
-              className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline md:min-h-0"
+              className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0"
             >
               {item.hrefLabel} &rarr;
             </Link>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UnsavedGuard } from "@/components/unsaved-guard";
+import { NaicsImpact } from "@/components/naics-impact";
 import { TokenMultiSelect, type TokenOption } from "@/components/token-multi-select";
 import { NAICS_CODES } from "@/lib/naics";
 import { US_SERVICE_AREAS, FEDERAL_CERTIFICATIONS } from "@/lib/us-states";
@@ -249,8 +250,13 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
         when={dirty}
         message="Your company profile has unsaved changes. Leave without saving?"
       />
-      {/* Identity */}
-      <Section title="Company identity" hint="The legal details that go on every bid.">
+      {/*
+        The eight sections the audit names, in its order. Contact used to be
+        its own heading; on a bid it is identity, and splitting "who we are"
+        from "how to reach us" made somebody scroll between two cards to fill
+        in one letterhead.
+      */}
+      <Section title="Identity" hint="The legal details and contact facts that go on every bid.">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Legal name" value={legalName} onChange={setLegalName} />
           <Field label="Doing-business-as (DBA)" value={dba} onChange={setDba} />
@@ -269,19 +275,6 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
           <Field label="Home state" value={entityState} onChange={setEntityState} placeholder="ID" />
           <Field label="Business structure" value={structure} onChange={setStructure} placeholder="LLC" />
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-800">
-          <input
-            type="checkbox"
-            checked={smallBusiness}
-            onChange={(e) => setSmallBusiness(e.target.checked)}
-            className="h-4 w-4 accent-accent"
-          />
-          We qualify as a small business
-        </label>
-      </Section>
-
-      {/* Contact */}
-      <Section title="Contact" hint="Where the government and your subs reach you.">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Owner name" value={ownerName} onChange={setOwnerName} />
           <Field
@@ -305,8 +298,27 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
         </div>
       </Section>
 
-      {/* Scope */}
-      <Section title="What you bid on" hint="Search and pick, or type your own and press Enter.">
+      {/*
+        Eligibility, apart from target work.
+        What you are allowed to bid on and what you choose to bid on are
+        different questions with different consequences: getting the first
+        wrong loses an award after you have won it, and getting the second
+        wrong only wastes a morning. They were one section called "what you
+        bid on", which put a set-aside certification next to a trade name.
+      */}
+      <Section
+        title="Eligibility"
+        hint="What the company is allowed to bid on, and under which set-asides."
+      >
+        <label className="flex items-center gap-2 text-sm text-slate-800">
+          <input
+            type="checkbox"
+            checked={smallBusiness}
+            onChange={(e) => setSmallBusiness(e.target.checked)}
+            className="h-4 w-4 accent-accent"
+          />
+          We qualify as a small business
+        </label>
         <div className="grid gap-4 sm:grid-cols-2">
           <PickerField label="Certifications" hint={ARRAY_HELP.certifications}>
             <TokenMultiSelect
@@ -318,6 +330,15 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
               aria-label="Search certifications"
             />
           </PickerField>
+        </div>
+      </Section>
+
+      {/* Target work */}
+      <Section
+        title="Target work"
+        hint="The codes and trades that decide what gets pulled in and scored. Search and pick, or type your own and press Enter."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
           <PickerField label="Industry codes (NAICS)" hint={ARRAY_HELP.naics_codes}>
             <TokenMultiSelect
               value={naics}
@@ -329,7 +350,23 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
             />
           </PickerField>
           <Field label="Primary trades" value={trades} onChange={setTrades} hint={ARRAY_HELP.primary_trades} />
-          <PickerField label="Service areas" hint={ARRAY_HELP.service_areas}>
+        </div>
+        {/*
+          The state here is the comma-joined string the token field edits, so
+          it is split back into codes for the count rather than sent as one
+          value: a request for "238160, 238220" as a single code matches
+          nothing and would report both as bringing in no work.
+        */}
+        <NaicsImpact codes={fromCsv(naics)} />
+      </Section>
+
+      {/* Service areas */}
+      <Section
+        title="Service areas"
+        hint="Where the company will actually work. Scoring reads this, and so does every subcontractor search."
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <PickerField label="States and regions" hint={ARRAY_HELP.service_areas}>
             <TokenMultiSelect
               value={serviceAreas}
               onChange={setServiceAreas}
@@ -497,7 +534,7 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
 
       {/* Hard exclusions */}
       <Section
-        title="Things you never bid on"
+        title="Exclusions"
         hint="Deal-breakers, written in plain English. The scoring system reads each rule and checks every incoming notice against it; a match means the opportunity is passed automatically, with the rule it hit recorded on the record so you can always see why. Keep each rule specific: name the exact condition that makes a job a no-go."
       >
         <div className="space-y-3">
@@ -553,8 +590,8 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
 
       {/* Notes */}
       <Section
-        title="Notes"
-        hint="Standing instructions in your own words. This text rides along on every AI decision (scoring, analysis, outreach, bids), so anything written here is honored across the whole platform. Good for policies that don't fit a field above."
+        title="Standing instructions"
+        hint="Anything the platform should know that no field above covers, in your own words. This text rides along on every AI decision (scoring, analysis, outreach, bids), so anything written here is honored across the whole platform. Good for policies that don't fit a field above."
       >
         <textarea
           value={notes}

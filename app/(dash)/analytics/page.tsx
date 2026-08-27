@@ -4,13 +4,29 @@ import {
   computeKpisFallback,
   analyticsExtras,
   customKpis,
-  computeCustomKpi,
 } from "@/lib/data";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { KpiManager, KpiDeleteButton } from "@/components/kpi-manager";
-import { getMetric, formatKpiValue, describeKpiParams } from "@/lib/domain/kpi";
+import { MetricCard, MetricGroup } from "@/components/metric-card";
+import {
+  AnalyticsMobileNav,
+  AnalyticsSection,
+  AnalyticsFilterSheet,
+} from "@/components/analytics-mobile";
+import {
+  deadlineMetrics,
+  reviewMetrics,
+  subcontractorMetrics,
+  tradeCoverageMetrics,
+  dataConfidenceMetrics,
+  automationMetrics,
+  pipelineValueReport,
+  pinnedMetric,
+} from "@/lib/reporting";
+import { coverageSentence } from "@/lib/domain/report-metrics";
+import { getMetric, describeKpiParams } from "@/lib/domain/kpi";
 import { currency, pct } from "@/lib/format";
 import { PIPELINE_STAGES, funnelCounts, funnelBreakdown } from "@/lib/data";
 import {
@@ -29,8 +45,10 @@ import {
   BREAKDOWN_OPTIONS,
   parseBreakdown,
   breakdownLabel,
+  breakdownNote,
   breakdownLines,
   type FunnelStep,
+  type FunnelKey,
 } from "@/lib/domain/funnel";
 
 export const dynamic = "force-dynamic";
@@ -58,11 +76,21 @@ function rows(v: unknown): Record<string, unknown>[] {
 function KpiCard({
   label,
   value,
+  absent,
   sub,
   accent,
 }: {
   label: string;
   value: React.ReactNode;
+  /**
+   * Why there is no figure, when there is not.
+   *
+   * Separate from `value` so it can be set at reading size. "No wins yet" in
+   * the same forty-point type as a real number competes with the cards that
+   * have one, and on a phone it fills the screen: the eye reads the shape
+   * before the words and takes a sentence for a headline figure.
+   */
+  absent?: string;
   sub?: React.ReactNode;
   /** Green accent for performance rates; near-black for currency (default). */
   accent?: boolean;
@@ -70,13 +98,17 @@ function KpiCard({
   return (
     <div className="card">
       <div className="label">{label}</div>
-      <div
-        className={`num mt-1.5 text-4xl font-semibold tracking-tight ${
-          accent ? "text-accent" : "text-slate-900"
-        }`}
-      >
-        {value}
-      </div>
+      {absent ? (
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{absent}</p>
+      ) : (
+        <div
+          className={`num mt-1.5 text-4xl font-semibold tracking-tight ${
+            accent ? "text-accent" : "text-slate-900"
+          }`}
+        >
+          {value}
+        </div>
+      )}
       {sub && <div className="mt-1.5 text-xs text-slate-500">{sub}</div>}
     </div>
   );
@@ -231,12 +263,20 @@ export default async function AnalyticsPage({
   // 30 days before that" on an account that has submitted nothing in either
   // period fills a line with no information, so both sides must be non-empty
   // for the sentence to appear at all.
-  const deltaFor = (i: number) =>
-    priorSteps && comparison && steps[i].count + priorSteps[i].count > 0
-      ? describeDelta(compare(steps[i].count, priorSteps[i].count), comparison)
-      : null;
-  const foundDelta = deltaFor(0);
-  const submittedDelta = deltaFor(6);
+  /*
+   * By key, not by position. This read steps[6] for "Submitted", and adding
+   * the replies step moved Submitted to seven, so the sentence would have
+   * quietly started describing the bid-built row under the submitted heading.
+   * Nothing would have failed; the page would just have been wrong.
+   */
+  const deltaFor = (key: FunnelKey) => {
+    const i = steps.findIndex((s) => s.key === key);
+    if (i < 0 || !priorSteps || !comparison) return null;
+    if (steps[i].count + priorSteps[i].count === 0) return null;
+    return describeDelta(compare(steps[i].count, priorSteps[i].count), comparison);
+  };
+  const foundDelta = deltaFor("found");
+  const submittedDelta = deltaFor("submitted");
   const freshness = snapshotFreshness(snap?.generatedAt ?? null);
   /** Keeps every other choice in the URL when one of them changes. */
   const hrefWith = (name: string, value: string) => {
@@ -249,13 +289,26 @@ export default async function AnalyticsPage({
     return `/analytics?${p.toString()}`;
   };
   // Compute each operator-defined KPI live (each is a bounded, safe query).
-  const kpiValues = await Promise.all(
-    kpis.map(async (k) => ({
-      ...k,
-      value: await computeCustomKpi(k.metric, k.params),
-      unit: getMetric(k.metric)?.unit ?? "count",
-    }))
-  );
+  /*
+   * Pinned metrics go through the same path the reports do, so a pinned "Win
+   * rate" and the reported one cannot come out different. A pinned metric
+   * whose definition has been removed from the catalog is skipped rather than
+   * rendered as a dash under a label nobody can explain.
+   */
+  const kpiValues = (
+    await Promise.all(
+      kpis.map(async (k) => {
+        const def = getMetric(k.metric);
+        if (!def) return null;
+        return {
+          id: k.id,
+          params: k.params,
+          metric: k.metric,
+          computed: await pinnedMetric({ ...def, label: k.label }, k.params),
+        };
+      })
+    )
+  ).filter((x): x is NonNullable<typeof x> => x !== null);
   // Stages that actually hold value, largest first, for the by-stage breakdown.
   const stageValue = extras.byStage
     .filter((s) => s.value > 0 || s.count > 0)
@@ -286,6 +339,38 @@ export default async function AnalyticsPage({
   const activeRevenue = fb.active_contract_revenue;
   const wins = fb.wins;
   const losses = fb.losses;
+
+  /*
+   * The reported metrics, over the same window as the funnel above.
+   *
+   * Loaded together rather than one section at a time: they are six
+   * independent queries and running them in sequence would make the page wait
+   * six round trips for figures that do not depend on each other.
+   *
+   * The value report is given the measured win rate so its forecast can be a
+   * forecast rather than a guess. Without a win rate it returns null and says
+   * why, which is the correct answer on an account that has never had a bid
+   * decided.
+   */
+  const [
+    deadlines,
+    reviewTimes,
+    subOutreach,
+    tradeCoverage,
+    confidence,
+    automation,
+    valueReport,
+  ] = await Promise.all([
+    // The window runs from `from` up to now, which is what a null upper bound
+    // means everywhere in this module; the funnel above uses the same one.
+    deadlineMetrics(from, null),
+    reviewMetrics(from, null),
+    subcontractorMetrics(from, null),
+    tradeCoverageMetrics(from, null),
+    dataConfidenceMetrics(from, null),
+    automationMetrics(from, null),
+    pipelineValueReport(from, null, winRate),
+  ]);
 
   const snapData = snap?.data ?? null;
   const byNaics = snapData ? rows(snapData.by_naics) : [];
@@ -325,7 +410,13 @@ export default async function AnalyticsPage({
           * The date range. Everything cohort-based below it moves together, and
           * the selected range is in the URL so the view can be sent to somebody.
           */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/*
+          * On a phone both filters live behind one button instead. Thirteen
+          * hundred pixels of chips above the fold is the numbers pushed off
+          * the screen somebody opened the page to read.
+          */}
+        <AnalyticsFilterSheet range={range} by={by} comparison={comparison} />
+        <div className="hidden flex-wrap items-center gap-2 lg:flex">
           <span className="label" id="range-label">
             Period
           </span>
@@ -350,13 +441,36 @@ export default async function AnalyticsPage({
           )}
         </div>
 
+        {/*
+          * One section at a time on a phone, everything at once above the
+          * breakpoint. Numbers is listed first and selected by default,
+          * because the figures are what somebody opens this page for and the
+          * funnel is a nine-row table they would otherwise scroll past.
+          */}
+        <AnalyticsMobileNav
+          sections={[
+            { id: "numbers", label: "Numbers" },
+            { id: "funnel", label: "Funnel" },
+            { id: "reports", label: "Reports" },
+            { id: "breakdown", label: "Breakdowns" },
+            { id: "engine", label: "Deeper" },
+          ]}
+        >
+        {/*
+          Both panels describe the stored breakdowns, which live under Deeper,
+          so on a phone they sit with what they explain instead of taking a
+          third of the first screen before any figure appears. Desktop is
+          unchanged: they stay exactly where they were.
+        */}
+        <AnalyticsSection id="engine">
+        <div className="space-y-6">
         {!snapData && (
           <div className="callout-panel text-sm text-slate-700">
             Deeper breakdowns (win rate by NAICS, agency, geography, cash flow, sub
             rankings, velocity) appear after Analytics Engine runs.{" "}
             <Link
               href="/agents"
-              className="inline-flex min-h-11 items-center font-medium text-accent hover:underline md:min-h-0"
+              className="inline-flex min-h-11 items-center font-medium text-accent hover:underline lg:min-h-0"
             >
               Run it from Automation Health
             </Link>
@@ -396,6 +510,10 @@ export default async function AnalyticsPage({
           )}
         </div>
 
+        </div>
+        </AnalyticsSection>
+
+        <AnalyticsSection id="funnel">
         {/* The funnel the audit names, over the selected period. */}
         <section aria-labelledby="funnel-heading">
           <div className="mb-3 border-b-2 border-accent/80 pb-2">
@@ -464,11 +582,16 @@ export default async function AnalyticsPage({
           )}
         </section>
 
+        </AnalyticsSection>
+
+        <AnalyticsSection id="numbers">
+        <div className="space-y-6">
         {/* KPI cards */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             label="Win rate"
-            value={winRate != null ? `${winRate}%` : "Not enough history"}
+            value={winRate != null ? `${winRate}%` : null}
+            absent={winRate == null ? "Not enough history yet." : undefined}
             /*
              * "0 wins · 0 losses" reads as a track record of failure on an
              * account that has simply never submitted anything, and `?? 0`
@@ -486,12 +609,24 @@ export default async function AnalyticsPage({
           />
           <KpiCard
             label="Avg margin on wins"
-            value={avgMargin != null ? `${avgMargin}%` : (wins ?? 0) === 0 ? "No wins yet" : "Not recorded"}
+            value={avgMargin != null ? `${avgMargin}%` : null}
+            absent={
+              avgMargin != null
+                ? undefined
+                : (wins ?? 0) === 0
+                  ? "No wins yet."
+                  : "No won bid recorded a margin."
+            }
             accent
           />
           <KpiCard
             label="Pipeline value"
-            value={pipelineValued === 0 ? "Not published" : currency(pipelineValue)}
+            value={pipelineValued === 0 ? null : currency(pipelineValue)}
+            absent={
+              pipelineValued === 0
+                ? "No open opportunity publishes a value."
+                : undefined
+            }
             sub={pipelineCoverage ?? undefined}
           />
           <KpiCard label="Active contract revenue" value={currency(activeRevenue)} />
@@ -512,6 +647,118 @@ export default async function AnalyticsPage({
           <KpiCard label="Active contracts" value={extras.counts.active_contracts} />
         </div>
 
+        </div>
+        </AnalyticsSection>
+
+        <AnalyticsSection id="reports">
+        {/* The reported metrics, each able to say where it came from. */}
+        <section aria-labelledby="reports-heading" className="space-y-5">
+          <div className="border-b-2 border-accent/80 pb-2">
+            <p className="eyebrow">{rangeLabel(range)}</p>
+            <h2
+              id="reports-heading"
+              className="mt-0.5 font-display text-2xl font-semibold text-foreground"
+            >
+              Reports
+            </h2>
+            {/*
+              What every figure below is measured against, said once rather
+              than repeated on each card.
+              The window is deliberately described as a rolling span of hours,
+              because that is what the queries do: they subtract days in
+              milliseconds from this instant. Claiming a timezone here would be
+              claiming a calendar-day boundary that no query applies, and a
+              false precision is worse than none.
+            */}
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              Counted over {rangeLabel(range).toLowerCase()}
+              {comparison
+                ? `, against ${comparison}`
+                : ", with nothing before it to compare against"}
+              . The window is a rolling span ending now, not calendar days, so no timezone
+              boundary applies to what is in or out. Every figure is computed when the page
+              loads rather than read from a stored snapshot, so it is as current as this
+              page. Open any card to see how it is worked out.
+            </p>
+          </div>
+
+          <MetricGroup
+            title="What the open work is worth"
+            description="Published, estimated, and unvalued are counted apart. A notice with no figure is not worth nought, and adding an estimate to a published total hides which is which."
+            metrics={valueReport.metrics}
+          />
+          <div className="card">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <div className="label">Published value</div>
+                <div className="num mt-1 text-2xl font-semibold text-slate-900">
+                  {currency(valueReport.split.known.total)}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {valueReport.split.known.count} opportunit
+                  {valueReport.split.known.count === 1 ? "y" : "ies"} carrying a figure from
+                  the notice or from a person.
+                </p>
+              </div>
+              <div>
+                <div className="label">Estimated value</div>
+                <div className="num mt-1 text-2xl font-semibold text-slate-900">
+                  {currency(valueReport.split.modeled.total)}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {valueReport.split.modeled.count} where the figure was inferred from the
+                  solicitation rather than published.
+                </p>
+              </div>
+              <div>
+                <div className="label">No figure at all</div>
+                <div className="num mt-1 text-2xl font-semibold text-slate-900">
+                  {valueReport.split.unknown.count}
+                </div>
+                {/*
+                  Counted, never valued. This is the bucket that makes the two
+                  totals beside it a floor rather than a forecast, and the one
+                  a dashboard is most tempted to quietly treat as nought.
+                */}
+                <p className="mt-1 text-xs text-slate-500">
+                  Open, and carrying no dollar figure. Not counted as nought in either
+                  total.
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">{coverageSentence(valueReport.split)}</p>
+          </div>
+
+          <MetricGroup
+            title="Deadlines and decisions"
+            description="Whether work went in on time, and how long a pursue or pass call takes."
+            metrics={[...deadlines, ...reviewTimes]}
+          />
+          <MetricGroup
+            title="Subcontractor outreach"
+            description="What happened to the emails, and how much of the work came back with a price on it."
+            metrics={[...subOutreach, ...tradeCoverage]}
+          />
+          <MetricGroup
+            title="How much the scores rest on"
+            description="A score computed from a title and a NAICS code looks exactly like one computed from a full solicitation."
+            metrics={confidence}
+          />
+          <MetricGroup
+            title="Automation"
+            description="Whether the platform's own work is finishing, and how much of it comes back to a person."
+            metrics={automation}
+          />
+        </section>
+
+        </AnalyticsSection>
+
+        {/*
+          Pinned metrics sit with the numbers on a phone: they are figures
+          somebody chose to keep, so burying them behind a different tab from
+          the headline ones would defeat the pinning.
+        */}
+        <AnalyticsSection id="numbers">
         {/* Custom, operator-defined KPIs. */}
         <section>
           <div className="mb-3 flex items-center justify-between gap-3 border-b-2 border-accent/80 pb-2">
@@ -534,15 +781,20 @@ export default async function AnalyticsPage({
               {kpiValues.map((k) => {
                 const desc = describeKpiParams(k.metric, k.params);
                 return (
-                  <div key={k.id} className="card">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="label">{k.label}</div>
+                  /*
+                    The same card the reports use, so a pinned metric says
+                    where it came from and why it has no value, exactly as the
+                    reported one does. It used to print a bare dash for both
+                    "nothing qualifies" and "the query failed".
+                  */
+                  <div key={k.id} className="relative">
+                    <div className="absolute right-3 top-3 z-10">
                       <KpiDeleteButton id={k.id} />
                     </div>
-                    <div className="num mt-1.5 text-4xl font-semibold tracking-tight text-slate-900">
-                      {formatKpiValue(k.value, k.unit)}
-                    </div>
-                    {desc && <div className="mt-1.5 text-xs text-slate-500">{desc}</div>}
+                    <MetricCard metric={k.computed} />
+                    {desc && (
+                      <p className="mt-1 px-1 text-xs text-slate-500">{desc}</p>
+                    )}
                   </div>
                 );
               })}
@@ -550,6 +802,10 @@ export default async function AnalyticsPage({
           )}
         </section>
 
+        </AnalyticsSection>
+
+        <AnalyticsSection id="breakdown">
+        <div className="space-y-6">
         {/* Where the pipeline value is sitting, by stage. */}
         {stageValue.length > 0 && (
           <div className="card scroll-thin overflow-x-auto">
@@ -705,6 +961,18 @@ export default async function AnalyticsPage({
                 </tbody>
               </table>
               <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                {/*
+                  How this dimension counts, where it is not one row per
+                  opportunity. Trade is the case: an opportunity appears under
+                  every trade it sourced, so the column totals more than the
+                  pipeline, and a table that does not say so is one somebody
+                  reconciles against Opportunities and stops trusting.
+                */}
+                {breakdownNote(by) && (
+                  <>
+                    <strong className="font-semibold text-slate-700">{breakdownNote(by)}</strong>{" "}
+                  </>
+                )}
                 Win rate is wins over decided bids, so a bid still sitting with the agency
                 does not count against you. Rows with nothing decided say so instead of
                 showing nought per cent. The top 25 values are listed.
@@ -735,6 +1003,11 @@ export default async function AnalyticsPage({
           </>
         )}
 
+        </div>
+        </AnalyticsSection>
+
+        <AnalyticsSection id="engine">
+        <div className="space-y-6">
         {/* Cash flow projection 30/60/90 */}
         {cashFlow && (
           <div className="card">
@@ -819,6 +1092,9 @@ export default async function AnalyticsPage({
             </div>
           </div>
         )}
+        </div>
+        </AnalyticsSection>
+        </AnalyticsMobileNav>
       </div>
     </div>
   );

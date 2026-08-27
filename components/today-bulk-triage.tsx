@@ -77,7 +77,7 @@ export function TodayBulkTriage({
                 <SnoozeButton
                   kind="opportunity"
                   id={o.id}
-                  className="shell-ghost min-h-11 text-xs md:min-h-0"
+                  className="shell-ghost min-h-11 text-xs lg:min-h-0"
                 />
                 <ActionButton
                   endpoint={`/api/opportunities/${o.id}/action`}

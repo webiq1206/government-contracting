@@ -68,6 +68,21 @@ export const outreach: AgentDefinition = {
     );
     if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found` };
 
+    /*
+     * A record put aside, or folded into another, does not get email.
+     *
+     * The tombstone case is the one that matters: after a merge its history
+     * lives on the surviving record, so this row reads as a firm nobody has
+     * ever contacted, and it is exactly the record an automated chase would
+     * pick. The address on it may also be the one somebody merged away.
+     */
+    if ((sub as { archived_at?: Date | null }).archived_at) {
+      return {
+        ok: true,
+        summary: `Skipped ${sub.company_name}: that record has been put aside or folded into another.`,
+      };
+    }
+
     const callsEnabled = await areCallsEnabled();
 
     // Do not create dead-end draft emails for unreachable subs. Phone-only
@@ -493,6 +508,11 @@ export const outreach: AgentDefinition = {
         // packet since the runner's check, and that is long enough for an
         // abort to land in between.
         opportunityId,
+        // So a stop the operator recorded for this firm, or for this trade on
+        // this bid, is honoured at the moment of sending rather than at the
+        // moment this job was queued.
+        subcontractorId: sub.id,
+        trade,
       });
       if (res.disabled) {
         humanAction = true;
@@ -594,10 +614,36 @@ export const outreach: AgentDefinition = {
     // could overwrite a sibling trade's successful "sent", and a stamp on
     // never-emailed trades made them read as approached-and-dead.
     await query(
-      `update opportunity_subs set outreach_state=$3
+      `update opportunity_subs
+          set outreach_state=$3,
+              /*
+               * The date this subcontractor was actually told, stamped only on
+               * a send that left the building.
+               *
+               * Lateness can only be measured against a promise that was made.
+               * Working it out later from the opportunity's deadline would
+               * judge a firm against a date they were never given, and the
+               * deadline moves: an amendment that pulls the bid forward would
+               * retroactively make every quote on the job late.
+               *
+               * coalesce keeps the first date given. A follow-up repeats the
+               * original rather than setting a new one, which is also what the
+               * chaser email does.
+               */
+              quote_due_at = case
+                when $5::boolean then coalesce(quote_due_at, $6::timestamptz)
+                else quote_due_at
+              end
        where opportunity_id=$1 and subcontractor_id=$2
          and coalesce(trade,'') = $4`,
-      [opportunityId, subcontractorId, outreachState, trade]
+      [
+        opportunityId,
+        subcontractorId,
+        outreachState,
+        trade,
+        sent,
+        resolved.quote.at ?? null,
+      ]
     );
 
     if (sent) {

@@ -29,6 +29,20 @@ export interface CallCardFacts {
   lastContacted: string | null;
   /** Times this card has been dialled and nobody answered. */
   attempts: number;
+  /**
+   * When this subcontractor's price is actually needed, already formatted.
+   *
+   * Not the bid deadline. The gap between them is the time it takes to review
+   * the number, chase a replacement if it is wrong, and assemble the package,
+   * and working to the bid date is how a bid gets built the night before with
+   * one trade missing.
+   *
+   * Null when there is no bid deadline to work back from, or when the
+   * remaining time is too short to promise anybody a date. Both are honest
+   * silences rather than a date nobody can meet.
+   */
+  quoteDueLabel?: string | null;
+  quoteDueOverdue?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -344,4 +358,53 @@ export function filterCalls<T extends CallCardFacts>(cards: T[], q: string): T[]
   return cards.filter((c) =>
     `${c.companyName} ${c.trade ?? ""} ${c.opportunityTitle ?? ""}`.toLowerCase().includes(needle)
   );
+}
+
+/**
+ * When it would be reasonable to ring them, said as an instruction.
+ *
+ * `localTimeFor` answers "what time is it there". This answers the question an
+ * operator actually has at nine in the morning with forty cards in front of
+ * them: which of these can I do now, and when does the rest of the list open.
+ *
+ * Nothing is invented. A state that spans two zones gets no window at all,
+ * for the same reason it gets no clock: a confident wrong calling window sends
+ * somebody to dial a stranger at six in the morning, and the whole point of
+ * the queue is that it can be worked without thinking.
+ */
+export interface CallWindow {
+  /** True inside the window, false outside, null when the zone is unknown. */
+  open: boolean | null;
+  /** One line, ready to render. Never blank. */
+  label: string;
+}
+
+export function nextCallWindow(
+  state: string | null | undefined,
+  now = new Date(),
+  hours: { start: number; end: number } = DEFAULT_CALL_HOURS
+): CallWindow {
+  const t = localTimeFor(state, now, hours);
+  if (t.hour == null) return { open: null, label: "Best time unknown" };
+  if (t.reasonableHour) return { open: true, label: `Good time to call until ${hourLabel(hours.end)}` };
+  /*
+   * Two ways to be outside the window, and they lead to different mornings.
+   * Before it opens is a wait measured in hours; after it closes is tomorrow,
+   * and an operator planning their afternoon needs to know which.
+   */
+  if (t.hour < hours.start) {
+    const wait = hours.start - t.hour;
+    return {
+      open: false,
+      label: `Call after ${hourLabel(hours.start)} their time, about ${wait} ${wait === 1 ? "hour" : "hours"} away`,
+    };
+  }
+  return { open: false, label: `Their day is over. Call after ${hourLabel(hours.start)} tomorrow` };
+}
+
+function hourLabel(hour: number): string {
+  const h = ((hour % 24) + 24) % 24;
+  const suffix = h < 12 ? "am" : "pm";
+  const twelve = h % 12 === 0 ? 12 : h % 12;
+  return `${twelve}${suffix}`;
 }

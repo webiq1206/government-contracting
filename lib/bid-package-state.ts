@@ -167,6 +167,46 @@ export async function applyPackageChange(
 }
 
 /**
+ * Mark one package requirement complete, or reopen it.
+ *
+ * Extracted from the route that used to hold it because a second caller
+ * appeared: the requirements checklist on the opportunity workspace records
+ * its own state, and a checklist that says "Done" while the submission gate
+ * still counts the item as outstanding is two systems disagreeing about the
+ * same fact in front of the same person. One of them decides, and it is this.
+ *
+ * Un-confirming also detaches the uploaded file: leaving it attached would
+ * keep the document in the manifest for an item the operator just said is not
+ * done.
+ */
+export async function setRequirementConfirmed(
+  opportunityId: string,
+  orgId: string,
+  requirementId: string,
+  confirmed: boolean
+): Promise<PackageChangeResult> {
+  return applyPackageChange(opportunityId, orgId, ({ matrix, findings }) => {
+    let found = false;
+    const next = matrix.map((r) => {
+      if (r.id !== requirementId) return r;
+      found = true;
+      if (confirmed) return { ...r, operator_confirmed: true, status: "satisfied" as const };
+      const { operator_doc: _dropped, ...rest } = r;
+      const status: ResolvedRequirement["status"] = r.official_form
+        ? "needs_operator"
+        : r.satisfied_by === "operator_signature"
+          ? "needs_signature"
+          : r.satisfied_by === "operator_provided"
+            ? "needs_operator"
+            : "satisfied";
+      return { ...rest, operator_confirmed: false, status };
+    });
+    if (!found) return null;
+    return { matrix: next, findings };
+  });
+}
+
+/**
  * Attach an uploaded file to a requirement and close it out. The file becomes
  * the package item for that requirement.
  */

@@ -1,4 +1,4 @@
-import { actionCenter, opportunityDetail, subDetail } from "@/lib/data";
+import { actionCenter, opportunityDetail, subDetail, recentChanges } from "@/lib/data";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { accountSetup, type SetupUser } from "@/lib/setup-facts";
@@ -93,7 +93,7 @@ export async function loadGuideBundle(
                where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL})::int as calls,
              (select count(*) from compliance_items
                where org_id = $1
-                 and coalesce(status_override, status) in ('warning','critical','blocked'))::int as compliance,
+                 and coalesce(status_override, status) in ('conflicting','expired','blocked','needs_review','expiring_soon'))::int as compliance,
              (select count(*) from scoring_weights
                where org_id = $1 and approved_at is null and proposed_by='learning-loop')::int as weights,
              (select count(*) from backlink_outreach
@@ -325,6 +325,18 @@ export async function loadGuideBundle(
     ).catch(() => []);
     opportunitySubs = rows;
   }
+
+  /*
+   * What has happened lately, attached rather than generated.
+   *
+   * Scoped to the opportunity when the panel is open on its record, because
+   * "what changed" on a bid means that bid rather than the account. Null on
+   * failure: the panel says the history could not be read, which is a
+   * different sentence from saying nothing happened.
+   */
+  guide.recentChanges = await recentChanges({
+    opportunityId: opportunity?.id ?? null,
+  }).catch(() => null);
 
   const adapters = buildGuideAdapters({
     guide,

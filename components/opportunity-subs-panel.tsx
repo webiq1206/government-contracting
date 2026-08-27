@@ -13,6 +13,9 @@ import { timeAgo } from "@/lib/format";
 import { resolveSubWork } from "@/lib/domain/sub-work";
 import type { OppSubCommRow, OppSubRow } from "@/lib/data";
 import { SubWorkNeeded } from "@/components/sub-work-needed";
+import { StopOutreach } from "@/components/stop-outreach";
+import { SubActions } from "@/components/sub-actions";
+import { isEmailable } from "@/lib/domain/sub-contactability";
 
 /** One-line next human/system action so each row answers "what now?" */
 function nextActionForSub(s: OppSubRow): string | null {
@@ -51,9 +54,21 @@ export function OpportunitySubsPanel({
   communications,
   analysis = null,
   description = null,
+  opportunityId = null,
+  canStopOutreach = false,
+  canDecide = false,
+  callsEnabled = true,
 }: {
   subs: OppSubRow[];
   communications: OppSubCommRow[];
+  /** The bid these pairings belong to, so a stop can be scoped to it. */
+  opportunityId?: string | null;
+  /** Stopping outreach is an outreach decision, not a viewing one. */
+  canStopOutreach?: boolean;
+  /** Ranking a firm and taking one off the bid are bid decisions. */
+  canDecide?: boolean;
+  /** Calling can be turned off for the account, and the row must say so. */
+  callsEnabled?: boolean;
   /** Solicitation analysis — used for per-trade "what we need them to do". */
   analysis?: Record<string, unknown> | null;
   description?: string | null;
@@ -189,6 +204,53 @@ export function OpportunitySubsPanel({
                             </p>
                           ) : null;
                         })()}
+
+                        {/*
+                          The control lives beside the pairing it acts on.
+                          Somewhere in Settings is where a stop goes to be
+                          hunted for; here is where an operator is standing
+                          when they decide this firm has had enough emails.
+                        */}
+                        <SubActions
+                          opportunityId={opportunityId ?? ""}
+                          pairingId={s.id}
+                          subcontractorId={s.subcontractor_id}
+                          companyName={s.company_name}
+                          trade={s.trade}
+                          canAct={canDecide && Boolean(opportunityId)}
+                          canSend={canStopOutreach && Boolean(opportunityId)}
+                          facts={{
+                            outreachState: s.outreach_state,
+                            role: s.role,
+                            removed: Boolean(s.removed_at),
+                            /*
+                             * Usable, not merely present. An address that
+                             * failed verification is one outreach will not
+                             * send to, and offering "Send again" over it
+                             * would be a button that queues a job destined
+                             * to skip this firm.
+                             */
+                            hasEmail: isEmailable(s),
+                            emailOnFile: Boolean(s.email),
+                            hasPhone: Boolean(s.phone),
+                            emailsSent: s.emails_sent,
+                            hasQuote: s.has_quote,
+                            threadKey: s.thread_key,
+                            hasThread: s.touches > 0,
+                            callsEnabled,
+                          }}
+                        />
+
+                        {canStopOutreach && !s.removed_at && (
+                          <div className="mt-2">
+                            <StopOutreach
+                              subcontractorId={s.subcontractor_id}
+                              companyName={s.company_name}
+                              opportunityId={opportunityId ?? null}
+                              trade={s.trade ?? null}
+                            />
+                          </div>
+                        )}
 
                         {history.length > 0 && (
                           <details className="mt-2">

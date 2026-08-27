@@ -6,12 +6,27 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
+import { PricingWorkspace } from "@/components/pricing-workspace";
 import { BidBrief } from "@/components/bid-brief";
+import { BidRequirements } from "@/components/bid-requirements";
+import { briefInputFrom, buildOpportunityBrief } from "@/lib/domain/opportunity-brief";
+import { requirementViews } from "@/lib/requirement-states";
+import { DocumentInventoryPanel } from "@/components/document-inventory-panel";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
+import { RecordActionBar } from "@/components/record-action-bar";
+import { deriveStep } from "@/lib/domain/journey";
 import { OpportunityJourney } from "@/components/opportunity-journey";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
+import {
+  describeDocument,
+  inventoryCoverage,
+  sortForReview,
+  toDocumentRecord,
+} from "@/lib/domain/document-inventory";
 import { SubmissionPackage } from "@/components/submission-package";
 import { OpportunityNotes } from "@/components/opportunity-notes";
 import { Collapsible } from "@/components/collapsible";
@@ -30,7 +45,22 @@ import { ActivityTimeline } from "@/components/activity-timeline";
 import { ActivityLogActions } from "@/components/activity-log-actions";
 import { OpportunityTaskList } from "@/components/opportunity-task-list";
 import { OpportunityWorkspace } from "@/components/opportunity-workspace";
+import { OwnerPicker } from "@/components/owner-picker";
+import { OpportunityStatusBar } from "@/components/opportunity-status-bar";
+import { shortenAgency } from "@/lib/domain/agency-path";
+import { assignableMembers, ownerOf } from "@/lib/ownership";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
+import { compareScenarios, pricingSheet } from "@/lib/domain/pricing-row";
+import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
+import { pricingRowsWithQuotes } from "@/lib/pricing-rows";
+import { ReverifyPanel } from "@/components/reverify-panel";
+import { PursuitControls } from "@/components/pursuit-controls";
+import { pursuitImpact } from "@/lib/pursuit-impact";
+import { parsePursuitState } from "@/lib/domain/pursuit-state";
+import { lastFullVerificationAt, lastVerification, liveVerification } from "@/lib/reverification";
+import { recommendScope } from "@/lib/domain/reverification";
+import { actingOrgId } from "@/lib/tenant-context";
+import { getProfileJson } from "@/lib/ai/companyProfile";
 import { computeBidReadiness } from "@/lib/domain/bid-readiness";
 import { buildGuidedPlan } from "@/lib/domain/guided-plan";
 import { GuidedPlanPanel } from "@/components/guided-plan";
@@ -60,10 +90,19 @@ const PAST_PERF_LABEL: Record<string, string> = {
  * Pricing / Files / More.
  */
 export default async function OpportunityPage({ params }: { params: { id: string } }) {
-  const [detail, automation, rules] = await Promise.all([
+  const [detail, automation, rules, viewer, oppOwner, teamMembers] = await Promise.all([
     opportunityDetail(params.id),
     getAutomationState(),
     getAutomationRules(),
+    currentUser(),
+    /*
+     * Whose bid this is, and who it could be.
+     * Both tolerate failure: an owner picker that cannot load is a field
+     * that says Unassigned, where a throw here would be a record page that
+     * will not open because of a dropdown.
+     */
+    ownerOf("opportunity", params.id).catch(() => null),
+    assignableMembers().catch(() => []),
   ]);
   if (!detail) notFound();
   const { opp, quotes, subs, documents, logs, competitors, subComms, pendingCalls } = detail;
@@ -75,11 +114,189 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
   const pricing = (opp.raw_json as { pricing_summary?: Record<string, unknown> } | null)
     ?.pricing_summary;
+
+  /*
+   * Where each submission requirement has got to.
+   *
+   * Built from the same input the card builds its list from, through one
+   * shared function, so the ids match. Built here rather than inside the card
+   * because the card is rendered in places with no database behind them, and
+   * because a per-requirement lookup from inside the list would be forty
+   * queries to draw one page.
+   *
+   * Tolerates failure the way the owner lookups above do: a checklist that
+   * cannot read its own tracking is a checklist that shows the requirements
+   * and no states, which is the version that existed until now. It is not a
+   * reason the record page should refuse to open.
+   */
+  const oppBrief = analysis ? buildOpportunityBrief(briefInputFrom(analysis)) : null;
+  const briefRequirements = oppBrief?.requirements ?? [];
+  const tracking = analysis
+    ? await requirementViews(
+        params.id,
+        briefRequirements.map((r) => ({
+          id: r.id,
+          needsSignature: r.needsSignature,
+          producedByPlatform: r.owner === "platform",
+        }))
+      ).catch(() => null)
+    : null;
   const subOptions = subs.map((s) => ({
     subcontractor_id: s.subcontractor_id,
     company_name: s.company_name,
     trade: s.trade,
   }));
+
+  /*
+   * The pricing sheet, computed here rather than in the browser.
+   *
+   * Every figure on the Pricing tab depends on "now": a quote that expires
+   * today is expired or is not. Recomputing in a client component would give
+   * one answer during rendering and another after hydration, and would put the
+   * arithmetic in two places. So the sheet, the scenarios and the formula are
+   * worked out on the server and passed down as data.
+   */
+  const pricingOrgId = await actingOrgId();
+  const profileForPricing = await getProfileJson().catch(() => null);
+  const pricingRows = pricingOrgId
+    ? await pricingRowsWithQuotes(params.id, pricingOrgId).catch(() => [])
+    : [];
+  const requiredTradesForPricing = (analysis?.required_trades ?? [])
+    .map((t) => String(t).trim())
+    .filter(Boolean);
+  const sheet = pricingSheet(requiredTradesForPricing, pricingRows, {
+    now: new Date(),
+    bidDueAt: opp.deadline ? new Date(opp.deadline) : null,
+    /*
+     * Whether an expired quote hard-blocks depends on the solicitation. Where
+     * the compliance matrix names a quote-validity requirement it does;
+     * elsewhere it is a real risk and a judgement call, which is what the
+     * override flow is for.
+     */
+    quoteValidityRequired: (analysis?.compliance_matrix ?? []).some((r) =>
+      /quote\s+validity|price\s+validity|prices?\s+(?:must\s+)?(?:remain|held|hold)/i.test(
+        `${r?.title ?? ""} ${r?.instructions ?? ""} ${r?.format ?? ""}`
+      )
+    ),
+  });
+  const targetMarginPct = profileForPricing?.target_margin_pct ?? null;
+  /*
+   * No contingency percentage is configured on this account's profile, and
+   * inventing one would put a number in the arithmetic that nobody chose. Null
+   * means the loaded cost is the cost, which is what is true today.
+   */
+  const contingencyPct: number | null = null;
+  const pricingScenarios = compareScenarios(sheet.cost, [
+    ...(bid?.bid_amount != null
+      ? [{ label: "The assembled bid", bid: Number(bid.bid_amount), contingencyPct }]
+      : []),
+    ...(targetMarginPct != null
+      ? [{ label: `Target margin ${targetMarginPct}%`, targetMarginPct, contingencyPct }]
+      : []),
+    // The scenarios this account configured, not three the product made up.
+    ...(profileForPricing?.pricing_rules?.margin_scenarios ?? [])
+      .filter((m) => typeof m === "number" && m !== targetMarginPct)
+      .map((m) => ({ label: `At ${m}% margin`, targetMarginPct: m, contingencyPct })),
+  ]);
+  const pricingFormula = explainBidMath(
+    bidMath({
+      cost: sheet.cost,
+      bid: bid?.bid_amount != null ? Number(bid.bid_amount) : null,
+      contingencyPct,
+    })
+  );
+  /*
+   * What the last check against the source established.
+   *
+   * Read here rather than fetched by the panel so the page renders the answer
+   * rather than a spinner, and so the recommendation is computed once on the
+   * server against one clock.
+   */
+  const [liveCheck, lastCheck, lastFullCheckAt] = pricingOrgId
+    ? await Promise.all([
+        liveVerification(params.id, pricingOrgId).catch(() => null),
+        lastVerification(params.id, pricingOrgId).catch(() => null),
+        lastFullVerificationAt(params.id, pricingOrgId).catch(() => null),
+      ])
+    : [null, null, null];
+  /*
+   * What aborting would stop, read before the button is offered.
+   *
+   * Fetched on the page rather than by the flow when it opens, so the
+   * confirmation is against numbers that were true when the operator started
+   * reading rather than numbers that arrive after they have decided.
+   */
+  const abortImpact = await pursuitImpact(params.id).catch(() => null);
+  const pursuit = parsePursuitState(
+    (opp as unknown as { pursuit_state?: string }).pursuit_state
+  );
+
+  const hoursToClose = opp.deadline
+    ? (new Date(opp.deadline).getTime() - Date.now()) / 3_600_000
+    : null;
+  const checkRecommendation = recommendScope({
+    now: new Date(),
+    lastFullAt: lastFullCheckAt,
+    freshnessHours: 72,
+    amendmentDetected: (lastCheck?.findings ?? []).some(
+      (f) => f.scope === "documents" && f.kind === "added"
+    ),
+    documentsChanged: (lastCheck?.findings ?? []).some(
+      (f) => f.scope === "documents" && f.kind === "changed"
+    ),
+    conflictOpen: lastCheck?.state === "conflicts_found" && lastCheck.acceptedAt == null,
+    approachingSubmission: hoursToClose != null && hoursToClose > 0 && hoursToClose <= 96,
+  });
+
+  // Null when nothing has been priced. "Never" is a fact; "just now" would be
+  // a false one.
+  const lastPricedAt = pricingRows.reduce<Date | null>((latest, r) => {
+    if (!r.updatedAt) return latest;
+    return latest == null || r.updatedAt > latest ? r.updatedAt : latest;
+  }, null);
+  /*
+   * Every source document, with what became of it, worst first.
+   *
+   * The panel this replaces showed a filename, a kind and a link, which is
+   * enough to find a file and nowhere near enough to answer whether anything
+   * in this bid went unread. Sorted so a document nobody has read cannot sit
+   * thirtieth in an alphabetical list.
+   */
+  const briefDocsSource = documents as Record<string, unknown>[];
+  const inventory = sortForReview(
+    (documents as Record<string, unknown>[])
+      .filter((d) => String(d.kind) === "solicitation")
+      .map((d) => describeDocument(toDocumentRecord(d)))
+  );
+  /*
+   * The reconciliation, computed once and passed down.
+   *
+   * A panel that counts its own blockers and a completeness check that counts
+   * them separately are two numbers that will disagree eventually, and the one
+   * on the screen is the one people believe.
+   */
+  const documentCoverage = inventoryCoverage(
+    inventory.map((d) => ({
+      id: d.id,
+      name: d.name,
+      documentClass: d.documentClass,
+      disposition: d.disposition,
+      extractionState: d.extractionState,
+      excludedReason: d.excludedReason,
+    }))
+  );
+  /*
+   * Everything that is not a source document: the generated package pieces,
+   * the capability statement, operator uploads.
+   *
+   * Kept on its own rather than folded into the inventory above, and kept
+   * rather than dropped. These have no extraction state and never will, so an
+   * inventory row for a generated bid PDF would read "not processed yet" for
+   * ever, which is alarming and false. And removing them from the Files tab to
+   * make the new panel look tidy would take away access to files an operator
+   * downloads and sends.
+   */
+  const otherFiles = briefDocsSource.filter((d) => String(d.kind) !== "solicitation");
   const briefDocs = (documents as Record<string, unknown>[]).map((d) => ({
     id: String(d.id),
     name: String(d.name),
@@ -197,6 +414,36 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const complianceRows = bid?.compliance_matrix ?? [];
   const expired =
     opp.status === "archived" && (opp.risk_flags ?? []).includes("expired");
+
+  /*
+   * What this record is waiting on, worked out once.
+   *
+   * The banner on Overview and the bar that follows a phone reader between
+   * tabs are the same answer in two places, and two derivations of it would
+   * eventually disagree about which one is the real next step.
+   */
+  const stepInput = {
+    stage: opp.stage,
+    tier: opp.tier,
+    humanActionRequired: opp.human_action_required,
+    quoteCount: readiness.tradesWithQuotes,
+    tradesWithQuotes: readiness.tradesWithQuotes,
+    tradeCoverageUncovered: coverage.totals.uncovered,
+    requiredTradeCount: analysis?.required_trades?.length ?? 0,
+    hasBid: Boolean(bid),
+    bidSubmitted: Boolean(bid?.submitted_at),
+    outcome: bid?.outcome ?? null,
+    pastPerfBlocked,
+    automationPaused: automation.paused,
+    hoursSinceUpdate,
+    expired,
+    hasQuotes: quotesEntered > 0,
+    outreachDraftOnly,
+    riskFlags: opp.risk_flags,
+    callsEnabled: rules.calls_enabled,
+  };
+  const step = deriveStep({ ...stepInput, opportunityId: opp.id });
+
   const plan = buildGuidedPlan({
     opportunityId: opp.id,
     stage: opp.stage,
@@ -299,7 +546,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               still leaves you knowing where opportunities live. */}
           <Link
             href="/pipeline"
-            className="flex min-h-11 shrink-0 items-center gap-1 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground md:min-h-0"
+            className="flex min-h-11 shrink-0 items-center gap-1 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground lg:min-h-0"
           >
             <span aria-hidden>←</span> Opportunities
           </Link>
@@ -310,10 +557,27 @@ export default async function OpportunityPage({ params }: { params: { id: string
           )}
           <HelpPopover help={PAGE_HELP["opportunity"]} />
         </div>
-        {/* Stage only. The tier is a TierBadge in the header a few pixels below,
-            and it was rendering in both places at once. */}
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="badge bg-surface-raised text-slate-600">{stageLabel(opp.stage)}</span>
+        {/*
+          The nine facts that survive the hero scrolling away.
+          This bar carried the stage and nothing else, so an operator three
+          screens into Requirements could not see when the bid was due, whose
+          it was, or that automation had stopped on something. All of it was on
+          the page, at the top, past the scroll.
+        */}
+        <div className="flex min-w-0 flex-1 shrink items-center justify-end gap-2">
+          <OpportunityStatusBar
+            stageLabel={stageLabel(opp.stage)}
+            deadline={opp.deadline ? new Date(opp.deadline).toISOString() : null}
+            score={opp.score ?? null}
+            scoreBreakdown={opp.score_breakdown}
+            owner={oppOwner}
+            viewerId={viewer?.id}
+            readinessPercent={readiness.percent}
+            packageReady={readiness.packageReady}
+            uncoveredTrades={coverage.totals.uncovered}
+            riskFlags={opp.risk_flags}
+            nextAction={plan.active?.action ?? null}
+          />
         </div>
       </div>
 
@@ -330,7 +594,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
             <div className="min-w-0 max-w-3xl flex-1">
               {opp.agency && (
                 <p className="eyebrow-gold">
-                  {[opp.agency, opp.sub_agency].filter(Boolean).join(" · ")}
+                  {/* The record page has room for the whole path, and this is
+                      where somebody checks which office they are bidding to. */}
+                  {shortenAgency(opp.agency, opp.sub_agency).full}
                 </p>
               )}
               <h1 className="mt-2 font-display text-2xl leading-[1.15] text-foreground sm:mt-3 sm:text-4xl lg:text-[2.75rem]">
@@ -350,15 +616,49 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </div>
               {/* The single most action-relevant fact, so it lives where every
                   tab can see it rather than one click inside Details. */}
-              <div className="mt-4">
-                <p className="label">Time to submit</p>
-                <div className="mt-0.5">
-                  <DeadlineCountdown deadline={opp.deadline} />
+              <div className="mt-4 flex flex-wrap items-end gap-6">
+                <div>
+                  <p className="label">Time to submit</p>
+                  <div className="mt-0.5">
+                    <DeadlineCountdown deadline={opp.deadline} />
+                  </div>
+                </div>
+                {/*
+                  Whose bid this is, next to when it is due.
+                  Those two facts answer the question somebody opening this
+                  record has, and until now only one of them was on the page:
+                  a five-person office could see that the bid was due Friday
+                  and not who was writing it.
+                */}
+                <div className="min-w-[10rem]">
+                  <OwnerPicker
+                    kind="opportunity"
+                    recordId={opp.id}
+                    owner={oppOwner}
+                    members={teamMembers}
+                    viewerId={viewer?.id}
+                    canAssign={can(viewer?.orgRole, "decide")}
+                  />
                 </div>
               </div>
             </div>
             <ScoreBadge score={opp.score} variant="box" />
           </div>
+          {/*
+            Pause, abort and restart, in the header rather than in a settings
+            page. The instruction is that a person must be able to stop work
+            without hunting, and hunting is what a control in Settings means.
+          */}
+          {abortImpact && (
+            <div className="mt-5">
+              <PursuitControls
+                opportunityId={opp.id}
+                state={pursuit}
+                impact={abortImpact}
+                canControl={can(viewer?.orgRole, "outreach")}
+              />
+            </div>
+          )}
         </header>
         <OpportunityWorkspace
           banner={
@@ -366,27 +666,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               <GuidedPlanPanel plan={plan} headerAction={false} />
               <TradeRequirementSummary coverage={coverage} />
               <div id="next" data-guide-target="next-step">
-                <NextStepBanner
-                  opportunityId={opp.id}
-                  stage={opp.stage}
-                  tier={opp.tier}
-                  humanActionRequired={opp.human_action_required}
-                  quoteCount={readiness.tradesWithQuotes}
-                  tradesWithQuotes={readiness.tradesWithQuotes}
-                  tradeCoverageUncovered={coverage.totals.uncovered}
-                  requiredTradeCount={analysis?.required_trades?.length ?? 0}
-                  hasBid={Boolean(bid)}
-                  bidSubmitted={Boolean(bid?.submitted_at)}
-                  outcome={bid?.outcome ?? null}
-                  pastPerfBlocked={pastPerfBlocked}
-                  automationPaused={automation.paused}
-                  hoursSinceUpdate={hoursSinceUpdate}
-                  expired={expired}
-                  hasQuotes={quotesEntered > 0}
-                  outreachDraftOnly={outreachDraftOnly}
-                  riskFlags={opp.risk_flags}
-                  callsEnabled={rules.calls_enabled}
-                />
+                <NextStepBanner opportunityId={opp.id} {...stepInput} />
               </div>
               <AttentionStrip readiness={readiness} opportunityId={opp.id} />
             </div>
@@ -458,7 +738,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </div>
 
               {analysis ? (
-                <BidBrief analysis={analysis} documents={briefDocs} />
+                <BidBrief analysis={analysis} documents={briefDocs} states={tracking?.states} />
               ) : (
                 <div className="card">
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
@@ -504,6 +784,35 @@ export default async function OpportunityPage({ params }: { params: { id: string
               id="requirements"
               data-guide-target="requirements"
             >
+              {/*
+                * The checklist, on the tab named after it.
+                *
+                * It used to live inside the Bid Brief on Overview, which meant
+                * the tab called Requirements held the classification record
+                * and forty rows of checklist sat on the screen that is
+                * supposed to answer nine questions at a glance. Overview now
+                * carries only what would disqualify a bid, and links here.
+                */}
+              {oppBrief && (
+                <div className="card">
+                  <BidRequirements
+                    brief={oppBrief}
+                    tracking={
+                      tracking
+                        ? {
+                            opportunityId: params.id,
+                            states: tracking.states,
+                            history: tracking.history,
+                            members: teamMembers,
+                            viewerId: viewer?.id,
+                            canEdit: can(viewer?.orgRole, "decide"),
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
+              )}
+
               <SectionHeading eyebrow="Details" title="Solicitation record">
                 The registry facts: how this job is classified, who may bid, and what the
                 agency expects of your company. The deadline, score and tier are in the
@@ -609,6 +918,10 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   communications={subComms}
                   analysis={analysis as unknown as Record<string, unknown> | null}
                   description={opp.description}
+                  opportunityId={opp.id}
+                  canStopOutreach={can(viewer?.orgRole, "outreach")}
+                  canDecide={can(viewer?.orgRole, "decide")}
+                  callsEnabled={rules.calls_enabled}
                 />
               </div>
             </div>
@@ -658,6 +971,20 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   />
                 </div>
               </div>
+
+              {/* The trade-by-trade sheet. Placed above the quote form because
+                  it is where the money actually is: the form enters one
+                  number, this says whether the bid has a cost at all. */}
+              <PricingWorkspace
+                opportunityId={opp.id}
+                sheet={sheet}
+                scenarios={pricingScenarios}
+                subs={subOptions}
+                formula={pricingFormula}
+                canPrice={can(viewer?.orgRole, "price")}
+                lastCalculatedAt={lastPricedAt}
+                targetMarginPct={targetMarginPct}
+              />
 
               {showQuotePanel && (
                 <div
@@ -834,7 +1161,36 @@ export default async function OpportunityPage({ params }: { params: { id: string
               >
                 Solicitation attachments, generated package pieces, and downloads.
               </SectionHeading>
-              <AttachmentsPanel documents={briefDocs} />
+              {/*
+                Placed above the inventory rather than in a settings menu.
+                The question "is anything on this screen still true" belongs
+                next to the documents that answer it.
+              */}
+              <ReverifyPanel
+                opportunityId={opp.id}
+                last={lastCheck}
+                live={liveCheck}
+                recommendation={checkRecommendation}
+                canRun={can(viewer?.orgRole, "decide")}
+                canAccept={can(viewer?.orgRole, "decide")}
+              />
+              <DocumentInventoryPanel
+                documents={inventory}
+                coverage={documentCoverage}
+                canDecide={can(viewer?.orgRole, "decide")}
+                canRunAgents={can(viewer?.orgRole, "run_agents")}
+              />
+              {otherFiles.length > 0 && (
+                <AttachmentsPanel
+                  documents={otherFiles.map((d) => ({
+                    id: String(d.id),
+                    name: String(d.name),
+                    kind: String(d.kind),
+                    storage_path: (d.storage_path as string) ?? null,
+                    meta: (d.meta as { source_url?: string }) ?? null,
+                  }))}
+                />
+              )}
               <Collapsible title="Notes" defaultOpen={Boolean(opp.notes)}>
                 <OpportunityNotes opportunityId={opp.id} initialNotes={opp.notes} />
               </Collapsible>
@@ -853,6 +1209,15 @@ export default async function OpportunityPage({ params }: { params: { id: string
                       opportunityId={opp.id}
                       bid={bid}
                       kindToPath={kindToPath}
+                      /*
+                       * Anything already uploaded that could be the send
+                       * receipt. Offered as a list rather than a free upload
+                       * here so the proof is a real stored document with a
+                       * path, not a filename somebody typed.
+                       */
+                      proofOptions={briefDocsSource
+                        .filter((d) => String(d.kind) !== "solicitation" && d.storage_path)
+                        .map((d) => ({ id: String(d.id), name: String(d.name) }))}
                       submissionMethod={
                         analysis?.submission_method &&
                         analysis.submission_method !== NA_TEXT
@@ -936,6 +1301,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
             </div>
           }
         />
+        {/*
+          The next move, following the reader between tabs on a phone.
+
+          Inside the scrolling column rather than at the page root, so its
+          reserved height lands at the end of this record's content and not
+          under the side panel, which has its own scroller.
+        */}
+        <RecordActionBar step={step} />
         </div>
 
         <aside className="hidden w-96 shrink-0 flex-col border-l border-border xl:flex">

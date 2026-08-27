@@ -21,6 +21,33 @@ const SETASIDE_CERT: { kw: RegExp; cert: string; label: string }[] = [
   { kw: /hubzone/, cert: "hubzone", label: "HUBZone" },
 ];
 
+/**
+ * Which socioeconomic set-aside a piece of text names, if any.
+ *
+ * Exported so the decision brief's conflict check classifies a set-aside the
+ * same way the eligibility gate does. Two classifications of the same phrase
+ * would eventually disagree, and the disagreement would be about whether a
+ * company is allowed to bid.
+ *
+ * Null means the text names none, which is different from naming
+ * "unrestricted": one is silence and the other is a statement.
+ */
+export function setAsideCategory(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const t = text.toLowerCase();
+  if (/unrestricted|full and open/.test(t)) return "unrestricted";
+  const isSdvosb = /service-?disabled|sdvosb/.test(t);
+  const isEdwosb = /edwosb|economically disadvantaged women/.test(t);
+  for (const s of SETASIDE_CERT) {
+    if (s.cert === "vosb" && isSdvosb) continue;
+    if (s.cert === "wosb" && isEdwosb) continue;
+    if (s.kw.test(t)) return s.cert;
+  }
+  // "Total Small Business" and friends: a real set-aside, no certification.
+  if (/small business/.test(t)) return "small_business";
+  return null;
+}
+
 export function checkEligibility(input: {
   profile: CompanyProfileJson;
   opp: Pick<Opportunity, "naics_code" | "value_estimated" | "set_aside_type">;

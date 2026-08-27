@@ -37,7 +37,16 @@ vi.mock("../lib/ai/companyProfile", () => ({
 vi.mock("../lib/opportunity-attachments", () => ({
   gatherTradeAttachments: async () => ({ files: [], links: [], expected: false }),
 }));
-vi.mock("../lib/app-settings", () => ({
+/*
+ * The real module underneath, with only the settings this test means to pin.
+ *
+ * A factory that lists exports replaces the whole module, so the first agent
+ * to read a new setting gets undefined and the failure surfaces as a wrong
+ * assertion three files away rather than as a missing mock. Spreading the
+ * original keeps the pinning explicit and lets everything else be real.
+ */
+vi.mock("../lib/app-settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/app-settings")>()),
   areCallsEnabled: async () => false,
   isAutomationPaused: async () => false,
   isAutomationStopped: async () => false,

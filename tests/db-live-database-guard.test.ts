@@ -16,6 +16,17 @@ const ORIGINAL_ENV = { ...process.env };
 describe("connecting to a database from a test run", () => {
   beforeEach(() => {
     vi.resetModules(); // lib/db memoizes its pool at module scope
+    /*
+     * Clear the escape hatch by default.
+     *
+     * An integration run sets ALLOW_TESTS_AGAINST_DATABASE_URL=1 for the whole
+     * process, and this file's refusal cases inherited it: the guard correctly
+     * allowed the connection, the assertions failed, and the most important
+     * check in the suite stopped checking anything in exactly the mode where
+     * a live-database mistake is possible. The two cases that are about the
+     * hatch set it themselves.
+     */
+    delete process.env.ALLOW_TESTS_AGAINST_DATABASE_URL;
   });
 
   afterEach(() => {

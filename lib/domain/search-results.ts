@@ -28,6 +28,15 @@ export interface SearchResult {
   title: string;
   subtitle: string;
   href: string;
+  /**
+   * Set when this row stands for more than one record of the same thing.
+   *
+   * A folded duplicate is a data-quality fact, and showing one of three
+   * silently makes the other two look like they do not exist. The count says
+   * how many were folded; the href opens all of them side by side so the
+   * operator can see which stage each is at and close the wrong ones.
+   */
+  cluster?: { count: number; href: string };
 }
 
 export const KIND_LABEL: Record<ResultKind, string> = {

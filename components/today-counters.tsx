@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { QueueCounts, QueueFilter } from "@/lib/domain/work-queue";
 import { QUEUE_FILTER_LABEL } from "@/lib/domain/work-queue";
-import type { CompletedToday } from "@/lib/data";
+import type { CompletedItem, CompletedToday } from "@/lib/data";
 
 /**
  * The four numbers a person wants before they want anything else.
@@ -61,7 +61,12 @@ export function TodayCounters({
         */}
       <Link
         href={completedHref}
-        className="rounded-md border border-border/55 px-3 py-2.5 transition-colors hover:border-foreground/30 dark:border-white/10"
+        aria-current={active === "completed_today" ? "page" : undefined}
+        className={`rounded-md border px-3 py-2.5 transition-colors ${
+          active === "completed_today"
+            ? "border-gold bg-gold/10"
+            : "border-border/55 hover:border-foreground/30 dark:border-white/10"
+        }`}
       >
         <span className="block text-xs uppercase tracking-wide text-slate-500">
           Completed today
@@ -80,6 +85,75 @@ export function TodayCounters({
  * read the same. Named parts rather than one number, because "6" tells you
  * nothing and "3 calls, 2 quotes, a bid submitted" is a day.
  */
+/**
+ * What was finished today, as records rather than as a total.
+ *
+ * The counter answers "how much"; this answers "what", which is the question
+ * somebody actually has at five o'clock. A count of six and a list of the six
+ * are different objects, and only one of them can be checked against memory.
+ *
+ * Quieter than the queue on purpose. Completed work is context, not something
+ * to act on, and the brief asks for finished work to be de-emphasised without
+ * being hidden.
+ */
+export function CompletedList({ items }: { items: CompletedItem[] | null }) {
+  if (items == null) {
+    /*
+     * The read failed. Not an empty list: "nothing finished today" and "we
+     * could not find out" are different days, and printing the first when the
+     * second happened is the failure this product is built to avoid.
+     */
+    return (
+      <section className="card p-6 text-center">
+        <p className="text-sm text-foreground">Could not load what was finished today.</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The work still happened; this list is what failed to load. Reload to try again.
+        </p>
+      </section>
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <section className="card p-6 text-center">
+        <p className="text-sm text-foreground">Nothing finished yet today.</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Calls placed, quotes entered, bids submitted, decisions recorded and compliance items
+          resolved all land here.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="card p-0">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
+        <h2 className="font-display text-lg font-semibold text-foreground">Finished today</h2>
+        <p className="text-xs text-muted-foreground">
+          {items.length} {items.length === 1 ? "item" : "items"}, newest first
+        </p>
+      </div>
+      <ul className="divide-y divide-border/60">
+        {items.map((item) => (
+          <li key={item.key}>
+            <Link
+              href={item.href}
+              className="flex min-h-11 flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 transition-colors hover:bg-surface sm:px-5"
+            >
+              <span className="text-sm text-foreground">{item.title}</span>
+              <span className="min-w-0 truncate text-xs text-muted-foreground">{item.context}</span>
+              <time className="num ml-auto shrink-0 text-xs text-muted-foreground" dateTime={item.at}>
+                {new Date(item.at).toLocaleTimeString(undefined, {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </time>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function CompletedTodayPanel({ done }: { done: CompletedToday }) {
   const parts = [
     done.calls > 0 && `${done.calls} call${done.calls === 1 ? "" : "s"} placed`,

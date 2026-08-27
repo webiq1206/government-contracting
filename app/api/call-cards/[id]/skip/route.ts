@@ -1,16 +1,27 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext, findOrgRecord, notFoundResponse } from "@/lib/org-guard";
 import { skipCallCard } from "@/lib/skip-call";
+import { parseScope, parseSkipReason } from "@/lib/domain/suppression";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * Skip a queued call without opening the workspace.
- * Body (optional): { reason?: string, undo?: boolean }
  *
- * Records status=skipped, a Sub Detail note, and an agent_logs audit entry.
- * Undo restores the card to pending.
+ * Body: { reason?, note?, scope?, dialed?, undo? }.
+ *
+ * `reason` is one of the structured skip reasons so these can be counted:
+ * "they already replied by email" turning up on half a call queue is a
+ * scheduling defect worth fixing, and the same fact spread across forty
+ * differently worded notes is invisible. Free text is still accepted, and
+ * lands in the note rather than being lost.
+ *
+ * `scope` decides how far the decision reaches, and defaults to `once`, which
+ * writes no standing rule at all. Records status=skipped, a Sub Detail note,
+ * and an audit entry, and never marks the subcontractor declined,
+ * unresponsive or not interested: choosing not to ring somebody says nothing
+ * about them.
  */
 export async function POST(
   req: Request,
@@ -25,12 +36,24 @@ export async function POST(
 
   const body = (await req.json().catch(() => ({}))) as {
     reason?: string;
+    note?: string;
+    scope?: string;
+    dialed?: boolean;
     undo?: boolean;
   };
+  const structured = parseSkipReason(body.reason);
 
   try {
     const result = await skipCallCard(params.id, {
-      reason: body.reason,
+      // An unrecognised reason is kept as the note rather than dropped: the
+      // operator wrote a sentence and it belongs somewhere.
+      reason: structured ? undefined : body.reason,
+      skipReason: structured,
+      note: body.note ?? (structured ? undefined : body.reason) ?? null,
+      scope: parseScope(body.scope),
+      dialed: body.dialed === true,
+      orgId: ctx.orgId,
+      actor: ctx.user.email,
       undo: body.undo === true,
     });
     return NextResponse.json({ ok: true, ...result });

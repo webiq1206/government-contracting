@@ -167,6 +167,34 @@ d("reply capture pipeline (Resend inbound path)", () => {
       [ids.opp, ids.sub]
     );
     expect(os?.outreach_state).toBe("responsive");
+
+    /*
+     * And the pricing row, which is where the reply's own answers live.
+     *
+     * Everything the extractor read used to be flattened into a `notes`
+     * string on the quote, so the estimator got an amount and a paragraph and
+     * had to re-derive every fact the paragraph contained.
+     */
+    const row = await queryOne<{
+      base_quote: string;
+      payment_terms: string | null;
+      confidence: string;
+      selected_sub_id: string | null;
+      source_quote_id: string | null;
+    }>(
+      `select base_quote::text, payment_terms, confidence, selected_sub_id, source_quote_id
+         from trade_pricing_rows where opportunity_id=$1 and scope_key='electrical'`,
+      [ids.opp]
+    );
+    expect(Number(row?.base_quote)).toBe(98765);
+    expect(row?.payment_terms).toBe("net 30");
+    expect(row?.selected_sub_id).toBe(ids.sub);
+    // The reply never said whether the number was firm, so the row does not
+    // say it either. Silence is never upgraded.
+    expect(row?.confidence).toBe("unknown");
+    // Linked back to the quote it came from, so the two surfaces cannot show
+    // two different prices for the same reply.
+    expect(row?.source_quote_id).toBeTruthy();
   });
 
   it("is idempotent: redelivering the same message id repeats no side effects", async () => {

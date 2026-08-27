@@ -3,18 +3,23 @@ import { ReadOnlyBanner } from "@/components/permission-gate";
 import { currentUser } from "@/lib/auth";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ContentLibraryManager } from "@/components/content-library-manager";
-import { EmailTemplateEditor, type EmailTemplate } from "@/components/email-template-editor";
+import { type EmailTemplate } from "@/components/email-template-editor";
+import { TemplateWorkbench, type TemplateEntry } from "@/components/template-workbench";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { contentLibrary, templateSendStats } from "@/lib/data";
 import { templateMetrics } from "@/lib/domain/template-health";
-import { activeTemplates } from "@/lib/domain/template-store";
+import { activeTemplates, templateDrafts } from "@/lib/domain/template-store";
+import {
+  EDITABLE_TEMPLATE_SLUGS,
+  templateSlugOrder,
+} from "@/lib/domain/template-slugs";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { getAutomationRules } from "@/lib/app-settings";
 
 export const dynamic = "force-dynamic";
 
 /**
- * The caller's own template copies, falling back to the platform defaults.
+ * The caller's own template copies and any unpublished drafts on them.
  *
  * This used to select DISTINCT ON (slug) ... ORDER BY version DESC with no
  * org filter, which across tenants means "whoever has saved the most versions
@@ -23,27 +28,24 @@ export const dynamic = "force-dynamic";
  * same resolution the Outreach agent uses, so the editor now shows exactly
  * what would be sent.
  */
-async function activeOutreachTemplates(): Promise<EmailTemplate[]> {
+async function outreachTemplates(): Promise<{
+  templates: EmailTemplate[];
+  drafts: Map<string, { version: number; subject: string | null; body: string; draftedAt: string; draftedBy: string | null }>;
+}> {
   const orgId = await tryResolveTenantOrgId();
-  const rows = await activeTemplates(
-    [
-      "template_1_outreach",
-      "template_2_followup",
-      // The fallback body, shown next to the one it backs up. An operator
-      // editing follow-up wording needs to see both, because whichever one
-      // they miss is the one a subcontractor eventually reads.
-      "template_2_followup_new_thread",
-    ],
-    orgId
-  );
-  // Initial outreach first, then the in-thread follow-up, then its fallback:
-  // the order they occur in, which is also the order they matter in.
-  const ORDER = [
-    "template_1_outreach",
-    "template_2_followup",
-    "template_2_followup_new_thread",
-  ];
-  return rows.sort((a, b) => ORDER.indexOf(a.slug) - ORDER.indexOf(b.slug));
+  const [rows, drafts] = await Promise.all([
+    activeTemplates(EDITABLE_TEMPLATE_SLUGS, orgId),
+    // Saved edits nobody has published. Loaded here rather than inside the
+    // editor so the list can say which templates have one waiting without
+    // opening each of them.
+    templateDrafts(EDITABLE_TEMPLATE_SLUGS, orgId),
+  ]);
+  return {
+    templates: rows.sort(
+      (a, b) => templateSlugOrder(a.slug) - templateSlugOrder(b.slug)
+    ),
+    drafts,
+  };
 }
 
 export default async function ContentLibraryPage() {
@@ -51,12 +53,13 @@ export default async function ContentLibraryPage() {
   // them rather than letting them fill in a form that will be refused.
   const viewer = await currentUser().catch(() => null);
 
-  const [items, templates, stats, rules] = await Promise.all([
+  const [items, outreach, stats, rules] = await Promise.all([
     contentLibrary(),
-    activeOutreachTemplates(),
+    outreachTemplates(),
     templateSendStats(),
     getAutomationRules(),
   ]);
+  const { templates, drafts } = outreach;
   // What each template has actually done, attributed from the send record.
   // A template nobody has used gets zero counts, which the metrics turn into
   // absent rates rather than into a row of noughts.
@@ -98,7 +101,18 @@ export default async function ContentLibraryPage() {
         tabs={[
           {
             id: "email-templates",
-            label: "Emails to subcontractors",
+            /*
+             * The count of unpublished drafts, on the tab.
+             *
+             * Saving no longer sends, which means an edit can sit here
+             * unpublished for weeks while the platform keeps using the old
+             * wording. Anybody who does not open this tab would never find
+             * out, so the tab says it.
+             */
+            label:
+              drafts.size > 0
+                ? `Emails to subcontractors (${drafts.size} draft${drafts.size === 1 ? "" : "s"} not published)`
+                : "Emails to subcontractors",
             content: (
               <div className="space-y-6 px-5 py-6 sm:px-6">
                 <div className="max-w-2xl">
@@ -115,25 +129,24 @@ export default async function ContentLibraryPage() {
                     The first is a reply inside the original conversation, where the
                     scope is already sitting above it. The second is used only when
                     that conversation cannot be replied to, and has to stand on its
-                    own. Each one below says when it is used.
+                    own. Each one says when it is used.
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    Saving writes a draft. Nothing you save is sent to anybody
+                    until you publish it, and until then this platform keeps
+                    using the version already in use.
                   </p>
                 </div>
-                {templates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No active outreach templates found in the database.
-                  </p>
-                ) : (
-                  <div className="space-y-8">
-                    {templates.map((t) => (
-                      <EmailTemplateEditor
-                        key={t.slug}
-                        template={t}
-                        metrics={metricsFor(t.slug)}
-                        followupHours={rules.followup_hours}
-                      />
-                    ))}
-                  </div>
-                )}
+                <TemplateWorkbench
+                  entries={templates.map(
+                    (t): TemplateEntry => ({
+                      template: t,
+                      metrics: metricsFor(t.slug),
+                      draft: drafts.get(t.slug) ?? null,
+                    })
+                  )}
+                  followupHours={rules.followup_hours}
+                />
               </div>
             ),
           },

@@ -6,6 +6,7 @@
  *   - reply-poll : detect sub replies via Gmail, mark responsive, trigger Call Prep
  */
 import { query, queryOne, transaction } from "../db";
+import { recordUnmatched } from "../needs-matching";
 import { gmail } from "../integrations/gmail";
 import { sendOutreachEmail } from "../integrations/email-transport";
 import { captureReply, matchInboundReply } from "../reply-capture";
@@ -210,6 +211,8 @@ async function lastCallForOrg(orgId: string): Promise<number> {
       orgId,
       // Re-checked at the provider boundary, not trusted from job start.
       opportunityId: row.opportunity_id,
+      subcontractorId: row.subcontractor_id ?? undefined,
+      trade: row.trade ?? null,
     });
     if (res.disabled || res.error) {
       // This is the one chance to get a price before the deadline; a silent
@@ -706,6 +709,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       // Re-checked at the provider boundary: assembling this packet takes
       // long enough for an abort to land in between.
       opportunityId: row.opportunity_id,
+      subcontractorId: row.subcontractor_id ?? undefined,
+      trade: row.trade ?? null,
     });
     if (!res.disabled && !res.error) {
       /*
@@ -959,8 +964,24 @@ export const reviewExpirySweep: AgentDefinition = {
 
   name: "review-expiry-sweep",
   label: "Review Expiry Sweep",
-  description: "Auto-dismisses review-tier opportunities not actioned within the timer.",
+  description:
+    "Warns before a review-tier opportunity expires, and dismisses it only if the account has turned automatic dismissal on.",
   worksWithoutClaude: true,
+  /**
+   * Two changes from the version that ran unconditionally.
+   *
+   * It is off unless the organization turns it on. The old sweep dismissed
+   * every expired review item on every account: an opportunity left over a
+   * weekend vanished from the board, and the only record was a log line nobody
+   * reads until something has already gone wrong. An operator who has not
+   * decided has not decided.
+   *
+   * And when it is on, it warns first. An item whose timer has passed but
+   * which has never been warned is warned, not dismissed; the dismissal
+   * happens on a later run. That costs one sweep interval and buys the
+   * guarantee that nothing is removed without notice, which is what makes the
+   * difference between an automatic action and a disappearance.
+   */
   async handler(): Promise<AgentResult> {
     // Per organization: the UPDATE and its audit log both stay inside one
     // tenant. A single platform-wide statement would touch every tenant's
@@ -968,14 +989,77 @@ export const reviewExpirySweep: AgentDefinition = {
     // customer whose opportunity vanished would never see why in their own
     // Automation Log.
     const orgs = await activeOrgIds();
-    let total = 0;
+    let warned = 0;
+    let dismissed = 0;
+    let heldForOperator = 0;
     for (const orgId of orgs) {
+      const rules = await runWithOrg(orgId, () => getAutomationRules());
+
+      /*
+       * The warning goes out whether or not automatic dismissal is on.
+       *
+       * With it off the timer still means something: it is the account's own
+       * measure of when a decision has gone stale, and telling somebody their
+       * review window has closed is useful even when nothing will act on it.
+       */
+      const warnable = await runWithOrg(orgId, () =>
+        query<{ id: string; title: string | null }>(
+          `update opportunities
+              set review_warned_at = now()
+            where org_id = $1 and tier='review' and human_action_required=true
+              and review_expires_at is not null
+              and review_warned_at is null
+              and review_expires_at <= now() + make_interval(hours => $2)
+            returning id, title`,
+          [orgId, rules.auto_dismiss_warn_hours]
+        )
+      );
+      for (const o of warnable) {
+        await runWithOrg(orgId, () =>
+          logAgent({
+            agent: "review-expiry-sweep",
+            action: "expiry-warning",
+            opportunityId: o.id,
+            level: "warn",
+            message: rules.auto_dismiss_review
+              ? `"${o.title ?? o.id}" has not been decided and will be dismissed automatically when its timer passes.`
+              : `"${o.title ?? o.id}" has passed its review window and is still waiting on a decision.`,
+            reasoning:
+              "Warned before any automatic action, so a record can never leave the board without notice.",
+          })
+        );
+      }
+      warned += warnable.length;
+
+      if (!rules.auto_dismiss_review) {
+        /*
+         * Counted and reported rather than passed over in silence. An account
+         * with forty expired review items is looking at a queue nobody is
+         * working, and a sweep that says "0 dismissed" without saying why
+         * reads as a healthy account.
+         */
+        const held = await runWithOrg(orgId, () =>
+          queryOne<{ n: number }>(
+            `select count(*)::int as n from opportunities
+              where org_id = $1 and tier='review' and human_action_required=true
+                and review_expires_at is not null and review_expires_at <= now()`,
+            [orgId]
+          )
+        );
+        heldForOperator += held?.n ?? 0;
+        continue;
+      }
+
       const expired = await runWithOrg(orgId, () =>
         query<{ id: string; title: string | null }>(
           `update opportunities
               set stage='dismissed', status='archived', human_action_required=false
             where org_id = $1 and tier='review' and human_action_required=true
               and review_expires_at is not null and review_expires_at <= now()
+              -- Never on the same pass that warned. The warning has to have
+              -- been out for at least one interval, or "we warned you" is
+              -- something the log says and the operator never saw.
+              and review_warned_at is not null and review_warned_at < now()
             returning id, title`,
           [orgId]
         )
@@ -987,14 +1071,19 @@ export const reviewExpirySweep: AgentDefinition = {
             action: "auto-dismiss",
             opportunityId: o.id,
             level: "info",
-            message: `Auto-dismissed review-tier item "${o.title ?? o.id}" (timer expired).`,
-            reasoning: "Review-tier opportunities auto-dismiss if not actioned within the configured window.",
+            message: `Auto-dismissed review-tier item "${o.title ?? o.id}" (timer expired, warning issued).`,
+            reasoning:
+              "The account has automatic dismissal switched on and this record was warned before the timer passed.",
           })
         );
       }
-      total += expired.length;
+      dismissed += expired.length;
     }
-    return { ok: true, summary: `Auto-dismissed ${total} expired review item(s).` };
+    const parts = [`warned ${warned}`, `dismissed ${dismissed}`];
+    if (heldForOperator > 0) {
+      parts.push(`${heldForOperator} past their window and kept for a person to decide`);
+    }
+    return { ok: true, summary: `Review expiry: ${parts.join(", ")}.` };
   },
 };
 
@@ -1880,7 +1969,33 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
             where org_id = $1 and lower(email) = $2 limit 1`,
           [orgId, fromEmail]
         ).catch(() => null);
-        if (known) {
+        /*
+         * Into the Needs matching inbox, not into a log line.
+         *
+         * The warning that used to be written here was better than silence
+         * and still the wrong home: an agent log is a stream somebody reads
+         * when the automation is misbehaving, not a queue of work. It scrolled
+         * away, carried no body, and the only instruction it could give was
+         * "go and look in the mailbox".
+         *
+         * Filed whether or not the sender is on the roster. A firm writing
+         * from an address we have never seen is exactly the message most
+         * likely to be lost, and it is the one the roster check misses.
+         */
+        const filed = await recordUnmatched({
+          orgId,
+          fromEmail,
+          fromName: r.from,
+          subject: r.subject,
+          body: r.body || r.snippet,
+          gmailThreadId: r.threadId,
+          messageId: r.messageId,
+          subcontractorId: known?.id ?? null,
+        }).catch(() => null);
+        if (filed && known) {
+          // A log line as well, but only for a known subcontractor and only
+          // because this one is worth interrupting somebody about. The message
+          // itself is in the inbox either way.
           await logAgent({
             agent: "maintenance",
             action: "reply-unmatched",
@@ -1888,9 +2003,8 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
             status: "skipped",
             subcontractorId: known.id,
             message:
-              `${known.company_name} <${fromEmail}> replied, but the message could not be matched to any outreach we sent ` +
-              `(subject "${(r.subject || "(no subject)").slice(0, 120)}"). It has NOT been recorded against an opportunity. ` +
-              "Open the thread in the connected inbox and handle it by hand.",
+              `${known.company_name} <${fromEmail}> replied and the message could not be matched to any outreach we sent ` +
+              `(subject "${(r.subject || "(no subject)").slice(0, 120)}"). It is waiting in Needs matching.`,
           }).catch(() => {});
         }
         continue;
@@ -2012,12 +2126,48 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         // "unavailable" or "not a fit" mark lands on this solicitation alone,
         // so the sub is still offered the next job.
         if (decision.act && comm.opportunity_id) {
-          await applyOutcomeToSolicitation({
+          const applied = await applyOutcomeToSolicitation({
             opportunityId: comm.opportunity_id,
             subcontractorId: subId,
             trade: comm.trade ?? null,
             outcome: decision.outcome,
           });
+          /*
+           * The reply was confident and still could not be applied, because
+           * this firm is paired to several trades on this bid and the message
+           * named none of them.
+           *
+           * A refusal that is not surfaced is the same as the old behaviour
+           * with extra steps: the reply reads as handled, nothing changed, and
+           * nobody knows. Raising it here is what turns "we could not tell
+           * which trade" into somebody deciding.
+           */
+          if (!applied.applied && applied.refused === "ambiguous_trade") {
+            reviewCount++;
+            await query(
+              `update subcontractor_reply_events
+                  set needs_review = true, review_reason = $3
+                where opportunity_id = $1 and subcontractor_id = $2
+                  and reviewed_at is null`,
+              [
+                comm.opportunity_id,
+                subId,
+                `They are on this bid for ${applied.candidateTrades.join(", ")} and their reply did not say which. ` +
+                  "Nothing was changed. Pick the trade this answer is about.",
+              ]
+            ).catch(() => {});
+            await logAgent({
+              agent: "reply-poll",
+              action: "reply-trade-ambiguous",
+              opportunityId: comm.opportunity_id,
+              subcontractorId: subId,
+              level: "warn",
+              status: "skipped",
+              message:
+                `A reply could not be applied: this firm is on the bid for ${applied.candidateTrades.join(", ")} ` +
+                "and the message named no trade. Marking every one of them would claim coverage nobody committed to.",
+            }).catch(() => {});
+          }
         }
       }
 

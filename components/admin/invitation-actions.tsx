@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 /**
  * Re-send and revoke, on one invitation.
@@ -22,9 +23,10 @@ export function InvitationActions({
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [asking, setAsking] = useState(false);
 
   async function run(action: "resend" | "revoke") {
-    if (action === "revoke" && !confirm(`Withdraw the invitation to ${email}?`)) return;
+    setAsking(false);
     setBusy(action);
     setNote(null);
     try {
@@ -53,6 +55,17 @@ export function InvitationActions({
   if (!canResend) return null;
 
   return (
+    <>
+      <ConfirmDialog
+        open={asking}
+        title={`Withdraw the invitation to ${email}?`}
+        body="The link stops working. They can be invited again later; nothing about the account changes."
+        confirmLabel="Withdraw it"
+        danger
+        busy={busy === "revoke"}
+        onConfirm={() => void run("revoke")}
+        onCancel={() => setAsking(false)}
+      />
     <div className="space-y-1">
       <div className="flex flex-wrap gap-2">
         <button
@@ -67,7 +80,7 @@ export function InvitationActions({
           type="button"
           className="btn-ghost px-2 py-1 text-xs text-risk"
           disabled={busy !== null}
-          onClick={() => run("revoke")}
+          onClick={() => setAsking(true)}
         >
           {busy === "revoke" ? "Withdrawing…" : "Withdraw"}
         </button>
@@ -76,5 +89,6 @@ export function InvitationActions({
         <p className={`text-xs ${note.ok ? "text-pursue" : "text-risk"}`}>{note.text}</p>
       )}
     </div>
+    </>
   );
 }

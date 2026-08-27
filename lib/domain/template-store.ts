@@ -65,26 +65,85 @@ export async function activeTemplates(
  * history that mixes rows the org can restore with rows it cannot would turn
  * the restore button into a lottery.
  */
+export interface TemplateHistoryRow {
+  id: string;
+  version: number;
+  subject: string | null;
+  body: string;
+  is_active: boolean;
+  created_at: string;
+  /**
+   * 'draft' for a saved edit nobody has published.
+   *
+   * Carried into the history list because otherwise an unpublished draft sits
+   * there looking like any other past version, offering a Restore button that
+   * would restore a draft into a draft.
+   */
+  status: "draft" | "published";
+}
+
 export async function templateHistory(
   slug: string,
   orgId: string | null,
   limit = 5
-): Promise<
-  { id: string; version: number; subject: string | null; body: string; is_active: boolean; created_at: string }[]
-> {
-  const own = await query<{
-    id: string; version: number; subject: string | null; body: string; is_active: boolean; created_at: string;
-  }>(
-    `select id, version, subject, body, is_active, created_at::text as created_at
+): Promise<TemplateHistoryRow[]> {
+  const own = await query<TemplateHistoryRow>(
+    `select id, version, subject, body, is_active, status,
+            created_at::text as created_at
        from templates where slug = $1 and org_id = $2
       order by version desc limit $3`,
     [slug, orgId ?? LEGACY_ORG_ID, limit]
   );
   if (own.length > 0 || orgId === LEGACY_ORG_ID || orgId == null) return own;
   return query(
-    `select id, version, subject, body, is_active, created_at::text as created_at
+    `select id, version, subject, body, is_active, status,
+            created_at::text as created_at
        from templates where slug = $1 and org_id = $2
       order by version desc limit $3`,
     [slug, LEGACY_ORG_ID, limit]
   );
+}
+
+/**
+ * The unpublished draft for each slug, if there is one.
+ *
+ * Kept separate from activeTemplates() rather than folded into it. The editor
+ * has to show both at once: what the platform is sending right now, and the
+ * edit waiting to replace it. Collapsing them into one row would make an
+ * unpublished draft look like the live wording, which is the exact confusion
+ * the draft state exists to prevent.
+ */
+export interface TemplateDraft {
+  id: string;
+  slug: string;
+  version: number;
+  subject: string | null;
+  body: string;
+  draftedAt: string;
+  /** Who saved it, or null on rows written before drafts were recorded. */
+  draftedBy: string | null;
+}
+
+export async function templateDrafts(
+  slugs: readonly string[],
+  orgId: string | null
+): Promise<Map<string, TemplateDraft>> {
+  if (orgId == null || slugs.length === 0) return new Map();
+  const rows = await query<TemplateDraft>(
+    `select id, slug, version, subject, body,
+            drafted_at::text as "draftedAt", drafted_by as "draftedBy"
+       from templates
+      where slug = any($1) and org_id = $2 and status = 'draft'`,
+    [slugs, orgId]
+  );
+  return new Map(rows.map((r) => [r.slug, r]));
+}
+
+/** One org's draft for one slug, for the routes that act on it. */
+export async function templateDraft(
+  slug: string,
+  orgId: string | null
+): Promise<TemplateDraft | null> {
+  const found = await templateDrafts([slug], orgId);
+  return found.get(slug) ?? null;
 }

@@ -34,6 +34,9 @@ import { closeOutDeclinedSub } from "./domain/decline-closeout";
 import { decideReply, type ReplyDecision } from "./domain/reply-outcome";
 import { looksLikeBounce } from "./domain/email-delivery";
 import { enqueue } from "./queue";
+import { logAgent } from "./logger";
+import { proposeRow, type Refusal } from "./domain/quote-fields";
+import { saveProposedRow } from "./pricing-rows";
 
 export interface MatchedComm {
   id: string;
@@ -98,6 +101,14 @@ export interface CaptureReplyResult {
   companyName: string | null;
   extracted: ExtractedReply;
   /**
+   * Why a price in this reply was not filed, when one was not.
+   *
+   * Null covers both "there was no price" and "the price was filed". The
+   * caller distinguishes them with `quoteSaved`; this field exists so a
+   * refusal is a value the poller can act on rather than a line in a log.
+   */
+  quoteRefusal?: Refusal | null;
+  /**
    * Whether this reading was trusted enough to change anything, and why not.
    * Returned so the caller reports the same verdict that governed the writes,
    * rather than computing a second opinion after the fact.
@@ -133,6 +144,10 @@ function emptyExtracted(): ExtractedReply {
     scopeSummary: null,
     laborCost: null,
     materialCost: null,
+    taxesAmount: null,
+    freightAmount: null,
+    mobilizationAmount: null,
+    bondingAmount: null,
     exclusions: [],
     qualifications: [],
     leadTimeDays: null,
@@ -319,6 +334,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       extracted: emptyExtracted(),
       decision: {
         outcome: "none",
+        proposed: null,
         act: false,
         needsReview: true,
         reviewReason:
@@ -353,7 +369,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
         // A redelivery of something already handled. Nothing is read again and
         // nothing may act, and it is not a review case either: the first
         // delivery already decided that.
-        decision: { outcome: "none", act: false, needsReview: false, reviewReason: null },
+        decision: { outcome: "none", proposed: null, act: false, needsReview: false, reviewReason: null },
         quoteSaved: false,
         quoteSkippedExisting: false,
         senderVerified: false,
@@ -582,8 +598,29 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       isQuote: extracted.isQuote,
       quoteAmount: extracted.quoteAmount,
     });
-  if (autoSaveOk && subId && extracted.quoteAmount != null) {
-    const trade = osRow?.trade ?? null;
+  /*
+   * The proposal, and the reasons it can be refused.
+   *
+   * This used to insert straight into `quotes` with whatever trade happened to
+   * be resolved, and `osRow` is null when a subcontractor is paired to several
+   * trades and the reply names none of them. So a firm on electrical and low
+   * voltage answering one email with one number had that number filed under no
+   * trade at all, where coverage could not see it and the bid could not use
+   * it. Worse, on a re-poll with a different correlation it could land under
+   * the wrong one, and a plumbing price filed as electrical is more dangerous
+   * than no price, because nothing on any screen says it is wrong.
+   */
+  const replyWrittenAt = input.sentAt ? new Date(input.sentAt) : new Date();
+  const proposal = proposeRow(extracted, {
+    trade: osRow?.trade ?? null,
+    pairedTrades: pairTrades.map((p) => p.trade ?? "").filter(Boolean),
+    // Their Date header, not our poll time: "good for 30 days" is counted
+    // from when they wrote it.
+    receivedAt: Number.isNaN(replyWrittenAt.getTime()) ? new Date() : replyWrittenAt,
+  });
+
+  if (autoSaveOk && subId && extracted.quoteAmount != null && proposal.ok) {
+    const trade = proposal.row.trade;
     const notes = ["Auto-captured from email reply.", extracted.notes ?? ""]
       .filter(Boolean)
       .join(" ");
@@ -604,7 +641,49 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     );
     quoteSaved = inserted != null;
     quoteSkippedExisting = inserted == null;
+    /*
+     * When their price arrived, and whether it covered what was asked for.
+     *
+     * Stamped on the pairing rather than on the quote, because that is where
+     * the date they were given lives, and lateness is the subtraction of the
+     * two. Their Date header rather than our poll time: a reply written on
+     * Friday and collected on Monday was not late.
+     *
+     * The scope judgement here is the extractor's, and it is a real
+     * determination rather than a guess: `partial_scope` is a refusal the
+     * pipeline raises by name when a reply prices only part of the work.
+     * Absence of that refusal on a saved quote is the affirmative reading.
+     */
     if (quoteSaved) {
+      await query(
+        `update opportunity_subs
+            set quoted_at = coalesce(quoted_at, $4::timestamptz),
+                quote_full_scope = coalesce(quote_full_scope, true)
+          where opportunity_id = $1 and subcontractor_id = $2
+            and coalesce(trade,'') = coalesce($3,'')`,
+        [comm.opportunity_id, subId, trade, replyWrittenAt]
+      );
+    }
+    if (quoteSaved) {
+      /*
+       * Everything the reply actually said, kept as fields rather than prose.
+       *
+       * The `notes` column above is where all of this used to go: what they
+       * excluded, how firm the number is, how long it holds, how soon they can
+       * start. An estimator reading a paragraph has to re-derive every one of
+       * those, and the bid has no way to act on any of them.
+       *
+       * `onlyIfAbsent` because a person's row always wins. An automatic read
+       * of an email must never overwrite a figure somebody typed.
+       */
+      await saveProposedRow({
+        orgId,
+        opportunityId: comm.opportunity_id,
+        subcontractorId: subId,
+        sourceQuoteId: inserted!.id,
+        proposal: proposal.row,
+        onlyIfAbsent: true,
+      }).catch(() => undefined);
       // Keep detail / Coverage / Next Step in sync with manual quote entry.
       await query(
         `update opportunities
@@ -618,6 +697,43 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     }
   }
 
+  /*
+   * A refusal is a fact, and it goes where somebody will see it.
+   *
+   * The dangerous case is `ambiguous_trade`: a real price, correctly read,
+   * that cannot be filed because the subcontractor is on several trades and
+   * the reply named none. Nothing is written and that is right, but silence
+   * would mean the operator finds out at bid time that a trade they thought
+   * was quoted is empty.
+   */
+  /*
+   * A reply that prices only part of the trade is a fact about the firm, and
+   * one of the six things the reliability score is made of. Recorded even
+   * though no quote was saved: the refusal is the finding.
+   */
+  if (subId && !proposal.ok && proposal.refusal === "partial_scope") {
+    await query(
+      `update opportunity_subs
+          set quote_full_scope = false
+        where opportunity_id = $1 and subcontractor_id = $2`,
+      [comm.opportunity_id, subId]
+    );
+  }
+
+  if (autoSaveOk && !proposal.ok && !quoteSaved) {
+    await logAgent({
+      agent: "reply-capture",
+      action: "quote-not-filed",
+      opportunityId: comm.opportunity_id,
+      level: "warn",
+      message: `${companyName ?? fromEmail} sent a price that was not filed: ${proposal.message}`,
+      reasoning:
+        proposal.refusal === "ambiguous_trade"
+          ? "Filing it under a guessed trade is worse than not filing it, because a wrong trade is invisible and a missing one is not."
+          : "Recorded rather than acted on, so the price is not lost and the bid is not built on a reading nobody checked.",
+    }).catch(() => undefined);
+  }
+
   return {
     subId,
     companyName,
@@ -627,6 +743,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     quoteSkippedExisting,
     senderVerified,
     trade: osRow?.trade ?? null,
+    quoteRefusal: proposal.ok ? null : proposal.refusal,
     duplicate: false,
     declined: false,
     thankYouSent: false,

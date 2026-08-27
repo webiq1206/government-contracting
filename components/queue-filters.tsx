@@ -1,5 +1,10 @@
 import Link from "next/link";
 import {
+  OWNER_FILTERS,
+  OWNER_FILTER_LABEL,
+  type OwnerFilter,
+} from "@/lib/domain/ownership";
+import {
   KIND_FILTER_LABEL,
   type WorkKind,
   type QueueFilter,
@@ -21,6 +26,8 @@ export function QueueFilters({
   bucket,
   kind,
   kindCounts,
+  owner = "anyone",
+  ownerHrefFor,
   hrefFor,
   clearHref,
 }: {
@@ -28,12 +35,34 @@ export function QueueFilters({
   bucket: QueueFilter;
   kind: WorkKind | null;
   kindCounts: Record<WorkKind, number>;
+  /** Whose work is being shown. See lib/domain/ownership. */
+  owner?: OwnerFilter;
+  ownerHrefFor?: (o: OwnerFilter) => string;
   hrefFor: (opts: { kind?: WorkKind | null }) => string;
   clearHref: string;
 }) {
   const kinds = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).filter(
     (k) => kindCounts[k] > 0 || kind === k
   );
+
+  /*
+   * Completed work is a different list, so it gets different controls.
+   *
+   * The search box and the kind chips are cuts of the queue, and the queue is
+   * what is left. Leaving them on screen over a list of finished work would
+   * offer filters that either do nothing or, worse, appear to return no
+   * matches. One sentence and the way back is the honest version.
+   */
+  if (bucket === "completed_today") {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm text-foreground">What you finished today</p>
+        <Link href={clearHref} className="tap text-xs text-slate-500 hover:text-accent">
+          Back to the queue
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">
@@ -57,6 +86,26 @@ export function QueueFilters({
           </Link>
         )}
       </form>
+
+      {/*
+        Whose work. First, above the kind chips, because on a team it is the
+        cut somebody applies before any other: "what is on me" comes before
+        "which of it is calls".
+      */}
+      {ownerHrefFor && (
+        <nav aria-label="Filter by owner" className="flex flex-wrap gap-2">
+          {OWNER_FILTERS.map((o) => (
+            <Link
+              key={o}
+              href={ownerHrefFor(o)}
+              aria-current={owner === o ? "page" : undefined}
+              className={chip(owner === o)}
+            >
+              {OWNER_FILTER_LABEL[o]}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       {kinds.length > 1 && (
         <nav aria-label="Filter by kind of work" className="flex flex-wrap gap-2">
@@ -86,7 +135,7 @@ export function QueueFilters({
 
 function chip(active: boolean): string {
   const base =
-    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5";
+    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5";
   return active
     ? `${base} border-gold bg-gold/15 text-foreground`
     : `${base} border-border text-foreground hover:border-foreground/30`;

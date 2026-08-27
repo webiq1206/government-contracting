@@ -13,6 +13,7 @@
  * "the original message below" when there is no message below.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { withSweepLock } from "./helpers/sweep-lock";
 import { randomUUID } from "crypto";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -163,9 +164,16 @@ d("the 48-hour follow-up (integration)", () => {
   describe("when the thread can be joined", () => {
     let call: Record<string, unknown>;
     beforeAll(async () => {
-      await seedOriginal({ threadId: "thread-1", rfc822: "<orig@mail.gmail.com>" });
-      sendSpy.mockClear();
-      await runFollowUp();
+      /*
+       * Seeded and swept under the shared lock. The sweep is platform-wide, so
+       * another test file's due conversation would otherwise be picked up and
+       * sent by this run, and this file's own row sent by theirs.
+       */
+      await withSweepLock(async () => {
+        await seedOriginal({ threadId: "thread-1", rfc822: "<orig@mail.gmail.com>" });
+        sendSpy.mockClear();
+        await runFollowUp();
+      });
       call = sendSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     });
 
@@ -198,9 +206,11 @@ d("the 48-hour follow-up (integration)", () => {
     beforeAll(async () => {
       // The exact production case: a thread we know, but a grant that predates
       // gmail.readonly, so the Message-ID was never read back.
-      await seedOriginal({ threadId: "thread-1", rfc822: null });
-      sendSpy.mockClear();
-      await runFollowUp();
+      await withSweepLock(async () => {
+        await seedOriginal({ threadId: "thread-1", rfc822: null });
+        sendSpy.mockClear();
+        await runFollowUp();
+      });
       call = sendSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     });
 
@@ -245,9 +255,11 @@ d("the 48-hour follow-up (integration)", () => {
   describe("when there is no thread at all", () => {
     let call: Record<string, unknown>;
     beforeAll(async () => {
-      await seedOriginal({ threadId: null, rfc822: null });
-      sendSpy.mockClear();
-      await runFollowUp();
+      await withSweepLock(async () => {
+        await seedOriginal({ threadId: null, rfc822: null });
+        sendSpy.mockClear();
+        await runFollowUp();
+      });
       call = sendSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     });
 

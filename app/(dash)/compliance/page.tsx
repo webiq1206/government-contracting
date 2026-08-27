@@ -1,11 +1,19 @@
 import Link from "next/link";
-import { complianceBoard, subcontractorComplianceRows } from "@/lib/data";
+import { complianceBoard, currentOrg, subcontractorComplianceRows } from "@/lib/data";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { AddComplianceItem } from "@/components/add-compliance-item";
 import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate, complianceColorClass } from "@/lib/format";
 import { statusColor } from "@/lib/domain/compliance";
+import { ComplianceCalendar } from "@/components/compliance-calendar";
+import { buildCalendar, parseMonth } from "@/lib/domain/compliance-calendar";
+import {
+  COMPLIANCE_STATE_LABEL,
+  complianceState,
+  fromLegacyStatus,
+  type ComplianceState,
+} from "@/lib/domain/compliance-state";
 import type { ComplianceStatus } from "@/lib/domain/compliance";
 import {
   areaFor,
@@ -25,12 +33,48 @@ import {
 import {
   ComplianceItemCard,
   type ComplianceCardData,
+  type ComplianceDocView,
   type CategoryInfo,
 } from "@/components/compliance-item";
+import {
+  documentsFor,
+  type ComplianceDocument,
+} from "@/lib/compliance-documents";
+import {
+  ComplianceBulkDocuments,
+  type BulkDocTarget,
+} from "@/components/compliance-bulk-documents";
+import { assignableMembers } from "@/lib/ownership";
+import type { Owner } from "@/lib/domain/ownership";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
 
 export const dynamic = "force-dynamic";
 
 type Row = Record<string, unknown>;
+
+/**
+ * A stored document as the card needs it.
+ *
+ * size_bytes comes back as a string for a bigint, which is why the card takes
+ * a number or null rather than whatever the driver felt like: a "1024" that
+ * silently formats as bytes-not-kilobytes is the sort of thing nobody checks.
+ */
+function viewDocs(docs: ComplianceDocument[]): ComplianceDocView[] {
+  return docs.map((d) => {
+    const size = d.size_bytes == null ? null : Number(d.size_bytes);
+    return {
+      id: String(d.id),
+      original_filename: d.original_filename,
+      kind: d.kind,
+      note: d.note,
+      size_bytes: Number.isFinite(size as number) ? (size as number) : null,
+      uploaded_at: d.uploaded_at ? String(d.uploaded_at) : null,
+      uploaded_by_name: d.uploaded_by_name ?? null,
+      superseded: d.superseded_by != null,
+    };
+  });
+}
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -40,30 +84,29 @@ function num(v: unknown): number | null {
   const n = Number(v);
   return Number.isNaN(n) ? null : n;
 }
-function asStatus(v: unknown): ComplianceStatus {
-  const s = str(v);
-  if (s === "warning" || s === "critical" || s === "blocked" || s === "resolved") return s;
-  return "ok";
+/** A stored value as one of the eight states, or null when it is not one. */
+function asState(v: unknown): ComplianceState | null {
+  return fromLegacyStatus(str(v) || null);
 }
+/** A timestamp column as an ISO string, whatever the driver handed back. */
+function iso(v: unknown): string | null {
+  if (v == null) return null;
+  const d = v instanceof Date ? v : new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 function detailObj(v: unknown): Record<string, unknown> {
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   return {};
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  /*
-   * "On track" is a claim about a date, so it is only sayable when there is
-   * one. An item with no expiry was reading as a green "On track" -- the
-   * system asserting an item was fine when it had nothing at all to check it
-   * against. See cannotMonitor below.
-   */
-  cannot_monitor: "Cannot monitor",
-  ok: "On track",
-  resolved: "Resolved",
-  warning: "Warning",
-  critical: "Critical",
-  blocked: "Blocked",
-};
+/*
+ * The labels live in lib/domain/compliance-state.ts now.
+ *
+ * They were declared here, which is how the banned green label survived:
+ * a page-local map is a vocabulary nobody else can see, so nothing that
+ * checked the approved terminology ever looked at it.
+ */
 
 /** Plain-English "what this is + where to renew" per compliance category. */
 const CATEGORY_INFO: Record<string, CategoryInfo> = {
@@ -113,7 +156,7 @@ function infoFor(cat: string): CategoryInfo | undefined {
 }
 
 /** Build the serializable card projection (all date math done here on the server). */
-function buildCard(row: Row): ComplianceCardData {
+function buildCard(row: Row, documents: ComplianceDocView[]): ComplianceCardData {
   const override = str(row.due_at_override) || null;
   const monitorDue = str(row.due_at) || null;
   const effDue = override || monitorDue;
@@ -130,30 +173,40 @@ function buildCard(row: Row): ComplianceCardData {
 
   const statusOverride = str(row.status_override);
   /*
-   * No date and nobody has said otherwise: there is nothing to be on track
-   * against. Reporting that as "On track" is the exact failure the audit
-   * named -- a green badge asserting an item is fine when the system has no
-   * way to know. An override still wins, because a person saying "this is
-   * handled" is information the system does not otherwise have.
+   * One function decides the state, and it is the same one every other
+   * surface calls. This was page-local arithmetic over a page-local label
+   * map, which is how a green badge survived on an item with no date at all:
+   * nothing outside this file could see the claim being made.
    */
-  const cannotMonitor = !statusOverride && effDue == null;
-  const monitorStatus = cannotMonitor ? "cannot_monitor" : str(row.status) || "ok";
-  const effStatus = statusOverride || monitorStatus;
+  const verdict = complianceState({
+    required: row.required !== false,
+    /*
+     * iso(), not String(). node-postgres hands back a Date for a timestamptz,
+     * so String() gives "Thu Aug 27 2026 ..." and the card's ten-character
+     * slice cut that to "Thu Aug 27".
+     */
+    satisfiedAt: iso(row.satisfied_at),
+    expiresAt: effDue,
+    verifiedAt: iso(row.verified_at),
+    monitorable: row.monitorable !== false,
+    blockedBy: str(row.blocked_by) || null,
+    conflict: str(row.conflict_detail) || null,
+    needsReview: str(row.needs_review_reason) || null,
+    windowDays: num(row.window_days) ?? undefined,
+    override: asState(statusOverride),
+  });
+  const effStatus = verdict.state;
 
-  let color: ComplianceCardData["color"];
-  if (statusOverride) {
-    color = statusColor(asStatus(statusOverride));
-  } else if (days != null) {
-    color = days < 0 ? "red" : days <= 30 ? "amber" : "green";
-  } else {
-    // Slate rather than green: neutral, because nothing is known, and a
-    // colour that reads as "fine" would be the same lie in another form.
-    color = effDue ? "green" : "slate";
-  }
+  const color: ComplianceCardData["color"] =
+    verdict.state === "cannot_monitor" || verdict.state === "incomplete"
+      // Slate rather than green: neutral, because nothing is known, and a
+      // colour that reads as "fine" would be the same claim in another form.
+      ? "slate"
+      : statusColor(verdict.state);
 
   const countdownText =
     days == null
-      ? "No expiry date, so this cannot be tracked"
+      ? "No expiry date, so there is nothing to count down"
       : days < 0
         ? `${Math.abs(days)}d overdue`
         : days === 0
@@ -162,18 +215,48 @@ function buildCard(row: Row): ComplianceCardData {
 
   return {
     id: str(row.id),
+    // Joined by complianceBoard. Null is unassigned, which is a real answer.
+    owner: row.assigned_to
+      ? { id: str(row.assigned_to), name: str(row.assigned_name) || "A teammate" }
+      : null,
     label: str(row.label) || "Untitled item",
     contract_number: str(row.contract_number) || null,
     dueDisplay: effDue ? shortDate(effDue) : "-",
     dateInputValue,
     statusValue: statusOverride, // "" = automatic
-    statusLabel: STATUS_LABEL[effStatus] ?? effStatus,
+    timeZone: str(row.time_zone),
+    recurrence: str(row.recurrence),
+    recurrenceMonths: row.recurrence_months == null ? "" : String(row.recurrence_months),
+    windowDays: row.window_days == null ? "" : String(row.window_days),
+    escalateAfterDays: row.escalate_after_days == null ? "" : String(row.escalate_after_days),
+    escalateTo: str(row.escalate_to),
+    blockedBy: str(row.blocked_by),
+    conflictDetail: str(row.conflict_detail),
+    needsReviewReason: str(row.needs_review_reason),
+    /*
+     * Normalized rather than stringified. node-postgres hands back a Date for
+     * a timestamptz, so String() gives "Thu Aug 27 2026 ..." and the card's
+     * ten-character slice cut that to "Thu Aug 27".
+     */
+    verifiedAt: iso(row.verified_at),
+    monitorable: row.monitorable !== false,
+    statusDetail: verdict.detail,
+    statusFix: verdict.fix,
+    statusLabel: COMPLIANCE_STATE_LABEL[effStatus],
     countdownText,
     daysLeft: days,
     color,
     notes: str(row.notes),
     link_url: str(row.link_url),
     doc_url: str(row.doc_url),
+    /*
+     * The certificates themselves. The board tracked dates and offered a box
+     * for a link to the document, which is not the same thing: a link breaks
+     * when a folder moves and cannot be produced when somebody asks for the
+     * policy that was in force in March.
+     */
+    documents,
+    docUrlNote: str(row.doc_url_note) || null,
     manual: str(row.source) === "operator",
   };
 }
@@ -237,16 +320,29 @@ const TIMELINE_DAYS = 90;
 /** Chip styling shared by the state and area filters, matching Contracts. */
 function chipClass(active: boolean, empty: boolean): string {
   const base =
-    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5";
+    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5";
   if (active) return `${base} border-gold bg-gold/15 text-foreground`;
   if (empty) return `${base} border-border text-muted-foreground`;
   return `${base} border-border text-foreground hover:border-foreground/30`;
 }
 
-function filterHref(area: ComplianceArea | null, state: BoardState | null): string {
+/**
+ * A board link, keeping whatever else is on.
+ *
+ * The view and the month have to survive a filter change and each other, or
+ * switching to the calendar loses the area somebody had chosen and switching
+ * months drops them back to the board.
+ */
+function filterHref(
+  area: ComplianceArea | null,
+  state: BoardState | null,
+  opts: { view?: "board" | "calendar"; month?: string } = {}
+): string {
   const params = new URLSearchParams();
   if (area) params.set("area", area);
   if (state) params.set("state", state);
+  if (opts.view === "calendar") params.set("view", "calendar");
+  if (opts.month) params.set("month", opts.month);
   const q = params.toString();
   return q ? `/compliance?${q}` : "/compliance";
 }
@@ -256,13 +352,20 @@ export default async function CompliancePage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const [rows, subRows] = (await Promise.all([
+  const [rows, subRows, teamMembers, viewer] = (await Promise.all([
     complianceBoard(),
     subcontractorComplianceRows(),
-  ])) as [Row[], Row[]];
+    // Tolerant: a picker that cannot load its list is a read-only owner
+    // field, where a throw is a Compliance page that will not open.
+    assignableMembers().catch(() => []),
+    currentUser().catch(() => null),
+  ])) as [Row[], Row[], Owner[], Awaited<ReturnType<typeof currentUser>>];
 
   const stateFilter = parseState(searchParams?.state);
   const areaFilter = parseArea(searchParams?.area);
+  const rawView = Array.isArray(searchParams?.view) ? searchParams.view[0] : searchParams?.view;
+  const view: "board" | "calendar" = rawView === "calendar" ? "calendar" : "board";
+  const month = parseMonth(searchParams?.month);
 
   const subBoard = subcontractorComplianceBoard(groupSubRows(subRows));
 
@@ -296,9 +399,37 @@ export default async function CompliancePage({
   const deadlineRows = rows.filter((r) => str(r.category) !== "non_ss_cap");
 
   // Build each card's display projection once (respects operator overrides).
+  /*
+   * One query for every card's files rather than one per card. Loaded after
+   * the split so the cap gauges, which have no documents, do not go looking.
+   */
+  const documentsByItem = await documentsFor(
+    await currentOrg(),
+    deadlineRows.map((r) => str(r.id)).filter(Boolean)
+  ).catch(() => new Map<string, ComplianceDocument[]>());
+
   const cardById = new Map<string, ComplianceCardData>(
-    deadlineRows.map((r) => [str(r.id), buildCard(r)])
+    deadlineRows.map((r) => [
+      str(r.id),
+      buildCard(r, viewDocs(documentsByItem.get(str(r.id)) ?? [])),
+    ])
   );
+
+  /*
+   * Every item with nothing stored against it, in board order, so the bulk
+   * panel works the same set the cards do.
+   */
+  const missingDocTargets: BulkDocTarget[] = deadlineRows
+    .filter((r) => (cardById.get(str(r.id))?.documents ?? []).length === 0)
+    .map((r) => {
+      const card = cardById.get(str(r.id))!;
+      return {
+        id: card.id,
+        label: card.label,
+        area: AREA_LABEL[areaFor(str(r.category))],
+        dueDisplay: card.dueDisplay,
+      };
+    });
 
   /*
    * Counted across everything, then filtered. A summary that only counts what
@@ -308,8 +439,8 @@ export default async function CompliancePage({
   const stateCounts: Record<BoardState, number> = {
     attention: 0,
     expiring: 0,
-    cannot_monitor: 0,
-    on_track: 0,
+    unknown: 0,
+    complete: 0,
   };
   for (const r of deadlineRows) {
     const card = cardById.get(str(r.id));
@@ -318,7 +449,7 @@ export default async function CompliancePage({
   for (const item of subBoard.items) {
     stateCounts[item.color === "red" ? "attention" : "expiring"] += 1;
   }
-  stateCounts.on_track += subBoard.currentCount;
+  stateCounts.complete += subBoard.currentCount;
 
   /*
    * The next ninety days, in date order. Everything on this strip is also in
@@ -326,6 +457,29 @@ export default async function CompliancePage({
    * question an area listing cannot answer, and it was being answered by
    * reading every card and doing the arithmetic by hand.
    */
+  /*
+   * The same dates, as a month grid.
+   *
+   * Built from every dated card rather than only the ninety-day window: a
+   * calendar that silently dropped anything further out would answer "what
+   * does next March look like" with an empty month.
+   */
+  const calendar = buildCalendar({
+    month,
+    items: deadlineRows.flatMap((r) => {
+      const card = cardById.get(str(r.id));
+      if (!card) return [];
+      return [{
+        id: card.id,
+        label: card.label,
+        dueAt: card.dateInputValue ? `${card.dateInputValue}T00:00:00Z` : "",
+        state: card.statusLabel,
+        tone: card.color,
+      }];
+    }),
+    timeZone: null,
+  });
+
   const timeline: {
     key: string;
     label: string;
@@ -413,7 +567,7 @@ export default async function CompliancePage({
             return stateFilter === (i.color === "red" ? "attention" : "expiring");
           }),
           currentCount:
-            !stateFilter || stateFilter === "on_track" ? subBoard.currentCount : 0,
+            !stateFilter || stateFilter === "complete" ? subBoard.currentCount : 0,
         };
 
   const urgentCount = urgent.length;
@@ -452,9 +606,16 @@ export default async function CompliancePage({
           <p className="mt-1 text-sm text-slate-600">
             Every day it checks each item and warns you before anything lapses.
             For it to count down, it needs a date. Open any item, set its renewal
-            date, add the renewal link and a link to your document, and you&rsquo;ll
-            get alerts as the deadline gets close. Items showing &ldquo;no date
-            set&rdquo; can&rsquo;t be tracked yet.
+            date, and you&rsquo;ll get alerts as the deadline gets close. Items
+            showing &ldquo;no date set&rdquo; can&rsquo;t be tracked yet.
+            {/*
+              Attaching the certificate is now the thing worth telling people to
+              do. The line used to point at a link box, which was all the board
+              could offer: a link breaks when a folder moves and cannot be
+              produced when a contracting officer asks.
+            */}{" "}
+            Attach the certificate itself to each item, so you can produce it
+            when somebody asks for it.
           </p>
           <div className="mt-3">
             <AddComplianceItem />
@@ -477,11 +638,11 @@ export default async function CompliancePage({
             <span className="num text-muted-foreground">
               {stateCounts.attention +
                 stateCounts.expiring +
-                stateCounts.cannot_monitor +
-                stateCounts.on_track}
+                stateCounts.unknown +
+                stateCounts.complete}
             </span>
           </Link>
-          {(["attention", "expiring", "cannot_monitor", "on_track"] as BoardState[]).map((st) => (
+          {(["attention", "expiring", "unknown", "complete"] as BoardState[]).map((st) => (
             <Link
               key={st}
               href={filterHref(areaFilter, stateFilter === st ? null : st)}
@@ -507,7 +668,37 @@ export default async function CompliancePage({
           ))}
         </nav>
 
-        {timeline.length > 0 && (
+        {/*
+          Two ways of reading the same dates. The strip answers "which of
+          these lands first"; the calendar answers "what does March look
+          like", which is the question somebody asks when deciding which week
+          to be away or noticing three renewals have stacked on one Friday.
+        */}
+        <nav aria-label="How to read the dates" className="flex gap-2">
+          <Link
+            href={filterHref(areaFilter, stateFilter)}
+            aria-current={view === "board" ? "page" : undefined}
+            className={chipClass(view === "board", false)}
+          >
+            Next 90 days
+          </Link>
+          <Link
+            href={filterHref(areaFilter, stateFilter, { view: "calendar", month })}
+            aria-current={view === "calendar" ? "page" : undefined}
+            className={chipClass(view === "calendar", false)}
+          >
+            By month
+          </Link>
+        </nav>
+
+        {view === "calendar" && (
+          <ComplianceCalendar
+            cal={calendar}
+            hrefFor={(m) => filterHref(areaFilter, stateFilter, { view: "calendar", month: m })}
+          />
+        )}
+
+        {view === "board" && timeline.length > 0 && (
           <section aria-labelledby="expiring-soon">
             <h2 id="expiring-soon" className="label mb-1">
               Landing in the next 90 days
@@ -581,6 +772,9 @@ export default async function CompliancePage({
                   key={str(r.id)}
                   item={cardById.get(str(r.id))!}
                   info={infoFor(str(r.category))}
+                  members={teamMembers}
+                  viewerId={viewer?.id}
+                  canAssign={can(viewer?.orgRole, "manage_compliance")}
                   highlight
                 />
               ))}
@@ -612,6 +806,16 @@ export default async function CompliancePage({
               ))}
             </div>
           </section>
+        )}
+
+        {/*
+          * Bulk filing, for the folder of scans that arrives all at once.
+          * Listed only where there is nothing stored, because that is the
+          * working set, and an item that already has its certificate in this
+          * list is one more row to read past.
+          */}
+        {can(viewer?.orgRole, "manage_compliance") && (
+          <ComplianceBulkDocuments targets={missingDocTargets} />
         )}
 
         {AREA_ORDER.map((area) => {
@@ -647,6 +851,9 @@ export default async function CompliancePage({
                             key={str(r.id)}
                             item={cardById.get(str(r.id))!}
                             info={infoFor(cat)}
+                            members={teamMembers}
+                            viewerId={viewer?.id}
+                            canAssign={can(viewer?.orgRole, "manage_compliance")}
                           />
                         ))}
                       </div>
@@ -671,21 +878,30 @@ export default async function CompliancePage({
 function Legend() {
   return (
     <div className="flex items-center gap-3 text-xs text-slate-600">
+      {/*
+        The legend says what the colours mean, in the same words the badges
+        use. It used to name three severities, none of which were states the
+        cards could actually be in.
+      */}
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-pursue" /> On track
+        <span className="h-2.5 w-2.5 rounded-full bg-pursue" /> Complete
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-review" /> Warning
+        <span className="h-2.5 w-2.5 rounded-full bg-review" /> Expiring soon, or needs a person
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-risk" /> Critical / blocked
+        <span className="h-2.5 w-2.5 rounded-full bg-risk" /> Expired, blocked, or conflicting
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-border" /> Nothing on file, or nothing we can check
       </span>
     </div>
   );
 }
 
 function CapGauge({ row }: { row: Row }) {
-  const status = asStatus(row.status);
+  // A cap is arithmetic over real numbers, so its stored state is the answer.
+  const status = asState(row.status) ?? "incomplete";
   const color = statusColor(status);
   const detail = detailObj(row.detail);
   const util =
@@ -705,7 +921,7 @@ function CapGauge({ row }: { row: Row }) {
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-sm font-medium text-slate-900">{label}</p>
         <span className={`badge ${complianceColorClass(color)}`}>
-          {STATUS_LABEL[status] ?? status}
+          {COMPLIANCE_STATE_LABEL[status]}
         </span>
       </div>
       <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">

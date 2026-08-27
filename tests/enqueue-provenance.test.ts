@@ -48,7 +48,24 @@ vi.mock("../lib/app-settings", () => ({
   isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "paused",
 }));
-vi.mock("@/lib/api-auth", () => ({ requireUser: async () => sessionUser }));
+/*
+ * The real module underneath, with only the session pinned. Listing exports
+ * meant the route's later move to a capability check surfaced as a missing
+ * mock rather than as a permission the test had a view about.
+ */
+vi.mock("@/lib/api-auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-auth")>()),
+  requireUser: async () => sessionUser,
+  requireSubscriber: async () => sessionUser,
+  /*
+   * Overridden rather than left real, because requireCapability calls
+   * requireSubscriber through the module's own binding, which a mocked export
+   * does not intercept. This file is about which organization a queued job
+   * says it belongs to; whether the role may enqueue at all is settled by the
+   * role tests and by the route permission sweep.
+   */
+  requireCapability: async () => sessionUser,
+}));
 vi.mock("@/lib/agents/registry", () => ({
   getAgent: (name: string) => ({ name, label: name, description: "", handler: async () => ({}) }),
 }));

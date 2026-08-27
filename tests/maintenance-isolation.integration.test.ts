@@ -13,6 +13,7 @@
  * Every assertion here fails on the unscoped code.
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { withSweepLock } from "./helpers/sweep-lock";
 import { randomUUID } from "crypto";
 
 /** Every send the follow-up sweep attempted, with the org it charged. */
@@ -153,25 +154,37 @@ d("maintenance sweeps stay inside one organization (integration)", () => {
 
   it("sends each follow-up from the organization that owns the conversation", async () => {
     sends.length = 0;
-    for (const o of [orgs.a, orgs.b]) {
-      await query(
-        `insert into communications
-           (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, follow_up_at)
-         values ($1, $2, $3, 'email', 'outbound', 'q', 'q', now() - interval '1 hour')`,
-        [o.id, o.sub, o.opp]
-      );
-      await query(`update subcontractors set email = $2, email_verified = true where id = $1`, [
-        o.sub,
-        `${o.name}@example.invalid`,
-      ]);
-    }
+    /*
+     * Seeded and swept under the shared lock. The sweep reads every
+     * organization by design, so without it another test file's due
+     * conversation is sent by this run and this file's rows by theirs.
+     */
+    await withSweepLock(async () => {
+      for (const o of [orgs.a, orgs.b]) {
+        await query(
+          `insert into communications
+             (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, follow_up_at)
+           values ($1, $2, $3, 'email', 'outbound', 'q', 'q', now() - interval '1 hour')`,
+          [o.id, o.sub, o.opp]
+        );
+        await query(`update subcontractors set email = $2, email_verified = true where id = $1`, [
+          o.sub,
+          `${o.name}@example.invalid`,
+        ]);
+      }
 
-    await maintenance.outreachFollowup.handler({
-      runId: randomUUID(),
-      trigger: "cron",
-      payload: {},
+      await maintenance.outreachFollowup.handler({
+        runId: randomUUID(),
+        trigger: "cron",
+        payload: {},
+      });
     });
 
+    /*
+     * Every send, not just the two expected ones. The lock above makes the
+     * sweep's whole output this test's own, so a third send is a real finding:
+     * either a leak into another tenant's conversation, or a duplicate.
+     */
     expect(sends.length).toBe(2);
     for (const send of sends) {
       const owner = [orgs.a, orgs.b].find((o) => send.to === `${o.name}@example.invalid`);

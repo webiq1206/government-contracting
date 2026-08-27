@@ -74,12 +74,38 @@ export default async function IntegrationsPage({
         (def.id === "claude" ? troubleSummary(aiTrouble) : null) ??
         fields.map((f) => f.last_error).find(Boolean) ??
         null,
+      /*
+       * The newest across every credential this integration needs. An
+       * integration is only as verified as its least-recently-confirmed key,
+       * but reporting the oldest would make one optional key drag a working
+       * connection down, so the newest is the honest summary and the state
+       * model decides what it is worth.
+       */
       last_validated_at:
         fields
           .map((f) => f.last_validated_at)
           .filter(Boolean)
           .sort()
           .pop() ?? null,
+      last_success_at:
+        fields
+          .map((f) => f.last_success_at)
+          .filter(Boolean)
+          .sort()
+          .pop() ?? null,
+      last_tested_at:
+        fields
+          .map((f) => f.last_tested_at)
+          .filter(Boolean)
+          .sort()
+          .pop() ?? null,
+      quota_note: fields.map((f) => f.quota_note).find(Boolean) ?? null,
+      expires_at:
+        fields
+          .map((f) => f.expires_at)
+          .filter(Boolean)
+          .sort()
+          .shift() ?? null,
     };
   }).map((def) => {
     /*
@@ -92,13 +118,21 @@ export default async function IntegrationsPage({
       {
         configured: def.configured,
         lastError: def.last_error,
-        lastValidatedAt: def.last_validated_at,
+        lastValidatedAt: def.last_tested_at ?? def.last_validated_at,
+        // Ranked above a test wherever both exist: a test says the credential
+        // parses, a successful call says the thing works for what it is for.
+        lastSuccessAt: def.last_success_at,
         // Only the OAuth one has a connection that can lapse. Undefined for
         // the key-based integrations, which have nothing to expire.
         connectionLive: def.id === "gmail" ? gmailConnected : undefined,
       }
     );
-    return { ...def, state: verdict.state, stateReason: verdict.reason, stateAction: verdict.nextAction };
+    return {
+      ...def,
+      state: verdict.state,
+      stateReason: verdict.reason,
+      stateAction: verdict.nextAction,
+    };
   });
 
   /*
@@ -120,7 +154,7 @@ export default async function IntegrationsPage({
             ? `${troubleCount} need attention · ${workingCount} of ${initial.length} confirmed working`
             : `${workingCount} of ${initial.length} confirmed working`
         }
-        explanation="Connect the services automation depends on. A key that is stored is not the same as a key that works, so each one shows when it was last used successfully."
+        explanation="Connect the services automation depends on. A key that is stored is not the same as a key that works, and a key that passed a test is not the same as one doing its job, so each one shows both."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
 

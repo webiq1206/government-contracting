@@ -12,6 +12,7 @@ import { buildReviewBrief } from "@/lib/domain/review-brief";
 import { countdown } from "@/lib/format";
 import type { Opportunity, SolicitationAnalysis } from "@/lib/types";
 import type { DataConfidence } from "@/lib/domain/score-confidence";
+import { conflictingFacts } from "@/lib/domain/brief-conflicts";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,21 @@ function iso(v: unknown): string | null {
   if (v == null) return null;
   const d = v instanceof Date ? v : new Date(String(v));
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * Where to read the original.
+ *
+ * The brief is a reading of a document, and a decision made on a reading
+ * should be one click from the document. Only links that exist: a notice with
+ * no stored URL gets no button rather than a dead one.
+ */
+function sourceLinksFor(o: Opportunity): { label: string; href: string }[] {
+  const links: { label: string; href: string }[] = [];
+  const raw = (o.raw_json ?? {}) as Record<string, unknown>;
+  const url = typeof raw.uiLink === "string" ? raw.uiLink : null;
+  if (url) links.push({ label: "The notice on SAM.gov", href: url });
+  return links;
 }
 
 export default async function ReviewPage({
@@ -62,6 +78,24 @@ export default async function ReviewPage({
           null,
         valueKnown: selected.value_estimated != null,
         pastPerfClassification: selected.past_perf_classification ?? null,
+        value: selected.value_estimated ?? null,
+        valueSource: selected.value_estimated_source ?? null,
+        /*
+         * Where the notice and the document do not agree.
+         * Reported rather than resolved: the analyst's value backfill only
+         * fills a null, so a portal figure and a document figure that disagree
+         * both survive in the record and nothing had ever said so.
+         */
+        conflicts: conflictingFacts({
+          setAsideFromNotice: selected.set_aside_type,
+          setAsideFromDocument:
+            (selected.solicitation_analysis as SolicitationAnalysis | null)?.set_aside ?? null,
+          valueFromNotice: selected.value_estimated ?? null,
+          valueTextFromDocument:
+            (selected.solicitation_analysis as SolicitationAnalysis | null)?.estimated_value ??
+            null,
+        }),
+        sourceLinks: sourceLinksFor(selected),
       })
     : null;
 

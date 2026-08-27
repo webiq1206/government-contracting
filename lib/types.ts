@@ -268,6 +268,20 @@ export interface ComplianceRequirement {
    * requirement with an official_form is always the operator's to complete.
    */
   official_form?: string;
+  /**
+   * Where this requirement came from, as an anchor a person can open rather
+   * than a sentence they have to go hunting with.
+   *
+   * `source` says where it is stated ("Section L.3"). These say which file and
+   * which page. Both are optional and both are resolved against the
+   * opportunity's document inventory before they are stored: a document name
+   * that matches nothing becomes no anchor at all, because a requirement
+   * attributed to the wrong file sends somebody to read the wrong thing and
+   * come away confident.
+   */
+  source_document?: string;
+  source_document_id?: string;
+  source_page?: number;
 }
 
 /** A finding from the independent compliance auditor. */
@@ -480,6 +494,30 @@ export interface Subcontractor {
   project_history: ProjectHistoryItem[];
   is_preferred: boolean;
   blacklisted: boolean;
+  /**
+   * Why they were blocked, who did it and when. Required for every block set
+   * from now on: this is the strongest statement the roster makes about a
+   * firm and it outlives whoever made it. Null on rows blocked before the
+   * reason existed, which read as "No reason was recorded" rather than being
+   * given one they never had.
+   */
+  blacklist_reason?: string | null;
+  blacklisted_at?: string | null;
+  blacklisted_by?: string | null;
+  /**
+   * Put aside, with the reason. Not the same as blocked: "we do not work with
+   * these any more" and "do not use, here is why" are different statements,
+   * and a roster that renders them identically is one where somebody
+   * eventually emails the wrong firm.
+   */
+  archived_at?: string | null;
+  archived_reason?: string | null;
+  /**
+   * The record this one was folded into. A tombstone rather than a firm: its
+   * history lives on the survivor now, and following this pointer is what
+   * keeps an old link and an old id in somebody's notes meaningful.
+   */
+  merged_into?: string | null;
   bbb_summary: string | null;
   reviews_summary: string | null;
   last_contacted: string | null;
@@ -489,6 +527,17 @@ export interface Subcontractor {
   contact_status: string | null;
   /** Where the email came from: 'hunter' | 'website_scrape' | 'manual' | null. */
   email_source: string | null;
+  /**
+   * When somebody last said what this firm can take on. Null while nobody
+   * has, which is a different statement from "nothing has changed".
+   */
+  capability_updated_at?: string | null;
+  /**
+   * Award-blocking documents this firm is short, counted alongside the row.
+   * Present on list reads, absent on the ones that do not compute it, so a
+   * screen that has not asked for it cannot mistake "not counted" for zero.
+   */
+  unmet_required_docs?: number;
 }
 
 export interface ProjectHistoryItem {
@@ -512,6 +561,24 @@ export interface Bid {
   documents_json: { name: string; storage_path: string; kind: string }[];
   human_flags: string[];
   submitted_at: string | null;
+  /**
+   * package_ready | approved | sending | sent | receipt_confirmed | accepted |
+   * rejected | withdrawn | failed.
+   *
+   * `submitted_at` alone cannot carry this. It was set by pressing a button on
+   * a screen that does not send anything, so it recorded an intention, and
+   * there was no column for the difference between "cleared to go", "a person
+   * uploaded it and here is the receipt" and "the agency acknowledged it".
+   */
+  submission_state?: string | null;
+  submission_method?: string | null;
+  submission_destination?: string | null;
+  sent_timezone?: string | null;
+  confirmation_number?: string | null;
+  submission_attestation?: string | null;
+  submitted_by?: string | null;
+  /** The stored receipt or screenshot that proves the send. */
+  proof_document_id?: string | null;
   outcome: "won" | "lost" | "no_award" | "pending" | null;
   award_amount: number | null;
   loss_reason: string | null;

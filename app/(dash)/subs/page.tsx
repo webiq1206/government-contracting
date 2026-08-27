@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CERTIFICATIONS } from "@/lib/domain/sub-capability";
+import { DEFAULT_RATE_EVIDENCE } from "@/lib/data";
 import { subDatabase, subDatabaseCount, subPeek, SUB_SORTS } from "@/lib/data";
 import { SubPeek } from "@/components/sub-peek";
 import { PageFrame } from "@/components/page-frame";
@@ -72,6 +74,91 @@ const SPECS: FilterSpec[] = [
     max: 3650,
     hint: "Not contacted in this many days. Never-contacted firms are included.",
   },
+  {
+    key: "reach",
+    label: "Can we reach them",
+    kind: "select",
+    placeholder: "Any",
+    hint: "A verified address or a phone number. The same test the record page shows as its state.",
+    options: [
+      { value: "yes", label: "Yes" },
+      { value: "no", label: "No usable email or phone" },
+    ],
+  },
+  {
+    key: "paperwork",
+    label: "Paperwork",
+    kind: "select",
+    placeholder: "Any",
+    hint: "Whether the documents an award needs are on file and current.",
+    options: [
+      { value: "ready", label: "Nothing outstanding" },
+      { value: "short", label: "Something missing or lapsed" },
+    ],
+  },
+  {
+    key: "worksIn",
+    label: "Will work in",
+    kind: "text",
+    placeholder: "NM",
+    upper: true,
+    hint: "Their recorded service area, or their own state when nobody has asked them.",
+  },
+  {
+    key: "cert",
+    label: "Certification",
+    kind: "select",
+    placeholder: "Any",
+    hint: "Set-aside certifications, for a solicitation that reserves work for one.",
+    options: CERTIFICATIONS.map((c) => ({ value: c.key, label: c.label })),
+  },
+  {
+    key: "minBond",
+    label: "Bonded to at least ($)",
+    kind: "min",
+    min: 0,
+    max: 100_000_000,
+    hint: "Single-job bond. A firm bonded to an amount nobody has recorded does not pass.",
+  },
+  {
+    key: "minCrew",
+    label: "Crew of at least",
+    kind: "min",
+    min: 1,
+    max: 5000,
+    hint: "Firms whose crew size nobody has asked about are set aside, not counted as zero.",
+  },
+  {
+    key: "tag",
+    label: "Tag",
+    kind: "text",
+    placeholder: "Shortlist",
+    hint: "Tags your team put on records. Case does not matter.",
+  },
+  {
+    key: "minResp",
+    label: "Answers at least (%)",
+    kind: "min",
+    min: 0,
+    max: 100,
+    hint: "Of what we sent them. Firms we have emailed fewer than three times are set aside, because a stranger has no response rate.",
+  },
+  {
+    key: "minQuote",
+    label: "Quotes at least (%)",
+    kind: "min",
+    min: 0,
+    max: 100,
+    hint: "Of what we sent them, on the same three-email floor.",
+  },
+  {
+    key: "minAward",
+    label: "Wins at least (%)",
+    kind: "min",
+    min: 0,
+    max: 100,
+    hint: "Of the quotes they gave, not of the emails we sent: this measures their bids rather than our outreach.",
+  },
   { key: "preferred", label: "Preferred only", kind: "boolean" },
   { key: "sb", label: "Small business", kind: "boolean" },
   {
@@ -79,6 +166,12 @@ const SPECS: FilterSpec[] = [
     label: "Include blocked",
     kind: "boolean",
     hint: "Blocked firms are hidden by default so nobody emails one by accident.",
+  },
+  {
+    key: "archived",
+    label: "Include put aside",
+    kind: "boolean",
+    hint: "Records taken off the roster, and ones folded into another. Different from blocked, and hidden by default for the same reason.",
   },
 ];
 
@@ -109,6 +202,19 @@ export default async function SubsPage({
       | "unchecked"
       | undefined,
     license: values.license as "active" | "other" | "unknown" | undefined,
+    includeArchived: values.archived === "1",
+    contactable: values.reach as "yes" | "no" | undefined,
+    paperwork: values.paperwork as "ready" | "short" | undefined,
+    worksIn: values.worksIn,
+    certification: values.cert,
+    // Typed in dollars, stored in cents. The filter box says dollars because
+    // that is the number on a bond.
+    minBondCents: values.minBond != null ? Math.round(Number(values.minBond) * 100) : undefined,
+    minCrew: values.minCrew != null ? Number(values.minCrew) : undefined,
+    minResponseRate: values.minResp != null ? Number(values.minResp) : undefined,
+    minQuoteRate: values.minQuote != null ? Number(values.minQuote) : undefined,
+    minAwardRate: values.minAward != null ? Number(values.minAward) : undefined,
+    tag: values.tag,
   };
 
   /*
@@ -117,6 +223,17 @@ export default async function SubsPage({
    * of a list a filter has narrowed to two pages returns nothing and reads as
    * "you have no subcontractors".
    */
+  /*
+   * Whether any filter that needs a denominator is on. Used only to explain
+   * an empty list, which is the one place the difference between "none of
+   * them" and "not enough evidence about any of them" changes what somebody
+   * does next.
+   */
+  const rateFiltered =
+    filters.minResponseRate != null ||
+    filters.minQuoteRate != null ||
+    filters.minAwardRate != null;
+
   const total = await subDatabaseCount(filters);
   const paging = parsePaging(searchParams, total);
   const subs = await subDatabase(filters, {
@@ -194,8 +311,15 @@ export default async function SubsPage({
         sortParam={serializeSort(sort)}
         perPage={paging.perPage}
         viewsKey="brostco.subs.views"
+        /* Always a count, including when it is none: the filter sheet shows
+           this line above Apply, and a blank there reads as a control that has
+           not worked rather than a search that found nothing. */
         resultLabel={
-          total > 0 ? `Showing ${paging.from}-${paging.to} of ${total}` : undefined
+          total > 0
+            ? `Showing ${paging.from}-${paging.to} of ${total}`
+            : filtered
+              ? "No subcontractors match these filters"
+              : "No subcontractors on the roster yet"
         }
       />
 
@@ -269,7 +393,19 @@ export default async function SubsPage({
               filtered ? (
                 <EmptyState
                   title="No subcontractors match these filters"
-                  description="Every filter above is applied together. Remove one from the chips to widen the search."
+                  description={
+                    /*
+                     * A rate filter empties differently from the others, and
+                     * saying so matters. "Answers at least half the time"
+                     * returning nothing reads as "no firm here is
+                     * responsive", when the truth is usually that no firm has
+                     * been emailed enough times to have a rate at all. Those
+                     * two lead to opposite next actions.
+                     */
+                    rateFiltered
+                      ? `A rate needs something to divide by, so firms with fewer than ${DEFAULT_RATE_EVIDENCE} sends are set aside rather than counted as zero. If your roster is new, that may be all of them.`
+                      : "Every filter above is applied together. Remove one from the chips to widen the search."
+                  }
                   action={
                     <Link href="/subs" className="btn-ghost text-sm">
                       Clear all filters

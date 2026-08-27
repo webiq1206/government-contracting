@@ -204,6 +204,7 @@ export const QUEUE_NAMES = [
   "sources-sought-responder",
   "backlink-scout",
   "sub-onboarding",
+  "reverify",
   // maintenance jobs
   "outreach-followup",
   "outreach-recovery-sweep",

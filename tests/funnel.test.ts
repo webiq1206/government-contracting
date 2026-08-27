@@ -35,17 +35,42 @@ function counts(partial: Partial<Record<FunnelKey, number>>): FunnelCounts {
 }
 
 describe("buildFunnel", () => {
-  it("names the eight steps the audit asks for, in order", () => {
+  it("names the nine steps the audit asks for, in order", () => {
     expect(FUNNEL_STEPS.map((s) => s.label)).toEqual([
       "Found",
       "Scored",
       "Pursued",
       "Subs contacted",
+      /*
+       * The step that separates two different problems. Without it, "40
+       * contacted, 3 quoted" cannot say whether nobody answered or plenty
+       * answered and would not price the work.
+       */
+      "Replies received",
       "Quotes received",
       "Bid built",
       "Submitted",
       "Won or lost",
     ]);
+  });
+
+  it("never lets a later step outnumber the one before it", () => {
+    /*
+     * The property the whole shape rests on. A quote logged with no inbound
+     * message still counts as a reply, because the quote is the reply; without
+     * that, the replies row could come back smaller than the quotes row and
+     * read as a bug whichever way it was explained.
+     */
+    const steps = buildFunnel(
+      counts({
+        found: 50, scored: 50, pursued: 30, subs_contacted: 20,
+        replies_received: 12, quotes_received: 12, bid_built: 6, submitted: 4,
+      })
+    );
+    for (let i = 1; i < steps.length; i++) {
+      expect(steps[i].count, `${steps[i].label} exceeds ${steps[i - 1].label}`)
+        .toBeLessThanOrEqual(steps[i - 1].count);
+    }
   });
 
   it("computes conversion from the previous step and from the top", () => {

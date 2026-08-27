@@ -21,6 +21,7 @@ import { learningLoop } from "./learning-loop";
 import { analyticsEngine } from "./analytics-engine";
 import { sourcesSoughtResponder } from "./sources-sought-responder";
 import { backlinkScout } from "./backlink-scout";
+import { reverify } from "./reverify";
 
 // Maintenance jobs (time-based plumbing).
 import {
@@ -58,6 +59,7 @@ export const ROSTER: AgentDefinition[] = [
   complianceMonitor,
   learningLoop,
   analyticsEngine,
+  reverify,
   sourcesSoughtResponder,
   backlinkScout,
   subOnboarding,

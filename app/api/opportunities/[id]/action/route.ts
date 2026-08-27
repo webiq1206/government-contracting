@@ -9,6 +9,12 @@ import { CALL_STAGE, STAGE_AFTER_CALLS, withoutCallStage } from "@/lib/domain/ca
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
+import {
+  moveOpportunity,
+  passOpportunity,
+  pursueOpportunity,
+  STAGE_AGENTS,
+} from "@/lib/opportunity-transitions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,16 +42,9 @@ const STAGE_ORDER = [
   "submitted",
 ];
 
-// The agent(s) that produce the work for a given stage. Re-running or sending
-// back to a stage re-enqueues these. Human-only stages (quote_entry) have none.
-const STAGE_AGENTS: Record<string, string[]> = {
-  scoring: ["scoring-engine"],
-  analysis: ["solicitation-analyst", "pricing-research"],
-  sub_research: ["sub-finder"],
-  outreach: ["outreach"],
-  call_queue: ["call-prep"],
-  bid_building: ["bid-builder"],
-};
+// STAGE_AGENTS now lives with the transition service, so a stage gaining an
+// agent gains it for the drag, the menu, the bulk bar and the send-back path
+// at once rather than in whichever of them somebody remembered.
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const ctx = await requireOrgContext({ capability: "decide" });
@@ -83,40 +82,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (!resolved.ok || !resolved.stage) {
       return NextResponse.json({ error: resolved.error ?? "That move is not allowed." }, { status: 400 });
     }
-    const agents = STAGE_AGENTS[resolved.stage] ?? [];
-    await query(
-      `update opportunities
-          set stage=$2, status='open', human_action_required=$3, review_expires_at=null
-        where id=$1`,
-      [params.id, resolved.stage, agents.length === 0]
+    const moved = await moveOpportunity(
+      orgId,
+      params.id,
+      resolved.stage,
+      auth.email,
+      opp.stage
     );
-    for (const a of agents) await enqueue(a, { opportunityId: params.id });
-    await logAgent({
-      agent: "operator",
-      action: "move",
-      opportunityId: params.id,
-      level: "info",
-      message: `Operator ${auth.email} moved opportunity from ${opp.stage.replace(/_/g, " ")} to ${resolved.stage.replace(/_/g, " ")}${agents.length ? ` (${agents.join(", ")} queued)` : ""}.`,
-    });
-    return NextResponse.json({ ok: true, stage: resolved.stage, requeued: agents });
+    if (!moved.ok) return NextResponse.json({ error: "No such record." }, { status: 404 });
+    return NextResponse.json({ ok: true, stage: resolved.stage, requeued: moved.requeued });
   }
 
   if (action === "pursue") {
-    await query(
-      `update opportunities
-          set tier='pursue', stage='analysis', human_action_required=false, review_expires_at=null
-        where id=$1`,
-      [params.id]
-    );
-    await enqueue("solicitation-analyst", { opportunityId: params.id });
-    await enqueue("pricing-research", { opportunityId: params.id });
-    await logAgent({
-      agent: "operator",
-      action: "pursue",
-      opportunityId: params.id,
-      level: "info",
-      message: `Operator ${auth.email} promoted opportunity to pursue.`,
-    });
+    const ok = await pursueOpportunity(orgId, params.id, auth.email);
+    if (!ok) return NextResponse.json({ error: "No such record." }, { status: 404 });
     return NextResponse.json({ ok: true, stage: "analysis" });
   }
 
@@ -138,23 +117,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (passReason.length > 500) {
       return NextResponse.json({ error: "That reason is too long." }, { status: 400 });
     }
-    await query(
-      `update opportunities set tier='dismiss', stage='dismissed', status='archived',
-              human_action_required=false, review_expires_at=null,
-              notes = case
-                when coalesce(notes, '') = '' then $2
-                else notes || E'\n' || $2
-              end
-        where id=$1`,
-      [params.id, `Passed: ${passReason}`]
-    );
-    await logAgent({
-      agent: "operator",
-      action: "dismiss",
-      opportunityId: params.id,
-      level: "info",
-      message: `Operator ${auth.email} passed on this opportunity: ${passReason}`,
-    });
+    const ok = await passOpportunity(orgId, params.id, passReason, auth.email);
+    if (!ok) return NextResponse.json({ error: "No such record." }, { status: 404 });
     return NextResponse.json({ ok: true, stage: "dismissed" });
   }
 

@@ -136,6 +136,27 @@ d("jobs against deleted records (integration)", () => {
     expect(jobRuns[0].error).toContain("no longer exists");
   });
 
+  it("records it even though the id it names is a foreign key to a row that is gone", async () => {
+    /*
+     * The regression this is guarding. job_runs.opportunity_id is a foreign
+     * key, so opening the run row with the deleted id failed, the insert's
+     * catch turned that into null, and the abandonment had no run row to
+     * finish: the one outcome that must leave a trace left none, silently, in
+     * exactly the case it exists for. The id is still named in the message.
+     */
+    await runAgent(probeAgent(), "queue", { opportunityId: deletedOppId });
+
+    const runs = await query<{ opportunity_id: string | null; error: string | null }>(
+      `select opportunity_id, error from job_runs where agent = $1`,
+      [PROBE]
+    );
+    expect(runs.length).toBeGreaterThan(0);
+    // Null rather than the dangling id: the row exists, and points at nothing
+    // that is gone.
+    expect(runs.every((r) => r.opportunity_id === null)).toBe(true);
+    expect(runs[0].error).toContain(deletedOppId);
+  });
+
   it("files the abandonment under the organization whose job it was", async () => {
     /**
      * The record that would have answered "whose job is this?" is the record

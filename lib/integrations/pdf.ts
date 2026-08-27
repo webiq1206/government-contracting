@@ -55,6 +55,51 @@ export async function extractPdfText(
   }
 }
 
+/**
+ * The same text, still divided by page.
+ *
+ * `extractPdfText` merges every page into one string, which is fine for
+ * reading and useless for citing: a requirement extracted from a
+ * two-hundred-page specification could be attributed to the document but never
+ * to a page, so "open the source" meant "open the file and start looking".
+ *
+ * Pages are returned as they are, empty ones included, so the index of a page
+ * in this array is its real page number minus one. Dropping blanks would
+ * renumber every page after the first blank, and a citation that points at the
+ * wrong page is worse than no citation, because it will be believed.
+ */
+export async function extractPdfPages(
+  data: Uint8Array | Buffer,
+  maxChars = 400_000
+): Promise<{ pages: string[]; total: number }> {
+  try {
+    ensurePromiseWithResolvers();
+    const { extractText, getDocumentProxy } = await import("unpdf");
+    const bytes = data.constructor === Uint8Array ? (data as Uint8Array) : new Uint8Array(data);
+    const pdf = await getDocumentProxy(bytes);
+    const { text, totalPages } = await extractText(pdf, { mergePages: false });
+    const raw = Array.isArray(text) ? text : [String(text ?? "")];
+    const pages: string[] = [];
+    let used = 0;
+    for (const page of raw) {
+      if (used >= maxChars) {
+        // Out of budget. Every remaining page is present and empty rather
+        // than absent, so page numbers stay true and the caller can see how
+        // much of the document it is holding.
+        pages.push("");
+        continue;
+      }
+      const cleaned = normalize(page ?? "").slice(0, Math.max(0, maxChars - used));
+      used += cleaned.length;
+      pages.push(cleaned);
+    }
+    return { pages, total: totalPages };
+  } catch (err) {
+    console.warn("[pdf] page extraction failed:", (err as Error).message);
+    return { pages: [], total: 0 };
+  }
+}
+
 function normalize(s: string): string {
   return s
     .replace(/\r/g, "")

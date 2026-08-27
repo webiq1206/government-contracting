@@ -31,7 +31,32 @@ export type AttachmentFetchStatus =
   | "too_large"
   | "unsupported"
   | "no_url"
-  | "no_text";
+  | "no_text"
+  /**
+   * The link was refused before anything was downloaded: it pointed somewhere
+   * a server-side fetch has no business reaching, used a protocol this does
+   * not speak, or bounced through too many redirects. Separate from "failed"
+   * because retrying changes nothing. The file has to come from a person.
+   */
+  | "refused"
+  /**
+   * Fetched and stored, but its text never reached the analysis: there was
+   * not enough room in the prompt for every document. Separate from "no_text",
+   * where the file itself yielded nothing. Both mean the same thing to anyone
+   * relying on the brief, which is that the document was not read, and neither
+   * may be counted as a success.
+   */
+  | "not_read"
+  /**
+   * A .zip, .rar or .7z: downloaded and stored, contents never opened.
+   *
+   * Nothing in this codebase extracts archives. Reporting one as a
+   * successfully collected document is how an opportunity whose entire
+   * solicitation package arrived as `Solicitation.zip` reached sourcing with
+   * every requirement inside it unread, and the analysis built from the
+   * portal blurb.
+   */
+  | "archive";
 
 export interface AttachmentFetchOutcome {
   name: string;
@@ -218,11 +243,21 @@ export function evaluateSolicitationCompleteness(
   // with its instructions-to-offerors still unread, and the requirements
   // silently coming from the portal summary instead.
   const fetchedOk = input.attachmentOutcomes.filter(
-    (o) => o.status === "fetched" || o.status === "unsupported"
+    (o) =>
+      o.status === "fetched" ||
+      o.status === "unsupported" ||
+      o.status === "not_read" ||
+      o.status === "archive"
   ).length;
   const unread = input.attachmentOutcomes.filter((o) => o.status === "no_text");
+  const notRead = input.attachmentOutcomes.filter((o) => o.status === "not_read");
+  const archives = input.attachmentOutcomes.filter((o) => o.status === "archive");
   const failed = input.attachmentOutcomes.filter(
-    (o) => o.status === "failed" || o.status === "too_large" || o.status === "no_url"
+    (o) =>
+      o.status === "failed" ||
+      o.status === "too_large" ||
+      o.status === "no_url" ||
+      o.status === "refused"
   );
   const hasStoredDocs = input.storedDocumentCount > 0 || fetchedOk > 0;
   if (!input.attachmentsWaived && !hasStoredDocs) {
@@ -250,6 +285,34 @@ export function evaluateSolicitationCompleteness(
       critical: true,
     });
     riskFlags.push("missing_attachments");
+  }
+
+  if (archives.length > 0) {
+    missing.push({
+      key: "unopened_archives",
+      what: "Archives whose contents were never opened",
+      why: "The archive is stored, but nothing inside it has been read, so every requirement, form, drawing and page limit it contains is missing from this brief.",
+      retrievable: "admin",
+      resolution: `Not opened: ${archives.map((f) => f.name).join("; ")}. Download each archive, extract it, and upload the files inside as documents.`,
+      action: { label: "Upload documents", href: "#attachments", modal: "upload" },
+      critical: true,
+    });
+    riskFlags.push("unopened_archives");
+  }
+
+  if (notRead.length > 0) {
+    missing.push({
+      key: "documents_not_read",
+      what: "Documents the analysis had no room for",
+      why: "These files were downloaded and stored, but their text never reached the analysis, so any requirement, form, page limit or deadline inside them is missing from this brief.",
+      retrievable: "either",
+      resolution: `Not read: ${notRead
+        .map((f) => `${f.name}${f.detail ? ` (${f.detail})` : ""}`)
+        .join("; ")}. Open each one and enter what it requires, or narrow the document set and re-run analysis.`,
+      action: { label: "Review missing information", href: "#attachments", modal: "review-missing" },
+      critical: true,
+    });
+    riskFlags.push("documents_not_read");
   }
 
   if (unread.length > 0) {

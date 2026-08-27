@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import type { CallCardRow } from "@/lib/data";
-import { ActionButton } from "@/components/action-button";
+import { SkipCallControl } from "@/components/skip-call-control";
+import { CallLater } from "@/components/call-later";
 import { CallWorkspaceLauncher } from "@/components/call-workspace-launcher";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import { SubWorkNeeded } from "@/components/sub-work-needed";
@@ -161,19 +162,19 @@ export function CallCard({
             Opens a full call workspace with script, attachments, and capture form.
           </p>
           <div className="flex shrink-0 items-center gap-2">
-            <ActionButton
-              endpoint={`/api/call-cards/${c.id}/skip`}
-              className="btn-ghost text-xs"
-              toast={{
-                message: `Skipped calling ${c.company_name}. Recorded on their history.`,
-                undo: {
-                  endpoint: `/api/call-cards/${c.id}/skip`,
-                  body: { undo: true },
-                },
-              }}
-            >
-              Skip this call
-            </ActionButton>
+            {/*
+              One click became two questions, and both were being guessed.
+              The old control recorded a sentence nobody chose and a scope
+              nobody was asked about, so the decision lasted until the next
+              Call Prep run rebuilt the card.
+            */}
+            {/* Two different decisions, side by side and worded so. */}
+            <CallLater callCardId={c.id} companyName={c.company_name} />
+            <SkipCallControl
+              callCardId={c.id}
+              companyName={c.company_name}
+              trade={c.trade ?? null}
+            />
             <span className="btn-primary text-xs">Start call</span>
           </div>
         </div>

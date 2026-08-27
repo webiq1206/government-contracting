@@ -27,6 +27,10 @@ const GAP_LABEL: Record<string, string> = {
   insurance: "your insurance limits",
   licensing: "your license number for this state",
   availability: "your availability for this schedule",
+  taxes: "how much sales or use tax to add, since your price does not include it",
+  quote_validity: "how long your price is good for",
+  uncovered_scope: "which part of the work your price does not cover",
+  price_firmness: "whether that is a firm price or an estimate",
 };
 
 export function describeGap(gap: string): string {
@@ -109,6 +113,10 @@ export async function requestClarification(input: {
     inReplyTo: input.inReplyToMessageId ?? undefined,
     orgId: input.orgId ?? undefined,
     opportunityId: input.opportunityId ?? undefined,
+    // A clarification request is still an automated approach, and stopping
+    // outreach for a firm has to stop it too.
+    subcontractorId: input.subcontractorId,
+    trade: input.trade ?? null,
   });
 
   if (res.disabled || res.blocked || res.error) {

@@ -10,6 +10,7 @@ import {
   resolveSnoozeUntil,
   type SnoozeUntilChoice,
 } from "@/lib/domain/snooze";
+import { passOpportunity, pursueOpportunity } from "@/lib/opportunity-transitions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -168,36 +169,34 @@ export async function POST(req: Request) {
       }
     }
 
+    /*
+     * A signed-in user with no organization cannot reach any record, and the
+     * service takes an id rather than a nullable one so that fact is checked
+     * here rather than turned into a query that matches nothing.
+     */
+    const orgId = auth.organizationId;
+    if (!orgId) {
+      return NextResponse.json({ error: "No organization on this account." }, { status: 403 });
+    }
+
     let processed = 0;
     for (const id of ids) {
-      const opp = await queryOne<{ id: string }>(
-        `select id from opportunities where id = $1 and org_id = $2`,
-        [id, auth.organizationId]
-      );
-      if (!opp) continue;
-
-      if (body.action === "pursue") {
-        await query(
-          `update opportunities
-              set tier='pursue', stage='analysis', human_action_required=false, review_expires_at=null
-            where id=$1`,
-          [id]
-        );
-        await enqueue("solicitation-analyst", { opportunityId: id });
-        await enqueue("pricing-research", { opportunityId: id });
-      } else {
-        await query(
-          `update opportunities set tier='dismiss', stage='dismissed', status='archived',
-                  human_action_required=false, review_expires_at=null,
-                  notes = case
-                    when coalesce(notes, '') = '' then $2
-                    else notes || E'\n' || $2
-                  end
-            where id=$1`,
-          [id, `Passed: ${passReason}`]
-        );
-      }
-      processed += 1;
+      // No read-then-write: the service scopes by organization in its own
+      // WHERE clause and reports whether it touched anything, which closes
+      // the window between the check and the update.
+      /*
+       * The same service the single-record route calls, not a second copy of
+       * its UPDATE. They were two copies and they agreed, which is the only
+       * time copies ever do: the first change either of them needed was a
+       * column to clear on leaving review, and a bulk pass that skipped it
+       * would have left records able to be dismissed on a warning issued
+       * about a decision somebody had already made.
+       */
+      const done =
+        body.action === "pursue"
+          ? await pursueOpportunity(orgId, id, auth.email)
+          : await passOpportunity(orgId, id, passReason, auth.email);
+      if (done) processed += 1;
     }
 
     await logAgent({

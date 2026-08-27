@@ -82,6 +82,12 @@ describe("the capped query this was about", () => {
     const data = readFileSync(join(process.cwd(), "lib/data.ts"), "utf8");
     const at = data.indexOf("from compliance_items\n        where org_id = $1");
     expect(at, "the complianceAlerts query moved; re-check whether it is still capped").toBeGreaterThan(-1);
-    expect(data.slice(at, at + 400)).toMatch(/limit\s+\d+/);
+    /*
+     * Wide enough to survive a comment inside the query. A fixed window that
+     * only just reached the LIMIT failed the moment somebody explained a
+     * clause above it, which is a test punishing the wrong thing.
+     */
+    const q = data.slice(at);
+    expect(q.slice(0, q.indexOf("`", 1))).toMatch(/limit\s+\d+/);
   });
 });

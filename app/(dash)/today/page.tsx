@@ -8,7 +8,8 @@ import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
 import { automationHealth } from "@/lib/automation-status";
 import { AutomationBlockerBanner } from "@/components/automation-incidents";
 import { SetupChecklist } from "@/components/setup-checklist";
-import { workQueue, completedToday } from "@/lib/data";
+import { workQueue, completedToday, completedTodayItems } from "@/lib/data";
+import { parseOwnerFilter, type OwnerFilter } from "@/lib/domain/ownership";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
@@ -33,11 +34,12 @@ import { withGuideQuery } from "@/lib/guide-links";
 import { TodayBulkCalls } from "@/components/today-bulk-calls";
 import { TodayBulkTriage } from "@/components/today-bulk-triage";
 import { ReplyReviewList } from "@/components/reply-review-list";
-import { TodayCounters, CompletedTodayPanel } from "@/components/today-counters";
+import { TodayCounters, CompletedList, CompletedTodayPanel } from "@/components/today-counters";
 import { QueueFilters } from "@/components/queue-filters";
 import {
   queueCounts,
   filterWorkItems,
+  isCompletedFilter,
   parseQueueFilter,
   parseKindFilter,
   KIND_FILTER_LABEL,
@@ -141,7 +143,7 @@ function OppActionRow({
             <SnoozeButton
               kind="opportunity"
               id={o.id}
-              className="shell-ghost min-h-11 text-xs md:min-h-0"
+              className="shell-ghost min-h-11 text-xs lg:min-h-0"
             />
           </StopClickPropagation>
         )}
@@ -150,7 +152,7 @@ function OppActionRow({
             <SnoozeButton
               kind="opportunity"
               id={o.id}
-              className="shell-ghost min-h-11 text-xs md:min-h-0"
+              className="shell-ghost min-h-11 text-xs lg:min-h-0"
             />
             <ActionButton
               endpoint={`/api/opportunities/${o.id}/action`}
@@ -259,7 +261,7 @@ function StatRow({
     <li>
       <Link
         href={href}
-        className="group flex min-h-11 items-center justify-between py-2.5 transition-colors hover:text-foreground md:min-h-0"
+        className="group flex min-h-11 items-center justify-between py-2.5 transition-colors hover:text-foreground lg:min-h-0"
       >
         <span className="group-hover:underline group-hover:decoration-gold group-hover:underline-offset-4">
           {label}
@@ -476,6 +478,22 @@ export default async function TodayPage({
     return (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
   })();
   const queueBucket: QueueFilter = parseQueueFilter(searchParams?.due);
+  /*
+   * Whose work to show.
+   *
+   * "On me" is the read an operator on a team wants first thing, and until
+   * this existed the page could only answer "what is on this company", which
+   * on a five-person account is a list where each person's own eight items are
+   * mixed into forty.
+   */
+  const queueOwner: OwnerFilter = parseOwnerFilter(searchParams?.owner);
+  /*
+   * Who is looking. Needed before the queue is filtered, because "on me" has
+   * no meaning without it, and read once here rather than twice: the setup
+   * checklist below wants the same person.
+   */
+  const { currentUser } = await import("@/lib/auth");
+  const viewer = await currentUser().catch(() => null);
   const queueKind: WorkKind | null = parseKindFilter(searchParams?.kind);
   const counts = queueCounts(queueItems);
   const kindCounts = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).reduce(
@@ -485,18 +503,42 @@ export default async function TodayPage({
     },
     {} as Record<WorkKind, number>
   );
-  const shownQueue = filterWorkItems(queueItems, {
-    bucket: queueBucket,
-    kind: queueKind,
-    q: queueQ,
-  });
+  /*
+   * The one filter served from somewhere else.
+   *
+   * Completed today is a cut of the same list from the operator's side, and
+   * the queue cannot answer it: the queue is what is left. So it comes from
+   * the ledger of what happened, and filterWorkItems refuses it outright
+   * rather than returning an empty array that would read as a day on which
+   * nothing was finished.
+   */
+  const showingCompleted = isCompletedFilter(queueBucket);
+  const completedItems = showingCompleted
+    ? await completedTodayItems().catch((e) => {
+        console.error("[today] completed-today list failed:", e);
+        return null;
+      })
+    : [];
+  const shownQueue = showingCompleted
+    ? []
+    : filterWorkItems(queueItems, {
+        bucket: queueBucket,
+        kind: queueKind,
+        q: queueQ,
+        owner: queueOwner,
+        viewerId: viewer?.id,
+      });
   const queueFiltered = queueBucket !== "all" || queueKind != null || queueQ !== "";
 
-  function queueHref(opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string } = {}): string {
+  function queueHref(
+    opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string; owner?: OwnerFilter } = {}
+  ): string {
     const p = new URLSearchParams();
     const bucket = opts.bucket ?? queueBucket;
     const kind = opts.kind === undefined ? queueKind : opts.kind;
     const q = opts.q ?? queueQ;
+    const owner = opts.owner ?? queueOwner;
+    if (owner !== "anyone") p.set("owner", owner);
     if (bucket !== "all") p.set("due", bucket);
     if (kind) p.set("kind", kind);
     if (q) p.set("q", q);
@@ -514,9 +556,7 @@ export default async function TodayPage({
   // accountSetup holds the per-organization and trial reasoning that used to
   // live here, so the Guide Me panel and its badge answer this the same way
   // rather than from the deployment's own environment.
-  const { currentUser } = await import("@/lib/auth");
-  const setupUser = await currentUser().catch(() => null);
-  const setup = await accountSetup(profile?.profile_json ?? null, setupUser);
+  const setup = await accountSetup(profile?.profile_json ?? null, viewer);
 
   const urgentIds = new Set(data.urgent.map((o) => o.id));
   const bidWork = data.bidWork.filter((o) => !urgentIds.has(o.id));
@@ -612,25 +652,37 @@ export default async function TodayPage({
               {/* The one list of everything waiting on a person, above the
                   themed sections. The sections stay for context; this answers
                   "what should I do next" before any of them are opened. */}
-              {queueItems.length > 0 && (
+              {/*
+                Shown when there is work left OR when there was work done.
+                Gating on the queue alone meant an operator who cleared the
+                whole list lost the counters, the Completed today filter and
+                any record that the day had happened at all: "nothing to do"
+                and "everything done" rendered identically, which is the one
+                pair this page exists to tell apart.
+              */}
+              {(queueItems.length > 0 || done.total > 0 || showingCompleted) && (
                 <div id="queue" className="scroll-mt-6 space-y-4">
                   <TodayCounters
                     counts={counts}
                     done={done}
                     active={queueBucket}
                     hrefFor={(f) => queueHref({ bucket: f })}
-                    completedHref="/today#completed"
+                    completedHref={queueHref({ bucket: "completed_today" })}
                   />
                   <QueueFilters
                     q={queueQ}
                     bucket={queueBucket}
                     kind={queueKind}
                     kindCounts={kindCounts}
+                    owner={queueOwner}
+                    ownerHrefFor={(o) => queueHref({ owner: o })}
                     hrefFor={(o) => queueHref(o)}
                     clearHref="/today#queue"
                   />
-                  {shownQueue.length > 0 ? (
-                    <WorkQueue items={shownQueue} limit={5} />
+                  {showingCompleted ? (
+                    <CompletedList items={completedItems} />
+                  ) : shownQueue.length > 0 ? (
+                    <WorkQueue items={shownQueue} limit={5} viewerId={viewer?.id} />
                   ) : (
                     <EmptyState
                       tone="success"

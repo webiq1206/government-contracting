@@ -48,6 +48,7 @@ export function DataTable<T extends { id: string }>({
   paging,
   total,
   prefsKey,
+  card,
   rowHref,
   selection,
   emptyState,
@@ -61,6 +62,18 @@ export function DataTable<T extends { id: string }>({
   total: number;
   /** Storage key for column visibility + density on this page. */
   prefsKey: string;
+  /**
+   * One row as a card, for viewports too narrow for a table.
+   *
+   * The table is 52rem wide inside a horizontal scroller, so on a phone
+   * reading one row means scrolling sideways until the column that identifies
+   * it has left the screen. A card is not a smaller table: it is a different
+   * arrangement of the same row, and each page knows which of its facts
+   * survive the trip.
+   *
+   * Without one, the table still scrolls sideways as before.
+   */
+  card?: (row: T) => React.ReactNode;
   rowHref?: (row: T) => string;
   selection?: {
     selected: Set<string>;
@@ -129,7 +142,15 @@ export function DataTable<T extends { id: string }>({
     <div className="relative">
       {/* Column + density controls. Deliberately above the table's own scroll
           container so they stay reachable on a wide table. */}
-      <div className="flex flex-wrap items-center justify-end gap-2 px-1 pb-2">
+      {/*
+        Column choice and density are about a table. Where cards replace it,
+        the controls would change nothing the reader can see.
+      */}
+      <div
+        className={`flex flex-wrap items-center justify-end gap-2 px-1 pb-2${
+          card ? " hidden lg:flex" : ""
+        }`}
+      >
         <div className="relative">
           <button
             type="button"
@@ -176,7 +197,7 @@ export function DataTable<T extends { id: string }>({
               /* Thumb-sized where a thumb is what presses it. The sweep
                  measured these at 24px tall on a phone, which clears WCAG
                  2.5.8 and not the 44px this product holds itself to. */
-              className={`inline-flex min-h-11 items-center rounded px-3 transition-colors md:min-h-0 md:px-2 md:py-1 ${
+              className={`inline-flex min-h-11 items-center rounded px-3 transition-colors lg:min-h-0 lg:px-2 lg:py-1 ${
                 density === d ? "bg-gold/20 text-gold-text" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -186,7 +207,20 @@ export function DataTable<T extends { id: string }>({
         </div>
       </div>
 
-      <div className="scroll-thin max-h-[calc(100dvh-18rem)] overflow-auto rounded-md border border-border">
+      {card && (
+        <ul className="space-y-2 lg:hidden">
+          {rows.map((row) => (
+            <li key={row.id}>{card(row)}</li>
+          ))}
+          {rows.length === 0 && <li>{emptyState}</li>}
+        </ul>
+      )}
+
+      <div
+        className={`scroll-thin max-h-[calc(100dvh-18rem)] overflow-auto rounded-md border border-border${
+          card ? " hidden lg:block" : ""
+        }`}
+      >
         <table className="w-full min-w-[52rem] text-sm">
           {/* Sticky header: on a hundred-row page, scrolling three screens down
               and no longer knowing which column is which is the whole problem
@@ -219,7 +253,7 @@ export function DataTable<T extends { id: string }>({
                            header row is unhittable on a phone, and sorting is
                            exactly what somebody does on a small screen to make
                            a wide table usable. */
-                        className={`-mx-2 inline-flex min-h-11 min-w-11 items-center justify-center px-2 transition-colors hover:text-foreground md:mx-0 md:min-h-0 md:min-w-0 md:justify-start md:px-0 ${
+                        className={`-mx-2 inline-flex min-h-11 min-w-11 items-center justify-center px-2 transition-colors hover:text-foreground lg:mx-0 lg:min-h-0 lg:min-w-0 lg:justify-start lg:px-0 ${
                           active ? "text-gold-text" : ""
                         }`}
                       >

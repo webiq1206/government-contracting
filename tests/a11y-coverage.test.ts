@@ -42,6 +42,7 @@ const EXEMPT = new Map<string, string>([
   // that link to them, and by the per-piece browser probes.
   ["/opportunity/[id]", "Needs a record id."],
   ["/subs/[id]", "Needs a record id."],
+  ["/contracts/[id]", "Needs a record id."],
   ["/admin/accounts/[id]", "Needs a record id."],
 ]);
 

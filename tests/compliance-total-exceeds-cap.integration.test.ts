@@ -37,7 +37,7 @@ d("the compliance count behind the ledger", () => {
     for (let i = 0; i < ALERTS; i++) {
       await query(
         `insert into compliance_items (org_id, category, label, status, due_at)
-         values ($1,'registration',$2,'critical', now() + interval '3 days')`,
+         values ($1,'registration',$2,'expiring_soon', now() + interval '3 days')`,
         [org, `Probe item ${i + 1}`]
       );
     }

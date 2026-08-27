@@ -128,3 +128,57 @@ describe("the state vocabulary", () => {
     expect(stateTone("not_configured")).toBe("slate");
   });
 });
+
+describe("real use outranks a test", () => {
+  const base = { configured: true, lastError: null };
+  const days = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  it("stays healthy on real work even when the test is old", () => {
+    /*
+     * The bug this exists for. An integration doing its job every hour read
+     * as stale because nobody had pressed a button in a month, while the page
+     * claimed to show when each service was last used successfully.
+     */
+    const v = integrationState({
+      ...base,
+      lastValidatedAt: days(60),
+      lastSuccessAt: days(1),
+    });
+    expect(v.state).toBe("healthy");
+    expect(v.reason).toContain("real work");
+  });
+
+  it("says which kind of evidence it is relying on", () => {
+    const tested = integrationState({ ...base, lastValidatedAt: days(1), lastSuccessAt: null });
+    expect(tested.state).toBe("healthy");
+    expect(tested.reason).toContain("tested");
+  });
+
+  it("goes stale on the newest evidence, not on the test alone", () => {
+    const v = integrationState({
+      ...base,
+      lastValidatedAt: days(90),
+      lastSuccessAt: days(80),
+    });
+    expect(v.state).toBe("configured");
+    // Reported against the real work, because that is the newer of the two.
+    expect(v.reason).toContain("real work");
+  });
+
+  it("still reports a live failure over any amount of past success", () => {
+    // A key that worked all week and is being refused now is refused now.
+    const v = integrationState({
+      configured: true,
+      lastError: "401 invalid api key",
+      lastValidatedAt: days(1),
+      lastSuccessAt: days(1),
+    });
+    expect(v.state).toBe("blocked");
+  });
+
+  it("says saved and never used when there is neither", () => {
+    const v = integrationState({ ...base, lastValidatedAt: null, lastSuccessAt: null });
+    expect(v.state).toBe("configured");
+    expect(v.reason).toContain("never used or tested");
+  });
+});

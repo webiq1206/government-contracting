@@ -17,6 +17,7 @@
 
 import { flagLabel } from "../flag-labels";
 import type { DataConfidence } from "./score-confidence";
+import type { FactConflict } from "./brief-conflicts";
 
 export type Recommendation = "pursue" | "pass" | "look";
 
@@ -44,6 +45,14 @@ export interface BriefInput {
   requiredTradeCount: number | null;
   valueKnown: boolean;
   pastPerfClassification: string | null;
+  /** The published figure, when there is one. Null is not zero. */
+  value: number | null;
+  /** Where that figure came from: the notice, an analysis, or nothing. */
+  valueSource: string | null;
+  /** Disagreements between the notice and the document. See brief-conflicts. */
+  conflicts: FactConflict[];
+  /** Where to read the original. */
+  sourceLinks: { label: string; href: string }[];
 }
 
 export interface BriefPoint {
@@ -74,6 +83,18 @@ export interface ReviewBrief {
    * things somebody can check.
    */
   effort: string[];
+  /** The published value and where it came from, or the absence of both. */
+  value: { amount: number | null; source: string | null };
+  /**
+   * Two sources stating different facts.
+   *
+   * A separate list from `missing` on purpose. Something nobody stated is a
+   * gap; something stated twice, differently, is the thing most likely to lose
+   * a bid, and a brief that files them together buries it.
+   */
+  conflicts: FactConflict[];
+  /** The notice itself, and anything else worth reading first-hand. */
+  sourceLinks: { label: string; href: string }[];
 }
 
 function pct(d: ScoreDimension): number {
@@ -128,6 +149,7 @@ export function recommend(i: BriefInput): { recommendation: Recommendation; rati
 
 export function buildReviewBrief(i: BriefInput): ReviewBrief {
   const { recommendation, rationale } = recommend(i);
+  const value = { amount: i.value ?? null, source: i.valueSource ?? null };
 
   const positives = [...i.dimensions]
     .filter((d) => d.max_points > 0 && pct(d) >= 0.5)
@@ -187,5 +209,8 @@ export function buildReviewBrief(i: BriefInput): ReviewBrief {
     deadline: i.deadline,
     autoDismissAt: i.reviewExpiresAt,
     effort,
+    value,
+    conflicts: i.conflicts ?? [],
+    sourceLinks: i.sourceLinks ?? [],
   };
 }

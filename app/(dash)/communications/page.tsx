@@ -26,6 +26,9 @@ import {
 } from "@/lib/domain/conversation-centre";
 import { MESSAGE_STATE_LABEL, MESSAGE_STATE_MEANING } from "@/lib/domain/message-state";
 import { ConversationThreadPane } from "@/components/conversation-centre";
+import { NeedsMatchingInbox } from "@/components/needs-matching-inbox";
+import { needsMatching } from "@/lib/needs-matching";
+import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +73,13 @@ export default async function CommunicationsPage({
    * come back 403 is its own kind of lie. The API refuses it either way.
    */
   const canSend = can(ctx.user.orgRole, "outreach");
+  /*
+   * The raw text a remote mail server returned is a postmaster's diagnostic,
+   * not something everybody reading a thread needs, and it names internal
+   * message ids and host names. The plain-English reading of the code is what
+   * the work turns on, and that is shown to everyone.
+   */
+  const canSeeRaw = can(ctx.user.orgRole, "manage_integrations");
 
   const raw = searchParams?.q;
   const q = (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
@@ -77,9 +87,27 @@ export default async function CommunicationsPage({
   const selectedRaw = searchParams?.c;
   const selectedKey = (Array.isArray(selectedRaw) ? selectedRaw[0] : selectedRaw) ?? null;
 
-  const [all, rates] = await Promise.all([
+  const [all, rates, pending, matchTargets] = await Promise.all([
     conversationList({ q: q || undefined }),
     deliverabilityMessages().then(deliverability),
+    /*
+     * Mail that arrived and could not be placed.
+     *
+     * On the Communications page rather than buried somewhere, because it IS
+     * communications: a subcontractor wrote back and the product could not
+     * work out about what. Before this it produced a line in the automation
+     * log, which is a stream for when the machinery misbehaves, not a queue of
+     * customer messages.
+     */
+    needsMatching(ctx.orgId).catch(() => []),
+    query<{ id: string; title: string }>(
+      `select id, title from opportunities
+        where org_id = $1 and coalesce(pursuit_state,'active') = 'active'
+          and stage not in ('archived','lost')
+        order by coalesce(deadline, created_at) desc
+        limit 100`,
+      [ctx.orgId]
+    ).catch(() => []),
   ]);
 
   /*
@@ -175,7 +203,7 @@ export default async function CommunicationsPage({
                 key={f}
                 href={href(f, q)}
                 aria-current={f === filter ? "page" : undefined}
-                className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5 ${
+                className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
                   f === filter
                     ? "border-gold bg-gold/15 text-foreground"
                     : count === 0
@@ -190,6 +218,30 @@ export default async function CommunicationsPage({
           })}
         </nav>
         </PageToolbar>
+
+        {/*
+          Above the conversation list, because a message nobody could place is
+          more urgent than a thread that is filed correctly and waiting. It
+          takes no space at all when the inbox is empty.
+        */}
+        {pending.length > 0 && (
+          <div className="px-4 pb-2">
+            <NeedsMatchingInbox
+              messages={pending.map((m) => ({
+                id: m.id,
+                fromEmail: m.fromEmail,
+                fromName: m.fromName,
+                subject: m.subject,
+                snippet: m.snippet,
+                receivedAt: m.receivedAt.toISOString(),
+                subcontractorId: m.subcontractorId,
+                subcontractorName: m.subcontractorName,
+              }))}
+              opportunities={matchTargets}
+              canAct={canSend}
+            />
+          </div>
+        )}
       </div>
 
       {/*
@@ -283,6 +335,7 @@ export default async function CommunicationsPage({
               conversation={selected}
               messages={messages}
               canSend={canSend}
+              canSeeRaw={canSeeRaw}
               backHref={href(filter, q)}
               stateLabels={MESSAGE_STATE_LABEL}
               stateMeanings={MESSAGE_STATE_MEANING}

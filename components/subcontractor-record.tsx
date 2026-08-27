@@ -13,6 +13,9 @@ const HASH_ALIASES: Record<string, string> = {
   "sub-contact": "overview",
   contact: "overview",
   projects: "overview",
+  capability: "capability",
+  people: "capability",
+  licenses: "capability",
   pairings: "opportunities",
   opportunities: "opportunities",
   conversations: "communications",
@@ -36,6 +39,7 @@ const HASH_ALIASES: Record<string, string> = {
  */
 export function SubcontractorRecord({
   overview,
+  capability,
   opportunities,
   communications,
   quotes,
@@ -44,6 +48,7 @@ export function SubcontractorRecord({
   activity,
 }: {
   overview: ReactNode;
+  capability: ReactNode;
   opportunities: ReactNode;
   communications: ReactNode;
   quotes: ReactNode;
@@ -58,6 +63,12 @@ export function SubcontractorRecord({
       hashAliases={HASH_ALIASES}
       tabs={[
         { id: "overview", label: "Overview", content: overview },
+        /*
+         * Directly after Overview, because it answers the question Overview
+         * raises. Knowing who a firm is leads straight to whether they can
+         * take this job, and that used to have nowhere to live.
+         */
+        { id: "capability", label: "Capability", content: capability },
         { id: "opportunities", label: "Opportunities", content: opportunities },
         { id: "communications", label: "Communications", content: communications },
         { id: "quotes", label: "Quotes", content: quotes },

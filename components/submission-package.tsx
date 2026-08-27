@@ -1,4 +1,10 @@
 "use client";
+import { overrideProblem, OVERRIDE_PROBLEM_MESSAGE } from "@/lib/domain/override";
+import { assessReadiness } from "@/lib/domain/submission-readiness";
+import { MarkAsSent } from "@/components/mark-as-sent";
+import { ReceiptStatusCard } from "@/components/receipt-status-card";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { parseSubmissionState } from "@/lib/domain/submission-state";
 
 /**
  * The submission package panel: priced bid, the full compliance matrix (every
@@ -47,6 +53,7 @@ export function SubmissionPackage({
   contact,
   solicitationNumber,
   opportunityTitle,
+  proofOptions = [],
 }: {
   opportunityId: string;
   bid: Bid;
@@ -57,11 +64,14 @@ export function SubmissionPackage({
   contact?: { name?: string; email?: string; phone?: string } | null;
   solicitationNumber?: string | null;
   opportunityTitle?: string | null;
+  /** Documents on this opportunity that could serve as the send receipt. */
+  proofOptions?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingApproval, setConfirmingApproval] = useState(false);
 
   const matrix: ResolvedRequirement[] = bid.compliance_matrix ?? [];
   const manifest: PackageItem[] = bid.package_manifest ?? [];
@@ -83,7 +93,17 @@ export function SubmissionPackage({
       d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
   });
   const ready = bid.package_ready;
-  const submitted = Boolean(bid.submitted_at);
+  /*
+   * Three states where there used to be two.
+   *
+   * `submitted_at` was set by pressing a button on a screen that does not send
+   * anything, so it recorded an intention. Approving a package and delivering
+   * one are different acts by different parties, and the screen has to be able
+   * to say which has happened.
+   */
+  const submissionState = bid.submission_state ?? (bid.submitted_at ? "sent" : "package_ready");
+  const approved = submissionState === "approved";
+  const submitted = Boolean(bid.submitted_at) || submissionState === "sent";
   const blockers = validation?.blockers ?? [];
   const tradeBlockers = blockers.filter((b) => /pricing has not been received/i.test(b));
   const otherBlockers = blockers.filter((b) => !/pricing has not been received/i.test(b));
@@ -104,6 +124,28 @@ export function SubmissionPackage({
    */
   const openAuditBlockers = findings.filter((f) => f.severity === "blocker" && !f.acknowledged);
   const canForceOverride = !ready && blockers.length === 0 && openAuditBlockers.length === 0;
+  /*
+   * How much assurance actually stands behind this package.
+   *
+   * Five separate facts rather than one boolean, because "the files are all
+   * there" and "something read the solicitation back" are different
+   * assurances and only the second catches a package assembled correctly
+   * against the wrong requirements.
+   */
+  const readiness = assessReadiness({
+    mechanicallyComplete: Boolean(bid.package_ready),
+    blockerCount: blockers.length,
+    auditStatus: bid.audit_status,
+    openAuditBlockers: openAuditBlockers.length,
+    // No sign-off column yet, so nobody has verified anything by hand.
+    verifiedBy: null,
+    submissionState,
+    // Not yet a per-account setting. Left off so the only thing that turns it
+    // on is the audit being unavailable, which is the case the instructions
+    // name and the one that actually matters.
+    humanGateRequired: false,
+  });
+
   /*
    * Everything standing between this package and submission: the deterministic
    * blockers and the unresolved audit blockers, which are two different lists
@@ -172,14 +214,23 @@ export function SubmissionPackage({
     info: { className: "text-slate-500", label: "Note" },
   };
 
-  async function submit(force: boolean) {
+  /**
+   * Approve the package, optionally overriding one named warning.
+   *
+   * `force: true` used to be the whole story: a boolean that got a package
+   * past the lead-hours rule with nothing recorded about which warning was
+   * waved or why. An override is a decision somebody may be asked to defend
+   * six weeks later, so it carries the warning it applies to and a sentence
+   * in the operator's own words.
+   */
+  async function submit(override?: { requirement: string; reason: string }) {
     setSubmitting(true);
     setError(null);
     try {
       const res = await fetch(`/api/opportunities/${opportunityId}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
+        body: JSON.stringify(override ? { override } : {}),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -314,9 +365,19 @@ export function SubmissionPackage({
               : "border-review/40 bg-review/5 text-slate-700"
           }`}
         >
+          {/*
+            The headline is never stronger than the weakest assurance behind
+            it. This used to read "Ready to submit, all 14 required items are
+            in place" whenever the MECHANICAL checks passed, which is true and
+            is not the whole truth: the compliance audit is a separate pass, it
+            can be skipped, and when it is, nothing has read the solicitation
+            back against the package. The audit notice saying so sat further
+            down the page. Two true statements, one of which is the one people
+            read.
+          */}
           <p className="font-medium">
             {ready
-              ? `Ready to submit, all ${validation.total_mandatory} required items are in place.`
+              ? readiness.headline
               : /*
                  * Counts everything that holds the package back, not just the
                  * deterministic half. Readiness is validation AND no open audit
@@ -642,6 +703,24 @@ export function SubmissionPackage({
         </div>
       )}
 
+      {/*
+        What is proven about the send, kept on the screen.
+        "Sent" is the state that quietly loses bids: a rejected upload and a
+        successful one look identical from inside this product, and the
+        difference surfaces when the award goes to somebody else. So the card
+        stays while the acknowledgement is outstanding rather than a status
+        word appearing once and the question closing.
+      */}
+      <ReceiptStatusCard
+        state={parseSubmissionState(submissionState)}
+        sentAt={bid.submitted_at ? new Date(bid.submitted_at) : null}
+        method={bid.submission_method ?? null}
+        destination={bid.submission_destination ?? null}
+        timezone={bid.sent_timezone ?? null}
+        confirmationNumber={bid.confirmation_number ?? null}
+        proofName={proofOptions.find((p) => p.id === bid.proof_document_id)?.name ?? null}
+      />
+
       {/* Submit / submitted state */}
       {!submitted && (
         <div className="space-y-2 border-t border-border pt-3">
@@ -678,35 +757,70 @@ export function SubmissionPackage({
             * The override path below has always confirmed. The ordinary one,
             * which is the one everybody uses, did not.
             */}
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Record this bid as submitted? Brost Co does not send it to the agency, so press this only after you have delivered the files the way the solicitation asks."
-                )
-              )
-                submit(false);
-            }}
-            disabled={submitting || !ready}
-            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {submitting ? "Submitting…" : "Submit bid package"}
-          </button>
+          {/*
+            Approving is not sending, and the button no longer pretends
+            otherwise. It used to say "Submit bid package" and set
+            `submitted_at`, on a screen that cannot submit anything: the
+            delivery is a person uploading files to a government portal in
+            another application. Pressing this clears the package; the form
+            underneath records what actually happened.
+          */}
+          {!approved && (
+            <>
+              <ConfirmDialog
+                open={confirmingApproval}
+                title="Approve this package?"
+                body={
+                  <>
+                    <p>It will be cleared to send.</p>
+                    <p className="mt-2">
+                      Brost Co does not deliver it. You send it the way the solicitation asks,
+                      then record how and when, and only that counts as submitted.
+                    </p>
+                  </>
+                }
+                confirmLabel="Approve it"
+                busy={submitting}
+                onConfirm={() => {
+                  setConfirmingApproval(false);
+                  submit();
+                }}
+                onCancel={() => setConfirmingApproval(false)}
+              />
+              <button
+                onClick={() => setConfirmingApproval(true)}
+                disabled={submitting || !ready}
+                className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? "Approving" : "Approve this package"}
+              </button>
+            </>
+          )}
+          {approved && (
+            <MarkAsSent
+              opportunityId={opportunityId}
+              proofOptions={proofOptions}
+              onUploadHref="#attachments"
+            />
+          )}
+          {/*
+            An override asks for a sentence, not a click.
+            `window.confirm` collected agreement and recorded nothing: the log
+            said somebody submitted, and which warning they waved, and why,
+            existed nowhere. An operator with a genuine reason types it in a
+            few seconds; the point is that it is written down.
+          */}
           {canForceOverride && (
-            <button
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "Nothing is outstanding on this package, but the compliance audit has not confirmed it. Record it as submitted anyway?"
-                  )
-                )
-                  submit(true);
-              }}
-              disabled={submitting}
-              className="w-full text-xs text-slate-500 hover:text-slate-700"
-            >
-              Record as submitted without audit confirmation
-            </button>
+            <OverrideForm
+              requirement="Approving without a compliance audit confirming the package"
+              busy={submitting}
+              onConfirm={(reason) =>
+                submit({
+                  requirement: "Approving without a compliance audit confirming the package",
+                  reason,
+                })
+              }
+            />
           )}
           {/*
             Why there is no override, when there is not one.
@@ -727,5 +841,86 @@ export function SubmissionPackage({
       )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Ask for the reason before waving a warning through.
+ *
+ * Deliberately not a dialog. A dialog is dismissed; a field that has to be
+ * filled in is a moment where somebody decides what they actually believe, and
+ * that sentence is the whole value of the record.
+ */
+function OverrideForm({
+  requirement,
+  busy,
+  onConfirm,
+}: {
+  requirement: string;
+  busy: boolean;
+  onConfirm: (reason: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const problem = overrideProblem({ requirement, reason });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="w-full text-xs text-slate-500 hover:text-slate-700"
+      >
+        Approve without audit confirmation
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="rounded-md border border-review/40 bg-review/5 px-3 py-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!problem) onConfirm(reason.trim());
+      }}
+    >
+      <p className="text-sm font-medium text-slate-900">{requirement}</p>
+      <label className="mt-2 block text-xs text-muted-foreground" htmlFor="override-reason">
+        What do you know that the check does not? This goes on the record with your
+        name against it.
+      </label>
+      <textarea
+        id="override-reason"
+        className="input mt-1 w-full text-sm"
+        rows={2}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder="Read the package against Sections L and M myself; every listed item is present."
+        required
+      />
+      {/*
+        The specific objection, not a disabled button with no explanation.
+        Shown only once somebody has typed something, so it reads as feedback
+        rather than as a telling-off before they started.
+      */}
+      {problem && reason.trim().length > 0 && (
+        <p className="mt-1 text-xs text-review">{OVERRIDE_PROBLEM_MESSAGE[problem]}</p>
+      )}
+      <div className="mt-2 flex items-center gap-2">
+        <button type="submit" className="btn-secondary text-xs" disabled={busy || Boolean(problem)}>
+          {busy ? "Approving" : "Approve anyway"}
+        </button>
+        <button
+          type="button"
+          className="btn-ghost text-xs"
+          onClick={() => {
+            setOpen(false);
+            setReason("");
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

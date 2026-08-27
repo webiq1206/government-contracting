@@ -1,6 +1,11 @@
 import Link from "next/link";
+import { subState, SUB_STATE_TONE } from "@/lib/domain/sub-state";
 import { DetailDrawer, DrawerFact, DrawerSection } from "@/components/detail-drawer";
-import { reliabilityBreakdown } from "@/lib/domain/reliability";
+import {
+  EVIDENCE_LABEL,
+  NO_RELIABILITY_LABEL,
+  reliabilityBreakdown,
+} from "@/lib/domain/reliability";
 import { shortDate } from "@/lib/format";
 import type { SubPeekRow } from "@/lib/data";
 
@@ -39,12 +44,42 @@ function contactHealth(s: SubPeekRow): { label: string; tone: string; detail: st
   };
 }
 
+/**
+ * The record's operational state, worked out exactly once.
+ *
+ * This drawer used to run its own ladder over the same five facts as the
+ * record header, in a different order and with different words, so the same
+ * firm could read one way in the drawer and another way on its own page.
+ */
+function stateOf(s: SubPeekRow) {
+  return subState({
+    samExcluded: s.sam_excluded,
+    blacklisted: s.blacklisted,
+    blacklistReason: s.blacklist_reason,
+    archivedAt: s.archived_at,
+    archivedReason: s.archived_reason,
+    mergedInto: s.merged_into,
+    email: s.email,
+    emailVerified: s.email_verified,
+    phone: s.phone,
+    /*
+     * A count, not the names: the drawer does not load the document rows. The
+     * record page names them, and this says how many to expect.
+     */
+    missingDocuments:
+      n(s.unmet_required_docs) > 0
+        ? [`${n(s.unmet_required_docs)} required for award`]
+        : [],
+    preferred: s.is_preferred,
+  });
+}
+
 /** What to do about this firm next, given everything else in the drawer. */
 function nextAction(s: SubPeekRow): string {
-  if (s.blacklisted) return "Nothing. This firm is marked do not use.";
-  if (s.sam_excluded) return "Nothing. Federally excluded parties cannot be used on this work.";
+  const state = stateOf(s);
+  if (!state.canContact) return `Nothing. ${state.detail}`;
   if (!s.email) return "Find an email address, or call them.";
-  if (n(s.expired_docs) > 0) return "Chase the lapsed paperwork before sending any more work.";
+  if (!state.canAward) return "Chase the lapsed paperwork. It does not stop you asking for a price.";
   if (n(s.outreach) === 0) return "Nothing yet. They have never been contacted.";
   if (n(s.quote_count) === 0 && n(s.responded_any) === 0) {
     return "They have never answered. Try a call before spending more outreach on them.";
@@ -67,6 +102,7 @@ export function SubPeek({
     blacklisted: sub.blacklisted,
   };
   const rel = reliabilityBreakdown(inputs);
+  const state = stateOf(sub);
   const health = contactHealth(sub);
   const trades = sub.trade_categories ?? [];
   const area = [sub.city, sub.state].filter(Boolean).join(", ");
@@ -92,17 +128,8 @@ export function SubPeek({
       <DrawerSection title="Operational status">
         <DrawerFact
           label="Can we use them"
-          value={
-            sub.blacklisted ? (
-              <span className="text-risk">Marked do not use</span>
-            ) : sub.sam_excluded ? (
-              <span className="text-risk">Federally excluded</span>
-            ) : sub.is_preferred ? (
-              <span className="text-pursue">Preferred</span>
-            ) : (
-              "Available"
-            )
-          }
+          value={<span className={`badge ${SUB_STATE_TONE[state.state]}`}>{state.label}</span>}
+          hint={state.detail}
         />
         <DrawerFact
           label="Contact health"
@@ -163,8 +190,21 @@ export function SubPeek({
       <DrawerSection title="Reliability">
         <div>
           <dt className="text-xs uppercase tracking-wide text-slate-500">Score</dt>
-          <dd className="num text-3xl text-foreground">{rel.reliability}</dd>
+          {/*
+            Null is not zero and must not render as one. A firm nobody has
+            dealt with has not scored badly, and a roster somebody sorts by
+            this column would put them below a firm that walked off a job.
+          */}
+          {rel.reliability == null ? (
+            <dd className="text-lg text-muted-foreground">{NO_RELIABILITY_LABEL}</dd>
+          ) : (
+            <dd className="num text-3xl text-foreground">{rel.reliability}</dd>
+          )}
           <p className="text-xs text-slate-500">{rel.caveat}</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {EVIDENCE_LABEL[rel.evidence]}
+            {rel.evidenceCount > 0 ? ` · ${rel.evidenceCount} dealings on record` : ""}
+          </p>
           {stale && (
             <p className="mt-1 text-xs text-slate-500">
               The roster column reads {sub.reliability_score}. It is rewritten nightly;
@@ -173,14 +213,24 @@ export function SubPeek({
           )}
         </div>
         <div className="space-y-2">
-          {rel.components.map((c) => (
-            <div key={c.label} className="flex items-baseline justify-between gap-3">
+          {/*
+            All six, including the ones with nothing behind them. A breakdown
+            that lists only what it measured reads as a complete account of the
+            firm, and the gaps are the most useful thing on it: they say what
+            to go and find out.
+          */}
+          {rel.dimensions.map((d) => (
+            <div key={d.key} className="flex items-baseline justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate text-sm text-foreground">{c.label}</p>
-                <p className="text-xs text-slate-500">{c.detail}</p>
+                <p className="truncate text-sm text-foreground">{d.label}</p>
+                <p className="text-xs text-slate-500">{d.detail}</p>
               </div>
-              <span className="num shrink-0 text-sm text-foreground">
-                {c.points > 0 ? `+${c.points}` : c.points}
+              <span
+                className={`num shrink-0 text-sm ${
+                  d.score == null ? "text-muted-foreground" : "text-foreground"
+                }`}
+              >
+                {d.score == null ? "Not measured" : `${d.score}/100`}
               </span>
             </div>
           ))}

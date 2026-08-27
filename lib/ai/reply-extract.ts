@@ -47,6 +47,17 @@ export interface ExtractedReply {
   /** Cost split when they break it out; null when they quote a single number. */
   laborCost: number | null;
   materialCost: number | null;
+  /**
+   * The adders, when the reply states them as separate figures.
+   *
+   * Null means the reply did not say, which is not the same as zero. A quote
+   * that is silent about freight has unknown freight, and the pricing row
+   * records that separately from a trade that genuinely has none.
+   */
+  taxesAmount: number | null;
+  freightAmount: number | null;
+  mobilizationAmount: number | null;
+  bondingAmount: number | null;
   /** Work they explicitly exclude from the price. */
   exclusions: string[];
   /** Conditions attached to the price (permits by others, escalation, etc.). */
@@ -122,6 +133,10 @@ const ReplySchema = z.object({
   scope_summary: z.string().nullable(),
   labor_cost: z.number().nullable(),
   material_cost: z.number().nullable(),
+  taxes_amount: z.number().nullable(),
+  freight_amount: z.number().nullable(),
+  mobilization_amount: z.number().nullable(),
+  bonding_amount: z.number().nullable(),
   exclusions: z.array(z.string()).nullable(),
   qualifications: z.array(z.string()).nullable(),
   lead_time_days: z.number().nullable(),
@@ -169,6 +184,10 @@ function emptyRegexResult(price: number | null): ExtractedReply {
     laborCost: null,
     materialCost: null,
     exclusions: [],
+    taxesAmount: null,
+    freightAmount: null,
+    mobilizationAmount: null,
+    bondingAmount: null,
     qualifications: [],
     leadTimeDays: null,
     availabilityNotes: null,
@@ -229,6 +248,10 @@ export async function extractReplyFromReply(
           "- trades_mentioned: list of trades they mention covering or not covering; empty array if none.",
           "- scope_summary: what work they are actually pricing, in their words, else null.",
           "- labor_cost / material_cost: whole dollars when they break the price out; null when they give only a total.",
+          "- taxes_amount / freight_amount / mobilization_amount / bonding_amount: whole dollars, and ONLY when the reply",
+          "  states that figure separately from the total. Null when they do not break it out, and null when they say the",
+          "  item is included in the price without giving its amount. Never derive one of these from a percentage or a rate;",
+          "  a number nobody wrote down is not a number.",
           "- exclusions: work they explicitly say is NOT included. Empty array if none stated.",
           "- qualifications: conditions attached to the price (permits by others, price escalation, access needed). Empty array if none.",
           "- lead_time_days: whole days before they can start, converting weeks to days. Null when not stated.",
@@ -285,6 +308,10 @@ export async function extractReplyFromReply(
         scopeSummary: data.scope_summary,
         laborCost: sanePositive(data.labor_cost),
         materialCost: sanePositive(data.material_cost),
+        taxesAmount: sanePositive(data.taxes_amount),
+        freightAmount: sanePositive(data.freight_amount),
+        mobilizationAmount: sanePositive(data.mobilization_amount),
+        bondingAmount: sanePositive(data.bonding_amount),
         exclusions: data.exclusions ?? [],
         qualifications: data.qualifications ?? [],
         priceIsFirm: data.price_is_firm,

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 /**
  * The per-card override menu on the Pipeline board. Lets an operator act on a
@@ -55,6 +56,11 @@ export function PipelineCardMenu({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<{
+    action: Action;
+    confirmText: string;
+    targetStage?: string;
+  } | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -81,7 +87,12 @@ export function PipelineCardMenu({
     targetStage?: string
   ) {
     stop(e);
-    if (confirmText && !window.confirm(confirmText)) return;
+    if (confirmText) {
+      // Held rather than fired: the dialog asks, and its confirm button calls
+      // back into this function with the text already cleared.
+      setPending({ action, confirmText, targetStage });
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
@@ -113,6 +124,26 @@ export function PipelineCardMenu({
 
   return (
     <div ref={wrapRef} className="relative shrink-0" onClick={stop}>
+      <ConfirmDialog
+        open={pending != null}
+        title={pending?.confirmText ?? ""}
+        confirmLabel="Yes, do it"
+        danger
+        busy={busy}
+        onConfirm={() => {
+          const p = pending;
+          setPending(null);
+          if (p) {
+            void run(
+              { stopPropagation: () => {}, preventDefault: () => {} } as React.MouseEvent,
+              p.action,
+              undefined,
+              p.targetStage
+            );
+          }
+        }}
+        onCancel={() => setPending(null)}
+      />
       <button
         type="button"
         aria-label="Card actions"

@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   KPI_METRICS,
+  ALL_KPI_METRICS,
+  REPORTED_KPI_IDS,
   getMetric,
   normalizeKpiParams,
   parseKpiInput,
@@ -75,5 +77,37 @@ describe("describeKpiParams", () => {
   });
   it("omits score when zero", () => {
     expect(describeKpiParams("pipeline_value", { minScore: 0 })).toBe("");
+  });
+});
+
+describe("one catalog, not two", () => {
+  it("makes every reported metric pinnable", () => {
+    /*
+     * The rule this exists for: a pinned "Win rate" and the one in the report
+     * have to be the same number. Two catalogs is how they stop being, and an
+     * operator reading both has no way to tell which is right.
+     */
+    for (const id of REPORTED_KPI_IDS) {
+      expect(getMetric(id), `${id} is reported but cannot be pinned`).toBeTruthy();
+    }
+  });
+
+  it("makes every pinnable metric able to say how it is worked out", () => {
+    for (const m of ALL_KPI_METRICS) {
+      expect(m.provenance.formula.length, `${m.id} has no formula`).toBeGreaterThan(10);
+      expect(m.provenance.sources.length, `${m.id} names no source`).toBeGreaterThan(0);
+      expect(m.provenance.inclusion.length, `${m.id} states no inclusion rule`).toBeGreaterThan(10);
+    }
+  });
+
+  it("never lets two catalog entries share an id", () => {
+    // A duplicate would make getMetric return whichever came first, silently.
+    const ids = ALL_KPI_METRICS.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("formats a duration rather than printing a bare number of days", () => {
+    expect(formatKpiValue(3.25, "days")).toBe("3.3 days");
+    expect(formatKpiValue(1, "days")).toBe("1 day");
   });
 });

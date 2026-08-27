@@ -21,6 +21,9 @@ import {
   type ReviewBrief as Brief,
 } from "@/lib/domain/review-brief";
 import { shortDate, countdown } from "@/lib/format";
+import { SnoozeButton } from "@/components/snooze-button";
+import { useToast } from "@/components/toaster";
+import { EstimatedValue } from "@/components/estimated-value";
 
 const TONE: Record<string, string> = {
   pursue: "bg-pursue/15 text-pursue",
@@ -44,6 +47,7 @@ export function ReviewBriefPanel({
   closeHref: string;
 }) {
   const router = useRouter();
+  const { push } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [passing, setPassing] = useState(false);
@@ -65,6 +69,24 @@ export function ReviewBriefPanel({
       }
       setPassing(false);
       setReason("");
+      /*
+       * Undo, on the one action that takes a record off the board.
+       *
+       * A pass is reversible in the data (it archives rather than deletes) and
+       * was irreversible in the interface: the row vanished and the only way
+       * back was to know that the closed filter existed. This is the decision
+       * screen, so the mistake it invites is passing on the wrong one of two
+       * similar notices, and the recovery has to be where the mistake happens.
+       */
+      if (action === "dismiss") {
+        push({
+          message: `Passed on "${title}". It is archived, not deleted.`,
+          undo: {
+            endpoint: `/api/opportunities/${opportunityId}/action`,
+            body: { action: "restore" },
+          },
+        });
+      }
       router.refresh();
     } catch {
       setError("Could not reach the server. Nothing was changed.");
@@ -122,6 +144,40 @@ export function ReviewBriefPanel({
             )}
           </div>
           <p className="mt-2 text-sm text-foreground">{brief.rationale}</p>
+        </section>
+
+        {/*
+          Two sources stating different facts, above the arguments for and
+          against, because a set-aside the notice and the document disagree on
+          decides whether the rest of this page is worth reading.
+        */}
+        {brief.conflicts.length > 0 && (
+          <section className="rounded-md border border-risk/40 bg-risk/5 p-3">
+            <h3 className="label mb-2 text-risk">The notice and the document disagree</h3>
+            <ul className="space-y-3 text-sm">
+              {brief.conflicts.map((c) => (
+                <li key={c.field}>
+                  <p className="font-medium text-foreground">{c.field}</p>
+                  <p className="text-muted-foreground">
+                    The listing says <span className="text-foreground">{c.fromNotice}</span>. The
+                    solicitation says <span className="text-foreground">{c.fromDocument}</span>.
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{c.matters}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <section>
+          <h3 className="label mb-2">Contract value</h3>
+          {/*
+            The figure and where it came from, together. A number with no
+            provenance on a decision screen is a number somebody will plan
+            against without knowing whether the government published it or an
+            AI read it off a page.
+          */}
+          <EstimatedValue value={brief.value.amount} source={brief.value.source} />
         </section>
 
         <BriefList
@@ -199,9 +255,25 @@ export function ReviewBriefPanel({
           </ul>
         </section>
 
-        <Link href={`/opportunity/${opportunityId}`} className="btn-ghost inline-flex text-xs">
-          Open the full record
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/opportunity/${opportunityId}`} className="btn-ghost inline-flex text-xs">
+            Open the full record
+          </Link>
+          {/* A decision made on a reading should be one click from the thing
+              being read. Only links that exist: a notice with no stored URL
+              gets no button rather than a dead one. */}
+          {brief.sourceLinks.map((l) => (
+            <a
+              key={l.href}
+              href={l.href}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="btn-ghost inline-flex text-xs"
+            >
+              {l.label}
+            </a>
+          ))}
+        </div>
       </div>
 
       <div className="shrink-0 border-t border-border/55 px-4 py-3 dark:border-white/10">
@@ -273,6 +345,20 @@ export function ReviewBriefPanel({
             >
               {busy === "extend_review" ? "Extending…" : "Give it another day"}
             </button>
+            {/*
+              Snooze and extend are different acts and both belong here.
+              Extending moves the automatic-dismissal timer, which is about
+              whether this decision may lapse. Snoozing hides the row until a
+              chosen time and never touches the timer, which is about when the
+              operator wants to see it. Offering only one of them meant
+              somebody who wanted to think until Thursday had to spend a day of
+              the review window to get it.
+            */}
+            <SnoozeButton
+              kind="opportunity"
+              id={opportunityId}
+              className="btn-ghost text-sm"
+            />
           </div>
         )}
         {error && (

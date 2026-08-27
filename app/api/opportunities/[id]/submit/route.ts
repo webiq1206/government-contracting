@@ -4,6 +4,16 @@ import { query, queryOne } from "@/lib/db";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { logAgent } from "@/lib/logger";
 import { currentRequirementsFingerprint } from "@/lib/bid-package-state";
+import {
+  mayOverride,
+  overrideProblem,
+  overrideRisk,
+  overrideSummary,
+  OVERRIDE_PROBLEM_MESSAGE,
+} from "@/lib/domain/override";
+import { pricingRowsWithQuotes, freezeCalculation } from "@/lib/pricing-rows";
+import { pricingSheet } from "@/lib/domain/pricing-row";
+import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
 import type { Opportunity } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -14,7 +24,31 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const ctx = await requireOrgContext({ capability: "submit" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
-  const { force } = await req.json().catch(() => ({}));
+  /*
+   * An override is a decision with a name against it, not a boolean.
+   *
+   * `force: true` used to be enough. It got a package past the lead-hours rule
+   * and past a package not marked ready, and left a log line saying somebody
+   * submitted; nothing recorded which warning was overridden, why, or what the
+   * person believed at the time. A contracting officer asking six weeks later
+   * why a bid went out ninety minutes before close has a fair question, and
+   * "somebody passed force" is not an answer.
+   *
+   * The old shape is still accepted at the type level and rejected at the
+   * gate: a request carrying `force` with no reason gets told what is missing
+   * rather than silently doing nothing.
+   */
+  const body = (await req.json().catch(() => ({}))) as {
+    force?: boolean;
+    override?: { requirement?: string; reason?: string };
+  };
+  const overrideReq = {
+    requirement: body.override?.requirement ?? "",
+    reason: body.override?.reason ?? "",
+  };
+  const wantsOverride = Boolean(body.force) || Boolean(body.override);
+  const overrideOk = wantsOverride && mayOverride(overrideReq);
+  const force = overrideOk;
 
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -27,9 +61,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     validation_json: { blockers?: string[] } | null;
     requirements_fingerprint: string | null;
     audit_findings: { severity: string; acknowledged?: boolean; finding: string }[] | null;
+    bid_amount: string | null;
   }>(
     `select id, human_flags, qa_checklist, package_ready, validation_json, audit_findings,
-            requirements_fingerprint
+            requirements_fingerprint, bid_amount
        from bids where opportunity_id=$1 order by created_at desc limit 1`,
     [params.id]
   );
@@ -69,35 +104,42 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
-  // Hard gate: every required trade must have a positive quote. Force override
-  // cannot bypass missing trade pricing.
+  /*
+   * Hard gate: the pricing sheet has to hold together. Force cannot bypass it.
+   *
+   * This used to ask one question, "does every required trade have a positive
+   * quote row", and a bid could pass it while being unpriceable in three other
+   * ways: a subcontractor excluded work nobody picked up, an alternate went
+   * into the bid with no price on it, or three firms quoted the same trade and
+   * nobody chose between them. Each of those produces a number that looks like
+   * a cost and is not one.
+   *
+   * The sheet answers all of them from one model, and it is the same model the
+   * Pricing tab renders, so the screen and the gate cannot disagree.
+   */
   const required = (opp.solicitation_analysis?.required_trades ?? [])
     .map((t) => String(t).trim())
     .filter(Boolean);
-  if (required.length > 0) {
-    const quoteRows = await query<{ trade: string | null; quote_amount: number | null }>(
-      `select trade, quote_amount from quotes where opportunity_id = $1`,
-      [params.id]
-    ).catch(() => []);
-    const quoted = new Set(
-      quoteRows
-        .filter((q) => Number(q.quote_amount) > 0)
-        .map((q) => (q.trade ?? "").trim().toLowerCase())
-        .filter(Boolean)
+  const pricingRows = await pricingRowsWithQuotes(params.id, orgId).catch(() => []);
+  const sheet = pricingSheet(required, pricingRows, {
+    now: new Date(),
+    bidDueAt: opp.deadline ? new Date(opp.deadline) : null,
+    quoteValidityRequired: (opp.solicitation_analysis?.compliance_matrix ?? []).some((r) =>
+      /quote\s+validity|price\s+validity|prices?\s+(?:must\s+)?(?:remain|held|hold)/i.test(
+        `${r?.title ?? ""} ${r?.instructions ?? ""} ${r?.format ?? ""}`
+      )
+    ),
+  });
+  if (sheet.blockers.length > 0) {
+    const messages = sheet.blockers.map((b) => b.message);
+    return NextResponse.json(
+      {
+        error: `Bid cannot be submitted. The pricing is not complete:\n\u2022 ${messages.join("\n\u2022 ")}`,
+        needsForce: false,
+        blockers: messages,
+      },
+      { status: 409 }
     );
-    const missingTrades = required.filter((t) => !quoted.has(t.toLowerCase()));
-    if (missingTrades.length > 0) {
-      return NextResponse.json(
-        {
-          error: `Bid cannot be submitted. Missing pricing for: ${missingTrades.join(", ")}.`,
-          needsForce: false,
-          blockers: missingTrades.map(
-            (t) => `${t} pricing has not been received`
-          ),
-        },
-        { status: 409 }
-      );
-    }
   }
 
   /*
@@ -145,6 +187,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
    * out of credit, unreachable, or skipped. The instructions call for a human
    * gate here rather than an unqualified block, which is what force is.
    */
+  /*
+   * Validate the override here, and not a line earlier.
+   *
+   * Every hard blocker above refuses regardless of `force`, so an operator who
+   * sent one should be told the blocker is not overridable, not asked to write
+   * a reason they will never be allowed to use. Asking first would be a form
+   * that wastes somebody's time and then refuses them anyway.
+   */
+  if (wantsOverride && !overrideOk) {
+    const problem = overrideProblem(overrideReq)!;
+    return NextResponse.json(
+      { error: OVERRIDE_PROBLEM_MESSAGE[problem], overrideProblem: problem },
+      { status: 400 }
+    );
+  }
+
   if (!bid.package_ready && !force) {
     return NextResponse.json(
       {
@@ -168,28 +226,142 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (hoursLeft < leadHours && !force) {
       return NextResponse.json(
         {
-          error: `Deadline is ${hoursLeft.toFixed(1)}h away; policy requires submitting at least ${leadHours}h before. Pass force to override.`,
+          error: `Deadline is ${hoursLeft.toFixed(1)}h away; policy requires submitting at least ${leadHours}h before. To go ahead, say which warning you are overriding and why.`,
           needsForce: true,
+          // Named so the UI can prefill the requirement and the operator is
+          // writing about a specific thing rather than "the checks".
+          requirement: `Submitting ${hoursLeft.toFixed(1)}h before the deadline, inside the ${leadHours}h policy`,
         },
         { status: 409 }
       );
     }
   }
 
-  await query(`update bids set submitted_at=now(), outcome='pending' where id=$1`, [bid.id]);
+  /*
+   * This clears the package to go. It does not claim it went.
+   *
+   * The line here used to be `update bids set submitted_at=now()`, and it was
+   * a lie in the ordinary case: for almost every solicitation this product
+   * handles, Brost Co does not submit anything. A person opens a government
+   * portal, uploads the files themselves, and comes back. Pressing this button
+   * approved a package; it did not deliver one, and a bid recorded as
+   * submitted with no evidence is worse than one recorded as ready, because
+   * the first stops anybody checking.
+   *
+   * `submitted_at` is now set only by the mark-as-sent endpoint, which
+   * requires the evidence, and a check constraint refuses the column without
+   * it either way.
+   */
   await query(
-    `update opportunities set stage='submitted', human_action_required=false where id=$1`,
-    [params.id]
+    `update bids set submission_state='approved' where id=$1 and submission_state='package_ready'`,
+    [bid.id]
   );
+  if (overrideOk) {
+    /*
+     * Written before the approval event, so an override can never end up
+     * without the approval it justified, and so the two read in the order
+     * they happened.
+     */
+    const at = new Date();
+    await query(
+      `insert into bid_overrides (bid_id, org_id, requirement, reason, risk, actor)
+       values ($1,$2,$3,$4,$5,$6)`,
+      [
+        bid.id,
+        orgId,
+        overrideReq.requirement.trim(),
+        overrideReq.reason.trim(),
+        overrideRisk(overrideReq.requirement),
+        auth.email,
+      ]
+    ).catch(() => {});
+    await logAgent({
+      agent: "operator",
+      action: "submit-override",
+      opportunityId: params.id,
+      bidId: bid.id,
+      level: "warn",
+      message: overrideSummary(overrideReq, auth.email, at),
+    });
+  }
+  /*
+   * Freeze the arithmetic this approval was given against.
+   *
+   * A package approved against particular numbers is approved against those
+   * numbers. If the pricing rows can move afterwards then the sign-off is a
+   * record of nothing: the screen shows today's total beside a decision made
+   * for yesterday's, and there is no way from inside the product to tell that
+   * they differ. The snapshot row cannot be edited once written.
+   *
+   * Not fatal if it fails. Losing the frozen copy is bad; refusing an approval
+   * that passed every gate because a second insert failed is worse, and the
+   * approval event below is still written either way.
+   */
+  // numeric arrives as a string. Null stays null: a bid nobody has set is not
+  // a bid of zero, and Number(null) is exactly how it would become one.
+  const bidAmount =
+    bid.bid_amount != null && Number.isFinite(Number(bid.bid_amount))
+      ? Number(bid.bid_amount)
+      : null;
+  const math = bidMath({ cost: sheet.cost, bid: bidAmount, contingencyPct: null });
+  await freezeCalculation({
+    bidId: bid.id,
+    orgId,
+    opportunityId: params.id,
+    reason: "approved",
+    actor: auth.email,
+    calculation: {
+      cost: sheet.cost,
+      bid: bidAmount,
+      grossProfit: math.grossProfit,
+      marginPct: math.marginPct,
+      markupPct: math.markupPct,
+      unknown: math.unknown,
+      formula: explainBidMath(math),
+      weakestConfidence: sheet.weakestConfidence,
+      rows: sheet.rows.map((p) => ({
+        trade: p.row.trade,
+        scopeKey: p.row.scopeKey,
+        selectedSub: p.row.selectedSubName ?? null,
+        backupSub: p.row.backupSubName ?? null,
+        baseQuote: p.row.baseQuote,
+        total: p.total,
+        confidence: p.row.confidence,
+        quoteExpiresOn: p.row.quoteExpiresOn,
+        exclusions: p.row.exclusions,
+        alternates: p.row.alternates,
+        problems: p.problems.map((x) => x.message),
+      })),
+    },
+  }).catch(() => {});
+  await query(
+    `insert into bid_submission_events (bid_id, org_id, from_state, to_state, actor, proof)
+     values ($1,$2,'package_ready','approved',$3,$4)`,
+    [
+      bid.id,
+      orgId,
+      auth.email,
+      overrideOk
+        ? `Cleared to send with a warning overridden by ${auth.email}: ${overrideReq.reason.trim()}`
+        : "Every check passed and the package was cleared to send. Nothing has been sent yet.",
+    ]
+  ).catch(() => {});
   await logAgent({
     agent: "operator",
-    action: "submit-bid",
+    action: "approve-bid",
     opportunityId: params.id,
     bidId: bid.id,
     level: "success",
-    message: `Operator ${auth.email} submitted the bid package.`,
-    reasoning: "Post-submission tracking now monitors SAM.gov for the award notice.",
+    message: `Operator ${auth.email} approved the bid package to be sent.`,
+    reasoning:
+      "The package is cleared. It counts as submitted only once somebody records how and when it reached the agency.",
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    state: "approved",
+    // Said plainly so the UI cannot imply the package has gone.
+    message:
+      "Approved. Send it through the agency's portal, then record how and when you did.",
+  });
 }

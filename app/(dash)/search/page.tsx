@@ -40,11 +40,23 @@ export default async function SearchPage({
   const raw = searchParams?.q;
   const q = (typeof raw === "string" ? raw : "").trim();
   const kind = parseKind(searchParams?.kind);
+  /*
+   * Show every copy of a duplicated solicitation.
+   *
+   * Reached from the "see all N copies" link on a folded row. Collapsing is
+   * right for somebody jumping to the record they are working; this is for
+   * the operator who now has to decide which of three copies is real.
+   */
+  const showAll = searchParams?.all === "1";
 
   // Same resolver every other page uses, so this page can never search a
   // different organization from the one the operator is looking at.
   const all: SearchResult[] =
-    q.length >= 2 ? await searchEverything(q, await currentOrg(), 25) : [];
+    q.length >= 2
+      ? await searchEverything(q, await currentOrg(), 25, {
+          collapseDuplicates: !showAll,
+        })
+      : [];
   const shown = kind ? all.filter((r) => r.kind === kind) : all;
   const groups = groupResults(shown);
   const counts = KIND_ORDER.map((k) => ({
@@ -52,10 +64,19 @@ export default async function SearchPage({
     n: all.filter((r) => r.kind === k).length,
   })).filter((c) => c.n > 0);
 
+  /** The same search with the copies folded back together. */
+  const foldedHref = (() => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (kind) p.set("kind", kind);
+    return `/search?${p.toString()}`;
+  })();
+
   const hrefFor = (k: ResultKind | null) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
     if (k) p.set("kind", k);
+    if (showAll) p.set("all", "1");
     return `/search?${p.toString()}`;
   };
 
@@ -85,6 +106,24 @@ export default async function SearchPage({
             Search
           </button>
         </form>
+
+        {showAll && (
+          <div className="card max-w-2xl border-review/40 bg-review/5" role="status">
+            <p className="text-sm font-medium text-review">
+              Every copy is listed, including the ones normally folded together.
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-slate-700">
+              The same notice can arrive more than once, usually because the agency
+              re-posted it. Open each one to see its stage: the one carrying your work
+              is the one to keep, and the others can be archived from the opportunity
+              itself. Nothing is merged automatically, because picking wrongly would
+              lose the work rather than tidy it.
+            </p>
+            <Link href={foldedHref} className="btn-ghost mt-2 w-fit text-xs">
+              Fold duplicates again
+            </Link>
+          </div>
+        )}
 
         {counts.length > 0 && (
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by kind">
@@ -163,6 +202,17 @@ export default async function SearchPage({
                         </span>
                       </span>
                     </Link>
+                    {/* Outside the link, because it goes somewhere else: a
+                        folded count nobody can open is a fact stated and then
+                        withheld. */}
+                    {r.cluster && (
+                      <Link
+                        href={r.cluster.href}
+                        className="mt-1 inline-flex min-h-11 items-center pl-3 text-xs font-medium text-accent hover:underline lg:min-h-0"
+                      >
+                        See all {r.cluster.count} copies of this solicitation &rarr;
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>

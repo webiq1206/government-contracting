@@ -61,7 +61,7 @@ export function LoginForm() {
           </label>
           <Link
             href="/forgot-password"
-            className="inline-flex min-h-11 items-center text-xs font-medium text-accent-strong hover:underline md:min-h-0"
+            className="inline-flex min-h-11 items-center text-xs font-medium text-accent-strong hover:underline lg:min-h-0"
           >
             Forgot password?
           </Link>
@@ -84,7 +84,7 @@ export function LoginForm() {
         New here?{" "}
         <Link
           href="/signup"
-          className="inline-flex min-h-11 items-center font-medium text-accent-strong hover:underline md:min-h-0"
+          className="inline-flex min-h-11 items-center font-medium text-accent-strong hover:underline lg:min-h-0"
         >
           Start a subscription
         </Link>

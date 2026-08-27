@@ -223,3 +223,38 @@ export function buildActivityTimeline(input: {
   events.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   return events.slice(0, input.limit ?? 40);
 }
+
+/**
+ * Narrowing the timeline without losing any of it.
+ *
+ * A filter over a record of what happened has to be a lens, never an edit. The
+ * events not selected are still there, still counted, and the caller is
+ * expected to say how many are being hidden: a feed that quietly shows eleven
+ * of ninety is a feed somebody reads as ninety.
+ *
+ * An empty selection means everything rather than nothing. Unchecking the last
+ * box is somebody clearing the filter, not somebody asking for a blank page.
+ */
+export function filterActivity(
+  events: ActivityEvent[],
+  kinds: readonly ActivityKind[]
+): ActivityEvent[] {
+  if (kinds.length === 0) return events;
+  const wanted = new Set(kinds);
+  return events.filter((e) => wanted.has(e.kind));
+}
+
+/** How many events of each kind are in the feed, including kinds with none. */
+export function activityCounts(events: ActivityEvent[]): Record<ActivityKind, number> {
+  const out = {
+    system: 0,
+    email: 0,
+    call: 0,
+    note: 0,
+    human: 0,
+    quote: 0,
+    document: 0,
+  } as Record<ActivityKind, number>;
+  for (const e of events) out[e.kind] += 1;
+  return out;
+}

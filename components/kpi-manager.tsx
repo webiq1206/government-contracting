@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KPI_METRICS, getMetric } from "@/lib/domain/kpi";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ALL_KPI_METRICS, getMetric } from "@/lib/domain/kpi";
 
 /**
  * Add / remove custom KPIs on the Analytics dashboard. Metrics come from a fixed
@@ -12,7 +13,7 @@ import { KPI_METRICS, getMetric } from "@/lib/domain/kpi";
 export function KpiManager() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [metric, setMetric] = useState(KPI_METRICS[0].id);
+  const [metric, setMetric] = useState(ALL_KPI_METRICS[0].id);
   const [label, setLabel] = useState("");
   const [days, setDays] = useState("30");
   const [minScore, setMinScore] = useState("0");
@@ -63,7 +64,13 @@ export function KpiManager() {
         <label className="block">
           <span className="label mb-1 block">Metric</span>
           <select className="input" value={metric} onChange={(e) => setMetric(e.target.value)}>
-            {KPI_METRICS.map((m) => (
+            {/*
+              Every metric the reports compute is pinnable, from the same
+              catalog. Two lists would let a pinned "Win rate" and a reported
+              one drift, and an operator reading both has no way to tell which
+              is right.
+            */}
+            {ALL_KPI_METRICS.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
               </option>
@@ -120,8 +127,9 @@ export function KpiManager() {
 export function KpiDeleteButton({ id }: { id: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   async function remove() {
-    if (!confirm("Remove this KPI?")) return;
+    setAsking(false);
     setBusy(true);
     try {
       await fetch(`/api/kpis/${id}`, { method: "DELETE" });
@@ -131,13 +139,25 @@ export function KpiDeleteButton({ id }: { id: string }) {
     }
   }
   return (
-    <button
-      className="text-xs text-slate-500 hover:text-risk"
-      onClick={remove}
-      disabled={busy}
-      aria-label="Remove KPI"
-    >
-      &times;
-    </button>
+    <>
+      <ConfirmDialog
+        open={asking}
+        title="Remove this KPI?"
+        body="The metric stops being tracked. The underlying data is untouched."
+        confirmLabel="Remove it"
+        danger
+        busy={busy}
+        onConfirm={() => void remove()}
+        onCancel={() => setAsking(false)}
+      />
+      <button
+        className="text-xs text-slate-500 hover:text-risk"
+        onClick={() => setAsking(true)}
+        disabled={busy}
+        aria-label="Remove KPI"
+      >
+        &times;
+      </button>
+    </>
   );
 }

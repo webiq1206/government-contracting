@@ -319,6 +319,16 @@ interface SubUpdateResult {
  * reliability >= 80 are elevated to preferred.
  */
 async function recomputeSubScores(orgId: string): Promise<SubUpdateResult> {
+  /*
+   * Six dimensions rather than two, and each read from the records that
+   * actually carry it.
+   *
+   * The lateral subqueries are there because the counts live on three
+   * different tables and joining them all into one group-by multiplies the
+   * rows: a firm with four emails and two performance notes would report eight
+   * of each. That is the kind of arithmetic error nobody spots, because the
+   * output is a plausible number.
+   */
   const subs = await query<{
     id: string;
     blacklisted: boolean;
@@ -326,22 +336,63 @@ async function recomputeSubScores(orgId: string): Promise<SubUpdateResult> {
     responded_48h: number;
     responded_any: number;
     quote_count: number;
+    quotes_with_deadline: number;
+    quotes_on_time: number;
+    quotes_scope_judged: number;
+    quotes_full_scope: number;
+    jobs_completed: number;
+    jobs_with_issues: number;
+    cancellations: number;
   }>(
     `select s.id,
             s.blacklisted,
-            count(distinct c.id) filter (where c.direction='outbound') as outreach,
-            count(distinct c.id) filter (
-              where c.replied_at is not null
-                and c.replied_at <= c.created_at + interval '48 hours'
-            ) as responded_48h,
-            count(distinct c.id) filter (where c.replied_at is not null) as responded_any,
-            count(distinct q.id) as quote_count
+            coalesce(comm.outreach, 0) as outreach,
+            coalesce(comm.responded_48h, 0) as responded_48h,
+            coalesce(comm.responded_any, 0) as responded_any,
+            coalesce(q.quote_count, 0) as quote_count,
+            coalesce(pair.with_deadline, 0) as quotes_with_deadline,
+            coalesce(pair.on_time, 0) as quotes_on_time,
+            coalesce(pair.judged, 0) as quotes_scope_judged,
+            coalesce(pair.full_scope, 0) as quotes_full_scope,
+            coalesce(perf.completed, 0) + coalesce(perf.issues, 0) as jobs_completed,
+            coalesce(perf.issues, 0) as jobs_with_issues,
+            coalesce(perf.cancelled, 0) as cancellations
        from subcontractors s
-       left join communications c on c.subcontractor_id = s.id
-       left join quotes q on q.subcontractor_id = s.id
-      where s.org_id = $1
-      group by s.id, s.blacklisted
-     having count(distinct c.id) > 0 or count(distinct q.id) > 0`,
+       left join lateral (
+         select count(*) filter (where c.direction='outbound') as outreach,
+                count(*) filter (
+                  where c.replied_at is not null
+                    and c.replied_at <= c.created_at + interval '48 hours'
+                ) as responded_48h,
+                count(*) filter (where c.replied_at is not null) as responded_any
+           from communications c where c.subcontractor_id = s.id
+       ) comm on true
+       left join lateral (
+         select count(*) as quote_count from quotes qq where qq.subcontractor_id = s.id
+       ) q on true
+       left join lateral (
+         select
+           count(*) filter (where os.quote_due_at is not null and os.quoted_at is not null)
+             as with_deadline,
+           count(*) filter (
+             where os.quote_due_at is not null and os.quoted_at is not null
+               and os.quoted_at <= os.quote_due_at
+           ) as on_time,
+           count(*) filter (where os.quote_full_scope is not null) as judged,
+           count(*) filter (where os.quote_full_scope) as full_scope
+           from opportunity_subs os
+           join opportunities o on o.id = os.opportunity_id
+          where os.subcontractor_id = s.id and o.org_id = $1
+       ) pair on true
+       left join lateral (
+         select
+           count(*) filter (where e.kind = 'completed') as completed,
+           count(*) filter (where e.kind = 'issue') as issues,
+           count(*) filter (where e.kind = 'cancelled') as cancelled
+           from subcontractor_performance_events e
+          where e.subcontractor_id = s.id and e.org_id = $1 and e.retracted_at is null
+       ) perf on true
+      where s.org_id = $1`,
     [orgId]
   );
 
@@ -364,6 +415,13 @@ async function recomputeSubScores(orgId: string): Promise<SubUpdateResult> {
       respondedWithin48h: resp48,
       respondedEver: respAny,
       quotes,
+      quotesWithDeadline: Number(s.quotes_with_deadline),
+      quotesOnTime: Number(s.quotes_on_time),
+      quotesScopeJudged: Number(s.quotes_scope_judged),
+      quotesFullScope: Number(s.quotes_full_scope),
+      jobsCompleted: Number(s.jobs_completed),
+      jobsWithIssues: Number(s.jobs_with_issues),
+      cancellations: Number(s.cancellations),
       blacklisted: Boolean(s.blacklisted),
     };
     const breakdown = reliabilityBreakdown(inputs);
@@ -372,6 +430,13 @@ async function recomputeSubScores(orgId: string): Promise<SubUpdateResult> {
 
     const isPreferred = preferred(inputs);
     if (isPreferred) promoted++;
+
+    /*
+     * Null is written as null. A firm nothing is known about has no score, and
+     * writing a placeholder into the column an operator sorts by would put a
+     * stranger above a firm that walked off a job. The column is nullable and
+     * the roster renders the absence in words.
+     */
 
     // Preferred status is recomputed each run, NOT a one-way ratchet: a sub whose
     // reliability drops below 80 or that gets blacklisted MUST be demoted, or Sub

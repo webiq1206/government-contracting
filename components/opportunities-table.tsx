@@ -9,6 +9,8 @@ import { currency, shortDate } from "@/lib/format";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
+import { describeOwner, type Owner } from "@/lib/domain/ownership";
+import { AgencyPath } from "@/components/agency-path";
 
 /**
  * Every opportunity, as a table.
@@ -31,6 +33,8 @@ export function OpportunitiesTable({
   rules,
   emptyState,
   peekBase,
+  owners,
+  viewerId,
 }: {
   rows: Opportunity[];
   total: number;
@@ -41,6 +45,9 @@ export function OpportunitiesTable({
   emptyState: React.ReactNode;
   /** The current list URL with the peek stripped, ready for `peek=<id>`. */
   peekBase: string;
+  /** Owners by opportunity id, read once for the page rather than per row. */
+  owners?: Map<string, Owner>;
+  viewerId?: string;
 }) {
   const columns: Column<Opportunity>[] = [
     {
@@ -65,13 +72,21 @@ export function OpportunitiesTable({
       key: "agency",
       header: "Agency",
       sortable: true,
-      // Agency names run to forty characters of nested department. The full
-      // path is on hover and on the record; the column shows enough to tell
-      // one from another.
+      /*
+       * The most specific level, not the first forty characters.
+       *
+       * Truncation cut at a character count rather than at a meaning, so every
+       * row read "DEPT OF DEFENSE, DEPT OF THE A..." and the part that varied
+       * was the part that got cut. The rest of the path is in the DOM for a
+       * screen reader and in the title for a mouse, so nothing here is
+       * hover-only.
+       */
       render: (o) => (
-        <span className="block max-w-[16rem] truncate text-muted-foreground" title={o.agency ?? ""}>
-          {o.agency ?? "-"}
-        </span>
+        <AgencyPath
+          agency={o.agency}
+          subAgency={o.sub_agency}
+          className="block max-w-[16rem] truncate text-muted-foreground"
+        />
       ),
     },
     {
@@ -152,6 +167,21 @@ export function OpportunitiesTable({
       header: "NAICS",
       optional: true,
       render: (o) => o.naics_code ?? "-",
+    },
+    {
+      key: "owner",
+      header: "Owner",
+      optional: true,
+      /*
+       * Read-only here. Assigning belongs on the record, where the person
+       * doing it can see the deadline and the stage they are taking on; a
+       * dropdown in a two-hundred-row table is a mis-click that hands
+       * somebody else's bid to the wrong person without either of them
+       * noticing.
+       */
+      render: (o) => (
+        <span className="text-muted-foreground">{describeOwner(owners?.get(o.id), viewerId)}</span>
+      ),
     },
     {
       key: "updated_at",

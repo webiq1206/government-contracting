@@ -238,11 +238,44 @@ export function withoutFilter(values: FilterValues, key: string): FilterValues {
   return next;
 }
 
+/**
+ * Every filter off, keeping anything on the URL this bar does not own.
+ *
+ * Clear all used to hand back an empty object, which is only correct on a page
+ * whose entire query string is filters. Opportunities carries `view=table`
+ * beside them, so clearing the filters dropped the operator back onto the
+ * lanes board: they asked for fewer rows and got a different page. Removing a
+ * single chip never had the problem, because withoutFilter above deletes one
+ * key rather than replacing the lot.
+ */
+export function clearedFilters(specs: FilterSpec[], values: FilterValues): FilterValues {
+  const owned = new Set(specs.map((s) => s.key));
+  const next: FilterValues = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!owned.has(key)) next[key] = value;
+  }
+  return next;
+}
+
 export type Density = "comfortable" | "compact";
 
 export interface SavedView {
   id: string;
   name: string;
+  /**
+   * Who can see it.
+   *
+   * Personal is somebody's own shortcut; team is how an office agrees what
+   * "the work" means this month. Both live on the server, because a team view
+   * that exists only in its author's browser is not shared with anybody, and a
+   * personal view that lives there is lost the first time somebody opens the
+   * product on a different machine.
+   */
+  scope?: "personal" | "team";
+  /** The author's name, on team views. Never an email address. */
+  createdBy?: string | null;
+  /** Whether the reader may remove it. */
+  canDelete?: boolean;
   /** The query string, without a leading "?". */
   query: string;
 }

@@ -49,7 +49,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           cannot rubber-band past the mobile tab bar. Pages scroll inside main. */}
       <div
         data-app-shell
-        className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background md:flex-row"
+        className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background lg:flex-row"
       >
         <Nav
           email={user.email}

@@ -58,8 +58,17 @@ export interface IntegrationFacts {
   configured: boolean;
   /** The most recent error text from this integration, if any. */
   lastError: string | null;
-  /** When a credential here last passed a live check. */
+  /** When a credential here last passed a deliberate test. */
   lastValidatedAt: string | Date | null;
+  /**
+   * When a real call to the provider last worked.
+   *
+   * Ranked above a test wherever both exist. A test says the credential
+   * parses; a successful real call says the thing works for what it is for,
+   * and an integration doing its job hourly should not read as stale because
+   * nobody has pressed a button in a month.
+   */
+  lastSuccessAt?: string | Date | null;
   /**
    * For OAuth integrations: whether the connection itself is still live.
    * Undefined for key-based ones, which have nothing to expire.
@@ -152,25 +161,40 @@ export function integrationState(f: IntegrationFacts, now = new Date()): Integra
     };
   }
 
-  const validated = f.lastValidatedAt
-    ? f.lastValidatedAt instanceof Date
-      ? f.lastValidatedAt
-      : new Date(f.lastValidatedAt)
-    : null;
-  if (!validated || Number.isNaN(validated.getTime())) {
+  const asDate = (v: string | Date | null | undefined): Date | null => {
+    if (!v) return null;
+    const d = v instanceof Date ? v : new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+  const tested = asDate(f.lastValidatedAt);
+  const used = asDate(f.lastSuccessAt);
+
+  /*
+   * The most recent piece of evidence, whichever kind it is, and the freshness
+   * is judged on that. An integration doing its job every hour should not read
+   * as stale because nobody has pressed a button in a month, and one tested
+   * this morning that has refused every real call since is covered by the
+   * error branch above.
+   */
+  const newest = used && tested ? (used > tested ? used : tested) : (used ?? tested);
+  const fromRealUse = newest != null && used != null && newest.getTime() === used.getTime();
+
+  if (!newest) {
     return {
       state: "configured",
-      reason: "Saved, and never tested.",
+      reason: "Saved, and never used or tested.",
       cause: null,
       nextAction: "Test it, so this says something rather than nothing.",
     };
   }
 
-  const days = (now.getTime() - validated.getTime()) / 86_400_000;
+  const days = (now.getTime() - newest.getTime()) / 86_400_000;
   if (days > VALIDATION_STALE_DAYS) {
     return {
       state: "configured",
-      reason: `Last confirmed working ${Math.round(days)} days ago, which is too long to still count.`,
+      reason: fromRealUse
+        ? `Last did real work ${Math.round(days)} days ago, which is too long to still count.`
+        : `Last tested ${Math.round(days)} days ago, which is too long to still count.`,
       cause: null,
       nextAction: "Test it again.",
     };
@@ -178,7 +202,9 @@ export function integrationState(f: IntegrationFacts, now = new Date()): Integra
 
   return {
     state: "healthy",
-    reason: "It answered the last time it was checked.",
+    reason: fromRealUse
+      ? "It did real work recently."
+      : "It answered the last time it was tested.",
     cause: null,
     nextAction: null,
   };

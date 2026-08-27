@@ -19,17 +19,50 @@ import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
 import { analysisInputHash, inputsUnchanged } from "../domain/analysis-inputs";
 import { tightenAnalysisProse } from "../domain/analysis-prose";
 import { requirementsFingerprint } from "../domain/package";
+import { assembleAttachmentContext, coverageSummary } from "../domain/extraction-budget";
+import {
+  dedupeRequirements,
+  extractClauses,
+  extractPageLimits,
+  pageLimitContradictions,
+} from "../domain/extraction-checks";
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
 import { extractValueFromText } from "../domain/value-extract";
 import {
   evaluateSolicitationCompleteness,
   type AttachmentFetchOutcome,
+  type AttachmentFetchStatus,
 } from "../domain/solicitation-completeness";
 import { storage } from "../integrations/storage";
-import { extractPdfText, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
+import {
+  guardedFetch,
+  GuardedFetchError,
+  redactUrl,
+  type GuardedFetchResult,
+} from "../integrations/guarded-fetch";
+import { extractPdfPages, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
 import { ocrPdf } from "../integrations/pdf-ocr";
-import { filenameFromResponse, normalizeAttachmentMeta } from "../domain/attachment-meta";
+import { filenameFromResponse, isArchive, normalizeAttachmentMeta } from "../domain/attachment-meta";
+import {
+  amendmentNumber,
+  classifyDocumentName,
+  changeSummary,
+  documentChanges,
+  parseDocumentClass,
+  resolveCitation,
+  withPageMarkers,
+  type CitationTarget,
+  type InventorySnapshot,
+  type ExtractionState,
+  type OcrState,
+} from "../domain/document-inventory";
+import { createHash } from "node:crypto";
+
+/** Identity of the bytes, so a re-fetch can tell unchanged from amended. */
+function sha256(buf: Buffer): string {
+  return createHash("sha256").update(buf).digest("hex");
+}
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -39,7 +72,82 @@ import type {
 } from "../types";
 
 /** Soft cap: prefer collecting the full linked packet when SAM provides many URLs. */
-const MAX_ATTACHMENT_URLS = 40;
+/**
+ * Attachments fetched at once. There is no cap on how many are processed, only
+ * on how many are in flight: forty concurrent downloads of up to 25MB each is
+ * a gigabyte of buffers, and the reason the old code got away with it was the
+ * forty-file limit that was losing amendments.
+ */
+const ATTACHMENT_CONCURRENCY = 5;
+
+/**
+ * What the inventory should say about a document, once it is known whether its
+ * text reached the analysis.
+ *
+ * `unsupported` maps to "no text to read" rather than to a failure: a .dwg
+ * drawing has no text and was never going to. An archive is the opposite case
+ * and maps to "stored but not read", because it certainly contains documents
+ * and none of them were opened.
+ */
+function extractionStateFor(status: AttachmentFetchStatus, trimmed: boolean): ExtractionState {
+  switch (status) {
+    case "fetched":
+      return trimmed ? "partial" : "extracted";
+    case "not_read":
+    case "archive":
+      return "not_read";
+    case "no_text":
+      return "unreadable";
+    case "unsupported":
+      return "not_applicable";
+    default:
+      return "pending";
+  }
+}
+
+/**
+ * The inventory as it stands, keyed by storage path.
+ *
+ * Keyed on the path rather than the display name because names are recovered
+ * from a Content-Disposition header and can legitimately change between runs
+ * for the same file: keying on the name would report a rename as a document
+ * arriving and another one leaving.
+ */
+async function readInventorySnapshot(opportunityId: string): Promise<InventorySnapshot[]> {
+  const rows = await query<{
+    key: string;
+    name: string;
+    content_hash: string | null;
+    document_class: string | null;
+    amendment_number: number | null;
+  }>(
+    `select storage_path as key, name, content_hash, document_class, amendment_number
+       from documents
+      where opportunity_id = $1 and kind = 'solicitation' and storage_path is not null`,
+    [opportunityId]
+  );
+  return rows.map((r) => ({
+    key: r.key,
+    name: r.name,
+    contentHash: r.content_hash,
+    documentClass: parseDocumentClass(r.document_class),
+    amendmentNumber: r.amendment_number,
+  }));
+}
+
+/** Run over a list with a bounded number in flight, preserving input order. */
+async function inBatches<T, R>(
+  items: readonly T[],
+  size: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    const batch = items.slice(i, i + size);
+    out.push(...(await Promise.all(batch.map((item, j) => fn(item, i + j)))));
+  }
+  return out;
+}
 
 const NA = "Not specified in the provided documents";
 
@@ -155,6 +263,17 @@ export const AnalysisSchema = z.object({
         satisfied_by: z.unknown().transform(toSatisfiedBy),
         instructions: z.string().optional().catch(undefined),
         official_form: z.string().optional().catch(undefined),
+        /*
+         * Where this requirement actually came from, as an anchor rather than
+         * a sentence. `source` says "Section L.3", which is where it is
+         * stated; these say which file and which page, which is what lets a
+         * person open it and check. Resolved against the inventory after the
+         * model answers, so a name that matches nothing becomes no anchor
+         * rather than a link to the wrong document.
+         */
+        source_document: z.string().optional().catch(undefined),
+        source_page: z.number().optional().catch(undefined),
+        source_document_id: z.string().optional().catch(undefined),
       })
     )
     .default([]),
@@ -211,6 +330,35 @@ function toSatisfiedBy(v: unknown): SatisfiedBy {
 }
 
 const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25MB cap per file
+/**
+ * Whole-download budget per attachment. There was no timeout at all before, so
+ * one server that accepted the connection and then sent nothing held a worker
+ * slot until the process was restarted.
+ */
+const ATTACH_TIMEOUT_MS = 60_000;
+
+/**
+ * What a refused or failed download means to the completeness check.
+ *
+ * The distinction that matters: "failed" is worth retrying and "refused" is
+ * not. A link that points at a private address will point at a private address
+ * again tomorrow, so telling an operator to re-run analysis wastes their time.
+ * The file has to come from a person.
+ */
+function attachmentStatusFor(err: GuardedFetchError): AttachmentFetchStatus {
+  switch (err.kind) {
+    case "blocked_scheme":
+    case "blocked_host":
+    case "blocked_address":
+    case "too_many_redirects":
+    case "unsupported_type":
+      return "refused";
+    case "too_large":
+      return "too_large";
+    default:
+      return "failed";
+  }
+}
 
 /**
  * Download a solicitation attachment, persist it (Supabase Storage or local
@@ -224,54 +372,73 @@ async function processAttachment(
   opportunityId: string,
   att: Attachment,
   index: number
-): Promise<{ context: string; parsedChars: number; outcome: AttachmentFetchOutcome }> {
+): Promise<{
+  context: string;
+  parsedChars: number;
+  outcome: AttachmentFetchOutcome;
+  documentId: string | null;
+  pages: number | null;
+  ocrState: OcrState | null;
+}> {
   const ingestLabel = att.name || `attachment-${index + 1}`;
   let label = ingestLabel;
+  /**
+   * The inventory row this attachment became, so the caller can record what
+   * happened to it once the analysis budget has decided what fit. Null when
+   * no row was written, which is itself a fact the caller has to handle
+   * rather than a blank to skip over.
+   */
+  let documentId: string | null = null;
   if (!att.url) {
     return {
       context: `- ${label} (no url)`,
       parsedChars: 0,
+      documentId,
+      pages: null,
+      ocrState: null,
       outcome: { name: label, url: null, status: "no_url", detail: "No download URL on the notice" },
     };
   }
   try {
-    const res = await fetch(att.url, { method: "GET" });
-    if (!res.ok) {
-      return {
-        context: `- ${label} (${att.url}), could not fetch (HTTP ${res.status})`,
-        parsedChars: 0,
-        outcome: {
-          name: label,
-          url: att.url,
-          status: "failed",
-          detail: `HTTP ${res.status}`,
-        },
-      };
+    /*
+     * `att.url` is a resourceLink copied out of a SAM.gov notice. Nobody here
+     * wrote it, so it is fetched through the guard: scheme and destination
+     * address checked before connecting and re-checked on every redirect hop,
+     * and the size limit applied while the bytes are arriving rather than
+     * after the whole response is already in memory.
+     */
+    let fetched: GuardedFetchResult;
+    try {
+      fetched = await guardedFetch(att.url, {
+        maxBytes: MAX_ATTACH_BYTES,
+        timeoutMs: ATTACH_TIMEOUT_MS,
+      });
+    } catch (err) {
+      if (err instanceof GuardedFetchError) {
+        const status = attachmentStatusFor(err);
+        return {
+          context: `- ${label} (${redactUrl(att.url)}), not collected: ${err.message}`,
+          parsedChars: 0,
+          documentId,
+          pages: null,
+          ocrState: null,
+          outcome: { name: label, url: att.url, status, detail: err.message },
+        };
+      }
+      throw err;
     }
-    const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+    const ct = fetched.contentType;
     // SAM's notice JSON names every resourceLink "attachment"; the server's
     // Content-Disposition carries the real filename ("Wage Determination.pdf").
     // Recover it here so document names mean something everywhere downstream:
     // the Files tab, trade prioritisation, official-form linking, and the
     // filenames a subcontractor sees on the outreach email.
     label = filenameFromResponse({
-      contentDisposition: res.headers.get("content-disposition"),
+      contentDisposition: fetched.contentDisposition,
       url: att.url,
       fallback: label,
     });
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength > MAX_ATTACH_BYTES) {
-      return {
-        context: `- ${label}, too large to parse (${Math.round(buf.byteLength / 1e6)}MB)`,
-        parsedChars: 0,
-        outcome: {
-          name: label,
-          url: att.url,
-          status: "too_large",
-          detail: `${Math.round(buf.byteLength / 1e6)}MB`,
-        },
-      };
-    }
+    const buf = fetched.body;
 
     // Persist the raw file + a documents row (best-effort).
     // Sniff bytes so SAM's generic "attachment" / octet-stream metadata does not
@@ -290,6 +457,26 @@ async function processAttachment(
     const safeKeyStem = ingestLabel.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "attachment";
     const key = `solicitations/${opportunityId}/${index + 1}_${safeKeyStem}`;
     let stored = false;
+    /*
+     * The inventory row, not just a filename and a path.
+     *
+     * `documents` recorded that a file existed and where the bytes went, and
+     * nothing else: whether the text was ever read, whether an amendment
+     * replaced it, whether the link still works, all lived in a jsonb blob or
+     * nowhere. A file dropped for want of room in the prompt was
+     * indistinguishable from one read cover to cover.
+     *
+     * `extraction_state` is deliberately left at whatever the row already has
+     * (pending on a new row) and set later, once it is known whether the text
+     * actually fit in the analysis. Writing "extracted" here would be a claim
+     * made before the fact it describes.
+     */
+    const inventory = {
+      hash: sha256(buf),
+      size: buf.byteLength,
+      klass: classifyDocumentName(meta.filename, meta.mime),
+      amendment: amendmentNumber(meta.filename),
+    };
     try {
       const up = await storage.upload(key, buf, meta.mime);
       // Upsert-by-path so re-running the analyst does not duplicate document rows.
@@ -298,9 +485,18 @@ async function processAttachment(
         [opportunityId, up.path]
       );
       if (!existing) {
-        await query(
-          `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, meta)
-           values ($1,'solicitation',$2,$3,$4,$5,$6)`,
+        const row = await queryOne<{ id: string }>(
+          `insert into documents (
+             opportunity_id, kind, name, storage_path, storage_backend, mime, meta,
+             source_system, source_url, original_filename,
+             content_hash, byte_size, document_class, amendment_number,
+             disposition, access_state, received_at, last_verified_at
+           )
+           values ($1,'solicitation',$2,$3,$4,$5,$6,
+                   'sam.gov',$7,$8,
+                   $9,$10,$11,$12,
+                   'delivered','available',now(),now())
+           returning id`,
           [
             opportunityId,
             meta.filename,
@@ -308,12 +504,40 @@ async function processAttachment(
             up.backend,
             meta.mime,
             JSON.stringify({ source_url: att.url }),
+            att.url,
+            ingestLabel,
+            inventory.hash,
+            inventory.size,
+            inventory.klass,
+            inventory.amendment,
           ]
         );
+        documentId = row?.id ?? null;
       } else {
+        documentId = existing.id;
         await query(
-          `update documents set name=$1, mime=$2, storage_backend=$3 where id=$4`,
-          [meta.filename, meta.mime, up.backend, existing.id]
+          `update documents set
+             name=$1, mime=$2, storage_backend=$3,
+             source_system='sam.gov', source_url=$5, original_filename=$6,
+             content_hash=$7, byte_size=$8, document_class=$9, amendment_number=$10,
+             disposition='delivered', access_state='available',
+             last_verified_at=now(), last_error=null,
+             -- A file re-issued under the same name with different bytes is a
+             -- new version of that document, not a re-read of the old one.
+             version = case when content_hash is distinct from $7 then version + 1 else version end
+           where id=$4`,
+          [
+            meta.filename,
+            meta.mime,
+            up.backend,
+            existing.id,
+            att.url,
+            ingestLabel,
+            inventory.hash,
+            inventory.size,
+            inventory.klass,
+            inventory.amendment,
+          ]
         );
       }
       stored = true;
@@ -322,7 +546,7 @@ async function processAttachment(
       // that is not stored will not be attached to any outreach email, so
       // the failure has to be visible, not "best-effort" silence.
       console.error(
-        `[solicitation-analyst] failed to store ${att.url}: ${(err as Error).message}`
+        `[solicitation-analyst] failed to store ${redactUrl(att.url)}: ${(err as Error).message}`
       );
     }
 
@@ -336,11 +560,16 @@ async function processAttachment(
       // gets built against a checklist nobody read. The per-attachment budget
       // below decides what actually fits in the prompt; this decides what is
       // available to choose from.
-      const { text, pages } = await extractPdfText(buf, 400_000);
+      const { pages: pageTexts, total: pages } = await extractPdfPages(buf, 400_000);
+      const text = withPageMarkers(pageTexts);
       if (text) {
         return {
-          context: `- ${label} (${pages} pp, extracted):\n${text}`,
+          context: `- ${label} (${pages} pp, extracted; [p.N] marks the start of page N):\n${text}`,
           parsedChars: text.length,
+          documentId,
+          pages,
+          // A text layer was there. Nothing needed transcribing.
+          ocrState: "not_needed" as const,
           outcome: {
             name: label,
             url: att.url,
@@ -366,6 +595,9 @@ async function processAttachment(
         return {
           context: `- ${label} (${ocr.pagesTotal} pp, SCANNED DOCUMENT, transcribed from the page images; anything marked [illegible] was not readable and must not be guessed):\n${ocr.text}${truncNote}`,
           parsedChars: ocr.text.length,
+          documentId,
+          pages: ocr.pagesTotal,
+          ocrState: (ocr.truncated ? "partial" : "done") as OcrState,
           outcome: {
             name: label,
             url: att.url,
@@ -379,6 +611,9 @@ async function processAttachment(
       return {
         context: `- ${label}, scanned PDF stored but it could not be read (${ocr.error ?? "no readable text"}). Do NOT assume anything about its contents.`,
         parsedChars: 0,
+        documentId,
+        pages: ocr.pagesTotal,
+        ocrState: "failed" as const,
         outcome: {
           name: label,
           url: att.url,
@@ -392,12 +627,44 @@ async function processAttachment(
       return {
         context: `- ${label}:\n${text}`,
         parsedChars: text.length,
+        documentId,
+        pages: null,
+        ocrState: null,
         outcome: { name: label, url: att.url, status: "fetched" },
       };
     }
+    /*
+     * An archive is not merely unsupported, it is a container of documents
+     * nobody opened.
+     *
+     * Nothing in this codebase extracts archives, so a notice whose entire
+     * solicitation package arrives as `Solicitation.zip` used to report one
+     * cleanly fetched attachment and advance, with every requirement inside
+     * it unread and the analysis assembled from the portal blurb. Saying so
+     * is the honest state; extracting it is a separate decision with its own
+     * decompression-bomb problem.
+     */
+    if (isArchive(label, ct)) {
+      return {
+        context: `- ${label}: an ARCHIVE, stored but never opened. Its contents were not read by anything. Do NOT state or assume anything about what is inside it.`,
+        parsedChars: 0,
+        documentId,
+        pages: null,
+        ocrState: null,
+        outcome: {
+          name: label,
+          url: att.url,
+          status: stored ? "archive" : "failed",
+          detail: "archive contents were not opened",
+        },
+      };
+    }
     return {
-      context: `- ${label} (${att.url}), ${ct || "binary"} stored (not text-parseable)`,
+      context: `- ${label} (${redactUrl(att.url)}), ${ct || "binary"} stored (not text-parseable)`,
       parsedChars: 0,
+      documentId,
+      pages: null,
+      ocrState: null,
       outcome: {
         name: label,
         url: att.url,
@@ -407,8 +674,11 @@ async function processAttachment(
     };
   } catch (err) {
     return {
-      context: `- ${label} (${att.url}), processing failed (${(err as Error).message})`,
+      context: `- ${label} (${redactUrl(att.url)}), processing failed (${(err as Error).message})`,
       parsedChars: 0,
+      documentId,
+      pages: null,
+      ocrState: null,
       outcome: {
         name: label,
         url: att.url,
@@ -511,10 +781,14 @@ function buildPrompt(opp: Opportunity, attachmentContext: string): string {
     '       "signature_required": boolean,        // does a person have to sign it',
     '       "satisfied_by": "auto_generated"|"from_profile"|"operator_signature"|"operator_provided",',
     '       "instructions": string,               // if the operator must supply/sign it, what exactly they do (omit otherwise)',
-    '       "official_form": string               // EXACT form/worksheet id if a SPECIFIC government or agency form is required (e.g. "SF-1449", "SF-33", "SF-18", "SF-1442", "agency pricing worksheet Attachment 3", "SAM.gov reps & certs"). Omit if no specific form is mandated.',
+    '       "official_form": string,              // EXACT form/worksheet id if a SPECIFIC government or agency form is required (e.g. "SF-1449", "SF-33", "SF-18", "SF-1442", "agency pricing worksheet Attachment 3", "SAM.gov reps & certs"). Omit if no specific form is mandated.',
+    '       "source_document": string,            // the document this came from, named EXACTLY as it is labelled in the ATTACHMENT TEXT above. Omit if it came from the portal description rather than a document.',
+    '       "source_page": number                 // the page number from the nearest [p.N] marker above the text you read it in. Omit if the document has no page markers or you are not certain.',
     '     }',
     "  ]",
     "}",
+    "",
+    "CITATIONS: for every compliance-matrix item, name the document it came from in `source_document`, spelled exactly as that document is labelled in the ATTACHMENT TEXT, and give `source_page` from the nearest preceding [p.N] marker. Omit both rather than guessing: an unsourced requirement is handled, a requirement attributed to the wrong page sends somebody to read the wrong thing.",
     "",
     "COMPLIANCE MATRIX, this is critical. List EVERY document, form, schedule, certification, acknowledgment, and attachment the bidder must include for the bid to be responsive. Base it on the instructions to offerors, the scope, and the attachments. Classify each item's `satisfied_by`:",
     '- "auto_generated": the platform can produce it from the bid data (pricing/bid schedule, technical approach or cover/transmittal letter).',
@@ -671,40 +945,125 @@ export const solicitationAnalyst: AgentDefinition = {
     const attachments: Attachment[] = Array.isArray(opp.attachments_json)
       ? opp.attachments_json
       : [];
-    const processed = await Promise.all(
-      attachments
-        .slice(0, MAX_ATTACHMENT_URLS)
-        .map((att, i) => processAttachment(opportunityId, att, i))
-    );
-    /**
-     * Share the prompt budget across attachments rather than spending it on
-     * whichever happened to be first.
+    /*
+     * Every attachment, in bounded batches.
      *
-     * The joined text used to be sliced to a flat 60,000 characters, and SAM
-     * lists amendments and Q&A responses AFTER the base documents, so the
-     * files most likely to change the requirements were exactly the ones
-     * guaranteed to be cut. Each attachment now gets an equal share, and only
-     * the ones that exceed their share are trimmed.
+     * This was `.slice(0, 40)` inside a `Promise.all`, which is two problems
+     * wearing one line. Attachments past the fortieth were dropped without a
+     * disposition, and SAM appends amendments and Q and A responses AFTER the
+     * base documents, so the files that vanished were the ones most likely to
+     * have changed the requirements. The forty that survived were then all
+     * fetched at once, up to a gigabyte in flight.
      */
-    const perAttachment = Math.max(
-      8_000,
-      Math.floor(ATTACHMENT_PROMPT_BUDGET / Math.max(1, processed.length))
+    /*
+     * What the inventory said before this run, so the run can say what moved.
+     *
+     * Read first, because processing overwrites it. The change worth catching
+     * is the quiet one: an agency replaces a file in place, same name, same
+     * count, same list, and every requirement extracted from the old version
+     * is now describing a document that no longer exists.
+     */
+    const inventoryBefore = await readInventorySnapshot(opportunityId);
+
+    const processed = await inBatches(attachments, ATTACHMENT_CONCURRENCY, (att, i) =>
+      processAttachment(opportunityId, att, i)
     );
-    const attachmentContext = processed
-      .map((p) =>
-        p.context.length > perAttachment
-          ? `${p.context.slice(0, perAttachment)}\n[... this document continues; trimmed to fit the analysis budget]`
-          : p.context
-      )
-      .join("\n\n");
+
+    const changes = documentChanges(inventoryBefore, await readInventorySnapshot(opportunityId));
+    if (!changes.quiet && inventoryBefore.length > 0) {
+      // Only worth a line when there was something to compare against. On a
+      // first run every document is new, which is not news.
+      await logAgent({
+        agent: "solicitation-analyst",
+        action: "documents_changed",
+        opportunityId,
+        level: changes.changed.length > 0 || changes.newAmendments.length > 0 ? "warn" : "info",
+        message: changeSummary(changes),
+      });
+    }
+
+    /*
+     * Decide what fits, and say what did not.
+     *
+     * Each document is offered an equal share of the prompt budget; one
+     * shorter than its share takes only what it needs and releases the rest.
+     * The previous version put an 8,000-character FLOOR under each share with
+     * no ceiling on the total, so past thirty documents the shares summed past
+     * the budget and a final slice on the joined text silently dropped whole
+     * documents off the end. The arithmetic lives in the domain module, where
+     * it can be tested without a database.
+     */
+    const { text: attachmentContext, plan } = assembleAttachmentContext(
+      processed.map((p) => ({ name: p.outcome.name, context: p.context })),
+      ATTACHMENT_PROMPT_BUDGET
+    );
+    const allocated = new Map(plan.allocations.map((a) => [a.id, a]));
     const parsedChars = processed.reduce((a, p) => a + p.parsedChars, 0);
-    const attachmentOutcomes = processed.map((p) => p.outcome);
+    /*
+     * A document that did not fit gets its own disposition rather than keeping
+     * the one it earned by downloading cleanly.
+     *
+     * "fetched" would be true and misleading at the same time: the file is in
+     * storage, and nothing in it reached the analysis. The completeness check
+     * treats that as a blocker, which is the whole point, because a brief
+     * assembled without a document must not read the same as one assembled
+     * with it. Only a clean fetch is downgraded; a refusal or a failure is
+     * already a more specific answer.
+     */
+    const attachmentOutcomes = processed.map((p, i) => {
+      const a = allocated.get(String(i));
+      if (a?.omitted && p.outcome.status === "fetched") {
+        return {
+          ...p.outcome,
+          status: "not_read" as const,
+          detail: "no room in the analysis for this document",
+        };
+      }
+      return p.outcome;
+    });
+    /*
+     * Record what became of each document, now that it is known.
+     *
+     * This is the write that makes "nothing was silently skipped" a query
+     * rather than a hope. `extraction_state` could not be set when the row was
+     * written, because whether the text reached the analysis is decided by the
+     * budget, several steps later. Writing "extracted" at insert time would
+     * have been a claim made before the fact it describes, which is the same
+     * mistake as the log line that counted forty files as fifty-seven.
+     */
+    await Promise.all(
+      processed.map(async (p, i) => {
+        if (!p.documentId) return;
+        const a = allocated.get(String(i));
+        const state = extractionStateFor(p.outcome.status, a?.trimmed ?? false);
+        await query(
+          `update documents set
+             extraction_state=$2, ocr_state=coalesce($3, ocr_state),
+             page_count=coalesce($4, page_count),
+             extraction_model=$5, extracted_at=now()
+           where id=$1`,
+          [p.documentId, state, p.ocrState, p.pages, config.claude.modelSmart]
+        ).catch((err) => {
+          // The analysis itself is not lost over a bookkeeping write, but the
+          // inventory being wrong is exactly the failure this exists to
+          // prevent, so it is never silent.
+          console.error(
+            `[solicitation-analyst] failed to record inventory for ${p.documentId}: ${(err as Error).message}`
+          );
+        });
+      })
+    );
+
     await logAgent({
       agent: "solicitation-analyst",
       action: "attachments",
       opportunityId,
-      level: "info",
-      message: `processed ${attachments.length} attachment(s) (cap ${MAX_ATTACHMENT_URLS}), extracted ${parsedChars} chars of text; outcomes: ${attachmentOutcomes.map((o) => `${o.name}:${o.status}`).join(", ") || "none"}`,
+      level: plan.complete ? "info" : "warn",
+      // Counts what happened, not what was asked for. The old line reported
+      // `attachments.length` while the code had already discarded everything
+      // past the fortieth, so a notice with fifty-seven attachments logged
+      // fifty-seven processed and analysed forty.
+      message: `${attachments.length} attachment(s) on the notice, ${processed.length} processed, ${parsedChars} chars extracted. Coverage: ${coverageSummary(plan)}. Outcomes: ${attachmentOutcomes.map((o) => `${o.name}:${o.status}`).join(", ") || "none"}`,
     });
 
     let analysis: SolicitationAnalysis;
@@ -722,19 +1081,112 @@ export const solicitationAnalyst: AgentDefinition = {
       // Every requirement needs a stable handle and a name a person can read.
       // A blank id would collide with every other blank id when confirmations
       // are matched; a blank title is not a requirement anybody can act on.
+      /*
+       * Resolve every citation against the documents actually on this
+       * opportunity, rather than trusting the name the model wrote down.
+       *
+       * A model asked to cite a source will cite one. Checking it here is the
+       * difference between "open the source" being a link and being a
+       * suggestion: a name matching nothing becomes no anchor with a reason,
+       * and a page past the end of the file loses the page but keeps the
+       * document.
+       */
+      const citable: CitationTarget[] = processed
+        .filter((p) => p.documentId)
+        .map((p) => ({ id: p.documentId!, name: p.outcome.name, pageCount: p.pages }));
+      let unresolvedCitations = 0;
       analysis.compliance_matrix = (analysis.compliance_matrix ?? [])
         .filter((r) => r.title?.trim())
-        .map((r, i) => ({
-          ...r,
-          id:
-            r.id?.trim() ||
-            r.title
-              .toLowerCase()
-              .replace(/[^a-z0-9]+/g, "_")
-              .replace(/^_+|_+$/g, "")
-              .slice(0, 40) ||
-            `requirement_${i + 1}`,
-        }));
+        .map((r, i) => {
+          const cite = resolveCitation(r.source_document, r.source_page, citable);
+          if (cite.problem === "unknown_document" || cite.problem === "page_out_of_range") {
+            unresolvedCitations++;
+          }
+          return {
+            ...r,
+            id:
+              r.id?.trim() ||
+              r.title
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "_")
+                .replace(/^_+|_+$/g, "")
+                .slice(0, 40) ||
+              `requirement_${i + 1}`,
+            source_document: cite.documentName ?? undefined,
+            source_document_id: cite.documentId ?? undefined,
+            source_page: cite.page ?? undefined,
+          };
+        });
+      /*
+       * The same requirement, listed twice under different words.
+       *
+       * A matrix carrying both "Signed SF-1449" and "SF-1449 offer form"
+       * makes an operator do one job twice, and makes the package validator
+       * demand two files where one exists. Merging keeps mandatory: if the
+       * same requirement appears once as required and once as optional,
+       * dropping the required one turns a disqualifier into a suggestion.
+       */
+      const beforeDedupe = analysis.compliance_matrix.length;
+      analysis.compliance_matrix = dedupeRequirements(
+        analysis.compliance_matrix.map((r) => ({ ...r, officialForm: r.official_form }))
+      ).map(({ officialForm: _ignored, ...r }) => r);
+      const merged = beforeDedupe - analysis.compliance_matrix.length;
+      if (merged > 0) {
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "requirements_deduplicated",
+          opportunityId,
+          level: "info",
+          message: `${merged} requirement(s) were the same thing listed twice and were merged.`,
+        });
+      }
+
+      /*
+       * What the documents say when read exactly, checked against what the
+       * model said they say.
+       *
+       * Nothing here overwrites the analysis. Where a deterministic reading
+       * and the model disagree, the disagreement IS the finding: replacing one
+       * with the other would trade an unverified answer for another
+       * unverified answer, and a page limit is the kind of thing that gets a
+       * bid thrown out for being wrong in either direction.
+       */
+      const limits = extractPageLimits(attachmentContext);
+      const conflicts = pageLimitContradictions(limits);
+      const clauses = extractClauses(attachmentContext);
+      if (conflicts.length > 0) {
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "contradictions",
+          opportunityId,
+          level: "warn",
+          message: conflicts.map((c) => c.detail).join(" "),
+        });
+      }
+      if (clauses.length > 0) {
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "clauses_found",
+          opportunityId,
+          level: "info",
+          message: `${clauses.length} clause(s) named in the documents: ${clauses
+            .slice(0, 20)
+            .map((c) => `${c.regulation} ${c.id}${c.page ? ` (p.${c.page})` : ""}`)
+            .join(", ")}${clauses.length > 20 ? ", and more" : ""}.`,
+        });
+      }
+
+      if (unresolvedCitations > 0) {
+        // Not fatal, and not silent. A citation the model invented is the
+        // signal that it was reading less carefully than it claimed.
+        await logAgent({
+          agent: "solicitation-analyst",
+          action: "citations",
+          opportunityId,
+          level: "warn",
+          message: `${unresolvedCitations} of ${analysis.compliance_matrix.length} requirement(s) cited a document or page that does not exist on this opportunity. Those requirements have no source anchor.`,
+        });
+      }
       await logAgent({
         agent: "solicitation-analyst",
         action: "analyze",

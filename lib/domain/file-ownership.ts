@@ -7,18 +7,25 @@
  * the only safe authorization is to resolve the key back to the record that
  * references it and check that record's org against the caller.
  *
- * Every key we write is referenced by exactly one of two tables, both carrying
+ * Every key we write is referenced by exactly one of four tables, all carrying
  * org_id: `documents.storage_path` (solicitations, generated bids, capability
- * statements, operator uploads) and `subcontractor_documents.storage_path`
- * (W-9s and insurance certs). A key referenced by neither is unknown, and
- * unknown is refused, never served.
+ * statements, operator uploads), `subcontractor_documents.storage_path`
+ * (W-9s and insurance certs), `compliance_item_documents.storage_path`
+ * (the company's own registrations, certifications and policies), and
+ * `feedback_reports.storage_path` (a screenshot somebody attached to a
+ * report). A key referenced by none of them is unknown, and unknown is
+ * refused, never served.
+ *
+ * A table that stores keys and is not listed here does not fail loudly: its
+ * files are simply never served, to anybody. tests/file-ownership-tables keeps
+ * the list honest against the schema.
  */
 import { queryOne } from "../db";
 
 /**
  * The org that owns this storage key, or null when nothing references it.
  *
- * Read-only and side-effect free. Both lookups are exact-match on the stored
+ * Read-only and side-effect free. Every lookup is exact-match on the stored
  * path, so a traversal or a guessed key that was never stored resolves to
  * null and the caller denies it.
  */
@@ -34,7 +41,19 @@ export async function orgIdForStorageKey(key: string): Promise<string | null> {
     `select org_id from subcontractor_documents where storage_path = $1 limit 1`,
     [key]
   ).catch(() => null);
-  return subDoc?.org_id ?? null;
+  if (subDoc?.org_id) return subDoc.org_id;
+
+  const complianceDoc = await queryOne<{ org_id: string | null }>(
+    `select org_id from compliance_item_documents where storage_path = $1 limit 1`,
+    [key]
+  ).catch(() => null);
+  if (complianceDoc?.org_id) return complianceDoc.org_id;
+
+  const feedbackShot = await queryOne<{ org_id: string | null }>(
+    `select org_id from feedback_reports where storage_path = $1 limit 1`,
+    [key]
+  ).catch(() => null);
+  return feedbackShot?.org_id ?? null;
 }
 
 /** True when this key is owned by exactly this org. Unknown keys are false. */

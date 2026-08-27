@@ -12,8 +12,9 @@ import { highlightGuideTarget } from "@/lib/guide-highlight";
 import { GuideStepActions } from "@/components/guide-adapters";
 import { trackClientEvent } from "@/lib/client-analytics";
 import type { GuideAdapters, GuideStep, PageGuide } from "@/lib/domain/page-guide";
+import { urgentSteps } from "@/lib/domain/page-guide";
 
-type Mode = "guide" | "ask" | "explain" | "score" | "terms";
+type Mode = "guide" | "ask" | "changed" | "explain" | "score" | "terms";
 
 export function openGuideWizard() {
   if (typeof window !== "undefined") {
@@ -38,6 +39,7 @@ export function GuideWizard() {
   const [narration, setNarration] = useState<string | null>(null);
   const [narrating, setNarrating] = useState(false);
   const [narrateError, setNarrateError] = useState<string | null>(null);
+  const [urgentOnly, setUrgentOnly] = useState(false);
   const [askInput, setAskInput] = useState("");
   const [askBusy, setAskBusy] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
@@ -315,7 +317,17 @@ export function GuideWizard() {
     }
   }
 
-  const steps = guide?.steps ?? [];
+  /*
+   * "Show only urgent work", one of the four controls the brief names.
+   *
+   * Filtering to the warn-toned steps, which is what the builders use for a
+   * blocker or a deadline that has arrived. When nothing is urgent the panel
+   * says so and shows everything, because a filter that empties this panel has
+   * answered "what should I do next" with silence.
+   */
+  const allSteps = guide?.steps ?? [];
+  const urgent = urgentSteps(allSteps);
+  const steps = urgentOnly ? urgent.steps : allSteps;
   const active = steps[stepIndex] ?? null;
 
   return (
@@ -372,6 +384,13 @@ export function GuideWizard() {
                 [
                   ["guide", "What to do"],
                   ["ask", "Ask"],
+                  /*
+                    "What changed" is a tab rather than a question because it
+                    is a list of events with times, and handing that list to a
+                    model to retell adds a place to be wrong and takes the
+                    timestamps away.
+                  */
+                  ["changed", "What changed"],
                   ["explain", "Explain page"],
                   ...(guide?.scoreExplain ? ([["score", "Why this score"]] as const) : []),
                   ["terms", "Terms"],
@@ -399,6 +418,32 @@ export function GuideWizard() {
               {error && <p className="text-sm text-risk">{error}</p>}
 
               {guide && mode === "guide" && (
+                <>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUrgentOnly((v) => !v);
+                      // The index points into whichever list is showing, so a
+                      // toggle that kept it would land on a different step
+                      // than the one being read.
+                      setStepIndex(0);
+                    }}
+                    aria-pressed={urgentOnly}
+                    className={`min-h-11 rounded-md px-3 py-1.5 text-xs font-medium lg:min-h-0 ${
+                      urgentOnly
+                        ? "bg-foreground text-background"
+                        : "bg-surface text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    Show only urgent work
+                  </button>
+                  {urgentOnly && !urgent.anyUrgent && (
+                    <span className="text-xs text-muted-foreground">
+                      Nothing is urgent, so this is everything.
+                    </span>
+                  )}
+                </div>
                 <GuideBody
                   guide={guide}
                   adapters={adapters}
@@ -417,6 +462,7 @@ export function GuideWizard() {
                   }}
                   onClose={() => setOpen(false)}
                 />
+                </>
               )}
 
               {guide && mode === "ask" && (
@@ -472,6 +518,53 @@ export function GuideWizard() {
                       {askBusy ? "…" : "Ask"}
                     </button>
                   </form>
+                </div>
+              )}
+
+              {guide && mode === "changed" && (
+                <div className="space-y-3">
+                  {guide.recentChanges == null ? (
+                    <p className="text-sm text-foreground">
+                      The history could not be read just now. That is this panel failing, not a
+                      week in which nothing happened.
+                    </p>
+                  ) : guide.recentChanges.length === 0 ? (
+                    <p className="text-sm text-foreground">
+                      Nothing has been recorded here in the last seven days.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {guide.recentChanges.map((c, i) => (
+                        <li key={`${c.at}-${i}`} className="flex gap-3 text-sm">
+                          <time
+                            dateTime={c.at}
+                            className="num w-24 shrink-0 text-xs text-muted-foreground"
+                          >
+                            {new Date(c.at).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </time>
+                          <span className="min-w-0 flex-1 text-foreground">
+                            {c.text}
+                            {/*
+                              Who did it. The brief asks for automation to say
+                              when it acted, and a list that mixes the two
+                              without marking them reads as though a person
+                              made every one of these moves.
+                            */}
+                            {c.automatic && (
+                              <span className="ml-2 badge bg-muted text-muted-foreground">
+                                Automatic
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
 

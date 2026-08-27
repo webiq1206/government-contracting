@@ -48,7 +48,16 @@ vi.mock("../lib/integrations/documents", () => ({
     renderSignedW9Pdf: async () => Buffer.from("%PDF w9"),
   },
 }));
-vi.mock("../lib/app-settings", () => ({
+/*
+ * The real module underneath, with only the settings this test means to pin.
+ *
+ * A factory that lists exports replaces the whole module, so the first agent
+ * to read a new setting gets undefined and the failure surfaces as a wrong
+ * assertion three files away rather than as a missing mock. Spreading the
+ * original keeps the pinning explicit and lets everything else be real.
+ */
+vi.mock("../lib/app-settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/app-settings")>()),
   getAutomationRules: async () => ({ submit_lead_hours: 24, urgent_days: 3, retention_days: 0 }),
   areCallsEnabled: async () => false,
   isAutomationPaused: async () => false,

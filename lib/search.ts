@@ -18,7 +18,14 @@ import { snippet, type SearchResult } from "./domain/search-results";
 export async function searchEverything(
   rawQuery: string,
   orgId: string,
-  perKind = 8
+  perKind = 8,
+  /**
+   * Show every copy of a duplicated solicitation rather than the one being
+   * worked. The default is to collapse, because that is what somebody
+   * jumping to a record wants; this is for the operator who followed the
+   * "see all copies" link and is about to close two of them.
+   */
+  opts: { collapseDuplicates?: boolean } = {}
 ): Promise<SearchResult[]> {
   const q = rawQuery.trim();
   if (q.length < 2) return [];
@@ -87,8 +94,13 @@ export async function searchEverything(
     ),
   ]);
 
+  const collapse = opts.collapseDuplicates !== false;
+  const oppRows = collapse
+    ? dedupeOpportunityHits(opps)
+    : opps.map((o) => ({ ...o, duplicates: 0 }));
+
   const results: SearchResult[] = [
-    ...dedupeOpportunityHits(opps).map((o) => ({
+    ...oppRows.map((o) => ({
       kind: "opportunity" as const,
       title: o.title ?? "Untitled opportunity",
       subtitle: [
@@ -103,6 +115,16 @@ export async function searchEverything(
         .filter(Boolean)
         .join(" · "),
       href: `/opportunity/${o.id}`,
+      // The folded copies, reachable rather than merely counted. Searching
+      // the government's own identifier is what puts them side by side, and
+      // `all=1` is what stops this list collapsing them again.
+      cluster:
+        o.duplicates > 0 && o.solicitation_number
+          ? {
+              count: o.duplicates + 1,
+              href: `/search?q=${encodeURIComponent(o.solicitation_number)}&kind=opportunity&all=1`,
+            }
+          : undefined,
     })),
     ...subs.map((s) => ({
       kind: "subcontractor" as const,

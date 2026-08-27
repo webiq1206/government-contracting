@@ -15,6 +15,7 @@ import type { KpiParams } from "./domain/kpi";
 import type { BreakdownKey, BreakdownRow, FunnelCounts } from "./domain/funnel";
 import type { CredentialSource as ProviderCredentialSource } from "./domain/provider-usage";
 import type { TemplateCounts } from "./domain/template-health";
+import type { WorkKind } from "./domain/work-queue";
 import { resolveSubWork } from "./domain/sub-work";
 import {
   loadAwardCompliance,
@@ -23,6 +24,7 @@ import {
 } from "./sub-compliance-store";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
+import { THREAD_KEY_SQL } from "./thread-key";
 
 /**
  * The organization every read in this module is scoped to.
@@ -168,6 +170,86 @@ export interface OppTableFilters {
   value?: "known" | "unknown";
   /** Include dismissed and archived records, hidden by default. */
   includeClosed?: boolean;
+  /**
+   * How much of the score rests on facts the notice actually stated.
+   *
+   * Read from what the scoring engine wrote rather than re-derived here: the
+   * rule lives in assessDataConfidence and a second copy in SQL would drift
+   * from it the first time either changed.
+   */
+  confidence?: "high" | "medium" | "low";
+  /** Published value at least this much. Only ever matches published values. */
+  valueMin?: number;
+  /** Published value at most this much. */
+  valueMax?: number;
+  /** Only rows automation named something it could not get past. */
+  blocked?: boolean;
+  /** Only rows with a required trade that nobody has quoted. */
+  uncovered?: boolean;
+  /** "ready" or "not_ready": whether a package has passed validation. */
+  readiness?: "ready" | "not_ready";
+  /** "mine" or "unassigned". Needs viewerId to mean the first. */
+  owner?: "mine" | "unassigned";
+  viewerId?: string;
+}
+
+/**
+ * Which required trades an opportunity has a quote for.
+ *
+ * One definition, because two places need it: the "uncovered trades" filter
+ * and the coverage figure on every card. Written twice they would drift, and
+ * the drift would be silent: a filter that says a bid is covered beside a card
+ * that says two trades are missing.
+ *
+ * The comparison is case-blind on purpose. The extractor writes what the
+ * solicitation said and the operator types what they say, so "Electrical" and
+ * "electrical" are one trade, and treating them as two sends somebody chasing
+ * a quote they already have.
+ */
+const REQUIRED_TRADES_SQL = `
+  jsonb_array_elements_text(
+    case when jsonb_typeof(o.solicitation_analysis->'required_trades') = 'array'
+         then o.solicitation_analysis->'required_trades'
+         else '[]'::jsonb end
+  )`;
+
+const TRADE_COVERED_SQL = `
+  exists (
+    select 1 from quotes q
+     where q.opportunity_id = o.id
+       and lower(coalesce(q.trade, '')) = lower(t.trade)
+  )`;
+
+export interface TradeCoverage {
+  /** How many trades the analyst said this job needs. */
+  required: number;
+  /** How many of them somebody has priced. */
+  covered: number;
+}
+
+/**
+ * Coverage for a page of opportunities, in one query.
+ *
+ * A record whose analysis has not run has no required trades, and that is
+ * `required: 0` rather than "fully covered": the card says "Trades not read
+ * yet", because zero of zero is not a reassurance.
+ */
+export async function tradeCoverageFor(ids: string[]): Promise<Map<string, TradeCoverage>> {
+  const out = new Map<string, TradeCoverage>();
+  if (ids.length === 0) return out;
+  const orgId = await currentOrg();
+  const rows = await query<{ id: string; required: number; covered: number }>(
+    `select o.id,
+            count(t.trade)::int as required,
+            count(*) filter (where ${TRADE_COVERED_SQL})::int as covered
+       from opportunities o
+       left join lateral ${REQUIRED_TRADES_SQL} as t(trade) on true
+      where o.org_id = $1 and o.id = any($2::uuid[])
+      group by o.id`,
+    [orgId, ids]
+  );
+  for (const r of rows) out.set(r.id, { required: r.required, covered: r.covered });
+  return out;
 }
 
 function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
@@ -217,6 +299,66 @@ function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
    */
   if (f.value === "known") where.push("value_estimated is not null");
   if (f.value === "unknown") where.push("value_estimated is null");
+  if (f.confidence) {
+    params.push(f.confidence);
+    // Written by the scoring engine into score_breakdown. A record scored
+    // before confidence existed has no key here and matches nothing, which is
+    // correct: its confidence is not low, it is unrecorded.
+    where.push(`score_breakdown->'data_confidence'->>'level' = $${params.length}`);
+  }
+  /*
+   * A value range only ever matches a published value.
+   *
+   * An unknown value is not a small one. Treating null as zero would put every
+   * unread notice in the "under $100k" band, which is the same lie as printing
+   * 0 for an unknown count, told about money.
+   */
+  if (f.valueMin != null) {
+    params.push(f.valueMin);
+    where.push(`value_estimated is not null and value_estimated >= $${params.length}`);
+  }
+  if (f.valueMax != null) {
+    params.push(f.valueMax);
+    where.push(`value_estimated is not null and value_estimated <= $${params.length}`);
+  }
+  if (f.blocked) where.push("coalesce(array_length(risk_flags, 1), 0) > 0");
+  /*
+   * A required trade nobody has priced.
+   *
+   * The required trades are what the analyst extracted; a trade is covered
+   * when a quote exists for it on this opportunity. Compared case-insensitively
+   * because the extractor writes what the solicitation said and the quote
+   * carries what the operator typed.
+   */
+  if (f.uncovered) {
+    /*
+     * The same two fragments the coverage counts use, aliased so `o` means
+     * this row. One definition of "covered" rather than two that can drift
+     * into a filter and a card disagreeing about the same bid.
+     */
+    where.push(`exists (
+      select 1
+        from opportunities o
+        join lateral ${REQUIRED_TRADES_SQL} as t(trade) on true
+       where o.id = opportunities.id
+         and not ${TRADE_COVERED_SQL}
+    )`);
+  }
+  if (f.readiness === "ready") {
+    where.push(
+      `exists (select 1 from bids b where b.opportunity_id = opportunities.id and b.package_ready)`
+    );
+  }
+  if (f.readiness === "not_ready") {
+    where.push(
+      `not exists (select 1 from bids b where b.opportunity_id = opportunities.id and b.package_ready)`
+    );
+  }
+  if (f.owner === "unassigned") where.push("assigned_to is null");
+  if (f.owner === "mine" && f.viewerId) {
+    params.push(f.viewerId);
+    where.push(`assigned_to = $${params.length}`);
+  }
   if (f.q) {
     params.push(`%${f.q}%`);
     where.push(
@@ -462,7 +604,53 @@ export interface SubFilters {
   sbOnly?: boolean;
   /** Include blocked subs, which are hidden by default. */
   includeBlocked?: boolean;
+  /**
+   * Include records put aside or folded into another, both hidden by default.
+   *
+   * Separate from `includeBlocked` because they are different statements. A
+   * blocked firm is one somebody decided not to use; an archived one is simply
+   * not in play; a merged one is not a firm at all any more, it is a pointer to
+   * the record that absorbed it. A roster that mixed the three would eventually
+   * have somebody email a tombstone.
+   */
+  includeArchived?: boolean;
+  /**
+   * Whether anybody could reach this firm at all: a verified address or a
+   * phone number. The same predicate the record header uses for its
+   * operational state, so a filter and a badge cannot disagree.
+   */
+  contactable?: "yes" | "no";
+  /** Award-blocking paperwork: complete, or something outstanding. */
+  paperwork?: "ready" | "short";
+  /** Firms that will actually travel to this state. */
+  worksIn?: string;
+  /** Holds this set-aside certification. */
+  certification?: string;
+  /** Bonded to at least this much on a single job, in cents. */
+  minBondCents?: number;
+  /** Crew of at least this many. Excludes firms whose crew nobody has asked about. */
+  minCrew?: number;
+  /**
+   * Rate filters, each with the denominator they need to mean anything.
+   *
+   * A firm nobody has emailed has no response rate. Reading that as 0% would
+   * put every new firm at the bottom of a "responds at least half the time"
+   * filter, which is the opposite of what the filter is for: those are the
+   * firms most in need of a first touch. So a firm below the minimum evidence
+   * is excluded from a rate filter rather than scored at zero, and the roster
+   * says how many were set aside.
+   */
+  minResponseRate?: number;
+  minQuoteRate?: number;
+  minAwardRate?: number;
+  /** How many sends a rate has to be built on before it counts. */
+  rateEvidence?: number;
+  /** Carries this tag. Matched without regard to case, as tags are stored. */
+  tag?: string;
 }
+
+/** Below this, a rate is an accident rather than a pattern. */
+export const DEFAULT_RATE_EVIDENCE = 3;
 
 /**
  * Columns the roster may be sorted by, and the SQL each one means.
@@ -479,6 +667,33 @@ export const SUB_SORTS: Record<string, string> = {
   license_status: "license_status nulls last",
 };
 
+/**
+ * How many award-blocking documents this subcontractor is short.
+ *
+ * One fragment, used by every list and drawer that needs the number, so a
+ * firm cannot read "Ready" on the roster and "Missing documents" on its own
+ * record. The doc types are asserted against REQUIRED_FOR_AWARD by a test, so
+ * adding a fourth required document cannot leave this behind.
+ *
+ * Counted rather than inferred from a document count: a subcontractor with
+ * three pending uploads and no current coverage has documents and is still
+ * not clear.
+ */
+export const REQUIRED_DOC_SQL_TYPES = ["w9", "coi_general_liability", "coi_workers_comp"] as const;
+
+function unmetRequiredDocsSql(subAlias: string): string {
+  const list = REQUIRED_DOC_SQL_TYPES.map((t) => `'${t}'`).join(",");
+  return `(select count(*)::int
+             from unnest(array[${list}]) t(doc_type)
+            where not exists (
+              select 1 from subcontractor_documents d
+               where d.subcontractor_id = ${subAlias}.id
+                 and d.doc_type = t.doc_type
+                 and d.status in ('active','expiring')
+                 and (d.expires_at is null or d.expires_at > now())
+            ))`;
+}
+
 function subWhere(filters: SubFilters, params: unknown[]): string[] {
   // org_id stays in the query text rather than in the interpolated list, so
   // the scoping is visible to anyone reading the statement, and to the guard
@@ -489,6 +704,13 @@ function subWhere(filters: SubFilters, params: unknown[]): string[] {
   // candidates, and mixing them into the default list means someone eventually
   // emails one.
   if (!filters.includeBlocked) where.push("blacklisted = false");
+  /*
+   * Archived and merged records are out of the roster unless asked for. The
+   * merged ones matter most: a tombstone has no history of its own any more,
+   * so it reads as a firm nobody has ever dealt with, and it is the record
+   * least deserving of the next outreach email.
+   */
+  if (!filters.includeArchived) where.push("archived_at is null");
   if (filters.trade) {
     params.push(filters.trade);
     where.push(`$${params.length} = any(trade_categories)`);
@@ -528,6 +750,95 @@ function subWhere(filters: SubFilters, params: unknown[]): string[] {
     params.push(`%${filters.q}%`);
     where.push(
       `(company_name ilike $${params.length} or coalesce(owner_name,'') ilike $${params.length} or coalesce(email,'') ilike $${params.length})`
+    );
+  }
+
+  /*
+   * Reachability, written once. The same predicate the record header's
+   * operational state uses, so a firm cannot be "Bad contact information" on
+   * its page and pass a "contactable" filter on the roster.
+   */
+  const REACHABLE =
+    "((email is not null and btrim(email) <> '' and email_verified) or (phone is not null and btrim(phone) <> ''))";
+  if (filters.contactable === "yes") where.push(REACHABLE);
+  if (filters.contactable === "no") where.push(`not ${REACHABLE}`);
+
+  if (filters.paperwork === "ready") where.push(`${unmetRequiredDocsSql("subcontractors")} = 0`);
+  if (filters.paperwork === "short") where.push(`${unmetRequiredDocsSql("subcontractors")} > 0`);
+
+  if (filters.worksIn) {
+    params.push(filters.worksIn.toUpperCase());
+    /*
+     * The firm's own state counts when no service area has been recorded.
+     * Excluding every firm nobody has asked about their travel would empty
+     * this filter on a roster that has barely been surveyed.
+     */
+    where.push(
+      `(service_area_states is not null and $${params.length} = any(service_area_states)
+        or (service_area_states is null and upper(coalesce(state,'')) = $${params.length}))`
+    );
+  }
+  if (filters.certification) {
+    params.push(filters.certification);
+    where.push(`certifications is not null and $${params.length} = any(certifications)`);
+  }
+  if (filters.minBondCents != null) {
+    params.push(filters.minBondCents);
+    // A bond nobody has recorded is not a bond big enough, so it does not pass.
+    where.push(`bonded = true and bond_single_cents >= $${params.length}`);
+  }
+  if (filters.minCrew != null) {
+    params.push(filters.minCrew);
+    where.push(`crew_size >= $${params.length}`);
+  }
+
+  if (filters.tag) {
+    params.push(filters.tag);
+    where.push(
+      `exists (select 1 from subcontractor_tags t
+                where t.subcontractor_id = subcontractors.id and lower(t.tag) = lower($${params.length}))`
+    );
+  }
+
+  const evidence = filters.rateEvidence ?? DEFAULT_RATE_EVIDENCE;
+  const sends = `(select count(*) from communications c
+                   where c.subcontractor_id = subcontractors.id and c.direction = 'outbound')`;
+  if (filters.minResponseRate != null) {
+    params.push(evidence);
+    const at = params.length;
+    params.push(filters.minResponseRate);
+    where.push(
+      `${sends} >= $${at}
+       and (select count(*) from communications c
+             where c.subcontractor_id = subcontractors.id and c.direction = 'outbound'
+               and c.replied_at is not null)::numeric / nullif(${sends}, 0) * 100 >= $${params.length}`
+    );
+  }
+  if (filters.minQuoteRate != null) {
+    params.push(evidence);
+    const at = params.length;
+    params.push(filters.minQuoteRate);
+    where.push(
+      `${sends} >= $${at}
+       and (select count(*) from quotes q where q.subcontractor_id = subcontractors.id)::numeric
+           / nullif(${sends}, 0) * 100 >= $${params.length}`
+    );
+  }
+  if (filters.minAwardRate != null) {
+    /*
+     * Awards over quotes, not over sends. A firm that quoted twice and won
+     * both has a perfect record at the thing this measures; dividing by the
+     * emails they were sent would measure our outreach instead of their bids.
+     */
+    const quoted = `(select count(*) from quotes q where q.subcontractor_id = subcontractors.id)`;
+    params.push(evidence);
+    const at = params.length;
+    params.push(filters.minAwardRate);
+    where.push(
+      `${quoted} >= $${at}
+       and (select count(*) from contracts ct
+             where ct.primary_sub_id = subcontractors.id)::numeric
+           / nullif(${quoted}, 0) * 100 >= $${params.length}`
     );
   }
   return where;
@@ -572,8 +883,13 @@ export async function subDatabase(
   params.push(page?.offset ?? 0);
   const offsetAt = params.length;
 
+  /*
+   * Unaliased, deliberately. subWhere writes correlated subqueries against
+   * `subcontractors`, and an alias would hide the table name from them.
+   */
   return query<Subcontractor>(
-    `select * from subcontractors
+    `select subcontractors.*, ${unmetRequiredDocsSql("subcontractors")} as unmet_required_docs
+       from subcontractors
       where org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}
       order by ${orderBy}
       limit $${limitAt} offset $${offsetAt}`,
@@ -711,12 +1027,29 @@ export async function subDetail(id: string) {
 
 export async function complianceBoard() {
   const items = await query(
-    `select ci.*, c.contract_number
+    `select ci.*, c.contract_number,
+            -- Who here is renewing it. Joined rather than fetched per card.
+            coalesce(nullif(btrim(au.name), ''), split_part(au.email, '@', 1)) as assigned_name
        from compliance_items ci
        left join contracts c on c.id = ci.contract_id
+       left join users au on au.id = ci.assigned_to
       where ci.org_id = $1
       order by
-        case ci.status when 'blocked' then 0 when 'critical' then 1 when 'warning' then 2 else 3 end,
+        /*
+         * Worst first, in the vocabulary the rows now carry. The old ordering
+         * named 'critical' and 'warning', which no longer exist, so every row
+         * fell into the else branch and the board came back in date order with
+         * a conflicting registration below a certificate expiring in a month.
+         */
+        case ci.status
+          when 'conflicting'    then 0
+          when 'expired'        then 1
+          when 'blocked'        then 2
+          when 'needs_review'   then 3
+          when 'expiring_soon'  then 4
+          when 'cannot_monitor' then 5
+          when 'incomplete'     then 6
+          else 7 end,
         (ci.due_at is null), ci.due_at asc`,
     [await currentOrg()]
   );
@@ -801,6 +1134,177 @@ export async function completedToday(): Promise<CompletedToday> {
     complianceResolved,
     total: calls + quotes + bidsSubmitted + decisions + complianceResolved,
   };
+}
+
+/**
+ * What has happened lately, for Guide Me's "What changed".
+ *
+ * Deliberately not an AI answer. "What changed" is a list of events, and the
+ * ledger already holds them: asking a model to summarise a list it has been
+ * handed adds a place for the answer to be wrong and takes away the timestamps.
+ * The brief's rule is to generate guidance from structured state and use AI
+ * only to explain it, and this is the half that is structured state.
+ */
+export interface RecentChange {
+  at: string;
+  /** What happened, in the words the log recorded. */
+  text: string;
+  /** True when the platform did it rather than a person. */
+  automatic: boolean;
+}
+
+export async function recentChanges(opts: {
+  /** Scope to one opportunity when the guide is open on its record. */
+  opportunityId?: string | null;
+  days?: number;
+  limit?: number;
+} = {}): Promise<RecentChange[]> {
+  const orgId = await currentOrg();
+  const days = Math.min(30, Math.max(1, opts.days ?? 7));
+  const limit = Math.min(50, Math.max(1, opts.limit ?? 12));
+  const rows = await query<{
+    created_at: Date;
+    message: string | null;
+    action: string;
+    agent: string;
+    status: string | null;
+  }>(
+    `select created_at, message, action, agent, status
+       from agent_logs
+      where org_id = $1
+        and created_at >= now() - ($2 || ' days')::interval
+        and ($3::uuid is null or opportunity_id = $3::uuid)
+        -- Skipped work did not change anything, and a list of non-events is
+        -- how "what changed" becomes noise nobody reads.
+        and coalesce(status, 'ok') <> 'skipped'
+      order by created_at desc
+      limit $4`,
+    [orgId, String(days), opts.opportunityId ?? null, limit]
+  );
+  return rows.map((r) => ({
+    at: r.created_at.toISOString(),
+    // The recorded message, or the action when nothing wrote one. Never a
+    // generated sentence: this list is the record, not a reading of it.
+    text: r.message?.trim() || `${r.agent}: ${r.action.replace(/[_-]+/g, " ")}`,
+    automatic: r.agent !== "assignment" && r.agent !== "operator",
+  }));
+}
+
+/**
+ * One finished piece of work, for the Completed today filter.
+ *
+ * The counters answer "how much"; this answers "what", which is the question
+ * somebody actually has at five o'clock. A count of 6 and a list of the six
+ * are different objects and only one of them can be checked against memory.
+ */
+export interface CompletedItem {
+  key: string;
+  kind: WorkKind;
+  /** What was done, in the words the rest of the queue uses. */
+  title: string;
+  /** The record it happened to. */
+  context: string;
+  href: string;
+  /** When it happened, ISO. */
+  at: string;
+}
+
+/**
+ * What was finished today, as records rather than as a total.
+ *
+ * From the five places the work leaves its mark, which is the same five the
+ * counter above adds up. Deliberately not from the queue: the queue holds what
+ * is LEFT, so deriving completions from it would give the same answer for
+ * "nothing to do" and "everything done", which are opposite mornings.
+ *
+ * Capped, and ordered newest first. An operator scanning what they finished
+ * wants the last hour before the first, and a day that produced two hundred
+ * rows is one where the top fifty answer the question.
+ */
+export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> {
+  const orgId = await currentOrg();
+  const rows = await query<{
+    key: string;
+    kind: string;
+    title: string;
+    context: string;
+    href: string;
+    at: Date;
+  }>(
+    `select * from (
+       select
+         'call:' || cc.id::text as key,
+         'call' as kind,
+         'Called ' || coalesce(s.company_name, 'a subcontractor') as title,
+         coalesce(o.title, 'An opportunity') as context,
+         '/opportunity/' || o.id::text as href,
+         cc.called_at as at
+       from call_cards cc
+       join opportunities o on o.id = cc.opportunity_id
+       left join subcontractors s on s.id = cc.subcontractor_id
+       where o.org_id = $1 and cc.called_at >= date_trunc('day', now())
+
+       union all
+       select
+         'quote:' || q.id::text,
+         'enter_quote',
+         'Entered a quote' || coalesce(' for ' || q.trade, ''),
+         coalesce(o.title, 'An opportunity'),
+         '/opportunity/' || o.id::text,
+         q.created_at
+       from quotes q
+       join opportunities o on o.id = q.opportunity_id
+       where q.org_id = $1 and q.created_at >= date_trunc('day', now())
+
+       union all
+       select
+         'bid:' || b.id::text,
+         'review_bid',
+         'Submitted the bid',
+         coalesce(o.title, 'An opportunity'),
+         '/opportunity/' || o.id::text,
+         b.submitted_at
+       from bids b
+       join opportunities o on o.id = b.opportunity_id
+       where b.org_id = $1 and b.submitted_at >= date_trunc('day', now())
+
+       union all
+       select
+         'decision:' || o.id::text,
+         'decide',
+         'Decided: ' || o.stage,
+         coalesce(o.title, 'An opportunity'),
+         '/opportunity/' || o.id::text,
+         o.updated_at
+       from opportunities o
+       where o.org_id = $1 and o.human_action_required = false
+         and o.updated_at >= date_trunc('day', now())
+         and o.stage <> 'discovered'
+
+       union all
+       select
+         'compliance:' || ci.id::text,
+         'fix_blocker',
+         'Resolved ' || ci.label,
+         ci.category,
+         '/compliance',
+         ci.updated_at
+       from compliance_items ci
+       where ci.org_id = $1 and ci.status_override = 'resolved'
+         and ci.updated_at >= date_trunc('day', now())
+     ) done
+     order by at desc
+     limit $2`,
+    [orgId, limit]
+  );
+  return rows.map((r) => ({
+    key: r.key,
+    kind: r.kind as WorkKind,
+    title: r.title,
+    context: r.context,
+    href: r.href,
+    at: r.at.toISOString(),
+  }));
 }
 
 /*
@@ -923,6 +1427,10 @@ export interface SubPeekRow {
   license_status: string | null;
   sam_excluded: boolean;
   blacklisted: boolean;
+  blacklist_reason: string | null;
+  archived_at: string | null;
+  archived_reason: string | null;
+  merged_into: string | null;
   is_preferred: boolean;
   reliability_score: number | null;
   last_contacted: string | null;
@@ -934,6 +1442,13 @@ export interface SubPeekRow {
   quote_count: string | number;
   open_docs: string | number;
   expired_docs: string | number;
+  /**
+   * Required-for-award documents with nothing current on file. Counted here
+   * rather than inferred from `open_docs`, because a subcontractor with three
+   * pending uploads and no current coverage has documents and is still not
+   * clear.
+   */
+  unmet_required_docs: string | number;
 }
 
 export async function subPeek(id: string): Promise<SubPeekRow | null> {
@@ -943,6 +1458,8 @@ export async function subPeek(id: string): Promise<SubPeekRow | null> {
     `select s.id, s.company_name, s.owner_name, s.email, s.email_verified,
             s.contact_status, s.phone, s.city, s.state, s.trade_categories,
             s.license_number, s.license_status, s.sam_excluded, s.blacklisted,
+            s.blacklist_reason, s.archived_at::text as archived_at, s.archived_reason,
+            s.merged_into::text as merged_into,
             s.is_preferred, s.reliability_score,
             s.last_contacted::text as last_contacted,
             s.google_rating, s.review_count,
@@ -963,7 +1480,8 @@ export async function subPeek(id: string): Promise<SubPeekRow | null> {
             (select count(*) from subcontractor_documents d
               where d.subcontractor_id = s.id
                 and (d.status = 'expired'
-                     or (d.expires_at is not null and d.expires_at <= now()))) as expired_docs
+                     or (d.expires_at is not null and d.expires_at <= now()))) as expired_docs,
+            ${unmetRequiredDocsSql("s")} as unmet_required_docs
        from subcontractors s
       where s.id = $1 and s.org_id = $2`,
     [id, orgId]
@@ -1032,11 +1550,15 @@ export async function allContracts() {
   return query<Record<string, unknown>>(
     `select c.*, o.title as opportunity_title,
             ps.company_name as primary_sub_name,
-            bs.company_name as backup_sub_name
+            bs.company_name as backup_sub_name,
+            -- Who here is running it. Joined rather than fetched per card:
+            -- the completed view can be a hundred rows.
+            coalesce(nullif(btrim(au.name), ''), split_part(au.email, '@', 1)) as assigned_name
        from contracts c
        left join opportunities o on o.id = c.opportunity_id
        left join subcontractors ps on ps.id = c.primary_sub_id
        left join subcontractors bs on bs.id = c.backup_sub_id
+       left join users au on au.id = c.assigned_to
       where c.org_id=$1
       order by c.end_date asc nulls last`,
     [orgId]
@@ -1402,6 +1924,20 @@ export async function funnelCounts(
         where org_id = $1 and direction = 'outbound' and opportunity_id is not null
         group by opportunity_id
      ),
+     /*
+      * The first time a subcontractor wrote back.
+      *
+      * Same shape as out_first, and the reason the funnel needed it: without
+      * this step "contacted 40, quoted 3" cannot say whether nobody answered
+      * or plenty answered and would not price the work, and those two are
+      * fixed in different places.
+      */
+     in_first as (
+       select opportunity_id, min(created_at) as first_in
+         from communications
+        where org_id = $1 and direction = 'inbound' and opportunity_id is not null
+        group by opportunity_id
+     ),
      quote_first as (
        select opportunity_id, min(created_at) as first_quote
          from quotes
@@ -1426,20 +1962,30 @@ export async function funnelCounts(
               (c.stage in ('sub_research','outreach','call_queue','quote_entry',
                            'bid_building','submitted','won','lost')
                 or c.tier = 'pursue') as pursued,
-              cm.first_out, q.first_quote,
+              cm.first_out, rp.first_in, q.first_quote,
               b.first_bid, b.first_submit, b.decided, b.won, b.lost
          from cohort c
          left join out_first cm on cm.opportunity_id = c.id
+         left join in_first rp on rp.opportunity_id = c.id
          left join quote_first q on q.opportunity_id = c.id
          left join bid_first b on b.opportunity_id = c.id
      ),
      ranked as (
        select f.*,
+              /*
+               * Furthest step reached, and it stays monotonic on purpose: a
+               * quote that arrived without a logged inbound message still
+               * counts as having replied, because the quote is the reply. The
+               * alternative is a funnel where the later step is larger than
+               * the one before it, which reads as a bug whichever way it is
+               * explained.
+               */
               case
-                when f.decided then 7
-                when f.first_submit is not null then 6
-                when f.first_bid is not null then 5
-                when f.first_quote is not null then 4
+                when f.decided then 8
+                when f.first_submit is not null then 7
+                when f.first_bid is not null then 6
+                when f.first_quote is not null then 5
+                when f.first_in is not null then 4
                 when f.first_out is not null then 3
                 when f.pursued then 2
                 when f.scored then 1
@@ -1456,6 +2002,7 @@ export async function funnelCounts(
        count(*) filter (where furthest >= 5)::int as r5,
        count(*) filter (where furthest >= 6)::int as r6,
        count(*) filter (where furthest >= 7)::int as r7,
+       count(*) filter (where furthest >= 8)::int as r8,
        count(*) filter (where furthest = 0 and not still_open)::int as d1,
        count(*) filter (where furthest = 1 and not still_open)::int as d2,
        count(*) filter (where furthest = 2 and not still_open)::int as d3,
@@ -1463,6 +2010,7 @@ export async function funnelCounts(
        count(*) filter (where furthest = 4 and not still_open)::int as d5,
        count(*) filter (where furthest = 5 and not still_open)::int as d6,
        count(*) filter (where furthest = 6 and not still_open)::int as d7,
+       count(*) filter (where furthest = 7 and not still_open)::int as d8,
        count(*) filter (where furthest = 0 and still_open)::int as p1,
        count(*) filter (where furthest = 1 and still_open)::int as p2,
        count(*) filter (where furthest = 2 and still_open)::int as p3,
@@ -1470,14 +2018,24 @@ export async function funnelCounts(
        count(*) filter (where furthest = 4 and still_open)::int as p5,
        count(*) filter (where furthest = 5 and still_open)::int as p6,
        count(*) filter (where furthest = 6 and still_open)::int as p7,
+       count(*) filter (where furthest = 7 and still_open)::int as p8,
        count(*) filter (where won)::int as won,
        count(*) filter (where lost and not won)::int as lost,
        percentile_cont(0.5) within group (
          order by extract(epoch from (first_out - created_at)) / 86400.0
        ) filter (where first_out is not null) as m_contact,
        percentile_cont(0.5) within group (
-         order by extract(epoch from (first_quote - first_out)) / 86400.0
-       ) filter (where first_quote is not null and first_out is not null) as m_quote,
+         order by extract(epoch from (first_in - first_out)) / 86400.0
+       ) filter (where first_in is not null and first_out is not null) as m_reply,
+       /*
+        * Measured from the reply where there is one, and from the send where
+        * there is not. Measuring every quote from the send would make the
+        * quote step look slower than it is on every opportunity where a
+        * conversation happened first.
+        */
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_quote - coalesce(first_in, first_out))) / 86400.0
+       ) filter (where first_quote is not null and coalesce(first_in, first_out) is not null) as m_quote,
        percentile_cont(0.5) within group (
          order by extract(epoch from (first_bid - first_quote)) / 86400.0
        ) filter (where first_bid is not null and first_quote is not null) as m_bid,
@@ -1504,33 +2062,37 @@ export async function funnelCounts(
       scored: n(r.r1),
       pursued: n(r.r2),
       subs_contacted: n(r.r3),
-      quotes_received: n(r.r4),
-      bid_built: n(r.r5),
-      submitted: n(r.r6),
-      decided: n(r.r7),
+      replies_received: n(r.r4),
+      quotes_received: n(r.r5),
+      bid_built: n(r.r6),
+      submitted: n(r.r7),
+      decided: n(r.r8),
     },
     droppedBefore: {
       found: 0,
       scored: n(r.d1),
       pursued: n(r.d2),
       subs_contacted: n(r.d3),
-      quotes_received: n(r.d4),
-      bid_built: n(r.d5),
-      submitted: n(r.d6),
-      decided: n(r.d7),
+      replies_received: n(r.d4),
+      quotes_received: n(r.d5),
+      bid_built: n(r.d6),
+      submitted: n(r.d7),
+      decided: n(r.d8),
     },
     pendingBefore: {
       found: 0,
       scored: n(r.p1),
       pursued: n(r.p2),
       subs_contacted: n(r.p3),
-      quotes_received: n(r.p4),
-      bid_built: n(r.p5),
-      submitted: n(r.p6),
-      decided: n(r.p7),
+      replies_received: n(r.p4),
+      quotes_received: n(r.p5),
+      bid_built: n(r.p6),
+      submitted: n(r.p7),
+      decided: n(r.p8),
     },
     medianDaysInto: {
       subs_contacted: median(r.m_contact),
+      replies_received: median(r.m_reply),
       quotes_received: median(r.m_quote),
       bid_built: median(r.m_bid),
       submitted: median(r.m_submit),
@@ -1566,9 +2128,39 @@ export async function funnelBreakdown(
         when o.score >= 40 then 'Weak (40 to 59)'
         else 'Poor (under 40)'
       end`,
+    /*
+     * Supplied by the trade join below rather than read off the opportunity.
+     * An opportunity has as many trades as it sourced, which is why this
+     * dimension needs its own FROM.
+     */
+    trade: `coalesce(nullif(btrim(t.trade), ''), 'Trade not recorded')`,
+    /*
+     * Unassigned is a real answer and gets its own row. Folding it into
+     * "Not stated" alongside a missing agency code would hide the one thing
+     * this dimension exists to show: work nobody has picked up.
+     */
+    owner: `coalesce(nullif(btrim(u.name), ''), nullif(u.email, ''), 'Unassigned')`,
   };
   const expr = EXPR[dimension] ?? EXPR.agency;
   const orgId = await currentOrg();
+
+  /*
+   * Trade is many-per-opportunity, so it joins a distinct set of the trades
+   * actually sourced. `distinct` matters: opportunity_subs holds one row per
+   * subcontractor, so without it an opportunity that went to four roofers
+   * would count four times under Roofing and its win rate would be computed
+   * over four copies of the same bid.
+   */
+  const tradeJoin =
+    dimension === "trade"
+      ? `join lateral (
+           select distinct os.trade
+             from opportunity_subs os
+            where os.opportunity_id = o.id and os.removed_at is null
+         ) t on true`
+      : "";
+  const ownerJoin = dimension === "owner" ? `left join users u on u.id = o.assigned_to` : "";
+
   return query<BreakdownRow>(
     `select ${expr} as key,
             count(*)::int as found,
@@ -1581,6 +2173,8 @@ export async function funnelBreakdown(
             count(*) filter (where b.won)::int as won,
             count(*) filter (where b.lost and not b.won)::int as lost
        from opportunities o
+       ${tradeJoin}
+       ${ownerJoin}
        left join lateral (
          select min(submitted_at) as first_submit,
                 bool_or(outcome = 'won') as won,
@@ -1945,6 +2539,25 @@ export interface OppSubRow {
   touches: number;
   last_touch_at: string | null;
   last_inbound_at: string | null;
+  /** Primary is the firm being priced for this trade. Null is undecided. */
+  role: "primary" | "backup" | null;
+  /**
+   * Off the bid, and why.
+   *
+   * Removal is a mark rather than a delete: the emails sent and the replies
+   * received are the record of who was approached for this job, and that is
+   * exactly what somebody asks for when a bid goes wrong.
+   */
+  removed_at: string | null;
+  removed_reason: string | null;
+  /**
+   * The inbox thread to open, keyed exactly the way the Communications page
+   * groups by. Deriving it a second way here would be a link that lands on an
+   * empty pane.
+   */
+  thread_key: string | null;
+  /** Whether a quote from this firm is already on the bid. */
+  has_quote: boolean;
 }
 
 /** Opportunity-scoped communication row for the Subs panel history. */
@@ -1987,13 +2600,20 @@ export async function opportunityDetail(id: string) {
     query<OppSubRow>(
       `select os.id, os.opportunity_id, os.subcontractor_id, os.trade, os.candidate_rank,
               os.outreach_state, os.responded_at, os.verified,
+              os.role, os.removed_at, os.removed_reason,
               s.company_name, s.phone, s.email, s.email_verified, s.google_rating,
               s.contact_status, s.last_contacted,
               coalesce(stats.emails_sent, 0)::int as emails_sent,
               coalesce(stats.calls_logged, 0)::int as calls_logged,
               coalesce(stats.notes_count, 0)::int as notes_count,
               coalesce(stats.touches, 0)::int as touches,
-              stats.last_touch_at, stats.last_inbound_at
+              stats.last_touch_at, stats.last_inbound_at,
+              stats.thread_key,
+              exists (
+                select 1 from quotes q
+                 where q.opportunity_id = os.opportunity_id
+                   and q.subcontractor_id = os.subcontractor_id
+              ) as has_quote
          from opportunity_subs os
          join subcontractors s on s.id = os.subcontractor_id
          left join lateral (
@@ -2003,13 +2623,28 @@ export async function opportunityDetail(id: string) {
              count(*) filter (where channel = 'note') as notes_count,
              count(*) as touches,
              max(created_at) as last_touch_at,
-             max(created_at) filter (where direction = 'inbound') as last_inbound_at
+             max(created_at) filter (where direction = 'inbound') as last_inbound_at,
+             /*
+              * The newest conversation with this firm about this bid, so the
+              * row can offer a link to the thread rather than sending an
+              * operator to search the inbox for a company name.
+              */
+             (array_agg(${THREAD_KEY_SQL} order by created_at desc))[1] as thread_key
            from communications c
            where c.subcontractor_id = os.subcontractor_id
              and c.opportunity_id = os.opportunity_id
          ) stats on true
         where os.opportunity_id = $1
-        order by os.trade nulls last, os.candidate_rank nulls last, s.company_name
+        order by os.trade nulls last,
+                 /*
+                  * Removed firms last, then the primary, then backups, then
+                  * everybody else. The order answers "who is on this trade"
+                  * before it answers "who else did we try".
+                  */
+                 (os.removed_at is not null),
+                 (os.role is distinct from 'primary'),
+                 (os.role is distinct from 'backup'),
+                 os.candidate_rank nulls last, s.company_name
         limit 300`,
       [id]
     ),
@@ -2194,7 +2829,7 @@ export interface ActionCenterData {
   subFollowUps: ActionSubFollowUpRow[];
   /** Out-of-range quotes waiting for operator judgment. */
   quoteReviews: ActionQuoteReviewRow[];
-  /** Compliance renewals that are past "ok" (warning/critical/blocked). */
+  /** Compliance items in one of the five states that need somebody today. */
   complianceAlerts: ComplianceAlertRow[];
   /**
    * Subcontractors on won work whose paperwork is not good enough to put them
@@ -2438,9 +3073,20 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
               coalesce(status_override, status) as status, days_remaining
          from compliance_items
         where org_id = $1
-          and coalesce(status_override, status) in ('warning','critical','blocked')
+          /*
+           * The five states that need somebody today, in the vocabulary the
+           * rows now carry. Written as the old three severities, this clause
+           * matched nothing at all after the migration and the Today counter
+           * silently read zero for every account.
+           */
+          and coalesce(status_override, status)
+              in ('conflicting','expired','blocked','needs_review','expiring_soon')
         order by case coalesce(status_override, status)
-                   when 'blocked' then 0 when 'critical' then 1 else 2 end,
+                   when 'conflicting'   then 0
+                   when 'expired'       then 1
+                   when 'blocked'       then 2
+                   when 'needs_review'  then 3
+                   else 4 end,
                  (due_at is null), due_at asc
         limit 8`,
       [orgId]
@@ -2524,7 +3170,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          (select count(*)::int from compliance_items ci
            where ci.org_id = '${orgId}'
              and coalesce(ci.status_override, ci.status)
-                 in ('warning','critical','blocked')) as compliance`,
+                 in ('conflicting','expired','blocked','needs_review','expiring_soon')) as compliance`,
       [urgentDays]
     ).catch(() => null),
   ]);
@@ -2903,8 +3549,10 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       opp_id: string | null;
       opp_title: string | null;
       deadline: string | null;
+      assigned_to: string | null;
     }>(
-      `select e.id, s.company_name, o.id as opp_id, o.title as opp_title, o.deadline
+      `select e.id, s.company_name, o.id as opp_id, o.title as opp_title, o.deadline,
+              o.assigned_to
          from subcontractor_reply_events e
          join subcontractors s on s.id = e.subcontractor_id
          left join opportunities o on o.id = e.opportunity_id
@@ -2913,12 +3561,12 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
         limit 20`,
       [orgId]
     ),
-    query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null }>(
-      `select id, title, deadline, review_expires_at from opportunities
+    query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null; assigned_to: string | null }>(
+      `select id, title, deadline, review_expires_at, assigned_to from opportunities
         where org_id=$1 and tier='review' and human_action_required=true and status='open'`,
       [orgId]
     ),
-    query<{ id: string; company_name: string; trade: string | null; opp_title: string | null; deadline: string | null }>(
+    query<{ id: string; company_name: string; trade: string | null; opp_title: string | null; deadline: string | null; assigned_to: string | null }>(
       // The trade is inside card_json, not a column. `cc.trade` has never
       // existed, so this whole function has been throwing -- and Today wraps
       // it in .catch(() => []), so the work queue simply never appeared. A
@@ -2926,7 +3574,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       // single error reaching anybody.
       `select cc.id, s.company_name,
               coalesce(cc.card_json->>'trade', s.trade_categories[1]) as trade,
-              o.title as opp_title, o.deadline
+              o.title as opp_title, o.deadline, o.assigned_to
          from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
@@ -2939,8 +3587,9 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       stage: string;
       deadline: string | null;
       risk_flags: string[] | null;
+      assigned_to: string | null;
     }>(
-      `select id, title, stage, deadline, risk_flags from opportunities
+      `select id, title, stage, deadline, risk_flags, assigned_to from opportunities
         where org_id=$1 and human_action_required=true and status='open'
           and not (tier='review' and stage='scoring')`,
       [orgId]
@@ -2967,6 +3616,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       opp_title: string | null;
       deadline: string | null;
       sent_at: string | null;
+      assigned_to: string | null;
     }>(
       /*
        * The send time comes from the communication, not the pairing.
@@ -2978,7 +3628,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
        * always empty.
        */
       `select os.id, s.company_name, os.trade,
-              o.id as opp_id, o.title as opp_title, o.deadline,
+              o.id as opp_id, o.title as opp_title, o.deadline, o.assigned_to,
               (select max(c.created_at) from communications c
                 where c.opportunity_id = os.opportunity_id
                   and c.subcontractor_id = os.subcontractor_id
@@ -3003,6 +3653,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       due: isoOrNull(r.deadline),
       href: "/today#reply-reviews",
       actionLabel: "Read reply",
+      assignedTo: r.assigned_to,
       reason: "The automatic reader was not confident enough to act on this, so the conversation is stopped until somebody reads it.",
     })),
     ...decisions.map((d) => ({
@@ -3014,6 +3665,12 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       expiresAt: isoOrNull(d.review_expires_at),
       href: `/opportunity/${d.id}#next`,
       actionLabel: "Decide",
+      assignedTo: d.assigned_to,
+      // The whole task is the decision, so it can be made from the row.
+      actions: {
+        snooze: { kind: "opportunity" as const, id: d.id },
+        decide: { opportunityId: d.id, title: d.title ?? "opportunity" },
+      },
       reason: d.review_expires_at
         ? "Scored close enough to the line that a person has to call it. It is dismissed automatically if nobody does."
         : "Scored close enough to the line that a person has to call it.",
@@ -3026,6 +3683,10 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       due: isoOrNull(c.deadline),
       href: `/call-queue`,
       actionLabel: "Open call",
+      assignedTo: c.assigned_to,
+      // Snoozes the card, not the opportunity: the bid is not on hold
+      // because one subcontractor is being rung on Thursday instead.
+      actions: { snooze: { kind: "call_card" as const, id: c.id } },
       reason: "Email has not produced a price on this trade, so the next move is a phone call.",
     })),
     ...actionable.map((o) => ({
@@ -3052,6 +3713,13 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
             : `/opportunity/${o.id}#next`,
       actionLabel:
         o.stage === "bid_building" ? "Review bid" : o.stage === "quote_entry" ? "Enter quote" : "Resolve",
+      assignedTo: o.assigned_to,
+      /*
+       * Snooze only. Pursue and pass belong to a scoring decision, and
+       * offering "pass" beside a bid that is already being built would put an
+       * archive button next to a week of somebody's work.
+       */
+      actions: { snooze: { kind: "opportunity" as const, id: o.id } },
       reason:
         o.stage === "bid_building"
           ? "The package is assembled. Nothing goes to the agency until a person reads it and signs."
@@ -3080,6 +3748,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       due: isoOrNull(w.deadline),
       href: `/opportunity/${w.opp_id}`,
       actionLabel: "Open opportunity",
+      assignedTo: w.assigned_to,
       reason: w.sent_at
         ? `The quote request went out on ${new Date(w.sent_at).toISOString().slice(0, 10)} and they have not answered yet.`
         : "The quote request has gone out and they have not answered yet.",
@@ -3090,9 +3759,39 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
     })),
   ];
   /*
+   * Whose each of these is.
+   *
+   * Resolved in one query for the whole queue rather than per row. The queue
+   * draws up to fifty items and a per-row lookup here is the shape that turns
+   * a fast page into a slow one without anybody changing the page.
+   *
+   * The owner comes from the opportunity, because every item above is about
+   * one. A task in this product is a view of a record at a moment, so it has
+   * no independent existence to hang an owner off; the record carries it and
+   * the task inherits it, which also means the answer is the same wherever the
+   * record appears.
+   */
+  const assigneeIds = Array.from(
+    new Set(items.map((i) => i.assignedTo).filter((v): v is string => typeof v === "string"))
+  );
+  const people = new Map<string, { id: string; name: string }>();
+  if (assigneeIds.length > 0) {
+    const { ownerName } = await import("./domain/ownership");
+    const rows = await query<{ id: string; name: string | null; email: string | null }>(
+      `select id, name, email from users where id = any($1::uuid[])`,
+      [assigneeIds]
+    );
+    for (const r of rows) people.set(r.id, { id: r.id, name: ownerName(r) });
+  }
+  const owned = items.map(({ assignedTo, ...item }) => ({
+    ...item,
+    owner: assignedTo ? (people.get(assignedTo) ?? null) : null,
+  }));
+
+  /*
    * Dedupe before sorting: one opportunity can be flagged for attention AND
    * sitting in bid_building, which produced two rows for one piece of work and
    * made the count at the top of Today disagree with the list under it.
    */
-  return dedupeWorkItems(items);
+  return dedupeWorkItems(owned);
 }

@@ -7,26 +7,35 @@
  * user-agent). Returns the best email plus a contact-form URL fallback.
  */
 import { extractContacts } from "../domain/contact";
+import { guardedFetch } from "./guarded-fetch";
 
 const CANDIDATE_PATHS = ["", "/contact", "/contact-us", "/contact.html", "/about", "/about-us"];
 const PER_PAGE_TIMEOUT_MS = 8_000;
 const MAX_BYTES = 600_000; // don't slurp huge pages
 
+/**
+ * Fetch one page of a prospect's site.
+ *
+ * The URL comes from a prospect record or a search result, so it is external
+ * data and goes through the shared guard. Before that it was a bare
+ * `fetch(url, { redirect: "follow" })` with no destination check at all,
+ * followed by `await res.arrayBuffer()` and only then a slice to MAX_BYTES,
+ * which is a limit on what gets parsed rather than on what gets downloaded.
+ */
 async function fetchText(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, {
+    const res = await guardedFetch(url, {
+      maxBytes: MAX_BYTES,
+      timeoutMs: PER_PAGE_TIMEOUT_MS,
+      allowInsecure: true,
+      onOversize: "truncate",
       headers: {
         "user-agent": "BROSTCO-SiteAuthority/1.0 (+https://brostco.com; contact discovery)",
         accept: "text/html,application/xhtml+xml",
       },
-      redirect: "follow",
-      signal: AbortSignal.timeout(PER_PAGE_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
-    const ct = res.headers.get("content-type") ?? "";
-    if (!ct.includes("html")) return null;
-    const buf = await res.arrayBuffer();
-    return Buffer.from(buf.slice(0, MAX_BYTES)).toString("utf8");
+    if (!res.contentType.includes("html")) return null;
+    return res.body.toString("utf8");
   } catch {
     return null;
   }

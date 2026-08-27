@@ -207,10 +207,13 @@ export default async function AdminAccountsPage({
           sortParam={serializeSort(sort)}
           perPage={paging.perPage}
           viewsKey="brostco.admin.accounts.views"
+          /* None is a count too. See the note on the Subcontractors page. */
           resultLabel={
             matched.length > 0
               ? `Showing ${paging.from}-${paging.to} of ${matched.length}`
-              : undefined
+              : Object.keys(values).length > 0
+                ? "No accounts match these filters"
+                : "No accounts yet"
           }
         />
 

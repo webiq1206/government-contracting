@@ -2,36 +2,45 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  CallsIcon,
+  MoreIcon,
+  OpportunitiesIcon,
+  SubsIcon,
+  TodayIcon,
+} from "@/components/tab-icons";
 
 /**
  * Fixed bottom tabs on phones. Hidden on md+ where the sidebar rules.
  *
- * The five the audit names. Today carries the work queue, so its badge is the
- * whole count of pending work rather than one slice of it; Opportunities and
- * Subcontractors are the records an operator reaches for daily.
+ * The five the brief names: Today, Opportunities, Subs, Calls, More.
  *
- * Inbox earns the fourth slot over Calls. Both are real work modes, and the
- * difference is who is waiting: a subcontractor who has written and had no
- * answer is waiting on a person right now, while a call is something to go
- * and do. Calls keeps its badge on Today and its own entry on More, and the
- * work queue is the other door into both.
+ * An earlier version gave the fourth slot to Inbox instead of Calls, on the
+ * argument that a subcontractor who has written and had no answer is waiting
+ * on a person right now while a call is something to go and do. That argument
+ * is a good one and it is not this decision to make: the brief names the five.
  *
- * More exists because without it Contracts, Compliance, Analytics, Automation
- * Health, the Knowledge Center, Settings and Platform Admin were reachable on
- * a phone only by opening the navigation drawer, which is the desktop sidebar
- * wearing a different coat.
+ * What it does not cost is the signal, because the More tab carries an
+ * attention indicator whenever a destination behind it needs action, and
+ * Communications is one of those destinations. So an unanswered reply still
+ * lights up the bar; it lights up More rather than a tab of its own.
+ *
+ * Every icon is drawn rather than typed. The old bar used `☰` for
+ * Subcontractors, which is the hamburger character the brief rules out, and
+ * the rest were glyphs that render differently or not at all depending on the
+ * device's font stack.
  */
 const TABS: {
   href: string;
   label: string;
-  icon: string;
-  countKey?: "queue" | "calls" | "inbox";
+  Icon: () => JSX.Element;
+  countKey?: "queue" | "calls" | "attention";
 }[] = [
-  { href: "/today", label: "Today", icon: "☀︎", countKey: "queue" },
-  { href: "/pipeline", label: "Opportunities", icon: "▤" },
-  { href: "/subs", label: "Subcontractors", icon: "☰" },
-  { href: "/communications", label: "Inbox", icon: "✉", countKey: "inbox" },
-  { href: "/more", label: "More", icon: "⋯" },
+  { href: "/today", label: "Today", Icon: TodayIcon, countKey: "queue" },
+  { href: "/pipeline", label: "Opportunities", Icon: OpportunitiesIcon },
+  { href: "/subs", label: "Subcontractors", Icon: SubsIcon },
+  { href: "/call-queue", label: "Calls", Icon: CallsIcon, countKey: "calls" },
+  { href: "/more", label: "More", Icon: MoreIcon, countKey: "attention" },
 ];
 
 /** Visible text where the full label will not fit five across. */
@@ -51,13 +60,25 @@ export function MobileTabBar({
   inboxCount?: number;
 }) {
   const pathname = usePathname();
-  // The Today badge is the queue total: everything pending, not one slice.
-  const counts = { queue: reviewCount + callCount, calls: callCount, inbox: inboxCount };
+  const counts = {
+    // Today's badge is the queue total: everything pending, not one slice.
+    queue: reviewCount + callCount,
+    calls: callCount,
+    /*
+     * More carries whatever is waiting behind it.
+     *
+     * Today, Opportunities, Subs and Calls each have a tab, so anything needing
+     * attention there is already visible. Communications does not, so its
+     * count is what this badge is for: without it, moving Inbox off the bar
+     * would have hidden the one queue where somebody else is waiting.
+     */
+    attention: inboxCount,
+  };
 
   return (
     <nav
       aria-label="Quick navigation"
-      className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 md:hidden"
+      className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 lg:hidden"
     >
       {TABS.map((tab) => {
         const active = pathname === tab.href || pathname.startsWith(tab.href + "/");
@@ -66,28 +87,33 @@ export function MobileTabBar({
           <Link
             key={tab.href}
             href={tab.href}
+            aria-current={active ? "page" : undefined}
             className={`relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2.5 text-[11px] ${
               active ? "font-semibold text-gold-text" : "text-muted-foreground"
             }`}
           >
-            <span aria-hidden className="text-lg leading-none">
-              {tab.icon}
-            </span>
+            <tab.Icon />
             {/*
-              * The full word is the accessible name, which is what the audit
-              * asks for; the visible label is shortened only where five slots
-              * on a 390px screen genuinely cannot hold it.
-              */}
+              The full word is the accessible name, which is what the audit
+              asks for; the visible label is shortened only where five slots on
+              a 390px screen genuinely cannot hold it.
+            */}
             <span aria-hidden>{SHORT_LABEL[tab.href] ?? tab.label}</span>
             <span className="sr-only">{tab.label}</span>
             {count > 0 && (
-              <span className="absolute right-[18%] top-1.5 min-w-[1.15rem] rounded-full bg-gold px-1 text-center text-[10px] font-semibold leading-4 text-ink">
+              <span
+                className="absolute right-[18%] top-1.5 min-w-[1.15rem] rounded-full bg-gold px-1 text-center text-[10px] font-semibold leading-4 text-ink"
+                aria-label={`${count} waiting`}
+              >
                 {count > 99 ? "99+" : count}
               </span>
             )}
-            {active && (
-              <span aria-hidden className="absolute inset-x-6 top-0 h-0.5 bg-gold" />
-            )}
+            {/*
+              The active marker is a bar as well as a colour. State by colour
+              alone is what the accessibility rules rule out, and the bold
+              weight on the label is the third signal.
+            */}
+            {active && <span aria-hidden className="absolute inset-x-6 top-0 h-0.5 bg-gold" />}
           </Link>
         );
       })}

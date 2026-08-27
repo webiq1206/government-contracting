@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { subDetail } from "@/lib/data";
+import { query, queryOne } from "@/lib/db";
 import { subConversations } from "@/lib/domain/conversation";
 import { draftsForSubcontractor } from "@/lib/domain/reply-draft";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
@@ -8,11 +9,17 @@ import { gmail } from "@/lib/integrations/gmail";
 import { ConversationThreads } from "@/components/conversation-threads";
 import { PageFrame } from "@/components/page-frame";
 import { SubNotes } from "@/components/sub-notes";
+import { SubPerformance } from "@/components/sub-performance";
+import { SubMerge } from "@/components/sub-merge";
+import { performanceFor } from "@/lib/subcontractor-performance";
 import { Collapsible } from "@/components/collapsible";
 import { RecordActions } from "@/components/record-actions";
 import { SubEditor } from "@/components/sub-editor";
 import { SubCompliancePanel } from "@/components/sub-compliance-panel";
 import { subComplianceView } from "@/lib/sub-compliance-store";
+import { SubCapability } from "@/components/sub-capability";
+import { capabilityOf, contactsOf, licensesOf } from "@/lib/sub-capability-store";
+import { tagsOf } from "@/lib/sub-bulk";
 import {
   contactBadgeClass,
   contactStatusHint,
@@ -22,6 +29,8 @@ import {
   outreachLabel,
 } from "@/lib/domain/sub-contact";
 import { stageLabel } from "@/lib/domain/journey";
+import { subState, SUB_STATE_TONE } from "@/lib/domain/sub-state";
+import { DOC_LABEL } from "@/lib/domain/sub-compliance";
 import { buildSubPlan } from "@/lib/domain/sub-plan";
 import { GuidedPlanPanel } from "@/components/guided-plan";
 import { currency, timeAgo, shortDate } from "@/lib/format";
@@ -30,6 +39,10 @@ import { SubcontractorRecord } from "@/components/subcontractor-record";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { buildActivityTimeline } from "@/lib/domain/activity-timeline";
 import { subActivityLogs } from "@/lib/data";
+import { OwnerPicker } from "@/components/owner-picker";
+import { assignableMembers, ownerOf } from "@/lib/ownership";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -86,14 +99,90 @@ export default async function SubDetailPage({
   // Threads and inbox state are read alongside the detail so the page renders
   // in one pass; a missing connection disables the composer rather than
   // letting a reply fail after it is typed.
-  const [conversations, inboxConnected, compliance, savedDrafts] = await Promise.all([
+  const [conversations, inboxConnected, compliance, savedDrafts, subOwner, teamMembers, viewer] =
+    await Promise.all([
     subConversations(params.id),
     gmail.isConnected().catch(() => false),
     subComplianceView(params.id),
     // Drafts already written for these threads, so returning to the page shows
     // the work rather than an empty box that costs money to refill.
     draftsForSubcontractor(params.id, await tryResolveTenantOrgId()).catch(() => ({})),
+    /*
+     * All three tolerate failure: a picker that cannot load is a field saying
+     * Unassigned, where a throw here is a record page that will not open
+     * because of a dropdown.
+     */
+    ownerOf("subcontractor", params.id).catch(() => null),
+    assignableMembers().catch(() => []),
+    currentUser().catch(() => null),
   ]);
+
+  /*
+   * What somebody has written down about how the work went, which is the one
+   * part of the reliability score nothing can infer. Tolerates failure the
+   * same way the pickers above do: a record page that will not open because a
+   * performance note could not load is a worse outcome than a missing panel.
+   */
+  /*
+   * The other records on the roster this one could be a duplicate of, and the
+   * survivor when this one is itself a tombstone.
+   *
+   * Same trade or same town first, because those are the pairs that actually
+   * duplicate: a sourcing run that found "Ridgeline Mechanical LLC" next to a
+   * hand-entered "Ridgeline Mechanical" produced two rows in one trade in one
+   * city. Capped, because a picker of four hundred firms is not a picker.
+   */
+  const mergeOrgId = (await tryResolveTenantOrgId()) ?? "";
+  const mergeCandidates = mergeOrgId
+    ? (
+        await query<{ id: string; company_name: string; city: string | null; state: string | null; email: string | null }>(
+          `select id, company_name, city, state, email
+             from subcontractors
+            where org_id = $1 and id <> $2 and archived_at is null
+            order by
+              (trade_categories && $3::text[]) desc,
+              (coalesce(lower(city),'') = coalesce(lower($4),'')) desc,
+              company_name
+            limit 50`,
+          [mergeOrgId, params.id, sub.trade_categories ?? [], sub.city ?? ""]
+        ).catch(() => [])
+      ).map((c) => ({
+        id: c.id,
+        name: c.company_name,
+        detail: [c.city, c.state].filter(Boolean).join(", ") || c.email || "",
+      }))
+    : [];
+
+  const mergedIntoName = sub.merged_into
+    ? (
+        await queryOne<{ company_name: string }>(
+          `select company_name from subcontractors where id = $1 and org_id = $2`,
+          [sub.merged_into, mergeOrgId]
+        ).catch(() => null)
+      )?.company_name ?? null
+    : null;
+
+  /*
+   * What this firm can take on, who to talk to there, and what they hold a
+   * licence for. Loaded together because they are one editing session on one
+   * record rather than three unrelated reads.
+   */
+  const capOrgId = (await tryResolveTenantOrgId()) ?? "";
+  const [capability, contacts, licenses, tags] = await Promise.all([
+    capabilityOf(capOrgId, params.id).catch(() => null),
+    contactsOf(capOrgId, params.id).catch(() => []),
+    licensesOf(capOrgId, params.id).catch(() => []),
+    tagsOf(capOrgId, params.id).catch(() => [] as string[]),
+  ]);
+
+  const capabilityUpdatedAt = sub.capability_updated_at
+    ? timeAgo(sub.capability_updated_at)
+    : null;
+
+  const performance = await performanceFor(
+    (await tryResolveTenantOrgId()) ?? "",
+    params.id
+  ).catch(() => []);
 
   /*
    * One timeline, from the sources this record is actually made of. The
@@ -112,6 +201,33 @@ export default async function SubDetailPage({
     : [];
   const contactLabel = contactStatusLabel(sub.contact_status);
   const openPairings = pairings.filter((p) => p.status === "open").length;
+
+  /*
+   * One operational state instead of five badges.
+   *
+   * The header used to carry preferred, blocked, contactability and the
+   * compliance gate side by side, all true and none of them the question an
+   * operator has when they open the page, which is whether to put this firm
+   * on the bid in front of them. The weighing was the same every time, so the
+   * platform does it. The rest of the detail is still on the page, in the
+   * sections that own it.
+   */
+  const state = subState({
+    samExcluded: Boolean(sub.sam_excluded),
+    blacklisted: Boolean(sub.blacklisted),
+    blacklistReason: sub.blacklist_reason ?? null,
+    archivedAt: sub.archived_at ?? null,
+    archivedReason: sub.archived_reason ?? null,
+    mergedInto: sub.merged_into ?? null,
+    email: sub.email,
+    emailVerified: Boolean(sub.email_verified),
+    phone: sub.phone,
+    missingDocuments: [
+      ...compliance.assessment.missing,
+      ...compliance.assessment.expired,
+    ].map((t) => DOC_LABEL[t]),
+    preferred: Boolean(sub.is_preferred),
+  });
   const plan = buildSubPlan({
     hasEmail: Boolean(sub.email),
     hasPhone: Boolean(sub.phone),
@@ -151,19 +267,37 @@ export default async function SubDetailPage({
                 ? `${openPairings} open job${openPairings === 1 ? "" : "s"} \u00b7 ${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`
                 : `${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`}
             </span>
-            {!compliance.assessment.clearedForAward && (
-              <a
-                href="#compliance"
-                className="badge bg-risk/15 text-risk"
-                title={compliance.assessment.blockReason ?? undefined}
-              >
-                Cannot be sent work
+            {/*
+              One state, and the sentence behind it. The badge alone would be
+              a word to interpret; the detail is what somebody acts on.
+            */}
+            <span className={`badge ${SUB_STATE_TONE[state.state]}`}>{state.label}</span>
+            <span className="text-muted-foreground">{state.detail}</span>
+            {state.state === "missing_documents" && (
+              <a href="#compliance" className="text-accent hover:underline">
+                Paperwork
               </a>
             )}
-            {sub.is_preferred && (
-              <span className="badge bg-review/15 text-review">Preferred</span>
-            )}
-            {contactLabel && (
+            {/*
+              The verification outcome stays visible when it is the reason a
+              firm reads as reachable on a phone number alone. It is a
+              different fact from the state, not a competing one.
+            */}
+            {/*
+              Tags the team put on this record. Kept in the header because a
+              tag is why somebody put this firm on a shortlist, and that
+              belongs next to the state rather than three sections down.
+            */}
+            {tags.map((t) => (
+              <Link
+                key={t}
+                href={`/subs?tag=${encodeURIComponent(t)}`}
+                className="badge bg-surface-raised text-muted-foreground hover:text-accent"
+              >
+                {t}
+              </Link>
+            ))}
+            {contactLabel && state.canContact && sub.contact_status !== "verified" && (
               <span
                 className={`badge ${contactBadgeClass(sub.contact_status)}`}
                 title={contactStatusHint(sub.contact_status)}
@@ -177,8 +311,37 @@ export default async function SubDetailPage({
 
       <div className="min-h-0 flex-1 overflow-hidden">
         <SubcontractorRecord
+          capability={
+            <SubCapability
+              subcontractorId={sub.id}
+              capability={capability ?? {}}
+              contacts={contacts}
+              licenses={licenses}
+              trades={sub.trade_categories ?? []}
+              canEdit={can(viewer?.orgRole, "manage_subs")}
+              updatedAt={capabilityUpdatedAt}
+            />
+          }
           overview={
             <div className="space-y-6 px-5 py-6">
+              {/*
+                Who here knows this firm.
+                A subcontractor relationship is held by a person, not by a
+                company: the estimator who has called them nine times knows
+                what they are like to work with, and until this field existed
+                that knowledge had nowhere to live except that person's head.
+              */}
+              <div className="max-w-xs">
+                <OwnerPicker
+                  kind="subcontractor"
+                  recordId={sub.id}
+                  owner={subOwner}
+                  members={teamMembers}
+                  viewerId={viewer?.id}
+                  canAssign={can(viewer?.orgRole, "manage_subs")}
+                />
+              </div>
+
               {/* The readiness story first: what stands between this listing and a
                   company you can send work to, with the fix for each gap. */}
               <GuidedPlanPanel plan={plan} eyebrow="Getting this sub job-ready" />
@@ -528,10 +691,57 @@ export default async function SubDetailPage({
                   <SubNotes subId={sub.id} initialNotes={sub.notes} />
                 </div>
               </div>
+
+              {/*
+                Merging and putting aside live here rather than beside the
+                contact details: both are decisions about the record itself
+                rather than about the firm, and both are things somebody comes
+                looking for rather than trips over.
+              */}
+              <div className="card">
+                <h2 className="mb-1 text-sm font-semibold text-foreground">This record</h2>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Nothing here deletes anything. A folded record stays as a pointer, and one put
+                  aside keeps every email, quote and document it had.
+                </p>
+                <SubMerge
+                  subcontractorId={sub.id}
+                  companyName={sub.company_name}
+                  archivedReason={sub.archived_reason ?? null}
+          blacklisted={Boolean(sub.blacklisted)}
+          blacklistReason={sub.blacklist_reason ?? null}
+                  mergedIntoId={sub.merged_into ?? null}
+                  mergedIntoName={mergedIntoName}
+                  candidates={mergeCandidates}
+                  canAct={can(viewer?.orgRole, "decide")}
+                />
+              </div>
             </div>
           }
           activity={
-            <div className="space-y-4 px-5 py-6">
+            <div className="space-y-6 px-5 py-6">
+              {/*
+                Above the timeline, because it is the only thing on this tab a
+                person writes rather than reads, and because it is the half of
+                the reliability score nothing else can supply.
+              */}
+              <div className="card">
+                <SubPerformance
+                  subcontractorId={sub.id}
+                  events={performance.map((e) => ({
+                    id: e.id,
+                    kind: e.kind,
+                    note: e.note,
+                    recordedBy: e.recordedBy,
+                    at: e.at.toISOString(),
+                    opportunityId: e.opportunityId,
+                    opportunityTitle: e.opportunityTitle,
+                    retractedAt: e.retractedAt ? e.retractedAt.toISOString() : null,
+                    retractedReason: e.retractedReason,
+                  }))}
+                  canRecord={can(viewer?.orgRole, "decide")}
+                />
+              </div>
               <ActivityTimeline events={activity} />
             </div>
           }

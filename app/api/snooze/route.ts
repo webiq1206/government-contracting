@@ -9,8 +9,13 @@ export const dynamic = "force-dynamic";
 
 /**
  * Snooze / wake Today items.
- * Body: { kind: "opportunity" | "call_card", id: string, until: "tomorrow" | "3d" | null }
- * (null = wake now). Body: { wakeAll: true } wakes everything at once.
+ * Body: { kind: "opportunity" | "call_card", id, until: "tomorrow" | "3d" | null }
+ * (null = wake now), or { at: <ISO timestamp> } for a time the operator chose.
+ * Body: { wakeAll: true } wakes everything at once.
+ *
+ * `at` is what "Call later" uses. It is deliberately the same mechanism rather
+ * than a second one: the requirement is exactly one future call task, and
+ * moving the existing card is one task where creating a new one is two.
  *
  * Snoozing hides the item from Today and the queues until the time passes,
  * then it returns on its own. Automation (deadline alerts, follow-ups,
@@ -26,6 +31,8 @@ export async function POST(req: Request) {
     kind?: string;
     id?: string;
     until?: string | null;
+    /** An explicit moment, from a picker. Takes precedence over `until`. */
+    at?: string | null;
     wakeAll?: boolean;
   };
 
@@ -41,7 +48,28 @@ export async function POST(req: Request) {
   if (!body.id) return NextResponse.json({ error: "id is required." }, { status: 400 });
 
   let until: Date | null = null;
-  if (body.until === "tomorrow" || body.until === "3d") {
+  if (typeof body.at === "string" && body.at.trim()) {
+    const at = new Date(body.at);
+    if (Number.isNaN(at.getTime())) {
+      return NextResponse.json({ error: "That is not a time." }, { status: 400 });
+    }
+    /*
+     * Bounded on both sides. A time already past would put the card straight
+     * back on the queue, which reads as the control having done nothing; a
+     * time years out is a typo, and a call task nobody sees again is the same
+     * as one deleted without a record.
+     */
+    if (at.getTime() <= Date.now()) {
+      return NextResponse.json(
+        { error: "Pick a time in the future, or use Skip if the call is not happening." },
+        { status: 400 }
+      );
+    }
+    if (at.getTime() > Date.now() + 365 * 86_400_000) {
+      return NextResponse.json({ error: "That is more than a year away." }, { status: 400 });
+    }
+    until = at;
+  } else if (body.until === "tomorrow" || body.until === "3d") {
     until = resolveSnoozeUntil(body.until);
   } else if (body.until != null) {
     return NextResponse.json(
@@ -87,7 +115,7 @@ export async function POST(req: Request) {
       opportunityId: row.opportunity_id,
       level: "info",
       message: until
-        ? `Snoozed a call card until ${until.toISOString().slice(0, 10)}.`
+        ? `Call moved to ${until.toISOString().slice(0, 16).replace("T", " ")} UTC. The card stays pending and returns then; nothing about the subcontractor changed.`
         : "Woke a call card from snooze.",
     });
   }

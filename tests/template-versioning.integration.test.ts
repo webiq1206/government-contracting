@@ -12,7 +12,7 @@ import { LEGACY_ORG_ID } from "../lib/tenant-context";
 const hasDb = Boolean(process.env.DATABASE_URL);
 const d = hasDb ? describe : describe.skip;
 
-d("saveTemplateVersion — concurrent saves (integration)", () => {
+d("saveTemplateVersion, concurrent saves (integration)", () => {
   let query: typeof import("../lib/db").query;
   let saveTemplateVersion: typeof import("../lib/domain/template-versions").saveTemplateVersion;
 
@@ -39,21 +39,25 @@ d("saveTemplateVersion — concurrent saves (integration)", () => {
   });
 
   it("sequential saves produce strictly increasing versions", async () => {
-    const v2 = await saveTemplateVersion(testSlug, "Subject v2", "Body v2", LEGACY_ORG_ID);
-    const v3 = await saveTemplateVersion(testSlug, "Subject v3", "Body v3", LEGACY_ORG_ID);
+    const v2 = await saveTemplateVersion(testSlug, "Subject v2", "Body v2", LEGACY_ORG_ID, "tester@brostco.test");
+    const v3 = await saveTemplateVersion(testSlug, "Subject v3", "Body v3", LEGACY_ORG_ID, "tester@brostco.test");
 
     expect(v2.version).toBe(2);
     expect(v3.version).toBe(3);
   });
 
-  it("after each save exactly one row is active", async () => {
-    await saveTemplateVersion(testSlug, "Subject v4", "Body v4", LEGACY_ORG_ID);
+  it("a save leaves the active row exactly where it was", async () => {
+    await saveTemplateVersion(testSlug, "Subject v4", "Body v4", LEGACY_ORG_ID, "tester@brostco.test");
 
-    const active = await query<{ count: string }>(
-      `SELECT COUNT(*) AS count FROM templates WHERE slug = $1 AND is_active = true`,
+    // Still exactly one active row, and still the seeded one: a save writes a
+    // draft, so the wording being sent does not move until somebody publishes.
+    const active = await query<{ version: number; body: string }>(
+      `SELECT version, body FROM templates WHERE slug = $1 AND is_active = true`,
       [testSlug]
     );
-    expect(Number(active[0]?.count)).toBe(1);
+    expect(active).toHaveLength(1);
+    expect(active[0].version).toBe(1);
+    expect(active[0].body).toBe("Initial body");
   });
 
   it("concurrent saves all succeed with unique, sequential versions", async () => {
@@ -62,7 +66,7 @@ d("saveTemplateVersion — concurrent saves (integration)", () => {
     const CONCURRENT = 5;
     const results = await Promise.all(
       Array.from({ length: CONCURRENT }, (_, i) =>
-        saveTemplateVersion(testSlug, `Concurrent subject ${i}`, `Concurrent body ${i}`, LEGACY_ORG_ID)
+        saveTemplateVersion(testSlug, `Concurrent subject ${i}`, `Concurrent body ${i}`, LEGACY_ORG_ID, "tester@brostco.test")
       )
     );
 
@@ -84,13 +88,25 @@ d("saveTemplateVersion — concurrent saves (integration)", () => {
     );
     expect(Number(active[0]?.count)).toBe(1);
 
-    // Total row count reflects the seed + sequential + after-each + concurrent saves.
+    /*
+     * The seed row plus one draft, whatever the number of saves.
+     *
+     * Each save replaces the unpublished draft rather than stacking another
+     * row, which is what the partial unique index on (org_id, slug) where
+     * status = 'draft' guarantees. The version numbers above still had to be
+     * unique, so the counter never repeats even as the row is replaced.
+     */
     const total = await query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM templates WHERE slug = $1`,
       [testSlug]
     );
-    // 1 (seed) + 2 (sequential) + 1 (after-each) + 5 (concurrent) = 9
-    expect(Number(total[0]?.count)).toBe(9);
+    expect(Number(total[0]?.count)).toBe(2);
+
+    const drafts = await query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM templates WHERE slug = $1 AND status = 'draft'`,
+      [testSlug]
+    );
+    expect(Number(drafts[0]?.count)).toBe(1);
   });
 
   it("throws a 404-tagged error when slug does not exist", async () => {
@@ -98,7 +114,7 @@ d("saveTemplateVersion — concurrent saves (integration)", () => {
     // is allowed to create, so the 404 contract lives on the tenant path.
     const missingSlug = `no_such_slug_${randomUUID().slice(0, 8)}`;
     await expect(
-      saveTemplateVersion(missingSlug, null, "body", randomUUID())
+      saveTemplateVersion(missingSlug, null, "body", randomUUID(), "tester@brostco.test")
     ).rejects.toMatchObject({
       status: 404,
     });

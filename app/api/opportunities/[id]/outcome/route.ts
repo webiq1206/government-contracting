@@ -70,6 +70,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // would double-count active revenue and the non-SS subcontracting cap.
     // The stage guard inside the UPDATE makes the whole win exactly-once:
     // only the transaction that actually flips the stage creates the contract.
+    let newContractId: string | null = null;
     const claimed = await transaction(async (c) => {
       const moved = await c.query<{ id: string }>(
         `update opportunities set stage='won', status='closed'
@@ -85,11 +86,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           lossReason,
         ]);
       }
-      await c.query(
+      const created = await c.query<{ id: string }>(
         `insert into contracts
            (bid_id, opportunity_id, contract_number, award_amount, start_date, end_date,
             cpars_due_at, cpars_status, status)
-         values ($1,$2,$3,$4,$5,$6,$7,'pending','active')`,
+         values ($1,$2,$3,$4,$5,$6,$7,'pending','active')
+         returning id`,
         [
           bid?.id ?? null,
           params.id,
@@ -100,11 +102,29 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           endDate ? new Date(new Date(endDate).getTime() + 7 * 86_400_000).toISOString() : null,
         ]
       );
+      newContractId = created.rows[0]?.id ?? null;
       return true;
     });
     if (!claimed) {
       // Already won on a prior request; report success without side effects.
       return NextResponse.json({ ok: true, outcome, alreadyRecorded: true });
+    }
+
+    /*
+     * The obligations the award creates, written down.
+     *
+     * Outside the transaction on purpose: the win is the thing that must not
+     * be lost, and a failure to seed the milestones should leave a recorded
+     * contract with an empty checklist rather than roll back an award that
+     * actually happened. The seeder is idempotent, so a repair run fills in
+     * whatever a failure here missed.
+     */
+    if (newContractId) {
+      const { seedContractStartup } = await import("@/lib/contract-record");
+      await seedContractStartup({ orgId, contractId: newContractId }).catch((e: unknown) => {
+        console.warn("[outcome] could not seed contract startup:", e);
+        return null;
+      });
     }
     await logAgent({
       agent: "operator",

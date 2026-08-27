@@ -24,6 +24,10 @@ import type { AgentDefinition } from "./types";
 const AGENT_NAME = "compliance-monitor";
 import type { AgentResult } from "../types";
 import type { ComplianceStatus } from "../domain/compliance";
+import {
+  COMPLIANCE_STATE_LABEL,
+  COMPLIANCE_STATE_ORDER,
+} from "../domain/compliance-state";
 
 const FAR_RSS = "https://www.acquisition.gov/rss.xml";
 
@@ -36,6 +40,15 @@ interface UpsertArgs {
   status: ComplianceStatus;
   daysRemaining?: number | null;
   detail?: Record<string, unknown>;
+  /**
+   * False when there is nothing the platform can check for this item.
+   *
+   * Four of the items below are placeholders whose own detail says "Operator
+   * must set the expiry date". They were written as `ok` and rendered as "On
+   * track", which is a claim about the future made from no evidence at all: a
+   * certification nobody has ever supplied a date for, asserted to be fine.
+   */
+  monitorable?: boolean;
 }
 
 /**
@@ -62,7 +75,8 @@ async function upsertItem(a: UpsertArgs): Promise<void> {
   if (existing) {
     await query(
       `update compliance_items
-          set due_at=$2, status=$3, days_remaining=$4, detail=$5, last_checked_at=now()
+          set due_at=$2, status=$3, days_remaining=$4, detail=$5,
+              monitorable=$6, last_checked_at=now()
         where id=$1`,
       [
         existing.id,
@@ -70,6 +84,7 @@ async function upsertItem(a: UpsertArgs): Promise<void> {
         a.status,
         a.daysRemaining ?? null,
         a.detail ? JSON.stringify(a.detail) : null,
+        a.monitorable ?? true,
       ]
     );
   } else {
@@ -78,8 +93,9 @@ async function upsertItem(a: UpsertArgs): Promise<void> {
     // show it.
     await query(
       `insert into compliance_items
-         (org_id, category, label, contract_id, due_at, status, days_remaining, detail, last_checked_at)
-       values ($8,$1,$2,$3,$4,$5,$6,$7,now())`,
+         (org_id, category, label, contract_id, due_at, status, days_remaining, detail,
+          monitorable, last_checked_at)
+       values ($8,$1,$2,$3,$4,$5,$6,$7,$9,now())`,
       [
         a.category,
         a.label,
@@ -89,13 +105,29 @@ async function upsertItem(a: UpsertArgs): Promise<void> {
         a.daysRemaining ?? null,
         a.detail ? JSON.stringify(a.detail) : null,
         a.orgId,
+        a.monitorable ?? true,
       ]
     );
   }
 }
 
+/**
+ * The run's own counts, in the states it actually wrote.
+ *
+ * Listing five fixed severities meant a run that produced none of them still
+ * reported "0 critical, 0 blocked, 0 warning", which reads as a clean check
+ * whether or not anything was checked at all.
+ */
+function tallyLine(counts: Partial<Record<ComplianceStatus, number>>): string {
+  const parts = COMPLIANCE_STATE_ORDER.filter((s) => (counts[s] ?? 0) > 0).map(
+    (s) => `${counts[s]} ${COMPLIANCE_STATE_LABEL[s].toLowerCase()}`
+  );
+  return parts.length ? parts.join(", ") : "nothing to check";
+}
+
+/** States that put an item in front of somebody rather than on a list. */
 function isRed(s: ComplianceStatus): boolean {
-  return s === "critical" || s === "blocked";
+  return s === "expired" || s === "blocked" || s === "conflicting";
 }
 
 export const complianceMonitor: AgentDefinition = {
@@ -181,13 +213,7 @@ async function checkForOrg(
 
   const now = new Date();
   const t = profile.decision_thresholds;
-  const counts: Record<ComplianceStatus, number> = {
-    ok: 0,
-    warning: 0,
-    critical: 0,
-    blocked: 0,
-    resolved: 0,
-  };
+  const counts: Partial<Record<ComplianceStatus, number>> = {};
   const criticalMessages: string[] = [];
   const tally = (s: ComplianceStatus) => {
     counts[s] = (counts[s] ?? 0) + 1;
@@ -217,13 +243,20 @@ async function checkForOrg(
         orgId,
         category: "sam_registration",
         label: "SAM.gov registration",
-        status: "ok",
+        /*
+         * We asked and could not get an answer. That is exactly what "Cannot
+         * monitor" is for, and it is a very different statement from the "On
+         * track" this used to show, which asserted a registration was current
+         * on the strength of an API call that returned nothing.
+         */
+        status: "cannot_monitor",
+        monitorable: false,
         detail: {
           uei: profile.uei,
           note: reg?.disabled ? "SAM API disabled" : "no expiry returned; verify manually",
         },
       });
-      tally("ok");
+      tally("cannot_monitor");
     }
   }
 
@@ -241,10 +274,14 @@ async function checkForOrg(
       orgId,
       category: "sb_cert",
       label: `${cert} certification`,
-      status: "ok",
+      // There is no register the platform can read a certification expiry
+      // from. Somebody has to supply it, and until they do the honest state is
+      // that nobody knows rather than that it is fine.
+      status: "cannot_monitor",
+      monitorable: false,
       detail,
     });
-    tally("ok");
+    tally("cannot_monitor");
   }
 
   // --- 3) State LLC annual report (operator-managed date). ---
@@ -252,27 +289,29 @@ async function checkForOrg(
     orgId,
     category: "state_llc",
     label: "State LLC annual report",
-    status: "ok",
+    status: "cannot_monitor",
+    monitorable: false,
     detail: {
       state: profile.entity_state ?? null,
       alert_days: t.state_llc_alert_days,
       note: "Operator must set the annual-report due date.",
     },
   });
-  tally("ok");
+  tally("cannot_monitor");
 
   // --- 4) Insurance renewals (operator-managed date). ---
   await upsertItem({
     orgId,
     category: "insurance",
     label: "Insurance renewal",
-    status: "ok",
+    status: "cannot_monitor",
+    monitorable: false,
     detail: {
       alert_days: t.insurance_alert_days,
       note: "Operator must set insurance renewal date(s) (GL, workers' comp, etc.).",
     },
   });
-  tally("ok");
+  tally("cannot_monitor");
 
   // --- 5) Non-small-business sub spend cap per active contract. ---
   const contracts = await query<{
@@ -346,25 +385,35 @@ async function checkForOrg(
       orgId,
       category: "far_change",
       label: "FAR / acquisition.gov updates",
-      status: "ok",
+      /*
+       * A summary somebody has to read. Not "complete": nobody here has
+       * looked at it yet, and a rule change that affects how a bid has to be
+       * written is exactly the thing that must not be filed as done because
+       * a feed was fetched successfully.
+       */
+      status: "needs_review",
       detail: {
         titles: farTitles.slice(0, 20),
         summary: detailText || "Claude disabled, raw titles stored for operator review.",
+        needs_review_reason: "New regulation summaries have not been read here yet.",
       },
     });
-    tally("ok");
+    tally("needs_review");
   } else if (farFetchFailed) {
     await upsertItem({
       orgId,
       category: "far_change",
       label: "FAR / acquisition.gov updates",
-      status: "warning",
+      // The feed did not answer, so nothing was checked. That is precisely
+      // "Cannot monitor" and not a severity.
+      status: "cannot_monitor",
+      monitorable: false,
       detail: {
         summary:
           "The acquisition.gov feed could not be fetched, so regulation changes were NOT checked this run. Retries on the next scheduled run.",
       },
     });
-    tally("warning");
+    tally("cannot_monitor");
   }
 
   // --- Bundle a single SMS alert for critical/blocked items. ---
@@ -379,15 +428,13 @@ async function checkForOrg(
     agent: "compliance-monitor",
     action: "daily-check",
     level: criticalMessages.length ? "warn" : "info",
-    message: `Checked compliance: ${counts.critical} critical, ${counts.blocked} blocked, ${counts.warning} warning.`,
+    message: `Checked compliance: ${tallyLine(counts)}.`,
     reasoning: `SAM + certs + state LLC + insurance + ${contracts.length} active contract cap(s) + FAR RSS.`,
     output: counts,
   });
 
   return {
-    summary: `${counts.critical} critical, ${counts.blocked} blocked, ${counts.warning} warning, ${counts.ok} ok${
-      criticalMessages.length ? " (alert sent)" : ""
-    }`,
+    summary: `${tallyLine(counts)}${criticalMessages.length ? " (alert sent)" : ""}`,
     humanAction: criticalMessages.length > 0,
   };
 }

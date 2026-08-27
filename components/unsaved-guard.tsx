@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 /**
  * Stops a click from throwing away work somebody has not saved.
@@ -20,6 +21,11 @@ import { useRouter } from "next/navigation";
  * that means pushing a sentinel history entry and unwinding it, which goes
  * wrong in ways that trap somebody on a page they are trying to leave. A
  * missing guard costs an edit; a broken one costs the exit.
+ *
+ * The in-app prompt is the product's own dialog rather than `window.confirm`.
+ * The hard-unload prompt still has to be the browser's, because that is the
+ * only thing a browser will show while a tab is closing, and its wording is
+ * not ours to choose.
  */
 export function UnsavedGuard({
   when,
@@ -30,6 +36,8 @@ export function UnsavedGuard({
   message?: string;
 }) {
   const router = useRouter();
+  /** The in-app destination held while the question is asked. */
+  const [leavingTo, setLeavingTo] = useState<string | null>(null);
 
   useEffect(() => {
     if (!when) return;
@@ -65,7 +73,7 @@ export function UnsavedGuard({
 
       e.preventDefault();
       e.stopPropagation();
-      if (window.confirm(message)) router.push(next.pathname + next.search);
+      setLeavingTo(next.pathname + next.search);
     };
 
     window.addEventListener("beforeunload", warn);
@@ -77,5 +85,20 @@ export function UnsavedGuard({
     };
   }, [when, message, router]);
 
-  return null;
+  return (
+    <ConfirmDialog
+      open={leavingTo != null}
+      title="Leave without saving?"
+      body={message}
+      confirmLabel="Leave, and lose the changes"
+      cancelLabel="Stay here"
+      danger
+      onConfirm={() => {
+        const to = leavingTo;
+        setLeavingTo(null);
+        if (to) router.push(to);
+      }}
+      onCancel={() => setLeavingTo(null)}
+    />
+  );
 }

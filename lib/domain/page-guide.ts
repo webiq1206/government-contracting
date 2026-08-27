@@ -210,6 +210,24 @@ export interface GuideContextInput {
   sub?: SubGuideFacts | null;
 }
 
+/**
+ * The steps that will not wait.
+ *
+ * "Show only urgent work" is one of the four controls the brief names, and it
+ * needs a rule rather than a feeling. A step is urgent when it carries the
+ * warn tone, which is what the builders use for a blocker or a deadline that
+ * has arrived; everything else is work that can be done in order.
+ *
+ * Returns the full list when nothing is urgent, and says so, because a filter
+ * that empties the panel has answered "what should I do next" with silence.
+ */
+export function urgentSteps(steps: GuideStep[]): { steps: GuideStep[]; anyUrgent: boolean } {
+  const urgent = steps.filter((s) => s.tone === "warn");
+  return urgent.length > 0
+    ? { steps: urgent, anyUrgent: true }
+    : { steps, anyUrgent: false };
+}
+
 export interface PageGuide {
   pageKey: GuidePageKey;
   pathname: string;
@@ -225,6 +243,21 @@ export interface PageGuide {
   steps: GuideStep[];
   idle: boolean;
   pageExplain: HelpContent | null;
+  /**
+   * What has happened lately, as records rather than as a summary.
+   *
+   * "What changed" is one of the four questions the brief names, and it is the
+   * one an AI answer would be worst at: it is a list of events with times, and
+   * handing that list to a model to retell adds a place to be wrong and takes
+   * the timestamps away. So this arrives as data and is rendered as data.
+   *
+   * Three states, and they are three different sentences. A list is what
+   * happened. Null means the read failed, which is not the same as nothing
+   * having happened. Absent means this surface does not offer the question at
+   * all, which is how the pure builders leave it: they are given the page's
+   * state, not its history, and the loader attaches the history afterwards.
+   */
+  recentChanges?: { at: string; text: string; automatic: boolean }[] | null;
   terms: GuideTerm[];
   scoreExplain: GuideScoreExplain | null;
   badgeCount: number;

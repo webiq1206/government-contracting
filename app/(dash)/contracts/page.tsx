@@ -16,6 +16,12 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { currency, shortDate, pct } from "@/lib/format";
 import { buildContractPlan } from "@/lib/domain/contract-plan";
 import { GuidedPlanPanel } from "@/components/guided-plan";
+import { OwnerPicker } from "@/components/owner-picker";
+import { CreateContract } from "@/components/create-contract";
+import { assignableMembers } from "@/lib/ownership";
+import type { Owner } from "@/lib/domain/ownership";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +100,19 @@ function NonSsGauge({ pctValue }: { pctValue: number }) {
   );
 }
 
-function ContractCard({ c, completed = false }: { c: Record<string, unknown>; completed?: boolean }) {
+function ContractCard({
+  c,
+  completed = false,
+  members = [],
+  viewerId,
+  canAssign = false,
+}: {
+  c: Record<string, unknown>;
+  completed?: boolean;
+  members?: Owner[];
+  viewerId?: string;
+  canAssign?: boolean;
+}) {
   const milestones = (c.milestones as Milestone[] | null) ?? [];
   const coordination = (c.coordination_log as CoordinationEntry[] | null) ?? [];
   const nonSsPct = Number(c.non_ss_sub_pct ?? 0);
@@ -116,12 +134,41 @@ function ContractCard({ c, completed = false }: { c: Record<string, unknown>; co
     <div className={`card space-y-5 ${completed ? "opacity-80" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-900">
+          {/*
+            The card is now a way in rather than the whole record. There was
+            no route for a contract at all, so a contract could not be linked
+            to, reached from search, or hold more than card-sized detail.
+          */}
+          <Link
+            href={`/contracts/${String(c.id)}`}
+            className="text-sm font-medium text-foreground hover:underline"
+          >
             {(c.opportunity_title as string | null) ?? "Untitled contract"}
-          </p>
+          </Link>
           <p className="mt-0.5 text-xs text-slate-500">
             {(c.contract_number as string | null) ?? "-"}
           </p>
+          {/*
+            Who is running this contract. A contract is a year of somebody's
+            attention rather than a record: milestones, invoices, a CPARS
+            rating that has to be argued for. A card that names the value and
+            not the person answers the smaller of the two questions.
+          */}
+          <div className="mt-2 max-w-[12rem]">
+            <OwnerPicker
+              kind="contract"
+              recordId={String(c.id)}
+              owner={
+                c.assigned_to
+                  ? { id: String(c.assigned_to), name: String(c.assigned_name ?? "A teammate") }
+                  : null
+              }
+              members={members}
+              viewerId={viewerId}
+              canAssign={canAssign}
+              compact
+            />
+          </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           <span className="text-sm font-semibold text-slate-900">
@@ -286,7 +333,20 @@ export default async function ContractsPage({
 }: {
   searchParams?: { view?: string };
 }) {
-  const rows = await allContracts();
+  const [rows, teamMembers, viewer] = await Promise.all([
+    allContracts(),
+    // Tolerant: a picker that cannot load its list is a read-only owner
+    // field, where a throw is a Contracts page that will not open.
+    assignableMembers().catch(() => []),
+    currentUser().catch(() => null),
+  ]);
+
+  /*
+   * Offered only to a role that could actually save it. A control that comes
+   * back 403 when pressed is its own kind of lie; the API refuses it either
+   * way.
+   */
+  const canManage = can(viewer?.orgRole, "manage_contracts");
 
   /*
    * Bucket once, in one place. Splitting by stored status in SQL would mean
@@ -344,9 +404,12 @@ export default async function ContractsPage({
               title="No contracts yet"
               description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
               action={
-                <Link href="/pipeline" className="btn-ghost text-sm">
-                  Open opportunities
-                </Link>
+                <div className="space-y-3">
+                  <Link href="/pipeline" className="btn-ghost text-sm">
+                    Open opportunities
+                  </Link>
+                  {canManage && <CreateContract />}
+                </div>
               }
             />
           </div>
@@ -364,7 +427,7 @@ export default async function ContractsPage({
                   key={v}
                   href={`/contracts?view=${v}`}
                   aria-current={v === active ? "page" : undefined}
-                  className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5 ${
+                  className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
                     v === active
                       ? "border-gold bg-gold/15 text-foreground"
                       : counts[v] === 0
@@ -381,7 +444,10 @@ export default async function ContractsPage({
             </nav>
 
             <section className="mx-auto max-w-4xl">
-              <p className="mb-3 text-xs text-muted-foreground">{VIEW_EXPLANATION[active]}</p>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-xs text-muted-foreground">{VIEW_EXPLANATION[active]}</p>
+                {canManage && <CreateContract />}
+              </div>
               {shown.length === 0 ? (
                 <EmptyState
                   tone="success"
@@ -410,7 +476,13 @@ export default async function ContractsPage({
                           ))}
                         </ul>
                       ) : null}
-                      <ContractCard c={c} completed={active === "completed" || active === "terminated"} />
+                      <ContractCard
+                        c={c}
+                        completed={active === "completed" || active === "terminated"}
+                        members={teamMembers}
+                        viewerId={viewer?.id}
+                        canAssign={can(viewer?.orgRole, "manage_contracts")}
+                      />
                     </div>
                   ))}
                 </div>

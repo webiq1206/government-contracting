@@ -8,6 +8,8 @@ import { buildCallQueueGuide } from "@/lib/domain/call-queue-guide";
 import { GuidedPlanPanel } from "@/components/guided-plan";
 import { CallQueueList } from "@/components/call-queue-list";
 import { CallPanel } from "@/components/call-panel";
+import { computeQuoteDeadline, resolveTimeZone } from "@/lib/domain/quote-deadline";
+import { countdown } from "@/lib/format";
 import {
   callQueueCounts,
   filterCalls,
@@ -65,6 +67,7 @@ export default async function CallQueuePage({
     state: c.state ?? null,
     lastContacted: c.last_contacted ?? null,
     attempts: Number(c.attempts ?? 0),
+    ...quoteDueFacts(c.deadline as unknown as string | null, c.state ?? null, now),
   }));
   // The calling window and attempt limit are operator rules now, so the queue
   // reads them rather than assuming 8 to 6 and no limit.
@@ -248,7 +251,7 @@ export default async function CallQueuePage({
                     key={g}
                     href={queueHref({ group: g })}
                     aria-current={g === grouping ? "page" : undefined}
-                    className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5 ${
+                    className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
                       g === grouping
                         ? "border-gold bg-gold/15 text-foreground"
                         : "border-border text-foreground hover:border-foreground/30"
@@ -302,4 +305,35 @@ export default async function CallQueuePage({
       </div>
     </div>
   );
+}
+
+/**
+ * When this sub's price is actually needed, in their words and their zone.
+ *
+ * Computed here rather than in the row so every card on the page reads the
+ * same clock, and through the one function that already knows how to work
+ * back from a bid deadline: a second derivation would eventually promise a
+ * subcontractor a date the outreach email does not.
+ *
+ * Both silences are deliberate. No bid deadline means there is nothing to work
+ * back from, and too little time left means no split of it gives the sub long
+ * enough to price, so there is no honest date to show.
+ */
+function quoteDueFacts(
+  deadline: string | null,
+  state: string | null,
+  now: Date
+): { quoteDueLabel: string | null; quoteDueOverdue: boolean } {
+  /*
+   * The subcontractor's own state is the sender's here: they are the one
+   * being given a deadline, and a date spoken in the wrong zone is a date
+   * somebody misses by a working day.
+   */
+  const zone = resolveTimeZone({ senderState: state });
+  const due = computeQuoteDeadline({ deadline, timeZone: zone.timeZone, now });
+  if (!due.at) return { quoteDueLabel: null, quoteDueOverdue: false };
+  return {
+    quoteDueLabel: countdown(due.at),
+    quoteDueOverdue: new Date(due.at).getTime() < now.getTime(),
+  };
 }
