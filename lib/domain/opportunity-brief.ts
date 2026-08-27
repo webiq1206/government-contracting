@@ -257,6 +257,35 @@ const ORDER: Record<Importance, number> = {
   info: 3,
 };
 
+/**
+ * The seven analysis fields the brief is built from.
+ *
+ * Extracted so the page and the card cannot drift. The requirements checklist
+ * now needs the requirement ids on the server, to look up what has been
+ * recorded against each one, and building the brief from a different subset of
+ * the analysis in the two places would mean an id that exists in one and not
+ * the other: a requirement whose state silently stops being read.
+ */
+export function briefInputFrom(analysis: {
+  compliance_matrix?: ComplianceRequirement[] | null;
+  submission_requirements?: string[] | null;
+  required_forms?: RequiredForm[] | null;
+  qualifications?: Qualifications | null;
+  prebid_meeting?: MeetingInfo | null;
+  site_visit?: MeetingInfo | null;
+  special_requirements?: string[] | null;
+}): OpportunityBriefInput {
+  return {
+    complianceMatrix: analysis.compliance_matrix,
+    submissionRequirements: analysis.submission_requirements,
+    requiredForms: analysis.required_forms,
+    qualifications: analysis.qualifications,
+    prebidMeeting: analysis.prebid_meeting,
+    siteVisit: analysis.site_visit,
+    specialRequirements: analysis.special_requirements,
+  };
+}
+
 export function buildOpportunityBrief(
   input: OpportunityBriefInput
 ): OpportunityBrief {

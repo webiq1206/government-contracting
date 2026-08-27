@@ -8,6 +8,8 @@ import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { PricingWorkspace } from "@/components/pricing-workspace";
 import { BidBrief } from "@/components/bid-brief";
+import { briefInputFrom, buildOpportunityBrief } from "@/lib/domain/opportunity-brief";
+import { requirementViews } from "@/lib/requirement-states";
 import { DocumentInventoryPanel } from "@/components/document-inventory-panel";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
@@ -109,6 +111,34 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
   const pricing = (opp.raw_json as { pricing_summary?: Record<string, unknown> } | null)
     ?.pricing_summary;
+
+  /*
+   * Where each submission requirement has got to.
+   *
+   * Built from the same input the card builds its list from, through one
+   * shared function, so the ids match. Built here rather than inside the card
+   * because the card is rendered in places with no database behind them, and
+   * because a per-requirement lookup from inside the list would be forty
+   * queries to draw one page.
+   *
+   * Tolerates failure the way the owner lookups above do: a checklist that
+   * cannot read its own tracking is a checklist that shows the requirements
+   * and no states, which is the version that existed until now. It is not a
+   * reason the record page should refuse to open.
+   */
+  const briefRequirements = analysis
+    ? buildOpportunityBrief(briefInputFrom(analysis)).requirements
+    : [];
+  const tracking = analysis
+    ? await requirementViews(
+        params.id,
+        briefRequirements.map((r) => ({
+          id: r.id,
+          needsSignature: r.needsSignature,
+          producedByPlatform: r.owner === "platform",
+        }))
+      ).catch(() => null)
+    : null;
   const subOptions = subs.map((s) => ({
     subcontractor_id: s.subcontractor_id,
     company_name: s.company_name,
@@ -696,7 +726,22 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </div>
 
               {analysis ? (
-                <BidBrief analysis={analysis} documents={briefDocs} />
+                <BidBrief
+                  analysis={analysis}
+                  documents={briefDocs}
+                  tracking={
+                    tracking
+                      ? {
+                          opportunityId: params.id,
+                          states: tracking.states,
+                          history: tracking.history,
+                          members: teamMembers,
+                          viewerId: viewer?.id,
+                          canEdit: can(viewer?.orgRole, "decide"),
+                        }
+                      : undefined
+                  }
+                />
               ) : (
                 <div className="card">
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">

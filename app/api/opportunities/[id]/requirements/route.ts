@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { logAgent } from "@/lib/logger";
-import { applyPackageChange } from "@/lib/bid-package-state";
-import type { ResolvedRequirement } from "@/lib/types";
+import {
+  applyPackageChange,
+  setRequirementConfirmed,
+  type PackageChangeResult,
+} from "@/lib/bid-package-state";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,43 +35,32 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const confirmed = body.confirmed !== false;
   let label = "";
 
-  const result = await applyPackageChange(params.id, orgId, ({ matrix, findings }) => {
-    if (body.requirement_id) {
+  /*
+   * Two different changes, and each goes through the one function that owns
+   * it. The requirement branch used to hold its own copy of the confirm and
+   * reopen logic; the checklist on the opportunity workspace now writes the
+   * same fact, so that copy moved into bid-package-state and both callers
+   * share it. Two implementations of "this requirement is done" is how the
+   * submission gate and the checklist end up disagreeing in front of the
+   * operator.
+   */
+  let result: PackageChangeResult;
+  if (body.requirement_id) {
+    label = `requirement ${body.requirement_id}`;
+    result = await setRequirementConfirmed(params.id, orgId, body.requirement_id, confirmed);
+  } else {
+    label = `audit finding ${body.finding_id}`;
+    result = await applyPackageChange(params.id, orgId, ({ matrix, findings }) => {
       let found = false;
-      matrix = matrix.map((r) => {
-        if (r.id !== body.requirement_id) return r;
-        found = true;
-        if (confirmed) return { ...r, operator_confirmed: true, status: "satisfied" };
-        // Un-confirming also detaches the uploaded file: leaving it attached
-        // would keep the document in the manifest for an item the operator
-        // just said is not done.
-        const { operator_doc: _dropped, ...rest } = r;
-        const status: ResolvedRequirement["status"] = r.official_form
-          ? "needs_operator"
-          : r.satisfied_by === "operator_signature"
-            ? "needs_signature"
-            : r.satisfied_by === "operator_provided"
-              ? "needs_operator"
-              : "satisfied";
-        return { ...rest, operator_confirmed: false, status };
-      });
-      if (!found) return null;
-      label = `requirement ${body.requirement_id}`;
-    }
-
-    if (body.finding_id) {
-      let found = false;
-      findings = findings.map((f) => {
+      const next = findings.map((f) => {
         if (f.id !== body.finding_id) return f;
         found = true;
         return { ...f, acknowledged: confirmed };
       });
       if (!found) return null;
-      label = `audit finding ${body.finding_id}`;
-    }
-
-    return { matrix, findings };
-  });
+      return { matrix, findings: next };
+    });
+  }
 
   if (!result.ok) {
     return NextResponse.json(
