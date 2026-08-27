@@ -122,12 +122,19 @@ export function SubsTable({
       header: "Reliability",
       sortable: true,
       numeric: true,
-      hint: "0-100, from how consistently this firm answers, quotes on time, and delivers.",
+      hint: "0-100, from six things: whether they answer, whether they quote, whether the quote arrives by the date they were given, whether it covers the scope, how the work went, and how often they have backed out. Blank means not enough history to score, which is not a low score.",
       render: (s) =>
         s.reliability_score != null ? (
           <span className="font-semibold text-foreground">{s.reliability_score}</span>
         ) : (
-          <span className="text-muted-foreground">-</span>
+          /*
+            Words, not a dash. A dash reads as a gap in the table; this is a
+            statement about the firm, and the difference matters on the column
+            an operator sorts by to decide who to approach first.
+          */
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            No history yet
+          </span>
         ),
     },
     {

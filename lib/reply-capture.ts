@@ -641,6 +641,29 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     );
     quoteSaved = inserted != null;
     quoteSkippedExisting = inserted == null;
+    /*
+     * When their price arrived, and whether it covered what was asked for.
+     *
+     * Stamped on the pairing rather than on the quote, because that is where
+     * the date they were given lives, and lateness is the subtraction of the
+     * two. Their Date header rather than our poll time: a reply written on
+     * Friday and collected on Monday was not late.
+     *
+     * The scope judgement here is the extractor's, and it is a real
+     * determination rather than a guess: `partial_scope` is a refusal the
+     * pipeline raises by name when a reply prices only part of the work.
+     * Absence of that refusal on a saved quote is the affirmative reading.
+     */
+    if (quoteSaved) {
+      await query(
+        `update opportunity_subs
+            set quoted_at = coalesce(quoted_at, $4::timestamptz),
+                quote_full_scope = coalesce(quote_full_scope, true)
+          where opportunity_id = $1 and subcontractor_id = $2
+            and coalesce(trade,'') = coalesce($3,'')`,
+        [comm.opportunity_id, subId, trade, replyWrittenAt]
+      );
+    }
     if (quoteSaved) {
       /*
        * Everything the reply actually said, kept as fields rather than prose.
@@ -683,6 +706,20 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
    * would mean the operator finds out at bid time that a trade they thought
    * was quoted is empty.
    */
+  /*
+   * A reply that prices only part of the trade is a fact about the firm, and
+   * one of the six things the reliability score is made of. Recorded even
+   * though no quote was saved: the refusal is the finding.
+   */
+  if (subId && !proposal.ok && proposal.refusal === "partial_scope") {
+    await query(
+      `update opportunity_subs
+          set quote_full_scope = false
+        where opportunity_id = $1 and subcontractor_id = $2`,
+      [comm.opportunity_id, subId]
+    );
+  }
+
   if (autoSaveOk && !proposal.ok && !quoteSaved) {
     await logAgent({
       agent: "reply-capture",

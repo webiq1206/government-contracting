@@ -8,6 +8,8 @@ import { gmail } from "@/lib/integrations/gmail";
 import { ConversationThreads } from "@/components/conversation-threads";
 import { PageFrame } from "@/components/page-frame";
 import { SubNotes } from "@/components/sub-notes";
+import { SubPerformance } from "@/components/sub-performance";
+import { performanceFor } from "@/lib/subcontractor-performance";
 import { Collapsible } from "@/components/collapsible";
 import { RecordActions } from "@/components/record-actions";
 import { SubEditor } from "@/components/sub-editor";
@@ -107,6 +109,17 @@ export default async function SubDetailPage({
     assignableMembers().catch(() => []),
     currentUser().catch(() => null),
   ]);
+
+  /*
+   * What somebody has written down about how the work went, which is the one
+   * part of the reliability score nothing can infer. Tolerates failure the
+   * same way the pickers above do: a record page that will not open because a
+   * performance note could not load is a worse outcome than a missing panel.
+   */
+  const performance = await performanceFor(
+    (await tryResolveTenantOrgId()) ?? "",
+    params.id
+  ).catch(() => []);
 
   /*
    * One timeline, from the sources this record is actually made of. The
@@ -562,7 +575,29 @@ export default async function SubDetailPage({
             </div>
           }
           activity={
-            <div className="space-y-4 px-5 py-6">
+            <div className="space-y-6 px-5 py-6">
+              {/*
+                Above the timeline, because it is the only thing on this tab a
+                person writes rather than reads, and because it is the half of
+                the reliability score nothing else can supply.
+              */}
+              <div className="card">
+                <SubPerformance
+                  subcontractorId={sub.id}
+                  events={performance.map((e) => ({
+                    id: e.id,
+                    kind: e.kind,
+                    note: e.note,
+                    recordedBy: e.recordedBy,
+                    at: e.at.toISOString(),
+                    opportunityId: e.opportunityId,
+                    opportunityTitle: e.opportunityTitle,
+                    retractedAt: e.retractedAt ? e.retractedAt.toISOString() : null,
+                    retractedReason: e.retractedReason,
+                  }))}
+                  canRecord={can(viewer?.orgRole, "decide")}
+                />
+              </div>
               <ActivityTimeline events={activity} />
             </div>
           }

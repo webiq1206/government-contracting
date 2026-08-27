@@ -599,10 +599,36 @@ export const outreach: AgentDefinition = {
     // could overwrite a sibling trade's successful "sent", and a stamp on
     // never-emailed trades made them read as approached-and-dead.
     await query(
-      `update opportunity_subs set outreach_state=$3
+      `update opportunity_subs
+          set outreach_state=$3,
+              /*
+               * The date this subcontractor was actually told, stamped only on
+               * a send that left the building.
+               *
+               * Lateness can only be measured against a promise that was made.
+               * Working it out later from the opportunity's deadline would
+               * judge a firm against a date they were never given, and the
+               * deadline moves: an amendment that pulls the bid forward would
+               * retroactively make every quote on the job late.
+               *
+               * coalesce keeps the first date given. A follow-up repeats the
+               * original rather than setting a new one, which is also what the
+               * chaser email does.
+               */
+              quote_due_at = case
+                when $5::boolean then coalesce(quote_due_at, $6::timestamptz)
+                else quote_due_at
+              end
        where opportunity_id=$1 and subcontractor_id=$2
          and coalesce(trade,'') = $4`,
-      [opportunityId, subcontractorId, outreachState, trade]
+      [
+        opportunityId,
+        subcontractorId,
+        outreachState,
+        trade,
+        sent,
+        resolved.quote.at ?? null,
+      ]
     );
 
     if (sent) {

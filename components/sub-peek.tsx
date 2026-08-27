@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { DetailDrawer, DrawerFact, DrawerSection } from "@/components/detail-drawer";
-import { reliabilityBreakdown } from "@/lib/domain/reliability";
+import {
+  EVIDENCE_LABEL,
+  NO_RELIABILITY_LABEL,
+  reliabilityBreakdown,
+} from "@/lib/domain/reliability";
 import { shortDate } from "@/lib/format";
 import type { SubPeekRow } from "@/lib/data";
 
@@ -163,8 +167,21 @@ export function SubPeek({
       <DrawerSection title="Reliability">
         <div>
           <dt className="text-xs uppercase tracking-wide text-slate-500">Score</dt>
-          <dd className="num text-3xl text-foreground">{rel.reliability}</dd>
+          {/*
+            Null is not zero and must not render as one. A firm nobody has
+            dealt with has not scored badly, and a roster somebody sorts by
+            this column would put them below a firm that walked off a job.
+          */}
+          {rel.reliability == null ? (
+            <dd className="text-lg text-muted-foreground">{NO_RELIABILITY_LABEL}</dd>
+          ) : (
+            <dd className="num text-3xl text-foreground">{rel.reliability}</dd>
+          )}
           <p className="text-xs text-slate-500">{rel.caveat}</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {EVIDENCE_LABEL[rel.evidence]}
+            {rel.evidenceCount > 0 ? ` · ${rel.evidenceCount} dealings on record` : ""}
+          </p>
           {stale && (
             <p className="mt-1 text-xs text-slate-500">
               The roster column reads {sub.reliability_score}. It is rewritten nightly;
@@ -173,14 +190,24 @@ export function SubPeek({
           )}
         </div>
         <div className="space-y-2">
-          {rel.components.map((c) => (
-            <div key={c.label} className="flex items-baseline justify-between gap-3">
+          {/*
+            All six, including the ones with nothing behind them. A breakdown
+            that lists only what it measured reads as a complete account of the
+            firm, and the gaps are the most useful thing on it: they say what
+            to go and find out.
+          */}
+          {rel.dimensions.map((d) => (
+            <div key={d.key} className="flex items-baseline justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate text-sm text-foreground">{c.label}</p>
-                <p className="text-xs text-slate-500">{c.detail}</p>
+                <p className="truncate text-sm text-foreground">{d.label}</p>
+                <p className="text-xs text-slate-500">{d.detail}</p>
               </div>
-              <span className="num shrink-0 text-sm text-foreground">
-                {c.points > 0 ? `+${c.points}` : c.points}
+              <span
+                className={`num shrink-0 text-sm ${
+                  d.score == null ? "text-muted-foreground" : "text-foreground"
+                }`}
+              >
+                {d.score == null ? "Not measured" : `${d.score}/100`}
               </span>
             </div>
           ))}
