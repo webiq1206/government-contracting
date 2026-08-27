@@ -153,7 +153,19 @@ async function sourceSubs(
                   where lower(t) = lower($1)
                )
           )
-          and upper(coalesce(state,'')) = $2
+          and (
+            upper(coalesce(state,'')) = $2
+            /*
+             * Or they have told us they work there.
+             *
+             * Matching only the firm's own address excluded a firm based one
+             * county over who covers this state and says so, which is exactly
+             * the fact the service area was added to record. Their own state
+             * still counts, so a firm nobody has asked about their travel is
+             * not dropped for a question never put to them.
+             */
+            or (service_area_states is not null and $2 = any(service_area_states))
+          )
           and (
             nullif(btrim(coalesce(email, '')), '') is not null
             or nullif(btrim(coalesce(phone, '')), '') is not null
