@@ -17,6 +17,7 @@ import { currency, shortDate, pct } from "@/lib/format";
 import { buildContractPlan } from "@/lib/domain/contract-plan";
 import { GuidedPlanPanel } from "@/components/guided-plan";
 import { OwnerPicker } from "@/components/owner-picker";
+import { CreateContract } from "@/components/create-contract";
 import { assignableMembers } from "@/lib/ownership";
 import type { Owner } from "@/lib/domain/ownership";
 import { currentUser } from "@/lib/auth";
@@ -133,9 +134,17 @@ function ContractCard({
     <div className={`card space-y-5 ${completed ? "opacity-80" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-900">
+          {/*
+            The card is now a way in rather than the whole record. There was
+            no route for a contract at all, so a contract could not be linked
+            to, reached from search, or hold more than card-sized detail.
+          */}
+          <Link
+            href={`/contracts/${String(c.id)}`}
+            className="text-sm font-medium text-foreground hover:underline"
+          >
             {(c.opportunity_title as string | null) ?? "Untitled contract"}
-          </p>
+          </Link>
           <p className="mt-0.5 text-xs text-slate-500">
             {(c.contract_number as string | null) ?? "-"}
           </p>
@@ -333,6 +342,13 @@ export default async function ContractsPage({
   ]);
 
   /*
+   * Offered only to a role that could actually save it. A control that comes
+   * back 403 when pressed is its own kind of lie; the API refuses it either
+   * way.
+   */
+  const canManage = can(viewer?.orgRole, "manage_contracts");
+
+  /*
    * Bucket once, in one place. Splitting by stored status in SQL would mean
    * re-deriving "at risk" wherever it is needed, and a contract that reads
    * differently depending on which list you opened it from is worse than one
@@ -388,9 +404,12 @@ export default async function ContractsPage({
               title="No contracts yet"
               description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
               action={
-                <Link href="/pipeline" className="btn-ghost text-sm">
-                  Open opportunities
-                </Link>
+                <div className="space-y-3">
+                  <Link href="/pipeline" className="btn-ghost text-sm">
+                    Open opportunities
+                  </Link>
+                  {canManage && <CreateContract />}
+                </div>
               }
             />
           </div>
@@ -425,7 +444,10 @@ export default async function ContractsPage({
             </nav>
 
             <section className="mx-auto max-w-4xl">
-              <p className="mb-3 text-xs text-muted-foreground">{VIEW_EXPLANATION[active]}</p>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-xs text-muted-foreground">{VIEW_EXPLANATION[active]}</p>
+                {canManage && <CreateContract />}
+              </div>
               {shown.length === 0 ? (
                 <EmptyState
                   tone="success"
