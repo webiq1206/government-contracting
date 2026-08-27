@@ -48,6 +48,14 @@ export interface AdminAccountRow {
   deletion_scheduled_at: string | null;
   deletion_requested_by: string | null;
   deletion_reason: string | null;
+  /**
+   * customer | internal | test.
+   *
+   * Explicit, never inferred from the name: guessing classifies a company
+   * called Test Valley Contractors as a fixture, and nothing about that
+   * failure announces itself. Set by an administrator on the account.
+   */
+  classification: string;
   /** Computed, never stored: what this account can actually do right now. */
   access: AccessLevel;
 }
@@ -74,6 +82,7 @@ const ACCOUNT_SELECT = `
          o.deletion_scheduled_at::text as deletion_scheduled_at,
          o.deletion_requested_by,
          o.deletion_reason,
+         o.classification,
          owner.email            as owner_email,
          owner.name             as owner_name,
          owner.id               as owner_user_id,
@@ -645,6 +654,42 @@ export async function accountsDueForPurge(): Promise<{ id: string; name: string 
       order by deletion_scheduled_at asc
       limit 25`
   ).catch(() => []);
+}
+
+/**
+ * Mark an account as a customer, internal, or a test fixture.
+ *
+ * The classification decides whether it appears in the headline counts on
+ * the Accounts page. Nothing else changes: a test account still works, it is
+ * just no longer counted as a customer when somebody reads "3 locked out".
+ */
+export async function setClassification(input: {
+  orgId: string;
+  classification: string;
+  adminEmail: string;
+}): Promise<AdminActionResult> {
+  if (!["customer", "internal", "test"].includes(input.classification)) {
+    return { ok: false, error: "Classification must be customer, internal or test." };
+  }
+  const rows = await query<{ name: string }>(
+    `update organizations set classification = $2, updated_at = now()
+      where id = $1 returning name`,
+    [input.orgId, input.classification]
+  ).catch(() => []);
+  if (rows.length === 0) return { ok: false, error: "No such account." };
+  await recordAdminAction({
+    orgId: input.orgId,
+    adminEmail: input.adminEmail,
+    action: "set_classification",
+    detail: { classification: input.classification },
+  });
+  return {
+    ok: true,
+    message:
+      input.classification === "customer"
+        ? `${rows[0].name} counts as a customer again.`
+        : `${rows[0].name} is marked ${input.classification} and no longer counts in the customer totals.`,
+  };
 }
 
 export async function deleteAccount(input: {

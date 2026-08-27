@@ -9,6 +9,7 @@ import {
   restartTrial,
   setBillingExempt,
   setSuspended,
+  setClassification,
   type AdminActionResult,
 } from "@/lib/admin/accounts";
 import {
@@ -40,6 +41,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     percent?: number;
     months?: number;
     envKey?: string;
+    classification?: string;
     expiresAt?: string | null;
     confirmName?: string;
   };
@@ -111,6 +113,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       break;
     case "make_free":
       result = await convertToFree({ orgId, reason, adminEmail });
+      break;
+    case "set_classification":
+      result = await setClassification({
+        orgId,
+        classification: String(body.classification ?? ""),
+        adminEmail,
+      });
       break;
     case "grant_key":
       result = await grantKeyToAccount({

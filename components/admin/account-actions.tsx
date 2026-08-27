@@ -27,6 +27,7 @@ export function AccountActions({
   canImpersonate,
   ownerEmail,
   currentDiscount,
+  classification,
 }: {
   orgId: string;
   orgName: string;
@@ -40,6 +41,8 @@ export function AccountActions({
   ownerEmail: string | null;
   /** What they are on today, running at Stripe or still just promised. */
   currentDiscount: string | null;
+  /** customer | internal | test. Decides whether the headline counts see it. */
+  classification: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -132,6 +135,30 @@ export function AccountActions({
           {note.text}
         </p>
       )}
+
+      <Card
+        title="Classification"
+        body="Customer accounts are the only ones the headline counts on the Accounts page describe. Marking an account internal or test takes it out of those numbers, and changes nothing else about how it works."
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {(["customer", "internal", "test"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={classification === k ? "btn-primary text-xs" : "btn-ghost text-xs"}
+              disabled={busy === "set_classification" || classification === k}
+              aria-pressed={classification === k}
+              onClick={() => run("set_classification", { action: "set_classification", classification: k })}
+            >
+              {k === "customer" ? "Customer" : k === "internal" ? "Internal" : "Test fixture"}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Currently marked {classification}. Recorded in the admin history like
+          everything else here.
+        </p>
+      </Card>
 
       <Card
         title="Billing exemption"

@@ -86,6 +86,18 @@ const SPECS: FilterSpec[] = [
   { key: "trial", label: "On trial only", kind: "boolean" },
   { key: "suspended", label: "Suspended only", kind: "boolean" },
   {
+    key: "kind",
+    label: "Kind",
+    kind: "select",
+    placeholder: "Customers",
+    hint: "The counts above only ever describe customers. Internal and test accounts are here when you ask for them.",
+    options: [
+      { value: "all", label: "Everything" },
+      { value: "internal", label: "Internal only" },
+      { value: "test", label: "Test only" },
+    ],
+  },
+  {
     key: "noowner",
     label: "No owner",
     kind: "boolean",
@@ -117,20 +129,37 @@ export default async function AdminAccountsPage({
   // exists and is worth attacking.
   if (auth instanceof Response) notFound();
 
-  const all = await adminAccountRows();
+  const everything = await adminAccountRows();
   const now = new Date();
 
-  // Headline counts describe the WHOLE platform, not the current filter. A
-  // number that moves when you type in a search box is not a fact about the
-  // business, and these are the four an admin opens this page to check.
-  const lockedOut = all.filter((r) => r.access === "none").length;
-  const comped = all.filter((r) => r.billing_exempt).length;
-  const suspended = all.filter((r) => r.suspended_at).length;
-  const neverUsed = all.filter(
+  const values = parseFilters(SPECS, searchParams);
+
+  /*
+   * Customers by default, always.
+   *
+   * The platform's own workspace and the QA fixtures sat in every count as
+   * if they were customers, so "3 locked out" could be two test accounts and
+   * a demo, and somebody investigates an outage that is not one. The other
+   * kinds are one filter away, never mixed in silently.
+   */
+  const kind = values.kind ?? "customer";
+  const all = everything.filter((r) =>
+    kind === "all" ? true : kind === "customer" ? r.classification === "customer" : r.classification === kind
+  );
+  const hidden = everything.length - all.length;
+
+  // Headline counts describe every CUSTOMER on the platform, not the current
+  // filter. A number that moves when you type in a search box is not a fact
+  // about the business, and these are the four an admin opens this page to
+  // check.
+  const customers = everything.filter((r) => r.classification === "customer");
+  const lockedOut = customers.filter((r) => r.access === "none").length;
+  const comped = customers.filter((r) => r.billing_exempt).length;
+  const suspended = customers.filter((r) => r.suspended_at).length;
+  const neverUsed = customers.filter(
     (r) => activityOf(r.last_active_at, r.created_at, now).state === "never"
   ).length;
 
-  const values = parseFilters(SPECS, searchParams);
   const needle = (values.q ?? "").toLowerCase();
   const matched = all.filter((r) => {
     if (needle && !`${r.name} ${r.owner_email ?? ""}`.toLowerCase().includes(needle)) return false;
@@ -178,7 +207,7 @@ export default async function AdminAccountsPage({
           * made the wrong one so easy to believe.
           */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <Stat label="Accounts" value={all.length} href="/admin/accounts" />
+          <Stat label="Customers" value={customers.length} href="/admin/accounts" />
           <Stat
             label="Locked out"
             value={lockedOut}
@@ -216,6 +245,15 @@ export default async function AdminAccountsPage({
                 : "No accounts yet"
           }
         />
+
+        {/* Stated rather than silent: a hidden row is one thing, a hidden
+            row nobody knows is hidden is a page that lies about its total. */}
+        {hidden > 0 && kind !== "all" && (
+          <p className="text-xs text-muted-foreground">
+            {hidden} internal or test account{hidden === 1 ? " is" : "s are"} not
+            listed. The Kind filter shows them.
+          </p>
+        )}
 
         <AdminAccountsTable
           rows={rows}
