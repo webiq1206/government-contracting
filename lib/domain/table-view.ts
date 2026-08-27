@@ -262,6 +262,20 @@ export type Density = "comfortable" | "compact";
 export interface SavedView {
   id: string;
   name: string;
+  /**
+   * Who can see it.
+   *
+   * Personal is somebody's own shortcut; team is how an office agrees what
+   * "the work" means this month. Both live on the server, because a team view
+   * that exists only in its author's browser is not shared with anybody, and a
+   * personal view that lives there is lost the first time somebody opens the
+   * product on a different machine.
+   */
+  scope?: "personal" | "team";
+  /** The author's name, on team views. Never an email address. */
+  createdBy?: string | null;
+  /** Whether the reader may remove it. */
+  canDelete?: boolean;
   /** The query string, without a leading "?". */
   query: string;
 }

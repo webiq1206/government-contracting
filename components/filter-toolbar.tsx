@@ -86,6 +86,7 @@ export function FilterToolbar({
   const [views, setViews] = useState<SavedView[]>([]);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
+  const [viewError, setViewError] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const sheetTrigger = useRef<HTMLButtonElement>(null);
   /*
@@ -109,21 +110,63 @@ export function FilterToolbar({
   // saved view opened) the controls follow it rather than the other way round.
   useEffect(() => setDraft(values), [values]);
 
-  useEffect(() => {
+  /*
+   * Views come from the server now, not from this browser.
+   *
+   * They lived in localStorage, which was right for one of the two kinds and
+   * wrong for the other. A personal view is somebody's own shortcut; a team
+   * view is how an office agrees what "the work" means this month, and it is
+   * useless if it exists only in the browser of the person who made it.
+   * Storing personal ones server-side too costs nothing and stops a device
+   * change losing them, which is the failure that made saved views feel
+   * unreliable and stopped anybody making one.
+   *
+   * What stays local is the last view somebody left, below: a per-device
+   * convenience rather than a thing anybody named.
+   */
+  const loadViews = useCallback(async () => {
     try {
-      const raw = window.localStorage.getItem(viewsKey);
-      if (raw) setViews(JSON.parse(raw) as SavedView[]);
+      const res = await fetch(`/api/views?page=${encodeURIComponent(viewsKey)}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { views?: SavedView[] };
+      setViews(data.views ?? []);
     } catch {
-      // A browser with storage disabled loses saved views, not the page.
+      // A failed read leaves the bar without its saved views and with
+      // everything else working, which is the right half to lose.
     }
   }, [viewsKey]);
 
-  function persist(next: SavedView[]) {
-    setViews(next);
+  useEffect(() => {
+    void loadViews();
+  }, [loadViews]);
+
+  async function saveCurrentView(name: string, scope: "personal" | "team") {
+    setViewError(null);
     try {
-      window.localStorage.setItem(viewsKey, JSON.stringify(next));
+      const res = await fetch("/api/views", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page: viewsKey, name, query: currentQuery, scope }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setViewError(data.error ?? "Could not save that view.");
+        return;
+      }
+      setName("");
+      setNaming(false);
+      await loadViews();
     } catch {
-      /* ignore */
+      setViewError("Could not reach the server. The view was not saved.");
+    }
+  }
+
+  async function removeView(id: string) {
+    try {
+      const res = await fetch(`/api/views/${id}`, { method: "DELETE" });
+      if (res.ok) await loadViews();
+    } catch {
+      /* leaves the view on screen, which is better than pretending it is gone */
     }
   }
 
@@ -327,32 +370,57 @@ export function FilterToolbar({
 
             {chips.length > 0 && !activeView && (
               naming ? (
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex flex-wrap items-center gap-1.5">
                   <input
                     autoFocus
-                    className="input h-7 w-40 text-xs"
+                    className="input h-8 w-44 text-xs"
                     placeholder="Name this view"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setViewError(null);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Escape") setNaming(false);
-                      if (e.key === "Enter" && name.trim()) {
-                        persist([
-                          ...views,
-                          { id: `${Date.now()}`, name: name.trim(), query: currentQuery },
-                        ]);
-                        setName("");
-                        setNaming(false);
-                      }
+                      // Enter saves it as a personal view, which is the
+                      // low-stakes half of the choice: a shortcut only its
+                      // author sees. Sharing it with the office is a
+                      // deliberate second button.
+                      if (e.key === "Enter" && name.trim()) void saveCurrentView(name, "personal");
                     }}
                   />
                   <button
                     type="button"
+                    className="btn-ghost min-h-11 px-2 text-xs lg:min-h-0"
+                    disabled={!name.trim()}
+                    onClick={() => void saveCurrentView(name, "personal")}
+                  >
+                    Just for me
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost min-h-11 px-2 text-xs lg:min-h-0"
+                    disabled={!name.trim()}
+                    onClick={() => void saveCurrentView(name, "team")}
+                    title="Everybody in this account will see it, with your name on it."
+                  >
+                    Share with the team
+                  </button>
+                  <button
+                    type="button"
                     className="text-xs text-muted-foreground hover:text-foreground"
-                    onClick={() => setNaming(false)}
+                    onClick={() => {
+                      setNaming(false);
+                      setViewError(null);
+                    }}
                   >
                     Cancel
                   </button>
+                  {viewError && (
+                    <span role="alert" className="text-xs text-risk">
+                      {viewError}
+                    </span>
+                  )}
                 </span>
               ) : (
                 <button
@@ -378,20 +446,33 @@ export function FilterToolbar({
                       className={`badge transition-colors ${
                         activeView?.id === v.id
                           ? "bg-gold text-ink"
-                          : "bg-muted text-muted-foreground hover:text-foreground"
+                          : v.scope === "team"
+                            ? "bg-gold/15 text-gold-text hover:text-foreground"
+                            : "bg-muted text-muted-foreground hover:text-foreground"
                       }`}
+                      /* Whose filter it is, on the team ones. A shared view
+                         with no author is a rule from nowhere, and the first
+                         question about one is always who set it. */
+                      title={
+                        v.scope === "team"
+                          ? `Shared with the team${v.createdBy ? ` by ${v.createdBy}` : ""}`
+                          : "Only you can see this one"
+                      }
                     >
                       {v.name}
+                      {v.scope === "team" && <span className="sr-only"> (shared with the team)</span>}
                     </button>
-                    <button
-                      type="button"
-                      aria-label={`Delete the ${v.name} view`}
-                      title={`Delete the ${v.name} view`}
-                      onClick={() => persist(views.filter((x) => x.id !== v.id))}
-                      className="px-1 text-xs text-muted-foreground hover:text-risk"
-                    >
-                      ×
-                    </button>
+                    {v.canDelete && (
+                      <button
+                        type="button"
+                        aria-label={`Delete the ${v.name} view`}
+                        title={`Delete the ${v.name} view`}
+                        onClick={() => void removeView(v.id)}
+                        className="px-1 text-xs text-muted-foreground hover:text-risk"
+                      >
+                        ×
+                      </button>
+                    )}
                   </span>
                 ))}
               </span>
