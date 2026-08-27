@@ -645,6 +645,8 @@ export interface SubFilters {
   minAwardRate?: number;
   /** How many sends a rate has to be built on before it counts. */
   rateEvidence?: number;
+  /** Carries this tag. Matched without regard to case, as tags are stored. */
+  tag?: string;
 }
 
 /** Below this, a rate is an accident rather than a pattern. */
@@ -788,6 +790,14 @@ function subWhere(filters: SubFilters, params: unknown[]): string[] {
   if (filters.minCrew != null) {
     params.push(filters.minCrew);
     where.push(`crew_size >= $${params.length}`);
+  }
+
+  if (filters.tag) {
+    params.push(filters.tag);
+    where.push(
+      `exists (select 1 from subcontractor_tags t
+                where t.subcontractor_id = subcontractors.id and lower(t.tag) = lower($${params.length}))`
+    );
   }
 
   const evidence = filters.rateEvidence ?? DEFAULT_RATE_EVIDENCE;

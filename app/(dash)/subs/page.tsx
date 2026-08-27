@@ -129,6 +129,13 @@ const SPECS: FilterSpec[] = [
     hint: "Firms whose crew size nobody has asked about are set aside, not counted as zero.",
   },
   {
+    key: "tag",
+    label: "Tag",
+    kind: "text",
+    placeholder: "Shortlist",
+    hint: "Tags your team put on records. Case does not matter.",
+  },
+  {
     key: "minResp",
     label: "Answers at least (%)",
     kind: "min",
@@ -207,6 +214,7 @@ export default async function SubsPage({
     minResponseRate: values.minResp != null ? Number(values.minResp) : undefined,
     minQuoteRate: values.minQuote != null ? Number(values.minQuote) : undefined,
     minAwardRate: values.minAward != null ? Number(values.minAward) : undefined,
+    tag: values.tag,
   };
 
   /*

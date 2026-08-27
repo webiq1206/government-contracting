@@ -19,6 +19,7 @@ import { SubCompliancePanel } from "@/components/sub-compliance-panel";
 import { subComplianceView } from "@/lib/sub-compliance-store";
 import { SubCapability } from "@/components/sub-capability";
 import { capabilityOf, contactsOf, licensesOf } from "@/lib/sub-capability-store";
+import { tagsOf } from "@/lib/sub-bulk";
 import {
   contactBadgeClass,
   contactStatusHint,
@@ -167,10 +168,11 @@ export default async function SubDetailPage({
    * record rather than three unrelated reads.
    */
   const capOrgId = (await tryResolveTenantOrgId()) ?? "";
-  const [capability, contacts, licenses] = await Promise.all([
+  const [capability, contacts, licenses, tags] = await Promise.all([
     capabilityOf(capOrgId, params.id).catch(() => null),
     contactsOf(capOrgId, params.id).catch(() => []),
     licensesOf(capOrgId, params.id).catch(() => []),
+    tagsOf(capOrgId, params.id).catch(() => [] as string[]),
   ]);
 
   const capabilityUpdatedAt = sub.capability_updated_at
@@ -281,6 +283,20 @@ export default async function SubDetailPage({
               firm reads as reachable on a phone number alone. It is a
               different fact from the state, not a competing one.
             */}
+            {/*
+              Tags the team put on this record. Kept in the header because a
+              tag is why somebody put this firm on a shortlist, and that
+              belongs next to the state rather than three sections down.
+            */}
+            {tags.map((t) => (
+              <Link
+                key={t}
+                href={`/subs?tag=${encodeURIComponent(t)}`}
+                className="badge bg-surface-raised text-muted-foreground hover:text-accent"
+              >
+                {t}
+              </Link>
+            ))}
             {contactLabel && state.canContact && sub.contact_status !== "verified" && (
               <span
                 className={`badge ${contactBadgeClass(sub.contact_status)}`}
