@@ -17,6 +17,8 @@ import { RecordActions } from "@/components/record-actions";
 import { SubEditor } from "@/components/sub-editor";
 import { SubCompliancePanel } from "@/components/sub-compliance-panel";
 import { subComplianceView } from "@/lib/sub-compliance-store";
+import { SubCapability } from "@/components/sub-capability";
+import { capabilityOf, contactsOf, licensesOf } from "@/lib/sub-capability-store";
 import {
   contactBadgeClass,
   contactStatusHint,
@@ -159,6 +161,22 @@ export default async function SubDetailPage({
       )?.company_name ?? null
     : null;
 
+  /*
+   * What this firm can take on, who to talk to there, and what they hold a
+   * licence for. Loaded together because they are one editing session on one
+   * record rather than three unrelated reads.
+   */
+  const capOrgId = (await tryResolveTenantOrgId()) ?? "";
+  const [capability, contacts, licenses] = await Promise.all([
+    capabilityOf(capOrgId, params.id).catch(() => null),
+    contactsOf(capOrgId, params.id).catch(() => []),
+    licensesOf(capOrgId, params.id).catch(() => []),
+  ]);
+
+  const capabilityUpdatedAt = sub.capability_updated_at
+    ? timeAgo(sub.capability_updated_at)
+    : null;
+
   const performance = await performanceFor(
     (await tryResolveTenantOrgId()) ?? "",
     params.id
@@ -277,6 +295,17 @@ export default async function SubDetailPage({
 
       <div className="min-h-0 flex-1 overflow-hidden">
         <SubcontractorRecord
+          capability={
+            <SubCapability
+              subcontractorId={sub.id}
+              capability={capability ?? {}}
+              contacts={contacts}
+              licenses={licenses}
+              trades={sub.trade_categories ?? []}
+              canEdit={can(viewer?.orgRole, "manage_subs")}
+              updatedAt={capabilityUpdatedAt}
+            />
+          }
           overview={
             <div className="space-y-6 px-5 py-6">
               {/*

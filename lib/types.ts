@@ -528,6 +528,11 @@ export interface Subcontractor {
   /** Where the email came from: 'hunter' | 'website_scrape' | 'manual' | null. */
   email_source: string | null;
   /**
+   * When somebody last said what this firm can take on. Null while nobody
+   * has, which is a different statement from "nothing has changed".
+   */
+  capability_updated_at?: string | null;
+  /**
    * Award-blocking documents this firm is short, counted alongside the row.
    * Present on list reads, absent on the ones that do not compute it, so a
    * screen that has not asked for it cannot mistake "not counted" for zero.

@@ -614,7 +614,41 @@ export interface SubFilters {
    * have somebody email a tombstone.
    */
   includeArchived?: boolean;
+  /**
+   * Whether anybody could reach this firm at all: a verified address or a
+   * phone number. The same predicate the record header uses for its
+   * operational state, so a filter and a badge cannot disagree.
+   */
+  contactable?: "yes" | "no";
+  /** Award-blocking paperwork: complete, or something outstanding. */
+  paperwork?: "ready" | "short";
+  /** Firms that will actually travel to this state. */
+  worksIn?: string;
+  /** Holds this set-aside certification. */
+  certification?: string;
+  /** Bonded to at least this much on a single job, in cents. */
+  minBondCents?: number;
+  /** Crew of at least this many. Excludes firms whose crew nobody has asked about. */
+  minCrew?: number;
+  /**
+   * Rate filters, each with the denominator they need to mean anything.
+   *
+   * A firm nobody has emailed has no response rate. Reading that as 0% would
+   * put every new firm at the bottom of a "responds at least half the time"
+   * filter, which is the opposite of what the filter is for: those are the
+   * firms most in need of a first touch. So a firm below the minimum evidence
+   * is excluded from a rate filter rather than scored at zero, and the roster
+   * says how many were set aside.
+   */
+  minResponseRate?: number;
+  minQuoteRate?: number;
+  minAwardRate?: number;
+  /** How many sends a rate has to be built on before it counts. */
+  rateEvidence?: number;
 }
+
+/** Below this, a rate is an accident rather than a pattern. */
+export const DEFAULT_RATE_EVIDENCE = 3;
 
 /**
  * Columns the roster may be sorted by, and the SQL each one means.
@@ -630,6 +664,33 @@ export const SUB_SORTS: Record<string, string> = {
   last_contacted: "last_contacted nulls last",
   license_status: "license_status nulls last",
 };
+
+/**
+ * How many award-blocking documents this subcontractor is short.
+ *
+ * One fragment, used by every list and drawer that needs the number, so a
+ * firm cannot read "Ready" on the roster and "Missing documents" on its own
+ * record. The doc types are asserted against REQUIRED_FOR_AWARD by a test, so
+ * adding a fourth required document cannot leave this behind.
+ *
+ * Counted rather than inferred from a document count: a subcontractor with
+ * three pending uploads and no current coverage has documents and is still
+ * not clear.
+ */
+export const REQUIRED_DOC_SQL_TYPES = ["w9", "coi_general_liability", "coi_workers_comp"] as const;
+
+function unmetRequiredDocsSql(subAlias: string): string {
+  const list = REQUIRED_DOC_SQL_TYPES.map((t) => `'${t}'`).join(",");
+  return `(select count(*)::int
+             from unnest(array[${list}]) t(doc_type)
+            where not exists (
+              select 1 from subcontractor_documents d
+               where d.subcontractor_id = ${subAlias}.id
+                 and d.doc_type = t.doc_type
+                 and d.status in ('active','expiring')
+                 and (d.expires_at is null or d.expires_at > now())
+            ))`;
+}
 
 function subWhere(filters: SubFilters, params: unknown[]): string[] {
   // org_id stays in the query text rather than in the interpolated list, so
@@ -689,34 +750,88 @@ function subWhere(filters: SubFilters, params: unknown[]): string[] {
       `(company_name ilike $${params.length} or coalesce(owner_name,'') ilike $${params.length} or coalesce(email,'') ilike $${params.length})`
     );
   }
+
+  /*
+   * Reachability, written once. The same predicate the record header's
+   * operational state uses, so a firm cannot be "Bad contact information" on
+   * its page and pass a "contactable" filter on the roster.
+   */
+  const REACHABLE =
+    "((email is not null and btrim(email) <> '' and email_verified) or (phone is not null and btrim(phone) <> ''))";
+  if (filters.contactable === "yes") where.push(REACHABLE);
+  if (filters.contactable === "no") where.push(`not ${REACHABLE}`);
+
+  if (filters.paperwork === "ready") where.push(`${unmetRequiredDocsSql("subcontractors")} = 0`);
+  if (filters.paperwork === "short") where.push(`${unmetRequiredDocsSql("subcontractors")} > 0`);
+
+  if (filters.worksIn) {
+    params.push(filters.worksIn.toUpperCase());
+    /*
+     * The firm's own state counts when no service area has been recorded.
+     * Excluding every firm nobody has asked about their travel would empty
+     * this filter on a roster that has barely been surveyed.
+     */
+    where.push(
+      `(service_area_states is not null and $${params.length} = any(service_area_states)
+        or (service_area_states is null and upper(coalesce(state,'')) = $${params.length}))`
+    );
+  }
+  if (filters.certification) {
+    params.push(filters.certification);
+    where.push(`certifications is not null and $${params.length} = any(certifications)`);
+  }
+  if (filters.minBondCents != null) {
+    params.push(filters.minBondCents);
+    // A bond nobody has recorded is not a bond big enough, so it does not pass.
+    where.push(`bonded = true and bond_single_cents >= $${params.length}`);
+  }
+  if (filters.minCrew != null) {
+    params.push(filters.minCrew);
+    where.push(`crew_size >= $${params.length}`);
+  }
+
+  const evidence = filters.rateEvidence ?? DEFAULT_RATE_EVIDENCE;
+  const sends = `(select count(*) from communications c
+                   where c.subcontractor_id = subcontractors.id and c.direction = 'outbound')`;
+  if (filters.minResponseRate != null) {
+    params.push(evidence);
+    const at = params.length;
+    params.push(filters.minResponseRate);
+    where.push(
+      `${sends} >= $${at}
+       and (select count(*) from communications c
+             where c.subcontractor_id = subcontractors.id and c.direction = 'outbound'
+               and c.replied_at is not null)::numeric / nullif(${sends}, 0) * 100 >= $${params.length}`
+    );
+  }
+  if (filters.minQuoteRate != null) {
+    params.push(evidence);
+    const at = params.length;
+    params.push(filters.minQuoteRate);
+    where.push(
+      `${sends} >= $${at}
+       and (select count(*) from quotes q where q.subcontractor_id = subcontractors.id)::numeric
+           / nullif(${sends}, 0) * 100 >= $${params.length}`
+    );
+  }
+  if (filters.minAwardRate != null) {
+    /*
+     * Awards over quotes, not over sends. A firm that quoted twice and won
+     * both has a perfect record at the thing this measures; dividing by the
+     * emails they were sent would measure our outreach instead of their bids.
+     */
+    const quoted = `(select count(*) from quotes q where q.subcontractor_id = subcontractors.id)`;
+    params.push(evidence);
+    const at = params.length;
+    params.push(filters.minAwardRate);
+    where.push(
+      `${quoted} >= $${at}
+       and (select count(*) from contracts ct
+             where ct.primary_sub_id = subcontractors.id)::numeric
+           / nullif(${quoted}, 0) * 100 >= $${params.length}`
+    );
+  }
   return where;
-}
-
-/**
- * How many award-blocking documents this subcontractor is short.
- *
- * One fragment, used by every list and drawer that needs the number, so a
- * firm cannot read "Ready" on the roster and "Missing documents" on its own
- * record. The doc types are asserted against REQUIRED_FOR_AWARD by a test, so
- * adding a fourth required document cannot leave this behind.
- *
- * Counted rather than inferred from a document count: a subcontractor with
- * three pending uploads and no current coverage has documents and is still
- * not clear.
- */
-export const REQUIRED_DOC_SQL_TYPES = ["w9", "coi_general_liability", "coi_workers_comp"] as const;
-
-function unmetRequiredDocsSql(subAlias: string): string {
-  const list = REQUIRED_DOC_SQL_TYPES.map((t) => `'${t}'`).join(",");
-  return `(select count(*)::int
-             from unnest(array[${list}]) t(doc_type)
-            where not exists (
-              select 1 from subcontractor_documents d
-               where d.subcontractor_id = ${subAlias}.id
-                 and d.doc_type = t.doc_type
-                 and d.status in ('active','expiring')
-                 and (d.expires_at is null or d.expires_at > now())
-            ))`;
 }
 
 /** How many subcontractors match, before paging. */
@@ -758,10 +873,14 @@ export async function subDatabase(
   params.push(page?.offset ?? 0);
   const offsetAt = params.length;
 
+  /*
+   * Unaliased, deliberately. subWhere writes correlated subqueries against
+   * `subcontractors`, and an alias would hide the table name from them.
+   */
   return query<Subcontractor>(
-    `select s.*, ${unmetRequiredDocsSql("s")} as unmet_required_docs
-       from subcontractors s
-      where s.org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}
+    `select subcontractors.*, ${unmetRequiredDocsSql("subcontractors")} as unmet_required_docs
+       from subcontractors
+      where org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}
       order by ${orderBy}
       limit $${limitAt} offset $${offsetAt}`,
     params
