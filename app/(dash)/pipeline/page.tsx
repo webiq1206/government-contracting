@@ -9,6 +9,16 @@ import {
 } from "@/lib/data";
 import { FilterToolbar } from "@/components/filter-toolbar";
 import { ownersFor } from "@/lib/ownership";
+import { tradeCoverageFor, type TradeCoverage } from "@/lib/data";
+import type { Owner } from "@/lib/domain/ownership";
+import { AgencyPath } from "@/components/agency-path";
+import { OpportunityList } from "@/components/opportunity-list";
+import {
+  BlockerChip,
+  ConfidenceChip,
+  CoverageChip,
+  OwnerChip,
+} from "@/components/opportunity-facts";
 import { currentUser } from "@/lib/auth";
 import { OpportunitiesTable } from "@/components/opportunities-table";
 import {
@@ -207,7 +217,27 @@ export default async function PipelinePage({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const rawView = typeof searchParams?.view === "string" ? searchParams.view : undefined;
-  const view = rawView === "stages" ? "stages" : rawView === "table" ? "table" : "lanes";
+  /*
+   * Four views, and one of them is the default on a phone.
+   *
+   * The brief names three: a table for volume, a board for stage movement,
+   * and a compact list that is what a phone gets. The fourth, lanes, is this
+   * product's own grouping by whose turn it is, and it stays because it is
+   * what the page opens on for somebody at a desk.
+   *
+   * "Which is the default" cannot be answered on the server, which does not
+   * know the viewport. So the default renders as the compact list below the
+   * board's breakpoint and as lanes above it, and an explicit choice is
+   * honoured at every width.
+   */
+  const view =
+    rawView === "stages"
+      ? "stages"
+      : rawView === "table"
+        ? "table"
+        : rawView === "list"
+          ? "list"
+          : "lanes";
 
   const [allOpps, rules] = await Promise.all([pipelineOpportunities(), getAutomationRules()]);
 
@@ -346,6 +376,21 @@ export default async function PipelinePage({
   const stages = PIPELINE_STAGES.filter(
     (s) => rules.calls_enabled || stillCalling || s.key !== CALL_STAGE
   );
+  /*
+   * Coverage and owners for the cards, in two queries for the whole board
+   * rather than two per card. A board can be a hundred cards, and per-card
+   * lookups are the shape that turns a fast page into a slow one without
+   * anybody changing the page.
+   */
+  const [boardCoverage, boardOwners] = await Promise.all([
+    opps.length > 0
+      ? tradeCoverageFor(opps.map((o) => o.id)).catch(() => new Map<string, TradeCoverage>())
+      : Promise.resolve(new Map<string, TradeCoverage>()),
+    opps.length > 0
+      ? ownersFor("opportunity", opps.map((o) => o.id)).catch(() => new Map<string, Owner>())
+      : Promise.resolve(new Map<string, Owner>()),
+  ]);
+
   const byStage = new Map<string, Opportunity[]>();
   for (const s of stages) byStage.set(s.key, []);
   for (const o of opps) {
@@ -399,6 +444,12 @@ export default async function PipelinePage({
             className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs lg:min-h-0 lg:px-2.5 lg:py-1 ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             Simple
+          </Link>
+          <Link
+            href="/pipeline?view=list"
+            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs lg:min-h-0 lg:px-2.5 lg:py-1 ${view === "list" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+          >
+            List
           </Link>
           <Link
             href="/pipeline?view=stages"
@@ -468,35 +519,36 @@ export default async function PipelinePage({
       {/* Simple view: four owner lanes. A grid from md up; on a phone the same
           four lanes stay side by side and are swiped between, because a lane
           is a place in the pipeline and stacking them loses that. */}
-      {view === "lanes" && opps.length > 0 && (
-        <div className="flex min-h-0 flex-1 flex-col md:hidden">
-          <SwipeRail
-            ariaLabel="Pipeline lanes"
-            items={LANES.map((lane) => ({
-              key: lane.key,
-              label: lane.label,
-              count: (byLane.get(lane.key) ?? []).length,
-              attention: lane.key === "you",
-            }))}
-          >
-            {LANES.map((lane) => {
-              const cards = byLane.get(lane.key) ?? [];
-              return (
-                <MobileColumn
-                  key={lane.key}
-                  title={lane.label}
-                  blurb={lane.blurb}
-                  count={cards.length}
-                >
-                  {cards.map((o) => (
-                    <PipelineCard key={o.id} o={o} rules={rules} />
-                  ))}
-                </MobileColumn>
-              );
-            })}
-          </SwipeRail>
+      {(view === "list" || view === "lanes") && opps.length > 0 && (
+        <div
+          className={
+            view === "list"
+              ? "scroll-thin min-h-0 flex-1 overflow-y-auto p-4"
+              : // The default view's phone rendering. A compact list rather
+                // than a swipe rail of columns: a rail asks somebody to
+                // discover four horizontal panes to see their own work.
+                "scroll-thin min-h-0 flex-1 overflow-y-auto p-4 md:hidden"
+          }
+        >
+          <OpportunityList
+            rows={opps}
+            rules={rules}
+            coverage={boardCoverage}
+            owners={boardOwners}
+            viewerId={viewer?.id}
+            nextAction={NEXT_ACTION}
+          />
         </div>
       )}
+
+      {/*
+        The lanes rail that used to live here is gone.
+        On a phone the default view is the compact list above: a rail asks
+        somebody to discover three more horizontal panes before they can see
+        their own work, which is the information being present without being
+        reachable. The stages board keeps its rail, because moving a card
+        between stages is what that view is for and the columns are the point.
+      */}
       {view === "lanes" && opps.length > 0 && (
         <div className="scroll-thin hidden flex-1 overflow-y-auto p-4 md:block">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -513,7 +565,14 @@ export default async function PipelinePage({
                   </div>
                   <div className="space-y-2">
                     {cards.map((o) => (
-                      <PipelineCard key={o.id} o={o} rules={rules} />
+                      <PipelineCard
+                      key={o.id}
+                      o={o}
+                      rules={rules}
+                      coverage={boardCoverage.get(o.id)}
+                      owner={boardOwners.get(o.id) ?? null}
+                      viewerId={viewer?.id}
+                    />
                     ))}
                     {cards.length === 0 && (
                       <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-xs text-slate-500">
@@ -556,11 +615,19 @@ export default async function PipelinePage({
                 <div className="scroll-thin flex-1 space-y-2 overflow-y-auto pr-1">
                   {cards.map((o) => (
                     <DraggableCard key={o.id} opportunityId={o.id}>
-                      <PipelineCard o={o} rules={rules} />
+                      <PipelineCard
+                        o={o}
+                        rules={rules}
+                        coverage={boardCoverage.get(o.id)}
+                        owner={boardOwners.get(o.id) ?? null}
+                        viewerId={viewer?.id}
+                      />
                     </DraggableCard>
                   ))}
                   {cards.length === 0 && (
-                    <p className="px-1 py-4 text-center text-xs text-slate-500">-</p>
+                    <p className="px-1 py-4 text-center text-xs text-slate-500">
+                      Nothing at this stage.
+                    </p>
                   )}
                 </div>
                 </StageDropColumn>
@@ -599,7 +666,14 @@ export default async function PipelinePage({
                 badgeLabel={stageMode(stage.key) === "you" ? "Needs you" : "Automatic"}
               >
                 {cards.map((o) => (
-                  <PipelineCard key={o.id} o={o} rules={rules} />
+                  <PipelineCard
+                      key={o.id}
+                      o={o}
+                      rules={rules}
+                      coverage={boardCoverage.get(o.id)}
+                      owner={boardOwners.get(o.id) ?? null}
+                      viewerId={viewer?.id}
+                    />
                 ))}
               </MobileColumn>
             );
@@ -669,7 +743,19 @@ function MobileColumn({
 }
 
 /** One opportunity card, shared by the desktop kanban and the mobile list. */
-function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules }) {
+function PipelineCard({
+  o,
+  rules,
+  coverage,
+  owner,
+  viewerId,
+}: {
+  o: Opportunity;
+  rules?: AutomationRules;
+  coverage?: TradeCoverage;
+  owner?: Owner | null;
+  viewerId?: string;
+}) {
   return (
     <CardPreview opportunityId={o.id}>
     <Link
@@ -695,7 +781,23 @@ function PipelineCard({ o, rules }: { o: Opportunity; rules?: AutomationRules })
         <EstimatedValue value={o.value_estimated} source={o.value_estimated_source} />
         <DeadlineBadge deadline={o.deadline} rules={rules} />
       </div>
-      {o.agency && <p className="mt-1 truncate text-xs text-slate-500">{o.agency}</p>}
+      {o.agency && (
+        <p className="mt-1 truncate text-xs text-slate-500">
+          <AgencyPath agency={o.agency} subAgency={o.sub_agency} />
+        </p>
+      )}
+      {/*
+        The five facts that were not here. Each of them says whether the
+        number above it can be trusted: a 78 scored from a title, a bid whose
+        trades nobody has priced, and a record nobody has picked up all looked
+        exactly like their opposites.
+      */}
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <ConfidenceChip breakdown={o.score_breakdown} />
+        <CoverageChip coverage={coverage} />
+        <OwnerChip owner={owner} viewerId={viewerId} />
+        <BlockerChip flags={o.risk_flags} />
+      </div>
       <p className="mt-2 text-xs font-semibold text-accent-strong">
         {NEXT_ACTION[o.stage] ?? o.stage}
         <span className="ml-1 font-medium text-gold-text">Open ↗</span>

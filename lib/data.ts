@@ -192,6 +192,65 @@ export interface OppTableFilters {
   viewerId?: string;
 }
 
+/**
+ * Which required trades an opportunity has a quote for.
+ *
+ * One definition, because two places need it: the "uncovered trades" filter
+ * and the coverage figure on every card. Written twice they would drift, and
+ * the drift would be silent: a filter that says a bid is covered beside a card
+ * that says two trades are missing.
+ *
+ * The comparison is case-blind on purpose. The extractor writes what the
+ * solicitation said and the operator types what they say, so "Electrical" and
+ * "electrical" are one trade, and treating them as two sends somebody chasing
+ * a quote they already have.
+ */
+const REQUIRED_TRADES_SQL = `
+  jsonb_array_elements_text(
+    case when jsonb_typeof(o.solicitation_analysis->'required_trades') = 'array'
+         then o.solicitation_analysis->'required_trades'
+         else '[]'::jsonb end
+  )`;
+
+const TRADE_COVERED_SQL = `
+  exists (
+    select 1 from quotes q
+     where q.opportunity_id = o.id
+       and lower(coalesce(q.trade, '')) = lower(t.trade)
+  )`;
+
+export interface TradeCoverage {
+  /** How many trades the analyst said this job needs. */
+  required: number;
+  /** How many of them somebody has priced. */
+  covered: number;
+}
+
+/**
+ * Coverage for a page of opportunities, in one query.
+ *
+ * A record whose analysis has not run has no required trades, and that is
+ * `required: 0` rather than "fully covered": the card says "Trades not read
+ * yet", because zero of zero is not a reassurance.
+ */
+export async function tradeCoverageFor(ids: string[]): Promise<Map<string, TradeCoverage>> {
+  const out = new Map<string, TradeCoverage>();
+  if (ids.length === 0) return out;
+  const orgId = await currentOrg();
+  const rows = await query<{ id: string; required: number; covered: number }>(
+    `select o.id,
+            count(t.trade)::int as required,
+            count(*) filter (where ${TRADE_COVERED_SQL})::int as covered
+       from opportunities o
+       left join lateral ${REQUIRED_TRADES_SQL} as t(trade) on true
+      where o.org_id = $1 and o.id = any($2::uuid[])
+      group by o.id`,
+    [orgId, ids]
+  );
+  for (const r of rows) out.set(r.id, { required: r.required, covered: r.covered });
+  return out;
+}
+
 function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
   const where: string[] = [];
   // The board's own scope. A dismissed record is history, not pipeline, and
@@ -271,18 +330,17 @@ function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
    * carries what the operator typed.
    */
   if (f.uncovered) {
+    /*
+     * The same two fragments the coverage counts use, aliased so `o` means
+     * this row. One definition of "covered" rather than two that can drift
+     * into a filter and a card disagreeing about the same bid.
+     */
     where.push(`exists (
       select 1
-        from jsonb_array_elements_text(
-               case when jsonb_typeof(solicitation_analysis->'required_trades') = 'array'
-                    then solicitation_analysis->'required_trades'
-                    else '[]'::jsonb end
-             ) as t(trade)
-       where not exists (
-         select 1 from quotes q
-          where q.opportunity_id = opportunities.id
-            and lower(coalesce(q.trade, '')) = lower(t.trade)
-       )
+        from opportunities o
+        join lateral ${REQUIRED_TRADES_SQL} as t(trade) on true
+       where o.id = opportunities.id
+         and not ${TRADE_COVERED_SQL}
     )`);
   }
   if (f.readiness === "ready") {
