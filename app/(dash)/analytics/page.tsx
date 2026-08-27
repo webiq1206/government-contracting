@@ -11,6 +11,11 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { KpiManager, KpiDeleteButton } from "@/components/kpi-manager";
 import { MetricCard, MetricGroup } from "@/components/metric-card";
 import {
+  AnalyticsMobileNav,
+  AnalyticsSection,
+  AnalyticsFilterSheet,
+} from "@/components/analytics-mobile";
+import {
   deadlineMetrics,
   reviewMetrics,
   subcontractorMetrics,
@@ -71,11 +76,21 @@ function rows(v: unknown): Record<string, unknown>[] {
 function KpiCard({
   label,
   value,
+  absent,
   sub,
   accent,
 }: {
   label: string;
   value: React.ReactNode;
+  /**
+   * Why there is no figure, when there is not.
+   *
+   * Separate from `value` so it can be set at reading size. "No wins yet" in
+   * the same forty-point type as a real number competes with the cards that
+   * have one, and on a phone it fills the screen: the eye reads the shape
+   * before the words and takes a sentence for a headline figure.
+   */
+  absent?: string;
   sub?: React.ReactNode;
   /** Green accent for performance rates; near-black for currency (default). */
   accent?: boolean;
@@ -83,13 +98,17 @@ function KpiCard({
   return (
     <div className="card">
       <div className="label">{label}</div>
-      <div
-        className={`num mt-1.5 text-4xl font-semibold tracking-tight ${
-          accent ? "text-accent" : "text-slate-900"
-        }`}
-      >
-        {value}
-      </div>
+      {absent ? (
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{absent}</p>
+      ) : (
+        <div
+          className={`num mt-1.5 text-4xl font-semibold tracking-tight ${
+            accent ? "text-accent" : "text-slate-900"
+          }`}
+        >
+          {value}
+        </div>
+      )}
       {sub && <div className="mt-1.5 text-xs text-slate-500">{sub}</div>}
     </div>
   );
@@ -391,7 +410,13 @@ export default async function AnalyticsPage({
           * The date range. Everything cohort-based below it moves together, and
           * the selected range is in the URL so the view can be sent to somebody.
           */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/*
+          * On a phone both filters live behind one button instead. Thirteen
+          * hundred pixels of chips above the fold is the numbers pushed off
+          * the screen somebody opened the page to read.
+          */}
+        <AnalyticsFilterSheet range={range} by={by} comparison={comparison} />
+        <div className="hidden flex-wrap items-center gap-2 lg:flex">
           <span className="label" id="range-label">
             Period
           </span>
@@ -416,6 +441,29 @@ export default async function AnalyticsPage({
           )}
         </div>
 
+        {/*
+          * One section at a time on a phone, everything at once above the
+          * breakpoint. Numbers is listed first and selected by default,
+          * because the figures are what somebody opens this page for and the
+          * funnel is a nine-row table they would otherwise scroll past.
+          */}
+        <AnalyticsMobileNav
+          sections={[
+            { id: "numbers", label: "Numbers" },
+            { id: "funnel", label: "Funnel" },
+            { id: "reports", label: "Reports" },
+            { id: "breakdown", label: "Breakdowns" },
+            { id: "engine", label: "Deeper" },
+          ]}
+        >
+        {/*
+          Both panels describe the stored breakdowns, which live under Deeper,
+          so on a phone they sit with what they explain instead of taking a
+          third of the first screen before any figure appears. Desktop is
+          unchanged: they stay exactly where they were.
+        */}
+        <AnalyticsSection id="engine">
+        <div className="space-y-6">
         {!snapData && (
           <div className="callout-panel text-sm text-slate-700">
             Deeper breakdowns (win rate by NAICS, agency, geography, cash flow, sub
@@ -462,6 +510,10 @@ export default async function AnalyticsPage({
           )}
         </div>
 
+        </div>
+        </AnalyticsSection>
+
+        <AnalyticsSection id="funnel">
         {/* The funnel the audit names, over the selected period. */}
         <section aria-labelledby="funnel-heading">
           <div className="mb-3 border-b-2 border-accent/80 pb-2">
@@ -530,11 +582,16 @@ export default async function AnalyticsPage({
           )}
         </section>
 
+        </AnalyticsSection>
+
+        <AnalyticsSection id="numbers">
+        <div className="space-y-6">
         {/* KPI cards */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <KpiCard
             label="Win rate"
-            value={winRate != null ? `${winRate}%` : "Not enough history"}
+            value={winRate != null ? `${winRate}%` : null}
+            absent={winRate == null ? "Not enough history yet." : undefined}
             /*
              * "0 wins · 0 losses" reads as a track record of failure on an
              * account that has simply never submitted anything, and `?? 0`
@@ -552,12 +609,24 @@ export default async function AnalyticsPage({
           />
           <KpiCard
             label="Avg margin on wins"
-            value={avgMargin != null ? `${avgMargin}%` : (wins ?? 0) === 0 ? "No wins yet" : "Not recorded"}
+            value={avgMargin != null ? `${avgMargin}%` : null}
+            absent={
+              avgMargin != null
+                ? undefined
+                : (wins ?? 0) === 0
+                  ? "No wins yet."
+                  : "No won bid recorded a margin."
+            }
             accent
           />
           <KpiCard
             label="Pipeline value"
-            value={pipelineValued === 0 ? "Not published" : currency(pipelineValue)}
+            value={pipelineValued === 0 ? null : currency(pipelineValue)}
+            absent={
+              pipelineValued === 0
+                ? "No open opportunity publishes a value."
+                : undefined
+            }
             sub={pipelineCoverage ?? undefined}
           />
           <KpiCard label="Active contract revenue" value={currency(activeRevenue)} />
@@ -578,6 +647,10 @@ export default async function AnalyticsPage({
           <KpiCard label="Active contracts" value={extras.counts.active_contracts} />
         </div>
 
+        </div>
+        </AnalyticsSection>
+
+        <AnalyticsSection id="reports">
         {/* The reported metrics, each able to say where it came from. */}
         <section aria-labelledby="reports-heading" className="space-y-5">
           <div className="border-b-2 border-accent/80 pb-2">
@@ -678,6 +751,14 @@ export default async function AnalyticsPage({
           />
         </section>
 
+        </AnalyticsSection>
+
+        {/*
+          Pinned metrics sit with the numbers on a phone: they are figures
+          somebody chose to keep, so burying them behind a different tab from
+          the headline ones would defeat the pinning.
+        */}
+        <AnalyticsSection id="numbers">
         {/* Custom, operator-defined KPIs. */}
         <section>
           <div className="mb-3 flex items-center justify-between gap-3 border-b-2 border-accent/80 pb-2">
@@ -721,6 +802,10 @@ export default async function AnalyticsPage({
           )}
         </section>
 
+        </AnalyticsSection>
+
+        <AnalyticsSection id="breakdown">
+        <div className="space-y-6">
         {/* Where the pipeline value is sitting, by stage. */}
         {stageValue.length > 0 && (
           <div className="card scroll-thin overflow-x-auto">
@@ -918,6 +1003,11 @@ export default async function AnalyticsPage({
           </>
         )}
 
+        </div>
+        </AnalyticsSection>
+
+        <AnalyticsSection id="engine">
+        <div className="space-y-6">
         {/* Cash flow projection 30/60/90 */}
         {cashFlow && (
           <div className="card">
@@ -1002,6 +1092,9 @@ export default async function AnalyticsPage({
             </div>
           </div>
         )}
+        </div>
+        </AnalyticsSection>
+        </AnalyticsMobileNav>
       </div>
     </div>
   );
