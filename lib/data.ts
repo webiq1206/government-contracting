@@ -808,6 +808,60 @@ export async function completedToday(): Promise<CompletedToday> {
 }
 
 /**
+ * What has happened lately, for Guide Me's "What changed".
+ *
+ * Deliberately not an AI answer. "What changed" is a list of events, and the
+ * ledger already holds them: asking a model to summarise a list it has been
+ * handed adds a place for the answer to be wrong and takes away the timestamps.
+ * The brief's rule is to generate guidance from structured state and use AI
+ * only to explain it, and this is the half that is structured state.
+ */
+export interface RecentChange {
+  at: string;
+  /** What happened, in the words the log recorded. */
+  text: string;
+  /** True when the platform did it rather than a person. */
+  automatic: boolean;
+}
+
+export async function recentChanges(opts: {
+  /** Scope to one opportunity when the guide is open on its record. */
+  opportunityId?: string | null;
+  days?: number;
+  limit?: number;
+} = {}): Promise<RecentChange[]> {
+  const orgId = await currentOrg();
+  const days = Math.min(30, Math.max(1, opts.days ?? 7));
+  const limit = Math.min(50, Math.max(1, opts.limit ?? 12));
+  const rows = await query<{
+    created_at: Date;
+    message: string | null;
+    action: string;
+    agent: string;
+    status: string | null;
+  }>(
+    `select created_at, message, action, agent, status
+       from agent_logs
+      where org_id = $1
+        and created_at >= now() - ($2 || ' days')::interval
+        and ($3::uuid is null or opportunity_id = $3::uuid)
+        -- Skipped work did not change anything, and a list of non-events is
+        -- how "what changed" becomes noise nobody reads.
+        and coalesce(status, 'ok') <> 'skipped'
+      order by created_at desc
+      limit $4`,
+    [orgId, String(days), opts.opportunityId ?? null, limit]
+  );
+  return rows.map((r) => ({
+    at: r.created_at.toISOString(),
+    // The recorded message, or the action when nothing wrote one. Never a
+    // generated sentence: this list is the record, not a reading of it.
+    text: r.message?.trim() || `${r.agent}: ${r.action.replace(/[_-]+/g, " ")}`,
+    automatic: r.agent !== "assignment" && r.agent !== "operator",
+  }));
+}
+
+/**
  * One finished piece of work, for the Completed today filter.
  *
  * The counters answer "how much"; this answers "what", which is the question
