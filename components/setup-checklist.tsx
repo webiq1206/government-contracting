@@ -10,7 +10,16 @@ import type { SetupChecklist as Checklist } from "@/lib/domain/setup";
 export function SetupChecklist({ checklist }: { checklist: Checklist }) {
   if (checklist.complete) return null;
 
-  const remaining = checklist.items.filter((i) => !i.done);
+  /*
+   * Three lists, not two.
+   *
+   * A step nobody can act on yet and a step nobody has got to look identical
+   * in one undifferentiated pile, and mixing them is how somebody spends ten
+   * minutes looking for a button that is not there. Blocked steps are shown
+   * with the reason, below the ones that can actually be done.
+   */
+  const remaining = checklist.items.filter((i) => !i.done && i.state !== "blocked");
+  const blocked = checklist.items.filter((i) => i.state === "blocked");
   const finished = checklist.items.filter((i) => i.done);
   const pct = Math.round((checklist.done / checklist.total) * 100);
 
@@ -67,9 +76,11 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
                     ○
                   </span>
                   {item.label}
-                  {item.required && (
+                  {item.required ? (
                     <span className="badge bg-risk/15 text-risk">Required</span>
-                  )}
+                  ) : item.state === "optional" ? (
+                    <span className="badge bg-muted text-muted-foreground">Optional</span>
+                  ) : null}
                 </p>
                 <p className="mt-0.5 pl-5 text-xs text-slate-500">{item.hint}</p>
               </div>
@@ -78,6 +89,29 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
           </li>
         ))}
       </ul>
+
+      {/* Steps waiting on something else, with what that something is. */}
+      {blocked.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {blocked.map((item) => (
+            <li
+              key={item.key}
+              className="rounded-md border border-border bg-background px-4 py-3"
+            >
+              <p className="flex flex-wrap items-center gap-x-2 text-sm font-medium text-slate-700">
+                <span className="text-slate-500" aria-hidden>
+                  ◌
+                </span>
+                {item.label}
+                <span className="badge bg-muted text-muted-foreground">Waiting</span>
+              </p>
+              <p className="mt-0.5 pl-5 text-xs leading-relaxed text-muted-foreground">
+                {item.blocker ?? item.hint}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {/* Completed steps are listed, not just counted. "1 of 8 done" above a
           list of seven open items is arithmetic the reader has to do, and
@@ -95,6 +129,13 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
                 </span>
                 <span className="text-slate-600">
                   {item.label}
+                  {/* What proved it. A tick beside "Add your Anthropic key"
+                      says somebody typed something; "It did real work on the
+                      20th" says the thing works, which is the claim this
+                      checklist is actually making. */}
+                  {item.evidence && (
+                    <span className="ml-1.5 text-muted-foreground">{item.evidence}</span>
+                  )}
                   <Link href={item.href} className="ml-2 text-accent hover:underline">
                     Change
                   </Link>

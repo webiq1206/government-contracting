@@ -214,6 +214,20 @@ export async function getAutomationRules(): Promise<AutomationRules> {
   return normalizeRules(stored);
 }
 
+/**
+ * Whether anybody on this account has looked at the outreach rules.
+ *
+ * The row's existence is the whole signal: getAutomationRules() fills in
+ * defaults for a missing key, so "what the rules are" cannot distinguish a
+ * customer who chose these limits from one who has never seen them. These
+ * decide how often this platform emails other people's businesses under the
+ * customer's name, which makes the difference worth keeping.
+ */
+export async function rulesReviewed(): Promise<boolean> {
+  const stored = await getSetting<Partial<AutomationRules> | null>(RULES_KEY, null);
+  return stored != null;
+}
+
 export async function setAutomationRules(
   rules: Partial<AutomationRules>,
   by: string

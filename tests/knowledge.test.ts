@@ -395,16 +395,43 @@ describe("quick start", () => {
    * The keys come from computeSetupChecklist, and one of them is "email"
    * rather than "gmail". Mapped wrong, an item silently gets no capability
    * and stops being gated at all.
+   *
+   * Two steps genuinely need no capability: having an account, and waiting
+   * for the platform to find the first opportunity. They are named here, so
+   * a key that is ungated by accident cannot hide among them.
    */
+  const UNGATED = new Set(["setup:account", "setup:first_opportunity"]);
+
   it("gates every step the real setup checklist emits", () => {
     const real = computeSetupChecklist({
       profile: null,
       integrations: { sam: false, claude: false, googleMaps: false, gmail: false },
+      access: { level: "trial", trialDaysLeft: 9 },
+      firstRun: { opportunities: 0 },
     });
     const items = quickStart("viewer", real.items, FACTS, label);
     for (const item of items.filter((i) => i.key.startsWith("setup:"))) {
+      if (UNGATED.has(item.key)) {
+        expect(item.blockedBy, item.key).toBeNull();
+        continue;
+      }
       expect(item.blockedBy, item.key).not.toBeNull();
     }
+  });
+
+  it("labels each link by where it actually goes", () => {
+    const real = computeSetupChecklist({
+      profile: null,
+      integrations: { sam: false, claude: false, googleMaps: false, gmail: false },
+      access: { level: "none" },
+      firstRun: { opportunities: 0 },
+    });
+    const items = quickStart("owner", real.items, FACTS, label);
+    const byKey = (k: string) => items.find((i) => i.key === k)!;
+    expect(byKey("setup:rules").hrefLabel).toBe("Open automation rules");
+    expect(byKey("setup:access").hrefLabel).toBe("Open billing");
+    expect(byKey("setup:sam").hrefLabel).toBe("Open integrations");
+    expect(byKey("setup:naics").hrefLabel).toBe("Open company profile");
   });
 
   it("never marks reading the rules done, because reading leaves no record", () => {

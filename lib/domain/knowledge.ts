@@ -810,7 +810,24 @@ export interface SetupItemLike {
  * A read-only account cannot connect an inbox, and a checklist that tells it
  * to is a checklist it can never finish.
  */
-const SETUP_CAPABILITY: Record<string, Capability> = {
+/**
+ * Which capability each setup step needs, with nulls stated rather than
+ * implied.
+ *
+ * Total on purpose. A key missing from this map used to fall through to no
+ * capability at all, so a read-only account was told to connect an inbox it
+ * cannot connect. Two of these steps genuinely need no capability, and they
+ * say so here rather than by being absent, which is the same value with none
+ * of the meaning.
+ */
+const SETUP_CAPABILITY: Record<string, Capability | null> = {
+  // Nothing to do: whoever is reading has an account, or the platform is
+  // finding the first opportunity on their behalf.
+  account: null,
+  first_opportunity: null,
+  sender_identity: "manage_profile",
+  rules: "manage_rules",
+  access: "manage_billing",
   sam: "manage_integrations",
   claude: "manage_integrations",
   googleMaps: "manage_integrations",
@@ -885,6 +902,24 @@ const FIRST_RUNS: {
  * never hidden. Hiding it produces a checklist that looks finished on a
  * read-only account, and an operator who never learns the step exists.
  */
+/**
+ * What to call the link, from where it goes.
+ *
+ * It was a two-way guess between integrations and the company profile, which
+ * was right while those were the only two destinations. The rules, billing
+ * and opportunities steps would all have been labelled "Open company
+ * profile", which is a link that lies about where it lands.
+ */
+function hrefLabelFor(href: string): string {
+  if (href.includes("/settings/integrations")) return "Open integrations";
+  if (href.includes("/settings/profile")) return "Open company profile";
+  if (href.includes("/settings/rules")) return "Open automation rules";
+  if (href.includes("/settings/billing")) return "Open billing";
+  if (href.includes("/settings/account")) return "Open your account";
+  if (href.includes("/opportunities")) return "Open opportunities";
+  return "Open";
+}
+
 export function quickStart(
   role: string | null | undefined,
   setupItems: SetupItemLike[],
@@ -901,9 +936,7 @@ export function quickStart(
     label: item.label,
     hint: item.hint,
     href: item.href,
-    hrefLabel: item.href.includes("integrations")
-      ? "Open integrations"
-      : "Open company profile",
+    hrefLabel: hrefLabelFor(item.href),
     done: item.done,
     required: item.required,
     blockedBy: blocked(SETUP_CAPABILITY[item.key] ?? null),
