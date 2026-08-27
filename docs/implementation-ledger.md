@@ -340,6 +340,29 @@ The three list pages join the assignee's name in their existing query rather
 than fetching per card, because the completed-contracts view can be a hundred
 rows and the opportunities table two hundred.
 
+## WP14: the five filters the Opportunities table did not have
+
+The brief names fourteen filters. Nine were there. The missing five were data
+confidence, value range, blockers, uncovered trades and submission readiness,
+and each was missing for a different reason worth recording.
+
+| Filter | Where the answer lives | The trap |
+| --- | --- | --- |
+| Data confidence | `score_breakdown->'data_confidence'->>'level'`, written by the scoring engine | Re-deriving the rule in SQL would put a second copy of `assessDataConfidence` in the codebase, and the two would drift the first time either changed. This reads what the one rule wrote |
+| Value range | `value_estimated` | An unknown value is not a small one. A range that treated null as zero would put every unread notice in the "under $100k" band, which is the same lie as printing 0 for an unknown count, told about money |
+| Blockers | `risk_flags` | None. It is an array-length test |
+| Uncovered trades | The analyst's `required_trades` against the operator's `quotes.trade` | Two vocabularies meeting in a where clause. The extractor writes what the solicitation said and the operator types what they say, so a case-sensitive compare reports a covered bid as uncovered and sends somebody chasing a quote they already have |
+| Submission readiness | `bids.package_ready` | None |
+
+A record scored before confidence existed matches no confidence band at all,
+which is correct: its confidence is not low, it is unrecorded.
+
+Owner was added at the same time, in both directions, so the table can answer
+"what is on me" the way Today does.
+
+All eight checked against a real database, and the case-blind trade compare
+revert-tested: removing `lower()` fails two of them.
+
 ## Blocked
 
 | Requirement | Blocked on | What is needed |

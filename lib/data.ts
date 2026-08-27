@@ -169,6 +169,27 @@ export interface OppTableFilters {
   value?: "known" | "unknown";
   /** Include dismissed and archived records, hidden by default. */
   includeClosed?: boolean;
+  /**
+   * How much of the score rests on facts the notice actually stated.
+   *
+   * Read from what the scoring engine wrote rather than re-derived here: the
+   * rule lives in assessDataConfidence and a second copy in SQL would drift
+   * from it the first time either changed.
+   */
+  confidence?: "high" | "medium" | "low";
+  /** Published value at least this much. Only ever matches published values. */
+  valueMin?: number;
+  /** Published value at most this much. */
+  valueMax?: number;
+  /** Only rows automation named something it could not get past. */
+  blocked?: boolean;
+  /** Only rows with a required trade that nobody has quoted. */
+  uncovered?: boolean;
+  /** "ready" or "not_ready": whether a package has passed validation. */
+  readiness?: "ready" | "not_ready";
+  /** "mine" or "unassigned". Needs viewerId to mean the first. */
+  owner?: "mine" | "unassigned";
+  viewerId?: string;
 }
 
 function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
@@ -218,6 +239,67 @@ function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
    */
   if (f.value === "known") where.push("value_estimated is not null");
   if (f.value === "unknown") where.push("value_estimated is null");
+  if (f.confidence) {
+    params.push(f.confidence);
+    // Written by the scoring engine into score_breakdown. A record scored
+    // before confidence existed has no key here and matches nothing, which is
+    // correct: its confidence is not low, it is unrecorded.
+    where.push(`score_breakdown->'data_confidence'->>'level' = $${params.length}`);
+  }
+  /*
+   * A value range only ever matches a published value.
+   *
+   * An unknown value is not a small one. Treating null as zero would put every
+   * unread notice in the "under $100k" band, which is the same lie as printing
+   * 0 for an unknown count, told about money.
+   */
+  if (f.valueMin != null) {
+    params.push(f.valueMin);
+    where.push(`value_estimated is not null and value_estimated >= $${params.length}`);
+  }
+  if (f.valueMax != null) {
+    params.push(f.valueMax);
+    where.push(`value_estimated is not null and value_estimated <= $${params.length}`);
+  }
+  if (f.blocked) where.push("coalesce(array_length(risk_flags, 1), 0) > 0");
+  /*
+   * A required trade nobody has priced.
+   *
+   * The required trades are what the analyst extracted; a trade is covered
+   * when a quote exists for it on this opportunity. Compared case-insensitively
+   * because the extractor writes what the solicitation said and the quote
+   * carries what the operator typed.
+   */
+  if (f.uncovered) {
+    where.push(`exists (
+      select 1
+        from jsonb_array_elements_text(
+               case when jsonb_typeof(solicitation_analysis->'required_trades') = 'array'
+                    then solicitation_analysis->'required_trades'
+                    else '[]'::jsonb end
+             ) as t(trade)
+       where not exists (
+         select 1 from quotes q
+          where q.opportunity_id = opportunities.id
+            and lower(coalesce(q.trade, '')) = lower(t.trade)
+       )
+    )`);
+  }
+  if (f.readiness === "ready") {
+    where.push(
+      `exists (select 1 from bids b where b.opportunity_id = opportunities.id and b.package_ready)`
+    );
+  }
+  if (f.readiness === "not_ready") {
+    where.push(
+      `not exists (select 1 from bids b where b.opportunity_id = opportunities.id and b.package_ready)`
+    );
+  }
+  if (f.owner === "unassigned") where.push("assigned_to is null");
+  if (f.owner === "mine" && f.viewerId) {
+    params.push(f.viewerId);
+    where.push(`assigned_to = $${params.length}`);
+  }
   if (f.q) {
     params.push(`%${f.q}%`);
     where.push(

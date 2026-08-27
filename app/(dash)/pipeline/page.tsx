@@ -126,7 +126,59 @@ const TABLE_SPECS: FilterSpec[] = [
       { value: "unknown", label: "Not published" },
     ],
   },
+  {
+    key: "confidence",
+    label: "Data confidence",
+    kind: "select",
+    placeholder: "Any",
+    hint: "How much of the score rests on facts the notice actually stated. A 78 on a full solicitation and a 78 on a title are the same number and opposite instructions.",
+    options: [
+      { value: "high", label: "High" },
+      { value: "medium", label: "Medium" },
+      { value: "low", label: "Low" },
+    ],
+  },
+  {
+    key: "valueMin",
+    label: "Value from",
+    kind: "min",
+    min: 0,
+    hint: "Published values only. An unknown value is not a small one.",
+  },
+  { key: "valueMax", label: "Value to", kind: "min", min: 0 },
+  {
+    key: "readiness",
+    label: "Submission readiness",
+    kind: "select",
+    placeholder: "Any",
+    options: [
+      { value: "ready", label: "Package validated" },
+      { value: "not_ready", label: "Not validated" },
+    ],
+  },
+  {
+    key: "owner",
+    label: "Owner",
+    kind: "select",
+    placeholder: "Anyone",
+    options: [
+      { value: "mine", label: "On me" },
+      { value: "unassigned", label: "Unassigned" },
+    ],
+  },
   { key: "needsMe", label: "Waiting on me", kind: "boolean" },
+  {
+    key: "blocked",
+    label: "Has a blocker",
+    kind: "boolean",
+    hint: "Automation stopped on these and named what it could not resolve.",
+  },
+  {
+    key: "uncovered",
+    label: "Uncovered trades",
+    kind: "boolean",
+    hint: "A required trade nobody has quoted yet.",
+  },
   {
     key: "closed",
     label: "Include closed",
@@ -180,6 +232,19 @@ export default async function PipelinePage({
     value: tableValues.value as "known" | "unknown" | undefined,
     needsMe: tableValues.needsMe === "1",
     includeClosed: tableValues.closed === "1",
+    confidence: tableValues.confidence as "high" | "medium" | "low" | undefined,
+    valueMin: tableValues.valueMin != null ? Number(tableValues.valueMin) : undefined,
+    valueMax: tableValues.valueMax != null ? Number(tableValues.valueMax) : undefined,
+    blocked: tableValues.blocked === "1",
+    uncovered: tableValues.uncovered === "1",
+    readiness: tableValues.readiness as "ready" | "not_ready" | undefined,
+    owner: tableValues.owner as "mine" | "unassigned" | undefined,
+    /*
+     * Read before the table is queried, because "on me" needs to know who is
+     * looking. Without it the filter would match nothing and the page would
+     * say this operator owns none of the pipeline.
+     */
+    viewerId: (await currentUser().catch(() => null))?.id,
   };
   const tableTotal = view === "table" ? await opportunityTableCount(tableFilters) : 0;
 
