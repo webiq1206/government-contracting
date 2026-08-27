@@ -342,6 +342,84 @@ d("subcontractor merge (integration)", () => {
     expect((await mod.restoreSubcontractor({ orgId: mine.id, subcontractorId: s })).ok).toBe(true);
   });
 
+  it("blocks with a reason, and refuses one without", async () => {
+    const s = await makeSub(mine.id, "Blocked");
+    // Two characters is not a reason. Enforced here and in the database, so a
+    // caller that bypasses this module still cannot leave a bare block behind.
+    expect(
+      (await mod.blockSubcontractor({ orgId: mine.id, subcontractorId: s, reason: "ab", actorId: null }))
+        .ok
+    ).toBe(false);
+
+    expect(
+      (
+        await mod.blockSubcontractor({
+          orgId: mine.id,
+          subcontractorId: s,
+          reason: "Walked off the Fort Bliss job with two weeks left.",
+          actorId: null,
+        })
+      ).ok
+    ).toBe(true);
+
+    const row = await queryOne<{ blacklisted: boolean; blacklist_reason: string; blacklisted_at: string }>(
+      `select blacklisted, blacklist_reason, blacklisted_at from subcontractors where id=$1`,
+      [s]
+    );
+    expect(row?.blacklisted).toBe(true);
+    expect(row?.blacklist_reason).toMatch(/Fort Bliss/);
+    expect(row?.blacklisted_at).toBeTruthy();
+  });
+
+  it("will not let the database hold a block with no reason behind it", async () => {
+    const s = await makeSub(mine.id, "BareBlock");
+    /*
+     * The constraint, not the service. A bare block is one nobody can lift
+     * with any confidence, and the roster used to be full of them because
+     * `blacklisted` was a boolean anyone could set in SQL.
+     */
+    await expect(
+      query(`update subcontractors set blacklisted = true where id = $1`, [s])
+    ).rejects.toThrow(/blacklist_reason_ck/);
+  });
+
+  it("clears the reason when the block is lifted, so nothing reads as blocked afterwards", async () => {
+    const s = await makeSub(mine.id, "Lifted");
+    await mod.blockSubcontractor({
+      orgId: mine.id,
+      subcontractorId: s,
+      reason: "Priced two jobs and did neither.",
+      actorId: null,
+    });
+    expect((await mod.unblockSubcontractor({ orgId: mine.id, subcontractorId: s })).ok).toBe(true);
+    const row = await queryOne<{ blacklisted: boolean; blacklist_reason: string | null }>(
+      `select blacklisted, blacklist_reason from subcontractors where id=$1`,
+      [s]
+    );
+    expect(row?.blacklisted).toBe(false);
+    expect(row?.blacklist_reason).toBeNull();
+
+    // Not blocked is not the same as never blocked: lifting twice is a 404,
+    // so a stray second click cannot read as having done something.
+    expect((await mod.unblockSubcontractor({ orgId: mine.id, subcontractorId: s })).ok).toBe(false);
+  });
+
+  it("cannot block another organization's record", async () => {
+    const notMine = await makeSub(theirs.id, "TheirFirm");
+    const res = await mod.blockSubcontractor({
+      orgId: mine.id,
+      subcontractorId: notMine,
+      reason: "Should never take effect.",
+      actorId: null,
+    });
+    expect(res.ok).toBe(false);
+    const row = await queryOne<{ blacklisted: boolean }>(
+      `select blacklisted from subcontractors where id=$1`,
+      [notMine]
+    );
+    expect(row?.blacklisted).toBe(false);
+  });
+
   it("will not restore a merged record without undoing the merge", async () => {
     const keep = await makeSub(mine.id, "RestoreKeep");
     const dupe = await makeSub(mine.id, "RestoreDupe");
