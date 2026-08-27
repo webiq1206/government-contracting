@@ -4,28 +4,54 @@
  * and computes the non-small-business sub spend cap state per contract.
  */
 
-export type ComplianceStatus = "ok" | "warning" | "critical" | "blocked" | "resolved";
+import type { ComplianceState } from "./compliance-state";
+
+export type { ComplianceState };
 
 /**
- * Deadline status from days remaining and an alert-day cadence like [90,30,7].
- * - <= smallest threshold (or negative)  -> critical (or blocked at/after 0)
- * - <= a larger threshold                 -> warning
- * - otherwise                             -> ok
- * `blockAtZero` marks items that block an action once expired (e.g. SAM reg).
+ * The vocabulary moved.
+ *
+ * `ok | warning | critical | blocked | resolved` were three severity words and
+ * two states. "Critical" said how urgent something was, not what was true
+ * about it, so a missing certificate, a lapsed one and one whose two sources
+ * disagreed all read the same. lib/domain/compliance-state.ts holds the eight
+ * that say what is true, and this alias keeps the old name pointing at them
+ * for the code that still reads it.
+ */
+export type ComplianceStatus = ComplianceState;
+
+/**
+ * Deadline state from days remaining and an alert-day cadence like [90,30,7].
+ *
+ * - past due                             -> expired (or blocked at/after 0
+ *                                           when a lapse stops an action)
+ * - inside the cadence                   -> expiring_soon
+ * - outside it                           -> complete
+ *
+ * Note what the last line no longer says. It used to return `ok`, which the
+ * page rendered as a green badge, including for an item whose expiry date
+ * nobody had ever supplied. This function is only ever called with a real number of
+ * days remaining, so `complete` here is a statement about a date that exists.
+ * An item with no date does not reach this function at all.
  */
 export function deadlineStatus(
   daysRemaining: number,
   alertDays: number[],
   opts: { blockAtZero?: boolean } = {}
-): ComplianceStatus {
+): ComplianceState {
   const sorted = [...alertDays].sort((a, b) => a - b);
-  const smallest = sorted[0] ?? 7;
-  const largest = sorted[sorted.length - 1] ?? smallest;
+  const largest = sorted[sorted.length - 1] ?? sorted[0] ?? 7;
 
-  if (daysRemaining <= 0) return opts.blockAtZero ? "blocked" : "critical";
-  if (daysRemaining <= smallest) return "critical";
-  if (daysRemaining <= largest) return "warning";
-  return "ok";
+  if (daysRemaining <= 0) return opts.blockAtZero ? "blocked" : "expired";
+  /*
+   * One threshold, not two. The old function split the cadence into "warning"
+   * and "critical" bands, which was severity dressed up as state: both meant
+   * the same thing, that a dated item is inside its warning window, and the
+   * only honest difference between them is the number of days, which is shown
+   * anyway.
+   */
+  if (daysRemaining <= largest) return "expiring_soon";
+  return "complete";
 }
 
 export function daysBetween(from: Date, to: Date): number {
@@ -33,12 +59,21 @@ export function daysBetween(from: Date, to: Date): number {
 }
 
 /** Color for the compliance board (green/amber/red). */
-export function statusColor(status: ComplianceStatus): "green" | "amber" | "red" {
+export function statusColor(status: ComplianceState): "green" | "amber" | "red" {
   switch (status) {
-    case "ok":
-    case "resolved":
+    case "complete":
       return "green";
-    case "warning":
+    case "expiring_soon":
+    case "needs_review":
+      return "amber";
+    case "cannot_monitor":
+    case "incomplete":
+      /*
+       * Amber, not green. Neither of these is a problem today and neither is
+       * finished, and the old mapping had no bucket for that: everything the
+       * monitor had not flagged went green, which is how an item nobody could
+       * check ended up looking as settled as one renewed last week.
+       */
       return "amber";
     default:
       return "red";
@@ -62,9 +97,9 @@ export function nonSsCapState(
   alertPct: number
 ): CapState {
   const blockThreshold = capPct - 1;
-  let status: ComplianceStatus = "ok";
+  let status: ComplianceState = "complete";
   if (nonSsPct >= blockThreshold) status = "blocked";
-  else if (nonSsPct >= alertPct) status = "warning";
+  else if (nonSsPct >= alertPct) status = "expiring_soon";
   return {
     utilizationPct: nonSsPct,
     status,

@@ -13,7 +13,22 @@ export const dynamic = "force-dynamic";
  * daily run.
  */
 
-const STATUSES = new Set(["ok", "warning", "critical", "blocked", "resolved"]);
+/*
+ * The states a person may set by hand.
+ *
+ * "Expiring soon" and "Expired" are absent on purpose: both are arithmetic
+ * over a date, and an override that says "expired" on a certificate valid for
+ * another year is a claim the record cannot support. Change the date instead,
+ * and the state follows.
+ */
+const STATUSES = new Set([
+  "complete",
+  "incomplete",
+  "blocked",
+  "needs_review",
+  "conflicting",
+  "cannot_monitor",
+]);
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const ctx = await requireOrgContext({ capability: "manage_compliance" });

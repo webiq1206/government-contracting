@@ -1035,7 +1035,21 @@ export async function complianceBoard() {
        left join users au on au.id = ci.assigned_to
       where ci.org_id = $1
       order by
-        case ci.status when 'blocked' then 0 when 'critical' then 1 when 'warning' then 2 else 3 end,
+        /*
+         * Worst first, in the vocabulary the rows now carry. The old ordering
+         * named 'critical' and 'warning', which no longer exist, so every row
+         * fell into the else branch and the board came back in date order with
+         * a conflicting registration below a certificate expiring in a month.
+         */
+        case ci.status
+          when 'conflicting'    then 0
+          when 'expired'        then 1
+          when 'blocked'        then 2
+          when 'needs_review'   then 3
+          when 'expiring_soon'  then 4
+          when 'cannot_monitor' then 5
+          when 'incomplete'     then 6
+          else 7 end,
         (ci.due_at is null), ci.due_at asc`,
     [await currentOrg()]
   );
@@ -2743,7 +2757,7 @@ export interface ActionCenterData {
   subFollowUps: ActionSubFollowUpRow[];
   /** Out-of-range quotes waiting for operator judgment. */
   quoteReviews: ActionQuoteReviewRow[];
-  /** Compliance renewals that are past "ok" (warning/critical/blocked). */
+  /** Compliance items in one of the five states that need somebody today. */
   complianceAlerts: ComplianceAlertRow[];
   /**
    * Subcontractors on won work whose paperwork is not good enough to put them
@@ -2987,9 +3001,20 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
               coalesce(status_override, status) as status, days_remaining
          from compliance_items
         where org_id = $1
-          and coalesce(status_override, status) in ('warning','critical','blocked')
+          /*
+           * The five states that need somebody today, in the vocabulary the
+           * rows now carry. Written as the old three severities, this clause
+           * matched nothing at all after the migration and the Today counter
+           * silently read zero for every account.
+           */
+          and coalesce(status_override, status)
+              in ('conflicting','expired','blocked','needs_review','expiring_soon')
         order by case coalesce(status_override, status)
-                   when 'blocked' then 0 when 'critical' then 1 else 2 end,
+                   when 'conflicting'   then 0
+                   when 'expired'       then 1
+                   when 'blocked'       then 2
+                   when 'needs_review'  then 3
+                   else 4 end,
                  (due_at is null), due_at asc
         limit 8`,
       [orgId]
@@ -3073,7 +3098,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          (select count(*)::int from compliance_items ci
            where ci.org_id = '${orgId}'
              and coalesce(ci.status_override, ci.status)
-                 in ('warning','critical','blocked')) as compliance`,
+                 in ('conflicting','expired','blocked','needs_review','expiring_soon')) as compliance`,
       [urgentDays]
     ).catch(() => null),
   ]);

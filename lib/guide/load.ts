@@ -93,7 +93,7 @@ export async function loadGuideBundle(
                where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL})::int as calls,
              (select count(*) from compliance_items
                where org_id = $1
-                 and coalesce(status_override, status) in ('warning','critical','blocked'))::int as compliance,
+                 and coalesce(status_override, status) in ('conflicting','expired','blocked','needs_review','expiring_soon'))::int as compliance,
              (select count(*) from scoring_weights
                where org_id = $1 and approved_at is null and proposed_by='learning-loop')::int as weights,
              (select count(*) from backlink_outreach

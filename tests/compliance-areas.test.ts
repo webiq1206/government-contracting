@@ -80,14 +80,29 @@ describe("areaFor", () => {
 
   it("lands an unknown category somewhere a person will look", () => {
     /*
-     * Not an "Other" bucket. A category nobody has mapped yet is far more
-     * likely to be another thing the company must keep current than a new
-     * kind of thing, and "Other" is where items go to be ignored.
+     * Unclassified, not Company registrations.
+     *
+     * The old default filed anything unmapped into a real area on the theory
+     * that a new category is probably another thing to keep current. What it
+     * actually did was hide the mapping bugs: `bond`, `license` and `other`,
+     * the three categories the add form emits, were all unmapped, so every
+     * bond somebody added by hand filed itself under registrations, which is
+     * the section whose items stop an award. Landing them in a visible
+     * Unclassified section is how the next such gap gets noticed.
      */
-    expect(areaFor("new_thing_nobody_mapped")).toBe("company_registrations");
-    expect(areaFor(null)).toBe("company_registrations");
-    expect(areaFor(undefined)).toBe("company_registrations");
-    expect(areaFor("")).toBe("company_registrations");
+    expect(areaFor("new_thing_nobody_mapped")).toBe("other");
+    expect(areaFor(null)).toBe("other");
+    expect(areaFor(undefined)).toBe("other");
+    expect(areaFor("")).toBe("other");
+  });
+
+  it("maps every category the add form can actually emit", () => {
+    // The bug this catches: the form offers these three, the map had none.
+    expect(areaFor("bond")).toBe("insurance_bonding");
+    expect(areaFor("license")).toBe("certifications");
+    // The monitor's own value for a certification, alongside the map's.
+    expect(areaFor("sb_cert")).toBe("certifications");
+    expect(areaFor("non_ss_cap")).toBe("contract_specific");
   });
 });
 
@@ -238,25 +253,34 @@ describe("board filters", () => {
   it("maps each card colour to the state a person filters by", () => {
     expect(stateOf("red")).toBe("attention");
     expect(stateOf("amber")).toBe("expiring");
-    expect(stateOf("slate")).toBe("cannot_monitor");
-    expect(stateOf("green")).toBe("on_track");
+    expect(stateOf("slate")).toBe("unknown");
+    expect(stateOf("green")).toBe("complete");
   });
 
   it("labels every state", () => {
-    for (const st of ["attention", "expiring", "cannot_monitor", "on_track"] as const) {
+    for (const st of ["attention", "expiring", "unknown", "complete"] as const) {
       expect(STATE_LABEL[st]).toBeTruthy();
     }
   });
 
-  it("never says On track for something with no date", () => {
+  it("says nothing that claims an item is fine when nothing is known about it", () => {
     /*
-     * The colour for a dateless item is slate, and slate must not land in
-     * on_track. A green badge asserting an item is fine when the system has
-     * nothing to check it against is the exact failure the audit named, and
-     * the filter is a second place it could reappear.
+     * The colour for a dateless item is slate, and slate must not read as
+     * settled. A badge asserting an item is fine when the platform has
+     * nothing to check it against is the failure this vocabulary exists to
+     * remove, and the filter is a second place it could reappear.
      */
-    expect(stateOf("slate")).not.toBe("on_track");
-    expect(STATE_LABEL[stateOf("slate")]).toBe("Cannot monitor");
+    expect(stateOf("slate")).not.toBe("complete");
+    expect(STATE_LABEL[stateOf("slate")]).toBe("Nothing on file, or nothing we can check");
+    const labels = Object.values(STATE_LABEL).join(" ").toLowerCase();
+    expect(labels).not.toContain("on track");
+  });
+
+  it("still resolves the two filter names these used to have", () => {
+    // A bookmarked or shared board link should land somewhere rather than
+    // silently widening to everything.
+    expect(parseState("cannot_monitor")).toBe("unknown");
+    expect(parseState("on_track")).toBe("complete");
   });
 
   it("falls open to the unfiltered board on a bad parameter", () => {

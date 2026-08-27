@@ -14,8 +14,13 @@ export interface ComplianceCardData {
   contract_number: string | null;
   dueDisplay: string; // human date or "-"
   dateInputValue: string; // yyyy-mm-dd for the date input, or ""
-  statusValue: string; // effective status override default ("" = automatic)
-  statusLabel: string; // "On track", "Cannot monitor", "Critical", ...
+  statusValue: string; // the operator's override, "" when they have set none
+  /** One of the eight states, already resolved on the server. */
+  statusLabel: string;
+  /** Why it is in that state, in a sentence. Never a bare badge. */
+  statusDetail: string;
+  /** What to do about it, when there is something. */
+  statusFix: string | null;
   countdownText: string;
   /** Days until the effective due date. Null when there is no date at all. */
   daysLeft: number | null;
@@ -33,16 +38,24 @@ export interface CategoryInfo {
   links: { label: string; url: string }[];
 }
 
+/*
+ * The states somebody may set by hand.
+ *
+ * Three of the old options were severities rather than states -- "Warning" and
+ * "Critical" said how urgent an item was, not what was true about it -- and
+ * the green one was a claim about a date, selectable for an item with
+ * no date at all. What is left is the set of things a person can actually
+ * assert. "Expiring soon" is absent on purpose: that one is arithmetic, and
+ * arithmetic does not need an override.
+ */
 const STATUS_OPTIONS: { value: string; label: string }[] = [
-  // "Automatic" only produces a meaningful status when there is a date to
-  // judge against; without one the card reads "Cannot monitor" rather than
-  // asserting the item is fine.
-  { value: "", label: "Automatic (let the system decide)" },
-  { value: "ok", label: "On track" },
-  { value: "warning", label: "Warning" },
-  { value: "critical", label: "Critical" },
+  { value: "", label: "Work it out from the dates" },
+  { value: "complete", label: "Complete" },
+  { value: "incomplete", label: "Incomplete" },
   { value: "blocked", label: "Blocked" },
-  { value: "resolved", label: "Resolved / done" },
+  { value: "needs_review", label: "Needs human review" },
+  { value: "conflicting", label: "Conflicting" },
+  { value: "cannot_monitor", label: "Cannot monitor" },
 ];
 
 function badgeClass(color: ComplianceCardData["color"]): string {
@@ -248,6 +261,18 @@ export function ComplianceItemCard({
           </span>
         </div>
       </div>
+
+      {/*
+        The sentence behind the badge, above the reference material.
+        "Expiring soon" alone is a word to interpret; "9 days left" and "Start
+        the renewal now, so it does not lapse while it is in a queue" is what
+        somebody acts on. The badge was the only thing this card said about
+        its own state.
+      */}
+      <p className="mt-2 text-xs leading-relaxed text-foreground">
+        {item.statusDetail}
+        {item.statusFix ? <span className="text-muted-foreground"> {item.statusFix}</span> : null}
+      </p>
 
       {info && (
         <p className="mt-2 border-t border-border pt-2 text-xs leading-relaxed text-slate-500">

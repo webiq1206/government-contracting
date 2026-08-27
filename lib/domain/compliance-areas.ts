@@ -32,11 +32,14 @@ export type ComplianceArea =
   | "insurance_bonding"
   | "subcontractor"
   | "contract_specific"
-  | "regulatory";
+  | "regulatory"
+  | "other";
 
 /**
- * Category to area. Unknown categories land in company registrations rather
- * than a catch-all "Other": a new category is far more likely to be another
+ * Category to area.
+ *
+ * This used to send unknown categories to Company registrations on the
+ * argument that a new category is more likely to be another
  * thing the company has to keep current than a genuinely new kind of thing,
  * and "Other" is where items go to be ignored.
  */
@@ -44,8 +47,22 @@ const AREA_BY_CATEGORY: Record<string, ComplianceArea> = {
   sam_registration: "company_registrations",
   state_llc: "company_registrations",
   certification: "certifications",
+  // The value the monitor writes, alongside the one the area map already had.
+  sb_cert: "certifications",
   insurance: "insurance_bonding",
   bonding: "insurance_bonding",
+  /*
+   * The values the add form actually emits.
+   *
+   * It offers `bond`, `license` and `other`; the map had `bonding` and
+   * neither of the others, so every bond an operator added by hand fell
+   * through the default and filed itself under Company registrations. A bond
+   * certificate sitting in the registrations section is one nobody looking
+   * for insurance will ever find.
+   */
+  bond: "insurance_bonding",
+  license: "certifications",
+  non_ss_cap: "contract_specific",
   cpars: "contract_specific",
   contract_deadline: "contract_specific",
   far_change: "regulatory",
@@ -53,7 +70,13 @@ const AREA_BY_CATEGORY: Record<string, ComplianceArea> = {
 
 export function areaFor(category: string | null | undefined): ComplianceArea {
   const key = (category ?? "").trim().toLowerCase();
-  return AREA_BY_CATEGORY[key] ?? "company_registrations";
+  /*
+   * Unrecognised categories go to Other rather than to Company registrations.
+   * Defaulting an unknown into a real area is how a thing nobody classified
+   * ends up looking classified, and the section it landed in was the one
+   * whose items stop an award.
+   */
+  return AREA_BY_CATEGORY[key] ?? "other";
 }
 
 export const AREA_LABEL: Record<ComplianceArea, string> = {
@@ -61,8 +84,9 @@ export const AREA_LABEL: Record<ComplianceArea, string> = {
   certifications: "Certifications",
   insurance_bonding: "Insurance and bonding",
   subcontractor: "Subcontractor compliance",
-  contract_specific: "Contract-specific",
+  contract_specific: "Contract-specific compliance",
   regulatory: "Regulatory updates",
+  other: "Unclassified",
 };
 
 /**
@@ -85,6 +109,8 @@ export const AREA_EXPLANATION: Record<ComplianceArea, string> = {
     "Obligations attached to work already won: performance evaluations and deadlines written into the contract.",
   regulatory:
     "Rule changes that affect how bids have to be written or work has to be performed.",
+  other:
+    "Items whose category the platform does not recognise. They are here rather than filed into a section they may not belong in.",
 };
 
 /** The order an operator works them: legal ability to bid first, news last. */
@@ -95,6 +121,9 @@ export const AREA_ORDER: ComplianceArea[] = [
   "subcontractor",
   "contract_specific",
   "regulatory",
+  // Last, and usually empty. Visible so an unrecognised category is a thing
+  // somebody can see and reclassify rather than a row hiding in a real area.
+  "other",
 ];
 
 /**
@@ -261,13 +290,18 @@ export type CardColor = "green" | "amber" | "red" | "slate";
  * remember to update, and this one changes by itself every night as dates
  * pass.
  */
-export type BoardState = "attention" | "expiring" | "cannot_monitor" | "on_track";
+export type BoardState = "attention" | "expiring" | "unknown" | "complete";
 
 export const STATE_LABEL: Record<BoardState, string> = {
   attention: "Needs attention now",
   expiring: "Expiring within 30 days",
-  cannot_monitor: "Cannot monitor",
-  on_track: "On track",
+  /*
+   * Two different reasons for a slate card, said as one filter because the
+   * operator does the same thing about both: go and find out. "Cannot
+   * monitor" alone hid every item that simply has nothing on file yet.
+   */
+  unknown: "Nothing on file, or nothing we can check",
+  complete: "Complete",
 };
 
 /*
@@ -278,13 +312,17 @@ export const STATE_LABEL: Record<BoardState, string> = {
 export function stateOf(color: CardColor): BoardState {
   if (color === "red") return "attention";
   if (color === "amber") return "expiring";
-  if (color === "slate") return "cannot_monitor";
-  return "on_track";
+  if (color === "slate") return "unknown";
+  return "complete";
 }
 
 export function parseState(v: string | string[] | undefined): BoardState | null {
   const s = Array.isArray(v) ? v[0] : v;
-  if (s === "attention" || s === "expiring" || s === "cannot_monitor" || s === "on_track") return s;
+  if (s === "attention" || s === "expiring" || s === "unknown" || s === "complete") return s;
+  // The two names these filters used to have, so a bookmarked or shared link
+  // still lands somewhere rather than silently showing everything.
+  if (s === "cannot_monitor") return "unknown";
+  if (s === "on_track") return "complete";
   return null;
 }
 

@@ -6,6 +6,12 @@ import { AddComplianceItem } from "@/components/add-compliance-item";
 import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate, complianceColorClass } from "@/lib/format";
 import { statusColor } from "@/lib/domain/compliance";
+import {
+  COMPLIANCE_STATE_LABEL,
+  complianceState,
+  fromLegacyStatus,
+  type ComplianceState,
+} from "@/lib/domain/compliance-state";
 import type { ComplianceStatus } from "@/lib/domain/compliance";
 import {
   areaFor,
@@ -44,30 +50,22 @@ function num(v: unknown): number | null {
   const n = Number(v);
   return Number.isNaN(n) ? null : n;
 }
-function asStatus(v: unknown): ComplianceStatus {
-  const s = str(v);
-  if (s === "warning" || s === "critical" || s === "blocked" || s === "resolved") return s;
-  return "ok";
+/** A stored value as one of the eight states, or null when it is not one. */
+function asState(v: unknown): ComplianceState | null {
+  return fromLegacyStatus(str(v) || null);
 }
 function detailObj(v: unknown): Record<string, unknown> {
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   return {};
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  /*
-   * "On track" is a claim about a date, so it is only sayable when there is
-   * one. An item with no expiry was reading as a green "On track" -- the
-   * system asserting an item was fine when it had nothing at all to check it
-   * against. See cannotMonitor below.
-   */
-  cannot_monitor: "Cannot monitor",
-  ok: "On track",
-  resolved: "Resolved",
-  warning: "Warning",
-  critical: "Critical",
-  blocked: "Blocked",
-};
+/*
+ * The labels live in lib/domain/compliance-state.ts now.
+ *
+ * They were declared here, which is how the banned green label survived:
+ * a page-local map is a vocabulary nobody else can see, so nothing that
+ * checked the approved terminology ever looked at it.
+ */
 
 /** Plain-English "what this is + where to renew" per compliance category. */
 const CATEGORY_INFO: Record<string, CategoryInfo> = {
@@ -134,30 +132,35 @@ function buildCard(row: Row): ComplianceCardData {
 
   const statusOverride = str(row.status_override);
   /*
-   * No date and nobody has said otherwise: there is nothing to be on track
-   * against. Reporting that as "On track" is the exact failure the audit
-   * named -- a green badge asserting an item is fine when the system has no
-   * way to know. An override still wins, because a person saying "this is
-   * handled" is information the system does not otherwise have.
+   * One function decides the state, and it is the same one every other
+   * surface calls. This was page-local arithmetic over a page-local label
+   * map, which is how a green badge survived on an item with no date at all:
+   * nothing outside this file could see the claim being made.
    */
-  const cannotMonitor = !statusOverride && effDue == null;
-  const monitorStatus = cannotMonitor ? "cannot_monitor" : str(row.status) || "ok";
-  const effStatus = statusOverride || monitorStatus;
+  const verdict = complianceState({
+    required: row.required !== false,
+    satisfiedAt: str(row.satisfied_at) || null,
+    expiresAt: effDue,
+    verifiedAt: str(row.verified_at) || null,
+    monitorable: row.monitorable !== false,
+    blockedBy: str(row.blocked_by) || null,
+    conflict: str(row.conflict_detail) || null,
+    needsReview: str(row.needs_review_reason) || null,
+    windowDays: num(row.window_days) ?? undefined,
+    override: asState(statusOverride),
+  });
+  const effStatus = verdict.state;
 
-  let color: ComplianceCardData["color"];
-  if (statusOverride) {
-    color = statusColor(asStatus(statusOverride));
-  } else if (days != null) {
-    color = days < 0 ? "red" : days <= 30 ? "amber" : "green";
-  } else {
-    // Slate rather than green: neutral, because nothing is known, and a
-    // colour that reads as "fine" would be the same lie in another form.
-    color = effDue ? "green" : "slate";
-  }
+  const color: ComplianceCardData["color"] =
+    verdict.state === "cannot_monitor" || verdict.state === "incomplete"
+      // Slate rather than green: neutral, because nothing is known, and a
+      // colour that reads as "fine" would be the same claim in another form.
+      ? "slate"
+      : statusColor(verdict.state);
 
   const countdownText =
     days == null
-      ? "No expiry date, so this cannot be tracked"
+      ? "No expiry date, so there is nothing to count down"
       : days < 0
         ? `${Math.abs(days)}d overdue`
         : days === 0
@@ -175,7 +178,9 @@ function buildCard(row: Row): ComplianceCardData {
     dueDisplay: effDue ? shortDate(effDue) : "-",
     dateInputValue,
     statusValue: statusOverride, // "" = automatic
-    statusLabel: STATUS_LABEL[effStatus] ?? effStatus,
+    statusDetail: verdict.detail,
+    statusFix: verdict.fix,
+    statusLabel: COMPLIANCE_STATE_LABEL[effStatus],
     countdownText,
     daysLeft: days,
     color,
@@ -320,8 +325,8 @@ export default async function CompliancePage({
   const stateCounts: Record<BoardState, number> = {
     attention: 0,
     expiring: 0,
-    cannot_monitor: 0,
-    on_track: 0,
+    unknown: 0,
+    complete: 0,
   };
   for (const r of deadlineRows) {
     const card = cardById.get(str(r.id));
@@ -330,7 +335,7 @@ export default async function CompliancePage({
   for (const item of subBoard.items) {
     stateCounts[item.color === "red" ? "attention" : "expiring"] += 1;
   }
-  stateCounts.on_track += subBoard.currentCount;
+  stateCounts.complete += subBoard.currentCount;
 
   /*
    * The next ninety days, in date order. Everything on this strip is also in
@@ -425,7 +430,7 @@ export default async function CompliancePage({
             return stateFilter === (i.color === "red" ? "attention" : "expiring");
           }),
           currentCount:
-            !stateFilter || stateFilter === "on_track" ? subBoard.currentCount : 0,
+            !stateFilter || stateFilter === "complete" ? subBoard.currentCount : 0,
         };
 
   const urgentCount = urgent.length;
@@ -489,11 +494,11 @@ export default async function CompliancePage({
             <span className="num text-muted-foreground">
               {stateCounts.attention +
                 stateCounts.expiring +
-                stateCounts.cannot_monitor +
-                stateCounts.on_track}
+                stateCounts.unknown +
+                stateCounts.complete}
             </span>
           </Link>
-          {(["attention", "expiring", "cannot_monitor", "on_track"] as BoardState[]).map((st) => (
+          {(["attention", "expiring", "unknown", "complete"] as BoardState[]).map((st) => (
             <Link
               key={st}
               href={filterHref(areaFilter, stateFilter === st ? null : st)}
@@ -689,21 +694,30 @@ export default async function CompliancePage({
 function Legend() {
   return (
     <div className="flex items-center gap-3 text-xs text-slate-600">
+      {/*
+        The legend says what the colours mean, in the same words the badges
+        use. It used to name three severities, none of which were states the
+        cards could actually be in.
+      */}
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-pursue" /> On track
+        <span className="h-2.5 w-2.5 rounded-full bg-pursue" /> Complete
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-review" /> Warning
+        <span className="h-2.5 w-2.5 rounded-full bg-review" /> Expiring soon, or needs a person
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-risk" /> Critical / blocked
+        <span className="h-2.5 w-2.5 rounded-full bg-risk" /> Expired, blocked, or conflicting
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-border" /> Nothing on file, or nothing we can check
       </span>
     </div>
   );
 }
 
 function CapGauge({ row }: { row: Row }) {
-  const status = asStatus(row.status);
+  // A cap is arithmetic over real numbers, so its stored state is the answer.
+  const status = asState(row.status) ?? "incomplete";
   const color = statusColor(status);
   const detail = detailObj(row.detail);
   const util =
@@ -723,7 +737,7 @@ function CapGauge({ row }: { row: Row }) {
       <div className="flex items-center justify-between gap-2">
         <p className="truncate text-sm font-medium text-slate-900">{label}</p>
         <span className={`badge ${complianceColorClass(color)}`}>
-          {STATUS_LABEL[status] ?? status}
+          {COMPLIANCE_STATE_LABEL[status]}
         </span>
       </div>
       <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
