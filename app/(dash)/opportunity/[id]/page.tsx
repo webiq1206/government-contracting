@@ -41,6 +41,7 @@ import { ActivityLogActions } from "@/components/activity-log-actions";
 import { OpportunityTaskList } from "@/components/opportunity-task-list";
 import { OpportunityWorkspace } from "@/components/opportunity-workspace";
 import { OwnerPicker } from "@/components/owner-picker";
+import { OpportunityStatusBar } from "@/components/opportunity-status-bar";
 import { shortenAgency } from "@/lib/domain/agency-path";
 import { assignableMembers, ownerOf } from "@/lib/ownership";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
@@ -494,10 +495,27 @@ export default async function OpportunityPage({ params }: { params: { id: string
           )}
           <HelpPopover help={PAGE_HELP["opportunity"]} />
         </div>
-        {/* Stage only. The tier is a TierBadge in the header a few pixels below,
-            and it was rendering in both places at once. */}
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="badge bg-surface-raised text-slate-600">{stageLabel(opp.stage)}</span>
+        {/*
+          The nine facts that survive the hero scrolling away.
+          This bar carried the stage and nothing else, so an operator three
+          screens into Requirements could not see when the bid was due, whose
+          it was, or that automation had stopped on something. All of it was on
+          the page, at the top, past the scroll.
+        */}
+        <div className="flex min-w-0 flex-1 shrink items-center justify-end gap-2">
+          <OpportunityStatusBar
+            stageLabel={stageLabel(opp.stage)}
+            deadline={opp.deadline ? new Date(opp.deadline).toISOString() : null}
+            score={opp.score ?? null}
+            scoreBreakdown={opp.score_breakdown}
+            owner={oppOwner}
+            viewerId={viewer?.id}
+            readinessPercent={readiness.percent}
+            packageReady={readiness.packageReady}
+            uncoveredTrades={coverage.totals.uncovered}
+            riskFlags={opp.risk_flags}
+            nextAction={plan.active?.action ?? null}
+          />
         </div>
       </div>
 
