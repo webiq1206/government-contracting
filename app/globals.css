@@ -221,6 +221,11 @@ body {
    * the accessibility sweep measured every button falling 4px short of. It was
    * min-h-10 (40px) -- close enough to look right and not close enough to hit
    * reliably with a thumb, which is the worst place for a control to be.
+   *
+   * .btn-secondary and .shell-ghost were written after that fix and inherited
+   * the old number, which is how the sidebar's Pause control was 40px on
+   * twenty-three routes: the rule was right, and two of the five button
+   * classes were not following it.
    */
   .btn,
   .btn-primary,
@@ -252,7 +257,13 @@ body {
       transform: translate(-50%, -50%);
     }
   }
-  @media (min-width: 768px) {
+  /*
+   * 1024, matching the shell. Tablet portrait keeps the bottom tab bar and the
+   * drawer nav, which makes it a touch layout, and a touch layout that drops
+   * to a 40px button because the screen passed 768 has failed the touch-target
+   * rule on the device most likely to be held in one hand.
+   */
+  @media (min-width: 1024px) {
     .btn,
     .btn-primary,
     .btn-ghost,
@@ -272,7 +283,16 @@ body {
     overscroll-behavior: none;
     padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
   }
-  @media (min-width: 768px) {
+  /*
+   * 1024, not 768.
+   *
+   * The bottom tab bar is kept through tablet portrait, because the
+   * alternative there was giving a 768px screen a 256px sidebar: a third of
+   * the width spent on navigation, on the device where the content column is
+   * already the tightest. So the bar stays until the sidebar appears, and this
+   * padding, which is the room the bar occupies, has to end at the same width.
+   */
+  @media (min-width: 1024px) {
     .page-main {
       padding-bottom: 0;
     }
@@ -309,9 +329,9 @@ body {
   }
   /* Secondary action: quieter than primary, stronger than ghost. */
   .btn-secondary {
-    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm border border-foreground/20 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/40 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-sm border border-foreground/20 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/40 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
   }
-  @media (min-width: 768px) {
+  @media (min-width: 1024px) {
     .btn-secondary {
       min-height: 0;
     }
@@ -356,12 +376,12 @@ body {
     @apply border-white/10;
   }
   .shell-ghost {
-    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-sm border border-border-strong/40 bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-sm border border-border-strong/40 bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
   }
   .dark .shell-ghost {
     @apply border-white/25 hover:bg-white/5;
   }
-  @media (min-width: 768px) {
+  @media (min-width: 1024px) {
     .shell-ghost {
       min-height: 0;
     }
@@ -391,7 +411,7 @@ body {
        30px they were the smallest interactive thing on the pipeline. The
        underline that marks the active one is drawn by ::after, so growing
        the box does not move it. */
-    @apply relative inline-flex min-h-11 min-w-11 items-center justify-center pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground md:min-h-0 md:min-w-0;
+    @apply relative inline-flex min-h-11 min-w-11 items-center justify-center pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground lg:min-h-0 lg:min-w-0;
   }
   .dash-tab--active {
     @apply text-foreground;

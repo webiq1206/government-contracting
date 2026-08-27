@@ -86,6 +86,19 @@ describe("what the badges count", () => {
   });
 });
 
+describe("the menu button", () => {
+  it("is drawn too, because it is the way to twenty destinations", () => {
+    const src = readFileSync("components/nav.tsx", "utf8");
+    // On a phone the drawer is the only route to everything not on the bar,
+    // so a glyph the device does not have is the navigation gone rather than
+    // a blemish.
+    expect(src).toContain("<MenuIcon />");
+    expect(src).toContain("<CloseIcon />");
+    expect(src).not.toContain("☰");
+    expect(src).not.toContain("✕");
+  });
+});
+
 describe("the destination that lost its tab", () => {
   it("is still reachable from More", () => {
     const src = readFileSync("app/(dash)/more/page.tsx", "utf8");

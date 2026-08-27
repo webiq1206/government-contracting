@@ -89,7 +89,7 @@ export function TodayBulkCalls({
               <SnoozeButton
                 kind="call_card"
                 id={c.id}
-                className="shell-ghost min-h-11 text-xs md:min-h-0"
+                className="shell-ghost min-h-11 text-xs lg:min-h-0"
               />
               {/*
                 The same two questions as everywhere else. Skipping from
@@ -102,7 +102,7 @@ export function TodayBulkCalls({
                 callCardId={c.id}
                 companyName={c.company_name}
                 trade={c.trade ?? null}
-                className="shell-ghost min-h-11 text-xs md:min-h-0"
+                className="shell-ghost min-h-11 text-xs lg:min-h-0"
               />
             </StopClickPropagation>
             <CtaArrow label="Start call" />

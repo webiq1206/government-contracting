@@ -316,19 +316,19 @@ export default async function PipelinePage({
             */}
           <Link
             href="/pipeline?view=lanes"
-            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs lg:min-h-0 lg:px-2.5 lg:py-1 ${view === "lanes" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             Simple
           </Link>
           <Link
             href="/pipeline?view=stages"
-            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "stages" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs lg:min-h-0 lg:px-2.5 lg:py-1 ${view === "stages" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             All stages
           </Link>
           <Link
             href="/pipeline?view=table"
-            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs md:min-h-0 md:px-2.5 md:py-1 ${view === "table" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
+            className={`inline-flex min-h-11 items-center rounded px-3 py-2 text-xs lg:min-h-0 lg:px-2.5 lg:py-1 ${view === "table" ? "bg-accent-soft font-medium text-accent-strong" : "text-slate-500 hover:text-foreground"}`}
           >
             Table
           </Link>

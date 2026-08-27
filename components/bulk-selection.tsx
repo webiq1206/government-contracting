@@ -97,7 +97,7 @@ export function BulkSelectCheckbox({
   const { selected, toggle } = useBulkSelection();
   return (
     <label
-      className={`inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center md:min-h-0 md:min-w-0 ${className}`}
+      className={`inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center lg:min-h-0 lg:min-w-0 ${className}`}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
@@ -123,7 +123,7 @@ export function BulkSelectAllCheckbox({
   if (allIds.length === 0) return null;
   return (
     <label
-      className={`inline-flex min-h-11 cursor-pointer items-center gap-2 py-2 pr-2 text-sm md:min-h-0 md:py-0 md:pr-0 ${className}`}
+      className={`inline-flex min-h-11 cursor-pointer items-center gap-2 py-2 pr-2 text-sm lg:min-h-0 lg:py-0 lg:pr-0 ${className}`}
     >
       <input
         type="checkbox"
@@ -213,7 +213,7 @@ export function BulkActionBar({
   const dismiss = actions.find((a) => a.kind === "dismiss");
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[60] flex justify-center px-3 md:bottom-6">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[60] flex justify-center px-3 lg:bottom-6">
       <div className="pointer-events-auto flex max-w-full flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-3 py-2 shadow-lg dark:border-white/15">
         <span className="text-sm font-medium text-foreground">{n} selected</span>
         <button

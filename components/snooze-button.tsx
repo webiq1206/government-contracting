@@ -13,7 +13,7 @@ export function SnoozeButton({
   kind,
   id,
   label = "Snooze",
-  className = "btn-ghost min-h-11 text-xs md:min-h-0",
+  className = "btn-ghost min-h-11 text-xs lg:min-h-0",
 }: {
   kind: "opportunity" | "call_card";
   id: string;

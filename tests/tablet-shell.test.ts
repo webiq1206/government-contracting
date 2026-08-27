@@ -1,0 +1,93 @@
+import { describe, expect, it } from "vitest";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+/**
+ * Where the sidebar starts, and what moves with it.
+ *
+ * At the `md` breakpoint the sidebar was 256px on a 768px screen: a third of
+ * an iPad in portrait spent on navigation, on the device whose content column
+ * is already the tightest. A table that fits at 768 does not fit at 512.
+ *
+ * The brief offers two ways out, a compact icon rail or keeping the bottom bar
+ * until the wider breakpoint. The rail is the wrong one here: twenty-five
+ * destinations in eight named groups is either twenty-five glyphs, which is
+ * unreadable and is exactly what the tab-bar icons were rescued from, or
+ * groups behind hover, which a tablet does not have.
+ *
+ * So tablet portrait is a touch layout, and this pins the parts that have to
+ * agree about that. They are in five files, and a diff that moves one of them
+ * back to `md` produces a screen with both a sidebar and a bottom tab bar, or
+ * a page whose last row sits under the bar.
+ */
+
+const NAV = readFileSync("components/nav.tsx", "utf8");
+const BAR = readFileSync("components/mobile-tab-bar.tsx", "utf8");
+const SHELL = readFileSync("app/(dash)/layout.tsx", "utf8");
+const CSS = readFileSync("app/globals.css", "utf8");
+
+describe("the shell", () => {
+  it("puts the sidebar at lg, not md", () => {
+    expect(NAV).toContain("lg:static");
+    expect(NAV).toContain("lg:w-64");
+    // Not one leftover: a single md: in this file is a sidebar that half
+    // appears, or a drawer header that vanishes while the drawer is still the
+    // only way to navigate.
+    expect(NAV).not.toContain("md:");
+  });
+
+  it("keeps the bottom tabs until the sidebar arrives", () => {
+    expect(BAR).toContain("lg:hidden");
+    expect(BAR).not.toContain("md:hidden");
+    // Both at once is the failure this pair produces: a tablet with a sidebar
+    // AND five tabs, navigating to the same places.
+    expect(SHELL).toContain("lg:flex-row");
+  });
+
+  it("leaves room for the bar for exactly as long as the bar is there", () => {
+    /*
+     * .page-main's bottom padding IS the bar. Ending it at 768 while the bar
+     * runs to 1024 puts the last row of every page underneath it, which reads
+     * as the list simply stopping there.
+     */
+    const rule = CSS.slice(CSS.indexOf(".page-main"));
+    const media = rule.slice(0, rule.indexOf("padding-bottom: 0"));
+    expect(media).toContain("min-width: 1024px");
+    expect(media).not.toContain("min-width: 768px");
+  });
+});
+
+describe("the touch-target minimum", () => {
+  const ROOTS = ["components", "app"];
+  const SKIP = new Set(["node_modules", ".next", "dist"]);
+
+  function* walk(dir: string): Generator<string> {
+    for (const entry of readdirSync(dir)) {
+      if (SKIP.has(entry)) continue;
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) yield* walk(full);
+      else if (full.endsWith(".tsx")) yield full;
+    }
+  }
+
+  it("is not switched off before the layout stops being a touch one", () => {
+    /*
+     * `md:min-h-0` on a 44px control drops it to its natural height at 768,
+     * which is now a width somebody is tapping with a thumb. Fifty of these
+     * were written when 768 meant "mouse".
+     */
+    const offenders: string[] = [];
+    for (const root of ROOTS) {
+      for (const file of walk(root)) {
+        if (/md:min-h-0/.test(readFileSync(file, "utf8"))) offenders.push(file);
+      }
+    }
+    expect(offenders, `use lg:min-h-0: ${offenders.join(", ")}`).toEqual([]);
+  });
+
+  it("is not switched off in the design system either", () => {
+    // The .btn family, .btn-secondary and .shell-ghost each had their own
+    // 768px escape hatch, which is the same rule failing three more times.
+    expect(CSS).not.toContain("min-width: 768px");
+  });
+});

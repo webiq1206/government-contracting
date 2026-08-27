@@ -176,7 +176,7 @@ export function DataTable<T extends { id: string }>({
               /* Thumb-sized where a thumb is what presses it. The sweep
                  measured these at 24px tall on a phone, which clears WCAG
                  2.5.8 and not the 44px this product holds itself to. */
-              className={`inline-flex min-h-11 items-center rounded px-3 transition-colors md:min-h-0 md:px-2 md:py-1 ${
+              className={`inline-flex min-h-11 items-center rounded px-3 transition-colors lg:min-h-0 lg:px-2 lg:py-1 ${
                 density === d ? "bg-gold/20 text-gold-text" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -219,7 +219,7 @@ export function DataTable<T extends { id: string }>({
                            header row is unhittable on a phone, and sorting is
                            exactly what somebody does on a small screen to make
                            a wide table usable. */
-                        className={`-mx-2 inline-flex min-h-11 min-w-11 items-center justify-center px-2 transition-colors hover:text-foreground md:mx-0 md:min-h-0 md:min-w-0 md:justify-start md:px-0 ${
+                        className={`-mx-2 inline-flex min-h-11 min-w-11 items-center justify-center px-2 transition-colors hover:text-foreground lg:mx-0 lg:min-h-0 lg:min-w-0 lg:justify-start lg:px-0 ${
                           active ? "text-gold-text" : ""
                         }`}
                       >

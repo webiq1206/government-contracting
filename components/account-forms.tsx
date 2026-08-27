@@ -239,7 +239,7 @@ export function SessionList({ sessions, summary }: { sessions: SessionView[]; su
                 type="button"
                 onClick={() => post({ sessionId: s.id }, s.id)}
                 disabled={busy !== null}
-                className="tap mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline md:min-h-0"
+                className="tap mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0"
               >
                 {busy === s.id ? "Signing out" : "Sign out this device"}
               </button>

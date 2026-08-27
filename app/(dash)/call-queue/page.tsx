@@ -248,7 +248,7 @@ export default async function CallQueuePage({
                     key={g}
                     href={queueHref({ group: g })}
                     aria-current={g === grouping ? "page" : undefined}
-                    className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5 ${
+                    className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
                       g === grouping
                         ? "border-gold bg-gold/15 text-foreground"
                         : "border-border text-foreground hover:border-foreground/30"

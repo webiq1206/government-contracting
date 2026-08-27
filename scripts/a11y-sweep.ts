@@ -157,18 +157,47 @@ const PROBE = `(() => {
     }
     return { r: 255, g: 255, b: 255, a: 1 };
   };
+  /*
+   * The background this text is actually painted on.
+   *
+   * This used to hit-test the point with elementsFromPoint, on the reasoning
+   * that a reader's eye sees whatever is at that pixel. The trouble is that
+   * elementsFromPoint returns what is ON TOP as well as what is behind, and
+   * the top of the stack at any point in the lower fifth of a phone screen is
+   * the fixed tab bar, whose background is bg-background/95.
+   *
+   * So a gold Save button that happened to sit under the bar at rest was
+   * reported as 1.1:1 near-black on near-black: a control coloured correctly,
+   * failed for being in the wrong place, and filed under the wrong rule. A
+   * report that cries wolf about a button anybody can see is one that gets
+   * skimmed, which costs more than the check is worth.
+   *
+   * elementsFromPoint is still the right tool, because a background can come
+   * from a sibling painted behind rather than an ancestor: the marketing
+   * header is absolutely positioned over a dark hero it is not inside, and an
+   * ancestor walk from there finds the cream page background and calls the
+   * white nav links invisible.
+   *
+   * The list is ordered front to back, so the element's own position in it is
+   * the dividing line: everything before it is covering it, everything from it
+   * onwards is behind it. Start at the element.
+   *
+   * A control genuinely hidden under fixed chrome is a layout fault rather
+   * than a contrast one, and belongs to the overlap rule.
+   */
   const bgOf = (el) => {
     const r = el.getBoundingClientRect();
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2;
     const inView = x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
     if (inView) {
-      // Starting AT the element, not above it: a button paints its own
-      // background, and skipping it reported gold-on-black buttons as
-      // black-on-black.
-      for (const n of document.elementsFromPoint(x, y)) {
-        const c = parse(getComputedStyle(n).backgroundColor);
-        if (c && c.a > 0.5) return c;
+      const stack = document.elementsFromPoint(x, y);
+      const self = stack.indexOf(el);
+      if (self !== -1) {
+        for (const n of stack.slice(self)) {
+          const c = parse(getComputedStyle(n).backgroundColor);
+          if (c && c.a > 0.5) return c;
+        }
       }
     }
     return walkUp(el);

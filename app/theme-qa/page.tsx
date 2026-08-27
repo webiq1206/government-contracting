@@ -67,7 +67,7 @@ export default function ThemeQaPage() {
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Mobile header mock */}
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 px-3 dark:border-white/10 md:hidden">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border/55 px-3 dark:border-white/10 lg:hidden">
           <ThemeWordmark className="h-6 w-auto" />
           <div className="flex-1" />
           <ThemeToggle compact />
@@ -252,7 +252,7 @@ export default function ThemeQaPage() {
         </button>
 
         {/* Mobile tab bar mock */}
-        <nav className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 md:hidden">
+        <nav className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 lg:hidden">
           {["Today", "Calls", "Opportunities", "Review"].map((label, i) => (
             <div
               key={label}

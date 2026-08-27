@@ -237,7 +237,7 @@ const TIMELINE_DAYS = 90;
 /** Chip styling shared by the state and area filters, matching Contracts. */
 function chipClass(active: boolean, empty: boolean): string {
   const base =
-    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5";
+    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5";
   if (active) return `${base} border-gold bg-gold/15 text-foreground`;
   if (empty) return `${base} border-border text-muted-foreground`;
   return `${base} border-border text-foreground hover:border-foreground/30`;

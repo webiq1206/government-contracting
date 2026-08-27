@@ -24,7 +24,16 @@ export function PipelinePulse({ findings }: { findings: PulseFinding[] }) {
           </p>
           <p className="mt-1 text-muted-foreground">{f.detail}</p>
           <p className="mt-2">
-            <Link href={f.href} className="font-medium underline">
+            {/*
+              A link, and a 44px thing to hit.
+              An inline anchor is as tall as its line box, which is 16px, and
+              this is the control that fixes a broken pipeline: the one link on
+              the page somebody in a truck most needs to hit first time.
+            */}
+            <Link
+              href={f.href}
+              className="inline-flex min-h-11 items-center font-medium underline lg:min-h-0"
+            >
               {f.cta}
             </Link>
           </p>

@@ -86,7 +86,7 @@ export function QueueFilters({
 
 function chip(active: boolean): string {
   const base =
-    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors md:min-h-0 md:py-1.5";
+    "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5";
   return active
     ? `${base} border-gold bg-gold/15 text-foreground`
     : `${base} border-border text-foreground hover:border-foreground/30`;

@@ -78,7 +78,7 @@ export function MobileTabBar({
   return (
     <nav
       aria-label="Quick navigation"
-      className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 md:hidden"
+      className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 lg:hidden"
     >
       {TABS.map((tab) => {
         const active = pathname === tab.href || pathname.startsWith(tab.href + "/");

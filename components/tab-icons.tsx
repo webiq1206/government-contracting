@@ -99,3 +99,30 @@ export function MoreIcon() {
     </Icon>
   );
 }
+
+/**
+ * The drawer opener, and its close.
+ *
+ * These were `☰` and `✕`, and the reasoning at the top of this file applies to
+ * them more than to any tab: the menu button is the only way to reach twenty
+ * of the twenty-five destinations on a phone, so a glyph the device does not
+ * have is not a blemish, it is the navigation gone.
+ *
+ * Three lines is right here, unlike on the Subcontractors tab. This one really
+ * does open a menu.
+ */
+export function MenuIcon() {
+  return (
+    <Icon>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </Icon>
+  );
+}
+
+export function CloseIcon() {
+  return (
+    <Icon>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </Icon>
+  );
+}

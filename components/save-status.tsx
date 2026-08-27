@@ -53,7 +53,7 @@ export function SaveStatus({
         <button
           type="button"
           onClick={onRetry}
-          className="min-h-11 underline underline-offset-2 hover:text-foreground md:min-h-0"
+          className="min-h-11 underline underline-offset-2 hover:text-foreground lg:min-h-0"
         >
           Try again
         </button>
@@ -102,13 +102,13 @@ export function DraftOffer({
         </p>
       )}
       <div className="mt-2 flex flex-wrap gap-3">
-        <button type="button" onClick={onUse} className="btn-ghost min-h-11 px-3 text-xs md:min-h-0">
+        <button type="button" onClick={onUse} className="btn-ghost min-h-11 px-3 text-xs lg:min-h-0">
           Put it back
         </button>
         <button
           type="button"
           onClick={onDiscard}
-          className="min-h-11 text-muted-foreground underline underline-offset-2 hover:text-foreground md:min-h-0"
+          className="min-h-11 text-muted-foreground underline underline-offset-2 hover:text-foreground lg:min-h-0"
         >
           Discard it
         </button>

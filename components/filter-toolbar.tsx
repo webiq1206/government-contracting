@@ -251,7 +251,7 @@ export function FilterToolbar({
     <div className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="flex flex-col gap-3 px-4 py-3 sm:px-5">
         {/* Wide enough for the fields: they apply as they change. */}
-        <div className="hidden flex-wrap items-end gap-3 md:flex">
+        <div className="hidden flex-wrap items-end gap-3 lg:flex">
           {specs.map((spec) => (
             <Control
               key={spec.key}
@@ -265,7 +265,7 @@ export function FilterToolbar({
         </div>
 
         {/* Phone: one button, and the page's own action beside it. */}
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex items-center gap-2 lg:hidden">
           <button
             ref={sheetTrigger}
             type="button"
@@ -552,7 +552,7 @@ function FilterSheet({
       aria-modal="true"
       aria-labelledby={titleId}
       onKeyDown={trap}
-      className="fixed inset-0 z-[85] flex flex-col bg-background md:hidden"
+      className="fixed inset-0 z-[85] flex flex-col bg-background lg:hidden"
     >
       <header
         className="flex items-center justify-between gap-3 border-b border-border px-4 py-3"
@@ -581,7 +581,7 @@ function FilterSheet({
                 key={c.key}
                 type="button"
                 onClick={() => set(c.key, "")}
-                className="badge inline-flex min-h-11 items-center gap-1.5 bg-gold/15 text-gold-text md:min-h-0"
+                className="badge inline-flex min-h-11 items-center gap-1.5 bg-gold/15 text-gold-text lg:min-h-0"
               >
                 <span className="font-medium">{c.label}:</span> {c.display}
                 <span aria-hidden>x</span>
@@ -664,7 +664,7 @@ function Control({
       <label
         htmlFor={id}
         title={spec.hint}
-        className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-muted-foreground md:min-h-0"
+        className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-muted-foreground lg:min-h-0"
       >
         <input
           id={id}

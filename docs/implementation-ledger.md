@@ -272,6 +272,35 @@ are the outreach, threading, enqueue-provenance and live-database-guard
 suites, none of which the pricing change touches. Recorded here rather than
 reported as green, and recorded as a comparison rather than as a number.
 
+## WP12: the measured pass, and what it found
+
+The accessibility sweep is the one check here that is measured rather than
+asserted, and its report said "0 findings" against a container that no longer
+exists. Re-run against a freshly built server on 2026-08-27, it said 46.
+
+None of them were caused by the tablet breakpoint change they were run to
+verify. They were older, and the report had simply not been re-run since the
+components that introduced them were written.
+
+| Finding | Real? | What it was |
+| --- | --- | --- |
+| 25 touch targets | Yes | `.btn-secondary` and `.shell-ghost` were still `min-h-10`. A prior pass fixed the `.btn` family from 40px to 44px and left these two behind, which is how the sidebar's Pause control was 40px on twenty-three routes. Also two 16px inline links in the pipeline pulse, which is the one control on Today that fixes a broken pipeline |
+| 18 headings | Yes | Six routes with no `h1`. All six were the platform-admin pages, 404ing for a non-admin account: the missing `h1` was the not-found page's, on every 404 in the product. Its "404" was also 1.68:1 in dark |
+| 3 contrast | No | An artifact of the sweep. It hit-tested the pixel with `elementsFromPoint`, which returns what is on top as well as what is behind, and the top of the stack anywhere in the lower fifth of a phone screen is the tab bar. A correctly coloured gold button that happened to sit under it at rest was reported as near-black on near-black |
+
+The artifact is worth more than the three findings it produced. A report that
+cries wolf about a button anybody can see is one that gets skimmed, and this
+one had been believed for several sessions. The fix keeps the hit test, because
+a background can come from a sibling painted behind rather than an ancestor:
+the marketing header is absolutely positioned over a dark hero it is not
+inside, and an ancestor-only walk called its cream nav links invisible. The
+stack is ordered front to back, so the element's own place in it is the
+dividing line.
+
+After the fixes: **0 findings**, on 6 signed-out and 26 signed-in routes at
+three widths in both themes, with a platform-admin account so the six admin
+pages were measured as pages rather than as 404s.
+
 ## Blocked
 
 | Requirement | Blocked on | What is needed |

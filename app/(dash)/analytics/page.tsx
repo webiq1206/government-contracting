@@ -356,7 +356,7 @@ export default async function AnalyticsPage({
             rankings, velocity) appear after Analytics Engine runs.{" "}
             <Link
               href="/agents"
-              className="inline-flex min-h-11 items-center font-medium text-accent hover:underline md:min-h-0"
+              className="inline-flex min-h-11 items-center font-medium text-accent hover:underline lg:min-h-0"
             >
               Run it from Automation Health
             </Link>

@@ -141,7 +141,7 @@ function OppActionRow({
             <SnoozeButton
               kind="opportunity"
               id={o.id}
-              className="shell-ghost min-h-11 text-xs md:min-h-0"
+              className="shell-ghost min-h-11 text-xs lg:min-h-0"
             />
           </StopClickPropagation>
         )}
@@ -150,7 +150,7 @@ function OppActionRow({
             <SnoozeButton
               kind="opportunity"
               id={o.id}
-              className="shell-ghost min-h-11 text-xs md:min-h-0"
+              className="shell-ghost min-h-11 text-xs lg:min-h-0"
             />
             <ActionButton
               endpoint={`/api/opportunities/${o.id}/action`}
@@ -259,7 +259,7 @@ function StatRow({
     <li>
       <Link
         href={href}
-        className="group flex min-h-11 items-center justify-between py-2.5 transition-colors hover:text-foreground md:min-h-0"
+        className="group flex min-h-11 items-center justify-between py-2.5 transition-colors hover:text-foreground lg:min-h-0"
       >
         <span className="group-hover:underline group-hover:decoration-gold group-hover:underline-offset-4">
           {label}

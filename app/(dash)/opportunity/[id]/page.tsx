@@ -472,7 +472,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               still leaves you knowing where opportunities live. */}
           <Link
             href="/pipeline"
-            className="flex min-h-11 shrink-0 items-center gap-1 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground md:min-h-0"
+            className="flex min-h-11 shrink-0 items-center gap-1 text-[0.65rem] font-medium uppercase tracking-[0.16em] text-muted-foreground transition-colors hover:text-foreground lg:min-h-0"
           >
             <span aria-hidden>←</span> Opportunities
           </Link>

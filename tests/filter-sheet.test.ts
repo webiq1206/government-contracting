@@ -112,7 +112,7 @@ describe("the sheet", () => {
   it("keeps the inline controls off the phone entirely", () => {
     // Both would mean two sets of controls for one list, disagreeing whenever
     // one was edited.
-    expect(SOURCE).toContain("hidden flex-wrap items-end gap-3 md:flex");
+    expect(SOURCE).toContain("hidden flex-wrap items-end gap-3 lg:flex");
   });
 });
 
