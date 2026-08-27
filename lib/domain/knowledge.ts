@@ -136,6 +136,26 @@ export interface WorkflowStep {
   what: string;
   /** What the next step receives once this one finishes. */
   next: string;
+  /**
+   * What this platform does without being asked, and what it will not do.
+   *
+   * Separate from `owner` because owner is one word and this is the
+   * distinction people actually need: a step marked "runs on its own" still
+   * has a human edge somewhere, and a step marked "needs you" has usually
+   * had most of the work done for it already. Stating both is what stops
+   * somebody waiting on automation that was never going to happen.
+   */
+  automatic: string;
+  /** What only a person can do here, and why it is not automated. */
+  manual: string;
+  /**
+   * What actually stops this step, from the code that runs it.
+   *
+   * Not a troubleshooting essay: the two or three conditions that account
+   * for nearly every case of this step not happening. `recovery` says what
+   * to do; this says what to look for.
+   */
+  blockers: string[];
   trigger: Trigger;
   input: string;
   output: string;
@@ -163,6 +183,12 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "person", verb: "you fill it in, once" },
     input: "Your SAM.gov registration and what your company actually does.",
     output: "The profile every score, eligibility check and generated document reads from.",
+    automatic: "Nothing. This is the one thing the platform cannot fill in for you, and everything downstream is measured against it.",
+    manual: "You enter it once and revise it when the business changes: industry codes, service areas, certifications, identifiers, and who signs.",
+    blockers: [
+      "A SAM.gov registration that has lapsed, so the UEI and CAGE here no longer match what an agency can verify.",
+      "Industry codes copied from a competitor rather than taken from your own registration, which scores everything against the wrong business.",
+    ],
     recovery:
       "If opportunities look wrong for your company, the profile is almost always the reason: check the industry codes and service areas first, then the score breakdown on any opportunity to see which factor it failed.",
     recoveryHref: "/settings/profile",
@@ -184,6 +210,12 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "person", verb: "you connect it, once" },
     input: "A Google account you send business email from.",
     output: "Outreach that arrives from you, and replies that land back on the opportunity.",
+    automatic: "Once a mailbox is connected, sending and reply collection run without anybody copying messages by hand.",
+    manual: "You sign in to Google once and approve the access. Nobody can do it on your behalf: the grant is on your account.",
+    blockers: [
+      "The Google grant expires or is revoked, which stops outreach without an error appearing anywhere else.",
+      "A deployment with no Google credentials configured, in which case there is no button to press and the setup step says so.",
+    ],
     recovery:
       "A disconnected or expired inbox stops outreach silently from the operator's side, so Integrations names the state rather than showing a green dot: reconnect there and the backlog sends on the next sweep.",
     recoveryHref: "/settings/integrations",
@@ -205,6 +237,13 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "schedule", agent: "opportunity-monitor" },
     input: "Your NAICS codes, service areas, and the SAM.gov public notice feed.",
     output: "Opportunity records at the Watching stage, deduplicated against what you already have.",
+    automatic: "The whole step. SAM.gov is polled on a schedule, one search per industry code, and new notices are matched against what you already have.",
+    manual: "Nothing, unless the results look wrong for your business, which is a profile problem rather than a discovery one.",
+    blockers: [
+      "No industry codes on the profile. The search runs once per code, so an empty list searches for nothing and the pipeline stays empty.",
+      "A SAM.gov key that is missing, refused, or past its daily quota.",
+      "A notice arriving with less lead time than your rule allows, which is set aside rather than worked.",
+    ],
     recovery:
       "If nothing has arrived for a day, the cause is usually the SAM.gov key or its daily quota rather than a quiet market. Automation Health names the last run and its error.",
     recoveryHref: "/agents",
@@ -224,6 +263,12 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "schedule", agent: "scoring-engine", queuedBy: "each newly found opportunity" },
     input: "The notice, your profile, and your scoring weights.",
     output: "A score, a tier, and a per-factor breakdown you can open on the opportunity.",
+    automatic: "All of it. Every new opportunity is scored, tiered, and given a per-factor breakdown without being asked.",
+    manual: "Nothing here. Borderline work is where a person is asked, and that is the next step.",
+    blockers: [
+      "An Anthropic key that is missing or refusing, which drops scoring back to basic rules and writes no brief.",
+      "A profile with no service areas or certifications, which leaves several factors with nothing to judge.",
+    ],
     recovery:
       "An opportunity stuck without a score is picked up by a recovery sweep within about fifteen minutes. If a score looks wrong, open its breakdown: it names the factor that cost the points, which is usually a profile field rather than the notice.",
     recoveryHref: "/agents",
@@ -243,6 +288,12 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "person", verb: "an opportunity scores in your review band" },
     input: "The score breakdown, the deadline, and the brief.",
     output: "A pursued opportunity that starts the rest of the pipeline, or a dismissed one.",
+    automatic: "Strong fits continue on their own. A borderline one nobody touches is dismissed automatically only if you turned that on.",
+    manual: "The decision itself, on the work the scoring could not call either way.",
+    blockers: [
+      "Nobody opens the review queue, and the deadline passes while the opportunity is still waiting.",
+      "A score whose reasoning is not obvious, which is what the per-factor breakdown on the opportunity is for.",
+    ],
     recovery:
       "An auto-dismissed opportunity is archived, not deleted: find it in Opportunities with the archived filter and pursue it by hand if the timer beat you to it.",
     recoveryHref: "/opportunities?status=archived",
@@ -264,6 +315,13 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "schedule", agent: "solicitation-analyst", queuedBy: "an opportunity being pursued" },
     input: "The solicitation document and every attachment, including scanned ones.",
     output: "The brief, the requirement list, and the trades the job needs subcontractors for.",
+    automatic: "All of it, including reading scanned attachments rather than skipping them.",
+    manual: "Nothing, unless a document cannot be fetched from the agency's site, in which case it has to be added by hand.",
+    blockers: [
+      "An Anthropic key that is missing or refusing.",
+      "An attachment the agency's site will not serve to an automated fetch.",
+      "A solicitation that names a document it does not attach, which is recorded as a gap rather than invented.",
+    ],
     recovery:
       "A brief that reads thin usually means an attachment could not be read. The opportunity's documents section says which file, and re-running analysis from the opportunity picks up a replacement.",
     recoveryHref: "/agents",
@@ -283,6 +341,12 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "schedule", agent: "pricing-research", queuedBy: "an opportunity being pursued" },
     input: "Past federal awards in this industry code, and the state when it is known.",
     output: "An inflation-adjusted band (low, middle, high) shown on the opportunity.",
+    automatic: "All of it. The lookup runs once when an opportunity is pursued, and the band it produces is inflation-adjusted rather than raw.",
+    manual: "Nothing, unless a quote comes in outside the band, which is the next place a person is asked.",
+    blockers: [
+      "No past awards in this industry code, in which case there is no band rather than a guessed one.",
+      "A notice with no state, which widens the comparison and says so on the card.",
+    ],
     recovery:
       "Some industry codes have too few past awards to form a band. The comps card says so rather than inventing one, and quotes are then accepted without a range check.",
     recoveryHref: "/agents",
@@ -302,6 +366,13 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "schedule", agent: "sub-finder", queuedBy: "the brief naming the trades this job needs" },
     input: "The required trades, the place of performance, and your existing roster.",
     output: "Candidate subcontractors per trade, each with a verified contact route or a reason there is none.",
+    automatic: "All of it: your own roster first, then a local search, then contact verification.",
+    manual: "Nothing, though a subcontractor you already trust is preferred over anybody found for you.",
+    blockers: [
+      "A Google Maps key that is missing or refusing, which stops new candidates being found at all.",
+      "A trade the brief could not name, which leaves nothing to search for.",
+      "A place of performance the notice does not state.",
+    ],
     recovery:
       "Thin coverage for a trade is shown on the opportunity's coverage section. Add a subcontractor you already know by hand and it is used first next time.",
     recoveryHref: "/subs",
@@ -321,6 +392,14 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "schedule", agent: "outreach", queuedBy: "verified subcontractors being paired to a trade" },
     input: "Your outreach template, the job's scope, and the subcontractor's verified address.",
     output: "A sent email from your own inbox, in one thread per subcontractor, with the quote deadline in it.",
+    automatic: "All of it, including the follow-up on the schedule you set.",
+    manual: "Nothing to send. What needs a person is a subcontractor who does not reply, and that arrives on Today.",
+    blockers: [
+      "No connected inbox, which stops every send with no error anywhere the operator would see it.",
+      "Missing sender details on the profile. The send is refused rather than sent with a blank where a name should be, and the refusal happens overnight where nobody sees it.",
+      "A subcontractor with no verified address.",
+      "Your own limit on how many are contacted in one run, which holds the rest back rather than dropping them.",
+    ],
     recovery:
       "Nothing sends while the inbox is disconnected. Reconnect it and a recovery sweep clears the backlog; the Email Log shows every attempt, including the ones that bounced.",
     recoveryHref: "/email-log",
@@ -340,6 +419,13 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "reply" },
     input: "A prepared call card: who, which trade, which job, and what to ask.",
     output: "A logged conversation, and usually a price.",
+    automatic: "The card is prepared for you: who, which trade, which job, what to ask, and their local time.",
+    manual: "The call itself, and what you record about it afterwards.",
+    blockers: [
+      "Calling turned off in your rules, in which case this step is skipped entirely rather than left waiting.",
+      "A number nobody answers inside the calling hours you set.",
+      "Attempts already at the limit you set.",
+    ],
     recovery:
       "A card for a job you no longer want appears until the opportunity closes. Skip it and the reason is recorded on the subcontractor rather than lost.",
     recoveryHref: "/call-queue",
@@ -361,6 +447,12 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "person", verb: "a subcontractor gives you a number" },
     input: "A price per trade, from a reply or a call.",
     output: "Priced coverage, and a flag on anything outside the comps band.",
+    automatic: "A price stated plainly in a reply is captured for you, and anything outside the comps band is flagged.",
+    manual: "Entering or confirming the price for each trade.",
+    blockers: [
+      "A reply that prices part of the scope, which counts as partial coverage rather than as a price.",
+      "A quote outside the expected band, which asks for a look before it is used.",
+    ],
     recovery:
       "A trade with no quote blocks the bid rather than being priced at zero. The opportunity names the missing trade so you can call one more subcontractor or drop the scope.",
     recoveryHref: "/today",
@@ -382,6 +474,13 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "schedule", agent: "bid-builder", queuedBy: "every required trade having a price" },
     input: "The quotes, your target margin, and the requirement list from the brief.",
     output: "A complete package on the opportunity, with every file named the way the notice asks for.",
+    automatic: "All of it: the roll-up to your target margin, and every document the notice asks for, named the way it asks for them.",
+    manual: "Nothing at this step. What needs a person is whatever the checks in the next step name.",
+    blockers: [
+      "A trade with no price, which leaves the roll-up incomplete rather than guessed.",
+      "A required form the solicitation names and does not attach.",
+      "A profile missing an identifier a generated document has to print.",
+    ],
     recovery:
       "Re-analysing a solicitation marks an already-built package stale rather than leaving you to submit the old one. Rebuild from the opportunity.",
     recoveryHref: "/opportunities",
@@ -401,6 +500,12 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "schedule", agent: "compliance-auditor", queuedBy: "the package being assembled" },
     input: "The assembled package and the solicitation it was built from.",
     output: "A pass, or a named list of what is missing and who has to fix it.",
+    automatic: "Both checks run on their own: the eligibility gate, and a second read of the solicitation looking for anything the package is missing.",
+    manual: "Whatever the checks name: signatures, attestations, and anything that has to go through the agency's own portal.",
+    blockers: [
+      "An eligibility gate the account genuinely fails, which is an answer rather than a fault.",
+      "A SAM registration that is not active on the day of submission.",
+    ],
     recovery:
       "A failed check names the requirement and the file. Fix it on the opportunity and the check re-runs; it is never dismissed for you.",
     recoveryHref: "/compliance",
@@ -420,6 +525,13 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "person", verb: "the package passes its checks" },
     input: "The package, the checklist, and the solicitation itself.",
     output: "A submitted bid, recorded with the time you sent it.",
+    automatic: "Nothing. This platform assembles the package; it does not send a bid on your behalf.",
+    manual: "The submission, and recording how and where it was sent.",
+    blockers: [
+      "An agency portal that only accepts an upload by hand.",
+      "Checklist items nobody has cleared.",
+      "A deadline stated in the agency's timezone rather than yours.",
+    ],
     recovery:
       "Some agencies only accept bids through their own portal. Brost Co assembles the files for that upload rather than pretending it can submit for you.",
     recoveryHref: "/opportunities",
@@ -439,6 +551,11 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "after", after: "submitted" },
     input: "Your submitted bid.",
     output: "An award decision, on the agency's timetable rather than yours.",
+    automatic: "The record is kept open and visible. Nothing is chased, because there is nothing to chase.",
+    manual: "Nothing until the agency tells you, and then it is one step: record what happened.",
+    blockers: [
+      "An agency that never announces a result, which leaves the record open until you close it.",
+    ],
     recovery:
       "Agencies frequently miss their own award dates. Nothing is wrong with the record if it sits here for months; record the outcome whenever you hear.",
     recoveryHref: "/opportunities",
@@ -458,6 +575,12 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     trigger: { kind: "person", verb: "the agency tells you" },
     input: "The award notice, or the debrief.",
     output: "A contract record on a win, and a scoring lesson either way.",
+    automatic: "A win creates the contract record with its milestones and compliance tracking. Either result teaches the scoring.",
+    manual: "Telling this platform what happened. An award notice is not delivered here, so nobody else can.",
+    blockers: [
+      "A decision nobody records, which leaves the pipeline reporting work that finished months ago.",
+      "A debrief nobody asked for, which is where the reason for a loss usually is.",
+    ],
     recovery:
       "An outcome recorded by mistake can be changed on the opportunity. The contract it created is kept until you remove it, so nothing is lost by correcting it.",
     recoveryHref: "/contracts",
@@ -1030,7 +1153,21 @@ export function searchKnowledge(raw: string, articles: Article[]): KnowledgeHits
   }
 
   const stepText = (s: WorkflowStep) =>
-    [s.name, s.what, s.next, s.input, s.output, s.recovery, ...s.terms.map(termLabel)].join(" ");
+    [
+      s.name,
+      s.what,
+      s.next,
+      s.input,
+      s.output,
+      s.recovery,
+      // Searched as well as displayed. Somebody types the symptom ("no
+      // subcontractors were found") rather than the step name, and the
+      // blocker list is where the symptom is written down.
+      s.automatic,
+      s.manual,
+      ...s.blockers,
+      ...s.terms.map(termLabel),
+    ].join(" ");
   const allTerms = Object.entries(GLOSSARY).map(([key, text]) => ({
     key,
     label: termLabel(key),

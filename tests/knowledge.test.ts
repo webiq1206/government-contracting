@@ -67,6 +67,33 @@ describe("the map itself", () => {
     }
   });
 
+  /**
+   * Owner is one word, and one word cannot say which half of a step is the
+   * platform's. A step that runs on its own still has a human edge somewhere,
+   * and somebody waiting on automation that was never going to happen is
+   * waiting because nobody wrote these two sentences down.
+   */
+  it("says what is automatic and what needs a person, for every step", () => {
+    for (const s of WORKFLOW_STEPS) {
+      expect(s.automatic.length, `${s.key} automatic`).toBeGreaterThan(20);
+      expect(s.manual.length, `${s.key} manual`).toBeGreaterThan(5);
+    }
+  });
+
+  it("names what stops every step", () => {
+    for (const s of WORKFLOW_STEPS) {
+      expect(s.blockers.length, `${s.key} blockers`).toBeGreaterThan(0);
+      for (const b of s.blockers) expect(b.length, `${s.key} blocker`).toBeGreaterThan(20);
+    }
+  });
+
+  it("finds a step by the symptom rather than by its name", () => {
+    // What somebody actually types is what went wrong, not what the step is
+    // called, and the symptom is written in the blocker list.
+    const hits = searchKnowledge("daily quota", []);
+    expect(hits.steps.map((s) => s.key)).toContain("found");
+  });
+
   it("only teaches terms the glossary actually defines", () => {
     for (const s of WORKFLOW_STEPS) {
       for (const t of s.terms) expect(GLOSSARY[t], `${s.key} teaches ${t}`).toBeTruthy();

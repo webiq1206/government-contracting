@@ -524,7 +524,32 @@ function StepRow({
             <Fact label="Starts">{view.triggerText}</Fact>
             <Fact label="Needs">{step.input}</Fact>
             <Fact label="Produces">{step.output}</Fact>
+            {/*
+              * Which half is the platform's and which half is yours.
+              *
+              * "Owner" above is one word, and one word cannot carry this: a
+              * step that runs on its own still has a human edge somewhere,
+              * and a step that needs you has usually had most of the work
+              * done for it already. Somebody waiting on automation that was
+              * never going to happen is waiting because nobody said this.
+              */}
+            <Fact label="Done for you">{step.automatic}</Fact>
+            <Fact label="Needs a person">{step.manual}</Fact>
             <Fact label="Then">{step.next}</Fact>
+            {step.blockers.length > 0 && (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                  What usually stops it
+                </dt>
+                <dd className="leading-relaxed text-muted-foreground">
+                  <ul className="list-disc space-y-1 pl-4">
+                    {step.blockers.map((b) => (
+                      <li key={b}>{b}</li>
+                    ))}
+                  </ul>
+                </dd>
+              </div>
+            )}
             <div>
               <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                 If it does not happen

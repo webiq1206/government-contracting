@@ -41,6 +41,56 @@ function readRecent(): string[] {
   }
 }
 
+/**
+ * The records somebody actually opened, remembered per browser.
+ *
+ * A recent SEARCH is the words you typed; a recent RECORD is the thing you
+ * were working on. They answer different questions, and the second is the one
+ * somebody wants at nine in the morning: back to the opportunity they left
+ * half-priced last night, without remembering what it was called.
+ *
+ * Stored in this browser only. It never reaches the server, so it cannot
+ * cross between accounts, and a shared machine keeps whatever that browser
+ * did rather than whatever the account did.
+ */
+const RECENT_RECORD_KEY = "brostco.search.records";
+const RECENT_RECORD_MAX = 5;
+
+export interface RecentRecord {
+  kind: Result["kind"];
+  title: string;
+  href: string;
+}
+
+function readRecentRecords(): RecentRecord[] {
+  try {
+    const raw = window.localStorage.getItem(RECENT_RECORD_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (x): x is RecentRecord =>
+        !!x &&
+        typeof x === "object" &&
+        typeof (x as RecentRecord).href === "string" &&
+        typeof (x as RecentRecord).title === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
+function rememberRecord(r: Result) {
+  try {
+    const next = [
+      { kind: r.kind, title: r.title, href: r.href },
+      ...readRecentRecords().filter((x) => x.href !== r.href),
+    ].slice(0, RECENT_RECORD_MAX);
+    window.localStorage.setItem(RECENT_RECORD_KEY, JSON.stringify(next));
+  } catch {
+    /* see readRecent */
+  }
+}
+
 function rememberSearch(q: string) {
   const trimmed = q.trim();
   if (trimmed.length < 2) return;
@@ -60,6 +110,7 @@ export function CommandPalette() {
   const [active, setActive] = useState(0);
   const [searching, setSearching] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
+  const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const groups = useMemo(() => groupResults(results), [results]);
   /*
@@ -93,6 +144,7 @@ export function CommandPalette() {
       setResults([]);
       setActive(0);
       setRecent(readRecent());
+      setRecentRecords(readRecentRecords());
       setTimeout(() => inputRef.current?.focus(), 30);
     }
   }, [open]);
@@ -125,6 +177,9 @@ export function CommandPalette() {
   const go = useCallback(
     (r: Result, query: string) => {
       rememberSearch(query);
+      // What they opened, as well as what they typed. Next time the box is
+      // empty, this is what it offers.
+      rememberRecord(r);
       setOpen(false);
       router.push(r.href);
     },
@@ -210,6 +265,35 @@ export function CommandPalette() {
           )}
           {q.trim().length < 2 && (
             <div className="px-4 py-5">
+              {recentRecords.length > 0 && (
+                <div className="mb-4">
+                  <p className="label mb-1.5">Back to what you were on</p>
+                  <ul className="space-y-1">
+                    {recentRecords.map((r) => (
+                      <li key={r.href}>
+                        <button
+                          type="button"
+                          className="tap flex w-full items-center justify-between gap-3 rounded-md border border-border/55 px-3 py-2 text-left hover:border-accent/50"
+                          onClick={() => {
+                            setOpen(false);
+                            router.push(r.href);
+                          }}
+                        >
+                          <span className="min-w-0 truncate text-sm text-foreground">
+                            {r.title}
+                          </span>
+                          <span className="badge shrink-0 border border-border bg-surface text-slate-600">
+                            {KIND_LABEL[r.kind]}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Remembered by this browser only, never sent anywhere.
+                  </p>
+                </div>
+              )}
               {recent.length > 0 ? (
                 <>
                   <p className="label mb-1.5">Recent searches</p>
@@ -229,11 +313,11 @@ export function CommandPalette() {
                     Type at least 2 characters. Open this anywhere with ⌘K.
                   </p>
                 </>
-              ) : (
+              ) : recentRecords.length === 0 ? (
                 <p className="text-center text-xs text-slate-500">
                   Type at least 2 characters. Tip: open this anywhere with ⌘K.
                 </p>
-              )}
+              ) : null}
             </div>
           )}
           {groups.map((group) => (
