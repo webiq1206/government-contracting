@@ -68,6 +68,21 @@ export const outreach: AgentDefinition = {
     );
     if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found` };
 
+    /*
+     * A record put aside, or folded into another, does not get email.
+     *
+     * The tombstone case is the one that matters: after a merge its history
+     * lives on the surviving record, so this row reads as a firm nobody has
+     * ever contacted, and it is exactly the record an automated chase would
+     * pick. The address on it may also be the one somebody merged away.
+     */
+    if ((sub as { archived_at?: Date | null }).archived_at) {
+      return {
+        ok: true,
+        summary: `Skipped ${sub.company_name}: that record has been put aside or folded into another.`,
+      };
+    }
+
     const callsEnabled = await areCallsEnabled();
 
     // Do not create dead-end draft emails for unreachable subs. Phone-only

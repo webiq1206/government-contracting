@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { subDetail } from "@/lib/data";
+import { query, queryOne } from "@/lib/db";
 import { subConversations } from "@/lib/domain/conversation";
 import { draftsForSubcontractor } from "@/lib/domain/reply-draft";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
@@ -9,6 +10,7 @@ import { ConversationThreads } from "@/components/conversation-threads";
 import { PageFrame } from "@/components/page-frame";
 import { SubNotes } from "@/components/sub-notes";
 import { SubPerformance } from "@/components/sub-performance";
+import { SubMerge } from "@/components/sub-merge";
 import { performanceFor } from "@/lib/subcontractor-performance";
 import { Collapsible } from "@/components/collapsible";
 import { RecordActions } from "@/components/record-actions";
@@ -116,6 +118,45 @@ export default async function SubDetailPage({
    * same way the pickers above do: a record page that will not open because a
    * performance note could not load is a worse outcome than a missing panel.
    */
+  /*
+   * The other records on the roster this one could be a duplicate of, and the
+   * survivor when this one is itself a tombstone.
+   *
+   * Same trade or same town first, because those are the pairs that actually
+   * duplicate: a sourcing run that found "Ridgeline Mechanical LLC" next to a
+   * hand-entered "Ridgeline Mechanical" produced two rows in one trade in one
+   * city. Capped, because a picker of four hundred firms is not a picker.
+   */
+  const mergeOrgId = (await tryResolveTenantOrgId()) ?? "";
+  const mergeCandidates = mergeOrgId
+    ? (
+        await query<{ id: string; company_name: string; city: string | null; state: string | null; email: string | null }>(
+          `select id, company_name, city, state, email
+             from subcontractors
+            where org_id = $1 and id <> $2 and archived_at is null
+            order by
+              (trade_categories && $3::text[]) desc,
+              (coalesce(lower(city),'') = coalesce(lower($4),'')) desc,
+              company_name
+            limit 50`,
+          [mergeOrgId, params.id, sub.trade_categories ?? [], sub.city ?? ""]
+        ).catch(() => [])
+      ).map((c) => ({
+        id: c.id,
+        name: c.company_name,
+        detail: [c.city, c.state].filter(Boolean).join(", ") || c.email || "",
+      }))
+    : [];
+
+  const mergedIntoName = sub.merged_into
+    ? (
+        await queryOne<{ company_name: string }>(
+          `select company_name from subcontractors where id = $1 and org_id = $2`,
+          [sub.merged_into, mergeOrgId]
+        ).catch(() => null)
+      )?.company_name ?? null
+    : null;
+
   const performance = await performanceFor(
     (await tryResolveTenantOrgId()) ?? "",
     params.id
@@ -571,6 +612,29 @@ export default async function SubDetailPage({
                   </p>
                   <SubNotes subId={sub.id} initialNotes={sub.notes} />
                 </div>
+              </div>
+
+              {/*
+                Merging and putting aside live here rather than beside the
+                contact details: both are decisions about the record itself
+                rather than about the firm, and both are things somebody comes
+                looking for rather than trips over.
+              */}
+              <div className="card">
+                <h2 className="mb-1 text-sm font-semibold text-foreground">This record</h2>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Nothing here deletes anything. A folded record stays as a pointer, and one put
+                  aside keeps every email, quote and document it had.
+                </p>
+                <SubMerge
+                  subcontractorId={sub.id}
+                  companyName={sub.company_name}
+                  archivedReason={sub.archived_reason ?? null}
+                  mergedIntoId={sub.merged_into ?? null}
+                  mergedIntoName={mergedIntoName}
+                  candidates={mergeCandidates}
+                  canAct={can(viewer?.orgRole, "decide")}
+                />
               </div>
             </div>
           }

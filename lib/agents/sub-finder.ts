@@ -141,6 +141,11 @@ async function sourceSubs(
       `select id, company_name from subcontractors
         where org_id = $4
           and coalesce(blacklisted, false) = false
+          -- A record put aside, or folded into another, is not a candidate. A
+          -- tombstone in particular has no history of its own any more, so it
+          -- reads as a promising unknown firm and is the last record that
+          -- should get an email.
+          and archived_at is null
           and (
             $1 = any(trade_categories)
             or exists (
@@ -463,8 +468,16 @@ async function upsertSubcontractor(
   } | null = null;
   if (placeId) {
     existing = await queryOne(
-      `select id, email, phone, website from subcontractors
-       where org_id = $2 and google_place_id = $1`,
+      /*
+       * The surviving record, not the one that was folded away.
+       *
+       * A merged tombstone still carries the Google place id that matched it,
+       * so a later sourcing run finds it and, without this, updates a record
+       * nobody reads and mints the duplicate the merge had just fixed.
+       */
+      `select coalesce(s.merged_into, s.id) as id, s.email, s.phone, s.website
+         from subcontractors s
+        where s.org_id = $2 and s.google_place_id = $1`,
       [placeId, orgId]
     );
   }
@@ -474,7 +487,9 @@ async function upsertSubcontractor(
     // this search targeted, or is unknown; requiring strict equality here
     // minted a duplicate row whenever Google returned no parseable address.
     existing = await queryOne(
-      `select id, email, phone, website from subcontractors
+      // Same follow-the-tombstone rule as the place-id lookup above.
+      `select coalesce(merged_into, id) as id, email, phone, website
+         from subcontractors
        where org_id = $2
          and lower(company_name) = lower($1)
          and (coalesce(state,'') = '' or upper(state) in ($3, $4))

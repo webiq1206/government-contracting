@@ -494,6 +494,20 @@ export interface Subcontractor {
   project_history: ProjectHistoryItem[];
   is_preferred: boolean;
   blacklisted: boolean;
+  /**
+   * Put aside, with the reason. Not the same as blocked: "we do not work with
+   * these any more" and "do not use, here is why" are different statements,
+   * and a roster that renders them identically is one where somebody
+   * eventually emails the wrong firm.
+   */
+  archived_at?: string | null;
+  archived_reason?: string | null;
+  /**
+   * The record this one was folded into. A tombstone rather than a firm: its
+   * history lives on the survivor now, and following this pointer is what
+   * keeps an old link and an old id in somebody's notes meaningful.
+   */
+  merged_into?: string | null;
   bbb_summary: string | null;
   reviews_summary: string | null;
   last_contacted: string | null;

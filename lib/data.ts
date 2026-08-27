@@ -604,6 +604,16 @@ export interface SubFilters {
   sbOnly?: boolean;
   /** Include blocked subs, which are hidden by default. */
   includeBlocked?: boolean;
+  /**
+   * Include records put aside or folded into another, both hidden by default.
+   *
+   * Separate from `includeBlocked` because they are different statements. A
+   * blocked firm is one somebody decided not to use; an archived one is simply
+   * not in play; a merged one is not a firm at all any more, it is a pointer to
+   * the record that absorbed it. A roster that mixed the three would eventually
+   * have somebody email a tombstone.
+   */
+  includeArchived?: boolean;
 }
 
 /**
@@ -631,6 +641,13 @@ function subWhere(filters: SubFilters, params: unknown[]): string[] {
   // candidates, and mixing them into the default list means someone eventually
   // emails one.
   if (!filters.includeBlocked) where.push("blacklisted = false");
+  /*
+   * Archived and merged records are out of the roster unless asked for. The
+   * merged ones matter most: a tombstone has no history of its own any more,
+   * so it reads as a firm nobody has ever dealt with, and it is the record
+   * least deserving of the next outreach email.
+   */
+  if (!filters.includeArchived) where.push("archived_at is null");
   if (filters.trade) {
     params.push(filters.trade);
     where.push(`$${params.length} = any(trade_categories)`);
