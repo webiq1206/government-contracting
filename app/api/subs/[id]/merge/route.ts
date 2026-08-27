@@ -3,6 +3,8 @@ import { requireOrgContext } from "@/lib/org-guard";
 import { logAgent } from "@/lib/logger";
 import {
   archiveSubcontractor,
+  blockSubcontractor,
+  unblockSubcontractor,
   mergeSubcontractors,
   planMerge,
   restoreSubcontractor,
@@ -38,10 +40,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 }
 
 /**
- * Merge, undo a merge, put a record aside, or bring one back.
+ * Every record-level state change on a subcontractor.
  *
  * Body: `{ action: "merge", into, keep? }`, `{ action: "undo", merge_id }`,
- * `{ action: "archive", reason }`, or `{ action: "restore" }`.
+ * `{ action: "archive", reason }`, `{ action: "restore" }`,
+ * `{ action: "block", reason }`, or `{ action: "unblock" }`.
+ *
+ * Blocking and putting aside are deliberately separate. "We do not work with
+ * these any more" and "do not use, here is why" are different statements about
+ * a firm, and the block is the one that carries a reason nobody can skip.
+ * Until now it carried none, because `blacklisted` was a bare boolean with no
+ * write path in the application at all.
  *
  * Nothing here deletes a subcontractor. A merged record stays as a tombstone
  * pointing at the survivor, so an old link still resolves and an old id in
@@ -146,6 +155,43 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         message:
           "Put aside. Everything is kept, and this is not the same as marking them do not use.",
       });
+    }
+
+    case "block": {
+      const res = await blockSubcontractor({
+        orgId: ctx.orgId,
+        subcontractorId: params.id,
+        reason: body.reason ?? "",
+        actorId: ctx.user.id,
+      });
+      if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
+      await logAgent({
+        agent: "operator",
+        action: "sub-blocked",
+        subcontractorId: params.id,
+        level: "warn",
+        message: `Marked do not use: ${(body.reason ?? "").trim()}`,
+      });
+      return NextResponse.json({
+        ok: true,
+        message: "Marked do not use. Outreach will not go to them, and the reason is on the record.",
+      });
+    }
+
+    case "unblock": {
+      const res = await unblockSubcontractor({
+        orgId: ctx.orgId,
+        subcontractorId: params.id,
+      });
+      if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
+      await logAgent({
+        agent: "operator",
+        action: "sub-unblocked",
+        subcontractorId: params.id,
+        level: "info",
+        message: "Lifted a do not use mark.",
+      });
+      return NextResponse.json({ ok: true, message: "Block lifted." });
     }
 
     case "restore": {

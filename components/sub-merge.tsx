@@ -58,7 +58,8 @@ const FIELD_LABEL: Record<string, string> = {
 };
 
 /**
- * Folding a duplicate record into this one, and putting a record aside.
+ * Every record-level state change on a subcontractor: folding a duplicate in,
+ * putting the record aside, and marking a firm do not use.
  *
  * A roster built partly by hand and partly by a sourcing agent accumulates the
  * same firm twice, one row with the phone number and one with the email, half
@@ -75,6 +76,8 @@ export function SubMerge({
   subcontractorId,
   companyName,
   archivedReason,
+  blacklisted,
+  blacklistReason,
   mergedIntoId,
   mergedIntoName,
   candidates,
@@ -84,6 +87,10 @@ export function SubMerge({
   companyName: string;
   /** Set when this record has been put aside. */
   archivedReason: string | null;
+  /** Set when somebody marked this firm do not use. */
+  blacklisted: boolean;
+  /** Why they were marked, when a reason was recorded. */
+  blacklistReason: string | null;
   /** Set when this record is a tombstone pointing at another. */
   mergedIntoId: string | null;
   mergedIntoName: string | null;
@@ -96,7 +103,7 @@ export function SubMerge({
   const [plan, setPlan] = useState<Plan | null>(null);
   const [keep, setKeep] = useState<Record<string, "survivor" | "merged">>({});
   const [reason, setReason] = useState("");
-  const [panel, setPanel] = useState<"merge" | "archive" | null>(null);
+  const [panel, setPanel] = useState<"merge" | "archive" | "block" | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ bad: boolean; text: string } | null>(null);
 
@@ -189,6 +196,35 @@ export function SubMerge({
         </div>
       )}
 
+      {blacklisted && (
+        <div className="rounded-md border border-risk/40 bg-risk/5 px-3 py-2.5">
+          <p className="text-sm text-foreground">
+            Marked do not use
+            {blacklistReason?.trim() ? `: ${blacklistReason.trim()}` : "."}
+          </p>
+          {!blacklistReason?.trim() && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {/*
+                Naming the gap rather than papering over it. A block with
+                nothing behind it is one nobody can lift with any confidence,
+                and every block set from now on has to carry a reason.
+              */}
+              No reason was recorded. Whoever knows why should mark them again with one.
+            </p>
+          )}
+          {canAct && (
+            <button
+              type="button"
+              className="tap mt-1 text-xs text-accent hover:underline"
+              disabled={busy}
+              onClick={() => void post(`/api/subs/${subcontractorId}/merge`, { action: "unblock" })}
+            >
+              Lift the block
+            </button>
+          )}
+        </div>
+      )}
+
       {canAct && !archivedReason && (
         <div className="flex flex-wrap gap-3">
           <button
@@ -207,6 +243,56 @@ export function SubMerge({
           >
             Put this one aside
           </button>
+          {!blacklisted && (
+            <button
+              type="button"
+              className="tap text-xs text-risk hover:underline"
+              aria-expanded={panel === "block"}
+              onClick={() => setPanel(panel === "block" ? null : "block")}
+            >
+              Mark do not use
+            </button>
+          )}
+        </div>
+      )}
+
+      {panel === "block" && (
+        <div className="space-y-2 rounded-md border border-risk/40 bg-risk/5 p-3">
+          <p className="text-xs text-muted-foreground">
+            {/*
+              Says what it is not, for the same reason the archive panel does.
+              These two look alike on a roster and are different statements
+              about a firm.
+            */}
+            Nothing will be sent to them and they stay off every bid, on this record and in
+            sourcing. This is stronger than putting them aside, and the reason stays on the
+            record for whoever asks about it later.
+          </p>
+          <input
+            type="text"
+            className="input h-11 w-full lg:h-9"
+            placeholder="Why, in the words you would use to explain it"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || reason.trim().length < 3}
+              onClick={() =>
+                void post(`/api/subs/${subcontractorId}/merge`, {
+                  action: "block",
+                  reason: reason.trim(),
+                })
+              }
+            >
+              {busy ? "Saving\u2026" : "Mark do not use"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setPanel(null)}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

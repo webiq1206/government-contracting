@@ -26,6 +26,8 @@ import {
   outreachLabel,
 } from "@/lib/domain/sub-contact";
 import { stageLabel } from "@/lib/domain/journey";
+import { subState, SUB_STATE_TONE } from "@/lib/domain/sub-state";
+import { DOC_LABEL } from "@/lib/domain/sub-compliance";
 import { buildSubPlan } from "@/lib/domain/sub-plan";
 import { GuidedPlanPanel } from "@/components/guided-plan";
 import { currency, timeAgo, shortDate } from "@/lib/format";
@@ -179,6 +181,33 @@ export default async function SubDetailPage({
     : [];
   const contactLabel = contactStatusLabel(sub.contact_status);
   const openPairings = pairings.filter((p) => p.status === "open").length;
+
+  /*
+   * One operational state instead of five badges.
+   *
+   * The header used to carry preferred, blocked, contactability and the
+   * compliance gate side by side, all true and none of them the question an
+   * operator has when they open the page, which is whether to put this firm
+   * on the bid in front of them. The weighing was the same every time, so the
+   * platform does it. The rest of the detail is still on the page, in the
+   * sections that own it.
+   */
+  const state = subState({
+    samExcluded: Boolean(sub.sam_excluded),
+    blacklisted: Boolean(sub.blacklisted),
+    blacklistReason: sub.blacklist_reason ?? null,
+    archivedAt: sub.archived_at ?? null,
+    archivedReason: sub.archived_reason ?? null,
+    mergedInto: sub.merged_into ?? null,
+    email: sub.email,
+    emailVerified: Boolean(sub.email_verified),
+    phone: sub.phone,
+    missingDocuments: [
+      ...compliance.assessment.missing,
+      ...compliance.assessment.expired,
+    ].map((t) => DOC_LABEL[t]),
+    preferred: Boolean(sub.is_preferred),
+  });
   const plan = buildSubPlan({
     hasEmail: Boolean(sub.email),
     hasPhone: Boolean(sub.phone),
@@ -218,19 +247,23 @@ export default async function SubDetailPage({
                 ? `${openPairings} open job${openPairings === 1 ? "" : "s"} \u00b7 ${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`
                 : `${stats.touches} touch${stats.touches === 1 ? "" : "es"} logged`}
             </span>
-            {!compliance.assessment.clearedForAward && (
-              <a
-                href="#compliance"
-                className="badge bg-risk/15 text-risk"
-                title={compliance.assessment.blockReason ?? undefined}
-              >
-                Cannot be sent work
+            {/*
+              One state, and the sentence behind it. The badge alone would be
+              a word to interpret; the detail is what somebody acts on.
+            */}
+            <span className={`badge ${SUB_STATE_TONE[state.state]}`}>{state.label}</span>
+            <span className="text-muted-foreground">{state.detail}</span>
+            {state.state === "missing_documents" && (
+              <a href="#compliance" className="text-accent hover:underline">
+                Paperwork
               </a>
             )}
-            {sub.is_preferred && (
-              <span className="badge bg-review/15 text-review">Preferred</span>
-            )}
-            {contactLabel && (
+            {/*
+              The verification outcome stays visible when it is the reason a
+              firm reads as reachable on a phone number alone. It is a
+              different fact from the state, not a competing one.
+            */}
+            {contactLabel && state.canContact && sub.contact_status !== "verified" && (
               <span
                 className={`badge ${contactBadgeClass(sub.contact_status)}`}
                 title={contactStatusHint(sub.contact_status)}
@@ -630,6 +663,8 @@ export default async function SubDetailPage({
                   subcontractorId={sub.id}
                   companyName={sub.company_name}
                   archivedReason={sub.archived_reason ?? null}
+          blacklisted={Boolean(sub.blacklisted)}
+          blacklistReason={sub.blacklist_reason ?? null}
                   mergedIntoId={sub.merged_into ?? null}
                   mergedIntoName={mergedIntoName}
                   candidates={mergeCandidates}

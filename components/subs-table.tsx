@@ -6,6 +6,31 @@ import { DataTable, type Column } from "@/components/data-table";
 import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { Subcontractor } from "@/lib/types";
+import { subState, SUB_STATE_TONE } from "@/lib/domain/sub-state";
+
+/**
+ * The roster's read of a row, from the same function every other surface uses.
+ *
+ * `unmet_required_docs` is optional on the type: a read that did not count
+ * them leaves it undefined, and undefined is not zero. Treating it as zero
+ * here would have the roster promise clean paperwork it never checked.
+ */
+function rowState(s: Subcontractor) {
+  const unmet = s.unmet_required_docs;
+  return subState({
+    samExcluded: Boolean(s.sam_excluded),
+    blacklisted: Boolean(s.blacklisted),
+    blacklistReason: s.blacklist_reason ?? null,
+    archivedAt: s.archived_at ?? null,
+    archivedReason: s.archived_reason ?? null,
+    mergedInto: s.merged_into ?? null,
+    email: s.email,
+    emailVerified: Boolean(s.email_verified),
+    phone: s.phone,
+    missingDocuments: unmet && unmet > 0 ? [`${unmet} required for award`] : [],
+    preferred: Boolean(s.is_preferred),
+  });
+}
 
 /**
  * The roster, as a table you can actually work.
@@ -185,23 +210,38 @@ export function SubsTable({
         ),
     },
     {
+      key: "state",
+      header: "State",
+      /*
+       * One badge, from the same function the record page and the quick look
+       * use. The roster used to show SAM exclusion and a block side by side
+       * and say nothing at all about lapsed paperwork or an unusable address,
+       * so a firm could read clean here and blocked on its own page.
+       */
+      render: (s) => {
+        const v = rowState(s);
+        return (
+          <span className={`badge ${SUB_STATE_TONE[v.state]}`} title={v.detail}>
+            {v.label}
+          </span>
+        );
+      },
+    },
+    {
       key: "flags",
       header: "Flags",
       optional: true,
-      render: (s) => (
-        <div className="flex flex-wrap gap-1">
-          {s.sam_excluded && <span className="badge bg-risk/15 text-risk">SAM excluded</span>}
-          {s.blacklisted && <span className="badge bg-risk/15 text-risk">Blocked</span>}
-          {s.sb_certified && (
-            <span
-              className="badge bg-gold/15 text-gold-text"
-              title="Certified small business: counts toward federal small-business requirements"
-            >
-              Small business
-            </span>
-          )}
-        </div>
-      ),
+      render: (s) =>
+        s.sb_certified ? (
+          <span
+            className="badge bg-gold/15 text-gold-text"
+            title="Certified small business: counts toward federal small-business requirements"
+          >
+            Small business
+          </span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        ),
     },
     {
       key: "peek",

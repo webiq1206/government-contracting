@@ -521,3 +521,66 @@ export async function restoreSubcontractor(input: {
   );
   return { ok: true, mergeId: "", moved: 0, reversible: true };
 }
+
+/**
+ * Mark a firm do not use, with the reason attached.
+ *
+ * The reason is required and enforced in the database as well as here,
+ * because this is the strongest statement the roster can make about a firm
+ * and it outlives whoever made it. A block with nothing behind it is one
+ * nobody can lift with any confidence, and the roster had a column full of
+ * exactly those: `blacklisted` was a bare boolean, settable only in SQL.
+ *
+ * Not the same as putting a record aside, and kept in a separate column so
+ * the two can never be confused for each other.
+ */
+export async function blockSubcontractor(input: {
+  orgId: string;
+  subcontractorId: string;
+  reason: string;
+  actorId: string | null;
+}): Promise<MergeResult> {
+  const reason = input.reason.trim();
+  if (reason.length < 3) {
+    return { ok: false, status: 400, error: "Say why, so somebody can judge it later." };
+  }
+  const rows = await query<{ id: string }>(
+    `update subcontractors
+        set blacklisted = true,
+            blacklist_reason = $3,
+            blacklisted_at = now(),
+            blacklisted_by = $4::uuid
+      where id = $2 and org_id = $1
+      returning id`,
+    [input.orgId, input.subcontractorId, reason, input.actorId]
+  );
+  return rows.length > 0
+    ? { ok: true, mergeId: "", moved: 0, reversible: true }
+    : { ok: false, status: 404, error: "No such subcontractor." };
+}
+
+/**
+ * Lift a block.
+ *
+ * The reason is cleared with it rather than kept: leaving it behind would
+ * leave a record that reads as blocked in every place that shows the reason
+ * without checking the flag. The activity log keeps the history.
+ */
+export async function unblockSubcontractor(input: {
+  orgId: string;
+  subcontractorId: string;
+}): Promise<MergeResult> {
+  const rows = await query<{ id: string }>(
+    `update subcontractors
+        set blacklisted = false,
+            blacklist_reason = null,
+            blacklisted_at = null,
+            blacklisted_by = null
+      where id = $1 and org_id = $2 and blacklisted = true
+      returning id`,
+    [input.subcontractorId, input.orgId]
+  );
+  return rows.length > 0
+    ? { ok: true, mergeId: "", moved: 0, reversible: true }
+    : { ok: false, status: 404, error: "No such subcontractor, or it is not blocked." };
+}

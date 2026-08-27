@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { subState, SUB_STATE_TONE } from "@/lib/domain/sub-state";
 import { DetailDrawer, DrawerFact, DrawerSection } from "@/components/detail-drawer";
 import {
   EVIDENCE_LABEL,
@@ -43,12 +44,42 @@ function contactHealth(s: SubPeekRow): { label: string; tone: string; detail: st
   };
 }
 
+/**
+ * The record's operational state, worked out exactly once.
+ *
+ * This drawer used to run its own ladder over the same five facts as the
+ * record header, in a different order and with different words, so the same
+ * firm could read one way in the drawer and another way on its own page.
+ */
+function stateOf(s: SubPeekRow) {
+  return subState({
+    samExcluded: s.sam_excluded,
+    blacklisted: s.blacklisted,
+    blacklistReason: s.blacklist_reason,
+    archivedAt: s.archived_at,
+    archivedReason: s.archived_reason,
+    mergedInto: s.merged_into,
+    email: s.email,
+    emailVerified: s.email_verified,
+    phone: s.phone,
+    /*
+     * A count, not the names: the drawer does not load the document rows. The
+     * record page names them, and this says how many to expect.
+     */
+    missingDocuments:
+      n(s.unmet_required_docs) > 0
+        ? [`${n(s.unmet_required_docs)} required for award`]
+        : [],
+    preferred: s.is_preferred,
+  });
+}
+
 /** What to do about this firm next, given everything else in the drawer. */
 function nextAction(s: SubPeekRow): string {
-  if (s.blacklisted) return "Nothing. This firm is marked do not use.";
-  if (s.sam_excluded) return "Nothing. Federally excluded parties cannot be used on this work.";
+  const state = stateOf(s);
+  if (!state.canContact) return `Nothing. ${state.detail}`;
   if (!s.email) return "Find an email address, or call them.";
-  if (n(s.expired_docs) > 0) return "Chase the lapsed paperwork before sending any more work.";
+  if (!state.canAward) return "Chase the lapsed paperwork. It does not stop you asking for a price.";
   if (n(s.outreach) === 0) return "Nothing yet. They have never been contacted.";
   if (n(s.quote_count) === 0 && n(s.responded_any) === 0) {
     return "They have never answered. Try a call before spending more outreach on them.";
@@ -71,6 +102,7 @@ export function SubPeek({
     blacklisted: sub.blacklisted,
   };
   const rel = reliabilityBreakdown(inputs);
+  const state = stateOf(sub);
   const health = contactHealth(sub);
   const trades = sub.trade_categories ?? [];
   const area = [sub.city, sub.state].filter(Boolean).join(", ");
@@ -96,17 +128,8 @@ export function SubPeek({
       <DrawerSection title="Operational status">
         <DrawerFact
           label="Can we use them"
-          value={
-            sub.blacklisted ? (
-              <span className="text-risk">Marked do not use</span>
-            ) : sub.sam_excluded ? (
-              <span className="text-risk">Federally excluded</span>
-            ) : sub.is_preferred ? (
-              <span className="text-pursue">Preferred</span>
-            ) : (
-              "Available"
-            )
-          }
+          value={<span className={`badge ${SUB_STATE_TONE[state.state]}`}>{state.label}</span>}
+          hint={state.detail}
         />
         <DrawerFact
           label="Contact health"

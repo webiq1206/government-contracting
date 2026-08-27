@@ -692,6 +692,33 @@ function subWhere(filters: SubFilters, params: unknown[]): string[] {
   return where;
 }
 
+/**
+ * How many award-blocking documents this subcontractor is short.
+ *
+ * One fragment, used by every list and drawer that needs the number, so a
+ * firm cannot read "Ready" on the roster and "Missing documents" on its own
+ * record. The doc types are asserted against REQUIRED_FOR_AWARD by a test, so
+ * adding a fourth required document cannot leave this behind.
+ *
+ * Counted rather than inferred from a document count: a subcontractor with
+ * three pending uploads and no current coverage has documents and is still
+ * not clear.
+ */
+export const REQUIRED_DOC_SQL_TYPES = ["w9", "coi_general_liability", "coi_workers_comp"] as const;
+
+function unmetRequiredDocsSql(subAlias: string): string {
+  const list = REQUIRED_DOC_SQL_TYPES.map((t) => `'${t}'`).join(",");
+  return `(select count(*)::int
+             from unnest(array[${list}]) t(doc_type)
+            where not exists (
+              select 1 from subcontractor_documents d
+               where d.subcontractor_id = ${subAlias}.id
+                 and d.doc_type = t.doc_type
+                 and d.status in ('active','expiring')
+                 and (d.expires_at is null or d.expires_at > now())
+            ))`;
+}
+
 /** How many subcontractors match, before paging. */
 export async function subDatabaseCount(filters: SubFilters = {}): Promise<number> {
   const orgId = await currentOrg();
@@ -732,8 +759,9 @@ export async function subDatabase(
   const offsetAt = params.length;
 
   return query<Subcontractor>(
-    `select * from subcontractors
-      where org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}
+    `select s.*, ${unmetRequiredDocsSql("s")} as unmet_required_docs
+       from subcontractors s
+      where s.org_id = $1${where.length ? ` and ${where.join(" and ")}` : ""}
       order by ${orderBy}
       limit $${limitAt} offset $${offsetAt}`,
     params
@@ -1256,6 +1284,10 @@ export interface SubPeekRow {
   license_status: string | null;
   sam_excluded: boolean;
   blacklisted: boolean;
+  blacklist_reason: string | null;
+  archived_at: string | null;
+  archived_reason: string | null;
+  merged_into: string | null;
   is_preferred: boolean;
   reliability_score: number | null;
   last_contacted: string | null;
@@ -1267,6 +1299,13 @@ export interface SubPeekRow {
   quote_count: string | number;
   open_docs: string | number;
   expired_docs: string | number;
+  /**
+   * Required-for-award documents with nothing current on file. Counted here
+   * rather than inferred from `open_docs`, because a subcontractor with three
+   * pending uploads and no current coverage has documents and is still not
+   * clear.
+   */
+  unmet_required_docs: string | number;
 }
 
 export async function subPeek(id: string): Promise<SubPeekRow | null> {
@@ -1276,6 +1315,8 @@ export async function subPeek(id: string): Promise<SubPeekRow | null> {
     `select s.id, s.company_name, s.owner_name, s.email, s.email_verified,
             s.contact_status, s.phone, s.city, s.state, s.trade_categories,
             s.license_number, s.license_status, s.sam_excluded, s.blacklisted,
+            s.blacklist_reason, s.archived_at::text as archived_at, s.archived_reason,
+            s.merged_into::text as merged_into,
             s.is_preferred, s.reliability_score,
             s.last_contacted::text as last_contacted,
             s.google_rating, s.review_count,
@@ -1296,7 +1337,8 @@ export async function subPeek(id: string): Promise<SubPeekRow | null> {
             (select count(*) from subcontractor_documents d
               where d.subcontractor_id = s.id
                 and (d.status = 'expired'
-                     or (d.expires_at is not null and d.expires_at <= now()))) as expired_docs
+                     or (d.expires_at is not null and d.expires_at <= now()))) as expired_docs,
+            ${unmetRequiredDocsSql("s")} as unmet_required_docs
        from subcontractors s
       where s.id = $1 and s.org_id = $2`,
     [id, orgId]

@@ -495,6 +495,16 @@ export interface Subcontractor {
   is_preferred: boolean;
   blacklisted: boolean;
   /**
+   * Why they were blocked, who did it and when. Required for every block set
+   * from now on: this is the strongest statement the roster makes about a
+   * firm and it outlives whoever made it. Null on rows blocked before the
+   * reason existed, which read as "No reason was recorded" rather than being
+   * given one they never had.
+   */
+  blacklist_reason?: string | null;
+  blacklisted_at?: string | null;
+  blacklisted_by?: string | null;
+  /**
    * Put aside, with the reason. Not the same as blocked: "we do not work with
    * these any more" and "do not use, here is why" are different statements,
    * and a roster that renders them identically is one where somebody
@@ -517,6 +527,12 @@ export interface Subcontractor {
   contact_status: string | null;
   /** Where the email came from: 'hunter' | 'website_scrape' | 'manual' | null. */
   email_source: string | null;
+  /**
+   * Award-blocking documents this firm is short, counted alongside the row.
+   * Present on list reads, absent on the ones that do not compute it, so a
+   * screen that has not asked for it cannot mistake "not counted" for zero.
+   */
+  unmet_required_docs?: number;
 }
 
 export interface ProjectHistoryItem {
