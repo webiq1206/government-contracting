@@ -3,6 +3,8 @@ import { requireUser, requireCapability } from "@/lib/api-auth";
 import { queryOne } from "@/lib/db";
 import { WORKABLE_CALL_CARD_SQL } from "@/lib/data";
 import { getAutomationRules, setAutomationRules } from "@/lib/app-settings";
+import { ruleFacts } from "@/lib/rule-preview";
+import { ruleImpacts, needsConfirmation } from "@/lib/domain/rule-impact";
 import { normalizeRules, type AutomationRules } from "@/lib/domain/intake";
 import { CALL_STAGE } from "@/lib/domain/call-step";
 import { clearCallWorkForOrg, type ClearCallWorkResult } from "@/lib/skip-call";
@@ -118,9 +120,29 @@ export async function POST(req: Request) {
   const normalized = normalizeRules(body);
   const orgId = await tryResolveTenantOrgId();
   if (body.preview_only) {
+    /*
+     * Two halves of the same answer, on one request.
+     *
+     * previewCounts says what the proposed rules describe in absolute terms:
+     * "9 archived records are past the retention window". That is the state.
+     * ruleImpacts says what the CHANGE does: "38 archived records BECOME
+     * eligible", counted against the rules currently in force. An operator
+     * tightening a window needs the second one, and reading the first as the
+     * second is how a change costs eleven records when the page said nine.
+     */
+    const current = await getAutomationRules();
+    const facts = await ruleFacts(current, normalized).catch(() => null);
+    const impacts = facts ? ruleImpacts(current, normalized, facts) : null;
     return NextResponse.json({
       rules: normalized,
       preview: await previewCounts(normalized, orgId),
+      /*
+       * Null rather than an empty list when the counting failed. No impacts
+       * and "we could not work out the impacts" look identical to a reader,
+       * and one of them is an invitation to save blind.
+       */
+      impacts,
+      confirm: impacts ? needsConfirmation(impacts) : false,
     });
   }
   const before = await getAutomationRules();

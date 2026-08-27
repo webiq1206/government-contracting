@@ -6,6 +6,8 @@ import { ruleConflicts, type AutomationRules } from "@/lib/domain/intake";
 import { formatHour } from "@/lib/domain/call-queue";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { UnsavedGuard } from "@/components/unsaved-guard";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import type { RuleImpact } from "@/lib/domain/rule-impact";
 
 interface Preview {
   past_due_open: number;
@@ -43,6 +45,13 @@ export function AutomationRulesForm({
    */
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const [preview, setPreview] = useState<Preview | null>(null);
+  /*
+   * What the CHANGE does, as distinct from what the values describe. Null
+   * while it is unknown, which is not the same as an empty list.
+   */
+  const [impacts, setImpacts] = useState<RuleImpact[] | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -57,7 +66,16 @@ export function AutomationRulesForm({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...form, preview_only: true }),
         });
-        if (res.ok) setPreview((await res.json()).preview);
+        if (res.ok) {
+          const data = (await res.json()) as {
+            preview: Preview;
+            impacts: RuleImpact[] | null;
+            confirm: boolean;
+          };
+          setPreview(data.preview);
+          setImpacts(data.impacts ?? null);
+          setConfirm(Boolean(data.confirm));
+        }
       } finally {
         setPreviewing(false);
       }
@@ -81,6 +99,10 @@ export function AutomationRulesForm({
       }
       setForm(data.rules);
       setPreview(data.preview);
+      // A save resets the baseline, so the change list is empty again until
+      // somebody edits something.
+      setImpacts([]);
+      setConfirm(false);
       setSavedAt(new Date().toLocaleTimeString());
       router.refresh();
     } finally {
@@ -159,13 +181,48 @@ export function AutomationRulesForm({
           )}
         </ul>
       )}
+      {/*
+        What changing these would do, counted against the rules in force.
+        The list above says what the values describe; this says what the edit
+        costs, which is the question somebody moving a number actually has.
+      */}
+      {dirty && impacts === null && (
+        <p className="mt-4 text-sm text-review">
+          Could not work out what this change would affect. The rules themselves are
+          unchanged, and saving now would be saving blind.
+        </p>
+      )}
+      {dirty && impacts !== null && impacts.length > 0 && (
+        <div className="mt-4 rounded-md border border-border bg-surface p-3">
+          <p className="label mb-2">What changing these would do</p>
+          <ul className="space-y-1.5">
+            {impacts.map((i) => (
+              <li
+                key={i.key}
+                className={`text-sm leading-relaxed ${
+                  i.irreversible
+                    ? "text-risk"
+                    : i.severity === "removes"
+                      ? "text-review"
+                      : "text-slate-700"
+                }`}
+              >
+                {i.summary}
+                {i.irreversible && (
+                  <span className="font-semibold"> This cannot be undone by changing it back.</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {conflictPanel}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
           type="button"
           className="btn-primary"
-          onClick={() => void save()}
-          disabled={saving || blocking}
+          onClick={() => (confirm ? setAsking(true) : void save())}
+          disabled={saving || blocking || (dirty && impacts === null)}
         >
           {saving ? "Saving…" : "Save rules"}
         </button>
@@ -184,6 +241,30 @@ export function AutomationRulesForm({
     <UnsavedGuard
       when={dirty && !readOnly}
       message="Your automation rules have unsaved changes. Leave without saving?"
+    />
+    {/*
+      Asked only when the change removes records that cannot be brought back
+      by changing the setting again. Asking twice for a colour band teaches
+      people to click through the question, and then this one gets clicked
+      through too.
+    */}
+    <ConfirmDialog
+      open={asking}
+      title="This removes records"
+      body={
+        impacts
+          ?.filter((i) => i.irreversible || i.severity === "removes")
+          .map((i) => i.summary)
+          .join(" ") || "This change removes records from the account."
+      }
+      confirmLabel="Save these rules"
+      danger
+      busy={saving}
+      onConfirm={() => {
+        setAsking(false);
+        void save();
+      }}
+      onCancel={() => setAsking(false)}
     />
     <EditorialTabs
       ariaLabel="Automation rule sections"
