@@ -30,6 +30,10 @@ import { SubcontractorRecord } from "@/components/subcontractor-record";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { buildActivityTimeline } from "@/lib/domain/activity-timeline";
 import { subActivityLogs } from "@/lib/data";
+import { OwnerPicker } from "@/components/owner-picker";
+import { assignableMembers, ownerOf } from "@/lib/ownership";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -86,13 +90,22 @@ export default async function SubDetailPage({
   // Threads and inbox state are read alongside the detail so the page renders
   // in one pass; a missing connection disables the composer rather than
   // letting a reply fail after it is typed.
-  const [conversations, inboxConnected, compliance, savedDrafts] = await Promise.all([
+  const [conversations, inboxConnected, compliance, savedDrafts, subOwner, teamMembers, viewer] =
+    await Promise.all([
     subConversations(params.id),
     gmail.isConnected().catch(() => false),
     subComplianceView(params.id),
     // Drafts already written for these threads, so returning to the page shows
     // the work rather than an empty box that costs money to refill.
     draftsForSubcontractor(params.id, await tryResolveTenantOrgId()).catch(() => ({})),
+    /*
+     * All three tolerate failure: a picker that cannot load is a field saying
+     * Unassigned, where a throw here is a record page that will not open
+     * because of a dropdown.
+     */
+    ownerOf("subcontractor", params.id).catch(() => null),
+    assignableMembers().catch(() => []),
+    currentUser().catch(() => null),
   ]);
 
   /*
@@ -179,6 +192,24 @@ export default async function SubDetailPage({
         <SubcontractorRecord
           overview={
             <div className="space-y-6 px-5 py-6">
+              {/*
+                Who here knows this firm.
+                A subcontractor relationship is held by a person, not by a
+                company: the estimator who has called them nine times knows
+                what they are like to work with, and until this field existed
+                that knowledge had nowhere to live except that person's head.
+              */}
+              <div className="max-w-xs">
+                <OwnerPicker
+                  kind="subcontractor"
+                  recordId={sub.id}
+                  owner={subOwner}
+                  members={teamMembers}
+                  viewerId={viewer?.id}
+                  canAssign={can(viewer?.orgRole, "manage_subs")}
+                />
+              </div>
+
               {/* The readiness story first: what stands between this listing and a
                   company you can send work to, with the fix for each gap. */}
               <GuidedPlanPanel plan={plan} eyebrow="Getting this sub job-ready" />

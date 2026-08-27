@@ -9,6 +9,7 @@ import { currency, shortDate } from "@/lib/format";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
+import { describeOwner, type Owner } from "@/lib/domain/ownership";
 
 /**
  * Every opportunity, as a table.
@@ -31,6 +32,8 @@ export function OpportunitiesTable({
   rules,
   emptyState,
   peekBase,
+  owners,
+  viewerId,
 }: {
   rows: Opportunity[];
   total: number;
@@ -41,6 +44,9 @@ export function OpportunitiesTable({
   emptyState: React.ReactNode;
   /** The current list URL with the peek stripped, ready for `peek=<id>`. */
   peekBase: string;
+  /** Owners by opportunity id, read once for the page rather than per row. */
+  owners?: Map<string, Owner>;
+  viewerId?: string;
 }) {
   const columns: Column<Opportunity>[] = [
     {
@@ -152,6 +158,21 @@ export function OpportunitiesTable({
       header: "NAICS",
       optional: true,
       render: (o) => o.naics_code ?? "-",
+    },
+    {
+      key: "owner",
+      header: "Owner",
+      optional: true,
+      /*
+       * Read-only here. Assigning belongs on the record, where the person
+       * doing it can see the deadline and the stage they are taking on; a
+       * dropdown in a two-hundred-row table is a mis-click that hands
+       * somebody else's bid to the wrong person without either of them
+       * noticing.
+       */
+      render: (o) => (
+        <span className="text-muted-foreground">{describeOwner(owners?.get(o.id), viewerId)}</span>
+      ),
     },
     {
       key: "updated_at",

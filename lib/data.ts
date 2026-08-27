@@ -712,9 +712,12 @@ export async function subDetail(id: string) {
 
 export async function complianceBoard() {
   const items = await query(
-    `select ci.*, c.contract_number
+    `select ci.*, c.contract_number,
+            -- Who here is renewing it. Joined rather than fetched per card.
+            coalesce(nullif(btrim(au.name), ''), split_part(au.email, '@', 1)) as assigned_name
        from compliance_items ci
        left join contracts c on c.id = ci.contract_id
+       left join users au on au.id = ci.assigned_to
       where ci.org_id = $1
       order by
         case ci.status when 'blocked' then 0 when 'critical' then 1 when 'warning' then 2 else 3 end,
@@ -1150,11 +1153,15 @@ export async function allContracts() {
   return query<Record<string, unknown>>(
     `select c.*, o.title as opportunity_title,
             ps.company_name as primary_sub_name,
-            bs.company_name as backup_sub_name
+            bs.company_name as backup_sub_name,
+            -- Who here is running it. Joined rather than fetched per card:
+            -- the completed view can be a hundred rows.
+            coalesce(nullif(btrim(au.name), ''), split_part(au.email, '@', 1)) as assigned_name
        from contracts c
        left join opportunities o on o.id = c.opportunity_id
        left join subcontractors ps on ps.id = c.primary_sub_id
        left join subcontractors bs on bs.id = c.backup_sub_id
+       left join users au on au.id = c.assigned_to
       where c.org_id=$1
       order by c.end_date asc nulls last`,
     [orgId]

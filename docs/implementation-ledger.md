@@ -328,10 +328,17 @@ subcontractors with their trigger and indexes; the domain model; the storage
 layer with batch reads; the API; the picker; the owner on every queue row; and
 an owner filter on Today.
 
-Not yet surfaced: the picker on the compliance, contract and subcontractor
-records, and an owner column in the Opportunities table view. The model and the
-API cover all four kinds, so each is one component placement rather than new
-machinery.
+Surfaced on all four: the opportunity header beside the countdown, the
+subcontractor record, every contract card, every compliance card, and an
+optional Owner column in the Opportunities table. The table's column is
+read-only on purpose: a dropdown in a two-hundred-row table is a mis-click
+that hands somebody else's bid to the wrong person without either of them
+noticing, so assigning happens on the record, where whoever is taking it on
+can see the deadline and the stage they are picking up.
+
+The three list pages join the assignee's name in their existing query rather
+than fetching per card, because the completed-contracts view can be a hundred
+rows and the opportunities table two hundred.
 
 ## Blocked
 

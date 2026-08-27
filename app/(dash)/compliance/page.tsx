@@ -27,6 +27,10 @@ import {
   type ComplianceCardData,
   type CategoryInfo,
 } from "@/components/compliance-item";
+import { assignableMembers } from "@/lib/ownership";
+import type { Owner } from "@/lib/domain/ownership";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -162,6 +166,10 @@ function buildCard(row: Row): ComplianceCardData {
 
   return {
     id: str(row.id),
+    // Joined by complianceBoard. Null is unassigned, which is a real answer.
+    owner: row.assigned_to
+      ? { id: str(row.assigned_to), name: str(row.assigned_name) || "A teammate" }
+      : null,
     label: str(row.label) || "Untitled item",
     contract_number: str(row.contract_number) || null,
     dueDisplay: effDue ? shortDate(effDue) : "-",
@@ -256,10 +264,14 @@ export default async function CompliancePage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const [rows, subRows] = (await Promise.all([
+  const [rows, subRows, teamMembers, viewer] = (await Promise.all([
     complianceBoard(),
     subcontractorComplianceRows(),
-  ])) as [Row[], Row[]];
+    // Tolerant: a picker that cannot load its list is a read-only owner
+    // field, where a throw is a Compliance page that will not open.
+    assignableMembers().catch(() => []),
+    currentUser().catch(() => null),
+  ])) as [Row[], Row[], Owner[], Awaited<ReturnType<typeof currentUser>>];
 
   const stateFilter = parseState(searchParams?.state);
   const areaFilter = parseArea(searchParams?.area);
@@ -581,6 +593,9 @@ export default async function CompliancePage({
                   key={str(r.id)}
                   item={cardById.get(str(r.id))!}
                   info={infoFor(str(r.category))}
+                  members={teamMembers}
+                  viewerId={viewer?.id}
+                  canAssign={can(viewer?.orgRole, "manage_compliance")}
                   highlight
                 />
               ))}
@@ -647,6 +662,9 @@ export default async function CompliancePage({
                             key={str(r.id)}
                             item={cardById.get(str(r.id))!}
                             info={infoFor(cat)}
+                            members={teamMembers}
+                            viewerId={viewer?.id}
+                            canAssign={can(viewer?.orgRole, "manage_compliance")}
                           />
                         ))}
                       </div>

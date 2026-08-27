@@ -8,6 +8,8 @@ import {
   OPP_SORTS,
 } from "@/lib/data";
 import { FilterToolbar } from "@/components/filter-toolbar";
+import { ownersFor } from "@/lib/ownership";
+import { currentUser } from "@/lib/auth";
 import { OpportunitiesTable } from "@/components/opportunities-table";
 import {
   parseFilters,
@@ -240,6 +242,19 @@ export default async function PipelinePage({
           offset: tablePaging.offset,
         })
       : [];
+  /*
+   * Owners for the page in one query, and who is reading.
+   *
+   * Not per row: this table draws up to two hundred, and a lookup per row is
+   * the shape that turns a fast page into a slow one without anybody changing
+   * the page.
+   */
+  const [tableOwners, viewer] = await Promise.all([
+    tableRows.length > 0
+      ? ownersFor("opportunity", tableRows.map((r) => r.id)).catch(() => new Map())
+      : Promise.resolve(new Map()),
+    currentUser().catch(() => null),
+  ]);
   /**
    * Counts elsewhere in the product are clickable, and they land here. The
    * slice comes either from a named set (the Today rail's "In pursuit") or a
@@ -361,6 +376,8 @@ export default async function PipelinePage({
           <div className="scroll-thin min-w-0 flex-1 overflow-auto p-4">
             <OpportunitiesTable
               peekBase={peekBase}
+              owners={tableOwners}
+              viewerId={viewer?.id}
               rows={tableRows}
               total={tableTotal}
               filters={tableValues}

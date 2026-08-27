@@ -3,9 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { OwnerPicker } from "@/components/owner-picker";
+import type { Owner } from "@/lib/domain/ownership";
 
 export interface ComplianceCardData {
   id: string;
+  /** Who here is renewing it. Null means nobody has said. */
+  owner?: Owner | null;
   label: string;
   contract_number: string | null;
   dueDisplay: string; // human date or "-"
@@ -57,10 +61,17 @@ export function ComplianceItemCard({
   item,
   info,
   highlight = false,
+  members = [],
+  viewerId,
+  canAssign = false,
 }: {
   item: ComplianceCardData;
   info?: CategoryInfo;
   highlight?: boolean;
+  /** Everybody in this organization, for the owner picker. */
+  members?: Owner[];
+  viewerId?: string;
+  canAssign?: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -212,6 +223,23 @@ export function ComplianceItemCard({
             Due {item.dueDisplay}
             {item.contract_number ? ` · ${item.contract_number}` : ""}
           </p>
+          {/*
+            Who is renewing it. A lapsed certification is the failure mode
+            this whole page exists to prevent, and the commonest way one lapses
+            in an office of more than one person is that everybody assumed
+            somebody else had it in hand.
+          */}
+          <div className="mt-2 max-w-[12rem]">
+            <OwnerPicker
+              kind="compliance"
+              recordId={item.id}
+              owner={item.owner ?? null}
+              members={members}
+              viewerId={viewerId}
+              canAssign={canAssign}
+              compact
+            />
+          </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className={`badge ${badgeClass(item.color)}`}>{item.statusLabel}</span>

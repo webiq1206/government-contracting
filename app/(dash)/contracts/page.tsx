@@ -16,6 +16,11 @@ import { PAGE_HELP } from "@/lib/help-content";
 import { currency, shortDate, pct } from "@/lib/format";
 import { buildContractPlan } from "@/lib/domain/contract-plan";
 import { GuidedPlanPanel } from "@/components/guided-plan";
+import { OwnerPicker } from "@/components/owner-picker";
+import { assignableMembers } from "@/lib/ownership";
+import type { Owner } from "@/lib/domain/ownership";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +99,19 @@ function NonSsGauge({ pctValue }: { pctValue: number }) {
   );
 }
 
-function ContractCard({ c, completed = false }: { c: Record<string, unknown>; completed?: boolean }) {
+function ContractCard({
+  c,
+  completed = false,
+  members = [],
+  viewerId,
+  canAssign = false,
+}: {
+  c: Record<string, unknown>;
+  completed?: boolean;
+  members?: Owner[];
+  viewerId?: string;
+  canAssign?: boolean;
+}) {
   const milestones = (c.milestones as Milestone[] | null) ?? [];
   const coordination = (c.coordination_log as CoordinationEntry[] | null) ?? [];
   const nonSsPct = Number(c.non_ss_sub_pct ?? 0);
@@ -122,6 +139,27 @@ function ContractCard({ c, completed = false }: { c: Record<string, unknown>; co
           <p className="mt-0.5 text-xs text-slate-500">
             {(c.contract_number as string | null) ?? "-"}
           </p>
+          {/*
+            Who is running this contract. A contract is a year of somebody's
+            attention rather than a record: milestones, invoices, a CPARS
+            rating that has to be argued for. A card that names the value and
+            not the person answers the smaller of the two questions.
+          */}
+          <div className="mt-2 max-w-[12rem]">
+            <OwnerPicker
+              kind="contract"
+              recordId={String(c.id)}
+              owner={
+                c.assigned_to
+                  ? { id: String(c.assigned_to), name: String(c.assigned_name ?? "A teammate") }
+                  : null
+              }
+              members={members}
+              viewerId={viewerId}
+              canAssign={canAssign}
+              compact
+            />
+          </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1.5">
           <span className="text-sm font-semibold text-slate-900">
@@ -286,7 +324,13 @@ export default async function ContractsPage({
 }: {
   searchParams?: { view?: string };
 }) {
-  const rows = await allContracts();
+  const [rows, teamMembers, viewer] = await Promise.all([
+    allContracts(),
+    // Tolerant: a picker that cannot load its list is a read-only owner
+    // field, where a throw is a Contracts page that will not open.
+    assignableMembers().catch(() => []),
+    currentUser().catch(() => null),
+  ]);
 
   /*
    * Bucket once, in one place. Splitting by stored status in SQL would mean
@@ -410,7 +454,13 @@ export default async function ContractsPage({
                           ))}
                         </ul>
                       ) : null}
-                      <ContractCard c={c} completed={active === "completed" || active === "terminated"} />
+                      <ContractCard
+                        c={c}
+                        completed={active === "completed" || active === "terminated"}
+                        members={teamMembers}
+                        viewerId={viewer?.id}
+                        canAssign={can(viewer?.orgRole, "manage_contracts")}
+                      />
                     </div>
                   ))}
                 </div>
