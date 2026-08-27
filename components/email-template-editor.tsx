@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { TokenPalette } from "@/components/token-palette";
 import { UnsavedGuard } from "@/components/unsaved-guard";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { plainToHtml, renderTemplate } from "@/lib/domain/template-render";
 import {
   TEMPLATE_TOKENS,
@@ -37,6 +38,14 @@ export interface EmailTemplate {
   subject: string | null;
   body: string;
   description: string | null;
+  /**
+   * False when this account is still on the wording the platform ships with.
+   *
+   * It changes what every sentence on this card can honestly say. Without it
+   * the page reports "version 1 was saved, you keep receiving version 1",
+   * which is two different rows with the same number and reads as a bug.
+   */
+  ownedByOrg?: boolean;
 }
 
 interface TemplateVersion {
@@ -46,6 +55,23 @@ interface TemplateVersion {
   body: string;
   is_active: boolean;
   created_at: string;
+  status?: "draft" | "published";
+}
+
+/**
+ * A saved edit that is not being sent yet.
+ *
+ * Shaped for the browser rather than reusing the database row, so this file
+ * stays free of anything that would drag a database connection into the
+ * client bundle.
+ */
+export interface TemplateDraftView {
+  version: number;
+  subject: string | null;
+  body: string;
+  draftedAt: string;
+  /** Who saved it, or null on a draft written before this was recorded. */
+  draftedBy: string | null;
 }
 
 function previewFilled(template: string): string {
@@ -56,7 +82,7 @@ function previewFilled(template: string): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function humanSlug(slug: string): string {
+export function humanSlug(slug: string): string {
   if (slug === "template_1_outreach") return "Initial outreach email";
   if (slug === "template_2_followup") return "48-hour follow-up, reply in the thread";
   if (slug === "template_2_followup_new_thread")
@@ -73,7 +99,7 @@ function humanSlug(slug: string): string {
  * does not, or that only one carries the attachments. Editing the wrong one is
  * silent: the change simply never appears in any email anyone receives.
  */
-function slugGuidance(
+export function slugGuidance(
   slug: string,
   /**
    * The account's own follow-up window. Typed into this sentence as "48
@@ -155,11 +181,20 @@ function spliceIntoInput(
 
 interface VersionHistoryProps {
   slug: string;
-  currentVersion: number;
+  /** The version actually being sent, so "in use" is not guessed from order. */
+  publishedVersion: number;
+  /** Bumped by the parent after a publish or discard so a reopened list
+   *  is refetched rather than served from the stale cache below. */
+  refreshKey: number;
   onRestored: (newVersion: number, subject: string | null, body: string) => void;
 }
 
-function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProps) {
+function VersionHistory({
+  slug,
+  publishedVersion,
+  refreshKey,
+  onRestored,
+}: VersionHistoryProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [versions, setVersions] = useState<TemplateVersion[] | null>(null);
@@ -167,6 +202,20 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
+  /*
+   * The list is cached until something changes it. refreshKey is how the
+   * parent says so: after a publish, the row that was a draft is now the one
+   * in use, and a cached list would keep calling it a draft.
+   */
+  const [loadedKey, setLoadedKey] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (loadedKey !== null && loadedKey !== refreshKey) {
+      setVersions(null);
+      setLoadedKey(null);
+      setExpandedId(null);
+    }
+  }, [refreshKey, loadedKey]);
 
   async function load() {
     if (versions !== null) return; // already loaded
@@ -182,6 +231,7 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
         setError(data.error ?? "Failed to load history");
       } else {
         setVersions(data.versions ?? []);
+        setLoadedKey(refreshKey);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -215,8 +265,10 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
       if (!res.ok) {
         setRestoreMsg(`Error: ${data.error ?? "Restore failed"}`);
       } else {
-        const newVer = data.version ?? currentVersion + 1;
-        setRestoreMsg(`Restored as version ${newVer}.`);
+        const newVer = data.version ?? publishedVersion + 1;
+        setRestoreMsg(
+          `Saved as draft version ${newVer}. Publish it to start sending it.`
+        );
         onRestored(newVer, data.subject ?? null, data.body ?? v.body);
         // Invalidate cache so next open re-fetches
         setVersions(null);
@@ -270,6 +322,7 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
               const isExpanded = expandedId === v.id;
               const isRestoring = restoringId === v.id;
               const isCurrent = v.is_active;
+              const isDraft = v.status === "draft";
 
               return (
                 <div
@@ -289,7 +342,12 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
                     </span>
                     {isCurrent && (
                       <span className="shrink-0 rounded-full bg-pursue/15 px-2 py-0.5 text-[10px] font-semibold text-pursue-strong">
-                        current
+                        in use
+                      </span>
+                    )}
+                    {isDraft && (
+                      <span className="shrink-0 rounded-full bg-review/15 px-2 py-0.5 text-[10px] font-semibold text-review">
+                        draft, not sent
                       </span>
                     )}
                     <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
@@ -320,14 +378,18 @@ function VersionHistory({ slug, currentVersion, onRestored }: VersionHistoryProp
                           {v.body}
                         </p>
                       </div>
-                      {!isCurrent && (
+                      {/* Neither the version in use nor the draft itself can
+                          be restored: one is already what is being sent, and
+                          the other is already the draft that restoring would
+                          write. */}
+                      {!isCurrent && !isDraft && (
                         <button
                           type="button"
                           className="btn-ghost text-xs"
                           onClick={() => restore(v)}
                           disabled={isRestoring}
                         >
-                          {isRestoring ? "Restoring…" : "Restore this version"}
+                          {isRestoring ? "Restoring…" : "Restore this version as a draft"}
                         </button>
                       )}
                     </div>
@@ -351,21 +413,85 @@ interface Props {
   metrics: TemplateMetrics;
   /** From this account's automation rules, so the guidance is not a guess. */
   followupHours: number;
+  /**
+   * A saved edit waiting to be published, if there is one.
+   *
+   * Null means the wording below is exactly what the platform is sending.
+   */
+  draft?: TemplateDraftView | null;
+  /**
+   * Told whenever the draft appears or goes away.
+   *
+   * The list beside this editor has to say which templates have an
+   * unpublished draft. Without this it would keep reporting the state the
+   * page was rendered with, so the template you just saved would be the one
+   * the list still called up to date.
+   */
+  onDraftChange?: (slug: string, draft: TemplateDraftView | null) => void;
 }
 
 /**
  * Edit one outreach template. Shows the subject + body with a draggable /
  * clickable token palette and a preview modal with sample values filled in.
  */
-export function EmailTemplateEditor({ template, metrics, followupHours }: Props) {
-  const [subject, setSubject] = useState(template.subject ?? "");
-  const [body, setBody] = useState(template.body);
+export function EmailTemplateEditor({
+  template,
+  metrics,
+  followupHours,
+  draft = null,
+  onDraftChange,
+}: Props) {
   /*
-   * Derived rather than tracked with a flag: the saved template is right
-   * there, so comparing is both simpler and correct after a save, where a
-   * flag has to be remembered to be cleared.
+   * The draft that is waiting, if one is.
+   *
+   * The editor opens on the draft rather than on the published wording,
+   * because somebody who saved an edit yesterday and came back today is here
+   * to finish it, and opening on the live text would silently discard their
+   * work the next time they pressed Save.
    */
-  const dirty = subject !== (template.subject ?? "") || body !== template.body;
+  const [pending, setPending] = useState<TemplateDraftView | null>(draft);
+  const [subject, setSubject] = useState((draft ?? template).subject ?? "");
+  const [body, setBody] = useState((draft ?? template).body);
+  /*
+   * Derived rather than tracked with a flag: the saved text is right there,
+   * so comparing is both simpler and correct after a save, where a flag has
+   * to be remembered to be cleared.
+   *
+   * Compared against the draft when one exists. Comparing against the
+   * published wording instead would leave the page permanently claiming
+   * unsaved changes for anyone with a draft open.
+   */
+  const saved = pending ?? { subject: template.subject, body: template.body };
+  const dirty = subject !== (saved.subject ?? "") || body !== saved.body;
+
+  /*
+   * What is actually going out right now.
+   *
+   * Held separately from the editor fields for one reason: the operator has
+   * to be able to see the live wording while looking at their unpublished
+   * edit, or "publish" is a decision made blind.
+   */
+  const liveSubject = template.subject ?? "";
+  const liveBody = template.body;
+  const draftDiffers =
+    pending !== null &&
+    ((pending.subject ?? "") !== liveSubject || pending.body !== liveBody);
+  const [showLive, setShowLive] = useState(false);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discardBusy, setDiscardBusy] = useState(false);
+  const [publishedVersion, setPublishedVersion] = useState(template.version);
+  /*
+   * Whether the version in use is this account's own.
+   *
+   * Tracked in state because publishing changes it: the moment an org
+   * publishes its first draft it stops inheriting the platform wording, and
+   * the sentences below have to stop saying that it does.
+   */
+  const [owned, setOwned] = useState(template.ownedByOrg !== false);
+  /** Bumped after publish or discard so the version list refetches. */
+  const [historyKey, setHistoryKey] = useState(0);
+  const [publishNotice, setPublishNotice] = useState<string | null>(null);
 
   /*
    * Checked as they type, not only on save.
@@ -393,7 +519,6 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
     () => deliverabilityFindings({ subject, body }),
     [subject, body]
   );
-  const [currentVersion, setCurrentVersion] = useState(template.version);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedVersion, setSavedVersion] = useState<number | null>(null);
@@ -621,16 +746,25 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         version?: number;
+        draft?: TemplateDraftView;
         error?: string;
       };
       if (!res.ok) {
         setError(data.error ?? "Save failed");
         return;
       }
-      const newVer = data.version ?? currentVersion + 1;
-      setCurrentVersion(newVer);
+      const newVer = data.version ?? publishedVersion + 1;
+      const nextDraft: TemplateDraftView = data.draft ?? {
+        version: newVer,
+        subject: subject || null,
+        body,
+        draftedAt: new Date().toISOString(),
+        draftedBy: null,
+      };
+      setPending(nextDraft);
+      onDraftChange?.(template.slug, nextDraft);
       setSavedVersion(newVer);
-      setTimeout(() => setSavedVersion(null), 5000);
+      setTimeout(() => setSavedVersion(null), 6000);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -639,14 +773,111 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
   }
 
   // -------------------------------------------------------------------------
+  // Publish and discard
+  // -------------------------------------------------------------------------
+
+  /**
+   * Put the saved draft into use.
+   *
+   * Deliberately publishes what was saved rather than what is on screen. If
+   * the two differ the button is held back with a reason, because publishing
+   * text the operator can see, but that is not the text that would go out, is
+   * the worst version of this control.
+   */
+  async function publish() {
+    setError(null);
+    setPublishNotice(null);
+    setPublishBusy(true);
+    try {
+      const res = await fetch(`/api/templates/${template.slug}/publish`, {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        version?: number;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(data.error ?? "Publish failed");
+        return;
+      }
+      const ver = data.version ?? pending?.version ?? publishedVersion;
+      setPublishedVersion(ver);
+      setOwned(true);
+      setPending(null);
+      onDraftChange?.(template.slug, null);
+      setShowLive(false);
+      setHistoryKey((k) => k + 1);
+      setPublishNotice(
+        `Version ${ver} is now in use. Outreach sent from here on uses this wording.`
+      );
+      setTimeout(() => setPublishNotice(null), 8000);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPublishBusy(false);
+    }
+  }
+
+  /** Throw the draft away and put the editor back on the live wording. */
+  async function discard() {
+    setError(null);
+    setDiscardBusy(true);
+    try {
+      const res = await fetch(`/api/templates/${template.slug}/discard`, {
+        method: "POST",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(data.error ?? "Could not discard that draft");
+        return;
+      }
+      setPending(null);
+      onDraftChange?.(template.slug, null);
+      setSubject(liveSubject);
+      setBody(liveBody);
+      setShowLive(false);
+      setDiscardOpen(false);
+      setHistoryKey((k) => k + 1);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setDiscardBusy(false);
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Restore callback (from VersionHistory child)
   // -------------------------------------------------------------------------
 
-  function handleRestored(newVersion: number, restoredSubject: string | null, restoredBody: string) {
-    // Update the active version counter shown in the header.
-    // The editor fields are NOT overwritten. The operator must explicitly
-    // decide whether to adopt the restored content.
-    setCurrentVersion(newVersion);
+  /*
+   * Restoring writes a draft, so the editor adopts it.
+   *
+   * It used to leave the fields alone on the reasoning that the operator
+   * should choose. That reasoning stopped holding the moment restore stopped
+   * going live: what is on screen and what is saved would disagree, and the
+   * next Save would overwrite the restored draft with the text the operator
+   * had left sitting in the box.
+   */
+  function handleRestored(
+    newVersion: number,
+    restoredSubject: string | null,
+    restoredBody: string
+  ) {
+    setSubject(restoredSubject ?? "");
+    setBody(restoredBody);
+    const restoredDraft: TemplateDraftView = {
+      version: newVersion,
+      subject: restoredSubject,
+      body: restoredBody,
+      draftedAt: new Date().toISOString(),
+      draftedBy: null,
+    };
+    setPending(restoredDraft);
+    onDraftChange?.(template.slug, restoredDraft);
   }
 
   // -------------------------------------------------------------------------
@@ -686,8 +917,10 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
         {template.description && (
           <p className="mt-0.5 text-sm text-slate-500">{template.description}</p>
         )}
-        <p className="mt-1 text-xs text-slate-500">
-          Currently on version {currentVersion}
+        <p className="mt-1 text-xs text-muted-foreground">
+          {owned
+            ? `Version ${publishedVersion} is in use. It is what this platform sends.`
+            : "The wording this platform ships with is in use. This account has not published its own version."}
         </p>
         {(() => {
           const g = slugGuidance(template.slug, followupHours);
@@ -710,6 +943,122 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
           );
         })()}
       </div>
+
+      {/*
+        * An unpublished draft, stated where it cannot be missed.
+        *
+        * Saving used to put the new wording straight into the next outreach
+        * run. It writes a draft now, which is safer and introduces exactly one
+        * new way to be wrong: an operator who edits, saves, and leaves,
+        * believing the change is live while the platform keeps sending the old
+        * text. This block exists to make that impossible to walk away from.
+        */}
+      {pending && (
+        <div
+          role="status"
+          className="rounded-md border border-review/40 bg-review/5 px-3 py-3"
+        >
+          <p className="text-sm font-medium text-review">
+            Draft saved. It is not being sent yet.
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Saved {formatDate(pending.draftedAt)}
+            {pending.draftedBy ? ` by ${pending.draftedBy}` : ""}.{" "}
+            {owned
+              ? `Subcontractors keep receiving version ${publishedVersion} until you publish.`
+              : "Subcontractors keep receiving the wording this platform ships with until you publish."}
+          </p>
+          {!draftDiffers && (
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              This draft is word for word the same as the version in use, so
+              publishing it changes nothing anybody receives.
+            </p>
+          )}
+          {dirty && (
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              You have further changes that are not saved. Save them first:
+              publishing puts the saved draft into use, not what is on screen.
+            </p>
+          )}
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn-primary text-xs"
+              onClick={publish}
+              disabled={publishBusy || dirty || problems.length > 0}
+              title={
+                dirty
+                  ? "Save your changes first. Publishing uses the saved draft."
+                  : problems.length > 0
+                    ? "Fix the fill-in field problems listed below first."
+                    : undefined
+              }
+            >
+              {publishBusy ? "Publishing…" : "Publish this draft"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost text-xs"
+              onClick={() => setDiscardOpen(true)}
+              disabled={discardBusy}
+            >
+              Discard draft
+            </button>
+            {draftDiffers && (
+              <button
+                type="button"
+                className="btn-ghost text-xs"
+                onClick={() => setShowLive((v) => !v)}
+                aria-expanded={showLive}
+              >
+                {showLive
+                  ? "Hide what publishing changes"
+                  : "See what publishing changes"}
+              </button>
+            )}
+          </div>
+          {showLive && draftDiffers && (
+            <div className="mt-3 space-y-3">
+              {(pending.subject ?? "") !== liveSubject && (
+                <div>
+                  <p className="label mb-1 text-xs">Subject line</p>
+                  <p className="rounded border border-border/55 bg-background px-3 py-2 font-mono text-xs text-muted-foreground line-through dark:border-white/10">
+                    {liveSubject || "(no subject)"}
+                  </p>
+                  <p className="mt-1 rounded border border-border/55 bg-background px-3 py-2 font-mono text-xs text-foreground dark:border-white/10">
+                    {pending.subject || "(no subject)"}
+                  </p>
+                </div>
+              )}
+              {pending.body !== liveBody && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="label mb-1 text-xs">Being sent now</p>
+                    <p className="scroll-thin max-h-48 overflow-y-auto whitespace-pre-wrap rounded border border-border/55 bg-background px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground dark:border-white/10">
+                      {liveBody}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="label mb-1 text-xs">This draft</p>
+                    <p className="scroll-thin max-h-48 overflow-y-auto whitespace-pre-wrap rounded border border-border/55 bg-background px-3 py-2 font-mono text-xs leading-relaxed text-foreground dark:border-white/10">
+                      {pending.body}
+                    </p>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Publishing takes effect on the next outreach this platform
+                sends. Emails already sent are unaffected, and the wording in
+                use now stays in the version history below.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {publishNotice && (
+        <p className="text-xs font-medium text-pursue">{publishNotice}</p>
+      )}
 
       {problems.length > 0 && (
         <div
@@ -770,11 +1119,14 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
         {/* Associated as well as visible, so clicking the label focuses the
             field. The aria-label below named it for a screen reader and did
             nothing for a mouse. */}
-        <label className="label mb-1.5 block" htmlFor="template-subject">
+        {/* Scoped to the slug. Every template on the page used the same two
+            element ids, so clicking a label focused the first template's
+            field no matter which template the label belonged to. */}
+        <label className="label mb-1.5 block" htmlFor={`template-subject-${template.slug}`}>
           Subject line
         </label>
         <input
-          id="template-subject"
+          id={`template-subject-${template.slug}`}
           ref={subjectRef}
           className="input font-mono text-sm"
           value={subject}
@@ -791,7 +1143,7 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
       {/* Body */}
       <div>
         <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-          <label className="label block" htmlFor="template-body">
+          <label className="label block" htmlFor={`template-body-${template.slug}`}>
             Email body
           </label>
           <div
@@ -813,7 +1165,7 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
           </div>
         </div>
         <textarea
-          id="template-body"
+          id={`template-body-${template.slug}`}
           ref={bodyRef}
           className="input min-h-[260px] resize-y font-mono text-sm leading-relaxed"
           value={body}
@@ -884,7 +1236,7 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
         </button>
         {savedVersion !== null && (
           <span className="text-xs font-medium text-pursue">
-            ✓ Saved as version {savedVersion}
+            ✓ Saved as draft version {savedVersion}. Not being sent yet.
           </span>
         )}
         {testResult?.ok && (
@@ -898,10 +1250,33 @@ export function EmailTemplateEditor({ template, metrics, followupHours }: Props)
         {error && <span className="text-xs text-risk">{error}</span>}
       </div>
 
+      <ConfirmDialog
+        open={discardOpen}
+        title={`Discard the unpublished draft of ${humanSlug(template.slug)}`}
+        body={
+          <>
+            <p>
+              The saved draft is deleted and the editor goes back to the
+              wording being sent now.
+            </p>
+            <p className="mt-2">
+              No email changes. A draft is never sent, so nothing anybody
+              receives is different before or after this.
+            </p>
+          </>
+        }
+        confirmLabel="Discard the draft"
+        danger
+        busy={discardBusy}
+        onConfirm={() => void discard()}
+        onCancel={() => setDiscardOpen(false)}
+      />
+
       {/* Version history */}
       <VersionHistory
         slug={template.slug}
-        currentVersion={currentVersion}
+        publishedVersion={publishedVersion}
+        refreshKey={historyKey}
         onRestored={handleRestored}
       />
 

@@ -4,20 +4,20 @@ import { saveTemplateVersion } from "@/lib/domain/template-versions";
 import { logAgent } from "@/lib/logger";
 import { query } from "@/lib/db";
 import { LEGACY_ORG_ID } from "@/lib/tenant-context";
+import { isEditableTemplateSlug } from "@/lib/domain/template-slugs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const EDITABLE_SLUGS = ["template_1_outreach", "template_2_followup"];
 
 /**
  * Restore a previous template version.
  *
  * Body: { version: number }
  *
- * Reads the requested version row and saves its subject/body as a new version
- * (version N+1), making it the new active version. The editor fields are NOT
- * automatically overwritten — the operator chooses to restore after comparing.
+ * Reads the requested version row and saves its subject/body as a new draft
+ * version (N+1). It does not go back into use until somebody publishes it,
+ * for the same reason an ordinary edit does not: restoring is a change to
+ * what this platform says on the company's behalf.
  */
 export async function POST(
   req: Request,
@@ -28,7 +28,7 @@ export async function POST(
   const { user: auth, orgId } = ctx;
 
   const { slug } = params;
-  if (!EDITABLE_SLUGS.includes(slug)) {
+  if (!isEditableTemplateSlug(slug)) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
@@ -60,13 +60,13 @@ export async function POST(
   const source = rows[0];
 
   try {
-    const inserted = await saveTemplateVersion(slug, source.subject, source.body, orgId);
+    const inserted = await saveTemplateVersion(slug, source.subject, source.body, orgId, auth.email);
 
     await logAgent({
       agent: "operator",
       action: "template-restore",
       level: "info",
-      message: `${auth.email} restored ${slug} v${body.version} → new v${inserted.version}.`,
+      message: `${auth.email} restored ${slug} v${body.version} into a draft, v${inserted.version}.`,
     });
 
     return NextResponse.json({
@@ -74,6 +74,13 @@ export async function POST(
       version: inserted.version,
       subject: source.subject,
       body: source.body,
+      draft: {
+        version: inserted.version,
+        subject: source.subject,
+        body: source.body,
+        draftedAt: inserted.draftedAt,
+        draftedBy: auth.email,
+      },
     });
   } catch (err) {
     const status = (err as { status?: number }).status;

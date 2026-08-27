@@ -11,19 +11,10 @@ import {
 } from "@/lib/domain/template-tokens";
 import { renderOutreachBrief } from "@/lib/domain/outreach-email";
 import { validateTemplate } from "@/lib/domain/outreach-validation";
+import { isEditableTemplateSlug } from "@/lib/domain/template-slugs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** Editable outreach template slugs (operators cannot create new slugs). */
-const EDITABLE_SLUGS = [
-  "template_1_outreach",
-  "template_2_followup",
-  // The fallback body, used only when the original thread cannot be replied
-  // to. Editable for the same reason the others are: it is the email a
-  // subcontractor reads.
-  "template_2_followup_new_thread",
-];
 
 /**
  * Refuse a template that would break at send time.
@@ -64,7 +55,7 @@ export async function GET(
   const { orgId } = ctx;
 
   const { slug } = params;
-  if (!EDITABLE_SLUGS.includes(slug)) {
+  if (!isEditableTemplateSlug(slug)) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
@@ -97,7 +88,7 @@ export async function POST(
   const { user: auth, orgId } = ctx;
 
   const { slug } = params;
-  if (!EDITABLE_SLUGS.includes(slug)) {
+  if (!isEditableTemplateSlug(slug)) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
@@ -171,7 +162,7 @@ export async function PATCH(
   const { user: auth, orgId } = ctx;
 
   const { slug } = params;
-  if (!EDITABLE_SLUGS.includes(slug)) {
+  if (!isEditableTemplateSlug(slug)) {
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
@@ -192,16 +183,30 @@ export async function PATCH(
   if (invalid) return invalid;
 
   try {
-    const inserted = await saveTemplateVersion(slug, subject, newBody, orgId);
+    const inserted = await saveTemplateVersion(slug, subject, newBody, orgId, auth.email);
 
     await logAgent({
       agent: "operator",
       action: "template-update",
       level: "info",
-      message: `${auth.email} saved ${slug} v${inserted.version}.`,
+      message: `${auth.email} saved ${slug} v${inserted.version} as a draft.`,
     });
 
-    return NextResponse.json({ ok: true, version: inserted.version });
+    return NextResponse.json({
+      ok: true,
+      version: inserted.version,
+      // The saved draft, echoed back so the editor can say plainly what is
+      // waiting and what is still going out. Without it the page would have
+      // to guess its own timestamp and would report "just now" for a save
+      // the database stamped a second earlier.
+      draft: {
+        version: inserted.version,
+        subject,
+        body: newBody,
+        draftedAt: inserted.draftedAt,
+        draftedBy: auth.email,
+      },
+    });
   } catch (err) {
     const status = (err as { status?: number }).status;
     if (status === 404) {
