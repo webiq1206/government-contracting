@@ -263,6 +263,37 @@ d("reported metrics (integration)", () => {
     expect(value(a, "automation_success_rate")?.value).toBeNull();
   });
 
+  it("gives a pinned metric the same value as the reported one", async () => {
+    /*
+     * The property the shared catalog exists for. An operator who pins a
+     * figure and then reads a different one further down the same page has no
+     * way to tell which is right, and will reasonably conclude neither is.
+     */
+    const { getMetric } = await import("../lib/domain/kpi");
+    const reported = await runWithOrg(orgId, () => reporting.tradeCoverageMetrics(null, null));
+    const def = getMetric("trade_quote_coverage")!;
+    const pinned = await runWithOrg(orgId, () =>
+      reporting.pinnedMetric({ ...def, label: "My trade coverage" }, { days: 0 })
+    );
+    expect(pinned.value).toBe(value(reported, "trade_quote_coverage")?.value);
+    expect(pinned.coverage).toEqual(value(reported, "trade_quote_coverage")?.coverage);
+    // The operator's own label survives; they named it for a reason.
+    expect(pinned.label).toBe("My trade coverage");
+    // And the real inclusion rule arrives with it, not the picker placeholder.
+    expect(pinned.provenance.inclusion).toBe(
+      value(reported, "trade_quote_coverage")?.provenance.inclusion
+    );
+  });
+
+  it("gives a pinned older metric a reason rather than a dash", async () => {
+    const { getMetric } = await import("../lib/domain/kpi");
+    const def = getMetric("avg_margin")!;
+    const pinned = await runWithOrg(otherOrgId, () => reporting.pinnedMetric(def, {}));
+    expect(pinned.value).toBeNull();
+    expect(pinned.absent).toBeTruthy();
+    expect(pinned.provenance.formula.length).toBeGreaterThan(10);
+  });
+
   it("makes every metric say where it came from", async () => {
     /*
      * Provenance is part of the type so a metric cannot be added without it,

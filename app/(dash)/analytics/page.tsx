@@ -4,13 +4,12 @@ import {
   computeKpisFallback,
   analyticsExtras,
   customKpis,
-  computeCustomKpi,
 } from "@/lib/data";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { KpiManager, KpiDeleteButton } from "@/components/kpi-manager";
-import { MetricGroup } from "@/components/metric-card";
+import { MetricCard, MetricGroup } from "@/components/metric-card";
 import {
   deadlineMetrics,
   reviewMetrics,
@@ -19,9 +18,10 @@ import {
   dataConfidenceMetrics,
   automationMetrics,
   pipelineValueReport,
+  pinnedMetric,
 } from "@/lib/reporting";
 import { coverageSentence } from "@/lib/domain/report-metrics";
-import { getMetric, formatKpiValue, describeKpiParams } from "@/lib/domain/kpi";
+import { getMetric, describeKpiParams } from "@/lib/domain/kpi";
 import { currency, pct } from "@/lib/format";
 import { PIPELINE_STAGES, funnelCounts, funnelBreakdown } from "@/lib/data";
 import {
@@ -270,13 +270,26 @@ export default async function AnalyticsPage({
     return `/analytics?${p.toString()}`;
   };
   // Compute each operator-defined KPI live (each is a bounded, safe query).
-  const kpiValues = await Promise.all(
-    kpis.map(async (k) => ({
-      ...k,
-      value: await computeCustomKpi(k.metric, k.params),
-      unit: getMetric(k.metric)?.unit ?? "count",
-    }))
-  );
+  /*
+   * Pinned metrics go through the same path the reports do, so a pinned "Win
+   * rate" and the reported one cannot come out different. A pinned metric
+   * whose definition has been removed from the catalog is skipped rather than
+   * rendered as a dash under a label nobody can explain.
+   */
+  const kpiValues = (
+    await Promise.all(
+      kpis.map(async (k) => {
+        const def = getMetric(k.metric);
+        if (!def) return null;
+        return {
+          id: k.id,
+          params: k.params,
+          metric: k.metric,
+          computed: await pinnedMetric({ ...def, label: k.label }, k.params),
+        };
+      })
+    )
+  ).filter((x): x is NonNullable<typeof x> => x !== null);
   // Stages that actually hold value, largest first, for the by-stage breakdown.
   const stageValue = extras.byStage
     .filter((s) => s.value > 0 || s.count > 0)
@@ -687,15 +700,20 @@ export default async function AnalyticsPage({
               {kpiValues.map((k) => {
                 const desc = describeKpiParams(k.metric, k.params);
                 return (
-                  <div key={k.id} className="card">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="label">{k.label}</div>
+                  /*
+                    The same card the reports use, so a pinned metric says
+                    where it came from and why it has no value, exactly as the
+                    reported one does. It used to print a bare dash for both
+                    "nothing qualifies" and "the query failed".
+                  */
+                  <div key={k.id} className="relative">
+                    <div className="absolute right-3 top-3 z-10">
                       <KpiDeleteButton id={k.id} />
                     </div>
-                    <div className="num mt-1.5 text-4xl font-semibold tracking-tight text-slate-900">
-                      {formatKpiValue(k.value, k.unit)}
-                    </div>
-                    {desc && <div className="mt-1.5 text-xs text-slate-500">{desc}</div>}
+                    <MetricCard metric={k.computed} />
+                    {desc && (
+                      <p className="mt-1 px-1 text-xs text-slate-500">{desc}</p>
+                    )}
                   </div>
                 );
               })}

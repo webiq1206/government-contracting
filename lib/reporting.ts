@@ -13,7 +13,13 @@
  * and a wrong number.
  */
 import { query, queryOne } from "./db";
-import { currentOrg } from "./data";
+import { computeCustomKpi, currentOrg } from "./data";
+import {
+  asMetricUnit,
+  isReportedKpi,
+  type KpiMetricDef,
+  type KpiParams,
+} from "./domain/kpi";
 import {
   metric,
   share,
@@ -603,4 +609,64 @@ export async function automationMetrics(from: Date | null, to: Date | null): Pro
       }
     ),
   ];
+}
+
+// ---------------------------------------------------------------------------
+// Pinned metrics
+// ---------------------------------------------------------------------------
+
+/**
+ * One pinned KPI, in the same shape as a reported one.
+ *
+ * The point of this function is that there is no second definition. A metric
+ * an operator pins is either literally the reported metric, fetched by key
+ * from the same function that renders the report, or it is one of the older
+ * catalog entries, wrapped so it gains the same absent-reason and provenance
+ * treatment. Either way the card can say what it means, and a pinned figure
+ * cannot disagree with the one further down the page.
+ */
+export async function pinnedMetric(
+  def: KpiMetricDef,
+  params: KpiParams
+): Promise<Metric> {
+  const days = params.days ?? 0;
+  const from = days > 0 ? new Date(Date.now() - days * 86_400_000) : null;
+
+  if (isReportedKpi(def.id)) {
+    const groups: Record<string, () => Promise<Metric[]>> = {
+      deadline_missed: () => deadlineMetrics(from, null),
+      deadline_on_time_rate: () => deadlineMetrics(from, null),
+      review_decision_days: () => reviewMetrics(from, null),
+      sub_confirmed_delivery_rate: () => subcontractorMetrics(from, null),
+      sub_response_rate: () => subcontractorMetrics(from, null),
+      sub_quote_rate: () => subcontractorMetrics(from, null),
+      trade_quote_coverage: () => tradeCoverageMetrics(from, null),
+      confidence_measured_coverage: () => dataConfidenceMetrics(from, null),
+      automation_success_rate: () => automationMetrics(from, null),
+      automation_recovery_rate: () => automationMetrics(from, null),
+    };
+    const found = (await groups[def.id]()).find((m) => m.key === def.id);
+    /*
+     * The label the operator chose, over the catalog's. They named it for a
+     * reason, and a card that renames itself is one they stop recognizing.
+     */
+    if (found) return { ...found, label: def.label };
+    return metric(def.id, def.label, asMetricUnit(def.unit), null,
+      "This metric could not be computed.", def.provenance);
+  }
+
+  const raw = await computeCustomKpi(def.id, params).catch(() => null);
+  return metric(
+    def.id,
+    def.label,
+    asMetricUnit(def.unit),
+    raw,
+    /*
+     * A reason rather than a dash. The old card printed "-" for both "nothing
+     * qualifies" and "the query failed", which are different problems and one
+     * of them needs somebody to look.
+     */
+    "Nothing in range carries what this needs.",
+    def.provenance
+  );
 }
