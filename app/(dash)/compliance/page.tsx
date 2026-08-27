@@ -6,6 +6,8 @@ import { AddComplianceItem } from "@/components/add-compliance-item";
 import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate, complianceColorClass } from "@/lib/format";
 import { statusColor } from "@/lib/domain/compliance";
+import { ComplianceCalendar } from "@/components/compliance-calendar";
+import { buildCalendar, parseMonth } from "@/lib/domain/compliance-calendar";
 import {
   COMPLIANCE_STATE_LABEL,
   complianceState,
@@ -284,10 +286,23 @@ function chipClass(active: boolean, empty: boolean): string {
   return `${base} border-border text-foreground hover:border-foreground/30`;
 }
 
-function filterHref(area: ComplianceArea | null, state: BoardState | null): string {
+/**
+ * A board link, keeping whatever else is on.
+ *
+ * The view and the month have to survive a filter change and each other, or
+ * switching to the calendar loses the area somebody had chosen and switching
+ * months drops them back to the board.
+ */
+function filterHref(
+  area: ComplianceArea | null,
+  state: BoardState | null,
+  opts: { view?: "board" | "calendar"; month?: string } = {}
+): string {
   const params = new URLSearchParams();
   if (area) params.set("area", area);
   if (state) params.set("state", state);
+  if (opts.view === "calendar") params.set("view", "calendar");
+  if (opts.month) params.set("month", opts.month);
   const q = params.toString();
   return q ? `/compliance?${q}` : "/compliance";
 }
@@ -308,6 +323,9 @@ export default async function CompliancePage({
 
   const stateFilter = parseState(searchParams?.state);
   const areaFilter = parseArea(searchParams?.area);
+  const rawView = Array.isArray(searchParams?.view) ? searchParams.view[0] : searchParams?.view;
+  const view: "board" | "calendar" = rawView === "calendar" ? "calendar" : "board";
+  const month = parseMonth(searchParams?.month);
 
   const subBoard = subcontractorComplianceBoard(groupSubRows(subRows));
 
@@ -371,6 +389,29 @@ export default async function CompliancePage({
    * question an area listing cannot answer, and it was being answered by
    * reading every card and doing the arithmetic by hand.
    */
+  /*
+   * The same dates, as a month grid.
+   *
+   * Built from every dated card rather than only the ninety-day window: a
+   * calendar that silently dropped anything further out would answer "what
+   * does next March look like" with an empty month.
+   */
+  const calendar = buildCalendar({
+    month,
+    items: deadlineRows.flatMap((r) => {
+      const card = cardById.get(str(r.id));
+      if (!card) return [];
+      return [{
+        id: card.id,
+        label: card.label,
+        dueAt: card.dateInputValue ? `${card.dateInputValue}T00:00:00Z` : "",
+        state: card.statusLabel,
+        tone: card.color,
+      }];
+    }),
+    timeZone: null,
+  });
+
   const timeline: {
     key: string;
     label: string;
@@ -552,7 +593,37 @@ export default async function CompliancePage({
           ))}
         </nav>
 
-        {timeline.length > 0 && (
+        {/*
+          Two ways of reading the same dates. The strip answers "which of
+          these lands first"; the calendar answers "what does March look
+          like", which is the question somebody asks when deciding which week
+          to be away or noticing three renewals have stacked on one Friday.
+        */}
+        <nav aria-label="How to read the dates" className="flex gap-2">
+          <Link
+            href={filterHref(areaFilter, stateFilter)}
+            aria-current={view === "board" ? "page" : undefined}
+            className={chipClass(view === "board", false)}
+          >
+            Next 90 days
+          </Link>
+          <Link
+            href={filterHref(areaFilter, stateFilter, { view: "calendar", month })}
+            aria-current={view === "calendar" ? "page" : undefined}
+            className={chipClass(view === "calendar", false)}
+          >
+            By month
+          </Link>
+        </nav>
+
+        {view === "calendar" && (
+          <ComplianceCalendar
+            cal={calendar}
+            hrefFor={(m) => filterHref(areaFilter, stateFilter, { view: "calendar", month: m })}
+          />
+        )}
+
+        {view === "board" && timeline.length > 0 && (
           <section aria-labelledby="expiring-soon">
             <h2 id="expiring-soon" className="label mb-1">
               Landing in the next 90 days
