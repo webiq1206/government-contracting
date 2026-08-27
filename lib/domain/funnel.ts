@@ -25,6 +25,7 @@ export type FunnelKey =
   | "scored"
   | "pursued"
   | "subs_contacted"
+  | "replies_received"
   | "quotes_received"
   | "bid_built"
   | "submitted"
@@ -62,6 +63,22 @@ export const FUNNEL_STEPS: FunnelStepDef[] = [
     key: "subs_contacted",
     label: "Subs contacted",
     meaning: "At least one subcontractor was emailed about it.",
+    href: "/communications",
+  },
+  {
+    /*
+     * The step the funnel was missing, and the one that separates two
+     * completely different problems.
+     *
+     * "40 contacted, 3 quoted" can mean nobody answered, or that plenty
+     * answered and almost none would price the work. The first is a
+     * deliverability or targeting problem; the second is a scope or
+     * relationship one, and they are fixed in different places. Without this
+     * row the page could not tell an operator which they had.
+     */
+    key: "replies_received",
+    label: "Replies received",
+    meaning: "At least one subcontractor wrote back about it.",
     href: "/communications",
   },
   {
@@ -273,15 +290,52 @@ export function snapshotFreshness(generatedAt: Date | string | null, now = new D
 // Drill-down dimensions
 // ---------------------------------------------------------------------------
 
-export type BreakdownKey = "naics" | "state" | "agency" | "set_aside" | "score_band";
+export type BreakdownKey =
+  | "naics"
+  | "state"
+  | "agency"
+  | "set_aside"
+  | "score_band"
+  | "trade"
+  | "owner";
 
-export const BREAKDOWN_OPTIONS: { key: BreakdownKey; label: string }[] = [
+export interface BreakdownOption {
+  key: BreakdownKey;
+  label: string;
+  /**
+   * How rows are counted, where it is not one row per opportunity.
+   *
+   * Every other dimension is a column on the opportunity, so each opportunity
+   * lands in exactly one row and the totals add up to the account. Trade does
+   * not work that way, and a table that silently totals to more than the
+   * account has is one somebody reconciles against the pipeline and gives up
+   * on.
+   */
+  note?: string;
+}
+
+export const BREAKDOWN_OPTIONS: BreakdownOption[] = [
   { key: "agency", label: "Agency" },
   { key: "naics", label: "NAICS" },
   { key: "state", label: "State" },
   { key: "set_aside", label: "Set-aside" },
   { key: "score_band", label: "Score band" },
+  {
+    key: "trade",
+    label: "Trade",
+    note: "One opportunity is counted under every trade it sourced, so these rows add up to more than the pipeline.",
+  },
+  {
+    key: "owner",
+    label: "Owner",
+    note: "Whoever the opportunity is assigned to now, not whoever worked it at the time.",
+  },
 ];
+
+/** The counting rule for a dimension, when it needs saying. */
+export function breakdownNote(k: BreakdownKey): string | null {
+  return BREAKDOWN_OPTIONS.find((o) => o.key === k)?.note ?? null;
+}
 
 export function parseBreakdown(v: unknown): BreakdownKey {
   const s = typeof v === "string" ? v : "";

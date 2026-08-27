@@ -1924,6 +1924,20 @@ export async function funnelCounts(
         where org_id = $1 and direction = 'outbound' and opportunity_id is not null
         group by opportunity_id
      ),
+     /*
+      * The first time a subcontractor wrote back.
+      *
+      * Same shape as out_first, and the reason the funnel needed it: without
+      * this step "contacted 40, quoted 3" cannot say whether nobody answered
+      * or plenty answered and would not price the work, and those two are
+      * fixed in different places.
+      */
+     in_first as (
+       select opportunity_id, min(created_at) as first_in
+         from communications
+        where org_id = $1 and direction = 'inbound' and opportunity_id is not null
+        group by opportunity_id
+     ),
      quote_first as (
        select opportunity_id, min(created_at) as first_quote
          from quotes
@@ -1948,20 +1962,30 @@ export async function funnelCounts(
               (c.stage in ('sub_research','outreach','call_queue','quote_entry',
                            'bid_building','submitted','won','lost')
                 or c.tier = 'pursue') as pursued,
-              cm.first_out, q.first_quote,
+              cm.first_out, rp.first_in, q.first_quote,
               b.first_bid, b.first_submit, b.decided, b.won, b.lost
          from cohort c
          left join out_first cm on cm.opportunity_id = c.id
+         left join in_first rp on rp.opportunity_id = c.id
          left join quote_first q on q.opportunity_id = c.id
          left join bid_first b on b.opportunity_id = c.id
      ),
      ranked as (
        select f.*,
+              /*
+               * Furthest step reached, and it stays monotonic on purpose: a
+               * quote that arrived without a logged inbound message still
+               * counts as having replied, because the quote is the reply. The
+               * alternative is a funnel where the later step is larger than
+               * the one before it, which reads as a bug whichever way it is
+               * explained.
+               */
               case
-                when f.decided then 7
-                when f.first_submit is not null then 6
-                when f.first_bid is not null then 5
-                when f.first_quote is not null then 4
+                when f.decided then 8
+                when f.first_submit is not null then 7
+                when f.first_bid is not null then 6
+                when f.first_quote is not null then 5
+                when f.first_in is not null then 4
                 when f.first_out is not null then 3
                 when f.pursued then 2
                 when f.scored then 1
@@ -1978,6 +2002,7 @@ export async function funnelCounts(
        count(*) filter (where furthest >= 5)::int as r5,
        count(*) filter (where furthest >= 6)::int as r6,
        count(*) filter (where furthest >= 7)::int as r7,
+       count(*) filter (where furthest >= 8)::int as r8,
        count(*) filter (where furthest = 0 and not still_open)::int as d1,
        count(*) filter (where furthest = 1 and not still_open)::int as d2,
        count(*) filter (where furthest = 2 and not still_open)::int as d3,
@@ -1985,6 +2010,7 @@ export async function funnelCounts(
        count(*) filter (where furthest = 4 and not still_open)::int as d5,
        count(*) filter (where furthest = 5 and not still_open)::int as d6,
        count(*) filter (where furthest = 6 and not still_open)::int as d7,
+       count(*) filter (where furthest = 7 and not still_open)::int as d8,
        count(*) filter (where furthest = 0 and still_open)::int as p1,
        count(*) filter (where furthest = 1 and still_open)::int as p2,
        count(*) filter (where furthest = 2 and still_open)::int as p3,
@@ -1992,14 +2018,24 @@ export async function funnelCounts(
        count(*) filter (where furthest = 4 and still_open)::int as p5,
        count(*) filter (where furthest = 5 and still_open)::int as p6,
        count(*) filter (where furthest = 6 and still_open)::int as p7,
+       count(*) filter (where furthest = 7 and still_open)::int as p8,
        count(*) filter (where won)::int as won,
        count(*) filter (where lost and not won)::int as lost,
        percentile_cont(0.5) within group (
          order by extract(epoch from (first_out - created_at)) / 86400.0
        ) filter (where first_out is not null) as m_contact,
        percentile_cont(0.5) within group (
-         order by extract(epoch from (first_quote - first_out)) / 86400.0
-       ) filter (where first_quote is not null and first_out is not null) as m_quote,
+         order by extract(epoch from (first_in - first_out)) / 86400.0
+       ) filter (where first_in is not null and first_out is not null) as m_reply,
+       /*
+        * Measured from the reply where there is one, and from the send where
+        * there is not. Measuring every quote from the send would make the
+        * quote step look slower than it is on every opportunity where a
+        * conversation happened first.
+        */
+       percentile_cont(0.5) within group (
+         order by extract(epoch from (first_quote - coalesce(first_in, first_out))) / 86400.0
+       ) filter (where first_quote is not null and coalesce(first_in, first_out) is not null) as m_quote,
        percentile_cont(0.5) within group (
          order by extract(epoch from (first_bid - first_quote)) / 86400.0
        ) filter (where first_bid is not null and first_quote is not null) as m_bid,
@@ -2026,33 +2062,37 @@ export async function funnelCounts(
       scored: n(r.r1),
       pursued: n(r.r2),
       subs_contacted: n(r.r3),
-      quotes_received: n(r.r4),
-      bid_built: n(r.r5),
-      submitted: n(r.r6),
-      decided: n(r.r7),
+      replies_received: n(r.r4),
+      quotes_received: n(r.r5),
+      bid_built: n(r.r6),
+      submitted: n(r.r7),
+      decided: n(r.r8),
     },
     droppedBefore: {
       found: 0,
       scored: n(r.d1),
       pursued: n(r.d2),
       subs_contacted: n(r.d3),
-      quotes_received: n(r.d4),
-      bid_built: n(r.d5),
-      submitted: n(r.d6),
-      decided: n(r.d7),
+      replies_received: n(r.d4),
+      quotes_received: n(r.d5),
+      bid_built: n(r.d6),
+      submitted: n(r.d7),
+      decided: n(r.d8),
     },
     pendingBefore: {
       found: 0,
       scored: n(r.p1),
       pursued: n(r.p2),
       subs_contacted: n(r.p3),
-      quotes_received: n(r.p4),
-      bid_built: n(r.p5),
-      submitted: n(r.p6),
-      decided: n(r.p7),
+      replies_received: n(r.p4),
+      quotes_received: n(r.p5),
+      bid_built: n(r.p6),
+      submitted: n(r.p7),
+      decided: n(r.p8),
     },
     medianDaysInto: {
       subs_contacted: median(r.m_contact),
+      replies_received: median(r.m_reply),
       quotes_received: median(r.m_quote),
       bid_built: median(r.m_bid),
       submitted: median(r.m_submit),
@@ -2088,9 +2128,39 @@ export async function funnelBreakdown(
         when o.score >= 40 then 'Weak (40 to 59)'
         else 'Poor (under 40)'
       end`,
+    /*
+     * Supplied by the trade join below rather than read off the opportunity.
+     * An opportunity has as many trades as it sourced, which is why this
+     * dimension needs its own FROM.
+     */
+    trade: `coalesce(nullif(btrim(t.trade), ''), 'Trade not recorded')`,
+    /*
+     * Unassigned is a real answer and gets its own row. Folding it into
+     * "Not stated" alongside a missing agency code would hide the one thing
+     * this dimension exists to show: work nobody has picked up.
+     */
+    owner: `coalesce(nullif(btrim(u.name), ''), nullif(u.email, ''), 'Unassigned')`,
   };
   const expr = EXPR[dimension] ?? EXPR.agency;
   const orgId = await currentOrg();
+
+  /*
+   * Trade is many-per-opportunity, so it joins a distinct set of the trades
+   * actually sourced. `distinct` matters: opportunity_subs holds one row per
+   * subcontractor, so without it an opportunity that went to four roofers
+   * would count four times under Roofing and its win rate would be computed
+   * over four copies of the same bid.
+   */
+  const tradeJoin =
+    dimension === "trade"
+      ? `join lateral (
+           select distinct os.trade
+             from opportunity_subs os
+            where os.opportunity_id = o.id and os.removed_at is null
+         ) t on true`
+      : "";
+  const ownerJoin = dimension === "owner" ? `left join users u on u.id = o.assigned_to` : "";
+
   return query<BreakdownRow>(
     `select ${expr} as key,
             count(*)::int as found,
@@ -2103,6 +2173,8 @@ export async function funnelBreakdown(
             count(*) filter (where b.won)::int as won,
             count(*) filter (where b.lost and not b.won)::int as lost
        from opportunities o
+       ${tradeJoin}
+       ${ownerJoin}
        left join lateral (
          select min(submitted_at) as first_submit,
                 bool_or(outcome = 'won') as won,

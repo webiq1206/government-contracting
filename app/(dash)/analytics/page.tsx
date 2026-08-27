@@ -29,6 +29,7 @@ import {
   BREAKDOWN_OPTIONS,
   parseBreakdown,
   breakdownLabel,
+  breakdownNote,
   breakdownLines,
   type FunnelStep,
 } from "@/lib/domain/funnel";
@@ -705,6 +706,18 @@ export default async function AnalyticsPage({
                 </tbody>
               </table>
               <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                {/*
+                  How this dimension counts, where it is not one row per
+                  opportunity. Trade is the case: an opportunity appears under
+                  every trade it sourced, so the column totals more than the
+                  pipeline, and a table that does not say so is one somebody
+                  reconciles against Opportunities and stops trusting.
+                */}
+                {breakdownNote(by) && (
+                  <>
+                    <strong className="font-semibold text-slate-700">{breakdownNote(by)}</strong>{" "}
+                  </>
+                )}
                 Win rate is wins over decided bids, so a bid still sitting with the agency
                 does not count against you. Rows with nothing decided say so instead of
                 showing nought per cent. The top 25 values are listed.
