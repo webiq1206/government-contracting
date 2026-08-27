@@ -22,6 +22,7 @@ import {
   tradeCoverageMetrics,
   dataConfidenceMetrics,
   automationMetrics,
+  workRemovedMetrics,
   pipelineValueReport,
   pinnedMetric,
 } from "@/lib/reporting";
@@ -359,6 +360,7 @@ export default async function AnalyticsPage({
     tradeCoverage,
     confidence,
     automation,
+    workRemoved,
     valueReport,
   ] = await Promise.all([
     // The window runs from `from` up to now, which is what a null upper bound
@@ -369,6 +371,7 @@ export default async function AnalyticsPage({
     tradeCoverageMetrics(from, null),
     dataConfidenceMetrics(from, null),
     automationMetrics(from, null),
+    workRemovedMetrics(from, null),
     pipelineValueReport(from, null, winRate),
   ]);
 
@@ -748,6 +751,11 @@ export default async function AnalyticsPage({
             title="Automation"
             description="Whether the platform's own work is finishing, and how much of it comes back to a person."
             metrics={automation}
+          />
+          <MetricGroup
+            title="Work you did not have to do"
+            description="Counts of records the automation demonstrably wrote, with the counting rule under each. Deliberately never converted into hours saved: the counts are the claim, and a number multiplied by an assumed minutes-per-task is not one anybody can defend."
+            metrics={workRemoved}
           />
         </section>
 

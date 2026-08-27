@@ -194,5 +194,11 @@ d("maintenance sweeps stay inside one organization (integration)", () => {
       // organization.
       expect(send.orgId).toBe(owner!.id);
     }
-  });
+    /*
+     * 15s rather than the 5s default. The sweep serialises behind a
+     * platform-wide advisory lock shared with the threading test, so under a
+     * fully parallel suite this test waits its turn before it starts, and
+     * the wait is load, not a defect.
+     */
+  }, 15_000);
 });

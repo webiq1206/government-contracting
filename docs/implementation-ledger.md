@@ -7,9 +7,13 @@ Status is one of `Not started`, `In progress`, `Implemented`, `Verified`,
 attached: a commit, a test name, a query result, or a screenshot.
 
 **The rule this ledger exists to enforce:** the instructions were written
-against commit `814dee6`. There are 51 commits since. A finding appearing in
-the instructions is not evidence that it is still true, and this ledger
-records what was actually checked rather than what was assumed.
+against commit `814dee6`, and the work ran to well over a hundred commits
+past it. A finding appearing in the instructions is not evidence that it is
+still true, and this ledger records what was actually checked rather than
+what was assumed.
+
+The engagement's closing summary, with every completion claim tied to its
+evidence, is `docs/handoff-report.md`.
 
 ## Baseline, established at `21a6316`
 

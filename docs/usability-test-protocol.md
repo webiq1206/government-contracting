@@ -51,11 +51,44 @@ opportunity", not "open Today and look at the top of the list".
 6. **Tell me the date the government needs our bid.**
 7. **Tell me the date we asked subcontractors for their prices.**
 8. **Automation has stopped. Find out why and what you would do about it.**
-9. *(on a phone)* **Do task 1 and task 5 again.**
+9. **Send one subcontractor everything they need to price a trade.** The
+   measure is whether the packet goes out complete on the first attempt, and
+   whether the participant can say what is in it.
+10. **A subcontractor has replied. Find the reply and say what happens next.**
+    The platform claims to turn replies into actions; this task checks whether
+    a person can see that it did, and agrees with it.
+11. **Tell me whether this bid can be submitted correctly right now.** The
+    answer has to name what is missing when something is, and the participant
+    has to be able to say where that answer came from.
+12. **The bid went in through the agency's portal. Record the proof.**
+13. **The AI provider has run out of credit. Work out what stopped, what it
+    will cost to fix, and what happens to the work that queued meanwhile.**
+14. *(on a phone)* **Do task 1, task 5 and task 12 again.**
 
 Tasks 6 and 7 are the pair that matters most. They are the two deadlines, and
 if a participant gives the same answer to both, the vocabulary work in
 `lib/domain/terminology.ts` did not land where it counts.
+
+## What each task measures
+
+The audit's required timings map onto the tasks rather than existing as a
+separate exercise: time to understand an opportunity (task 1), time to the
+next action (tasks 1 and 2), time to say how many subcontractors and trades
+are needed (task 3), time to send a complete packet (task 9), time to find a
+reply and understand its action (task 10), time to enter a quote (task 4),
+time to confirm bid readiness (task 11), time to record submission evidence
+(task 12), and time to resolve the provider-credit incident (task 13).
+
+## Instrumentation
+
+Timing comes from the screen recording, not from memory: the clock starts
+when the task is read out and stops at completion or abandonment, and wrong
+turns are counted from the recording afterwards. The product's own
+analytics (lib/analytics.ts) already records page views and the actions
+these tasks exercise, privacy-scrubbed, so a session's click path can be
+reconstructed without any test-only code; nothing extra is installed for
+the test, because instrumentation that exists only during a test measures a
+product that does not ship.
 
 ## What to record
 

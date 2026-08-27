@@ -28,6 +28,15 @@ export type AdminAction =
   // grace period.
   | "account_deletion_scheduled"
   | "account_deletion_cancelled"
+  // Marking an account as internal or a test fixture changes what the
+  // headline counts claim, which is exactly the kind of quiet change that
+  // needs a record of who did it.
+  | "set_classification"
+  // Role changes on somebody else's account are exactly the kind of quiet
+  // power shift the audit log exists for.
+  | "member_role_changed"
+  | "ownership_transferred"
+  | "account_exported"
   | "impersonation_started"
   | "impersonation_ended"
   | "discount_applied"

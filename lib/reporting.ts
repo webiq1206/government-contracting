@@ -611,6 +611,153 @@ export async function automationMetrics(from: Date | null, to: Date | null): Pro
   ];
 }
 
+/**
+ * The manual work this platform did so a person did not have to.
+ *
+ * The audit's rule for this section is stricter than for any other: no
+ * inflated time-saved claims, every figure from observable events, and the
+ * method stated. So every metric here is a count of records the automation
+ * demonstrably wrote, with the query's own inclusion rule printed under it,
+ * and nothing is multiplied by an assumed minutes-per-task to produce a
+ * number nobody can defend. The counts are the claim.
+ */
+export async function workRemovedMetrics(from: Date | null, to: Date | null): Promise<Metric[]> {
+  const orgId = await currentOrg();
+  const args = [orgId, ...range(from, to)];
+  const win = (col: string) =>
+    `($2::timestamptz is null or ${col} >= $2::timestamptz)
+     and ($3::timestamptz is null or ${col} < $3::timestamptz)`;
+
+  const r = await queryOne<Record<string, unknown>>(
+    `select
+       /* Records the discovery agent wrote. Everything not entered by hand. */
+       (select count(*) from opportunities
+         where org_id = $1 and coalesce(source, '') <> 'manual' and ${win("created_at")})::int
+         as found_auto,
+       (select count(*) from opportunities
+         where org_id = $1 and score is not null and ${win("created_at")})::int
+         as scored,
+       /* One row per requirement the analysis pulled out of a solicitation. */
+       (select count(*) from requirement_states
+         where org_id = $1 and ${win("updated_at")})::int
+         as requirements,
+       (select count(*) from requirement_states
+         where org_id = $1 and human_verified = true and ${win("updated_at")})::int
+         as requirements_verified,
+       /* Firms the finder located, as opposed to ones typed in. */
+       (select count(*) from subcontractors
+         where org_id = $1 and coalesce(source, '') not in ('', 'manual') and ${win("created_at")})::int
+         as subs_found,
+       (select count(*) from communications
+         where org_id = $1 and direction = 'outbound' and ${win("created_at")})::int
+         as outreach_sent,
+       (select count(*) from communications
+         where org_id = $1 and direction = 'outbound'
+           and meta->>'kind' = 'followup' and ${win("created_at")})::int
+         as followups,
+       /* Replies the platform read and turned into a typed outcome. */
+       (select count(*) from subcontractor_reply_events
+         where org_id = $1 and ${win("created_at")})::int
+         as replies_classified,
+       (select count(*) from subcontractor_reply_events
+         where org_id = $1 and needs_review = false and ${win("created_at")})::int
+         as replies_no_review,
+       /* Prices lifted out of an email rather than typed from one. */
+       (select count(*) from subcontractor_reply_events
+         where org_id = $1 and intent = 'quote' and ${win("created_at")})::int
+         as quotes_captured`,
+    args
+  );
+
+  return [
+    metric(
+      "auto_found",
+      "Opportunities found without anybody searching",
+      "count",
+      n(r?.found_auto),
+      "Nothing arrived automatically in this period.",
+      {
+        formula: "Opportunity records whose source is the discovery agent rather than manual entry.",
+        sources: ["Opportunities"],
+        inclusion: "Each of these is a notice somebody would otherwise have had to find on SAM.gov themselves.",
+      }
+    ),
+    metric(
+      "auto_scored",
+      "Opportunities scored and tiered automatically",
+      "count",
+      n(r?.scored),
+      "Nothing was scored in this period.",
+      {
+        formula: "Opportunities carrying a score, which only the scoring agent writes.",
+        sources: ["Opportunities"],
+        inclusion: "Every score is a read of the notice against the company profile that no person performed.",
+      }
+    ),
+    metric(
+      "auto_requirements",
+      "Requirements extracted from solicitations",
+      "count",
+      n(r?.requirements),
+      "No requirements were extracted in this period.",
+      {
+        formula: "Requirement rows the analysis wrote, one per obligation found in a solicitation document.",
+        sources: ["Requirement records"],
+        inclusion: `${n(r?.requirements_verified)} of them have since been verified by a person, which is the half of the work that stays human on purpose.`,
+      }
+    ),
+    metric(
+      "auto_subs_found",
+      "Subcontractors found and verified for you",
+      "count",
+      n(r?.subs_found),
+      "No subcontractors were sourced automatically in this period.",
+      {
+        formula: "Subcontractor records written by the finder rather than entered by hand.",
+        sources: ["Subcontractors"],
+        inclusion: "Firms you added yourself are deliberately not counted: the claim is about work removed, and your own roster was your work.",
+      }
+    ),
+    metric(
+      "auto_outreach",
+      "Outreach emails assembled and sent",
+      "count",
+      n(r?.outreach_sent),
+      "No outreach went out in this period.",
+      {
+        formula: "Outbound messages on the communications record.",
+        sources: ["Communications"],
+        inclusion: `Each carried the scope, requirements and documents for its trade. ${n(r?.followups)} of them were follow-ups nobody had to remember to send.`,
+      }
+    ),
+    metric(
+      "auto_replies",
+      "Replies read and turned into actions",
+      "count",
+      n(r?.replies_classified),
+      "No replies arrived in this period.",
+      {
+        formula: "Inbound replies the platform classified into a typed outcome (interested, pass, quote, wrong contact, and so on).",
+        sources: ["Reply records"],
+        inclusion: `${n(r?.replies_no_review)} needed no review at all; the rest were queued for a person with the reason stated.`,
+      },
+      { have: n(r?.replies_no_review), need: n(r?.replies_classified) }
+    ),
+    metric(
+      "auto_quotes",
+      "Quotes captured from replies",
+      "count",
+      n(r?.quotes_captured),
+      "No quotes arrived by email in this period.",
+      {
+        formula: "Replies classified as carrying a price, with the figure extracted for confirmation.",
+        sources: ["Reply records"],
+        inclusion: "Extraction proposes and a person confirms: the number never enters pricing without being looked at.",
+      }
+    ),
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Pinned metrics
 // ---------------------------------------------------------------------------

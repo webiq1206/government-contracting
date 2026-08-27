@@ -9,6 +9,9 @@ import {
   restartTrial,
   setBillingExempt,
   setSuspended,
+  setClassification,
+  setMemberRole,
+  transferOwnership,
   type AdminActionResult,
 } from "@/lib/admin/accounts";
 import {
@@ -40,6 +43,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     percent?: number;
     months?: number;
     envKey?: string;
+    classification?: string;
+    userId?: string;
+    role?: string;
     expiresAt?: string | null;
     confirmName?: string;
   };
@@ -111,6 +117,28 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       break;
     case "make_free":
       result = await convertToFree({ orgId, reason, adminEmail });
+      break;
+    case "set_classification":
+      result = await setClassification({
+        orgId,
+        classification: String(body.classification ?? ""),
+        adminEmail,
+      });
+      break;
+    case "set_role":
+      result = await setMemberRole({
+        orgId,
+        userId: String(body.userId ?? ""),
+        role: String(body.role ?? ""),
+        adminEmail,
+      });
+      break;
+    case "transfer_ownership":
+      result = await transferOwnership({
+        orgId,
+        toUserId: String(body.userId ?? ""),
+        adminEmail,
+      });
       break;
     case "grant_key":
       result = await grantKeyToAccount({
