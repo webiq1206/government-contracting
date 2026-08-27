@@ -1,6 +1,7 @@
 import type { SolicitationAnalysis } from "@/lib/types";
 import { ScannableText } from "@/components/scannable-text";
-import { BidRequirements, type RequirementTracking } from "@/components/bid-requirements";
+import { CriticalRequirements } from "@/components/critical-requirements";
+import type { RequirementStateView } from "@/lib/domain/requirement-state";
 import { briefInputFrom, buildOpportunityBrief } from "@/lib/domain/opportunity-brief";
 
 interface DocRow {
@@ -48,7 +49,7 @@ function fmtDate(v?: string): string | undefined {
 export function BidBrief({
   analysis,
   documents,
-  tracking,
+  states,
 }: {
   analysis: SolicitationAnalysis;
   documents: DocRow[];
@@ -58,7 +59,7 @@ export function BidBrief({
    * requirements themselves are read out of the analysis and do not depend on
    * anybody having tracked them.
    */
-  tracking?: RequirementTracking;
+  states?: Record<string, RequirementStateView>;
 }) {
   const requirements = buildOpportunityBrief(briefInputFrom(analysis));
 
@@ -111,10 +112,12 @@ export function BidBrief({
           </Section>
         )}
 
-        {/* The centre of the brief: everything required to bid, classified, with
-            the fatal items first. Previously this lived inside a collapsed
-            block, or nowhere at all in the case of the compliance matrix. */}
-        <BidRequirements brief={requirements} tracking={tracking} />
+        {/* What would disqualify a bid, and what nobody can act on until the
+            agency answers. The whole checklist lives on the Requirements tab,
+            which is the tab named after it: keeping forty rows here is what
+            stopped Overview fitting on one screen, and it left the
+            Requirements tab holding the classification record instead. */}
+        <CriticalRequirements brief={requirements} states={states} />
 
         {analysis.key_dates?.length > 0 && (
           <Section title="Dates that matter">

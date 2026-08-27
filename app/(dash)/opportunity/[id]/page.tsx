@@ -8,6 +8,7 @@ import { ActionButton } from "@/components/action-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { PricingWorkspace } from "@/components/pricing-workspace";
 import { BidBrief } from "@/components/bid-brief";
+import { BidRequirements } from "@/components/bid-requirements";
 import { briefInputFrom, buildOpportunityBrief } from "@/lib/domain/opportunity-brief";
 import { requirementViews } from "@/lib/requirement-states";
 import { DocumentInventoryPanel } from "@/components/document-inventory-panel";
@@ -126,9 +127,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
    * and no states, which is the version that existed until now. It is not a
    * reason the record page should refuse to open.
    */
-  const briefRequirements = analysis
-    ? buildOpportunityBrief(briefInputFrom(analysis)).requirements
-    : [];
+  const oppBrief = analysis ? buildOpportunityBrief(briefInputFrom(analysis)) : null;
+  const briefRequirements = oppBrief?.requirements ?? [];
   const tracking = analysis
     ? await requirementViews(
         params.id,
@@ -726,22 +726,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </div>
 
               {analysis ? (
-                <BidBrief
-                  analysis={analysis}
-                  documents={briefDocs}
-                  tracking={
-                    tracking
-                      ? {
-                          opportunityId: params.id,
-                          states: tracking.states,
-                          history: tracking.history,
-                          members: teamMembers,
-                          viewerId: viewer?.id,
-                          canEdit: can(viewer?.orgRole, "decide"),
-                        }
-                      : undefined
-                  }
-                />
+                <BidBrief analysis={analysis} documents={briefDocs} states={tracking?.states} />
               ) : (
                 <div className="card">
                   <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
@@ -787,6 +772,35 @@ export default async function OpportunityPage({ params }: { params: { id: string
               id="requirements"
               data-guide-target="requirements"
             >
+              {/*
+                * The checklist, on the tab named after it.
+                *
+                * It used to live inside the Bid Brief on Overview, which meant
+                * the tab called Requirements held the classification record
+                * and forty rows of checklist sat on the screen that is
+                * supposed to answer nine questions at a glance. Overview now
+                * carries only what would disqualify a bid, and links here.
+                */}
+              {oppBrief && (
+                <div className="card">
+                  <BidRequirements
+                    brief={oppBrief}
+                    tracking={
+                      tracking
+                        ? {
+                            opportunityId: params.id,
+                            states: tracking.states,
+                            history: tracking.history,
+                            members: teamMembers,
+                            viewerId: viewer?.id,
+                            canEdit: can(viewer?.orgRole, "decide"),
+                          }
+                        : undefined
+                    }
+                  />
+                </div>
+              )}
+
               <SectionHeading eyebrow="Details" title="Solicitation record">
                 The registry facts: how this job is classified, who may bid, and what the
                 agency expects of your company. The deadline, score and tier are in the
