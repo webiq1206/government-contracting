@@ -24,6 +24,7 @@ import {
 } from "./sub-compliance-store";
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
+import { THREAD_KEY_SQL } from "./thread-key";
 
 /**
  * The organization every read in this module is scoped to.
@@ -2264,6 +2265,25 @@ export interface OppSubRow {
   touches: number;
   last_touch_at: string | null;
   last_inbound_at: string | null;
+  /** Primary is the firm being priced for this trade. Null is undecided. */
+  role: "primary" | "backup" | null;
+  /**
+   * Off the bid, and why.
+   *
+   * Removal is a mark rather than a delete: the emails sent and the replies
+   * received are the record of who was approached for this job, and that is
+   * exactly what somebody asks for when a bid goes wrong.
+   */
+  removed_at: string | null;
+  removed_reason: string | null;
+  /**
+   * The inbox thread to open, keyed exactly the way the Communications page
+   * groups by. Deriving it a second way here would be a link that lands on an
+   * empty pane.
+   */
+  thread_key: string | null;
+  /** Whether a quote from this firm is already on the bid. */
+  has_quote: boolean;
 }
 
 /** Opportunity-scoped communication row for the Subs panel history. */
@@ -2306,13 +2326,20 @@ export async function opportunityDetail(id: string) {
     query<OppSubRow>(
       `select os.id, os.opportunity_id, os.subcontractor_id, os.trade, os.candidate_rank,
               os.outreach_state, os.responded_at, os.verified,
+              os.role, os.removed_at, os.removed_reason,
               s.company_name, s.phone, s.email, s.email_verified, s.google_rating,
               s.contact_status, s.last_contacted,
               coalesce(stats.emails_sent, 0)::int as emails_sent,
               coalesce(stats.calls_logged, 0)::int as calls_logged,
               coalesce(stats.notes_count, 0)::int as notes_count,
               coalesce(stats.touches, 0)::int as touches,
-              stats.last_touch_at, stats.last_inbound_at
+              stats.last_touch_at, stats.last_inbound_at,
+              stats.thread_key,
+              exists (
+                select 1 from quotes q
+                 where q.opportunity_id = os.opportunity_id
+                   and q.subcontractor_id = os.subcontractor_id
+              ) as has_quote
          from opportunity_subs os
          join subcontractors s on s.id = os.subcontractor_id
          left join lateral (
@@ -2322,13 +2349,28 @@ export async function opportunityDetail(id: string) {
              count(*) filter (where channel = 'note') as notes_count,
              count(*) as touches,
              max(created_at) as last_touch_at,
-             max(created_at) filter (where direction = 'inbound') as last_inbound_at
+             max(created_at) filter (where direction = 'inbound') as last_inbound_at,
+             /*
+              * The newest conversation with this firm about this bid, so the
+              * row can offer a link to the thread rather than sending an
+              * operator to search the inbox for a company name.
+              */
+             (array_agg(${THREAD_KEY_SQL} order by created_at desc))[1] as thread_key
            from communications c
            where c.subcontractor_id = os.subcontractor_id
              and c.opportunity_id = os.opportunity_id
          ) stats on true
         where os.opportunity_id = $1
-        order by os.trade nulls last, os.candidate_rank nulls last, s.company_name
+        order by os.trade nulls last,
+                 /*
+                  * Removed firms last, then the primary, then backups, then
+                  * everybody else. The order answers "who is on this trade"
+                  * before it answers "who else did we try".
+                  */
+                 (os.removed_at is not null),
+                 (os.role is distinct from 'primary'),
+                 (os.role is distinct from 'backup'),
+                 os.candidate_rank nulls last, s.company_name
         limit 300`,
       [id]
     ),

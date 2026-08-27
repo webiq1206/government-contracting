@@ -15,6 +15,7 @@
  */
 import { query, queryOne } from "./db";
 import { currentOrg } from "./data";
+import { THREAD_KEY_SQL } from "./thread-key";
 import {
   messageState,
   AUTOMATIC_SUBJECT_SQL,
@@ -29,27 +30,6 @@ import {
   type ConversationVerdict,
 } from "./domain/conversation-centre";
 
-/**
- * The conversation a message belongs to.
- *
- * The Gmail thread id when we have one. Messages logged before threading, or
- * without a thread, group by solicitation and subcontractor so history still
- * reads as conversations rather than as one conversation per message.
- */
-const THREAD_KEY_SQL = `coalesce(
-  c.gmail_thread_id,
-  case
-    /*
-     * A message with neither a subcontractor nor a solicitation stands alone.
-     * Falling back to a shared 'none:none' key would merge every orphaned
-     * message in the account into one conversation and show it under whichever
-     * company happened to send the newest of them, which is worse than showing
-     * them separately: it attributes one company's mail to another.
-     */
-    when c.subcontractor_id is null and c.opportunity_id is null then 'msg:' || c.id::text
-    else 'pair:' || coalesce(c.opportunity_id::text, 'none') || ':' || coalesce(c.subcontractor_id::text, 'none')
-  end
-)`;
 
 interface ThreadRow {
   thread_key: string;

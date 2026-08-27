@@ -908,6 +908,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   description={opp.description}
                   opportunityId={opp.id}
                   canStopOutreach={can(viewer?.orgRole, "outreach")}
+                  canDecide={can(viewer?.orgRole, "decide")}
+                  callsEnabled={rules.calls_enabled}
                 />
               </div>
             </div>
