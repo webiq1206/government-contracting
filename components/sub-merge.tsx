@@ -267,7 +267,7 @@ export function SubMerge({
               {candidates.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
-                  {c.detail ? ` — ${c.detail}` : ""}
+                  {c.detail ? ` · ${c.detail}` : ""}
                 </option>
               ))}
             </select>
