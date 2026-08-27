@@ -32,6 +32,22 @@ const nextConfig = {
     // Lint is run explicitly; do not fail production builds on lint warnings.
     ignoreDuringBuilds: true,
   },
+  typescript: {
+    /*
+     * Off by default: `next build` type-checks, everywhere.
+     *
+     * The one exception is a deploy builder too memory-starved to run tsc
+     * over this codebase (Replit's builder caps Node's heap near 2GB and the
+     * check needs more; the build dies at "Checking validity of types" with
+     * a heap OOM). Every commit is already type-checked twice before it can
+     * deploy, `npm run typecheck` and a full `next build` both run in CI, so
+     * on such a builder the in-build check is a redundant third pass. Set
+     * DEPLOY_SKIP_TYPECHECK=1 on the deployment only, never locally and
+     * never in CI, and prefer raising the heap (see .replit) when the
+     * builder allows it.
+     */
+    ignoreBuildErrors: process.env.DEPLOY_SKIP_TYPECHECK === "1",
+  },
   // Baseline security headers. Deliberately not a full CSP: that needs a
   // tested allowlist (Next inline runtime, Google Fonts, Stripe redirects)
   // and an untested CSP shipped at launch breaks pages in ways a missing one
