@@ -50,6 +50,27 @@ export interface AutomationRules {
    * the kind of thing the operator should be able to see and set rather than
    * discover from a subcontractor's complaint.
    */
+  /**
+   * Whether a review-tier opportunity nobody actions is dismissed on its own.
+   *
+   * Off unless the organization turns it on, which is a deliberate reversal.
+   * The sweep did this unconditionally: an opportunity left over a weekend
+   * disappeared from the board, and the only record was a line in a log nobody
+   * reads until something has already gone wrong.
+   *
+   * An operator who has not decided has not decided. The timer is worth having
+   * because a review queue that only grows stops being read, but expiring is a
+   * policy an account should choose rather than discover.
+   */
+  auto_dismiss_review: boolean;
+  /**
+   * Hours before the timer expires that the operator is warned.
+   *
+   * The warning is not decoration. An automatic action that arrives with no
+   * notice is indistinguishable from a bug, and this one removes work somebody
+   * may have been meaning to get to.
+   */
+  auto_dismiss_warn_hours: number;
   followup_hours: number;
   /**
    * How many follow-ups a subcontractor may receive per opportunity, after
@@ -112,6 +133,10 @@ export const DEFAULT_RULES: AutomationRules = {
   approaching_days: 7,
   urgent_days: 3,
   retention_days: 30,  // 30 days; set to 0 in Settings to keep archived records forever
+  // Off. An operator who has not decided has not decided, and a record that
+  // vanishes over a weekend is not a decision.
+  auto_dismiss_review: false,
+  auto_dismiss_warn_hours: 24,
   calls_enabled: true, // calling is part of the pipeline unless the operator turns it off
   // Every default below reproduces what the code already did, so turning these
   // into settings changes nothing until somebody changes one.
@@ -146,6 +171,14 @@ export function normalizeRules(v: Partial<AutomationRules> | null | undefined): 
     // Only an explicit false turns calling off. A stored config written before
     // this setting existed has no key at all, and must keep its calls.
     calls_enabled: v?.calls_enabled !== false,
+    /*
+     * Only an explicit true turns it on, which is the opposite of the calls
+     * rule above and deliberately so. A config written before this setting
+     * existed has no key, and the honest reading of that silence is that
+     * nobody chose to have records dismissed automatically.
+     */
+    auto_dismiss_review: v?.auto_dismiss_review === true,
+    auto_dismiss_warn_hours: num(v?.auto_dismiss_warn_hours, DEFAULT_RULES.auto_dismiss_warn_hours, 1, 336),
     // Never below an hour: a follow-up interval of nought would resend the
     // moment the first message left, which is not a follow-up, it is a loop.
     followup_hours: num(v?.followup_hours, DEFAULT_RULES.followup_hours, 1, 720),

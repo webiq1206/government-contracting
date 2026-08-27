@@ -530,6 +530,50 @@ export function AutomationRulesForm({
                   </Field>
                 </div>
               </section>
+
+              <section>
+                <h2 className="font-display text-xl text-foreground">
+                  Opportunities nobody decides on
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                  A borderline opportunity waits for a person to pursue or pass. It carries a
+                  timer, and this is what happens when the timer runs out. The default is
+                  nothing: an operator who has not decided has not decided, and a record that
+                  disappears over a weekend is not a decision. Either way you are warned before
+                  the window closes.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <Choice
+                    name="auto_dismiss_review"
+                    checked={!form.auto_dismiss_review}
+                    onChange={() => setForm((f) => ({ ...f, auto_dismiss_review: false }))}
+                    label="Keep it and tell me (default)"
+                    hint="It stays in Review past its window, and the Automation Log records that the window closed with no decision."
+                  />
+                  <Choice
+                    name="auto_dismiss_review"
+                    checked={form.auto_dismiss_review}
+                    onChange={() => setForm((f) => ({ ...f, auto_dismiss_review: true }))}
+                    label="Pass on it automatically"
+                    hint="It is archived rather than deleted, never on the same sweep that warned, and always after the warning below has gone out."
+                  />
+                </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <Field
+                    label="Warn me this many hours before the window closes"
+                    hint="The warning goes out whichever option you chose above."
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={336}
+                      className="input"
+                      value={form.auto_dismiss_warn_hours}
+                      onChange={num("auto_dismiss_warn_hours")}
+                    />
+                  </Field>
+                </div>
+              </section>
               {saveBar}
             </div>
           ),
