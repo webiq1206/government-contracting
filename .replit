@@ -12,7 +12,12 @@ NEXT_TELEMETRY_DISABLED = "1"
 
 [deployment]
 run = ["sh", "-c", "npm run start"]
-build = ["sh", "-c", "npm run build"]
+# 4GB heap: the builder's Node caps itself near 2GB by default, and type-
+# checking this codebase needs more; without this the build aborts at
+# "Checking validity of types" with a heap OOM. If a smaller builder cannot
+# honour 4GB, set DEPLOY_SKIP_TYPECHECK=1 here instead - CI has already
+# type-checked every commit twice (tsc and a full next build).
+build = ["sh", "-c", "NODE_OPTIONS=--max-old-space-size=4096 npm run build"]
 deploymentTarget = "vm"
 
 [[ports]]
