@@ -259,8 +259,23 @@ export async function runAgent(
    * payload names a record that turns out not to exist the run is abandoned a
    * few lines below anyway.
    */
-  const runOpportunityId =
+  const namedOpportunityId =
     typeof payload.opportunityId === "string" && payload.opportunityId ? payload.opportunityId : null;
+  /*
+   * Dropped when the opportunity is one of the records that turned out to be
+   * gone.
+   *
+   * job_runs.opportunity_id is a foreign key, so writing the id of a deleted
+   * opportunity made the insert fail, the `.catch` below turned that into
+   * null, and the abandonment a few lines further down had no run row to
+   * finish. The one outcome the comment there insists must leave a trace was
+   * the only outcome that left none, and it failed silently in exactly the
+   * case it was written for. The id is still named in the abandonment message.
+   */
+  const runOpportunityId =
+    namedOpportunityId && missing.some((m) => m.id === namedOpportunityId)
+      ? null
+      : namedOpportunityId;
   const jobRun = await queryOne<{ id: string }>(
     `insert into job_runs (agent, trigger, status, org_id, opportunity_id)
      values ($1,$2,'running',$3,$4) returning id`,
