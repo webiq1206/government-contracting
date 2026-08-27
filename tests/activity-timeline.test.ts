@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildActivityTimeline } from "../lib/domain/activity-timeline";
+import {
+  activityCounts,
+  buildActivityTimeline,
+  filterActivity,
+  type ActivityEvent,
+  type ActivityKind,
+} from "../lib/domain/activity-timeline";
 
 describe("buildActivityTimeline", () => {
   it("merges agent logs and communications newest first", () => {
@@ -206,5 +212,69 @@ describe("timestamps from the database", () => {
       ],
     });
     expect(events).toHaveLength(0);
+  });
+});
+
+const ev = (kind: ActivityKind, i: number): ActivityEvent => ({
+  id: `${kind}-${i}`,
+  at: `2026-08-${String(10 + i).padStart(2, "0")}T10:00:00.000Z`,
+  kind,
+  title: `${kind} ${i}`,
+  detail: null,
+  actor: null,
+});
+
+const feed: ActivityEvent[] = [
+  ev("email", 0),
+  ev("email", 1),
+  ev("call", 2),
+  ev("system", 3),
+  ev("system", 4),
+  ev("system", 5),
+];
+
+describe("filterActivity", () => {
+  it("shows only the kinds asked for", () => {
+    expect(filterActivity(feed, ["email"]).map((e) => e.id)).toEqual(["email-0", "email-1"]);
+  });
+
+  it("takes more than one kind", () => {
+    expect(filterActivity(feed, ["email", "call"]).length).toBe(3);
+  });
+
+  it("treats an empty selection as everything", () => {
+    // Unchecking the last box is somebody clearing the filter, not somebody
+    // asking for a blank page.
+    expect(filterActivity(feed, []).length).toBe(feed.length);
+  });
+
+  it("never changes the feed it was given", () => {
+    // A filter over a record of what happened is a lens, never an edit.
+    const before = feed.map((e) => e.id);
+    filterActivity(feed, ["call"]);
+    expect(feed.map((e) => e.id)).toEqual(before);
+  });
+
+  it("returns nothing for a kind the feed does not hold, without inventing one", () => {
+    expect(filterActivity(feed, ["quote"])).toEqual([]);
+  });
+});
+
+describe("activityCounts", () => {
+  it("counts every kind, including the ones with none", () => {
+    const counts = activityCounts(feed);
+    expect(counts.email).toBe(2);
+    expect(counts.system).toBe(3);
+    expect(counts.call).toBe(1);
+    // Present as zero rather than absent, so a caller reading counts.quote
+    // gets a number instead of undefined.
+    expect(counts.quote).toBe(0);
+    expect(counts.note).toBe(0);
+  });
+
+  it("counts the whole feed rather than a filtered view of it", () => {
+    const counts = activityCounts(feed);
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    expect(total).toBe(feed.length);
   });
 });

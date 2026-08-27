@@ -411,7 +411,13 @@ body {
        30px they were the smallest interactive thing on the pipeline. The
        underline that marks the active one is drawn by ::after, so growing
        the box does not move it. */
-    @apply relative inline-flex min-h-11 min-w-11 items-center justify-center pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground lg:min-h-0 lg:min-w-0;
+    /* shrink-0 is what makes an overflowing strip scroll instead of crush.
+       Flex items shrink by default, so seven tabs in a 390px row compressed
+       into each other: on the opportunity workspace the labels overlapped
+       into one unreadable line, on a screen where the tab strip is the only
+       way to reach six of the seven sections. It lives here rather than at
+       each call site because it was already forgotten at one of them. */
+    @apply relative inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground lg:min-h-0 lg:min-w-0;
   }
   .dash-tab--active {
     @apply text-foreground;

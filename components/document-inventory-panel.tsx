@@ -122,6 +122,78 @@ function OpenLink({ doc }: { doc: DocumentDisplay }) {
   );
 }
 
+/**
+ * The document itself, in the page, without leaving it.
+ *
+ * A federal solicitation runs to hundreds of pages across a dozen files, and
+ * checking one extracted requirement against its source used to mean opening
+ * a new tab, finding the page, reading a paragraph and coming back. Doing that
+ * forty times is why nobody does it, and a checklist nobody checks is a
+ * checklist that gets trusted more than it has earned.
+ *
+ * Rendered only for formats a browser actually renders, and the refusal says
+ * which of the two reasons applies. "Nothing was stored for this row" and
+ * "your browser will not render a Word document" are different facts and lead
+ * to different next steps.
+ *
+ * Loaded only when opened. Forty iframes mounted at once on a page that also
+ * holds the brief is a page nobody can scroll.
+ */
+function Preview({ doc }: { doc: DocumentDisplay }) {
+  const [open, setOpen] = useState(false);
+  const src = `/api/documents/${doc.id}/open`;
+
+  if (doc.preview === "none") {
+    return (
+      <span
+        className="text-xs text-muted-foreground"
+        title={
+          doc.storagePath
+            ? "A browser will not render this format. Open it to read it."
+            : "Nothing was stored for this row, so there is nothing to show."
+        }
+      >
+        No preview
+      </span>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="text-xs underline underline-offset-2"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Hide preview" : "Preview"}
+      </button>
+      {open && (
+        <div className="mt-2 w-full overflow-hidden rounded-md border border-border bg-surface-raised">
+          {doc.preview === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={src} alt={`Preview of ${doc.name}`} className="max-h-[70vh] w-full object-contain" />
+          ) : (
+            <iframe
+              src={src}
+              title={`Preview of ${doc.name}`}
+              className="h-[60vh] max-h-[70vh] w-full"
+            />
+          )}
+          <p className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
+            {/*
+              The preview is the file, not the extraction. Saying so matters
+              on exactly the documents this feature exists for: a scan renders
+              perfectly and was still read by nobody.
+            */}
+            This is the file as it arrived. Whether anything in it was read is the state above.
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
 function Meta({ doc }: { doc: DocumentDisplay }) {
   const bits = [
     doc.version > 1 ? `Version ${doc.version}` : null,
@@ -169,6 +241,7 @@ function Row({
         )}
         <div className="mt-1 flex flex-wrap items-center gap-3">
           <OpenLink doc={doc} />
+          <Preview doc={doc} />
           <Actions doc={doc} canDecide={canDecide} canRunAgents={canRunAgents} />
         </div>
       </td>
@@ -225,6 +298,7 @@ function Card({
       )}
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <OpenLink doc={doc} />
+        <Preview doc={doc} />
         <button
           type="button"
           className="text-xs underline underline-offset-2"
@@ -292,7 +366,8 @@ function Actions({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [asking, setAsking] = useState<"review" | "exclude" | null>(null);
+  const [asking, setAsking] = useState<"review" | "exclude" | "replace" | null>(null);
+  const [file, setFile] = useState<File | null>(null);
 
   const send = async (url: string, init?: RequestInit) => {
     setBusy(true);
@@ -306,6 +381,7 @@ function Actions({
       }
       setAsking(null);
       setNote("");
+      setFile(null);
       router.refresh();
     } catch {
       setError("Could not reach the server.");
@@ -353,7 +429,87 @@ function Actions({
           Not relevant
         </button>
       )}
-      {asking && (
+      {/*
+        Offered on the documents that cannot be read, which is the only case
+        it helps. "Read it again" re-runs the analysis over the same bytes and
+        they fail the same way; a working copy is the thing that fixes an
+        unreadable scan, and until now there was nowhere to put one.
+      */}
+      {canDecide && !doc.supersededBy && doc.attention === "blocker" && (
+        <button
+          type="button"
+          className="text-xs underline underline-offset-2"
+          onClick={() => setAsking(asking === "replace" ? null : "replace")}
+        >
+          Upload a working copy
+        </button>
+      )}
+      {asking === "replace" && (
+        <form
+          className="mt-2 w-full"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!file || !note.trim()) return;
+            const body = new FormData();
+            body.append("file", file);
+            body.append("note", note.trim());
+            void send(`/api/documents/${doc.id}/replace`, { method: "POST", body });
+          }}
+        >
+          <p className="text-xs text-muted-foreground">
+            {/*
+              What happens, before it happens. Superseding is not obvious from
+              a file picker, and an operator who expected a second attachment
+              and got their original marked excluded has been surprised by
+              their own record.
+            */}
+            This copy becomes the current one. The file already here stays on the record, marked
+            as replaced by it, and the solicitation is queued for re-analysis.
+          </p>
+          <input
+            type="file"
+            aria-label={`Working copy of ${doc.name}`}
+            className="mt-1 w-full text-xs"
+            accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.txt"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            required
+          />
+          <label className="mt-2 block text-xs text-muted-foreground" htmlFor={`src-${doc.id}`}>
+            Where did this copy come from? A replacement with no provenance is a file nobody can
+            vouch for later.
+          </label>
+          <input
+            id={`src-${doc.id}`}
+            type="text"
+            className="input mt-1 w-full text-sm"
+            placeholder="Emailed by the contracting officer on the 14th"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            required
+          />
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              type="submit"
+              className="btn-secondary text-xs"
+              disabled={busy || !file || !note.trim()}
+            >
+              {busy ? "Uploading" : "Use this copy"}
+            </button>
+            <button
+              type="button"
+              className="btn-ghost text-xs"
+              onClick={() => {
+                setAsking(null);
+                setFile(null);
+                setError(null);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {(asking === "review" || asking === "exclude") && (
         <form
           className="mt-2 w-full"
           onSubmit={(e) => {

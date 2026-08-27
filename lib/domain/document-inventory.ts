@@ -475,6 +475,8 @@ export interface DocumentRecord {
   lastError: string | null;
   byteSize: number | null;
   storagePath: string | null;
+  /** What the bytes are, so a preview does not have to guess from the name. */
+  mime: string | null;
 }
 
 export type AttentionLevel = "blocker" | "watch" | "none";
@@ -496,6 +498,33 @@ export interface DocumentDisplay extends DocumentRecord {
    * missing from the brief" tells them why they should care.
    */
   problem: string | null;
+  /** How this document can be shown in the page, if it can be. */
+  preview: PreviewKind;
+}
+
+/**
+ * Whether a document can be read without leaving the page, and how.
+ *
+ * `none` is a real answer and the honest one for a Word document or a
+ * spreadsheet: a browser will not render it, and an empty frame that says
+ * nothing is worse than a line saying it has to be downloaded. Never guessed
+ * from the filename, because a .pdf that is really a scan of a fax is still a
+ * PDF and a file named ".doc" that arrived as a PDF is still readable.
+ */
+export type PreviewKind = "pdf" | "image" | "text" | "none";
+
+export function previewKind(doc: {
+  mime: string | null;
+  storagePath: string | null;
+}): PreviewKind {
+  // Nothing stored means nothing to show. That is not the same as a format we
+  // cannot render, and the panel says so differently.
+  if (!doc.storagePath) return "none";
+  const mime = (doc.mime ?? "").toLowerCase();
+  if (mime === "application/pdf") return "pdf";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("text/") || mime === "application/json") return "text";
+  return "none";
 }
 
 /**
@@ -567,6 +596,7 @@ export function describeDocument(doc: DocumentRecord): DocumentDisplay {
     relevanceLabel,
     attention,
     problem,
+    preview: previewKind(doc),
   };
 }
 
@@ -632,5 +662,6 @@ export function toDocumentRecord(row: Record<string, unknown>): DocumentRecord {
     lastError: str(row.last_error),
     byteSize: num(row.byte_size),
     storagePath: str(row.storage_path),
+    mime: str(row.mime),
   };
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { openEditorialTarget } from "@/lib/editorial-nav";
 import { offersFor, roleLabel, type PairingFacts, type SubAction } from "@/lib/domain/sub-actions";
 
 /**
@@ -204,12 +205,21 @@ export function SubActions({
 
           {/* Going somewhere, not changing anything. Links, so they open in a
               new tab, come back with the back button, and can be copied. */}
-          <Link
-            href={`/opportunity/${opportunityId}#pricing`}
+          {/*
+            The pricing tab on this record, opened rather than scrolled to.
+            A bare hash moves the viewport to a panel the tab strip has not
+            opened, which reads as a jump to nothing.
+          */}
+          <a
+            href="#pricing"
             className="tap text-xs text-accent hover:underline"
+            onClick={(e) => {
+              e.preventDefault();
+              openEditorialTarget("pricing");
+            }}
           >
             Enter quote
-          </Link>
+          </a>
           <Reader
             label="See what they got"
             off={off("view_packet")}

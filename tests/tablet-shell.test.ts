@@ -91,3 +91,33 @@ describe("the touch-target minimum", () => {
     expect(CSS).not.toContain("min-width: 768px");
   });
 });
+
+/**
+ * A tab strip that overflows must scroll, not crush.
+ *
+ * Flex items shrink by default. Seven tabs in a 390px row compressed into each
+ * other, and on the opportunity workspace the labels overlapped into one
+ * unreadable line: the strip is the only way to reach six of the seven
+ * sections on a phone, so this was six sections unreachable by anybody who
+ * could not guess where to tap.
+ *
+ * The utility lives in `.dash-tab` rather than at each call site because it
+ * was already present at one of them and forgotten at the other, which is the
+ * shape of a rule that gets forgotten again.
+ */
+describe("scrollable tab strips", () => {
+  it("keeps tabs from shrinking into each other", () => {
+    const css = readFileSync(join(process.cwd(), "app/globals.css"), "utf8");
+    const rule = css.slice(css.indexOf(".dash-tab {"));
+    const body = rule.slice(0, rule.indexOf("}"));
+    expect(body).toContain("shrink-0");
+  });
+
+  it("scrolls the strip rather than wrapping it", () => {
+    // overflow-x-auto with shrink-0 is the pair that makes it work; wrapping
+    // instead would push the page content down by a row on every phone.
+    const src = readFileSync(join(process.cwd(), "components/editorial-tabs.tsx"), "utf8");
+    expect(src).toContain("overflow-x-auto");
+    expect(src).not.toContain("flex-wrap");
+  });
+});

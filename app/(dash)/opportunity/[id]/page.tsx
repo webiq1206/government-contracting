@@ -14,6 +14,8 @@ import { requirementViews } from "@/lib/requirement-states";
 import { DocumentInventoryPanel } from "@/components/document-inventory-panel";
 import { AttachmentsPanel } from "@/components/attachments-panel";
 import { NextStepBanner } from "@/components/next-step-banner";
+import { RecordActionBar } from "@/components/record-action-bar";
+import { deriveStep } from "@/lib/domain/journey";
 import { OpportunityJourney } from "@/components/opportunity-journey";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { getAutomationState, getAutomationRules } from "@/lib/app-settings";
@@ -412,6 +414,36 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const complianceRows = bid?.compliance_matrix ?? [];
   const expired =
     opp.status === "archived" && (opp.risk_flags ?? []).includes("expired");
+
+  /*
+   * What this record is waiting on, worked out once.
+   *
+   * The banner on Overview and the bar that follows a phone reader between
+   * tabs are the same answer in two places, and two derivations of it would
+   * eventually disagree about which one is the real next step.
+   */
+  const stepInput = {
+    stage: opp.stage,
+    tier: opp.tier,
+    humanActionRequired: opp.human_action_required,
+    quoteCount: readiness.tradesWithQuotes,
+    tradesWithQuotes: readiness.tradesWithQuotes,
+    tradeCoverageUncovered: coverage.totals.uncovered,
+    requiredTradeCount: analysis?.required_trades?.length ?? 0,
+    hasBid: Boolean(bid),
+    bidSubmitted: Boolean(bid?.submitted_at),
+    outcome: bid?.outcome ?? null,
+    pastPerfBlocked,
+    automationPaused: automation.paused,
+    hoursSinceUpdate,
+    expired,
+    hasQuotes: quotesEntered > 0,
+    outreachDraftOnly,
+    riskFlags: opp.risk_flags,
+    callsEnabled: rules.calls_enabled,
+  };
+  const step = deriveStep({ ...stepInput, opportunityId: opp.id });
+
   const plan = buildGuidedPlan({
     opportunityId: opp.id,
     stage: opp.stage,
@@ -634,27 +666,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
               <GuidedPlanPanel plan={plan} headerAction={false} />
               <TradeRequirementSummary coverage={coverage} />
               <div id="next" data-guide-target="next-step">
-                <NextStepBanner
-                  opportunityId={opp.id}
-                  stage={opp.stage}
-                  tier={opp.tier}
-                  humanActionRequired={opp.human_action_required}
-                  quoteCount={readiness.tradesWithQuotes}
-                  tradesWithQuotes={readiness.tradesWithQuotes}
-                  tradeCoverageUncovered={coverage.totals.uncovered}
-                  requiredTradeCount={analysis?.required_trades?.length ?? 0}
-                  hasBid={Boolean(bid)}
-                  bidSubmitted={Boolean(bid?.submitted_at)}
-                  outcome={bid?.outcome ?? null}
-                  pastPerfBlocked={pastPerfBlocked}
-                  automationPaused={automation.paused}
-                  hoursSinceUpdate={hoursSinceUpdate}
-                  expired={expired}
-                  hasQuotes={quotesEntered > 0}
-                  outreachDraftOnly={outreachDraftOnly}
-                  riskFlags={opp.risk_flags}
-                  callsEnabled={rules.calls_enabled}
-                />
+                <NextStepBanner opportunityId={opp.id} {...stepInput} />
               </div>
               <AttentionStrip readiness={readiness} opportunityId={opp.id} />
             </div>
@@ -1289,6 +1301,14 @@ export default async function OpportunityPage({ params }: { params: { id: string
             </div>
           }
         />
+        {/*
+          The next move, following the reader between tabs on a phone.
+
+          Inside the scrolling column rather than at the page root, so its
+          reserved height lands at the end of this record's content and not
+          under the side panel, which has its own scroller.
+        */}
+        <RecordActionBar step={step} />
         </div>
 
         <aside className="hidden w-96 shrink-0 flex-col border-l border-border xl:flex">

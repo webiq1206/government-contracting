@@ -9,6 +9,7 @@ import {
   parseDocumentClass,
   parseExtractionState,
   parseOcrState,
+  previewKind,
   resolveCitation,
   withPageMarkers,
   documentChanges,
@@ -568,5 +569,40 @@ describe("reading a row out of the database", () => {
     const d = toDocumentRecord({});
     expect(d.name).toBe("Untitled");
     expect(describeDocument(d).attention).toBe("blocker");
+  });
+});
+
+describe("previewKind", () => {
+  it("renders the formats a browser renders", () => {
+    expect(previewKind({ mime: "application/pdf", storagePath: "a/b.pdf" })).toBe("pdf");
+    expect(previewKind({ mime: "image/png", storagePath: "a/b.png" })).toBe("image");
+    expect(previewKind({ mime: "image/jpeg", storagePath: "a/b.jpg" })).toBe("image");
+    expect(previewKind({ mime: "text/plain", storagePath: "a/b.txt" })).toBe("text");
+  });
+
+  it("refuses the ones it cannot, rather than framing an empty box", () => {
+    expect(
+      previewKind({
+        mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storagePath: "a/b.docx",
+      })
+    ).toBe("none");
+  });
+
+  it("refuses a row with no bytes behind it", () => {
+    // A different fact from an unrenderable format, and the panel says so
+    // differently: nothing was stored, rather than nothing can be shown.
+    expect(previewKind({ mime: "application/pdf", storagePath: null })).toBe("none");
+  });
+
+  it("reads the recorded type rather than the filename", () => {
+    // A file named .doc that arrived as a PDF is readable, and a .pdf that is
+    // really a scan is still a PDF. The bytes decide, not the name.
+    expect(previewKind({ mime: "application/pdf", storagePath: "weird/name.doc" })).toBe("pdf");
+    expect(previewKind({ mime: null, storagePath: "looks/like.pdf" })).toBe("none");
+  });
+
+  it("is case-insensitive about the recorded type", () => {
+    expect(previewKind({ mime: "APPLICATION/PDF", storagePath: "a/b" })).toBe("pdf");
   });
 });
