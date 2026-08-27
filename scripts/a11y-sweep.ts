@@ -85,6 +85,7 @@ const ROUTES = [
   "/admin/invitations",
   "/authority",
   "/more",
+  "/feedback",
 ];
 
 /**

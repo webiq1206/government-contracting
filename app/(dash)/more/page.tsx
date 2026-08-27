@@ -62,7 +62,14 @@ const GROUPS: {
   },
   {
     title: "Help",
-    items: [{ href: "/how-it-works", label: "Knowledge Center", hint: "How each part of this works" }],
+    items: [
+      { href: "/how-it-works", label: "Knowledge Center", hint: "How each part of this works" },
+      {
+        href: "/feedback",
+        label: "Feedback",
+        hint: "Something broken, a number that reads wrong, or a thing this should do",
+      },
+    ],
   },
   {
     title: "Settings",

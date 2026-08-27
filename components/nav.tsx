@@ -114,7 +114,17 @@ const SECTIONS: Section[] = [
     // Guide Me is a panel rather than a page -- it opens over whatever you are
     // looking at, because its whole value is knowing where you are. Listing it
     // as a destination here would be a link that navigates nowhere.
-    items: [{ href: "/how-it-works", label: "Knowledge Center" }],
+    items: [
+      { href: "/how-it-works", label: "Knowledge Center" },
+      // Every role can reach this, including the read-only ones. Somebody
+      // looking at a figure that does not add up is the person who should be
+      // able to say so, and there was previously nowhere to say it.
+      {
+        href: "/feedback",
+        label: "Feedback",
+        hint: "Something broken, a number that reads wrong, or a thing this should do",
+      },
+    ],
   },
   {
     key: "settings",

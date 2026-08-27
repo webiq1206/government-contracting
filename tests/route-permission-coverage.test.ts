@@ -44,6 +44,13 @@ const EXEMPT: Record<string, string> = {
   "admin/invitations/[id]/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "admin/key-grants/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "analytics/route.ts": "Records a product-analytics event for the signed-in user's own session.",
+  /*
+   * Every role may say the product is wrong, including the read-only ones. A
+   * viewer looking at a number that does not add up is exactly the person who
+   * should be able to report it, and a capability check here would only teach
+   * them that reporting it is somebody else's job. Still tenant-scoped.
+   */
+  "feedback/route.ts": "Feedback about the product you are already using; every role may send it.",
   "guide/ask/route.ts": "Asks a question about the page you are already allowed to see.",
   "guide/narrate/route.ts": "Asks a question about the page you are already allowed to see.",
   "authority/draft/route.ts": "Site Authority is platform-owner tooling for our own domain.",
