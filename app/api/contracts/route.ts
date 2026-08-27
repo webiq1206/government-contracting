@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { logAgent } from "@/lib/logger";
-import { createContract } from "@/lib/contract-record";
+import { createContract, seedContractStartup } from "@/lib/contract-record";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +34,17 @@ export async function POST(req: Request) {
     opportunityId: s("opportunity_id") || null,
   });
   if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
+
+  /*
+   * The same obligations a won contract gets. A contract entered by hand has
+   * the same duties as one this account bid; only the bid history differs.
+   */
+  if (res.id) {
+    await seedContractStartup({ orgId: ctx.orgId, contractId: res.id }).catch((e: unknown) => {
+      console.warn("[contracts] could not seed contract startup:", e);
+      return null;
+    });
+  }
 
   await logAgent({
     agent: "operator",

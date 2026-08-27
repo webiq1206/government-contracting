@@ -354,3 +354,86 @@ d("contract record (integration)", () => {
     expect(await store.contractRecord(mine.id, theirContractId)).toBeNull();
   });
 });
+
+const hasDb2 = Boolean(process.env.DATABASE_URL);
+(hasDb2 ? describe : describe.skip)("what an award creates (integration)", () => {
+  let query: typeof import("../lib/db").query;
+  let queryOne: typeof import("../lib/db").queryOne;
+  let store: typeof import("../lib/contract-record");
+  const org = { id: "" };
+  let contractId = "";
+
+  beforeAll(async () => {
+    ({ query, queryOne } = await import("../lib/db"));
+    store = await import("../lib/contract-record");
+    const o = await queryOne<{ id: string }>(
+      `insert into organizations (name, subscription_status) values ($1,'active') returning id`,
+      [`startup-${randomUUID()}`]
+    );
+    org.id = o!.id;
+    const c = await queryOne<{ id: string }>(
+      `insert into contracts (org_id, contract_number, award_amount, start_date, end_date, status)
+       values ($1,$2,250000,'2026-09-01','2027-08-31','active') returning id`,
+      [org.id, `SEED-${randomUUID().slice(0, 6)}`]
+    );
+    contractId = c!.id;
+  });
+
+  afterAll(async () => {
+    if (!org.id) return;
+    await query(`delete from compliance_items where org_id = $1`, [org.id]).catch(() => {});
+    await query(`delete from contract_milestones where org_id = $1`, [org.id]).catch(() => {});
+    await query(`delete from contracts where org_id = $1`, [org.id]).catch(() => {});
+    await query(`delete from organizations where id = $1`, [org.id]).catch(() => {});
+  });
+
+  it("writes the obligations an award creates, dated off the contract", async () => {
+    const res = await store.seedContractStartup({ orgId: org.id, contractId });
+    expect(res.milestones).toBeGreaterThan(0);
+    expect(res.compliance).toBeGreaterThan(0);
+
+    const rec = await store.contractRecord(org.id, contractId);
+    const names = rec!.milestones.map((m) => m.name);
+    expect(names).toContain("Hold the kickoff with the contracting officer");
+    expect(names).toContain("Submit the closeout package");
+
+    // Dated off the contract's own dates, not off today. A made-up deadline
+    // is one people learn to ignore.
+    const kickoff = rec!.milestones.find((m) => m.name.startsWith("Hold the kickoff"))!;
+    expect(kickoff.due_at).toBe("2026-09-15");
+    const closeout = rec!.milestones.find((m) => m.name.startsWith("Submit the closeout"))!;
+    expect(closeout.due_at).toBe("2027-09-14");
+  });
+
+  it("writes the contract_deadline rows the compliance page was built for", async () => {
+    /*
+     * `contract_deadline` is a category the compliance page has always known
+     * how to display and nothing has ever written.
+     */
+    const rows = await query<{ category: string; source: string; label: string }>(
+      `select category, source, label from compliance_items where org_id = $1`,
+      [org.id]
+    );
+    expect(rows.some((r) => r.category === "contract_deadline")).toBe(true);
+    expect(rows.some((r) => r.category === "cpars")).toBe(true);
+    // 'contract' rather than 'monitor', so the daily sweep does not overwrite
+    // an operator's edits to them.
+    expect(rows.every((r) => r.source === "contract")).toBe(true);
+  });
+
+  it("is a no-op the second time, so a repair run does not duplicate the list", async () => {
+    const before = (await store.contractRecord(org.id, contractId))!.milestones.length;
+    const again = await store.seedContractStartup({ orgId: org.id, contractId });
+    expect(again.milestones).toBe(0);
+    expect(again.compliance).toBe(0);
+    const after = (await store.contractRecord(org.id, contractId))!.milestones.length;
+    expect(after).toBe(before);
+  });
+
+  it("creates nothing for a contract in another organization", async () => {
+    const res = await store.seedContractStartup({
+      orgId: randomUUID(), contractId,
+    });
+    expect(res).toEqual({ milestones: 0, compliance: 0 });
+  });
+});

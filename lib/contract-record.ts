@@ -1,5 +1,10 @@
 import { query, queryOne, transaction } from "@/lib/db";
 import { contractMoney, type ContractMoney } from "@/lib/domain/contract-money";
+import {
+  GENERATED_NOTE,
+  plannedComplianceItems,
+  plannedMilestones,
+} from "@/lib/domain/contract-startup";
 
 /**
  * Everything on one contract, and the write paths it never had.
@@ -730,3 +735,102 @@ export async function createContract(input: {
 }
 
 export { ownsContract };
+
+
+/**
+ * Give a new contract the obligations that follow from an award.
+ *
+ * Winning produced a row with an amount and two dates and nothing else, so
+ * every duty an award creates -- certificates in, kickoff held, invoicing
+ * started, CPARS answered, closeout filed -- lived in whichever estimator's
+ * head had done it before.
+ *
+ * Idempotent on the key, so re-recording a win or re-running a repair does not
+ * produce a second set. Failures are swallowed per row rather than for the
+ * batch: a contract that exists with four of its five milestones is better
+ * than a win that refused to record because one insert tripped.
+ */
+export async function seedContractStartup(input: {
+  orgId: string;
+  contractId: string;
+}): Promise<{ milestones: number; compliance: number }> {
+  const c = await queryOne<{
+    start_date: string | null;
+    end_date: string | null;
+    bond_required_cents: string | number | null;
+    primary_sub_id: string | null;
+    contract_number: string | null;
+  }>(
+    `select start_date::text as start_date, end_date::text as end_date,
+            bond_required_cents, primary_sub_id, contract_number
+       from contracts where id = $1 and org_id = $2`,
+    [input.contractId, input.orgId]
+  );
+  if (!c) return { milestones: 0, compliance: 0 };
+
+  const facts = {
+    startDate: c.start_date,
+    endDate: c.end_date,
+    bondRequired: c.bond_required_cents != null,
+    hasSubcontractor: Boolean(c.primary_sub_id),
+  };
+
+  let milestones = 0;
+  for (const m of plannedMilestones(facts)) {
+    const rows = await query<{ id: string }>(
+      /*
+       * Keyed on the name within the contract. There is no natural key for a
+       * generated milestone, and matching on the name is what makes a second
+       * run a no-op rather than a duplicate list.
+       */
+      `insert into contract_milestones
+         (org_id, contract_id, kind, name, detail, due_at, sort_order)
+       select c.org_id, c.id, $3, $4, $5, $6::date,
+              coalesce((select max(sort_order) + 1 from contract_milestones x where x.contract_id = c.id), 0)
+         from contracts c
+        where c.id = $1 and c.org_id = $2
+          and not exists (
+            select 1 from contract_milestones e
+             where e.contract_id = c.id and lower(e.name) = lower($4)
+          )
+       returning id`,
+      [input.contractId, input.orgId, m.kind, m.name, `${m.detail} ${GENERATED_NOTE}`, m.dueAt]
+    ).catch(() => []);
+    milestones += rows.length;
+  }
+
+  let compliance = 0;
+  for (const item of plannedComplianceItems(facts)) {
+    const label = c.contract_number ? `${item.label} (${c.contract_number})` : item.label;
+    const rows = await query<{ id: string }>(
+      /*
+       * `contract_deadline` is a category the compliance page has always known
+       * how to display and nothing has ever written. These are the rows it was
+       * built for.
+       *
+       * Written as source 'monitor' would let the daily sweep overwrite them;
+       * 'contract' marks them as belonging to this award, so an operator's
+       * edits survive.
+       */
+      `insert into compliance_items
+         (org_id, category, label, contract_id, due_at, status, detail, source,
+          window_days, monitorable, required)
+       select c.org_id, $3, $4, c.id, $5::timestamptz, 'incomplete', $6::jsonb, 'contract',
+              $7, false, true
+         from contracts c
+        where c.id = $1 and c.org_id = $2
+          and not exists (
+            select 1 from compliance_items e
+             where e.contract_id = c.id and lower(e.label) = lower($4)
+          )
+       returning id`,
+      [
+        input.contractId, input.orgId, item.category, label, item.dueAt,
+        JSON.stringify({ note: item.detail, generated: true }), item.windowDays,
+      ]
+    ).catch(() => []);
+    compliance += rows.length;
+  }
+
+  return { milestones, compliance };
+}
