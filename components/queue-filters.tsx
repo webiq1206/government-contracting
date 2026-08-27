@@ -1,5 +1,10 @@
 import Link from "next/link";
 import {
+  OWNER_FILTERS,
+  OWNER_FILTER_LABEL,
+  type OwnerFilter,
+} from "@/lib/domain/ownership";
+import {
   KIND_FILTER_LABEL,
   type WorkKind,
   type QueueFilter,
@@ -21,6 +26,8 @@ export function QueueFilters({
   bucket,
   kind,
   kindCounts,
+  owner = "anyone",
+  ownerHrefFor,
   hrefFor,
   clearHref,
 }: {
@@ -28,6 +35,9 @@ export function QueueFilters({
   bucket: QueueFilter;
   kind: WorkKind | null;
   kindCounts: Record<WorkKind, number>;
+  /** Whose work is being shown. See lib/domain/ownership. */
+  owner?: OwnerFilter;
+  ownerHrefFor?: (o: OwnerFilter) => string;
   hrefFor: (opts: { kind?: WorkKind | null }) => string;
   clearHref: string;
 }) {
@@ -76,6 +86,26 @@ export function QueueFilters({
           </Link>
         )}
       </form>
+
+      {/*
+        Whose work. First, above the kind chips, because on a team it is the
+        cut somebody applies before any other: "what is on me" comes before
+        "which of it is calls".
+      */}
+      {ownerHrefFor && (
+        <nav aria-label="Filter by owner" className="flex flex-wrap gap-2">
+          {OWNER_FILTERS.map((o) => (
+            <Link
+              key={o}
+              href={ownerHrefFor(o)}
+              aria-current={owner === o ? "page" : undefined}
+              className={chip(owner === o)}
+            >
+              {OWNER_FILTER_LABEL[o]}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       {kinds.length > 1 && (
         <nav aria-label="Filter by kind of work" className="flex flex-wrap gap-2">

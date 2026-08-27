@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { WorkItem } from "@/lib/domain/work-queue";
 import { summarizeQueue } from "@/lib/domain/work-queue";
 import { DeadlineBadge } from "@/components/deadline-badge";
+import { describeOwner } from "@/lib/domain/ownership";
 
 /**
  * The one list of everything waiting on the operator, each row carrying the
@@ -13,7 +14,16 @@ import { DeadlineBadge } from "@/components/deadline-badge";
  * every action shouts equally is how "what should I do next" stops having an
  * answer. Server-rendered; rows are links, no client JS.
  */
-export function WorkQueue({ items, limit }: { items: WorkItem[]; limit?: number }) {
+export function WorkQueue({
+  items,
+  limit,
+  viewerId,
+}: {
+  items: WorkItem[];
+  limit?: number;
+  /** So a row assigned to the reader says "You" rather than their own name. */
+  viewerId?: string;
+}) {
   const shown = limit ? items.slice(0, limit) : items;
   const more = items.length - shown.length;
 
@@ -45,6 +55,15 @@ export function WorkQueue({ items, limit }: { items: WorkItem[]; limit?: number 
                       </span>
                     )}
                     <DeadlineBadge deadline={item.due ?? null} />
+                    {/*
+                      Whose it is. Shown on every row including unassigned
+                      ones, because "nobody has picked this up" is the state
+                      worth seeing: a blank column reads as a rendering fault
+                      and gets ignored, where the word is something to act on.
+                    */}
+                    <span className="text-xs text-muted-foreground">
+                      {describeOwner(item.owner, viewerId)}
+                    </span>
                   </div>
                   {/*
                     The blocker before the reason: when automation named

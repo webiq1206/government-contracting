@@ -40,6 +40,8 @@ import { ActivityTimeline } from "@/components/activity-timeline";
 import { ActivityLogActions } from "@/components/activity-log-actions";
 import { OpportunityTaskList } from "@/components/opportunity-task-list";
 import { OpportunityWorkspace } from "@/components/opportunity-workspace";
+import { OwnerPicker } from "@/components/owner-picker";
+import { assignableMembers, ownerOf } from "@/lib/ownership";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { compareScenarios, pricingSheet } from "@/lib/domain/pricing-row";
 import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
@@ -81,11 +83,19 @@ const PAST_PERF_LABEL: Record<string, string> = {
  * Pricing / Files / More.
  */
 export default async function OpportunityPage({ params }: { params: { id: string } }) {
-  const [detail, automation, rules, viewer] = await Promise.all([
+  const [detail, automation, rules, viewer, oppOwner, teamMembers] = await Promise.all([
     opportunityDetail(params.id),
     getAutomationState(),
     getAutomationRules(),
     currentUser(),
+    /*
+     * Whose bid this is, and who it could be.
+     * Both tolerate failure: an owner picker that cannot load is a field
+     * that says Unassigned, where a throw here would be a record page that
+     * will not open because of a dropdown.
+     */
+    ownerOf("opportunity", params.id).catch(() => null),
+    assignableMembers().catch(() => []),
   ]);
   if (!detail) notFound();
   const { opp, quotes, subs, documents, logs, competitors, subComms, pendingCalls } = detail;
@@ -523,10 +533,29 @@ export default async function OpportunityPage({ params }: { params: { id: string
               </div>
               {/* The single most action-relevant fact, so it lives where every
                   tab can see it rather than one click inside Details. */}
-              <div className="mt-4">
-                <p className="label">Time to submit</p>
-                <div className="mt-0.5">
-                  <DeadlineCountdown deadline={opp.deadline} />
+              <div className="mt-4 flex flex-wrap items-end gap-6">
+                <div>
+                  <p className="label">Time to submit</p>
+                  <div className="mt-0.5">
+                    <DeadlineCountdown deadline={opp.deadline} />
+                  </div>
+                </div>
+                {/*
+                  Whose bid this is, next to when it is due.
+                  Those two facts answer the question somebody opening this
+                  record has, and until now only one of them was on the page:
+                  a five-person office could see that the bid was due Friday
+                  and not who was writing it.
+                */}
+                <div className="min-w-[10rem]">
+                  <OwnerPicker
+                    kind="opportunity"
+                    recordId={opp.id}
+                    owner={oppOwner}
+                    members={teamMembers}
+                    viewerId={viewer?.id}
+                    canAssign={can(viewer?.orgRole, "decide")}
+                  />
                 </div>
               </div>
             </div>

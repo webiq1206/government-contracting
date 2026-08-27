@@ -13,6 +13,8 @@
  * the database, so the ordering rules are testable on their own.
  */
 
+import { matchesOwner, type Owner, type OwnerFilter } from "./ownership";
+
 export type WorkKind =
   | "read_reply" // a sub answered and the reply needs a human's eyes
   | "decide" // pursue-or-pass on a borderline opportunity
@@ -67,6 +69,20 @@ export interface WorkItem {
    * morning" is unavailable on the page built to answer it.
    */
   waitingOn?: { party: string; since?: string | null } | null;
+  /**
+   * Who here is doing it, when somebody has said.
+   *
+   * A different question from `waitingOn`, which names a party outside the
+   * company. On a one-person account this is obvious and nobody asks; on a
+   * five-person account it is the question, and its absence has a specific
+   * failure mode: everything looks like it is on everybody, so the items that
+   * go overdue are the ones each person assumed the other had picked up.
+   *
+   * Null means unassigned, which is a real answer rather than a missing one.
+   * Nothing guesses: the account's owner is not the owner of every record in
+   * it merely because they signed up.
+   */
+  owner?: Owner | null;
 }
 
 /**
@@ -329,7 +345,14 @@ export function parseKindFilter(raw: string | string[] | undefined): WorkKind | 
  */
 export function filterWorkItems(
   items: WorkItem[],
-  opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string },
+  opts: {
+    bucket?: QueueFilter;
+    kind?: WorkKind | null;
+    q?: string;
+    /** Whose work to show. Needs viewerId to mean anything but "anyone". */
+    owner?: OwnerFilter;
+    viewerId?: string;
+  },
   now = new Date()
 ): WorkItem[] {
   if (opts.bucket && isCompletedFilter(opts.bucket)) {
@@ -355,6 +378,17 @@ export function filterWorkItems(
       }
     }
     if (opts.kind && item.kind !== opts.kind) return false;
+    /*
+     * The owner cut, applied last of the structured ones.
+     *
+     * Without a viewer id "on me" has no meaning, so it is treated as no
+     * filter rather than as nothing matching. A page that silently shows an
+     * empty list because it forgot to say who is looking is worse than one
+     * that shows everything.
+     */
+    if (opts.owner && opts.owner !== "anyone" && opts.viewerId) {
+      if (!matchesOwner(item.owner, opts.owner, opts.viewerId)) return false;
+    }
     if (needle) {
       const hay = `${item.title} ${item.context} ${item.reason ?? ""}`.toLowerCase();
       if (!hay.includes(needle)) return false;

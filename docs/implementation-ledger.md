@@ -301,6 +301,38 @@ After the fixes: **0 findings**, on 6 signed-out and 26 signed-in routes at
 three widths in both themes, with a platform-admin account so the six admin
 pages were measured as pages rather than as 404s.
 
+## Ownership: the field that was missing everywhere
+
+"Owner" appears in nine work packages: on tasks, opportunity rows, the
+opportunity header, requirements, contracts, compliance records and
+subcontractors. Nothing in the schema carried it. The queue could say when the
+next move belonged to somebody outside the company, and could not say which of
+the three people in this office was doing it.
+
+On a one-person account that question has an obvious answer and nobody asks
+it. On a five-person account it is the question, and its absence has a
+specific failure mode: everything looks like it is on everybody, so the items
+that go overdue are exactly the ones each person assumed the other had picked
+up.
+
+| Decision | Why |
+| --- | --- |
+| Assignment lives on the record, not in a table of tasks | The tasks here are derived. A task is a view of an opportunity at a moment, with no independent existence to hang an owner off, and an assignment stored against a derived id would be lost the next time the derivation ran |
+| Null means unassigned, not unknown | It is the honest default: nobody has said whose it is. Nothing guesses, and in particular the account's owner is not the owner of every record in it merely because they signed up |
+| The membership rule is a trigger, not a foreign key | A key to `users` permits any user on the platform, so one organization's bid could name a person in another company as its owner, and that name would then appear on a screen they have no business appearing on |
+| `on delete set null` | A person leaving must not delete their opportunities and must not be undeletable because of them. Their work becomes unassigned, which is what has happened |
+| Anyone who can act on a record can assign it | Assigning is how a team divides a morning. Requiring an administrator would mean the person who just picked something up cannot say so |
+
+Built: the columns on opportunities, compliance items, contracts and
+subcontractors with their trigger and indexes; the domain model; the storage
+layer with batch reads; the API; the picker; the owner on every queue row; and
+an owner filter on Today.
+
+Not yet surfaced: the picker on the compliance, contract and subcontractor
+records, and an owner column in the Opportunities table view. The model and the
+API cover all four kinds, so each is one component placement rather than new
+machinery.
+
 ## Blocked
 
 | Requirement | Blocked on | What is needed |

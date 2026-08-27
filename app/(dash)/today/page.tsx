@@ -9,6 +9,7 @@ import { automationHealth } from "@/lib/automation-status";
 import { AutomationBlockerBanner } from "@/components/automation-incidents";
 import { SetupChecklist } from "@/components/setup-checklist";
 import { workQueue, completedToday, completedTodayItems } from "@/lib/data";
+import { parseOwnerFilter, type OwnerFilter } from "@/lib/domain/ownership";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
@@ -477,6 +478,22 @@ export default async function TodayPage({
     return (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
   })();
   const queueBucket: QueueFilter = parseQueueFilter(searchParams?.due);
+  /*
+   * Whose work to show.
+   *
+   * "On me" is the read an operator on a team wants first thing, and until
+   * this existed the page could only answer "what is on this company", which
+   * on a five-person account is a list where each person's own eight items are
+   * mixed into forty.
+   */
+  const queueOwner: OwnerFilter = parseOwnerFilter(searchParams?.owner);
+  /*
+   * Who is looking. Needed before the queue is filtered, because "on me" has
+   * no meaning without it, and read once here rather than twice: the setup
+   * checklist below wants the same person.
+   */
+  const { currentUser } = await import("@/lib/auth");
+  const viewer = await currentUser().catch(() => null);
   const queueKind: WorkKind | null = parseKindFilter(searchParams?.kind);
   const counts = queueCounts(queueItems);
   const kindCounts = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).reduce(
@@ -508,14 +525,20 @@ export default async function TodayPage({
         bucket: queueBucket,
         kind: queueKind,
         q: queueQ,
+        owner: queueOwner,
+        viewerId: viewer?.id,
       });
   const queueFiltered = queueBucket !== "all" || queueKind != null || queueQ !== "";
 
-  function queueHref(opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string } = {}): string {
+  function queueHref(
+    opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string; owner?: OwnerFilter } = {}
+  ): string {
     const p = new URLSearchParams();
     const bucket = opts.bucket ?? queueBucket;
     const kind = opts.kind === undefined ? queueKind : opts.kind;
     const q = opts.q ?? queueQ;
+    const owner = opts.owner ?? queueOwner;
+    if (owner !== "anyone") p.set("owner", owner);
     if (bucket !== "all") p.set("due", bucket);
     if (kind) p.set("kind", kind);
     if (q) p.set("q", q);
@@ -533,9 +556,7 @@ export default async function TodayPage({
   // accountSetup holds the per-organization and trial reasoning that used to
   // live here, so the Guide Me panel and its badge answer this the same way
   // rather than from the deployment's own environment.
-  const { currentUser } = await import("@/lib/auth");
-  const setupUser = await currentUser().catch(() => null);
-  const setup = await accountSetup(profile?.profile_json ?? null, setupUser);
+  const setup = await accountSetup(profile?.profile_json ?? null, viewer);
 
   const urgentIds = new Set(data.urgent.map((o) => o.id));
   const bidWork = data.bidWork.filter((o) => !urgentIds.has(o.id));
@@ -653,13 +674,15 @@ export default async function TodayPage({
                     bucket={queueBucket}
                     kind={queueKind}
                     kindCounts={kindCounts}
+                    owner={queueOwner}
+                    ownerHrefFor={(o) => queueHref({ owner: o })}
                     hrefFor={(o) => queueHref(o)}
                     clearHref="/today#queue"
                   />
                   {showingCompleted ? (
                     <CompletedList items={completedItems} />
                   ) : shownQueue.length > 0 ? (
-                    <WorkQueue items={shownQueue} limit={5} />
+                    <WorkQueue items={shownQueue} limit={5} viewerId={viewer?.id} />
                   ) : (
                     <EmptyState
                       tone="success"

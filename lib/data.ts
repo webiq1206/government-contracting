@@ -3021,8 +3021,10 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       opp_id: string | null;
       opp_title: string | null;
       deadline: string | null;
+      assigned_to: string | null;
     }>(
-      `select e.id, s.company_name, o.id as opp_id, o.title as opp_title, o.deadline
+      `select e.id, s.company_name, o.id as opp_id, o.title as opp_title, o.deadline,
+              o.assigned_to
          from subcontractor_reply_events e
          join subcontractors s on s.id = e.subcontractor_id
          left join opportunities o on o.id = e.opportunity_id
@@ -3031,12 +3033,12 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
         limit 20`,
       [orgId]
     ),
-    query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null }>(
-      `select id, title, deadline, review_expires_at from opportunities
+    query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null; assigned_to: string | null }>(
+      `select id, title, deadline, review_expires_at, assigned_to from opportunities
         where org_id=$1 and tier='review' and human_action_required=true and status='open'`,
       [orgId]
     ),
-    query<{ id: string; company_name: string; trade: string | null; opp_title: string | null; deadline: string | null }>(
+    query<{ id: string; company_name: string; trade: string | null; opp_title: string | null; deadline: string | null; assigned_to: string | null }>(
       // The trade is inside card_json, not a column. `cc.trade` has never
       // existed, so this whole function has been throwing -- and Today wraps
       // it in .catch(() => []), so the work queue simply never appeared. A
@@ -3044,7 +3046,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       // single error reaching anybody.
       `select cc.id, s.company_name,
               coalesce(cc.card_json->>'trade', s.trade_categories[1]) as trade,
-              o.title as opp_title, o.deadline
+              o.title as opp_title, o.deadline, o.assigned_to
          from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
@@ -3057,8 +3059,9 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       stage: string;
       deadline: string | null;
       risk_flags: string[] | null;
+      assigned_to: string | null;
     }>(
-      `select id, title, stage, deadline, risk_flags from opportunities
+      `select id, title, stage, deadline, risk_flags, assigned_to from opportunities
         where org_id=$1 and human_action_required=true and status='open'
           and not (tier='review' and stage='scoring')`,
       [orgId]
@@ -3085,6 +3088,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       opp_title: string | null;
       deadline: string | null;
       sent_at: string | null;
+      assigned_to: string | null;
     }>(
       /*
        * The send time comes from the communication, not the pairing.
@@ -3096,7 +3100,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
        * always empty.
        */
       `select os.id, s.company_name, os.trade,
-              o.id as opp_id, o.title as opp_title, o.deadline,
+              o.id as opp_id, o.title as opp_title, o.deadline, o.assigned_to,
               (select max(c.created_at) from communications c
                 where c.opportunity_id = os.opportunity_id
                   and c.subcontractor_id = os.subcontractor_id
@@ -3121,6 +3125,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       due: isoOrNull(r.deadline),
       href: "/today#reply-reviews",
       actionLabel: "Read reply",
+      assignedTo: r.assigned_to,
       reason: "The automatic reader was not confident enough to act on this, so the conversation is stopped until somebody reads it.",
     })),
     ...decisions.map((d) => ({
@@ -3132,6 +3137,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       expiresAt: isoOrNull(d.review_expires_at),
       href: `/opportunity/${d.id}#next`,
       actionLabel: "Decide",
+      assignedTo: d.assigned_to,
       reason: d.review_expires_at
         ? "Scored close enough to the line that a person has to call it. It is dismissed automatically if nobody does."
         : "Scored close enough to the line that a person has to call it.",
@@ -3144,6 +3150,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       due: isoOrNull(c.deadline),
       href: `/call-queue`,
       actionLabel: "Open call",
+      assignedTo: c.assigned_to,
       reason: "Email has not produced a price on this trade, so the next move is a phone call.",
     })),
     ...actionable.map((o) => ({
@@ -3170,6 +3177,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
             : `/opportunity/${o.id}#next`,
       actionLabel:
         o.stage === "bid_building" ? "Review bid" : o.stage === "quote_entry" ? "Enter quote" : "Resolve",
+      assignedTo: o.assigned_to,
       reason:
         o.stage === "bid_building"
           ? "The package is assembled. Nothing goes to the agency until a person reads it and signs."
@@ -3198,6 +3206,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       due: isoOrNull(w.deadline),
       href: `/opportunity/${w.opp_id}`,
       actionLabel: "Open opportunity",
+      assignedTo: w.assigned_to,
       reason: w.sent_at
         ? `The quote request went out on ${new Date(w.sent_at).toISOString().slice(0, 10)} and they have not answered yet.`
         : "The quote request has gone out and they have not answered yet.",
@@ -3208,9 +3217,39 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
     })),
   ];
   /*
+   * Whose each of these is.
+   *
+   * Resolved in one query for the whole queue rather than per row. The queue
+   * draws up to fifty items and a per-row lookup here is the shape that turns
+   * a fast page into a slow one without anybody changing the page.
+   *
+   * The owner comes from the opportunity, because every item above is about
+   * one. A task in this product is a view of a record at a moment, so it has
+   * no independent existence to hang an owner off; the record carries it and
+   * the task inherits it, which also means the answer is the same wherever the
+   * record appears.
+   */
+  const assigneeIds = Array.from(
+    new Set(items.map((i) => i.assignedTo).filter((v): v is string => typeof v === "string"))
+  );
+  const people = new Map<string, { id: string; name: string }>();
+  if (assigneeIds.length > 0) {
+    const { ownerName } = await import("./domain/ownership");
+    const rows = await query<{ id: string; name: string | null; email: string | null }>(
+      `select id, name, email from users where id = any($1::uuid[])`,
+      [assigneeIds]
+    );
+    for (const r of rows) people.set(r.id, { id: r.id, name: ownerName(r) });
+  }
+  const owned = items.map(({ assignedTo, ...item }) => ({
+    ...item,
+    owner: assignedTo ? (people.get(assignedTo) ?? null) : null,
+  }));
+
+  /*
    * Dedupe before sorting: one opportunity can be flagged for attention AND
    * sitting in bid_building, which produced two rows for one piece of work and
    * made the count at the top of Today disagree with the list under it.
    */
-  return dedupeWorkItems(items);
+  return dedupeWorkItems(owned);
 }
