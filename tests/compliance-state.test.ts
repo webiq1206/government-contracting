@@ -6,6 +6,9 @@ import {
   complianceState,
   fromLegacyStatus,
   needsAttention,
+  nextDueDate,
+  RECURRENCES,
+  RECURRENCE_LABEL,
   type ComplianceFacts,
 } from "@/lib/domain/compliance-state";
 
@@ -185,5 +188,47 @@ describe("rows written before this vocabulary existed", () => {
     expect(fromLegacyStatus("needs_review")).toBe("needs_review");
     expect(fromLegacyStatus("nonsense")).toBeNull();
     expect(fromLegacyStatus(null)).toBeNull();
+  });
+});
+
+describe("a renewal that repeats", () => {
+  it("rolls forward from the date that passed, not from today", () => {
+    /*
+     * An item renewed three weeks late still lands on its real anniversary.
+     * Rolling from today would push every renewal later each year until the
+     * date meant nothing.
+     */
+    const next = nextDueDate("2026-03-15T00:00:00Z", "annual");
+    expect(next?.slice(0, 10)).toBe("2027-03-15");
+  });
+
+  it("handles each cadence", () => {
+    const from = "2026-01-31T00:00:00Z";
+    expect(nextDueDate(from, "monthly")?.slice(0, 10)).toBe("2026-02-28");
+    expect(nextDueDate("2026-01-15T00:00:00Z", "quarterly")?.slice(0, 10)).toBe("2026-04-15");
+    expect(nextDueDate("2026-01-15T00:00:00Z", "semiannual")?.slice(0, 10)).toBe("2026-07-15");
+  });
+
+  it("rolls a 31st back to the end of a shorter month rather than into the next one", () => {
+    // Date arithmetic that quietly jumps a month is how an annual renewal
+    // ends up a day late every fourth year.
+    expect(nextDueDate("2026-03-31T00:00:00Z", "monthly")?.slice(0, 10)).toBe("2026-04-30");
+  });
+
+  it("takes a custom number of months", () => {
+    expect(nextDueDate("2026-01-15T00:00:00Z", "custom", 18)?.slice(0, 10)).toBe("2027-07-15");
+  });
+
+  it("returns nothing rather than guessing", () => {
+    expect(nextDueDate(null, "annual")).toBeNull();
+    expect(nextDueDate("2026-01-15T00:00:00Z", null)).toBeNull();
+    expect(nextDueDate("2026-01-15T00:00:00Z", "sometimes")).toBeNull();
+    // Custom with no month count is not a schedule.
+    expect(nextDueDate("2026-01-15T00:00:00Z", "custom")).toBeNull();
+    expect(nextDueDate("2026-01-15T00:00:00Z", "custom", 0)).toBeNull();
+  });
+
+  it("labels every cadence", () => {
+    for (const r of RECURRENCES) expect(RECURRENCE_LABEL[r]).toBeTruthy();
   });
 });

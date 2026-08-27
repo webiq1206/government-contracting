@@ -30,6 +30,24 @@ export interface ComplianceCardData {
   doc_url: string;
   /** True for operator-added items (deletable; not touched by the monitor). */
   manual: boolean;
+  /*
+   * The facts an item needs to be worked, none of which the editor could
+   * reach: which timezone the date lives in, how often it repeats, how far
+   * ahead it warns, what happens when nobody acts, and when a person last
+   * confirmed it against a document.
+   */
+  timeZone: string;
+  recurrence: string;
+  recurrenceMonths: string;
+  windowDays: string;
+  escalateAfterDays: string;
+  escalateTo: string;
+  blockedBy: string;
+  conflictDetail: string;
+  needsReviewReason: string;
+  verifiedAt: string | null;
+  /** True when the platform has something it can actually check. */
+  monitorable: boolean;
 }
 
 export interface CategoryInfo {
@@ -48,6 +66,15 @@ export interface CategoryInfo {
  * assert. "Expiring soon" is absent on purpose: that one is arithmetic, and
  * arithmetic does not need an override.
  */
+const RECURRENCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "It does not repeat" },
+  { value: "annual", label: "Every year" },
+  { value: "semiannual", label: "Every six months" },
+  { value: "quarterly", label: "Every three months" },
+  { value: "monthly", label: "Every month" },
+  { value: "custom", label: "Every so many months" },
+];
+
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "Work it out from the dates" },
   { value: "complete", label: "Complete" },
@@ -115,10 +142,50 @@ export function ComplianceItemCard({
     link_url: item.link_url,
     doc_url: item.doc_url,
     notes: item.notes,
+    time_zone: item.timeZone,
+    recurrence: item.recurrence,
+    recurrence_months: item.recurrenceMonths,
+    window_days: item.windowDays,
+    escalate_after_days: item.escalateAfterDays,
+    escalate_to: item.escalateTo,
+    blocked_by: item.blockedBy,
+    conflict_detail: item.conflictDetail,
+    needs_review_reason: item.needsReviewReason,
   });
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
+  }
+
+  /**
+   * A single claim, posted on its own.
+   *
+   * Verifying and renewing are statements a person makes about the item
+   * rather than edits to a form, and folding them into the save button would
+   * mean somebody who opened the editor to fix a typo could also, without
+   * meaning to, assert they had checked the certificate.
+   */
+  async function act(body: Record<string, unknown>) {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/compliance/${item.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error ?? "That did not work.");
+        return;
+      }
+      setEditing(false);
+      router.refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function save() {
@@ -192,6 +259,110 @@ export function ComplianceItemCard({
             onChange={(e) => set("doc_url", e.target.value)}
           />
         </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="label mb-1 block">How often it repeats</span>
+            <select
+              className="input"
+              value={form.recurrence}
+              onChange={(e) => set("recurrence", e.target.value)}
+            >
+              {RECURRENCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-slate-500">
+              {/*
+                Without this every renewal was a new item somebody had to
+                remember to create, which is the memory this board exists to
+                replace.
+              */}
+              Renewing rolls the date forward instead of leaving it expired.
+            </span>
+          </label>
+          {form.recurrence === "custom" && (
+            <label className="block">
+              <span className="label mb-1 block">Every how many months</span>
+              <input
+                className="input"
+                inputMode="numeric"
+                value={form.recurrence_months}
+                onChange={(e) => set("recurrence_months", e.target.value)}
+              />
+            </label>
+          )}
+          <label className="block">
+            <span className="label mb-1 block">Warn this many days ahead</span>
+            <input
+              className="input"
+              inputMode="numeric"
+              placeholder="30"
+              value={form.window_days}
+              onChange={(e) => set("window_days", e.target.value)}
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              A bond is not a W-9. Leave empty for the usual thirty.
+            </span>
+          </label>
+          <label className="block">
+            <span className="label mb-1 block">Timezone the date is in</span>
+            <input
+              className="input"
+              placeholder="America/Denver"
+              value={form.time_zone}
+              onChange={(e) => set("time_zone", e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="label mb-1 block">Escalate after this many days</span>
+            <input
+              className="input"
+              inputMode="numeric"
+              value={form.escalate_after_days}
+              onChange={(e) => set("escalate_after_days", e.target.value)}
+            />
+          </label>
+          <label className="block">
+            <span className="label mb-1 block">Escalate to</span>
+            <input
+              className="input"
+              placeholder="Who hears about it when nobody acts"
+              value={form.escalate_to}
+              onChange={(e) => set("escalate_to", e.target.value)}
+            />
+          </label>
+        </div>
+        <label className="block">
+          <span className="label mb-1 block">Waiting on something else</span>
+          <input
+            className="input"
+            placeholder="What has to happen first"
+            value={form.blocked_by}
+            onChange={(e) => set("blocked_by", e.target.value)}
+          />
+        </label>
+        <label className="block">
+          <span className="label mb-1 block">Two sources disagree</span>
+          <input
+            className="input"
+            placeholder="What each one says"
+            value={form.conflict_detail}
+            onChange={(e) => set("conflict_detail", e.target.value)}
+          />
+          <span className="mt-1 block text-xs text-slate-500">
+            Filling this in puts the item above everything else, because you cannot act on
+            either side of a disagreement until it is settled.
+          </span>
+        </label>
+        <label className="block">
+          <span className="label mb-1 block">Needs somebody to look at it</span>
+          <input
+            className="input"
+            placeholder="Why a person has to confirm this"
+            value={form.needs_review_reason}
+            onChange={(e) => set("needs_review_reason", e.target.value)}
+          />
+        </label>
         <label className="block">
           <span className="label mb-1 block">Notes</span>
           <textarea
@@ -202,10 +373,32 @@ export function ComplianceItemCard({
             onChange={(e) => set("notes", e.target.value)}
           />
         </label>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button className="btn-primary" onClick={save} disabled={saving}>
             {saving ? "Saving..." : "Save"}
           </button>
+          {/*
+            Separate from Save. Both are claims a person makes about the item
+            rather than edits to a form, and folding them into the save button
+            would let somebody fixing a typo also assert they had checked the
+            certificate.
+          */}
+          <button
+            className="btn-ghost"
+            onClick={() => void act({ verified: true })}
+            disabled={saving}
+          >
+            I have checked this against the document
+          </button>
+          {item.recurrence && (
+            <button
+              className="btn-ghost"
+              onClick={() => void act({ renewed: true })}
+              disabled={saving}
+            >
+              Renewed, roll the date forward
+            </button>
+          )}
           <button
             className="btn-ghost"
             onClick={() => {
@@ -272,6 +465,19 @@ export function ComplianceItemCard({
       <p className="mt-2 text-xs leading-relaxed text-foreground">
         {item.statusDetail}
         {item.statusFix ? <span className="text-muted-foreground"> {item.statusFix}</span> : null}
+      </p>
+
+      {/*
+        When a person last confirmed it, as distinct from when a machine last
+        looked. An item checked against the actual certificate is a different
+        thing from one a nightly sweep read a date off, and the record could
+        not tell them apart.
+      */}
+      <p className="mt-1 text-xs text-muted-foreground">
+        {item.verifiedAt
+          ? `Checked against the document ${item.verifiedAt.slice(0, 10)}.`
+          : "Nobody here has confirmed this against the document."}
+        {item.recurrence ? " Repeats." : ""}
       </p>
 
       {info && (

@@ -281,3 +281,62 @@ export function fromLegacyStatus(value: string | null | undefined): ComplianceSt
   if ((COMPLIANCE_STATES as readonly string[]).includes(value)) return value as ComplianceState;
   return LEGACY_STATUS[value] ?? null;
 }
+
+
+/**
+ * When a recurring obligation next falls due.
+ *
+ * Most of these repeat: a registration annually, insurance annually, a CPARS
+ * on the contract's schedule. Without this every renewal was a new item
+ * somebody had to remember to create, which is exactly the memory the board
+ * exists to replace.
+ *
+ * Rolls forward from the date that just passed rather than from today, so an
+ * item renewed three weeks late still lands on its real anniversary instead of
+ * drifting later every year.
+ */
+export const RECURRENCES = ["annual", "semiannual", "quarterly", "monthly", "custom"] as const;
+export type Recurrence = (typeof RECURRENCES)[number];
+
+export const RECURRENCE_LABEL: Record<Recurrence, string> = {
+  annual: "Every year",
+  semiannual: "Every six months",
+  quarterly: "Every three months",
+  monthly: "Every month",
+  custom: "Every so many months",
+};
+
+const MONTHS: Record<Recurrence, number> = {
+  annual: 12,
+  semiannual: 6,
+  quarterly: 3,
+  monthly: 1,
+  custom: 0,
+};
+
+export function nextDueDate(
+  from: string | Date | null | undefined,
+  recurrence: string | null | undefined,
+  customMonths?: number | null
+): string | null {
+  const base = asDate(from);
+  if (!base) return null;
+  if (!recurrence || !(RECURRENCES as readonly string[]).includes(recurrence)) return null;
+  const months =
+    recurrence === "custom"
+      ? Number(customMonths)
+      : MONTHS[recurrence as Recurrence];
+  if (!Number.isFinite(months) || months <= 0) return null;
+
+  const next = new Date(base.getTime());
+  const day = next.getUTCDate();
+  next.setUTCMonth(next.getUTCMonth() + months);
+  /*
+   * A 31st that lands in a 30-day month rolls back to the last day of that
+   * month rather than forward into the next one. Date arithmetic that quietly
+   * jumps a month is how an annual renewal ends up a day late every fourth
+   * year.
+   */
+  if (next.getUTCDate() !== day) next.setUTCDate(0);
+  return next.toISOString();
+}
