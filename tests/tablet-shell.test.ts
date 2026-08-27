@@ -121,3 +121,57 @@ describe("scrollable tab strips", () => {
     expect(src).not.toContain("flex-wrap");
   });
 });
+
+/**
+ * A 52rem table on a 390px screen.
+ *
+ * The roster table sits inside a horizontal scroller, so reading one row on a
+ * phone meant scrolling sideways until the company name had left the screen,
+ * with the state badge and the way to reach them at opposite ends of that
+ * scroll. Cards are not a smaller table: they are a different arrangement of
+ * the same row.
+ */
+describe("a table too wide for a phone", () => {
+  const table = () => readFileSync(join(process.cwd(), "components/data-table.tsx"), "utf8");
+  const subs = () => readFileSync(join(process.cwd(), "components/subs-table.tsx"), "utf8");
+
+  it("hides the table where cards take over, rather than showing both", () => {
+    // Both rendered at once would mean every row twice on a phone, and the
+    // page would still scroll sideways.
+    expect(table()).toContain('card ? " hidden lg:block" : ""');
+  });
+
+  it("leaves the table alone on a page with no card", () => {
+    // The conditional is what makes this safe to add one page at a time.
+    expect(table()).toContain("card?: (row: T) => React.ReactNode;");
+  });
+
+  it("hides the column and density controls where cards are in charge", () => {
+    // They change nothing a card reader can see.
+    expect(table()).toContain('card ? " hidden lg:flex" : ""');
+  });
+
+  it("keeps the roster's contact actions inside the card, not fixed to the screen", () => {
+    /*
+     * A bar fixed to the viewport can only ever act on one firm, and a list
+     * of firms is exactly where somebody is choosing between them.
+     */
+    const src = subs();
+    expect(src).toContain("border-t border-border");
+    expect(src).not.toMatch(/fixed\s+bottom-/);
+  });
+
+  it("never offers to email an address that has not passed verification", () => {
+    // A mailto to an unverified address is how a bid loses a quote to a
+    // bounce nobody saw.
+    expect(subs()).toContain("row.email && row.email_verified ? `mailto:");
+  });
+
+  it("gives every contact action a full tap target", () => {
+    const src = subs();
+    const bar = src.slice(src.indexOf("The contact bar."));
+    const targets = bar.match(/min-h-11/g) ?? [];
+    // Call, Email and Quick look, in both their live and their dimmed forms.
+    expect(targets.length).toBeGreaterThanOrEqual(5);
+  });
+});

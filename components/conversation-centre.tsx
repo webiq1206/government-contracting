@@ -21,6 +21,7 @@ import type {
   ConversationSummary,
   CentreMessage,
 } from "@/lib/domain/conversation-centre";
+import { readDeliveryCode, statusFromDetail } from "@/lib/domain/email-delivery";
 import type { MessageState } from "@/lib/domain/message-state";
 
 function when(iso: string): string {
@@ -65,6 +66,7 @@ export function ConversationThreadPane({
   conversation,
   messages,
   canSend,
+  canSeeRaw,
   backHref,
   stateLabels,
   stateMeanings,
@@ -72,6 +74,15 @@ export function ConversationThreadPane({
   conversation: ConversationSummary;
   messages: CentreMessage[];
   canSend: boolean;
+  /**
+   * Whether this viewer may see the raw text a remote mail server returned.
+   *
+   * Not a secret, but it is a postmaster's diagnostic rather than something
+   * anybody reading a thread needs, and it names internal message ids and
+   * host names. The plain-English reading above it is what the work actually
+   * turns on, and everybody gets that.
+   */
+  canSeeRaw: boolean;
   backHref: string;
   stateLabels: Record<MessageState, string>;
   stateMeanings: Record<MessageState, string>;
@@ -299,10 +310,7 @@ export function ConversationThreadPane({
                   {stateLabels[m.state]}
                 </span>
                 {m.delivery_detail && (
-                  <details className="text-[11px] text-slate-500">
-                    <summary className="tap cursor-pointer">Technical details</summary>
-                    <p className="mt-1 break-all font-mono">{m.delivery_detail}</p>
-                  </details>
+                  <DeliveryDetail detail={m.delivery_detail} canSeeRaw={canSeeRaw} />
                 )}
               </div>
             </article>
@@ -364,5 +372,43 @@ export function ConversationThreadPane({
         )}
       </div>
     </div>
+  );
+}
+
+
+/**
+ * What a delivery failure means, with the server's own words underneath.
+ *
+ * The raw diagnostic is written for a postmaster: "550 5.1.1 The email
+ * account that you tried to reach does not exist" and "550 5.7.1 Message
+ * rejected due to content" both read as rejection to an estimator, and they
+ * need opposite responses. One means find a different address; the other
+ * means the address was fine all along and hunting for a new contact is
+ * wasted work.
+ *
+ * So the reading is always shown and never collapsed, and the raw text sits
+ * behind an expander for the people whose job it is.
+ */
+function DeliveryDetail({ detail, canSeeRaw }: { detail: string; canSeeRaw: boolean }) {
+  const reading = readDeliveryCode(statusFromDetail(detail));
+  return (
+    <span className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+      {reading ? (
+        <span className={reading.addressAtFault ? "text-risk" : undefined}>
+          {reading.meaning}
+          {reading.fix ? ` ${reading.fix}` : ""}
+        </span>
+      ) : (
+        // No code to read, so the server's own sentence is the best there is.
+        // Shown rather than hidden: something is better than a bare state.
+        <span className="break-all">{detail.slice(0, 200)}</span>
+      )}
+      {canSeeRaw && reading && (
+        <details className="text-[11px] text-slate-500">
+          <summary className="tap cursor-pointer">What the server said</summary>
+          <p className="mt-1 break-all font-mono">{detail}</p>
+        </details>
+      )}
+    </span>
   );
 }

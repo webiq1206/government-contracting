@@ -48,6 +48,7 @@ export function DataTable<T extends { id: string }>({
   paging,
   total,
   prefsKey,
+  card,
   rowHref,
   selection,
   emptyState,
@@ -61,6 +62,18 @@ export function DataTable<T extends { id: string }>({
   total: number;
   /** Storage key for column visibility + density on this page. */
   prefsKey: string;
+  /**
+   * One row as a card, for viewports too narrow for a table.
+   *
+   * The table is 52rem wide inside a horizontal scroller, so on a phone
+   * reading one row means scrolling sideways until the column that identifies
+   * it has left the screen. A card is not a smaller table: it is a different
+   * arrangement of the same row, and each page knows which of its facts
+   * survive the trip.
+   *
+   * Without one, the table still scrolls sideways as before.
+   */
+  card?: (row: T) => React.ReactNode;
   rowHref?: (row: T) => string;
   selection?: {
     selected: Set<string>;
@@ -129,7 +142,15 @@ export function DataTable<T extends { id: string }>({
     <div className="relative">
       {/* Column + density controls. Deliberately above the table's own scroll
           container so they stay reachable on a wide table. */}
-      <div className="flex flex-wrap items-center justify-end gap-2 px-1 pb-2">
+      {/*
+        Column choice and density are about a table. Where cards replace it,
+        the controls would change nothing the reader can see.
+      */}
+      <div
+        className={`flex flex-wrap items-center justify-end gap-2 px-1 pb-2${
+          card ? " hidden lg:flex" : ""
+        }`}
+      >
         <div className="relative">
           <button
             type="button"
@@ -186,7 +207,20 @@ export function DataTable<T extends { id: string }>({
         </div>
       </div>
 
-      <div className="scroll-thin max-h-[calc(100dvh-18rem)] overflow-auto rounded-md border border-border">
+      {card && (
+        <ul className="space-y-2 lg:hidden">
+          {rows.map((row) => (
+            <li key={row.id}>{card(row)}</li>
+          ))}
+          {rows.length === 0 && <li>{emptyState}</li>}
+        </ul>
+      )}
+
+      <div
+        className={`scroll-thin max-h-[calc(100dvh-18rem)] overflow-auto rounded-md border border-border${
+          card ? " hidden lg:block" : ""
+        }`}
+      >
         <table className="w-full min-w-[52rem] text-sm">
           {/* Sticky header: on a hundred-row page, scrolling three screens down
               and no longer knowing which column is which is the whole problem

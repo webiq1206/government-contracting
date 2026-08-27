@@ -251,3 +251,120 @@ function matchFirst(text: string, re: RegExp): string | null {
 function clean(v: string | null | undefined): string {
   return (v ?? "").replace(/\s+/g, " ").trim();
 }
+
+
+/**
+ * What an SMTP status code actually means, and what to do about it.
+ *
+ * The raw diagnostic a remote mail server returns is written for a
+ * postmaster: "550 5.1.1 The email account that you tried to reach does not
+ * exist" and "550 5.7.1 Message rejected due to content" both read as
+ * rejection to an estimator, and they need opposite responses. One means find
+ * a different address; the other means the address is fine and the message
+ * was the problem.
+ *
+ * Matched on the enhanced status code's subject and detail, so an unlisted
+ * code still gets the right family rather than nothing.
+ */
+export interface DeliveryReading {
+  /** One sentence, in the words somebody using this would use. */
+  meaning: string;
+  /** What to do next, when there is something. */
+  fix: string | null;
+  /** True when the address itself is the problem. */
+  addressAtFault: boolean;
+}
+
+const CODE_READINGS: { prefix: string; reading: DeliveryReading }[] = [
+  {
+    prefix: "5.1.1",
+    reading: {
+      meaning: "There is no mailbox at that address.",
+      fix: "Find a working address, or call them.",
+      addressAtFault: true,
+    },
+  },
+  {
+    prefix: "5.1.2",
+    reading: {
+      meaning: "The domain in that address does not accept mail.",
+      fix: "Check the spelling of the domain, or find another address.",
+      addressAtFault: true,
+    },
+  },
+  {
+    prefix: "5.2.2",
+    reading: {
+      meaning: "Their mailbox is full.",
+      // Not the address's fault, and suppressing it would lose a live firm.
+      fix: "Try again in a few days, or call them.",
+      addressAtFault: false,
+    },
+  },
+  {
+    prefix: "5.4",
+    reading: {
+      meaning: "Their mail server could not be reached.",
+      fix: "Try again later. If it keeps happening, call them.",
+      addressAtFault: false,
+    },
+  },
+  {
+    prefix: "5.7",
+    reading: {
+      meaning: "Their server accepted the address but refused the message.",
+      /*
+       * The distinction that matters most here. This is a deliverability
+       * problem on our side, and treating it as a bad address sends somebody
+       * hunting for a new contact who was reachable all along.
+       */
+      fix: "The address is fine. Something about the message or our sending domain was refused.",
+      addressAtFault: false,
+    },
+  },
+  {
+    prefix: "4.2.2",
+    reading: {
+      meaning: "Their mailbox is full, and their server will keep trying.",
+      fix: null,
+      addressAtFault: false,
+    },
+  },
+  {
+    prefix: "4.",
+    reading: {
+      meaning: "A temporary problem. Their server will accept it later.",
+      fix: null,
+      addressAtFault: false,
+    },
+  },
+  {
+    prefix: "5.",
+    reading: {
+      meaning: "Their server refused the message and will not try again.",
+      fix: "Read the technical detail, or call them.",
+      addressAtFault: false,
+    },
+  },
+];
+
+export function readDeliveryCode(status: string | null | undefined): DeliveryReading | null {
+  const code = (status ?? "").trim();
+  if (!code) return null;
+  // Longest prefix first, so 5.1.1 beats 5. and 4.2.2 beats 4.
+  const found = [...CODE_READINGS]
+    .sort((a, b) => b.prefix.length - a.prefix.length)
+    .find((r) => code.startsWith(r.prefix));
+  return found?.reading ?? null;
+}
+
+/**
+ * The status code inside a stored delivery detail, when there is one.
+ *
+ * The column holds whatever the remote server said, so the code has to be
+ * found rather than assumed.
+ */
+export function statusFromDetail(detail: string | null | undefined): string | null {
+  if (!detail) return null;
+  return matchFirst(detail, /\b([245]\.\d{1,3}\.\d{1,3})\b/) ?? null;
+}

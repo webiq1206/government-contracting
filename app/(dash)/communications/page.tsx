@@ -73,6 +73,13 @@ export default async function CommunicationsPage({
    * come back 403 is its own kind of lie. The API refuses it either way.
    */
   const canSend = can(ctx.user.orgRole, "outreach");
+  /*
+   * The raw text a remote mail server returned is a postmaster's diagnostic,
+   * not something everybody reading a thread needs, and it names internal
+   * message ids and host names. The plain-English reading of the code is what
+   * the work turns on, and that is shown to everyone.
+   */
+  const canSeeRaw = can(ctx.user.orgRole, "manage_integrations");
 
   const raw = searchParams?.q;
   const q = (Array.isArray(raw) ? raw[0] : raw)?.trim() ?? "";
@@ -328,6 +335,7 @@ export default async function CommunicationsPage({
               conversation={selected}
               messages={messages}
               canSend={canSend}
+              canSeeRaw={canSeeRaw}
               backHref={href(filter, q)}
               stateLabels={MESSAGE_STATE_LABEL}
               stateMeanings={MESSAGE_STATE_MEANING}

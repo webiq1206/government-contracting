@@ -288,6 +288,13 @@ export function SubsTable({
       paging={paging}
       total={total}
       prefsKey="brostco.subs.table"
+      card={(s) => <SubCard row={s} peekBase={peekBase} selected={selected.has(s.id)}
+        onToggle={() => setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(s.id)) next.delete(s.id);
+          else next.add(s.id);
+          return next;
+        })} />}
       emptyState={emptyState}
       selection={{
         selected,
@@ -324,6 +331,95 @@ export function SubsTable({
       }}
       />
     </>
+  );
+}
+
+/**
+ * One firm on a phone.
+ *
+ * The table is 52rem wide inside a horizontal scroller, so reading one row on
+ * a 390px screen means scrolling sideways until the company name has left the
+ * screen, and the state badge and the way to reach them are at opposite ends
+ * of that scroll. Here the three things a phone is actually used for are
+ * together: who they are, where they stand, and the two taps that reach them.
+ */
+function SubCard({
+  row, peekBase, selected, onToggle,
+}: {
+  row: Subcontractor;
+  peekBase: string;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const v = rowState(row);
+  const area = [row.city, row.state].filter(Boolean).join(", ");
+  const trades = (row.trade_categories ?? []).join(", ");
+  const tel = row.phone ? `tel:${row.phone.replace(/[^\d+]/g, "")}` : null;
+  /*
+   * The address is offered only when outreach would actually use it. An
+   * unverified address opens a mail client addressed to somewhere that has
+   * not passed a check, which is how a bid loses a quote to a bounce nobody
+   * saw.
+   */
+  const mail = row.email && row.email_verified ? `mailto:${row.email}` : null;
+
+  return (
+    <div className="rounded-md border border-border bg-surface">
+      <div className="flex items-start gap-3 p-3">
+        <input
+          type="checkbox"
+          className="mt-1 h-5 w-5 shrink-0"
+          checked={selected}
+          onChange={onToggle}
+          aria-label={`Select ${row.company_name}`}
+        />
+        <div className="min-w-0 flex-1">
+          <Link href={`/subs/${row.id}`} className="block truncate font-medium text-foreground">
+            {row.company_name}
+          </Link>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {[trades, area].filter(Boolean).join(" \u00b7 ") || "Nothing on file about where they work"}
+          </p>
+          <span className={`badge mt-1.5 inline-block ${SUB_STATE_TONE[v.state]}`}>{v.label}</span>
+          <p className="mt-1 text-xs text-muted-foreground">{v.detail}</p>
+        </div>
+      </div>
+
+      {/*
+        The contact bar. Pinned to the bottom of the card rather than to the
+        viewport: a bar fixed to the screen can only ever act on one firm, and
+        a list of firms is exactly where somebody is choosing between them.
+        Dimmed rather than hidden when a channel is missing, so the row
+        doubles as a contact-data health check.
+      */}
+      <div className="flex divide-x divide-border border-t border-border">
+        {tel ? (
+          <a href={tel} className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent">
+            Call
+          </a>
+        ) : (
+          <span className="flex min-h-11 flex-1 items-center justify-center text-sm text-muted-foreground">
+            No phone
+          </span>
+        )}
+        {mail ? (
+          <a href={mail} className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent">
+            Email
+          </a>
+        ) : (
+          <span className="flex min-h-11 flex-1 items-center justify-center text-sm text-muted-foreground">
+            {row.email ? "Email unverified" : "No email"}
+          </span>
+        )}
+        <Link
+          href={`${peekBase}peek=${row.id}`}
+          scroll={false}
+          className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent"
+        >
+          Quick look
+        </Link>
+      </div>
+    </div>
   );
 }
 
