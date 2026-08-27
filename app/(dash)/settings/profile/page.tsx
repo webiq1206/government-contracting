@@ -9,6 +9,10 @@ import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ActionButton } from "@/components/action-button";
 import { shortDate } from "@/lib/format";
+import { ProfileCompletenessPanel } from "@/components/profile-completeness-panel";
+import { ProfileHistory } from "@/components/profile-history";
+import { can } from "@/lib/domain/roles";
+import { profileHistory } from "@/lib/profile-history";
 import { ProfileEditor } from "@/components/profile-editor";
 import { SamProfileImport } from "@/components/sam-profile-import";
 import { integrationStatus } from "@/lib/config";
@@ -43,6 +47,12 @@ export default async function ProfilePage() {
   // Scores per bucket, so the threshold control can preview its own effect
   // without a request per keystroke and without any opportunity leaving here.
   const histogram = await scoreHistogram();
+  /*
+   * Tolerant. A history that cannot load is a missing tab, not a Company
+   * Profile page that will not open: the editor below is the thing somebody
+   * came here for.
+   */
+  const history = await profileHistory().catch(() => []);
 
   // Scoped to the caller's org: unfiltered, this listed every tenant's
   // pending proposals, including their rationale text. The approve route was
@@ -162,6 +172,12 @@ export default async function ProfilePage() {
                     {/* Above the form on purpose: importing fills most of it,
                         so offering it after the fields would be offering it
                         after the work. */}
+                    {/*
+                      Above the import and the form both: it says what the
+                      profile is missing, and the import is one of the two ways
+                      to fix it.
+                    */}
+                    <ProfileCompletenessPanel json={json} />
                     <SamProfileImport
                       samConnected={samConnected}
                       profile={json as unknown as Record<string, unknown>}
@@ -184,6 +200,28 @@ export default async function ProfilePage() {
                     <p className="text-xs text-muted-foreground">
                       Pipeline deadline colors and archive retention live under Settings → Rules.
                     </p>
+                  </div>
+                ),
+              },
+              {
+                id: "history",
+                label: "History",
+                content: (
+                  <div className="space-y-4 px-5 py-6 sm:px-6">
+                    <p className="text-sm leading-relaxed text-slate-600">
+                      {/*
+                        The versions were always kept and never shown. Scoring,
+                        eligibility and every generated document read this
+                        record, so "who widened the service area in March" is a
+                        question somebody eventually asks.
+                      */}
+                      Every save is kept, with what changed and who saved it. Restoring an
+                      earlier version publishes it again as a new one, so nothing is erased.
+                    </p>
+                    <ProfileHistory
+                      versions={history}
+                      canRestore={can(viewer?.orgRole, "manage_profile")}
+                    />
                   </div>
                 ),
               },
