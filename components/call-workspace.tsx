@@ -23,7 +23,7 @@
  * deduplication and relevance live.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CallCardRow } from "@/lib/data";
 import { currency, shortDate } from "@/lib/format";
@@ -38,6 +38,8 @@ import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import { CallAnswer, type AnswerValue } from "@/components/call-answer";
 import { ScannableText } from "@/components/scannable-text";
 import { UnsavedGuard } from "@/components/unsaved-guard";
+import { useDraft } from "@/lib/use-draft";
+import { DraftOffer, SaveStatus } from "@/components/save-status";
 
 type Attachment = { name?: string; url?: string; storage_path?: string } & Record<
   string,
@@ -156,6 +158,23 @@ export function CallWorkspace({
   const dirty =
     JSON.stringify(answers) !== JSON.stringify(initialAnswers(card)) ||
     JSON.stringify(wrap) !== JSON.stringify(initialWrapUp(card));
+  /*
+   * The same work, written to this device as it is typed.
+   *
+   * UnsavedGuard below asks before a click takes it away, which buys a second
+   * chance at the same click and nothing else: the notes lived in React state
+   * and nowhere else, so a crashed tab, a phone that slept, or a failed save
+   * followed by anything at all was another call to the same subcontractor.
+   *
+   * Serialized because this form is a shape rather than a string. It is only
+   * ever offered back, never applied, so a card the server has moved on from
+   * cannot be overwritten by what a browser remembers.
+   */
+  const draftValue = JSON.stringify({ answers, wrap });
+  const draftServerValue = JSON.stringify({
+    answers: initialAnswers(card),
+    wrap: initialWrapUp(card),
+  });
   const [briefOpen, setBriefOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -292,18 +311,26 @@ export function CallWorkspace({
    * reads: the core keys stay top-level (quotes, coverage and the reply
    * pipeline all key off them), everything job-specific rides in `answers`.
    */
-  function buildPayload() {
+  function buildPayload(
+    /*
+     * Passed in rather than read from the closure, because the retry has to be
+     * able to build the payload from the text that is in the form at the
+     * moment it fires. See the note on the draft below.
+     */
+    answersNow: Record<string, AnswerValue> = answers,
+    wrapNow: WrapUp = wrap
+  ) {
     const core: Record<string, unknown> = {};
     const rest: Record<string, AnswerValue> = {};
     const coreIds = new Set<string>([...CORE_TEXT_KEYS, ...CORE_BOOL_KEYS]);
-    for (const [k, v] of Object.entries(answers)) {
+    for (const [k, v] of Object.entries(answersNow)) {
       if (!coreIds.has(k)) rest[k] = v;
     }
-    for (const k of CORE_TEXT_KEYS) core[k] = answers[k] ?? "";
-    for (const k of CORE_BOOL_KEYS) core[k] = answers[k] === "yes";
+    for (const k of CORE_TEXT_KEYS) core[k] = answersNow[k] ?? "";
+    for (const k of CORE_BOOL_KEYS) core[k] = answersNow[k] === "yes";
     return {
       ...core,
-      ...wrap,
+      ...wrapNow,
       answers: rest,
       // Kept so a reader of the raw record can tell which questions were put
       // to this sub, not just what came back.
@@ -313,27 +340,28 @@ export function CallWorkspace({
     };
   }
 
+  /** Throws on a refusal, so a caller cannot mistake one for a save. */
+  async function post(payload: unknown, closeCard: boolean) {
+    const res = await fetch(`/api/call-cards/${card.id}/save-workspace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ response: payload, closeCard }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error ?? "The server would not take it.");
+    return body as { nextCall?: { id: string; company_name: string } | null };
+  }
+
   async function save(closeAfter: boolean) {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/call-cards/${card.id}/save-workspace`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ response: buildPayload(), closeCard: closeAfter }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(body.error ?? "Save failed. Try again.");
-        setSaving(false);
-        return;
-      }
+      const body = await post(buildPayload(), closeAfter);
       setSavedOk(true);
       if (closeAfter) {
         // Don't refresh yet: it unmounts this workspace before the "next call"
         // bar can show. The refresh happens on Done or Next.
-        const next = (body as { nextCall?: { id: string; company_name: string } | null })
-          .nextCall;
+        const next = body.nextCall;
         if (next) {
           setNextCall(next);
           setCompleted(true);
@@ -351,6 +379,36 @@ export function CallWorkspace({
       setSaving(false);
     }
   }
+
+  /*
+   * The draft, and the retry.
+   *
+   * The button above still saves on demand; this is what happens when that
+   * save does not land. Three attempts, each of them visible, and the notes
+   * kept on the device throughout, because a subcontractor who has hung up is
+   * not going to repeat the price.
+   */
+  const draft = useDraft({
+    scope: "call-workspace",
+    id: card.id,
+    value: draftValue,
+    serverValue: draftServerValue,
+    onRestore: (raw) => {
+      try {
+        const parsed = JSON.parse(raw) as { answers?: typeof answers; wrap?: WrapUp };
+        if (parsed.answers) setAnswers(parsed.answers);
+        if (parsed.wrap) setWrap(parsed.wrap);
+      } catch {
+        // Unreadable draft. Better to lose an unparseable string than to put
+        // half a form back and let somebody complete a call on it.
+      }
+    },
+    save: async (raw) => {
+      const parsed = JSON.parse(raw) as { answers: typeof answers; wrap: WrapUp };
+      await post(buildPayload(parsed.answers, parsed.wrap), false);
+      router.refresh();
+    },
+  });
 
   const chips = [
     card.agency,
@@ -710,6 +768,14 @@ export function CallWorkspace({
             </div>
           </section>
 
+          {draft.offered != null && (
+            <DraftOffer
+              draft={draft.offered}
+              onUse={draft.useOffered}
+              onDiscard={draft.discardOffered}
+              preview="Notes and answers from a call on this device that were never saved."
+            />
+          )}
           {error && (
             <p className="rounded-md border border-risk/40 bg-risk/5 px-3 py-2 text-sm text-risk">
               {error}
@@ -749,13 +815,30 @@ export function CallWorkspace({
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <button onClick={onClose} className="btn-ghost" disabled={saving}>
                 Cancel
               </button>
+              <SaveStatus
+                state={draft.state}
+                attempt={draft.attempt}
+                retryInMs={draft.retryInMs}
+                reason={draft.reason}
+                onRetry={draft.saveNow}
+                className="order-last w-full md:order-none md:w-auto"
+              />
               <div className="flex gap-2">
-                <button onClick={() => save(false)} className="btn-ghost" disabled={saving}>
-                  {saving ? "Saving…" : "Save draft"}
+                {/*
+                  Through the draft rather than straight at the server, so a
+                  save that does not land retries and says so instead of
+                  printing one red line and leaving the notes in a tab.
+                */}
+                <button
+                  onClick={draft.saveNow}
+                  className="btn-ghost"
+                  disabled={saving || draft.state === "saving"}
+                >
+                  {draft.state === "saving" ? "Saving…" : "Save draft"}
                 </button>
                 <button onClick={() => save(true)} className="btn-primary" disabled={saving}>
                   {saving ? "Saving…" : "Complete call"}
