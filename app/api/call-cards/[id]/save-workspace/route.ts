@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
+import { outcomeComplete, outcomeEffect } from "@/lib/domain/call-outcome";
+import { pricingFromCall } from "@/lib/domain/call-capture";
+import { fillPricingFromCall } from "@/lib/pricing-rows";
 import { transaction, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
@@ -27,6 +30,17 @@ interface CallResponse {
   followup_date?: string;
   followup_reason?: string;
   outcome?: string;
+  /** How long the call ran, when the operator timed it. Absent when not. */
+  call_seconds?: number;
+  /**
+   * When they asked to be called back, to the minute. Required by
+   * `outcomeComplete` for the outcome that promises one, because "Tuesday" and
+   * "Tuesday at 7am before the crew leaves" are different promises and only
+   * one of them can be kept.
+   */
+  call_back_at?: string;
+  /** The person who actually handles this, when the one called does not. */
+  contact_name?: string;
   assumptions?: string;
   notes?: string;
   /**
@@ -60,6 +74,25 @@ export async function POST(
   const body = await req.json().catch(() => ({}));
   const response = (body.response ?? {}) as CallResponse;
   const closeCard = body.closeCard === true;
+
+  /*
+   * The obligation two outcomes carry, checked on the server as well as in
+   * the form. The button that would have been disabled is not the enforcement:
+   * this route is reachable without it, and a card closed on a promise nobody
+   * wrote down leaves the next person exactly where the call started.
+   *
+   * Only on close. A draft is allowed to be half-finished, which is what a
+   * draft is for.
+   */
+  if (closeCard) {
+    const ready = outcomeComplete(body.response?.outcome, {
+      callBackAt: body.response?.call_back_at,
+      contactName: body.response?.contact_name,
+    });
+    if (!ready.ok) {
+      return NextResponse.json({ error: ready.reason }, { status: 400 });
+    }
+  }
 
   // All money is whole US dollars. Reject obviously wrong magnitudes early.
   const rawQuote = Number(response.quote_amount);
@@ -241,18 +274,28 @@ export async function POST(
           ]
         );
 
-        // Map call outcome onto the pairing so Coverage / Today stay accurate.
-        // Declined / not interested must never look like a warm response.
-        // No-answer leaves prior outreach_state alone (still awaiting follow-up).
-        // Full decline close-out (thank-you + skip other pending cards) runs
-        // after the transaction via closeOutDeclinedSub.
-        const outcome = (response.outcome ?? "").toLowerCase();
+        /*
+         * Map the call outcome onto the pairing so Coverage and Today stay
+         * accurate. What each outcome means lives in lib/domain/call-outcome
+         * rather than in string comparisons here: there are eleven of them
+         * now, this route used to decide their meaning in four separate
+         * places, and the failure mode of missing one is silent. A firm that
+         * said "wrong number" would read as a firm that engaged.
+         *
+         * `unchanged` is a real answer and the important one. A ringing phone
+         * has told us nothing, and moving the pairing to responsive on the
+         * strength of it is the platform inventing a conversation.
+         *
+         * The two answer fields still count: a sub who said they cannot
+         * perform the work has declined it whatever the operator picked from
+         * the outcome list.
+         */
+        const effect = outcomeEffect(response.outcome);
         const declined =
-          outcome === "declined" ||
-          outcome === "not_interested" ||
+          effect.pairing === "declined" ||
           response.interested === "no" ||
           response.can_perform === "no";
-        const noAnswer = outcome === "no_answer";
+        const noAnswer = effect.pairing === "unchanged";
         if (declined) {
           await c.query(
             `update opportunity_subs
@@ -295,16 +338,62 @@ export async function POST(
         );
       }
 
-      const outcome = (response.outcome ?? "").toLowerCase();
       const declined =
         closeCard &&
         cardStatus === "called" &&
-        (outcome === "declined" ||
-          outcome === "not_interested" ||
+        (outcomeEffect(response.outcome).closeOut ||
           response.interested === "no" ||
           response.can_perform === "no");
       return { opportunity_id, subcontractor_id, quoteRowId, trade, declined };
     });
+
+    /*
+     * What the call learned about the price, filed where a bid can read it.
+     *
+     * The workspace asks about tax, freight, mobilization, payment terms,
+     * validity and lead time, and every one of those changes what a number
+     * means. Leaving them in the call record would be worse than not asking:
+     * the screen would look like the platform had them.
+     *
+     * Gap-filling only, and outside the transaction on purpose. This is a
+     * convenience over the pricing workspace rather than part of the call
+     * record, so a failure here must not lose the call: it is logged and the
+     * operator can enter the same six fields on the Pricing tab.
+     */
+    if (closeCard && cardStatus === "called" && result.trade) {
+      try {
+        const capture = pricingFromCall(
+          { ...(response as Record<string, unknown>), ...(response.answers ?? {}) },
+          new Date()
+        );
+        const wrote = await fillPricingFromCall({
+          orgId,
+          opportunityId: result.opportunity_id,
+          trade: result.trade,
+          subcontractorId: result.subcontractor_id,
+          sourceQuoteId: result.quoteRowId,
+          capture,
+        });
+        if (wrote === "written" || wrote === "filled") {
+          await logAgent({
+            agent: "operator",
+            action: "call-pricing-capture",
+            opportunityId: result.opportunity_id,
+            subcontractorId: result.subcontractor_id,
+            level: "info",
+            message: `Filled the ${result.trade} pricing row from the call. Anything already entered was left alone.`,
+          });
+        }
+      } catch (e) {
+        await logAgent({
+          agent: "operator",
+          action: "call-pricing-capture",
+          opportunityId: result.opportunity_id,
+          level: "warn",
+          message: `The call saved, but its price details did not reach the ${result.trade} pricing row: ${(e as Error).message}`,
+        });
+      }
+    }
 
     // Kick the Bid Builder whenever a completed call produced a price. It is
     // idempotent (one bid per opportunity) and re-prices with the latest quotes.

@@ -3,6 +3,7 @@ import {
   callReason,
   contactQuality,
   localTimeFor,
+  nextCallWindow,
   callability,
   groupCalls,
   CONTACT_QUALITY_LABEL,
@@ -58,6 +59,10 @@ export function CallQueueList({
               });
               const quality = contactQuality(c);
               const call = callability(c, rules, now);
+              const window_ = nextCallWindow(c.state, now, {
+                start: rules.call_hours_start,
+                end: rules.call_hours_end,
+              });
               const active = c.id === selectedId;
               return (
                 <li key={c.id}>
@@ -136,11 +141,44 @@ export function CallQueueList({
                       >
                         {CONTACT_QUALITY_LABEL[quality]}
                       </span>
+                      {/*
+                        When it would be reasonable to ring them, said as an
+                        instruction rather than as a clock. At nine in the
+                        morning with forty cards the question is which of these
+                        can be done now, and the hour there is only half an
+                        answer to it.
+                      */}
+                      <span className={window_.open === false ? "text-review" : undefined}>
+                        {window_.label}
+                      </span>
+                      {/*
+                        How many times this has already been dialled with
+                        nobody picking up. Zero says so rather than rendering
+                        blank: never tried and tried four times are the two
+                        ends of the same column.
+                      */}
+                      <span className={c.attempts >= 3 ? "text-review" : undefined}>
+                        {c.attempts === 0
+                          ? "Not dialled yet"
+                          : `${c.attempts} ${c.attempts === 1 ? "try" : "tries"}, no answer`}
+                      </span>
                       <span>
                         {c.lastContacted
                           ? `Last wrote ${shortDate(c.lastContacted)}`
                           : "Never written to"}
                       </span>
+                      {/*
+                        The date their price is actually needed, which is not
+                        the date the bid is due: the gap is the time it takes
+                        to review the number, chase a replacement and assemble
+                        the package. Working to the bid date is how a bid gets
+                        assembled the night before with one trade missing.
+                      */}
+                      {c.quoteDueLabel && (
+                        <span className={c.quoteDueOverdue ? "text-risk" : undefined}>
+                          Quote due {c.quoteDueLabel}
+                        </span>
+                      )}
                       {c.deadline && (
                         <span className={countdown(c.deadline) === "overdue" ? "text-risk" : undefined}>
                           Bid due {countdown(c.deadline)}

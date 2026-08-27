@@ -54,6 +54,17 @@ export interface CallQuestion {
    * still outstanding without making everything feel mandatory.
    */
   key?: boolean;
+  /**
+   * True for the questions that matter when a quote is being written up rather
+   * than when it is being taken down.
+   *
+   * Taxes, freight, mobilization and payment terms change what a number means
+   * and every one of them has cost somebody a margin. They are also seven more
+   * things between an operator and a price on a live call, which is how a
+   * guide stops being read. So they exist, collapsed, one press away, and the
+   * spoken flow stays the length a conversation can carry.
+   */
+  detail?: boolean;
 }
 
 export interface CallSection {
@@ -144,6 +155,24 @@ const COVERED_BY_CORE: { topic: string; patterns: RegExp[] }[] = [
   {
     topic: "history",
     patterns: [/\b(past performance|recent projects|project history|similar projects)\b/i],
+  },
+  /*
+   * The price-detail questions the guide now asks itself. Without these a
+   * generated list produces "is sales tax included?" alongside the structured
+   * yes/no that already asks it, and the operator reads the same question
+   * twice and answers it into a textarea nobody parses.
+   */
+  {
+    topic: "price detail",
+    patterns: [
+      /\b(sales )?tax(es|able)?\b/i,
+      /\b(freight|shipping|delivery charge|deliver(y|ed) to site)\b/i,
+      /\b(mobiliz|demobiliz)/i,
+      /\b(payment terms|net \d+|retainage|draw schedule)\b/i,
+      /\b(valid (for|until)|quote validity|how long .* (price|quote) (is )?good)\b/i,
+      /\b(alternate|alternates|value engineer)/i,
+      /\b(exclusion|excluded|not included in (the |your )?(price|quote))\b/i,
+    ],
   },
 ];
 
@@ -459,6 +488,60 @@ export function buildCallGuide(input: CallGuideInput): CallGuide {
       type: "notes",
       placeholder: "Permits, access, materials",
     },
+    {
+      id: "quote_validity_days",
+      /*
+       * Key, not detail. A price with no expiry is a price that goes stale
+       * silently: the bid gets built on it three weeks later and the sub has
+       * moved on. This is the one detail question worth the seconds it takes
+       * on every call.
+       */
+      ask: "How long is that price good for?",
+      type: "number",
+      placeholder: "30",
+      note: "Days. A price with no expiry is one that goes stale without telling anybody.",
+      key: true,
+    },
+    {
+      id: "taxes_included",
+      ask: "Does that include sales tax?",
+      type: "yes_no",
+      detail: true,
+    },
+    {
+      id: "freight_included",
+      ask: "Does it include delivery of materials to site?",
+      type: "yes_no",
+      detail: true,
+    },
+    {
+      id: "mobilization_included",
+      ask: "Does it include getting your crew and equipment there?",
+      type: "yes_no",
+      detail: true,
+    },
+    {
+      id: "alternates",
+      ask: "Anything you would price differently if we asked?",
+      type: "notes",
+      placeholder: "A cheaper unit, a longer schedule",
+      detail: true,
+    },
+    {
+      id: "payment_terms",
+      ask: "What payment terms do you work on?",
+      type: "short_text",
+      placeholder: "Net 30 with monthly draws",
+      detail: true,
+    },
+    {
+      id: "quote_document",
+      ask: "Will you send that in writing?",
+      type: "short_text",
+      placeholder: "Emailing it this afternoon",
+      note: "Where the written quote is coming from, so the next person can find it.",
+      detail: true,
+    },
   ];
 
   const schedule: CallQuestion[] = [
@@ -470,6 +553,14 @@ export function buildCallGuide(input: CallGuideInput): CallGuide {
       ask: "Anything on the calendar that could get in the way?",
       type: "short_text",
       placeholder: "Booked through September",
+    },
+    {
+      id: "lead_time_weeks",
+      ask: "How long from order to material on site?",
+      type: "number",
+      placeholder: "6",
+      note: "Weeks. Long-lead material is the commonest reason a won job slips.",
+      detail: true,
     },
   ];
 

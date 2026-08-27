@@ -20,6 +20,7 @@ import {
   type QuoteCandidate,
   emptyRow,
 } from "./domain/pricing-row";
+import { isEmptyCapture, type PricingFromCall } from "./domain/call-capture";
 import type { ProposedRow } from "./domain/quote-fields";
 
 const COMPONENTS: CostComponent[] = [
@@ -674,4 +675,96 @@ export async function saveProposedRow(input: {
     ]
   );
   return row ? "written" : "kept_existing";
+}
+
+/**
+ * Write what a call learned into the trade's pricing row, filling gaps only.
+ *
+ * The call workspace asks about tax, freight, mobilization, payment terms,
+ * validity and lead time, and the pricing workspace is where those six live.
+ * Without this they would sit in a call record nobody reads, which is worse
+ * than not asking: the screen would look like the platform had them.
+ *
+ * Every column is written with `coalesce(existing, new)`. A call fills what is
+ * empty and never overwrites what somebody typed, because the pricing
+ * workspace is the operator's and a phone answer silently replacing their
+ * number is how a bid goes out at a figure nobody chose. The jsonb lists are
+ * the same rule: appended to when they are empty, left alone when they are
+ * not.
+ *
+ * Returns what it did, so the caller can log it rather than guess.
+ */
+export async function fillPricingFromCall(input: {
+  orgId: string;
+  opportunityId: string;
+  trade: string;
+  subcontractorId: string | null;
+  sourceQuoteId?: string | null;
+  capture: PricingFromCall;
+}): Promise<"written" | "filled" | "nothing_to_write" | "no_trade"> {
+  if (isEmptyCapture(input.capture)) return "nothing_to_write";
+  const scopeKey = tradeScopeKey(input.trade);
+  // A pricing row is per trade. A call with no trade on it has nowhere to land
+  // and is left in the call record rather than filed against a guess.
+  if (!scopeKey) return "no_trade";
+
+  const c = input.capture;
+  const existed = await queryOne<{ id: string }>(
+    `select id from trade_pricing_rows
+      where opportunity_id = $1 and scope_key = $2 and org_id = $3`,
+    [input.opportunityId, scopeKey, input.orgId]
+  );
+
+  await query(
+    `insert into trade_pricing_rows
+       (org_id, opportunity_id, scope_key, trade, selected_sub_id,
+        alternates, exclusions, payment_terms, quote_expires_on, availability,
+        lead_time_days, source_quote_id, updated_by)
+     select $1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,'call-workspace'
+      where exists (select 1 from opportunities where id = $2 and org_id = $1)
+     on conflict (opportunity_id, scope_key) do update set
+        /*
+         * coalesce, not excluded: a call fills what is empty and never
+         * overwrites what a person entered. The pricing workspace is theirs.
+         */
+        payment_terms = coalesce(trade_pricing_rows.payment_terms, excluded.payment_terms),
+        quote_expires_on = coalesce(trade_pricing_rows.quote_expires_on, excluded.quote_expires_on),
+        availability = coalesce(trade_pricing_rows.availability, excluded.availability),
+        lead_time_days = coalesce(trade_pricing_rows.lead_time_days, excluded.lead_time_days),
+        alternates = case
+          when trade_pricing_rows.alternates = '[]'::jsonb then excluded.alternates
+          else trade_pricing_rows.alternates
+        end,
+        exclusions = case
+          when trade_pricing_rows.exclusions = '[]'::jsonb then excluded.exclusions
+          else trade_pricing_rows.exclusions
+        end,
+        updated_at = now()`,
+    [
+      input.orgId,
+      input.opportunityId,
+      scopeKey,
+      input.trade,
+      input.subcontractorId,
+      /*
+       * Shaped the way the pricing workspace stores them, so the row it reads
+       * back is the row it would have written itself.
+       *
+       * `included: false` and `coveredBy: "unassigned"` are the honest
+       * defaults: a subcontractor mentioning an alternate has not put it in
+       * the bid, and an exclusion they stated has not yet been assigned to
+       * anybody. Both are decisions for a person on the Pricing tab.
+       */
+      JSON.stringify(
+        c.alternates.map((label) => ({ label, amount: null, included: false }))
+      ),
+      JSON.stringify(c.exclusions.map((t) => ({ text: t, coveredBy: "unassigned" }))),
+      c.paymentTerms,
+      c.quoteExpiresOn,
+      c.availability,
+      c.leadTimeDays,
+      input.sourceQuoteId ?? null,
+    ]
+  );
+  return existed ? "filled" : "written";
 }
