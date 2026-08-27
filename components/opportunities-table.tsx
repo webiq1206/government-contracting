@@ -10,6 +10,7 @@ import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
 import { describeOwner, type Owner } from "@/lib/domain/ownership";
+import { AgencyPath } from "@/components/agency-path";
 
 /**
  * Every opportunity, as a table.
@@ -71,13 +72,21 @@ export function OpportunitiesTable({
       key: "agency",
       header: "Agency",
       sortable: true,
-      // Agency names run to forty characters of nested department. The full
-      // path is on hover and on the record; the column shows enough to tell
-      // one from another.
+      /*
+       * The most specific level, not the first forty characters.
+       *
+       * Truncation cut at a character count rather than at a meaning, so every
+       * row read "DEPT OF DEFENSE, DEPT OF THE A..." and the part that varied
+       * was the part that got cut. The rest of the path is in the DOM for a
+       * screen reader and in the title for a mouse, so nothing here is
+       * hover-only.
+       */
       render: (o) => (
-        <span className="block max-w-[16rem] truncate text-muted-foreground" title={o.agency ?? ""}>
-          {o.agency ?? "-"}
-        </span>
+        <AgencyPath
+          agency={o.agency}
+          subAgency={o.sub_agency}
+          className="block max-w-[16rem] truncate text-muted-foreground"
+        />
       ),
     },
     {

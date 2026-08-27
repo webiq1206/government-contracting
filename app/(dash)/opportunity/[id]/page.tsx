@@ -41,6 +41,7 @@ import { ActivityLogActions } from "@/components/activity-log-actions";
 import { OpportunityTaskList } from "@/components/opportunity-task-list";
 import { OpportunityWorkspace } from "@/components/opportunity-workspace";
 import { OwnerPicker } from "@/components/owner-picker";
+import { shortenAgency } from "@/lib/domain/agency-path";
 import { assignableMembers, ownerOf } from "@/lib/ownership";
 import { summarizeTradeCoverage } from "@/lib/domain/trade-coverage";
 import { compareScenarios, pricingSheet } from "@/lib/domain/pricing-row";
@@ -513,7 +514,9 @@ export default async function OpportunityPage({ params }: { params: { id: string
             <div className="min-w-0 max-w-3xl flex-1">
               {opp.agency && (
                 <p className="eyebrow-gold">
-                  {[opp.agency, opp.sub_agency].filter(Boolean).join(" · ")}
+                  {/* The record page has room for the whole path, and this is
+                      where somebody checks which office they are bidding to. */}
+                  {shortenAgency(opp.agency, opp.sub_agency).full}
                 </p>
               )}
               <h1 className="mt-2 font-display text-2xl leading-[1.15] text-foreground sm:mt-3 sm:text-4xl lg:text-[2.75rem]">

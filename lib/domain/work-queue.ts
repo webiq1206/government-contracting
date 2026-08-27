@@ -83,6 +83,24 @@ export interface WorkItem {
    * it merely because they signed up.
    */
   owner?: Owner | null;
+  /**
+   * What can be done to this task without leaving the list.
+   *
+   * The queue's rows were links and nothing else, so completing a decision
+   * meant opening the record, deciding, and coming back to a list that had
+   * moved. The themed sections lower down the page had these controls all
+   * along, which made the one list the least capable place to work from.
+   *
+   * Only what genuinely applies. A reply waiting to be read has no snooze
+   * target, because the thing to snooze would be the conversation, and a
+   * conversation somebody is waiting on is not something to hide.
+   */
+  actions?: {
+    /** Hide it until a chosen time. The record it belongs to, and its kind. */
+    snooze?: { kind: "opportunity" | "call_card"; id: string };
+    /** Pursue or pass, for a task that is genuinely that decision. */
+    decide?: { opportunityId: string; title: string };
+  };
 }
 
 /**

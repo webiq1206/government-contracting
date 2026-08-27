@@ -3145,6 +3145,11 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       href: `/opportunity/${d.id}#next`,
       actionLabel: "Decide",
       assignedTo: d.assigned_to,
+      // The whole task is the decision, so it can be made from the row.
+      actions: {
+        snooze: { kind: "opportunity" as const, id: d.id },
+        decide: { opportunityId: d.id, title: d.title ?? "opportunity" },
+      },
       reason: d.review_expires_at
         ? "Scored close enough to the line that a person has to call it. It is dismissed automatically if nobody does."
         : "Scored close enough to the line that a person has to call it.",
@@ -3158,6 +3163,9 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       href: `/call-queue`,
       actionLabel: "Open call",
       assignedTo: c.assigned_to,
+      // Snoozes the card, not the opportunity: the bid is not on hold
+      // because one subcontractor is being rung on Thursday instead.
+      actions: { snooze: { kind: "call_card" as const, id: c.id } },
       reason: "Email has not produced a price on this trade, so the next move is a phone call.",
     })),
     ...actionable.map((o) => ({
@@ -3185,6 +3193,12 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       actionLabel:
         o.stage === "bid_building" ? "Review bid" : o.stage === "quote_entry" ? "Enter quote" : "Resolve",
       assignedTo: o.assigned_to,
+      /*
+       * Snooze only. Pursue and pass belong to a scoring decision, and
+       * offering "pass" beside a bid that is already being built would put an
+       * archive button next to a week of somebody's work.
+       */
+      actions: { snooze: { kind: "opportunity" as const, id: o.id } },
       reason:
         o.stage === "bid_building"
           ? "The package is assembled. Nothing goes to the agency until a person reads it and signs."
