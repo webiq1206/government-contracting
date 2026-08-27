@@ -16,6 +16,9 @@ import { permissionMessage } from "@/lib/domain/roles";
 import { AccountStatusPanel } from "@/components/account-status-panel";
 import { paymentState } from "@/lib/domain/payment-state";
 import { getAutomationState } from "@/lib/app-settings";
+import { invoicesFor } from "@/lib/billing/invoices";
+import { describeCard, describeInvoice } from "@/lib/domain/payment-method";
+import { reconcile } from "@/lib/domain/billing-reconciliation";
 
 export const dynamic = "force-dynamic";
 
@@ -117,6 +120,52 @@ export default async function BillingSettingsPage({
     currentPeriodEnd: org?.current_period_end ?? null,
     billingExempt: org?.billing_exempt ?? null,
   });
+  /*
+   * The card and the receipts, from this platform's own records.
+   *
+   * Read here rather than from Stripe on every page view: the page has to
+   * render when Stripe is slow, and a billing page that hangs on the day
+   * payments are having trouble is the one day it is being read.
+   */
+  const invoices = org && !comped ? await invoicesFor(org.id).catch(() => []) : [];
+  const card = describeCard({
+    brand: org?.card_brand ?? null,
+    last4: org?.card_last4 ?? null,
+    expMonth: org?.card_exp_month ?? null,
+    expYear: org?.card_exp_year ?? null,
+    recordedAt: org?.card_recorded_at ?? null,
+    knownToStripe: Boolean(org?.stripe_customer_id),
+    billingExempt: org?.billing_exempt ?? null,
+  });
+
+  /*
+   * Whether what this account can do and what Stripe says can both be true.
+   *
+   * The same function the platform admin page runs over every account, run
+   * here over this one. The rule is that these two must never quietly
+   * disagree: if they do, the owner is told plainly, in the same words an
+   * administrator sees, rather than left to notice that the page says full
+   * access beside a cancelled subscription.
+   */
+  const conflicts = org
+    ? reconcile([
+        {
+          org_id: org.id,
+          org_name: org.name,
+          subscription_status: org.subscription_status ?? "none",
+          amount_cents: org.stripe_amount_cents ?? org.plan_amount_cents ?? null,
+          billing_interval: org.billing_interval,
+          trial_ends_at: org.trial_ends_at,
+          last_payment_at: org.last_payment_at,
+          last_payment_status: org.last_payment_status,
+          stripe_subscription_id: org.stripe_subscription_id,
+          stripe_customer_id: org.stripe_customer_id,
+          billing_exempt: org.billing_exempt,
+          suspended_at: org.suspended_at,
+        },
+      ])
+    : [];
+
   const statusLabel = comped ? "Comped" : subscriptionStatusLabel(status);
   const isActive = status === "active" || status === "trialing";
 
@@ -197,7 +246,14 @@ export default async function BillingSettingsPage({
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {/* The six facts first. Everything below is detail on one of them. */}
-        <AccountStatusPanel status={accountFacts} />
+        {/*
+          * Stripe's raw view is normally left off a customer page: it is
+          * jargon, and when it agrees with everything else it adds nothing.
+          * It goes back on the moment the two disagree, because the notice
+          * below is about a contradiction, and a reader cannot judge one
+          * they are only being shown one half of.
+          */}
+        <AccountStatusPanel status={accountFacts} showStripeRow={conflicts.length > 0} />
 
         {/*
           * The payment, when there is anything to say about it. A healthy
@@ -233,6 +289,34 @@ export default async function BillingSettingsPage({
                 {payment.actionLabel}
               </Link>
             )}
+          </div>
+        )}
+
+        {/*
+          * Two facts about this account that cannot both be right.
+          *
+          * Several of these states are deliberate, so this does not accuse
+          * anybody of anything: it says what disagrees and what happens next.
+          * The alternative is the page quietly showing full access beside a
+          * cancelled subscription and leaving the owner to work out which one
+          * is going to win.
+          */}
+        {conflicts.length > 0 && (
+          <div className="card max-w-xl space-y-2 border-review/40 bg-review/5" role="status">
+            <p className="text-sm font-semibold text-review">
+              This account is flagged for a billing review
+            </p>
+            {conflicts.map((c) => (
+              <div key={c.kind} className="space-y-1">
+                <p className="text-sm leading-relaxed text-slate-700">{c.disagreement}</p>
+                <p className="text-sm leading-relaxed text-slate-600">{c.cost}</p>
+              </div>
+            ))}
+            <p className="text-sm leading-relaxed text-slate-600">
+              Nothing changes on your side while this is looked at, and your access
+              is exactly what the top of this page says it is. Reply to any billing
+              email, or write to hello@brostco.com, if you want it settled sooner.
+            </p>
           </div>
         )}
 
@@ -427,6 +511,24 @@ export default async function BillingSettingsPage({
               </div>
             ) : null}
             <div>
+              <dt className="label">Payment method</dt>
+              <dd className="mt-0.5 text-slate-800">
+                {card.value}
+                {card.detail && (
+                  <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                    {card.detail}
+                  </span>
+                )}
+                {card.warning && (
+                  <span
+                    className={`mt-0.5 block text-xs font-normal ${card.tone === "bad" ? "text-risk" : "text-review"}`}
+                  >
+                    {card.warning}
+                  </span>
+                )}
+              </dd>
+            </div>
+            <div>
               <dt className="label">Billing portal</dt>
               <dd className="mt-0.5 text-slate-800">
                 {hasStripeCustomer ? "Available" : "Set up after checkout"}
@@ -448,6 +550,93 @@ export default async function BillingSettingsPage({
                 : "Start a subscription to unlock the full platform. Founding rates stay in effect for the life of an active subscription."}
           </p>
         </div>
+        )}
+
+        {/*
+          * The receipts.
+          *
+          * Absent rather than zero when there are none: an account that has
+          * never been charged has no invoices, and an account whose charges
+          * predate this record has none HERE, which is a different sentence
+          * and the one people need when they cannot find a receipt they know
+          * exists.
+          */}
+        {!comped && hasStripeCustomer && (
+          <div className="card max-w-xl space-y-3">
+            <p className="eyebrow">Invoices</p>
+            {invoices.length === 0 ? (
+              <p className="text-sm leading-relaxed text-slate-600">
+                No invoices have been recorded on this account yet. Charges made
+                before this page started keeping its own copy are in the Stripe
+                billing portal, which has every one of them.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {invoices.map((inv) => {
+                  const line = describeInvoice({
+                    number: inv.number,
+                    status: inv.status,
+                    amountPaidCents: inv.amount_paid_cents,
+                    amountDueCents: inv.amount_due_cents,
+                    currency: inv.currency,
+                    issuedAt: inv.issued_at,
+                    paidAt: inv.paid_at,
+                    failureReason: inv.failure_reason,
+                  });
+                  return (
+                    <li key={inv.id} className="py-2.5 first:pt-0 last:pb-0">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <span className="text-sm text-slate-800">
+                          {inv.issued_at ? shortDate(inv.issued_at) : "Date not recorded"}
+                          {inv.number ? (
+                            <span className="ml-2 text-xs text-muted-foreground">{inv.number}</span>
+                          ) : null}
+                        </span>
+                        <span className="flex items-baseline gap-2">
+                          <span className="num text-sm text-slate-800">
+                            {line.amount ?? "Amount not recorded"}
+                          </span>
+                          <span
+                            className={`text-xs font-medium ${
+                              line.tone === "good"
+                                ? "text-pursue"
+                                : line.tone === "bad"
+                                  ? "text-risk"
+                                  : line.tone === "warn"
+                                    ? "text-review"
+                                    : "text-muted-foreground"
+                            }`}
+                          >
+                            {line.outcome}
+                          </span>
+                        </span>
+                      </div>
+                      {line.note && (
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                          {line.note}
+                        </p>
+                      )}
+                      {(inv.hosted_invoice_url || inv.invoice_pdf_url) && (
+                        <a
+                          className="mt-1 inline-block text-xs font-medium text-accent-strong underline"
+                          href={inv.invoice_pdf_url ?? inv.hosted_invoice_url ?? "#"}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                        >
+                          {inv.invoice_pdf_url ? "Download the receipt" : "Open this invoice"}
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {invoices.length > 0 && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {`${invoices.length === 1 ? "This is the invoice" : `These are the ${invoices.length} most recent invoices`} this platform has a record of. The billing portal holds the complete history.`}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </>

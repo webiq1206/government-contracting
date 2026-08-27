@@ -19,6 +19,7 @@ import {
   notifyCanceled,
   notifyReactivated,
 } from "@/lib/billing/notify";
+import { recordInvoice, recordPaymentMethod } from "@/lib/billing/invoices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,97 @@ async function orgIdForCustomer(customerId: string | null): Promise<string | nul
 
 const asId = (v: unknown): string | null =>
   typeof v === "string" ? v : ((v as { id?: string } | null)?.id ?? null);
+
+/**
+ * File the invoice this event is about.
+ *
+ * Called on success and on failure, because the invoice somebody asks about
+ * is nearly always the one that did not go through. Everything is taken from
+ * the event payload; no extra Stripe call is made, so a receipt is recorded
+ * even when Stripe is rate limiting or unreachable a second later.
+ */
+async function fileInvoice(orgId: string, inv: Stripe.Invoice, failureReason: string | null) {
+  const wide = inv as unknown as {
+    id?: string;
+    number?: string | null;
+    status?: string | null;
+    amount_due?: number | null;
+    amount_paid?: number | null;
+    currency?: string | null;
+    period_start?: number | null;
+    period_end?: number | null;
+    hosted_invoice_url?: string | null;
+    invoice_pdf?: string | null;
+    created?: number | null;
+    status_transitions?: { paid_at?: number | null } | null;
+  };
+  if (!wide.id) return;
+  await recordInvoice({
+    orgId,
+    stripeInvoiceId: wide.id,
+    number: wide.number ?? null,
+    // Stripe's own word for what happened. Turned into plain language on the
+    // page rather than here, so the record keeps the value support can search
+    // Stripe for.
+    status: wide.status ?? "open",
+    amountDueCents: wide.amount_due ?? null,
+    amountPaidCents: wide.amount_paid ?? null,
+    currency: wide.currency ?? null,
+    periodStart: iso(wide.period_start),
+    periodEnd: iso(wide.period_end),
+    hostedInvoiceUrl: wide.hosted_invoice_url ?? null,
+    invoicePdfUrl: wide.invoice_pdf ?? null,
+    issuedAt: iso(wide.created),
+    paidAt: iso(wide.status_transitions?.paid_at ?? null),
+    failureReason,
+  });
+}
+
+/**
+ * Record the card behind a subscription, when Stripe names one.
+ *
+ * One retrieve call, on subscription events only, which happen a handful of
+ * times in an account's life. Failure is swallowed: knowing the last four
+ * digits is a convenience, and losing the subscription update over it would
+ * be a real outage in exchange for a cosmetic one.
+ */
+async function captureCard(
+  stripe: NonNullable<ReturnType<typeof getStripe>>,
+  orgId: string,
+  sub: Stripe.Subscription
+) {
+  try {
+    const pmId =
+      asId((sub as unknown as { default_payment_method?: unknown }).default_payment_method) ??
+      null;
+    let pm: Stripe.PaymentMethod | null = null;
+    if (pmId) {
+      pm = await stripe.paymentMethods.retrieve(pmId);
+    } else {
+      // No subscription-level card means the customer default is what will be
+      // charged, so that is the one to describe.
+      const customerId = asId(sub.customer);
+      if (!customerId) return;
+      const customer = await stripe.customers.retrieve(customerId);
+      const defaultPm = asId(
+        (customer as unknown as { invoice_settings?: { default_payment_method?: unknown } })
+          .invoice_settings?.default_payment_method
+      );
+      if (!defaultPm) return;
+      pm = await stripe.paymentMethods.retrieve(defaultPm);
+    }
+    const card = pm?.card;
+    if (!card) return;
+    await recordPaymentMethod(orgId, {
+      brand: card.brand ?? null,
+      last4: card.last4 ?? null,
+      expMonth: card.exp_month ?? null,
+      expYear: card.exp_year ?? null,
+    });
+  } catch (e) {
+    console.warn("[stripe-webhook] could not read the payment method:", e);
+  }
+}
 
 /**
  * Read the plan, price, and discount actually in force on a subscription.
@@ -200,6 +292,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       // Stripe is the record from here.
       await clearPendingConcession(orgId);
       await markApplied(orgId, event.created);
+      await captureCard(stripe, orgId, sub);
       await trackEvent({
         event: "subscription_completed",
         orgId,
@@ -276,6 +369,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       if (!org?.price_locked) patch.stripe_price_id = s.priceId;
       await updateOrganizationBilling(orgId, patch);
       await markApplied(orgId, event.created);
+      if (!deleted) await captureCard(stripe, orgId, sub);
 
       if (deleted) {
         await notifyCanceled({ orgId, endsAt: s.periodEnd, immediate: true });
@@ -322,6 +416,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
           where id = $1`,
         [orgId]
       );
+      await fileInvoice(orgId, inv, null);
       // Only the first success of a billing period is worth an email; Stripe
       // sends both invoice.paid and invoice.payment_succeeded for the same
       // payment, and the events table already dedupes by event id, so this
@@ -369,6 +464,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
           invoiceUrl,
         ]
       );
+      await fileInvoice(orgId, inv, reason);
       await notifyPaymentFailed({
         orgId,
         amountCents: inv.amount_due ?? null,

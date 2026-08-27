@@ -55,6 +55,18 @@ export interface Organization {
   pending_concession_reason: string | null;
   pending_concession_by: string | null;
   pending_concession_at: string | null;
+  /**
+   * The card, as Stripe last described it.
+   *
+   * Null means this platform has never been told, which is not the same as
+   * "no card": an account can be paying happily on a card added before these
+   * columns existed. The page says which of the two it is.
+   */
+  card_brand: string | null;
+  card_last4: string | null;
+  card_exp_month: number | null;
+  card_exp_year: number | null;
+  card_recorded_at: string | null;
   /** Administrative suspension. Outranks billing_exempt. */
   suspended_at: string | null;
   suspended_reason: string | null;
