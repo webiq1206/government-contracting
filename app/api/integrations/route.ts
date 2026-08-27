@@ -35,19 +35,24 @@ async function assemble() {
       (def.id === "claude" ? troubleSummary(aiTrouble) : null) ??
       fields.map((f) => f.last_error).find(Boolean) ??
       null;
-    const lastValidated =
-      fields
-        .map((f) => f.last_validated_at)
-        .filter(Boolean)
-        .sort()
-        .pop() ?? null;
+    const newest = (pick: (f: (typeof fields)[number]) => string | null | undefined) =>
+      fields.map(pick).filter(Boolean).sort().pop() ?? null;
     return {
       ...def,
       fields,
       configured: def.id === "gmail" ? gmailConnected || configured : configured,
       gmailConnected: def.id === "gmail" ? gmailConnected : undefined,
       last_error: lastError,
-      last_validated_at: lastValidated,
+      last_validated_at: newest((f) => f.last_validated_at),
+      /*
+       * Both facts, because they answer different questions: a test says the
+       * credential parses, a successful call says the thing works for what it
+       * is for. The card was rendering one of them under the other's name.
+       */
+      last_success_at: newest((f) => f.last_success_at),
+      last_tested_at: newest((f) => f.last_tested_at),
+      quota_note: fields.map((f) => f.quota_note).find(Boolean) ?? null,
+      expires_at: fields.map((f) => f.expires_at).filter(Boolean).sort().shift() ?? null,
     };
   });
 }

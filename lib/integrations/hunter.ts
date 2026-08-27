@@ -10,6 +10,7 @@
  */
 import { config } from "../config";
 import { orgApiKey } from "../integration-keys";
+import { recordIntegrationUse } from "../integration-settings";
 import { fetchJson, withRetry } from "./http";
 
 const DOMAIN_SEARCH = "https://api.hunter.io/v2/domain-search";
@@ -67,11 +68,14 @@ export const hunter = {
           last_name: e.last_name ?? undefined,
           position: e.position ?? undefined,
         }));
+      void recordIntegrationUse("HUNTER_API_KEY", { ok: true });
       return { emails };
     } catch (err) {
       // An expired key or a 429 is NOT "this domain has no emails"; callers
       // must be able to tell an unknown answer from a negative one.
-      return { emails: [], error: (err as Error).message };
+      const message = (err as Error).message;
+      void recordIntegrationUse("HUNTER_API_KEY", { ok: false, error: message });
+      return { emails: [], error: message };
     }
   },
 

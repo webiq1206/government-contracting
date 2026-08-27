@@ -343,9 +343,29 @@ export async function complete(
     );
   } catch (err) {
     const cause = describeClaudeFailure(err);
+    /*
+     * Every Claude call passes through here, so it is the one place that can
+     * record whether the provider is actually working for this account. The
+     * Integrations page claimed to show that and showed the last Test press
+     * instead, which on the day Anthropic refused for want of credit left the
+     * card reading as verified that morning.
+     *
+     * Imported here rather than at the top: integration-settings reaches the
+     * database, and this module is imported by code paths that must not pull
+     * a connection in just by being loaded.
+     */
+    void import("../integration-settings").then((m) =>
+      m.recordIntegrationUse("ANTHROPIC_API_KEY", {
+        ok: false,
+        error: cause?.reason ?? (err as Error).message,
+      })
+    );
     if (cause) throw new ClaudeUnavailableError(cause.reason, cause.status, cause.retryable);
     throw err;
   }
+  void import("../integration-settings").then((m) =>
+    m.recordIntegrationUse("ANTHROPIC_API_KEY", { ok: true })
+  );
   const rawText = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)

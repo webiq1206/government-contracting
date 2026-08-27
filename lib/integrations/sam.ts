@@ -6,6 +6,7 @@
  */
 import { config } from "../config";
 import { orgApiKey } from "../integration-keys";
+import { recordIntegrationUse } from "../integration-settings";
 import { queryOne, query } from "../db";
 import { LEGACY_ORG_ID } from "../tenant-context";
 
@@ -315,6 +316,12 @@ export const sam = {
           query,
         })
       );
+      /*
+       * A call that worked, recorded as one. The Integrations page told the
+       * operator it showed when each service was last used successfully, and
+       * showed the last time somebody pressed Test instead.
+       */
+      void recordIntegrationUse("SAM_API_KEY", { ok: true });
       return {
         total: data.totalRecords ?? 0,
         items: data.opportunitiesData ?? [],
@@ -327,10 +334,12 @@ export const sam = {
           : e.body
             ? JSON.stringify(e.body).slice(0, 200)
             : "";
+      const message = [e.message ?? "request failed", detail].filter(Boolean).join(": ");
+      void recordIntegrationUse("SAM_API_KEY", { ok: false, error: message });
       return {
         total: 0,
         items: [],
-        error: [e.message ?? "request failed", detail].filter(Boolean).join(": "),
+        error: message,
         errorStatus: e.status,
       };
     }

@@ -11,6 +11,7 @@
  */
 import { config } from "../config";
 import { orgApiKey } from "../integration-keys";
+import { recordIntegrationUse } from "../integration-settings";
 import { fetchJson, withRetry } from "./http";
 
 const TEXT_SEARCH = "https://maps.googleapis.com/maps/api/place/textsearch/json";
@@ -78,6 +79,12 @@ export const googleMaps = {
       // Surface it so the misconfig isn't silent.
       if (data.status && !["OK", "ZERO_RESULTS"].includes(data.status)) {
         const detail = `Places status ${data.status}${data.error_message ? ": " + data.error_message : ""}`;
+        /*
+         * A 200 carrying a refusal is still a refusal. Recording it as a
+         * success because the transport worked is exactly how a denied key
+         * reads as "no contractors in this area" for a fortnight.
+         */
+        void recordIntegrationUse("GOOGLE_MAPS_API_KEY", { ok: false, error: detail });
         console.error(`[googleMaps] ${detail}`);
         // A denied or over-quota key returns empty results in a 200; without
         // this, that reads as "no contractors in this area".
@@ -92,9 +99,12 @@ export const googleMaps = {
           review_count: r.user_ratings_total,
           address: r.formatted_address,
         }));
+      void recordIntegrationUse("GOOGLE_MAPS_API_KEY", { ok: true });
       return { results };
     } catch (err) {
-      return { results: [], error: (err as Error).message };
+      const message = (err as Error).message;
+      void recordIntegrationUse("GOOGLE_MAPS_API_KEY", { ok: false, error: message });
+      return { results: [], error: message };
     }
   },
 

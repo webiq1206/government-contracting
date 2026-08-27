@@ -31,6 +31,10 @@ interface FieldState {
   developer?: boolean;
   last_validated_at?: string | null;
   last_error?: string | null;
+  last_success_at?: string | null;
+  last_tested_at?: string | null;
+  quota_note?: string | null;
+  expires_at?: string | null;
 }
 
 interface IntegrationGuide {
@@ -54,6 +58,14 @@ interface IntegrationRow {
   stateAction: string | null;
   last_error: string | null;
   last_validated_at: string | null;
+  /** When a real call to the provider last worked. */
+  last_success_at: string | null;
+  /** When somebody last pressed Test. A different question, so a different line. */
+  last_tested_at: string | null;
+  /** What the provider says about quota or credit, in their words. */
+  quota_note: string | null;
+  /** When the credential lapses, where the provider tells us. */
+  expires_at: string | null;
   fields: FieldState[];
   guide?: IntegrationGuide;
 }
@@ -228,9 +240,36 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                 that refused real work, where "Last check failed" would have
                 read as a stale test result rather than as live breakage. */}
             {def.last_error && <p className="text-xs text-risk">Not working: {def.last_error}</p>}
-            {def.last_validated_at && !def.last_error && (
+            {/*
+              Two facts, not one. The page used to print a single "last
+              verified" written only by the Test button, while telling the
+              operator it showed when the service was last used successfully.
+              An integration doing real work hourly read as verified six weeks
+              ago, and one tested this morning that had refused every call
+              since read as verified today.
+            */}
+            {(def.last_success_at || def.last_tested_at) && (
               <p className="text-xs text-slate-500">
-                Last verified {new Date(def.last_validated_at).toLocaleString()}
+                {def.last_success_at && (
+                  <>Last did real work {new Date(def.last_success_at).toLocaleString()}</>
+                )}
+                {def.last_success_at && def.last_tested_at && " · "}
+                {def.last_tested_at && (
+                  <>Last tested {new Date(def.last_tested_at).toLocaleString()}</>
+                )}
+              </p>
+            )}
+            {def.configured && !def.last_success_at && !def.last_tested_at && (
+              <p className="text-xs text-slate-500">
+                Saved, and not used or tested yet.
+              </p>
+            )}
+            {def.quota_note && (
+              <p className="text-xs text-review">Provider says: {def.quota_note}</p>
+            )}
+            {def.expires_at && (
+              <p className="text-xs text-review">
+                Expires {new Date(def.expires_at).toLocaleDateString()}
               </p>
             )}
 
