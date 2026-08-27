@@ -10,6 +10,17 @@ import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { KpiManager, KpiDeleteButton } from "@/components/kpi-manager";
+import { MetricGroup } from "@/components/metric-card";
+import {
+  deadlineMetrics,
+  reviewMetrics,
+  subcontractorMetrics,
+  tradeCoverageMetrics,
+  dataConfidenceMetrics,
+  automationMetrics,
+  pipelineValueReport,
+} from "@/lib/reporting";
+import { coverageSentence } from "@/lib/domain/report-metrics";
 import { getMetric, formatKpiValue, describeKpiParams } from "@/lib/domain/kpi";
 import { currency, pct } from "@/lib/format";
 import { PIPELINE_STAGES, funnelCounts, funnelBreakdown } from "@/lib/data";
@@ -32,6 +43,7 @@ import {
   breakdownNote,
   breakdownLines,
   type FunnelStep,
+  type FunnelKey,
 } from "@/lib/domain/funnel";
 
 export const dynamic = "force-dynamic";
@@ -232,12 +244,20 @@ export default async function AnalyticsPage({
   // 30 days before that" on an account that has submitted nothing in either
   // period fills a line with no information, so both sides must be non-empty
   // for the sentence to appear at all.
-  const deltaFor = (i: number) =>
-    priorSteps && comparison && steps[i].count + priorSteps[i].count > 0
-      ? describeDelta(compare(steps[i].count, priorSteps[i].count), comparison)
-      : null;
-  const foundDelta = deltaFor(0);
-  const submittedDelta = deltaFor(6);
+  /*
+   * By key, not by position. This read steps[6] for "Submitted", and adding
+   * the replies step moved Submitted to seven, so the sentence would have
+   * quietly started describing the bid-built row under the submitted heading.
+   * Nothing would have failed; the page would just have been wrong.
+   */
+  const deltaFor = (key: FunnelKey) => {
+    const i = steps.findIndex((s) => s.key === key);
+    if (i < 0 || !priorSteps || !comparison) return null;
+    if (steps[i].count + priorSteps[i].count === 0) return null;
+    return describeDelta(compare(steps[i].count, priorSteps[i].count), comparison);
+  };
+  const foundDelta = deltaFor("found");
+  const submittedDelta = deltaFor("submitted");
   const freshness = snapshotFreshness(snap?.generatedAt ?? null);
   /** Keeps every other choice in the URL when one of them changes. */
   const hrefWith = (name: string, value: string) => {
@@ -287,6 +307,38 @@ export default async function AnalyticsPage({
   const activeRevenue = fb.active_contract_revenue;
   const wins = fb.wins;
   const losses = fb.losses;
+
+  /*
+   * The reported metrics, over the same window as the funnel above.
+   *
+   * Loaded together rather than one section at a time: they are six
+   * independent queries and running them in sequence would make the page wait
+   * six round trips for figures that do not depend on each other.
+   *
+   * The value report is given the measured win rate so its forecast can be a
+   * forecast rather than a guess. Without a win rate it returns null and says
+   * why, which is the correct answer on an account that has never had a bid
+   * decided.
+   */
+  const [
+    deadlines,
+    reviewTimes,
+    subOutreach,
+    tradeCoverage,
+    confidence,
+    automation,
+    valueReport,
+  ] = await Promise.all([
+    // The window runs from `from` up to now, which is what a null upper bound
+    // means everywhere in this module; the funnel above uses the same one.
+    deadlineMetrics(from, null),
+    reviewMetrics(from, null),
+    subcontractorMetrics(from, null),
+    tradeCoverageMetrics(from, null),
+    dataConfidenceMetrics(from, null),
+    automationMetrics(from, null),
+    pipelineValueReport(from, null, winRate),
+  ]);
 
   const snapData = snap?.data ?? null;
   const byNaics = snapData ? rows(snapData.by_naics) : [];
@@ -512,6 +564,106 @@ export default async function AnalyticsPage({
           <KpiCard label="Bids submitted (30 days)" value={extras.counts.bids_30d} />
           <KpiCard label="Active contracts" value={extras.counts.active_contracts} />
         </div>
+
+        {/* The reported metrics, each able to say where it came from. */}
+        <section aria-labelledby="reports-heading" className="space-y-5">
+          <div className="border-b-2 border-accent/80 pb-2">
+            <p className="eyebrow">{rangeLabel(range)}</p>
+            <h2
+              id="reports-heading"
+              className="mt-0.5 font-display text-2xl font-semibold text-foreground"
+            >
+              Reports
+            </h2>
+            {/*
+              What every figure below is measured against, said once rather
+              than repeated on each card.
+              The window is deliberately described as a rolling span of hours,
+              because that is what the queries do: they subtract days in
+              milliseconds from this instant. Claiming a timezone here would be
+              claiming a calendar-day boundary that no query applies, and a
+              false precision is worse than none.
+            */}
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              Counted over {rangeLabel(range).toLowerCase()}
+              {comparison
+                ? `, against ${comparison}`
+                : ", with nothing before it to compare against"}
+              . The window is a rolling span ending now, not calendar days, so no timezone
+              boundary applies to what is in or out. Every figure is computed when the page
+              loads rather than read from a stored snapshot, so it is as current as this
+              page. Open any card to see how it is worked out.
+            </p>
+          </div>
+
+          <MetricGroup
+            title="What the open work is worth"
+            description="Published, estimated, and unvalued are counted apart. A notice with no figure is not worth nought, and adding an estimate to a published total hides which is which."
+            metrics={valueReport.metrics}
+          />
+          <div className="card">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <div className="label">Published value</div>
+                <div className="num mt-1 text-2xl font-semibold text-slate-900">
+                  {currency(valueReport.split.known.total)}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {valueReport.split.known.count} opportunit
+                  {valueReport.split.known.count === 1 ? "y" : "ies"} carrying a figure from
+                  the notice or from a person.
+                </p>
+              </div>
+              <div>
+                <div className="label">Estimated value</div>
+                <div className="num mt-1 text-2xl font-semibold text-slate-900">
+                  {currency(valueReport.split.modeled.total)}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  {valueReport.split.modeled.count} where the figure was inferred from the
+                  solicitation rather than published.
+                </p>
+              </div>
+              <div>
+                <div className="label">No figure at all</div>
+                <div className="num mt-1 text-2xl font-semibold text-slate-900">
+                  {valueReport.split.unknown.count}
+                </div>
+                {/*
+                  Counted, never valued. This is the bucket that makes the two
+                  totals beside it a floor rather than a forecast, and the one
+                  a dashboard is most tempted to quietly treat as nought.
+                */}
+                <p className="mt-1 text-xs text-slate-500">
+                  Open, and carrying no dollar figure. Not counted as nought in either
+                  total.
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">{coverageSentence(valueReport.split)}</p>
+          </div>
+
+          <MetricGroup
+            title="Deadlines and decisions"
+            description="Whether work went in on time, and how long a pursue or pass call takes."
+            metrics={[...deadlines, ...reviewTimes]}
+          />
+          <MetricGroup
+            title="Subcontractor outreach"
+            description="What happened to the emails, and how much of the work came back with a price on it."
+            metrics={[...subOutreach, ...tradeCoverage]}
+          />
+          <MetricGroup
+            title="How much the scores rest on"
+            description="A score computed from a title and a NAICS code looks exactly like one computed from a full solicitation."
+            metrics={confidence}
+          />
+          <MetricGroup
+            title="Automation"
+            description="Whether the platform's own work is finishing, and how much of it comes back to a person."
+            metrics={automation}
+          />
+        </section>
 
         {/* Custom, operator-defined KPIs. */}
         <section>
