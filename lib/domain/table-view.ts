@@ -238,6 +238,25 @@ export function withoutFilter(values: FilterValues, key: string): FilterValues {
   return next;
 }
 
+/**
+ * Every filter off, keeping anything on the URL this bar does not own.
+ *
+ * Clear all used to hand back an empty object, which is only correct on a page
+ * whose entire query string is filters. Opportunities carries `view=table`
+ * beside them, so clearing the filters dropped the operator back onto the
+ * lanes board: they asked for fewer rows and got a different page. Removing a
+ * single chip never had the problem, because withoutFilter above deletes one
+ * key rather than replacing the lot.
+ */
+export function clearedFilters(specs: FilterSpec[], values: FilterValues): FilterValues {
+  const owned = new Set(specs.map((s) => s.key));
+  const next: FilterValues = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!owned.has(key)) next[key] = value;
+  }
+  return next;
+}
+
 export type Density = "comfortable" | "compact";
 
 export interface SavedView {

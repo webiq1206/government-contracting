@@ -194,8 +194,15 @@ export default async function SubsPage({
         sortParam={serializeSort(sort)}
         perPage={paging.perPage}
         viewsKey="brostco.subs.views"
+        /* Always a count, including when it is none: the filter sheet shows
+           this line above Apply, and a blank there reads as a control that has
+           not worked rather than a search that found nothing. */
         resultLabel={
-          total > 0 ? `Showing ${paging.from}-${paging.to} of ${total}` : undefined
+          total > 0
+            ? `Showing ${paging.from}-${paging.to} of ${total}`
+            : filtered
+              ? "No subcontractors match these filters"
+              : "No subcontractors on the roster yet"
         }
       />
 

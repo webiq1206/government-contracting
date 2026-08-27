@@ -348,10 +348,13 @@ export default async function PipelinePage({
             /* The page remembers the view and the filters together, because
                the view outlives this bar: it is only mounted in the table. */
             remember={false}
+            /* None is a count too. See the note on the Subcontractors page. */
             resultLabel={
               tableTotal > 0
                 ? `Showing ${tablePaging.from}-${tablePaging.to} of ${tableTotal}`
-                : undefined
+                : Object.keys(tableValues).length > 0
+                  ? "No opportunities match these filters"
+                  : "No opportunities yet"
             }
           />
           <div className="flex min-h-0 flex-1 overflow-hidden">

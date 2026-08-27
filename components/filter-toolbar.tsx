@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   activeChips,
   buildHref,
+  clearedFilters,
   withoutFilter,
   isSameView,
   type FilterSpec,
@@ -32,6 +34,13 @@ import {
  * Saved views live in this browser. They are one person's shortcuts, not
  * shared configuration, and putting them on the server would mean one
  * operator's "Due this week" quietly appearing in a colleague's toolbar.
+ *
+ * On a phone the same controls become a full-screen sheet behind one button.
+ * Inline they do not fit: Opportunities has thirteen filters, and a sticky bar
+ * holding thirteen labelled fields on a 390px screen is the entire viewport,
+ * with the list it filters somewhere below the fold. The sheet is the one
+ * place in this bar that keeps an Apply button, because a control that
+ * navigates on change would tear down the sheet on the first field touched.
  *
  * It also remembers the LAST view without being asked to. The filters lived
  * only in the URL, so an operator who narrowed the list to the three agencies
@@ -77,6 +86,8 @@ export function FilterToolbar({
   const [views, setViews] = useState<SavedView[]>([]);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetTrigger = useRef<HTMLButtonElement>(null);
   /*
    * Where the last view is kept, beside the saved ones. Separate key: a saved
    * view is something a person named and expects to find again, and the last
@@ -239,7 +250,8 @@ export function FilterToolbar({
   return (
     <div className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="flex flex-col gap-3 px-4 py-3 sm:px-5">
-        <div className="flex flex-wrap items-end gap-3">
+        {/* Wide enough for the fields: they apply as they change. */}
+        <div className="hidden flex-wrap items-end gap-3 md:flex">
           {specs.map((spec) => (
             <Control
               key={spec.key}
@@ -250,6 +262,27 @@ export function FilterToolbar({
             />
           ))}
           {action && <div className="ml-auto flex items-end">{action}</div>}
+        </div>
+
+        {/* Phone: one button, and the page's own action beside it. */}
+        <div className="flex items-center gap-2 md:hidden">
+          <button
+            ref={sheetTrigger}
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            className="btn-ghost inline-flex min-h-11 flex-1 items-center justify-center gap-2"
+          >
+            Filters
+            {/* The count is on the button because a filtered list that looks
+                unfiltered is the "why is this empty" trap, and on a phone the
+                chips below can be scrolled past. */}
+            {chips.length > 0 && (
+              <span className="badge bg-gold/20 text-gold-text">{chips.length}</span>
+            )}
+          </button>
+          {action}
         </div>
 
         {(chips.length > 0 || views.length > 0 || resultLabel || restored) && (
@@ -285,7 +318,7 @@ export function FilterToolbar({
             {chips.length > 0 && (
               <button
                 type="button"
-                onClick={() => go({})}
+                onClick={() => go(clearedFilters(specs, values))}
                 className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
               >
                 Clear all
@@ -366,7 +399,237 @@ export function FilterToolbar({
           </div>
         )}
       </div>
+
+      <FilterSheet
+        open={sheetOpen}
+        specs={specs}
+        values={values}
+        chips={chips}
+        resultLabel={resultLabel}
+        onApply={(next) => {
+          setSheetOpen(false);
+          go(next);
+        }}
+        onClose={() => setSheetOpen(false)}
+        returnFocusTo={sheetTrigger}
+      />
     </div>
+  );
+}
+
+/**
+ * The filters on a phone: one screen, one Apply.
+ *
+ * Three things it does not do, each of which was a real option.
+ *
+ * It does not apply on change. The bar above does, and that is right when the
+ * controls stay put; here the sheet is the thing being edited, and navigating
+ * on the first field would unmount it and leave the other twelve unset.
+ *
+ * It does not claim a count it has not got. The footer shows the count for the
+ * filters actually applied, and once the draft differs it says so rather than
+ * showing a number that describes a different query. Guessing would be the
+ * worst version of this control: an operator narrows to one agency, reads
+ * "312", and applies a filter they would not have chosen.
+ *
+ * And it does not sit inside the toolbar. The bar has `backdrop-blur`, which
+ * makes it the containing block for anything fixed inside it, so a full-screen
+ * sheet rendered there would be full-screen within a 90px strip. It goes to
+ * the body through a portal.
+ */
+function FilterSheet({
+  open,
+  specs,
+  values,
+  chips,
+  resultLabel,
+  onApply,
+  onClose,
+  returnFocusTo,
+}: {
+  open: boolean;
+  specs: FilterSpec[];
+  values: FilterValues;
+  chips: { key: string; label: string; display: string }[];
+  resultLabel?: string;
+  onApply: (next: FilterValues) => void;
+  onClose: () => void;
+  returnFocusTo: React.RefObject<HTMLElement>;
+}) {
+  const [pending, setPending] = useState<FilterValues>(values);
+  const [mounted, setMounted] = useState(false);
+  const panel = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
+  useEffect(() => setMounted(true), []);
+
+  /*
+   * Opening starts from what is applied, not from whatever was abandoned last
+   * time. A sheet that reopens holding a draft nobody applied is a set of
+   * controls that disagree with the list behind them.
+   *
+   * On the transition only. `values` is rebuilt by the parent on every one of
+   * its renders, so resetting whenever it changed identity would wipe a
+   * half-typed filter the moment anything above re-rendered.
+   */
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current) setPending(values);
+    wasOpen.current = open;
+  }, [open, values]);
+
+  /*
+   * Focus in, focus back out, and the page behind held still.
+   *
+   * The scroll lock is not cosmetic on a phone: without it the list behind the
+   * sheet scrolls under the finger, so closing the sheet returns the operator
+   * to a different part of the list than the one they were reading.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const first = panel.current?.querySelector<HTMLElement>(
+      "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])"
+    );
+    first?.focus();
+    // Held now rather than read at cleanup. It is the same button either way,
+    // because the trigger stays mounted behind the sheet, but reading a ref in
+    // a cleanup is the shape that breaks quietly when that stops being true.
+    const opener = returnFocusTo.current;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+      opener?.focus?.();
+    };
+  }, [open, returnFocusTo]);
+
+  const trap = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(
+        panel.current?.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex='-1'])"
+        ) ?? []
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [onClose]
+  );
+
+  if (!open || !mounted) return null;
+
+  const owned = specs.map((s) => s.key);
+  const dirty = owned.some((k) => (pending[k] ?? "") !== (values[k] ?? ""));
+  const pendingChips = activeChips(specs, pending);
+
+  function set(key: string, value: string) {
+    setPending((prev) => {
+      const next = { ...prev };
+      if (value.trim()) next[key] = value;
+      else delete next[key];
+      return next;
+    });
+  }
+
+  return createPortal(
+    <div
+      ref={panel}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      onKeyDown={trap}
+      className="fixed inset-0 z-[85] flex flex-col bg-background md:hidden"
+    >
+      <header
+        className="flex items-center justify-between gap-3 border-b border-border px-4 py-3"
+        style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
+      >
+        <h2 id={titleId} className="font-display text-lg font-normal text-foreground">
+          Filters
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="btn-ghost min-h-11 px-3"
+          // Closing keeps the list as it was. Apply is the only thing that
+          // changes it, which is why this says Close and not Cancel: nothing
+          // has been done yet to cancel.
+        >
+          Close
+        </button>
+      </header>
+
+      <div className="scroll-thin flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        {pendingChips.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {pendingChips.map((c) => (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => set(c.key, "")}
+                className="badge inline-flex min-h-11 items-center gap-1.5 bg-gold/15 text-gold-text md:min-h-0"
+              >
+                <span className="font-medium">{c.label}:</span> {c.display}
+                <span aria-hidden>x</span>
+                <span className="sr-only">Remove the {c.label} filter</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {specs.map((spec) => (
+          <Control
+            key={spec.key}
+            spec={spec}
+            value={pending[spec.key] ?? ""}
+            onChange={(v) => set(spec.key, v)}
+            onCommit={(v) => set(spec.key, v)}
+            fullWidth
+          />
+        ))}
+      </div>
+
+      <footer
+        className="space-y-2 border-t border-border px-4 pt-3"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          {resultLabel ?? "No result count for this list."}
+          {dirty && " Apply to count these filters."}
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            className="btn-ghost min-h-11 flex-1"
+            onClick={() => setPending(clearedFilters(specs, pending))}
+            disabled={pendingChips.length === 0}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            className="btn-primary min-h-11 flex-[2]"
+            onClick={() => onApply(pending)}
+          >
+            Apply
+          </button>
+        </div>
+      </footer>
+    </div>,
+    document.body
   );
 }
 
@@ -381,11 +644,18 @@ function Control({
   value,
   onChange,
   onCommit,
+  fullWidth = false,
 }: {
   spec: FilterSpec;
   value: string;
   onChange: (v: string) => void;
   onCommit: (v: string) => void;
+  /**
+   * In the sheet, where a 44px-tall field the width of a phone is easier to
+   * hit than a 176px one sharing a row. The fixed widths above are what make
+   * the inline bar line up, so they stay there.
+   */
+  fullWidth?: boolean;
 }) {
   const id = `filter-${spec.key}`;
 
@@ -409,13 +679,13 @@ function Control({
 
   if (spec.kind === "select") {
     return (
-      <div className="min-w-0">
+      <div className={fullWidth ? "" : "min-w-0"}>
         <label className="label mb-1 block" htmlFor={id} title={spec.hint}>
           {spec.label}
         </label>
         <select
           id={id}
-          className="input h-9 w-44"
+          className={`input ${fullWidth ? "h-11 w-full" : "h-9 w-44"}`}
           value={value}
           onChange={(e) => onCommit(e.target.value)}
         >
@@ -431,13 +701,17 @@ function Control({
   }
 
   return (
-    <div className="min-w-0">
+    <div className={fullWidth ? "" : "min-w-0"}>
       <label className="label mb-1 block" htmlFor={id} title={spec.hint}>
         {spec.label}
       </label>
       <input
         id={id}
-        className={`input h-9 ${spec.kind === "min" ? "w-24" : "w-48"}`}
+        className={
+          fullWidth
+            ? "input h-11 w-full"
+            : `input h-9 ${spec.kind === "min" ? "w-24" : "w-48"}`
+        }
         type={spec.kind === "min" ? "number" : "text"}
         min={spec.min}
         max={spec.max}
