@@ -93,7 +93,9 @@ export function sanitizeAttachmentFilename(name: string): string {
   const base = name.replace(/\\/g, "/").split("/").pop() ?? "attachment";
   const cleaned = base
     .replace(/[\r\n"\0]/g, "")
-    .replace(/[^\w.\- ()[\]]+/g, "_")
+    // "&" is kept: restored names like "Sections L&M" and "J&A" carry it, it
+    // is legal in a quoted MIME filename, and losing it costs the meaning.
+    .replace(/[^\w.\- ()[\]&]+/g, "_")
     .replace(/_+/g, "_")
     .trim();
   return (cleaned || "attachment").slice(0, 180);

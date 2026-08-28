@@ -93,12 +93,16 @@ describe("buildOutreachBrief", () => {
     expect(back.items.join(" ")).toMatch(/exclud/i);
   });
 
-  it("lists attachments and links as documents", () => {
+  it("points at the documents without inventorying filenames", () => {
     const b = buildOutreachBrief(
       input({ attachedNames: ["SOW.pdf"], links: [{ name: "Drawings", url: "https://x.test/d" }] })
     );
     const docs = b.sections.find((s) => s.heading === "Documents")!;
-    expect(docs.items).toEqual(["SOW.pdf (attached)", "Drawings: https://x.test/d"]);
+    // The mail client lists the files; the email says to review them, and
+    // keeps the one link for what was too large to attach.
+    expect(docs.items.join(" ")).toMatch(/review it before preparing your quote/i);
+    expect(docs.items.join(" ")).toContain("https://x.test/d");
+    expect(docs.items.join(" ")).not.toContain("SOW.pdf");
   });
 
   it("drops a section entirely rather than showing an empty heading", () => {

@@ -56,7 +56,7 @@ describe("opportunityExpectsDocuments", () => {
 });
 
 describe("buildOutreachDetailsBlock", () => {
-  it("lists attached filenames and omits failure language", () => {
+  it("points at the attachments without inventorying them, and omits failure language", () => {
     const block = buildOutreachDetailsBlock({
       title: "HVAC Maintenance Services",
       solicitationNumber: "W912DR-26-R-0042",
@@ -66,20 +66,23 @@ describe("buildOutreachDetailsBlock", () => {
       attachedNames: ["Statement of Work.pdf", "Wage Determination.pdf"],
       links: [],
     });
-    expect(block.plain).toContain("Attached:");
-    expect(block.plain).toContain("- Statement of Work.pdf");
-    expect(block.html).toContain("<li>Statement of Work.pdf</li>");
+    // The mail client lists the files; the email says what they are FOR.
+    expect(block.plain).toMatch(/2 attached documents/);
+    expect(block.plain).toMatch(/review them before preparing your quote/i);
+    expect(block.plain).not.toContain("Statement of Work.pdf");
+    expect(block.html).not.toContain("Statement of Work.pdf");
     expect(block.plain).not.toMatch(FAILURE_RE);
     expect(block.html).not.toMatch(FAILURE_RE);
   });
 
-  it("lists oversized files as document links only", () => {
+  it("keeps the link when documents were too large to attach", () => {
     const block = buildOutreachDetailsBlock({
       attachedNames: [],
       links: [{ name: "Full Packet.pdf", url: "https://example.com/file" }],
     });
     expect(block.plain).toContain("Documents:");
-    expect(block.plain).toContain("Full Packet.pdf: https://example.com/file");
+    expect(block.plain).toContain("https://example.com/file");
+    expect(block.plain).toMatch(/review them before preparing your quote/i);
     expect(block.plain).not.toMatch(FAILURE_RE);
   });
 });
@@ -96,7 +99,9 @@ describe("seed Template 1 render", () => {
     // bulleted structure come from the brief appended beneath it. Asserting on
     // the body alone would no longer describe what a subcontractor receives.
     const html = plainToHtml(filled) + renderOutreachBrief(previewBriefSections()).html;
-    expect(html).toContain(">Statement of Work.pdf (attached)</li>");
+    // The attachments are not inventoried by name; the email says to read them.
+    expect(html).toMatch(/attached documents have the plans, specifications/);
+    expect(html).not.toContain("Statement of Work.pdf");
     expect(html).toContain("Scope to price");
     expect(html).toContain("What to include with your quote");
     // Both dates, each labelled as whose it is. The preview has to show this

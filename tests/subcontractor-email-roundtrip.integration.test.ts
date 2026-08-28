@@ -20,7 +20,13 @@ const hasDb = Boolean(process.env.DATABASE_URL);
 const d = hasDb ? describe : describe.skip;
 
 const PDF = Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\n");
-const sent: { to: string; subject: string; html: string; threadId?: string }[] = [];
+const sent: {
+  to: string;
+  subject: string;
+  html: string;
+  threadId?: string;
+  attachments?: { filename: string }[];
+}[] = [];
 
 const sendSpy = vi.fn(async (args: Record<string, unknown>) => {
   sent.push({
@@ -28,6 +34,7 @@ const sendSpy = vi.fn(async (args: Record<string, unknown>) => {
     subject: String(args.subject),
     html: String(args.html),
     threadId: args.threadId as string | undefined,
+    attachments: args.attachments as { filename: string }[] | undefined,
   });
   return {
     messageId: `gmail-${sent.length}`,
@@ -57,6 +64,7 @@ vi.mock("../lib/opportunity-attachments", () => ({
     links: [],
     expected: true,
     undelivered: [],
+    omitted: [],
   }),
 }));
 /*
@@ -195,7 +203,11 @@ d("the subcontractor email workflow, end to end (integration)", () => {
     for (const msg of sent) {
       expect(msg.html).toMatch(/rooftop units/i);
       expect(msg.html).toMatch(/Your quote is due:/);
-      expect(msg.html).toMatch(/Statement of Work\.pdf/);
+      // The document rides as an attachment; the body says to review it
+      // rather than inventorying filenames the mail client already shows.
+      expect(msg.attachments?.[0]?.filename).toBe("Statement of Work.pdf");
+      expect(msg.html).toMatch(/review it before preparing your quote/i);
+      expect(msg.html).not.toMatch(/Statement of Work\.pdf/);
       expect(msg.html).not.toMatch(/\{\{/);
     }
   });

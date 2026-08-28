@@ -52,6 +52,7 @@ vi.mock("../lib/opportunity-attachments", () => ({
     links: [],
     expected: true,
     undelivered: [],
+    omitted: [],
   }),
 }));
 /*
@@ -239,8 +240,10 @@ d("the assembled outreach email (integration)", () => {
     expect(body).toMatch(/firm or an estimate/i);
   });
 
-  it("lists the attached document by its real name", () => {
-    expect(body).toMatch(/Statement of Work\.pdf \(attached\)/);
+  it("tells them to review the attached document instead of inventorying it", () => {
+    expect(body).toMatch(/attached document has the details you need/i);
+    expect(body).toMatch(/review it before preparing your quote/i);
+    expect(body).not.toMatch(/Statement of Work\.pdf \(attached\)/);
   });
 
   it("contains no unresolved token and no leaked placeholder", () => {

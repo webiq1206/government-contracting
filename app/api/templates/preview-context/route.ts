@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { resolveOutreachVars } from "@/lib/domain/outreach-vars";
+import { selectDocumentsForTrade } from "@/lib/domain/attachment-selection";
+import { professionalStem, uniqueFilename } from "@/lib/domain/attachment-naming";
+import { normalizeAttachmentMeta } from "@/lib/domain/attachment-meta";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import type { Opportunity } from "@/lib/types";
 
@@ -157,13 +160,48 @@ export async function GET(req: Request) {
   /*
    * Filenames only. The preview lists what would be attached; downloading the
    * bytes to render a preview would make opening a modal as expensive as
-   * sending the email.
+   * sending the email. Selection and renaming still run, because the count
+   * and the names the operator sees must be the ones the send would produce.
    */
-  const docs = await query<{ name: string }>(
-    `select name from documents
+  const docs = await query<{
+    name: string;
+    document_class: string | null;
+    amendment_number: number | null;
+    trade_relevance: unknown;
+    relevant_to_all: boolean | null;
+    mime: string | null;
+  }>(
+    `select name, document_class, amendment_number, trade_relevance, relevant_to_all, mime
+       from documents
       where opportunity_id = $1 and kind in ('solicitation','sow')
       order by created_at asc limit 40`,
     [opportunityId]
+  );
+  const selection = selectDocumentsForTrade(
+    docs.map((d) => ({
+      ...d,
+      documentClass: d.document_class,
+      tradeRelevance: Array.isArray(d.trade_relevance)
+        ? d.trade_relevance.filter((t): t is string => typeof t === "string")
+        : null,
+      relevantToAll: d.relevant_to_all,
+    })),
+    trade
+  );
+  const taken = new Set<string>();
+  const attachedNames = selection.included.map((d, i) =>
+    uniqueFilename(
+      normalizeAttachmentMeta({
+        filename: professionalStem(d.name, {
+          documentClass: d.document_class,
+          amendmentNumber: d.amendment_number,
+          solicitationNumber: opp.solicitation_number,
+          index: i + 1,
+        }),
+        mime: d.mime,
+      }).filename,
+      taken
+    )
   );
 
   return NextResponse.json({
@@ -171,7 +209,11 @@ export async function GET(req: Request) {
     scopeBoundary: resolved.scopeBoundary,
     missingRequired: resolved.missingRequired,
     warnings: resolved.warnings,
-    attachedNames: docs.map((d) => d.name),
+    attachedNames,
+    omittedDocuments: selection.omitted.map((o) => ({
+      name: o.doc.name,
+      reason: o.reason,
+    })),
     subject: opp.title,
     company: sub.company_name,
   });

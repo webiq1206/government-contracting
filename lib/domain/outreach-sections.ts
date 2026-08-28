@@ -123,17 +123,46 @@ export function buildOutreachSections(input: SectionInput): BriefSection[] {
   });
 
   // --- Documents -----------------------------------------------------------
+  /*
+   * A pointer, not an inventory. The email used to list every filename here,
+   * which duplicated what the recipient's mail client already shows and made
+   * the message read like a manifest. The attachments themselves are now
+   * selected for this trade and renamed to say what they are, so the email
+   * only needs to say: what you need is attached, read it before you price.
+   * Documents too large to attach still get their one link, because a link
+   * is the only way the recipient can know they exist.
+   */
   const attached = (input.attachedNames ?? []).filter(Boolean);
   const links = (input.links ?? []).filter((l) => l?.name && l?.url);
   if (attached.length || links.length) {
-    sections.push({
-      heading: "Documents",
-      items: [
-        ...attached.map((n) => `${n} (attached)`),
-        ...links.map((l) => `${l.name}: ${l.url}`),
-      ],
-    });
+    sections.push({ heading: "Documents", items: documentItems(attached.length, links) });
   }
 
   return sections;
+}
+
+/**
+ * The Documents section's lines, shared with the operator-facing brief so the
+ * preview and the sent email can never phrase this differently.
+ */
+export function documentItems(
+  attachedCount: number,
+  links: { name: string; url: string }[]
+): string[] {
+  const items: string[] = [];
+  if (attachedCount > 0) {
+    items.push(
+      attachedCount === 1
+        ? "The attached document has the details you need to price this scope. Please review it before preparing your quote."
+        : `The ${attachedCount} attached documents have the plans, specifications, and requirements you need to price this scope. Please review them before preparing your quote.`
+    );
+  }
+  items.push(
+    ...links.map((l) =>
+      attachedCount > 0
+        ? `Additional documents, too large to attach, are here: ${l.url}`
+        : `The documents you need to price this scope are at this link; please review them before preparing your quote: ${l.url}`
+    )
+  );
+  return items;
 }

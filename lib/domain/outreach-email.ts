@@ -3,6 +3,7 @@
  * and guards so internal failures never leak into subcontractor copy.
  */
 import { isPlaceholderScope } from "./solicitation-completeness";
+import { documentItems } from "./outreach-sections";
 import type { BriefSection } from "./outreach-brief";
 
 const INTERNAL_FAILURE_RE =
@@ -84,15 +85,20 @@ export function buildOutreachDetailsBlock(
   const attached = input.attachedNames.filter(Boolean);
   const links = input.links.filter((l) => l.name && l.url);
 
+  /*
+   * The attachments are not listed by name. The recipient's mail client
+   * already shows them, they are selected and renamed for this recipient
+   * before they get here, and an email that inventories its own attachments
+   * reads like a manifest. One sentence says what the attachments are FOR;
+   * documents too large to attach keep their link, because a link is the
+   * only way the recipient can know those exist.
+   */
+  const docLines = documentItems(attached.length, links);
+
   const plainParts: string[] = [];
   if (facts.length) plainParts.push(facts.join("\n"));
-  if (attached.length) {
-    plainParts.push(`Attached:\n${attached.map((n) => `- ${n}`).join("\n")}`);
-  }
-  if (links.length) {
-    plainParts.push(
-      `Documents:\n${links.map((l) => `- ${l.name}: ${l.url}`).join("\n")}`
-    );
+  if (docLines.length) {
+    plainParts.push(`Documents:\n${docLines.map((l) => `- ${l}`).join("\n")}`);
   }
 
   const htmlBits: string[] = [];
@@ -101,21 +107,16 @@ export function buildOutreachDetailsBlock(
       `<p style="color:#242424;margin:0 0 8px">${facts.map(escapeHtml).join("<br/>")}</p>`
     );
   }
-  if (attached.length) {
-    htmlBits.push(
-      `<p style="color:#242424;margin:8px 0 4px"><strong>Attached</strong></p>` +
-        `<ul style="margin:0 0 8px;padding-left:20px">${attached
-          .map((n) => `<li>${escapeHtml(n)}</li>`)
-          .join("")}</ul>`
-    );
-  }
-  if (links.length) {
+  if (docLines.length) {
     htmlBits.push(
       `<p style="color:#242424;margin:8px 0 4px"><strong>Documents</strong></p>` +
-        `<ul style="margin:0 0 8px;padding-left:20px">${links
+        `<ul style="margin:0 0 8px;padding-left:20px">${docLines
           .map(
             (l) =>
-              `<li>${escapeHtml(l.name)}: <a href="${escapeHtml(l.url)}">${escapeHtml(l.url)}</a></li>`
+              `<li>${escapeHtml(l).replace(
+                /(https?:\/\/[^\s<]+)/g,
+                (url) => `<a href="${url}">${url}</a>`
+              )}</li>`
           )
           .join("")}</ul>`
     );
