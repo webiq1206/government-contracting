@@ -24,6 +24,7 @@
  */
 
 import { toScannable } from "./scannable";
+import { documentItems } from "./outreach-sections";
 import { isPlaceholderScope } from "./solicitation-completeness";
 import { resolveSubWork } from "./sub-work";
 
@@ -245,15 +246,14 @@ export function buildOutreachBrief(input: OutreachBriefInput): OutreachBrief {
   }
 
   // --- Documents -----------------------------------------------------------
+  // A pointer, not an inventory: the mail client already lists the files, and
+  // they are selected and renamed for this recipient before they get here.
   const attached = (input.attachedNames ?? []).filter(Boolean);
   const links = (input.links ?? []).filter((l) => l?.name && l?.url);
   if (attached.length || links.length) {
     sections.push({
       heading: "Documents",
-      items: [
-        ...attached.map((n) => `${n} (attached)`),
-        ...links.map((l) => `${l.name}: ${l.url}`),
-      ],
+      items: documentItems(attached.length, links),
     });
   }
   if (input.documentsExpected && !attached.length && !links.length) {

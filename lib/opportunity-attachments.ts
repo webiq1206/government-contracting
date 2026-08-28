@@ -1,12 +1,28 @@
 /**
  * Gather an opportunity's solicitation/SOW documents for outreach emails.
- * Attach the full stored set. Trade scoring only ranks which files consume
- * the MIME size budget first; oversized remainder become signed links.
+ *
+ * Three jobs, in order:
+ *
+ *   1. SELECT — only the documents this subcontractor's trade actually needs
+ *      (lib/domain/attachment-selection). What was left out, and why, is
+ *      reported in `omitted` so the operator can argue with it; nothing is
+ *      dropped silently.
+ *   2. RENAME — every filename is rewritten to a clear, professional one
+ *      (lib/domain/attachment-naming) before it goes near an email, so a
+ *      recipient never sees "Attachment_2._Wage_Determination.pdf".
+ *   3. FIT — trade scoring ranks which files consume the MIME size budget
+ *      first; the oversized remainder become one signed package link.
  */
 import { query } from "./db";
 import { storage } from "./integrations/storage";
 import type { OutreachAttachment } from "./integrations/email-transport";
 import { normalizeAttachmentMeta } from "./domain/attachment-meta";
+import {
+  selectDocumentsForTrade,
+  type SelectableDocument,
+} from "./domain/attachment-selection";
+import { professionalStem, uniqueFilename } from "./domain/attachment-naming";
+import { amendmentNumber, classifyDocumentName } from "./domain/document-inventory";
 import { packageDocUrl, isAllowedUpstream } from "./domain/doc-link";
 
 /** Keep total attachment payload comfortably under Gmail's 25MB raw limit. */
@@ -25,7 +41,7 @@ export interface GatheredAttachments {
    * successfully before the send. False stops the email.
    */
   links: { name: string; url: string; reachable?: boolean }[];
-  /** True when stored docs or attachment URLs existed to try. */
+  /** True when documents THIS SUBCONTRACTOR needs existed to try. */
   expected: boolean;
   /**
    * Documents we know about that reached the recipient in no form at all.
@@ -36,6 +52,14 @@ export interface GatheredAttachments {
    * they price what they can see and dispute the rest later.
    */
   undelivered: { name: string; reason: string }[];
+  /**
+   * Documents deliberately left out of this packet, each with its reason.
+   *
+   * Distinct from undelivered: these are judgements, not failures. Another
+   * trade's specifications, or the agency's offer-submission material for the
+   * prime. They go to the agent log, never to the recipient.
+   */
+  omitted: { name: string; reason: string }[];
 }
 
 type AttachmentJsonEntry = { name?: string; url?: string; storage_path?: string; mime?: string };
@@ -45,6 +69,10 @@ type DocRow = {
   storage_path: string | null;
   storage_backend: string;
   mime: string | null;
+  document_class: string | null;
+  amendment_number: number | null;
+  trade_relevance: unknown;
+  relevant_to_all: boolean | null;
 };
 
 /** Keyword hints that a document is useful for a given trade. */
@@ -102,28 +130,87 @@ export function prioritizeDocsForAttach<T extends { name: string }>(
 
 async function loadDocs(oppId: string): Promise<DocRow[]> {
   return query<DocRow>(
-    `select name, storage_path, storage_backend, mime from documents
+    `select name, storage_path, storage_backend, mime,
+            document_class, amendment_number, trade_relevance, relevant_to_all
+       from documents
       where opportunity_id = $1 and kind in ('solicitation','sow')
       order by created_at asc limit 40`,
     [oppId]
   );
 }
 
+function asSelectable(d: DocRow): SelectableDocument & DocRow {
+  const tags = Array.isArray(d.trade_relevance)
+    ? d.trade_relevance.filter((t): t is string => typeof t === "string")
+    : null;
+  return {
+    ...d,
+    documentClass: d.document_class,
+    tradeRelevance: tags,
+    relevantToAll: d.relevant_to_all,
+  };
+}
+
+type GatherableOpp = {
+  id: string;
+  title?: string | null;
+  solicitation_number?: string | null;
+  attachments_json?: unknown;
+};
+
 async function materializeDocs(
   docs: DocRow[],
-  opp: { id: string; title?: string | null; attachments_json?: unknown }
+  opp: GatherableOpp,
+  trade: string | null | undefined
 ): Promise<GatheredAttachments> {
   const files: OutreachAttachment[] = [];
   const links: { name: string; url: string; reachable?: boolean }[] = [];
   const undelivered: { name: string; reason: string }[] = [];
+  const omitted: { name: string; reason: string }[] = [];
   /** Files that did not fit, gathered into one link rather than many. */
   const overflow: { k: "s" | "u"; v: string; n: string }[] = [];
   const seen = new Set<string>();
+  /** Renamed filenames already used, so two sources never share a name. */
+  const takenNames = new Set<string>();
   let total = 0;
 
-  for (const d of docs) {
+  /*
+   * Selection before anything is downloaded. What this subcontractor does not
+   * need is not fetched, not attached, not linked — but it IS recorded, with
+   * its reason, because an omission nobody can see is indistinguishable from
+   * a file that got lost.
+   */
+  const selection = selectDocumentsForTrade(docs.map(asSelectable), trade);
+  for (const o of selection.omitted) {
+    omitted.push({ name: o.doc.name, reason: o.reason });
+  }
+
+  /** The name the recipient sees: cleaned, deduplicated, correctly extended. */
+  const presentName = (
+    raw: string,
+    meta: { documentClass?: string | null; amendmentNumber?: number | null },
+    content: Buffer | Uint8Array | null,
+    mime: string | null | undefined,
+    index: number
+  ): { filename: string; mime: string } => {
+    const stem = professionalStem(raw, {
+      documentClass: meta.documentClass ?? classifyDocumentName(raw, mime),
+      amendmentNumber: meta.amendmentNumber ?? amendmentNumber(raw),
+      solicitationNumber: opp.solicitation_number ?? null,
+      index,
+    });
+    const normalized = normalizeAttachmentMeta({ filename: stem, mime, content });
+    return {
+      filename: uniqueFilename(normalized.filename, takenNames),
+      mime: normalized.mime,
+    };
+  };
+
+  let position = 0;
+  for (const d of selection.included) {
     if (!d.storage_path || seen.has(d.storage_path)) continue;
     seen.add(d.storage_path);
+    position += 1;
     try {
       const bytes = await storage.download(
         d.storage_path,
@@ -133,11 +220,13 @@ async function materializeDocs(
         undelivered.push({ name: d.name, reason: "the stored file is empty" });
         continue;
       }
-      const meta = normalizeAttachmentMeta({
-        filename: d.name,
-        mime: d.mime,
-        content: bytes,
-      });
+      const meta = presentName(
+        d.name,
+        { documentClass: d.document_class, amendmentNumber: d.amendment_number },
+        bytes,
+        d.mime,
+        position
+      );
       if (total + bytes.length > MAX_TOTAL_BYTES) {
         /*
          * Too big to attach. Held for the package link rather than linked on
@@ -159,7 +248,13 @@ async function materializeDocs(
       console.error(
         `[attachments] could not download "${d.name}" (${d.storage_path}): ${(err as Error).message}; sending as a link instead`
       );
-      const meta = normalizeAttachmentMeta({ filename: d.name, mime: d.mime });
+      const meta = presentName(
+        d.name,
+        { documentClass: d.document_class, amendmentNumber: d.amendment_number },
+        null,
+        d.mime,
+        position
+      );
       overflow.push({ k: "s", v: d.storage_path, n: meta.filename });
     }
   }
@@ -167,21 +262,33 @@ async function materializeDocs(
   const raw = Array.isArray(opp.attachments_json)
     ? (opp.attachments_json as AttachmentJsonEntry[])
     : [];
-  for (const a of raw) {
-    const name = a.name ?? "Attachment";
+  /*
+   * The notice's own attachment list rides through the same selection as the
+   * stored documents: same trades, same prime-only material, same reasons.
+   */
+  const jsonSelection = selectDocumentsForTrade(
+    raw.map((a) => ({ name: a.name ?? "Attachment", mime: a.mime, entry: a })),
+    trade
+  );
+  for (const o of jsonSelection.omitted) {
+    const already =
+      (o.doc.entry.storage_path && seen.has(o.doc.entry.storage_path)) ||
+      omitted.some((x) => x.name === o.doc.name);
+    if (!already) omitted.push({ name: o.doc.name, reason: o.reason });
+  }
+  for (const sel of jsonSelection.included) {
+    const a = sel.entry;
+    const name = sel.name;
     if (a.storage_path && !seen.has(a.storage_path)) {
       seen.add(a.storage_path);
+      position += 1;
       try {
         const bytes = await storage.download(a.storage_path);
         if (!bytes.length) {
           undelivered.push({ name, reason: "the stored file is empty" });
           continue;
         }
-        const meta = normalizeAttachmentMeta({
-          filename: name,
-          mime: a.mime,
-          content: bytes,
-        });
+        const meta = presentName(name, {}, bytes, a.mime, position);
         if (total + bytes.length <= MAX_TOTAL_BYTES) {
           total += bytes.length;
           files.push({ filename: meta.filename, content: bytes, mime: meta.mime });
@@ -193,14 +300,15 @@ async function materializeDocs(
         console.error(
           `[attachments] could not download "${name}" (${a.storage_path}): ${(err as Error).message}; sending as a link instead`
         );
-        const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
+        const meta = presentName(name, {}, null, a.mime, position);
         overflow.push({ k: "s", v: a.storage_path, n: meta.filename });
         continue;
       }
     }
     if (a.url && !seen.has(a.url)) {
       seen.add(a.url);
-      const meta = normalizeAttachmentMeta({ filename: name, mime: a.mime });
+      position += 1;
+      const meta = presentName(name, {}, null, a.mime, position);
       // Never hand a subcontractor a SAM.gov URL. We proxy the file through
       // our own domain so the email only ever shows a brostco.com link, and
       // the recipient is not invited to go bid the job themselves.
@@ -210,14 +318,17 @@ async function materializeDocs(
     }
   }
 
-  const json = Array.isArray(opp.attachments_json) ? opp.attachments_json : [];
+  /*
+   * "Expected" is measured after selection, against what this subcontractor
+   * should receive. A solicitation whose every document was deliberately
+   * omitted for this trade (all of it another trade's, or all of it the
+   * prime's offer material) has nothing this packet is missing, and holding
+   * the send over it would punish the filtering for working. The omissions
+   * still reach the agent log through `omitted`.
+   */
   const expected =
-    docs.length > 0 ||
-    json.some((a) => {
-      if (!a || typeof a !== "object") return false;
-      const row = a as AttachmentJsonEntry;
-      return Boolean(row.url || row.storage_path);
-    });
+    selection.included.length > 0 ||
+    jsonSelection.included.some((s) => Boolean(s.entry.url || s.entry.storage_path));
 
   /*
    * Everything that could not ride along becomes ONE link.
@@ -276,26 +387,26 @@ async function materializeDocs(
     });
   }
 
-  return { files, links, expected, undelivered };
+  return { files, links, expected, undelivered, omitted };
 }
 
 /** All solicitation/SOW docs (legacy helper). */
-export async function gatherOpportunityAttachments(opp: {
-  id: string;
-  attachments_json?: unknown;
-}): Promise<GatheredAttachments> {
+export async function gatherOpportunityAttachments(
+  opp: GatherableOpp
+): Promise<GatheredAttachments> {
   const docs = await loadDocs(opp.id);
-  return materializeDocs(docs, opp);
+  return materializeDocs(docs, opp, null);
 }
 
 /**
- * All solicitation/SOW docs for outreach. Trade scoring only ranks which
- * files consume the MIME size budget first; the rest become signed links.
+ * The document packet for one subcontractor: only this trade's documents,
+ * renamed for the recipient, ranked so the most relevant consume the MIME
+ * size budget first; the rest become one signed package link.
  */
 export async function gatherTradeAttachments(
-  opp: { id: string; title?: string | null; attachments_json?: unknown },
+  opp: GatherableOpp,
   trade: string | null | undefined
 ): Promise<GatheredAttachments> {
   const docs = await loadDocs(opp.id);
-  return materializeDocs(prioritizeDocsForAttach(docs, trade), opp);
+  return materializeDocs(prioritizeDocsForAttach(docs, trade), opp, trade);
 }

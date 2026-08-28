@@ -199,6 +199,28 @@ export const outreach: AgentDefinition = {
         message: soft.message,
       });
     }
+    /*
+     * What was deliberately left out of this packet, on the record.
+     *
+     * The gatherer now sends only the documents this trade needs, and a
+     * filtered file the operator cannot see filtered is indistinguishable
+     * from one that got lost. One line per omission, with the reason, so
+     * "why didn't the roofer get the electrical specs" has an answer.
+     */
+    if (gathered.omitted.length) {
+      await logAgent({
+        agent: "outreach",
+        action: "filter",
+        level: "info",
+        opportunityId,
+        subcontractorId,
+        message: `Left ${gathered.omitted.length} document(s) out of the ${
+          trade || "general"
+        } packet for ${sub.company_name}: ${gathered.omitted
+          .map((o) => o.reason)
+          .join("; ")}.`,
+      });
+    }
     if (!pkg.ok) {
       const why = describePackageProblems(pkg.problems);
       await query(

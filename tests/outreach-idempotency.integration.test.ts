@@ -35,7 +35,7 @@ vi.mock("../lib/ai/companyProfile", () => ({
   }),
 }));
 vi.mock("../lib/opportunity-attachments", () => ({
-  gatherTradeAttachments: async () => ({ files: [], links: [], expected: false }),
+  gatherTradeAttachments: async () => ({ files: [], links: [], expected: false, omitted: [] }),
 }));
 /*
  * The real module underneath, with only the settings this test means to pin.
