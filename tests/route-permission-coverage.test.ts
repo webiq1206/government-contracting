@@ -66,6 +66,8 @@ const EXEMPT: Record<string, string> = {
   "account/password/route.ts":
     "Changes your own password, and requires the current one; scoped to auth.id.",
   "account/sessions/route.ts": "Ends your own sessions; the delete is scoped to auth.id.",
+  "account/recap-preferences/route.ts":
+    "Sets your own time zone and turns your own recap off; scoped to auth.id.",
 };
 
 function walk(dir: string, out: string[] = []): string[] {

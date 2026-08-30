@@ -109,6 +109,11 @@ const SECTIONS: Section[] = [
     key: "performance",
     label: "Performance",
     items: [
+      {
+        href: "/recap",
+        label: "Daily Recap",
+        hint: "What happened yesterday, urgent things first",
+      },
       { href: "/analytics", label: "Analytics" },
       { href: "/agents", label: "Automation Health", hint: "Whether the automation is working, and what is stopping it" },
     ],

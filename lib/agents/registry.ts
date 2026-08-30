@@ -44,6 +44,7 @@ import { complianceSweep } from "./compliance-sweep";
 import { subOnboarding } from "./sub-onboarding";
 import { trialSweep } from "./trial-sweep";
 import { concessionSweep } from "./concession-sweep";
+import { dailyRecap } from "./daily-recap";
 
 export const ROSTER: AgentDefinition[] = [
   opportunityMonitor,
@@ -83,6 +84,7 @@ export const MAINTENANCE: AgentDefinition[] = [
   backlinkOutreachSweep,
   contactRecheckSweep,
   unresponsiveSweep,
+  dailyRecap,
 ];
 
 export const ALL_AGENTS: AgentDefinition[] = [...ROSTER, ...MAINTENANCE];
@@ -130,7 +132,15 @@ export function scheduledAgents(): { agent: AgentDefinition; cron: string }[] {
     { agent: logRetentionSweep, cron: "30 3 * * *" }, // daily at 03:30
     { agent: backlinkOutreachSweep, cron: "*/20 * * * *" }, // every 20 min
     { agent: contactRecheckSweep, cron: "5 * * * *" }, // hourly at :05, small batch per run
-    { agent: unresponsiveSweep, cron: "20 * * * *" } // hourly at :20
+    { agent: unresponsiveSweep, cron: "20 * * * *" }, // hourly at :20
+    /*
+     * Every quarter hour, all day. Not "at six": six in the morning is a
+     * different instant in every recipient's zone, so the run asks each
+     * person whether their own send time has passed. Fifteen minutes is the
+     * worst-case lateness anybody sees, which is inside the grace period, so
+     * an ordinary morning is never labelled late.
+     */
+    { agent: dailyRecap, cron: "*/15 * * * *" }
   );
   return scheduled;
 }

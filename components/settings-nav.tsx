@@ -14,6 +14,7 @@ const TABS = [
     match: "/settings/integrations",
   },
   { href: "/settings/billing", label: "Billing", match: "/settings/billing" },
+  { href: "/settings/recap", label: "Daily Recap", match: "/settings/recap" },
   {
     href: "/settings/notifications",
     label: "Notifications",

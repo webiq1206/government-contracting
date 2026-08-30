@@ -22,6 +22,128 @@ function Message({ tone, children }: { tone: "ok" | "bad"; children: React.React
   );
 }
 
+/**
+ * Your time zone, and whether you want the morning recap.
+ *
+ * This is the one personal setting that changes what the software does rather
+ * than how it looks. The zone decides which twenty-four hours "yesterday"
+ * means in your daily recap and what hour the recap is sent, so it is stored
+ * on the account instead of read from the browser: a scheduled job that runs
+ * while nobody is signed in has no browser to ask.
+ */
+export function TimeZoneForm({
+  initial,
+  isDefault,
+  optedOut,
+  sendAt,
+  recapEnabled,
+  choices,
+}: {
+  initial: string;
+  isDefault: boolean;
+  optedOut: boolean;
+  sendAt: string;
+  recapEnabled: boolean;
+  choices: { value: string; label: string }[];
+}) {
+  const router = useRouter();
+  const [zone, setZone] = useState(initial);
+  const [off, setOff] = useState(optedOut);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+
+  // A zone stored from somewhere other than this list still has to be
+  // selectable, or opening the form would silently change it on save.
+  const options = choices.some((c) => c.value === zone)
+    ? choices
+    : [{ value: zone, label: zone }, ...choices];
+
+  async function save(next: { timezone?: string; optedOut?: boolean }) {
+    if (busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/account/recap-preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setMsg({ tone: "bad", text: data.error ?? "Could not save that." });
+        return;
+      }
+      setMsg({ tone: "ok", text: "Saved." });
+      router.refresh();
+    } catch {
+      setMsg({ tone: "bad", text: "Could not reach the server." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <label htmlFor="account-timezone" className="label block">
+          Your time zone
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            id="account-timezone"
+            value={zone}
+            onChange={(e) => setZone(e.target.value)}
+            className="input min-w-0 flex-1 text-sm"
+          >
+            {options.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn-primary text-sm"
+            disabled={busy || zone === initial}
+            onClick={() => save({ timezone: zone })}
+          >
+            {busy ? "Saving" : "Save"}
+          </button>
+        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {isDefault
+            ? "Not set yet, so your recap uses Mountain Time. Pick yours and the day it covers will match the day you worked."
+            : "Your daily recap covers a full day in this zone and arrives at the start of it."}
+        </p>
+      </div>
+
+      <label className="flex items-start gap-2 text-sm text-foreground">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={!off}
+          disabled={busy}
+          onChange={(e) => {
+            const wants = e.target.checked;
+            setOff(!wants);
+            void save({ optedOut: !wants });
+          }}
+        />
+        <span>
+          Email me the daily recap at {sendAt}
+          <span className="block text-xs text-muted-foreground">
+            {recapEnabled
+              ? "Yesterday in one email: what needs you, what broke, what moved. The same information is always on the Daily Recap page."
+              : "This account has the recap turned off for everyone, so nothing is being sent at the moment. Your choice here is remembered for when it is turned back on."}
+          </span>
+        </span>
+      </label>
+
+      {msg && <Message tone={msg.tone}>{msg.text}</Message>}
+    </div>
+  );
+}
+
 export function DisplayNameForm({ initial }: { initial: string }) {
   const router = useRouter();
   const [name, setName] = useState(initial);

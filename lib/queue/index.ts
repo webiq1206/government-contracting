@@ -223,6 +223,7 @@ export const QUEUE_NAMES = [
   "backlink-outreach-sweep",
   "contact-recheck-sweep",
   "unresponsive-sweep",
+  "daily-recap",
 ] as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[number];

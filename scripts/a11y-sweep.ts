@@ -97,6 +97,9 @@ const ROUTES = [
   "/authority",
   "/more",
   "/feedback",
+  "/recap",
+  "/settings/recap",
+  "/admin/recap",
 ];
 
 /**

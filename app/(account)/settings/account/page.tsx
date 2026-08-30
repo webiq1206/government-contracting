@@ -12,8 +12,15 @@ import {
   roleLabel,
   rolesWith,
 } from "@/lib/domain/roles";
-import { DisplayNameForm, PasswordForm, SessionList } from "@/components/account-forms";
+import {
+  DisplayNameForm,
+  PasswordForm,
+  SessionList,
+  TimeZoneForm,
+} from "@/components/account-forms";
 import { shortDate } from "@/lib/format";
+import { TIMEZONE_CHOICES, sendAtLabel } from "@/lib/domain/recap/day-window";
+import { getRecapSettings, getUserRecapPreference } from "@/lib/recap/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -37,10 +44,14 @@ export default async function AccountSettingsPage() {
   const user = await currentUser().catch(() => null);
   if (!user) redirect("/login");
 
-  const [details, sessions, sessionId] = await Promise.all([
+  const [details, sessions, sessionId, recapPref, recapSettings] = await Promise.all([
     accountDetails(user.id),
     accountSessions(user.id),
     currentSessionId(),
+    getUserRecapPreference(user.id).catch(() => null),
+    user.organizationId
+      ? getRecapSettings(user.organizationId).catch(() => null)
+      : Promise.resolve(null),
   ]);
 
   const now = new Date();
@@ -95,6 +106,35 @@ export default async function AccountSettingsPage() {
               </div>
             )}
           </div>
+        </section>
+
+        <section aria-labelledby="acct-recap" className="max-w-3xl space-y-3">
+          <div className="border-b-2 border-accent/80 pb-2">
+            <h2 id="acct-recap" className="font-display text-xl font-semibold text-foreground">
+              Your daily recap
+            </h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+              One email each morning covering the day before. Yours to switch off, and yours
+              to place in your own day: the recap is built and sent in the zone you set here.
+            </p>
+          </div>
+          <div className="panel-inset px-4 py-4">
+            <TimeZoneForm
+              initial={recapPref?.timezone ?? "America/Denver"}
+              isDefault={recapPref?.timezoneIsDefault ?? true}
+              optedOut={recapPref?.optedOut ?? false}
+              sendAt={sendAtLabel(recapSettings?.send_at ?? "06:00")}
+              recapEnabled={recapSettings?.enabled ?? false}
+              choices={TIMEZONE_CHOICES}
+            />
+          </div>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            The same information is always on the{" "}
+            <Link href="/recap" className="font-medium text-accent hover:underline">
+              Daily Recap page
+            </Link>
+            , for any day, whether or not the email reaches you.
+          </p>
         </section>
 
         <section aria-labelledby="acct-role" className="max-w-3xl space-y-3">
@@ -225,10 +265,11 @@ export default async function AccountSettingsPage() {
             <li className="panel-inset px-4 py-3">
               <p className="font-medium text-foreground">Time zone</p>
               <p className="mt-0.5 leading-relaxed text-muted-foreground">
-                Not a setting yet. Dates and times are shown in this device&apos;s time zone,
-                and the day boundary on Today is the server&apos;s. Quote deadlines in
-                outreach email spell out the zone they are in, so a subcontractor in another
-                one is never left guessing.
+                Set above, because the daily recap reads it: it decides which twenty-four
+                hours &quot;yesterday&quot; covers and what hour the email arrives. Everywhere
+                else, dates and times are still shown in this device&apos;s zone. Quote
+                deadlines in outreach email spell out the zone they are in, so a subcontractor
+                in another one is never left guessing.
               </p>
             </li>
           </ul>
