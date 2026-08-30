@@ -1,0 +1,99 @@
+Please implement an automated Daily Activity Recap email that is sent to every active account each morning and summarizes the previous calendar day’s activity.
+
+Each recap must include all relevant activity for that account, including:
+
+* Emails sent
+* Follow-up emails sent
+* Subcontractors contacted
+* Replies received
+* Replies awaiting review
+* Bounced, rejected, or failed emails
+* Calls made, answered, missed, or scheduled
+* Notes added
+* Subcontractor bids and quotes received
+* Quote information extracted and entered
+* Solicitations updated
+* Bids submitted
+* Bids currently in process
+* Bids ready for review or approval
+* Upcoming and missed deadlines
+* Tasks completed, created, overdue, or blocked
+* Automation activity and status changes
+* Any other meaningful progress or account activity
+
+The recap must be concise, easy to scan, visually polished, and detailed enough that important information is never omitted. Do not produce a lengthy activity log. Group related activity, summarize totals, and highlight only the details needed to understand what happened and what requires attention.
+
+Organize each email in this order:
+
+1. Urgent Attention Required
+2. System or Integration Problems
+3. Items Requiring Review or Action
+4. Key Activity Totals
+5. Solicitation and Bid Progress
+6. Subcontractor Outreach and Responses
+7. Completed Work
+8. Upcoming Deadlines and Recommended Next Actions
+
+Urgent items and system problems must appear at the top and stand out visually. This includes:
+
+* Failed or disconnected integrations
+* Email synchronization failures
+* Bounced or rejected emails
+* Failed background jobs or automations
+* Missing or invalid attachments
+* Overdue tasks or deadlines
+* Stalled solicitations
+* Low-confidence or conflicting data extraction
+* Subcontractor replies requiring review
+* Bids approaching submission deadlines
+* Missing bid information
+* Any workflow that is not operating correctly
+
+Every actionable item must include a direct link to the affected record or the exact page where the user can review or resolve it. Clearly distinguish between informational updates and items that require action.
+
+These emails must be account-specific and fully tenant-isolated:
+
+* Platform administrators receive an administrative recap covering only the organizations, system activity, and operational information they are authorized to view.
+* Organization administrators receive activity for their organization.
+* Individual users receive activity based on their account, organization, role, permissions, assignments, and notification settings.
+* No user may receive information belonging to another organization or information they are not authorized to access.
+
+Provide Daily Recap settings in the admin panel. Authorized administrators must be able to:
+
+* Enable or disable recap emails
+* Select which sections and activity types are included
+* Set the delivery time
+* Use the account’s configured time zone
+* Choose which roles or users receive the recap
+* Configure thresholds for urgent warnings
+* Preview the email
+* Send a test email
+* Review delivery history
+* See whether a recap was sent, delivered, bounced, or failed
+* Retry a failed recap safely
+
+Each user should also be able to manage their own recap preferences when permitted, without changing organization-wide settings.
+
+The system must generate each recap from verified activity and audit records. It must not invent, estimate, duplicate, or omit activity. Totals must reconcile with the underlying records, and each item must link to the correct account, solicitation, bid, subcontractor, communication, task, or system event.
+
+Use the recipient’s local time zone to define the previous calendar day. Prevent duplicate recap emails, handle delayed background jobs correctly, and clearly label late-arriving activity when necessary. If no meaningful activity occurred, send a short summary stating that instead of displaying empty sections.
+
+The email design must be responsive and display properly on desktop and mobile. Use a clear visual hierarchy, compact summary cards, status indicators, concise labels, and accessible colors. Do not rely on color alone to communicate urgency or status.
+
+Before considering this complete, test:
+
+* Platform administrator recaps
+* Organization administrator recaps
+* Standard user recaps
+* Different roles and permission levels
+* Multiple organizations to verify tenant isolation
+* Accounts in different time zones
+* Days with high, low, and no activity
+* Failed integrations and automations
+* Bounced and failed emails
+* Missing or conflicting data
+* Duplicate-event prevention
+* Delivery, failure tracking, and safe retry behavior
+* Desktop and mobile email layouts
+
+The final result should give every recipient a complete understanding of what happened yesterday, what needs attention now, what is not working correctly, and what should happen next, without forcing them to read a long report.
