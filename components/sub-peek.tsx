@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ActionButton } from "@/components/action-button";
 import { subState, SUB_STATE_TONE } from "@/lib/domain/sub-state";
 import { DetailDrawer, DrawerFact, DrawerSection } from "@/components/detail-drawer";
 import {
@@ -90,9 +91,26 @@ function nextAction(s: SubPeekRow): string {
 export function SubPeek({
   sub,
   closeHref,
+  nav,
+  canManage = false,
 }: {
   sub: SubPeekRow;
   closeHref: string;
+  /** Where this firm sits in the list behind the drawer, so it can be walked. */
+  nav?: {
+    prevHref: string | null;
+    nextHref: string | null;
+    index: number;
+    total: number;
+  };
+  /**
+   * Whether the reader may change anything.
+   *
+   * The one action offered here is the preferred flag, because it is the only
+   * decision somebody makes WHILE scanning a roster: everything else about a
+   * firm is edited on its record with the context that belongs to it.
+   */
+  canManage?: boolean;
 }) {
   const inputs = {
     outreach: n(sub.outreach),
@@ -124,6 +142,43 @@ export function SubPeek({
       closeHref={closeHref}
       openHref={`/subs/${sub.id}`}
       openLabel="Open the full record"
+      nav={nav}
+      footer={
+        <div className="flex flex-wrap items-center gap-2">
+          {canManage ? (
+            <ActionButton
+              endpoint={`/api/subs/${sub.id}`}
+              body={{ is_preferred: !sub.is_preferred }}
+              className="btn-ghost text-xs"
+              toast={{
+                message: sub.is_preferred
+                  ? `${sub.company_name} is no longer preferred.`
+                  : `${sub.company_name} is preferred. They are contacted first on new work.`,
+                undo: {
+                  endpoint: `/api/subs/${sub.id}`,
+                  body: { is_preferred: sub.is_preferred },
+                },
+              }}
+            >
+              {sub.is_preferred ? "Remove preferred" : "Mark preferred"}
+            </ActionButton>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {sub.is_preferred ? "Preferred" : "Not preferred"}
+            </span>
+          )}
+          {sub.phone && (
+            <a href={`tel:${sub.phone}`} className="btn-ghost text-xs">
+              Call
+            </a>
+          )}
+          {nav?.nextHref && (
+            <Link href={nav.nextHref} className="btn-primary ml-auto text-xs">
+              Next firm
+            </Link>
+          )}
+        </div>
+      }
     >
       <DrawerSection title="Operational status">
         <DrawerFact

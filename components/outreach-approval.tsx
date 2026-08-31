@@ -16,7 +16,23 @@ export interface OutreachDraftData {
  * (and even then, sending is a separate step). The operator can tweak the copy
  * before approving.
  */
-export function OutreachApprovalCard({ draft }: { draft: OutreachDraftData }) {
+export function OutreachApprovalCard({
+  draft,
+  nextHref = null,
+  doneHref,
+}: {
+  draft: OutreachDraftData;
+  /**
+   * The next draft in the queue.
+   *
+   * Approving takes this one out of the queue, so staying put leaves an
+   * approved draft on screen and the reader to go and find the next. Null on
+   * the last one, which falls back to `doneHref`.
+   */
+  nextHref?: string | null;
+  /** Where to land when there is no next draft. Omit outside a queue. */
+  doneHref?: string;
+}) {
   const router = useRouter();
   const [subject, setSubject] = useState(draft.subject ?? "");
   const [body, setBody] = useState(draft.body ?? "");
@@ -37,6 +53,7 @@ export function OutreachApprovalCard({ draft }: { draft: OutreachDraftData }) {
         setError(data.error ?? "Action failed");
         return;
       }
+      if (nextHref || doneHref) router.push(nextHref ?? doneHref!);
       router.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -78,7 +95,7 @@ export function OutreachApprovalCard({ draft }: { draft: OutreachDraftData }) {
           disabled={busy !== null}
           aria-busy={busy === "approve"}
         >
-          {busy === "approve" ? "Approving…" : "Approve"}
+          {busy === "approve" ? "Approving…" : nextHref ? "Approve & next" : "Approve"}
         </button>
         <button
           className="btn-ghost text-sm"

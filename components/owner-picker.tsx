@@ -85,7 +85,13 @@ export function OwnerPicker({
       </label>
       <select
         id={id}
-        className={compact ? "input h-11 w-auto text-xs lg:h-7" : "input h-11 w-full lg:h-9"}
+        /*
+         * The compact variant sizes itself rather than being pinned to 28px.
+         * `.input` carries 8px of vertical padding from `sm:` up, so a fixed
+         * `lg:h-7` clipped the descenders off the selected name: the control
+         * looked like a rendering fault rather than a control.
+         */
+        className={compact ? "input h-11 w-auto text-xs lg:h-auto" : "input h-11 w-full lg:h-auto"}
         value={value}
         disabled={busy}
         onChange={(e) => void change(e.target.value)}

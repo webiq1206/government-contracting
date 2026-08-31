@@ -36,6 +36,7 @@ const PASSWORD = "EdgeCase123!";
 
 const ROUTES = [
   "/today",
+  "/workbench",
   "/pipeline",
   "/review",
   "/call-queue",
@@ -134,9 +135,18 @@ async function seedHostile(orgId: string) {
      values ($1, $2, array['electrical','plumbing','hvac','roofing','concrete','masonry'], $3, 'ID', null, null)`,
     [orgId, LONG_NAME, "A City With An Unreasonably Long Name For Layout Testing"]
   );
+  /*
+   * 'incomplete', not 'ok'.
+   *
+   * Migration 091 put a check constraint on this column and 'ok' has not been
+   * one of the eight allowed states since. The sweep threw while seeding, so
+   * it had been measuring nothing at all: an item with no expiry date is
+   * exactly the case it exists to catch, and the state that describes it is
+   * 'incomplete'.
+   */
   await query(
     `insert into compliance_items (org_id, label, category, status, due_at, source)
-     values ($1, $2, 'sam_registration', 'ok', null, 'operator')`,
+     values ($1, $2, 'sam_registration', 'incomplete', null, 'operator')`,
     [orgId, `${TAG} item with no expiry date`]
   );
 }

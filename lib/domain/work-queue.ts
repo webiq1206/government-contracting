@@ -23,6 +23,17 @@ export type WorkKind =
   | "review_bid" // package built, needs review + submit
   | "fix_blocker"; // human_action_required with a named gap
 
+/**
+ * The kind of record a task is a view of.
+ *
+ * A task in this product has no independent existence: it is a record in a
+ * state that needs somebody. Naming the record is what lets a workspace open
+ * the task itself rather than merely linking to the page the record lives on,
+ * which is the difference between finishing forty things and visiting forty
+ * pages.
+ */
+export type WorkRecordKind = "opportunity" | "call_card" | "reply" | "pairing";
+
 export interface WorkItem {
   key: string;
   kind: WorkKind;
@@ -34,8 +45,39 @@ export interface WorkItem {
   due?: string | null;
   /** Auto-dismiss or expiry moment, when the item has one. */
   expiresAt?: string | null;
-  /** Where one tap takes you to complete the item. */
+  /**
+   * Where one tap takes you to complete the item.
+   *
+   * The workbench, for everything. This used to be a different destination per
+   * kind -- an anchor on Today for a reply, the call queue for a call, one of
+   * four anchors on the record page for the rest -- so the one list of work
+   * was a list of six places to go, and finishing five items meant loading
+   * five pages and finding your way back each time.
+   */
   href: string;
+  /**
+   * The record's own page, for when somebody genuinely wants the whole thing.
+   *
+   * Kept alongside `href` rather than replacing it. Working an item and
+   * studying a record are different acts, and a workspace that cannot hand off
+   * to the full record traps people in it.
+   */
+  recordHref: string;
+  /**
+   * The record behind the task, for surfaces that open it in place.
+   *
+   * Optional because `href` is still the answer for anything that only wants
+   * to link somewhere, and because the key already encodes the id for the
+   * dedupe. This says WHAT the id is, which a string prefix cannot.
+   */
+  record?: { kind: WorkRecordKind; id: string };
+  /**
+   * The solicitation the task belongs to, when the record above is not itself
+   * one. A call card and a subcontractor pairing are both about a bid, and a
+   * workspace showing one without naming the other is a screen you cannot act
+   * from.
+   */
+  opportunityId?: string | null;
   /** Label for the inline action button. */
   actionLabel: string;
   /**

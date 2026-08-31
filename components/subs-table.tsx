@@ -219,7 +219,17 @@ export function SubsTable({
         ),
     },
     {
-      key: "state",
+      /*
+       * `record_state`, not `state`.
+       *
+       * Two columns were keyed "state": this badge and the Location column
+       * eleven rows up. DataTable uses the key as the React key for the header
+       * and body cells and as the sort parameter, so the table rendered with a
+       * duplicate-key warning and the column chooser could not tell the two
+       * apart. This one is not sortable, so no saved view or bookmarked URL
+       * names it and renaming it changes nothing an operator can see.
+       */
+      key: "record_state",
       header: "State",
       /*
        * One badge, from the same function the record page and the quick look

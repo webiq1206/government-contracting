@@ -79,6 +79,11 @@ const SECTIONS: Section[] = [
     label: "Work",
     items: [
       { href: "/today", label: "Today", hint: "Everything that needs you" },
+      {
+        href: "/workbench",
+        label: "Workbench",
+        hint: "Work the whole queue on one screen",
+      },
       { href: "/pipeline", label: "Opportunities", hint: "Every opportunity, by whose turn it is" },
       { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass", badge: "review" },
       { href: "/call-queue", label: "Call Queue", hint: "Work calls one after another", badge: "calls" },

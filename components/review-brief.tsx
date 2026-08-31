@@ -13,7 +13,7 @@
  * decision somebody defers.
  */
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -24,6 +24,7 @@ import { shortDate, countdown } from "@/lib/format";
 import { SnoozeButton } from "@/components/snooze-button";
 import { useToast } from "@/components/toaster";
 import { EstimatedValue } from "@/components/estimated-value";
+import { useWorkspaceShortcut } from "@/components/workspace/workspace-keys";
 
 const TONE: Record<string, string> = {
   pursue: "bg-pursue/15 text-pursue",
@@ -38,6 +39,8 @@ export function ReviewBriefPanel({
   brief,
   canDecide,
   closeHref,
+  nextHref = null,
+  recordHref,
 }: {
   opportunityId: string;
   title: string;
@@ -45,6 +48,18 @@ export function ReviewBriefPanel({
   brief: Brief;
   canDecide: boolean;
   closeHref: string;
+  /**
+   * The next item in the queue, when the host has one.
+   *
+   * Deciding removes this record from the list it came from, so staying put
+   * leaves a decided record on screen and the operator to go and find the next
+   * row. With this, a decision lands on the next decision. Null on the last
+   * item, which falls back to `closeHref`: the queue, which re-opens on
+   * whatever is now first.
+   */
+  nextHref?: string | null;
+  /** The record's own page. Defaults to the opportunity. */
+  recordHref?: string;
 }) {
   const router = useRouter();
   const { push } = useToast();
@@ -53,7 +68,13 @@ export function ReviewBriefPanel({
   const [passing, setPassing] = useState(false);
   const [reason, setReason] = useState("");
 
-  async function act(action: string, extra: Record<string, unknown> = {}) {
+  /*
+   * Memoized because the keyboard binding below depends on it, and a function
+   * rebuilt on every render would tear down and re-register the window
+   * listener on every keystroke in the pass-reason box.
+   */
+  const act = useCallback(
+    async function act(action: string, extra: Record<string, unknown> = {}) {
     setBusy(action);
     setError(null);
     try {
@@ -87,13 +108,38 @@ export function ReviewBriefPanel({
           },
         });
       }
+      /*
+       * A decision takes the record out of the queue, so the screen must not
+       * keep showing it. Extending the timer and asking for more analysis do
+       * not: those leave the item where it is, and jumping to the next one
+       * would look like the button had decided something.
+       */
+      if (action === "pursue" || action === "dismiss") {
+        router.push(nextHref ?? closeHref);
+      }
       router.refresh();
     } catch {
       setError("Could not reach the server. Nothing was changed.");
     } finally {
       setBusy(null);
     }
-  }
+    },
+    [opportunityId, nextHref, closeHref, router, push, title]
+  );
+
+  /*
+   * The primary decision, on the keyboard.
+   *
+   * Only pursue. Passing is the destructive half and it asks for a reason
+   * first, so binding it to a key would either skip the reason or open a
+   * textarea nobody asked for; a queue worked at speed is exactly where that
+   * mistake gets made forty times.
+   */
+  const pursue = useCallback(() => {
+    if (!canDecide || busy != null || passing) return;
+    void act("pursue");
+  }, [canDecide, busy, passing, act]);
+  useWorkspaceShortcut("mod+Enter", pursue, canDecide && !passing);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -256,7 +302,10 @@ export function ReviewBriefPanel({
         </section>
 
         <div className="flex flex-wrap gap-2">
-          <Link href={`/opportunity/${opportunityId}`} className="btn-ghost inline-flex text-xs">
+          <Link
+            href={recordHref ?? `/opportunity/${opportunityId}`}
+            className="btn-ghost inline-flex text-xs"
+          >
             Open the full record
           </Link>
           {/* A decision made on a reading should be one click from the thing
@@ -324,7 +373,7 @@ export function ReviewBriefPanel({
               disabled={busy != null}
               className="btn-primary text-sm"
             >
-              {busy === "pursue" ? "Starting…" : "Pursue"}
+              {busy === "pursue" ? "Starting…" : nextHref ? "Pursue & next" : "Pursue"}
             </button>
             <button type="button" onClick={() => setPassing(true)} className="btn-ghost text-sm">
               Pass

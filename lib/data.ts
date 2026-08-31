@@ -3651,8 +3651,10 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       title: `Read reply from ${r.company_name ?? "a subcontractor"}`,
       context: r.opp_title ?? "",
       due: isoOrNull(r.deadline),
-      href: "/today#reply-reviews",
+      recordHref: "/today#reply-reviews",
       actionLabel: "Read reply",
+      record: { kind: "reply" as const, id: r.id },
+      opportunityId: r.opp_id,
       assignedTo: r.assigned_to,
       reason: "The automatic reader was not confident enough to act on this, so the conversation is stopped until somebody reads it.",
     })),
@@ -3663,8 +3665,10 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       context: "Borderline score",
       due: isoOrNull(d.deadline),
       expiresAt: isoOrNull(d.review_expires_at),
-      href: `/opportunity/${d.id}#next`,
+      recordHref: `/opportunity/${d.id}#next`,
       actionLabel: "Decide",
+      record: { kind: "opportunity" as const, id: d.id },
+      opportunityId: d.id,
       assignedTo: d.assigned_to,
       // The whole task is the decision, so it can be made from the row.
       actions: {
@@ -3681,8 +3685,10 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       title: `Call ${c.company_name}${c.trade ? ` about ${c.trade}` : ""}`,
       context: c.opp_title ?? "",
       due: isoOrNull(c.deadline),
-      href: `/call-queue`,
+      recordHref: `/call-queue?open=${c.id}`,
       actionLabel: "Open call",
+      record: { kind: "call_card" as const, id: c.id },
+      opportunityId: null,
       assignedTo: c.assigned_to,
       // Snoozes the card, not the opportunity: the bid is not on hold
       // because one subcontractor is being rung on Thursday instead.
@@ -3705,7 +3711,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
             : `Resolve blocker: ${o.title ?? "untitled"}`,
       context: o.stage.replace(/_/g, " "),
       due: isoOrNull(o.deadline),
-      href:
+      recordHref:
         o.stage === "bid_building"
           ? `/opportunity/${o.id}#submission`
           : o.stage === "quote_entry"
@@ -3713,6 +3719,8 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
             : `/opportunity/${o.id}#next`,
       actionLabel:
         o.stage === "bid_building" ? "Review bid" : o.stage === "quote_entry" ? "Enter quote" : "Resolve",
+      record: { kind: "opportunity" as const, id: o.id },
+      opportunityId: o.id,
       assignedTo: o.assigned_to,
       /*
        * Snooze only. Pursue and pass belong to a scoring decision, and
@@ -3746,8 +3754,10 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       title: `Waiting on ${w.company_name ?? "a subcontractor"}${w.trade ? ` for ${w.trade}` : ""}`,
       context: w.opp_title ?? "",
       due: isoOrNull(w.deadline),
-      href: `/opportunity/${w.opp_id}`,
+      recordHref: `/opportunity/${w.opp_id}`,
       actionLabel: "Open opportunity",
+      record: { kind: "pairing" as const, id: w.id },
+      opportunityId: w.opp_id,
       assignedTo: w.assigned_to,
       reason: w.sent_at
         ? `The quote request went out on ${new Date(w.sent_at).toISOString().slice(0, 10)} and they have not answered yet.`
@@ -3783,8 +3793,18 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
     );
     for (const r of rows) people.set(r.id, { id: r.id, name: ownerName(r) });
   }
+  /*
+   * One destination for every row.
+   *
+   * `href` is the workbench, opened on this exact item, for all six kinds.
+   * The per-kind deep link is kept as `recordHref` for the "open the whole
+   * record" affordance, so nothing is lost: what changes is that the DEFAULT
+   * of clicking a task is a screen you can finish it on, rather than a page
+   * you have to find the right part of.
+   */
   const owned = items.map(({ assignedTo, ...item }) => ({
     ...item,
+    href: `/workbench?i=${encodeURIComponent(item.key)}`,
     owner: assignedTo ? (people.get(assignedTo) ?? null) : null,
   }));
 

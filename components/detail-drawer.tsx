@@ -26,6 +26,8 @@ export function DetailDrawer({
   openHref,
   openLabel = "Open the full record",
   children,
+  footer,
+  nav,
 }: {
   title: string;
   subtitle?: string | null;
@@ -35,6 +37,29 @@ export function DetailDrawer({
   openHref: string;
   openLabel?: string;
   children: ReactNode;
+  /**
+   * Controls that act on the record, pinned to the foot.
+   *
+   * The drawer was read-only, which made it a place to confirm you had the
+   * right row and then go somewhere else to do anything about it. A control
+   * that scrolls away with the facts above it is a control nobody uses, so
+   * these do not scroll.
+   */
+  footer?: ReactNode;
+  /**
+   * Where this record sits in the list behind the drawer.
+   *
+   * Without it a peek is a dead end: you read one, close it, find your place
+   * again, and open the next. With it the list can be walked from inside the
+   * drawer, which is the whole difference between checking one row and going
+   * through twenty.
+   */
+  nav?: {
+    prevHref: string | null;
+    nextHref: string | null;
+    index: number;
+    total: number;
+  };
 }) {
   return (
     <aside
@@ -55,9 +80,42 @@ export function DetailDrawer({
             Close
           </Link>
         </div>
-        <Link href={openHref} className="btn-ghost mt-2 inline-flex text-xs">
-          {openLabel}
-        </Link>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Link href={openHref} className="btn-ghost inline-flex text-xs">
+            {openLabel}
+          </Link>
+          {nav && (
+            <span className="ml-auto flex items-center gap-1">
+              <Link
+                href={nav.prevHref ?? "#"}
+                aria-disabled={nav.prevHref == null}
+                className={`tap rounded border border-border/60 px-2 py-1 text-xs dark:border-white/10 ${
+                  nav.prevHref
+                    ? "text-foreground hover:border-foreground/30"
+                    : "pointer-events-none text-muted-foreground opacity-50"
+                }`}
+              >
+                <span aria-hidden>↑</span>
+                <span className="sr-only">Previous record</span>
+              </Link>
+              <span className="num px-1 text-xs text-muted-foreground">
+                {nav.index + 1} of {nav.total}
+              </span>
+              <Link
+                href={nav.nextHref ?? "#"}
+                aria-disabled={nav.nextHref == null}
+                className={`tap rounded border border-border/60 px-2 py-1 text-xs dark:border-white/10 ${
+                  nav.nextHref
+                    ? "text-foreground hover:border-foreground/30"
+                    : "pointer-events-none text-muted-foreground opacity-50"
+                }`}
+              >
+                <span aria-hidden>↓</span>
+                <span className="sr-only">Next record</span>
+              </Link>
+            </span>
+          )}
+        </div>
       </header>
       {/*
         * The bottom padding is the mobile tab bar, the same allowance
@@ -77,6 +135,11 @@ export function DetailDrawer({
       <div className="scroll-thin drawer-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pt-4">
         {children}
       </div>
+      {footer && (
+        <div className="shrink-0 border-t border-border/55 bg-background px-4 py-3 dark:border-white/10">
+          {footer}
+        </div>
+      )}
     </aside>
   );
 }
