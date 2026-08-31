@@ -5,7 +5,7 @@ Measured in Chromium at six widths and in both themes, on rendered output: one p
 
 The remote font stylesheet is stubbed empty, so the fallback stack is what gets measured. That is the more conservative reading and matches what an operator behind a proxy that blocks Google actually sees.
 
-6 signed-out and 27 signed-in routes x 6 widths x 2 themes. **0 findings.**
+6 signed-out and 28 signed-in routes x 6 widths x 2 themes. **0 findings.**
 
 The dark pass reports contrast only. Target sizes and accessible names do not change with the theme, so measuring them twice would list every finding twice without covering anything more.
 

@@ -10,6 +10,8 @@ import { CallQueueList } from "@/components/call-queue-list";
 import { CallPanel } from "@/components/call-panel";
 import { computeQuoteDeadline, resolveTimeZone } from "@/lib/domain/quote-deadline";
 import { countdown } from "@/lib/format";
+import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
+import { queuePosition } from "@/lib/domain/workspace-queue";
 import {
   callQueueCounts,
   filterCalls,
@@ -74,6 +76,18 @@ export default async function CallQueuePage({
   const rules = await getAutomationRules();
   const counts = callQueueCounts(facts, now, rules);
   const shown = filterCalls(facts, q);
+  /*
+   * Where in the morning's calls this one is.
+   *
+   * The header could say how many calls there were and nothing could say
+   * which one you were on, so an operator eight calls into twelve had to count
+   * rows to find out. Computed over the shown list, because that is the list
+   * the arrow keys walk.
+   */
+  const callPosition = queuePosition(
+    shown.map((c) => c.id),
+    openId ?? null
+  );
 
   function queueHref(over: { q?: string; group?: string; open?: string | null } = {}): string {
     const p = new URLSearchParams();
@@ -191,6 +205,17 @@ export default async function CallQueuePage({
         ) : (
           <div className="flex min-h-0 flex-1 overflow-hidden">
             {/*
+              * J and K move through the queue without the hand leaving the
+              * keyboard, and Esc puts the list back. A morning of calls is the
+              * clearest case in the product for this: the operator has a phone
+              * in one hand.
+              */}
+            <QueueKeys
+              prevHref={callPosition.prevId ? openBase + callPosition.prevId : null}
+              nextHref={callPosition.nextId ? openBase + callPosition.nextId : null}
+              closeHref={queueHref({ open: null })}
+            />
+            {/*
               * A permanent split on a wide screen: the queue stays put and the
               * call changes beside it. An operator making eight calls in a
               * morning finishes one and starts the next, and a dialog that
@@ -204,6 +229,17 @@ export default async function CallQueuePage({
                 openId ? "hidden lg:block" : "block"
               }`}
             >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  <KeyHint keys="J / K" label="move" />
+                  <KeyHint keys="Esc" label="back to the list" />
+                </div>
+                {callPosition.index >= 0 && (
+                  <span className="num text-xs text-muted-foreground">
+                    {callPosition.index + 1} of {callPosition.total}
+                  </span>
+                )}
+              </div>
               {/*
                 * The plan names the call to start with, so it only makes sense
                 * over the unfiltered queue in its default order. Shown beside a

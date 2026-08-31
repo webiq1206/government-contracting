@@ -21,6 +21,7 @@ const ITEMS: WorkItem[] = sortWorkItems([
     context: "Borderline score",
     due: "2026-09-20",
     href: "#",
+    recordHref: "#",
     actionLabel: "Decide",
   },
   {
@@ -30,6 +31,7 @@ const ITEMS: WorkItem[] = sortWorkItems([
     context: "Chiller replacement, Building 400",
     due: "2026-09-18",
     href: "#",
+    recordHref: "#",
     actionLabel: "Open call",
   },
   {
@@ -39,6 +41,7 @@ const ITEMS: WorkItem[] = sortWorkItems([
     context: "quote entry",
     due: "2026-09-04",
     href: "#",
+    recordHref: "#",
     actionLabel: "Enter quote",
   },
   {
@@ -48,6 +51,7 @@ const ITEMS: WorkItem[] = sortWorkItems([
     context: "bid building",
     due: "2026-08-28",
     href: "#",
+    recordHref: "#",
     actionLabel: "Review bid",
   },
   {
@@ -57,6 +61,7 @@ const ITEMS: WorkItem[] = sortWorkItems([
     context: "analysis",
     due: null,
     href: "#",
+    recordHref: "#",
     actionLabel: "Resolve",
   },
 ]);

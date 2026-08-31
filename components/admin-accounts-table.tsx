@@ -29,6 +29,7 @@ export function AdminAccountsTable({
   sort,
   paging,
   emptyState,
+  peekBase,
 }: {
   rows: AdminAccountRow[];
   total: number;
@@ -36,6 +37,13 @@ export function AdminAccountsTable({
   sort: SortState;
   paging: PageState;
   emptyState: React.ReactNode;
+  /**
+   * The current list URL with the peek removed, ready to have one appended.
+   * Built on the server: a function prop cannot cross into a client component,
+   * and rebuilding the query here from `useSearchParams` would be a second
+   * implementation of the same string.
+   */
+  peekBase: string;
 }) {
   const columns: Column<AdminAccountRow>[] = [
     {
@@ -138,6 +146,26 @@ export function AdminAccountsTable({
           </span>
         );
       },
+    },
+    {
+      /*
+       * The quick look, in the same place the roster puts it.
+       *
+       * A support question is nearly always "what is going on with this one",
+       * and answering it used to mean leaving a filtered, sorted table for a
+       * record page and coming back to a table that had forgotten both.
+       */
+      key: "peek",
+      header: "",
+      render: (r) => (
+        <Link
+          href={`${peekBase}peek=${r.id}`}
+          scroll={false}
+          className="tap text-xs text-muted-foreground underline-offset-2 hover:text-accent"
+        >
+          Quick look
+        </Link>
+      ),
     },
   ];
 

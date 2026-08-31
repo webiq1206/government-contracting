@@ -26,6 +26,8 @@ import {
 } from "@/lib/domain/conversation-centre";
 import { MESSAGE_STATE_LABEL, MESSAGE_STATE_MEANING } from "@/lib/domain/message-state";
 import { ConversationThreadPane } from "@/components/conversation-centre";
+import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
+import { queuePosition } from "@/lib/domain/workspace-queue";
 import { NeedsMatchingInbox } from "@/components/needs-matching-inbox";
 import { needsMatching } from "@/lib/needs-matching";
 import { query } from "@/lib/db";
@@ -119,6 +121,17 @@ export default async function CommunicationsPage({
   const shown = all.filter((c) => matchesFilter(c, filter));
 
   const selected = selectedKey ? all.find((c) => c.threadKey === selectedKey) ?? null : null;
+  /*
+   * Where in the filtered list this conversation is, and what is either side.
+   *
+   * Over `shown` rather than `all`: the keys have to walk the list the reader
+   * is looking at, or J from the last unread jumps into a thread the current
+   * view deliberately excludes.
+   */
+  const threadPosition = queuePosition(
+    shown.map((c) => c.threadKey),
+    selectedKey
+  );
   /*
    * Reading is recorded by the thread pane once it is mounted, never here.
    * Marking read during render looked simpler and was wrong: Next prefetches
@@ -251,12 +264,28 @@ export default async function CommunicationsPage({
         * returns to the list and a link to a conversation is shareable.
         */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
+        <QueueKeys
+          prevHref={threadPosition.prevId ? href(filter, q, threadPosition.prevId) : null}
+          nextHref={threadPosition.nextId ? href(filter, q, threadPosition.nextId) : null}
+          closeHref={href(filter, q)}
+        />
         <section
           aria-label="Conversations"
           className={`scroll-thin w-full shrink-0 overflow-y-auto border-r border-border/55 dark:border-white/10 lg:w-[360px] ${
             selected ? "hidden lg:block" : "block"
           }`}
         >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 px-4 py-2 dark:border-white/5">
+            <div className="flex flex-wrap gap-1.5">
+              <KeyHint keys="J / K" label="move" />
+              <KeyHint keys="Esc" label="back to the list" />
+            </div>
+            {threadPosition.index >= 0 && (
+              <span className="num text-xs text-muted-foreground">
+                {threadPosition.index + 1} of {threadPosition.total}
+              </span>
+            )}
+          </div>
           {shown.length === 0 ? (
             <div className="p-4">
               <EmptyState

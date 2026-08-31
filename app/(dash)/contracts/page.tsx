@@ -10,55 +10,34 @@ import {
   type ContractView,
 } from "@/lib/domain/contract-status";
 import { PageFrame } from "@/components/page-frame";
+import { PageToolbar } from "@/components/page-toolbar";
 import { EmptyState } from "@/components/empty-state";
-import { ActionButton } from "@/components/action-button";
 import { PAGE_HELP } from "@/lib/help-content";
-import { currency, shortDate, pct } from "@/lib/format";
-import { buildContractPlan } from "@/lib/domain/contract-plan";
-import { GuidedPlanPanel } from "@/components/guided-plan";
-import { OwnerPicker } from "@/components/owner-picker";
+import { shortDate, pct } from "@/lib/format";
 import { CreateContract } from "@/components/create-contract";
 import { assignableMembers } from "@/lib/ownership";
-import type { Owner } from "@/lib/domain/ownership";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/domain/roles";
+import { contractRecord } from "@/lib/contract-record";
+import { ContractDetail } from "@/components/contract-detail";
+import { ownerOf } from "@/lib/ownership";
+import { tryResolveTenantOrgId } from "@/lib/tenant";
+import {
+  ContextSection,
+  WorkspacePane,
+  WorkspacePlaceholder,
+  WorkspaceShell,
+} from "@/components/workspace/workspace-shell";
+import { QueueRail, type QueueEntry } from "@/components/workspace/queue-rail";
+import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
+import {
+  advanceTarget,
+  queueHrefBuilder,
+  queuePosition,
+  resolveSelection,
+} from "@/lib/domain/workspace-queue";
 
 export const dynamic = "force-dynamic";
-
-type Milestone = {
-  name?: string;
-  due?: string;
-  status?: string;
-  amount?: number;
-};
-
-type CoordinationEntry = {
-  task?: string;
-  label?: string;
-  note?: string;
-  done?: boolean;
-  completed?: boolean;
-  at?: string;
-  timestamp?: string;
-};
-
-function milestoneStatusClass(status?: string): string {
-  switch ((status ?? "").toLowerCase()) {
-    case "complete":
-    case "completed":
-    case "done":
-      return "bg-pursue/15 text-pursue";
-    case "in_progress":
-    case "active":
-      return "bg-pursue/10 text-pursue";
-    case "overdue":
-    case "late":
-    case "blocked":
-      return "bg-risk/15 text-risk";
-    default:
-      return "bg-review/15 text-review";
-  }
-}
 
 function NonSsGauge({ pctValue }: { pctValue: number }) {
   const cap = 50;
@@ -73,12 +52,20 @@ function NonSsGauge({ pctValue }: { pctValue: number }) {
         : "text-pursue";
   return (
     <div>
-      <div className="flex items-center justify-between">
+      {/*
+        * Wraps rather than collides.
+        *
+        * This row lives in a 320px context pane as well as in a full-width
+        * card, and at that width the label and the figure were overlapping:
+        * a percentage printed on top of the words saying what it is a
+        * percentage of.
+        */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
         <p className="label" title="Federal rules cap how much of the work can go to subcontractors that are not small businesses">
           Non-small-business sub spend
         </p>
         <span className={`text-sm font-semibold ${textClass}`}>
-          {pct(pctValue)} of 50% cap
+          {pct(pctValue)} of {cap}% cap
         </span>
       </div>
       <p className="mt-0.5 text-xs text-slate-500">
@@ -100,238 +87,11 @@ function NonSsGauge({ pctValue }: { pctValue: number }) {
   );
 }
 
-function ContractCard({
-  c,
-  completed = false,
-  members = [],
-  viewerId,
-  canAssign = false,
-}: {
-  c: Record<string, unknown>;
-  completed?: boolean;
-  members?: Owner[];
-  viewerId?: string;
-  canAssign?: boolean;
-}) {
-  const milestones = (c.milestones as Milestone[] | null) ?? [];
-  const coordination = (c.coordination_log as CoordinationEntry[] | null) ?? [];
-  const nonSsPct = Number(c.non_ss_sub_pct ?? 0);
-  const cparsStatus = (c.cpars_status as string | null) ?? "not_started";
-  const plan = completed
-    ? null
-    : buildContractPlan({
-        completed,
-        hasBackupSub: Boolean(c.backup_sub_name),
-        milestones,
-        coordinationCount: coordination.length,
-        nonSsPct,
-        cparsStatus,
-        cparsDue: (c.cpars_due_at as string | null) ?? null,
-        now: new Date().toISOString(),
-      });
-
-  return (
-    <div className={`card space-y-5 ${completed ? "opacity-80" : ""}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          {/*
-            The card is now a way in rather than the whole record. There was
-            no route for a contract at all, so a contract could not be linked
-            to, reached from search, or hold more than card-sized detail.
-          */}
-          <Link
-            href={`/contracts/${String(c.id)}`}
-            className="text-sm font-medium text-foreground hover:underline"
-          >
-            {(c.opportunity_title as string | null) ?? "Untitled contract"}
-          </Link>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {(c.contract_number as string | null) ?? "-"}
-          </p>
-          {/*
-            Who is running this contract. A contract is a year of somebody's
-            attention rather than a record: milestones, invoices, a CPARS
-            rating that has to be argued for. A card that names the value and
-            not the person answers the smaller of the two questions.
-          */}
-          <div className="mt-2 max-w-[12rem]">
-            <OwnerPicker
-              kind="contract"
-              recordId={String(c.id)}
-              owner={
-                c.assigned_to
-                  ? { id: String(c.assigned_to), name: String(c.assigned_name ?? "A teammate") }
-                  : null
-              }
-              members={members}
-              viewerId={viewerId}
-              canAssign={canAssign}
-              compact
-            />
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <span className="text-sm font-semibold text-slate-900">
-            {currency(c.award_amount as number | null)}
-          </span>
-          {/*
-            Two ways out of a running contract, not one. "Mark complete" was
-            the only exit, so a contract lost or ended early was filed as
-            completed, and every win rate and margin figure computed from that
-            was quietly wrong.
-          */}
-          <ActionButton
-            endpoint={`/api/contracts/${String(c.id)}/status`}
-            body={{ status: completed ? "active" : "completed" }}
-            className="btn-ghost text-xs"
-            confirm={
-              completed
-                ? "Reopen this contract as active?"
-                : "Mark this contract completed? It moves to the Completed view."
-            }
-          >
-            {completed ? "Reopen" : "Mark complete"}
-          </ActionButton>
-          {!completed && (
-            <ActionButton
-              endpoint={`/api/contracts/${String(c.id)}/status`}
-              body={{ status: "terminated" }}
-              className="btn-ghost text-xs text-risk"
-              confirm="Record this contract as lost or terminated? It is kept out of completed work so win rates stay accurate."
-            >
-              Lost or terminated
-            </ActionButton>
-          )}
-        </div>
-      </div>
-
-      {plan && <GuidedPlanPanel plan={plan} eyebrow="Running this contract" />}
-
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-        <div>
-          <p className="label">Period</p>
-          <p className="mt-0.5 text-sm text-slate-900">
-            {shortDate(c.start_date as string | null)} -{" "}
-            {shortDate(c.end_date as string | null)}
-          </p>
-        </div>
-        <div>
-          <p className="label">Primary sub</p>
-          <p className="mt-0.5 text-sm text-slate-900">
-            {(c.primary_sub_name as string | null) ?? "-"}
-          </p>
-        </div>
-        <div>
-          <p className="label">
-            Backup sub{" "}
-            <span className="text-[10px] normal-case text-risk">(required)</span>
-          </p>
-          <p
-            className={`mt-0.5 text-sm ${
-              c.backup_sub_name ? "text-slate-900" : "text-risk"
-            }`}
-          >
-            {(c.backup_sub_name as string | null) ?? (
-              <span className="text-risk">
-                None assigned. Line up a backup from the Sub Database in case the primary falls through.
-              </span>
-            )}
-          </p>
-        </div>
-        <div>
-          <p
-            className="label"
-            title="CPARS is the government's report card on your performance. A good rating wins future work."
-          >
-            Performance review (CPARS)
-          </p>
-          <p className="mt-0.5 text-sm text-slate-900">
-            {cparsStatus}
-            {c.cpars_due_at ? (
-              <span className="block text-xs text-slate-500">
-                due {shortDate(c.cpars_due_at as string | null)}
-              </span>
-            ) : null}
-          </p>
-        </div>
-      </div>
-
-      <NonSsGauge pctValue={nonSsPct} />
-
-      <div>
-        <p className="label">Milestone schedule</p>
-        {milestones.length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">No milestones logged.</p>
-        ) : (
-          <ul className="mt-2 space-y-1.5">
-            {milestones.map((m, i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between gap-2 panel-inset px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-slate-800">
-                    {m.name ?? "Milestone"}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    due {shortDate(m.due)}
-                    {m.amount != null ? ` · ${currency(m.amount)}` : ""}
-                  </p>
-                </div>
-                <span className={`badge ${milestoneStatusClass(m.status)}`}>
-                  {m.status ?? "not started"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div>
-        <p className="label">Coordination checklist</p>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Proof that your company actively manages this contract (site visits,
-          sub coordination, QC checks). Agencies require this evidence that you
-          are not just passing the work through to subs. Every item is logged
-          with a timestamp.
-        </p>
-        {coordination.length === 0 ? (
-          <p className="mt-1 text-xs text-slate-500">No activities logged yet.</p>
-        ) : (
-          <ul className="mt-2 space-y-1.5">
-            {coordination.map((e, i) => {
-              const done = e.done ?? e.completed ?? false;
-              const at = e.at ?? e.timestamp ?? null;
-              return (
-                <li
-                  key={i}
-                  className="flex items-start gap-2 panel-inset px-3 py-2"
-                >
-                  <span className={done ? "text-pursue" : "text-slate-500"}>
-                    {done ? "☑" : "☐"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm text-slate-800">
-                      {e.task ?? e.label ?? e.note ?? "Activity"}
-                    </p>
-                    {at && (
-                      <p className="text-xs text-slate-500">{shortDate(at)}</p>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default async function ContractsPage({
   searchParams,
 }: {
-  searchParams?: { view?: string };
+  searchParams?: { view?: string; c?: string };
 }) {
   const [rows, teamMembers, viewer] = await Promise.all([
     allContracts(),
@@ -389,38 +149,85 @@ export default async function ContractsPage({
 
   const shown = byView.get(active)!;
 
+  /*
+   * Master and detail, rather than a list that leads somewhere.
+   *
+   * Every contract on this page was a card with a link on it, and reading five
+   * of them was five page loads and five journeys back to a list that had
+   * reset to its first tab. The list holds still on the left now, the contract
+   * opens beside it, and the risks that decide which one to open next stay
+   * visible in the right-hand pane while you read.
+   *
+   * The record's own page is untouched and still the destination for a link
+   * somebody sends. This is the same component, hosted differently.
+   */
+  const ids = shown.map((c) => String(c.id));
+  const selectedRow = resolveSelection(shown, (c) => String(c.id), searchParams?.c ?? null);
+  const currentId = selectedRow ? String(selectedRow.id) : null;
+  /*
+   * Whether the URL names a contract, as opposed to the page having opened the
+   * first one for a wide screen. On a phone the difference decides whether the
+   * list or the record gets the screen, and defaulting to the record there
+   * hides the list on arrival.
+   */
+  const opened = Boolean(searchParams?.c);
+  const pos = queuePosition(ids, currentId);
+  const nextId = advanceTarget(ids, currentId);
+  const { forItem, base } = queueHrefBuilder(
+    "/contracts",
+    { view: active },
+    "c"
+  );
+  const orgId = (await tryResolveTenantOrgId()) ?? "";
+  const [record, owner] = currentId
+    ? await Promise.all([
+        contractRecord(orgId, currentId).catch(() => null),
+        ownerOf("contract", currentId).catch(() => null),
+      ])
+    : [null, null];
+
+  const railEntries: QueueEntry[] = shown.map((c) => {
+    const risks = risksById.get(String(c.id)) ?? [];
+    const blocking = risks.some((r) => r.blocking);
+    return {
+      id: String(c.id),
+      href: forItem(String(c.id)),
+      title:
+        (c.contract_number as string | null) ??
+        (c.opportunity_title as string | null) ??
+        "Contract",
+      context: (c.agency as string | null) ?? (c.opportunity_title as string | null) ?? null,
+      meta:
+        c.end_date != null ? shortDate(String(c.end_date)) : null,
+      state:
+        risks.length > 0
+          ? {
+              label: blocking ? "Blocked" : `${risks.length} to look at`,
+              tone: blocking ? "blocked" : "attention",
+            }
+          : { label: VIEW_LABEL[active], tone: "neutral" },
+    };
+  });
+
   return (
     <div className="flex page-shell">
-      <PageFrame
-        help={PAGE_HELP["contracts"]}
-        title="Contracts"
-        status={contractsHeadline(counts)}
-        explanation="Awarded work under performance tracking: milestones, coordination proof, and non-small-business sub spend caps."
-      />
-      <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-4">
-        {rows.length === 0 ? (
-          <div className="mx-auto max-w-4xl">
-            <EmptyState
-              title="No contracts yet"
-              description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
-              action={
-                <div className="space-y-3">
-                  <Link href="/pipeline" className="btn-ghost text-sm">
-                    Open opportunities
-                  </Link>
-                  {canManage && <CreateContract />}
-                </div>
-              }
-            />
-          </div>
-        ) : (
-          <>
+      <div className={opened ? "hidden lg:contents" : "contents"}>
+        <PageFrame
+          help={PAGE_HELP["contracts"]}
+          title="Contracts"
+          status={contractsHeadline(counts)}
+          explanation="Awarded work under performance tracking: milestones, coordination proof, and non-small-business sub spend caps."
+          primaryAction={canManage ? <CreateContract /> : undefined}
+        />
+
+        {rows.length > 0 && (
+          <PageToolbar>
             {/* The five views, in the order an operator works them. A view
                 with nothing in it is still shown, so "no contracts at risk"
                 is visible as an answer rather than as an absence. */}
             <nav
               aria-label="Contract views"
-              className="scroll-thin mx-auto flex max-w-4xl gap-2 overflow-x-auto pb-1"
+              className="scroll-thin flex gap-2 overflow-x-auto pb-1"
             >
               {VIEW_ORDER.map((v) => (
                 <Link
@@ -442,55 +249,190 @@ export default async function ContractsPage({
                 </Link>
               ))}
             </nav>
-
-            <section className="mx-auto max-w-4xl">
-              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <p className="text-xs text-muted-foreground">{VIEW_EXPLANATION[active]}</p>
-                {canManage && <CreateContract />}
-              </div>
-              {shown.length === 0 ? (
-                <EmptyState
-                  tone="success"
-                  title={`Nothing ${VIEW_LABEL[active].toLowerCase()}`}
-                  description="Pick another view above to see the rest."
-                />
-              ) : (
-                <div className="grid grid-cols-1 gap-4">
-                  {shown.map((c) => (
-                    <div key={String(c.id)}>
-                      {/* The risks above the card, not inside it: what is wrong
-                          is the reason this contract is in front of you, and
-                          burying it under the financials makes the view a
-                          list rather than a queue. */}
-                      {risksById.get(String(c.id))?.length ? (
-                        <ul className="mb-2 space-y-1 rounded-md border border-review/40 bg-review/10 px-3 py-2">
-                          {risksById.get(String(c.id))!.map((r, i) => (
-                            <li key={i} className="text-xs text-foreground">
-                              <span
-                                className={`label mr-1 inline ${r.blocking ? "text-risk" : "text-review"}`}
-                              >
-                                {r.blocking ? "Blocked" : "Attention"}
-                              </span>
-                              {r.detail}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                      <ContractCard
-                        c={c}
-                        completed={active === "completed" || active === "terminated"}
-                        members={teamMembers}
-                        viewerId={viewer?.id}
-                        canAssign={can(viewer?.orgRole, "manage_contracts")}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
+            <p className="mt-2 text-xs text-muted-foreground">{VIEW_EXPLANATION[active]}</p>
+          </PageToolbar>
         )}
       </div>
+
+      {rows.length === 0 ? (
+        <div className="scroll-thin flex-1 overflow-y-auto p-4">
+          <div className="mx-auto max-w-4xl">
+            <EmptyState
+              title="No contracts yet"
+              description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
+              action={
+                <div className="space-y-3">
+                  <Link href="/pipeline" className="btn-ghost text-sm">
+                    Open opportunities
+                  </Link>
+                  {canManage && <CreateContract />}
+                </div>
+              }
+            />
+          </div>
+        </div>
+      ) : (
+        <>
+          <QueueKeys
+            prevHref={pos.prevId ? forItem(pos.prevId) : null}
+            nextHref={nextId ? forItem(nextId) : null}
+            closeHref={base}
+          />
+          <WorkspaceShell
+            selected={opened}
+            queueLabel="Contracts"
+            queueWidth="lg:w-[340px]"
+            queue={
+              <QueueRail
+                entries={railEntries}
+                selectedId={currentId}
+                heading={VIEW_LABEL[active]}
+                summary={VIEW_EXPLANATION[active]}
+                toolbar={
+                  <div className="flex flex-wrap gap-1.5">
+                    <KeyHint keys="J / K" label="move" />
+                    <KeyHint keys="Esc" label="clear" />
+                  </div>
+                }
+                empty={
+                  <EmptyState
+                    tone="success"
+                    title={`Nothing ${VIEW_LABEL[active].toLowerCase()}`}
+                    description="Pick another view above to see the rest."
+                  />
+                }
+              />
+            }
+            primary={
+              record ? (
+                <WorkspacePane
+                  header={
+                    <div>
+                      <Link
+                        href={base}
+                        className="tap mb-2 inline-flex text-xs text-muted-foreground hover:text-accent lg:hidden"
+                      >
+                        Back to the list
+                      </Link>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="eyebrow mb-1">Contract</p>
+                          <h2 className="truncate text-base font-medium text-foreground">
+                            {record.header.contract_number ??
+                              record.header.opportunity_title ??
+                              "Contract"}
+                          </h2>
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {[record.header.agency, record.header.solicitation_number]
+                              .filter(Boolean)
+                              .join(" · ") || "No agency on the opportunity behind it"}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="num text-xs text-muted-foreground">
+                            {pos.index + 1} of {pos.total}
+                          </span>
+                          <Link
+                            href={`/contracts/${record.header.id}`}
+                            className="btn-ghost text-xs"
+                          >
+                            Own page
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  }
+                >
+                  <ContractDetail
+                    record={record}
+                    owner={owner}
+                    members={teamMembers}
+                    viewerId={viewer?.id}
+                    canEdit={canManage}
+                    className="space-y-6"
+                  />
+                </WorkspacePane>
+              ) : currentId ? (
+                <WorkspacePlaceholder>
+                  That contract could not be loaded. It may have been removed, or it
+                  belongs to another account.
+                </WorkspacePlaceholder>
+              ) : (
+                <WorkspacePlaceholder>
+                  Pick a contract to open it here. The list stays where it is, so
+                  reading four of them is four clicks rather than four page loads.
+                </WorkspacePlaceholder>
+              )
+            }
+            contextLabel="What needs watching"
+            context={
+              selectedRow ? (
+                <div className="space-y-4">
+                  <ContextSection
+                    title="What is wrong"
+                    note="The reason this contract is in front of you, kept in view while you read the rest."
+                  >
+                    {(risksById.get(String(selectedRow.id)) ?? []).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nothing is flagged on this one. Milestones, invoices and the
+                        sub-spend cap are all inside their tolerances.
+                      </p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {risksById.get(String(selectedRow.id))!.map((r, i) => (
+                          <li key={i} className="text-sm text-foreground">
+                            <span
+                              className={`label mr-1 inline ${r.blocking ? "text-risk" : "text-review"}`}
+                            >
+                              {r.blocking ? "Blocked" : "Attention"}
+                            </span>
+                            {r.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </ContextSection>
+
+                  <ContextSection title="Sub spend against the cap">
+                    <NonSsGauge pctValue={Number(selectedRow.non_ss_sub_pct ?? 0)} />
+                  </ContextSection>
+
+                  <ContextSection title="Elsewhere">
+                    <ul className="space-y-1.5 text-sm">
+                      <li>
+                        <Link
+                          href={`/contracts/${String(selectedRow.id)}`}
+                          className="text-accent underline-offset-2 hover:underline"
+                        >
+                          This contract on its own page
+                        </Link>
+                      </li>
+                      {selectedRow.opportunity_id != null && (
+                        <li>
+                          <Link
+                            href={`/opportunity/${String(selectedRow.opportunity_id)}`}
+                            className="text-accent underline-offset-2 hover:underline"
+                          >
+                            The bid that won it
+                          </Link>
+                        </li>
+                      )}
+                      <li>
+                        <Link
+                          href="/compliance"
+                          className="text-accent underline-offset-2 hover:underline"
+                        >
+                          Compliance board
+                        </Link>
+                      </li>
+                    </ul>
+                  </ContextSection>
+                </div>
+              ) : undefined
+            }
+          />
+        </>
+      )}
     </div>
   );
 }

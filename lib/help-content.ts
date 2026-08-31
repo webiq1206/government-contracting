@@ -14,6 +14,15 @@ export const PAGE_HELP: Record<string, HelpContent> = {
       "Empty list means the automation is handling everything right now.",
     ],
   },
+  workbench: {
+    title: "Finish the work without changing pages",
+    points: [
+      "The same queue Today shows, with the work attached to each row.",
+      "Decisions, replies, calls, prices, bids and blockers all finish here.",
+      "J and K move through the queue; the primary action moves you on.",
+      "Every item still carries a link to its full record when you want it.",
+    ],
+  },
   pipeline: {
     title: "Every opportunity, by stage",
     points: [

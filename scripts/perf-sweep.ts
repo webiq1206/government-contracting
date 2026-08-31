@@ -41,6 +41,7 @@ const TAG = "perf-sweep";
 
 const ROUTES = [
   "/today",
+  "/workbench",
   "/pipeline",
   "/pipeline?view=table",
   "/review",

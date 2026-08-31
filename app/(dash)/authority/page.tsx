@@ -19,6 +19,20 @@ import { integrationStatus } from "@/lib/config";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate } from "@/lib/format";
+import {
+  ContextSection,
+  WorkspacePane,
+  WorkspacePlaceholder,
+  WorkspaceShell,
+} from "@/components/workspace/workspace-shell";
+import { QueueRail, type QueueEntry } from "@/components/workspace/queue-rail";
+import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
+import {
+  advanceTarget,
+  queueHrefBuilder,
+  queuePosition,
+  resolveSelection,
+} from "@/lib/domain/workspace-queue";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +73,11 @@ function reasonsOf(p: ProspectRow): string[] {
   return [];
 }
 
-export default async function AuthorityPage() {
+export default async function AuthorityPage({
+  searchParams,
+}: {
+  searchParams?: Record<string, string | string[] | undefined>;
+}) {
   // Platform-owner tool: this tracks OUR marketing domain, not the customer's.
   // It was reachable by every signed-in customer, showing them our Ahrefs
   // data and a feature that means nothing to a contractor. 404 for everyone
@@ -85,6 +103,248 @@ export default async function AuthorityPage() {
 
   const highTier = prospects.filter((p) => p.tier === "high");
   const otherTier = prospects.filter((p) => p.tier !== "high");
+
+  /*
+   * The approval queue, as a workspace.
+   *
+   * `?draft=` swaps the dashboard for a three-pane screen: the pending drafts
+   * on the left, the editable message in the middle, and what is actually
+   * known about the domain on the right. The grid this replaces put two
+   * editable letters side by side with the prospect's own numbers three
+   * sections further down the page, so approving one meant scrolling away from
+   * the only evidence that it was worth sending.
+   */
+  if (searchParams?.draft !== undefined) {
+    const requested = Array.isArray(searchParams.draft)
+      ? searchParams.draft[0]
+      : searchParams.draft;
+    const selected = resolveSelection(pending, (d) => d.id, requested || null);
+    const ids = pending.map((d) => d.id);
+    const currentId = selected?.id ?? null;
+    /*
+     * Whether the URL names a draft. The entry link is `?draft=` with no
+     * value, which opens the first one on a wide screen and must still leave
+     * the list in possession of a phone screen.
+     */
+    const opened = Boolean(requested);
+    const pos = queuePosition(ids, currentId);
+    const nextId = advanceTarget(ids, currentId);
+    const { forItem, base } = queueHrefBuilder("/authority", {}, "draft");
+    const prospectById = new Map(prospects.map((p) => [p.id, p]));
+    const prospect = selected ? (prospectById.get(selected.prospect_id) ?? null) : null;
+
+    const entries: QueueEntry[] = pending.map((d) => {
+      const p = prospectById.get(d.prospect_id);
+      return {
+        id: d.id,
+        href: forItem(d.id),
+        title: d.domain,
+        context: p ? oppLabel(p.opportunity_type) : d.channel,
+        meta: p?.domain_rating != null ? `DR ${p.domain_rating}` : null,
+        state: p?.tier
+          ? {
+              label: `${p.tier} priority`,
+              tone: p.tier === "high" ? "attention" : "neutral",
+            }
+          : null,
+      };
+    });
+
+    return (
+      <div className="flex page-shell">
+        <div className={currentId ? "hidden lg:contents" : "contents"}>
+          <PageFrame
+            title="Outreach approvals"
+            help={PAGE_HELP["authority"]}
+            breadcrumbs={[
+              { label: "Site Authority", href: "/authority" },
+              { label: "Approvals" },
+            ]}
+            status={
+              pending.length === 0
+                ? "Nothing waiting"
+                : `${pending.length} draft${pending.length === 1 ? "" : "s"} awaiting approval`
+            }
+            explanation="Read the message and the evidence for the domain on one screen, then approve or reject. Nothing sends without a person."
+          />
+        </div>
+        <QueueKeys
+          prevHref={pos.prevId ? forItem(pos.prevId) : null}
+          nextHref={nextId ? forItem(nextId) : null}
+          closeHref={base}
+        />
+        <WorkspaceShell
+          selected={opened}
+          queueLabel="Drafts awaiting approval"
+          queueWidth="lg:w-[320px]"
+          queue={
+            <QueueRail
+              entries={entries}
+              selectedId={currentId}
+              heading="Awaiting approval"
+              summary="Highest priority domain first."
+              toolbar={
+                <div className="flex flex-wrap gap-1.5">
+                  <KeyHint keys="J / K" label="move" />
+                  <KeyHint keys="Esc" label="back" />
+                </div>
+              }
+              empty={
+                <EmptyState
+                  tone="success"
+                  title="Nothing waiting for approval"
+                  description="Draft outreach from a qualified prospect, then it appears here."
+                  action={
+                    <Link href="/authority" className="btn-ghost text-sm">
+                      Back to Site Authority
+                    </Link>
+                  }
+                />
+              }
+            />
+          }
+          primary={
+            selected ? (
+              <WorkspacePane
+                header={
+                  <div>
+                    <Link
+                      href={base}
+                      className="tap mb-2 inline-flex text-xs text-muted-foreground hover:text-accent lg:hidden"
+                    >
+                      Back to the list
+                    </Link>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="eyebrow mb-1">Outreach draft</p>
+                        <h2 className="truncate text-base font-medium text-foreground">
+                          {selected.domain}
+                        </h2>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Written on {shortDate(selected.created_at)} · {selected.channel}
+                        </p>
+                      </div>
+                      <span className="num shrink-0 text-xs text-muted-foreground">
+                        {pos.index + 1} of {pos.total}
+                      </span>
+                    </div>
+                  </div>
+                }
+              >
+                <OutreachApprovalCard
+                  draft={{
+                    id: selected.id,
+                    domain: selected.domain,
+                    subject: selected.subject,
+                    body: selected.body,
+                  }}
+                  nextHref={nextId ? forItem(nextId) : null}
+                  doneHref={base}
+                />
+              </WorkspacePane>
+            ) : (
+              <WorkspacePlaceholder>
+                Pick a draft to read it. Approving one moves you to the next, so a
+                batch of drafts is a batch of decisions rather than a batch of page
+                loads.
+              </WorkspacePlaceholder>
+            )
+          }
+          contextLabel="What is known about this domain"
+          context={
+            selected ? (
+              <div className="space-y-4">
+                <ContextSection
+                  title="Why it qualified"
+                  note="The reasons the scout recorded, not a summary of them."
+                >
+                  {prospect == null ? (
+                    <p className="text-sm text-muted-foreground">
+                      The prospect behind this draft is no longer in the qualified
+                      list. Approving it would send to a domain nothing currently
+                      vouches for.
+                    </p>
+                  ) : reasonsOf(prospect).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No reasons were recorded. That is worth knowing before sending.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1 text-sm text-foreground">
+                      {reasonsOf(prospect).map((r) => (
+                        <li key={r}>· {r}</li>
+                      ))}
+                    </ul>
+                  )}
+                </ContextSection>
+
+                {prospect && (
+                  <ContextSection title="The numbers">
+                    <dl className="space-y-2 text-sm">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Domain Rating
+                        </dt>
+                        <dd className="num text-foreground">
+                          {fmtInt(prospect.domain_rating)}
+                        </dd>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Monthly traffic
+                        </dt>
+                        <dd className="num text-foreground">{fmtInt(prospect.traffic)}</dd>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Relevance
+                        </dt>
+                        <dd className="num text-foreground">{fmtInt(prospect.relevance)}</dd>
+                      </div>
+                      <div className="flex items-baseline justify-between gap-2">
+                        <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Priority
+                        </dt>
+                        <dd className="num text-foreground">
+                          {fmtInt(prospect.priority_score)}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p className="mt-2">
+                      <span className={`badge ${tierBadgeClass(prospect.tier)}`}>
+                        {prospect.tier ?? "untiered"}
+                      </span>
+                    </p>
+                  </ContextSection>
+                )}
+
+                {prospect?.contact_email && (
+                  <ContextSection title="Where it goes">
+                    <p className="break-all text-sm text-foreground">
+                      {prospect.contact_email}
+                    </p>
+                  </ContextSection>
+                )}
+
+                <ContextSection title="What approval does">
+                  <p className="text-sm text-foreground">
+                    Marks the message ready. Sending is a separate step and needs a
+                    connected inbox, so approving never puts mail on the wire by
+                    itself.
+                  </p>
+                  {!status.gmail && (
+                    <p className="mt-2 text-xs text-review">
+                      No inbox is connected, so approved drafts will queue rather than
+                      go out.
+                    </p>
+                  )}
+                </ContextSection>
+              </div>
+            ) : undefined
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex page-shell">
@@ -170,14 +430,21 @@ export default async function AuthorityPage() {
               description="Draft outreach from a qualified prospect below, review the message, then approve it here. Drafts are never sent automatically."
             />
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              {pending.map((o) => (
-                <OutreachApprovalCard
-                  key={o.id}
-                  draft={{ id: o.id, domain: o.domain, subject: o.subject, body: o.body }}
-                />
-              ))}
-            </div>
+            <>
+              <p className="mb-2">
+                <Link href="/authority?draft=" className="btn-primary text-xs">
+                  Work through them
+                </Link>
+              </p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {pending.map((o) => (
+                  <OutreachApprovalCard
+                    key={o.id}
+                    draft={{ id: o.id, domain: o.domain, subject: o.subject, body: o.body }}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </section>
 

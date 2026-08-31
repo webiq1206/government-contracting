@@ -6,6 +6,9 @@ import Link from "next/link";
 import { activityOf, ACTIVITY_FILTERS } from "@/lib/domain/account-activity";
 import { FilterToolbar } from "@/components/filter-toolbar";
 import { AdminAccountsTable } from "@/components/admin-accounts-table";
+import { AdminAccountPeek } from "@/components/admin/account-peek";
+import { QueueKeys } from "@/components/workspace/workspace-keys";
+import { queuePosition } from "@/lib/domain/workspace-queue";
 import {
   parseFilters,
   parseSort,
@@ -189,6 +192,31 @@ export default async function AdminAccountsPage({
   const rows = pageRows(sortRows(matched, sort, SORT_ACCESSORS), paging);
   const filtered = Object.keys(values).length > 0;
 
+  /*
+   * The quick look, as a query parameter, so the back button works and an
+   * administrator can send somebody a link to the account they are asking
+   * about with the filters that found it still applied.
+   */
+  const peekId = typeof searchParams.peek === "string" ? searchParams.peek : null;
+  const peeked = peekId ? (rows.find((r) => r.id === peekId) ?? null) : null;
+
+  function listHref(id: string | null): string {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchParams)) {
+      if (k === "peek" || v == null) continue;
+      if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+      else p.set(k, v);
+    }
+    if (id) p.set("peek", id);
+    const q = p.toString();
+    return q ? `/admin/accounts?${q}` : "/admin/accounts";
+  }
+  const peekBase = (() => {
+    const href = listHref(null);
+    return href.includes("?") ? `${href}&` : `${href}?`;
+  })();
+  const peekNav = queuePosition(rows.map((r) => r.id), peekId);
+
   return (
     <>
       <PageFrame
@@ -256,6 +284,7 @@ export default async function AdminAccountsPage({
         )}
 
         <AdminAccountsTable
+          peekBase={peekBase}
           rows={rows}
           total={matched.length}
           filters={values}
@@ -284,6 +313,24 @@ export default async function AdminAccountsPage({
         </p>
 
       </div>
+
+      {peeked && (
+        <AdminAccountPeek
+          account={peeked}
+          closeHref={listHref(null)}
+          nav={{
+            prevHref: peekNav.prevId ? listHref(peekNav.prevId) : null,
+            nextHref: peekNav.nextId ? listHref(peekNav.nextId) : null,
+            index: peekNav.index,
+            total: peekNav.total,
+          }}
+        />
+      )}
+      <QueueKeys
+        prevHref={peekNav.prevId ? listHref(peekNav.prevId) : null}
+        nextHref={peekNav.nextId ? listHref(peekNav.nextId) : null}
+        closeHref={peekId ? listHref(null) : null}
+      />
     </>
   );
 }

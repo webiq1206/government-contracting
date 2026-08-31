@@ -3,6 +3,10 @@ import { CERTIFICATIONS } from "@/lib/domain/sub-capability";
 import { DEFAULT_RATE_EVIDENCE } from "@/lib/data";
 import { subDatabase, subDatabaseCount, subPeek, SUB_SORTS } from "@/lib/data";
 import { SubPeek } from "@/components/sub-peek";
+import { QueueKeys } from "@/components/workspace/workspace-keys";
+import { queuePosition } from "@/lib/domain/workspace-queue";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -252,7 +256,10 @@ export default async function SubsPage({
    * record does and needs no separate branch.
    */
   const peekId = typeof searchParams.peek === "string" ? searchParams.peek : null;
-  const peeked = peekId ? await subPeek(peekId) : null;
+  const [peeked, viewer] = await Promise.all([
+    peekId ? subPeek(peekId) : Promise.resolve(null),
+    currentUser().catch(() => null),
+  ]);
 
   function withoutPeek(): string {
     const p = new URLSearchParams();
@@ -290,6 +297,15 @@ export default async function SubsPage({
     p.set("peek", id);
     return `/subs?${p.toString()}`;
   }
+
+  /*
+   * Where the open firm sits among the rows on this page, so the drawer can
+   * offer the next one instead of being a dead end.
+   */
+  const peekNav = queuePosition(
+    subs.map((s: Subcontractor) => String(s.id)),
+    peekId
+  );
 
   return (
     <div className="flex page-shell">
@@ -428,7 +444,33 @@ export default async function SubsPage({
         </div>
       </div>
 
-      {peeked && <SubPeek sub={peeked} closeHref={withoutPeek()} />}
+      {peeked && (
+        <SubPeek
+          sub={peeked}
+          closeHref={withoutPeek()}
+          canManage={can(viewer?.orgRole, "manage_subs")}
+          nav={{
+            prevHref: peekNav.prevId ? withPeek(peekNav.prevId) : null,
+            nextHref: peekNav.nextId ? withPeek(peekNav.nextId) : null,
+            index: peekNav.index,
+            total: peekNav.total,
+          }}
+        />
+      )}
+      {/*
+        * The roster, walked from the keyboard.
+        *
+        * Only over the rows on this page, which is what the arrows can
+        * actually reach: paging is a server round trip with its own controls,
+        * and a J at the bottom of page one that silently fetched page two
+        * would be a different thing from what the key does everywhere else in
+        * the product.
+        */}
+      <QueueKeys
+        prevHref={peekNav.prevId ? withPeek(peekNav.prevId) : null}
+        nextHref={peekNav.nextId ? withPeek(peekNav.nextId) : null}
+        closeHref={peekId ? withoutPeek() : null}
+      />
       </div>
     </div>
   );

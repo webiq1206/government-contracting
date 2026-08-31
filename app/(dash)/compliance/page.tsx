@@ -45,6 +45,13 @@ import {
   type BulkDocTarget,
 } from "@/components/compliance-bulk-documents";
 import { assignableMembers } from "@/lib/ownership";
+import { ComplianceWorkspace, type ComplianceWorkEntry } from "@/components/compliance-workspace";
+import {
+  advanceTarget,
+  queueHrefBuilder,
+  queuePosition,
+  resolveSelection,
+} from "@/lib/domain/workspace-queue";
 import type { Owner } from "@/lib/domain/ownership";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/domain/roles";
@@ -416,6 +423,113 @@ export default async function CompliancePage({
   );
 
   /*
+   * The working mode.
+   *
+   * `?item=` turns the board into a queue: the same items, the same editable
+   * card, but held in a three-pane workspace so nine overdue renewals are nine
+   * saves rather than nine hunts through a reflowing grid. The board is the
+   * overview and stays exactly as it was; this is what you switch to when the
+   * answer to "what does the quarter look like" is "bad, fix it".
+   */
+  const workRequested = searchParams?.item !== undefined;
+  if (workRequested) {
+    /*
+     * Overdue first, then whatever lands soonest, then the undated, then the
+     * ones already current. Sorting by the colour rather than by the date
+     * alone is what puts a red item with no date -- a lapsed registration
+     * nobody has entered a renewal for -- above an amber one three weeks out.
+     */
+    const RANK: Record<ComplianceCardData["color"], number> = {
+      red: 0,
+      amber: 1,
+      slate: 2,
+      green: 3,
+    };
+    const ordered = deadlineRows
+      .map((r) => cardById.get(str(r.id)))
+      .filter((c): c is ComplianceCardData => Boolean(c))
+      .sort((a, b) => {
+        const rank = RANK[a.color] - RANK[b.color];
+        if (rank !== 0) return rank;
+        const ad = a.daysLeft ?? Number.POSITIVE_INFINITY;
+        const bd = b.daysLeft ?? Number.POSITIVE_INFINITY;
+        if (ad !== bd) return ad - bd;
+        return a.label.localeCompare(b.label);
+      });
+
+    const categoryById = new Map(
+      deadlineRows.map((r) => [str(r.id), str(r.category)])
+    );
+    const requested = Array.isArray(searchParams.item)
+      ? searchParams.item[0]
+      : searchParams.item;
+    const selectedCard = resolveSelection(ordered, (c) => c.id, requested || null);
+    const ids = ordered.map((c) => c.id);
+    const currentId = selectedCard?.id ?? null;
+    /*
+     * Whether the URL names an item. "Work through them" links to `?item=`
+     * with no value so a wide screen opens on the first renewal; a phone must
+     * still get the list first, with the item one tap away.
+     */
+    const opened = Boolean(requested);
+    const pos = queuePosition(ids, currentId);
+    const nextId = advanceTarget(ids, currentId);
+    const { forItem, base } = queueHrefBuilder("/compliance", {}, "item");
+
+    const entries: ComplianceWorkEntry[] = ordered.map((c) => ({
+      id: c.id,
+      label: c.label,
+      area: AREA_LABEL[areaFor(categoryById.get(c.id) ?? "")],
+      dueDisplay: c.dueDisplay,
+      /*
+       * A short countdown for the rail, not the card's sentence. An item with
+       * no date explains itself in a full clause, which in a 340px row took
+       * the space the label needed and left it reading as one letter.
+       */
+      countdownText: c.daysLeft == null ? "No date" : c.countdownText,
+      color: c.color,
+      statusLabel: c.statusLabel,
+    }));
+
+    return (
+      <div className="flex page-shell">
+        <div className={opened ? "hidden lg:contents" : "contents"}>
+          <PageFrame
+            help={PAGE_HELP["compliance"]}
+            title="Renewals"
+            breadcrumbs={[{ label: "Compliance Board", href: "/compliance" }, { label: "Renewals" }]}
+            status={
+              ordered.length === 0
+                ? "Nothing tracked"
+                : `${ordered.filter((c) => c.color === "red").length} overdue · ${ordered.length} tracked`
+            }
+            explanation="The same items as the board, one at a time, with the certificate upload and the renewal date on the same screen."
+          />
+        </div>
+        <ComplianceWorkspace
+          entries={entries}
+          cards={cardById}
+          info={
+            new Map(
+              ordered.map((c) => [c.id, infoFor(categoryById.get(c.id) ?? "")])
+            )
+          }
+          selectedId={currentId}
+          opened={opened}
+          hrefFor={forItem}
+          base={base}
+          prevHref={pos.prevId ? forItem(pos.prevId) : null}
+          nextHref={nextId ? forItem(nextId) : null}
+          position={{ index: pos.index, total: pos.total }}
+          members={teamMembers}
+          viewerId={viewer?.id}
+          canAssign={can(viewer?.orgRole, "manage_compliance")}
+        />
+      </div>
+    );
+  }
+
+  /*
    * Every item with nothing stored against it, in board order, so the bulk
    * panel works the same set the cards do.
    */
@@ -593,6 +707,20 @@ export default async function CompliancePage({
               }`
         }
         explanation="Brost Co checks these daily and warns before anything lapses. Set renewal dates and links so countdowns work."
+        primaryAction={
+          /*
+           * The way into the working mode.
+           *
+           * Offered only when there is something to work through: on a board
+           * where everything is current it would open a queue of items nobody
+           * needs to touch, which teaches people the button does nothing.
+           */
+          attentionCount > 0 || stateCounts.expiring > 0 || stateCounts.unknown > 0 ? (
+            <Link href="/compliance?item=" className="btn-primary text-xs">
+              Work through them
+            </Link>
+          ) : undefined
+        }
       >
         <Legend />
       </PageFrame>
