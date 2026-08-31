@@ -793,6 +793,26 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 * supposed to answer nine questions at a glance. Overview now
                 * carries only what would disqualify a bid, and links here.
                 */}
+              {/*
+                * The way into the version you work in.
+                *
+                * The list below is the right shape for reading the checklist;
+                * it is the wrong shape for going through it, because the
+                * document each row was read from is on another tab. Checking
+                * forty rows against their source meant forty round trips, and
+                * a checklist nobody checks gets trusted more than it has
+                * earned.
+                */}
+              {oppBrief && !oppBrief.empty && (
+                <div className="mb-3">
+                  <Link
+                    href={`/opportunity/${params.id}/requirements`}
+                    className="btn-primary text-sm"
+                  >
+                    Work through them against the solicitation
+                  </Link>
+                </div>
+              )}
               {oppBrief && (
                 <div className="card">
                   <BidRequirements

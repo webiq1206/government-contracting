@@ -2320,6 +2320,56 @@ export async function agentLogs(filters: { agent?: string; limit?: number } = {}
   );
 }
 
+/**
+ * One run from the automation log, in full.
+ *
+ * Loaded on its own rather than folded into the list query, and the reason is
+ * weight: `input_json` and `output_json` are the whole request and the whole
+ * response, and fifty of each on a page nobody has asked to read yet is a slow
+ * page in exchange for nothing. The list stays thin; this is fetched when
+ * somebody opens a row.
+ *
+ * The three record ids are resolved to names here. A run that says it failed
+ * on `a3f2...` is a run nobody can act on.
+ */
+export interface AgentRunDetail {
+  id: string;
+  agent: string;
+  action: string;
+  level: string;
+  status: string;
+  message: string | null;
+  reasoning: string | null;
+  duration_ms: number | null;
+  created_at: string;
+  input_json: unknown;
+  output_json: unknown;
+  opportunity_id: string | null;
+  opportunity_title: string | null;
+  subcontractor_id: string | null;
+  subcontractor_name: string | null;
+  bid_id: string | null;
+  bid_opportunity_id: string | null;
+}
+
+export async function agentRun(id: string): Promise<AgentRunDetail | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  return queryOne<AgentRunDetail>(
+    `select l.id, l.agent, l.action, l.level, l.status, l.message, l.reasoning,
+            l.duration_ms, l.created_at::text as created_at,
+            l.input_json, l.output_json,
+            l.opportunity_id, o.title as opportunity_title,
+            l.subcontractor_id, s.company_name as subcontractor_name,
+            l.bid_id, b.opportunity_id as bid_opportunity_id
+       from agent_logs l
+       left join opportunities o on o.id = l.opportunity_id
+       left join subcontractors s on s.id = l.subcontractor_id
+       left join bids b on b.id = l.bid_id
+      where l.id = $1 and l.org_id = $2`,
+    [id, await currentOrg()]
+  ).catch(() => null);
+}
+
 export const LOG_PAGE_SIZE = 50;
 
 /** Paged + filterable activity feed for the Automation Log page. */

@@ -68,6 +68,19 @@ describe("which pane a phone gets", () => {
     });
   }
 
+  it("the requirements workspace starts closed, because it has no URL to go back to", () => {
+    /*
+     * The one workspace whose selection is client state rather than a query
+     * parameter, because navigating would tear down the rendered PDF beside
+     * it. That makes the phone rule stricter, not looser: there is no URL to
+     * return to, so opening on arrival would leave the checklist unreachable
+     * without leaving the record.
+     */
+    const src = readFileSync("components/requirements-workspace.tsx", "utf8");
+    expect(src).toContain("const [opened, setOpened] = useState(false);");
+    expect(src).toContain("selected={opened}");
+  });
+
   it("Review decides it from its own query parameter", () => {
     // Review predates the shell and names the parameter differently; the rule
     // is the same one.

@@ -196,6 +196,67 @@ It is read-only on purpose. Comping, suspending, scheduling a deletion and
 signing in as somebody all belong on the record page behind a confirmation, not
 on a control reached while scanning a list.
 
+### 10. The submission checklist and the solicitation were on different tabs
+
+`/opportunity/[id]` holds the checklist on the Requirements tab and the
+document on the Files tab, behind a disclosure. The panel that renders it says
+why that disclosure exists, in its own words:
+
+> checking one extracted requirement against its source used to mean opening a
+> new tab, finding the page, reading a paragraph and coming back. Doing that
+> forty times is why nobody does it, and a checklist nobody checks is a
+> checklist that gets trusted more than it has earned.
+
+The disclosure removed the new tab and left the round trip: switch tab, expand
+a file, read, switch back, find the row you were on. Forty times, on the
+artifact that decides whether a bid is thrown out.
+
+`/opportunity/[id]/requirements` puts the checklist, the requirement's own
+state controls, and the document on one screen. Choosing a requirement opens
+the document it was read from, at the page the analysis recorded. Filters for
+what is still open, what can sink the bid, and what needs a question to the
+agency.
+
+Its own route rather than a fourth pane inside the record's tabs, for a
+structural reason: three panes need a bounded height to scroll inside, and the
+record page is one tall scroller with a sticky tab bar. Nesting a 70vh scroll
+region in it would trap the wheel and give the document a third of the screen
+it needs most. The record keeps the checklist as a list and a button opens the
+version you work in, which is the move the compliance board already makes.
+
+This is the one workspace whose selection is **client state rather than a query
+parameter**, and the exception is deliberate: navigating to change rows would
+tear down the rendered PDF and refetch it on every press of `J`, which is the
+round trip the screen exists to remove. That makes the phone rule stricter
+rather than looser, because there is no URL to go back to. It starts closed, so
+a phone gets the checklist first, and the pane carries its own way back.
+
+### 11. The automation log withheld its own evidence
+
+`agent_logs` stores `input_json`, `output_json`, `opportunity_id`,
+`subcontractor_id` and `bid_id`. `/agents` rendered none of them: agent, level,
+action, message, reasoning. So the one screen somebody opens precisely when
+something is broken was hiding the request that failed, the response that came
+back, and the record it happened to.
+
+Opening a row now shows all of it beside the stream, with the records resolved
+to names, the payloads collapsed behind a disclosure, and a control to re-run
+that agent. The list query is deliberately unchanged: fifty rows each carrying
+two JSONB blobs is a slow page in exchange for nothing, so the payloads are
+fetched only when a row is opened.
+
+### 12. Every search result cost a page load to check
+
+`/search` is where ⌘K sends you, and every row navigated away, so answering "is
+this the one" cost a page load and a trip back to a search box that had been
+cleared. Opportunities and subcontractors now carry a Quick look that opens the
+same drawer the roster and the account table use.
+
+Only those two kinds, and the limit is honest rather than arbitrary: a contract
+row points at the list, a message row at the conversation centre, and a
+document row at whatever record it hangs off, so there is no single record to
+preview even if there were a loader for it.
+
 ---
 
 ## Considered and deliberately not converted
@@ -217,9 +278,13 @@ queue; the record is where you go to study rather than to process.
 is this" with counters, a digest, health and the queue preview. Its queue rows
 now open the workbench, which is the change that mattered.
 
-**`/analytics`, `/agents`, `/search`, `/how-it-works`** are reading surfaces
-with no per-record work to finish. `/agents` has a log with filters, which is
-the right shape for reading a stream.
+**`/subs/[id]`** was named as a candidate on a first pass and the reading was
+wrong: it is already an eight-tab editorial record with a Communications tab
+that reads and replies in place. The stack of collapsibles that prompted the
+finding lives inside those tabs. Nothing was changed.
+
+**`/analytics`, `/how-it-works`** are reading surfaces with no per-record work
+to finish.
 
 **Settings, `/settings/content`** — the template editor is already a two-pane
 editor with a live preview, which is this pattern under a different name. The
@@ -242,7 +307,11 @@ boards. Nothing in them is processed row by row.
 | `lib/domain/workbench.ts` | Which pane a task opens into, and what it is called |
 | `lib/domain/keyboard.ts` | When a keystroke belongs to the page and when to the field |
 | `lib/workbench.ts` | Loading the record behind the open task, per task |
+| `components/requirements-workspace.tsx` | The checklist beside the document it was read from |
+| `components/agent-run-peek.tsx` | One automation run, in full |
 
 Tests: `tests/workspace-queue.test.ts`, `tests/workbench-panes.test.ts`,
 `tests/workspace-keyboard.test.ts`, `tests/workspace-shell-contract.test.ts`,
-`tests/work-queue-destination.test.ts`.
+`tests/work-queue-destination.test.ts`, `tests/queue-rail.test.tsx`,
+`tests/requirements-workspace.test.tsx`, `tests/agent-run-detail.test.ts`,
+`tests/search-peek.test.ts`.

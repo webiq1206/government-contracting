@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   agentHealth,
   agentLogsPaged,
+  agentRun,
   agentStatuses,
   jobRunsSummary,
   providerUsage,
@@ -21,6 +22,11 @@ import { INCIDENT_NEXT_ACTION, INCIDENT_STATE_LABEL } from "@/lib/domain/inciden
 import { RecoveryPanel } from "@/components/recovery-panel";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
+import { AgentRunPeek } from "@/components/agent-run-peek";
+import { QueueKeys } from "@/components/workspace/workspace-keys";
+import { queuePosition } from "@/lib/domain/workspace-queue";
+import { currentUser } from "@/lib/auth";
+import { can } from "@/lib/domain/roles";
 import { ActionButton } from "@/components/action-button";
 import { AutomationControl } from "@/components/automation-control";
 import { ProviderUsagePanel } from "@/components/provider-usage-panel";
@@ -116,7 +122,13 @@ function summaryText(summary: unknown): string | null {
 export default async function AgentsPage({
   searchParams,
 }: {
-  searchParams?: { agent?: string; level?: string; q?: string; page?: string };
+  searchParams?: {
+    agent?: string;
+    level?: string;
+    q?: string;
+    page?: string;
+    run?: string;
+  };
 }) {
   const agentFilter = searchParams?.agent;
   const levelFilter = searchParams?.level;
@@ -170,6 +182,22 @@ export default async function AgentsPage({
     return qs ? `/agents?${qs}` : "/agents";
   };
 
+  /*
+   * The open run, as a query parameter.
+   *
+   * The log stores the request, the response and the record each run touched,
+   * and rendered none of them: fifty rows of summary over the evidence that
+   * would explain any one of them. Opening a row now shows all of it, beside
+   * the stream rather than instead of it, so reading one failure does not cost
+   * the filters and the page you found it on.
+   */
+  const openRunId = searchParams?.run ?? null;
+  const openRun = openRunId ? await agentRun(openRunId) : null;
+  const runIds = logs.map((l) => str(l.id));
+  const runPosition = queuePosition(runIds, openRunId);
+  const runHref = (id: string | null) => link({ page, run: id ?? undefined });
+  const viewer = await currentUser().catch(() => null);
+
   return (
     <div className="flex page-shell">
       <PageFrame
@@ -179,8 +207,9 @@ export default async function AgentsPage({
         status={live.headline}
       />
 
+      <div className="flex min-h-0 flex-1 overflow-hidden">
       <div
-        className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5"
+        className="scroll-thin min-w-0 flex-1 space-y-6 overflow-y-auto p-5"
         data-guide-target="agent-log"
         id="agent-log"
       >
@@ -444,7 +473,15 @@ export default async function AgentsPage({
               const duration = num(log.duration_ms);
               const reasoning = str(log.reasoning);
               return (
-                <div key={str(log.id)} className="card flex gap-3">
+                <Link
+                  key={str(log.id)}
+                  href={runHref(str(log.id))}
+                  scroll={false}
+                  aria-current={str(log.id) === openRunId ? "true" : undefined}
+                  className={`card flex gap-3 transition-colors hover:border-accent/50 ${
+                    str(log.id) === openRunId ? "border-gold bg-gold/[0.06]" : ""
+                  }`}
+                >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="badge bg-slate-200 font-mono text-slate-700">
@@ -467,8 +504,9 @@ export default async function AgentsPage({
                     {duration != null && (
                       <p className="mt-0.5 num text-xs text-slate-500">{duration}ms</p>
                     )}
+                    <p className="mt-1 text-xs text-accent">Open</p>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -495,6 +533,26 @@ export default async function AgentsPage({
             </div>
           )}
         </section>
+      </div>
+
+      {openRun && (
+        <AgentRunPeek
+          run={openRun}
+          closeHref={runHref(null)}
+          canRun={can(viewer?.orgRole, "manage_integrations")}
+          nav={{
+            prevHref: runPosition.prevId ? runHref(runPosition.prevId) : null,
+            nextHref: runPosition.nextId ? runHref(runPosition.nextId) : null,
+            index: runPosition.index,
+            total: runPosition.total,
+          }}
+        />
+      )}
+      <QueueKeys
+        prevHref={runPosition.prevId ? runHref(runPosition.prevId) : null}
+        nextHref={runPosition.nextId ? runHref(runPosition.nextId) : null}
+        closeHref={openRunId ? runHref(null) : null}
+      />
       </div>
     </div>
   );
