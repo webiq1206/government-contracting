@@ -296,7 +296,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     ],
     recovery:
       "An auto-dismissed opportunity is archived, not deleted: find it in Opportunities with the archived filter and pursue it by hand if the timer beat you to it.",
-    recoveryHref: "/opportunities?status=archived",
+    recoveryHref: "/pipeline?closed=1",
     recoveryLabel: "Open archived opportunities",
     href: "/review",
     hrefLabel: "Open the review queue",
@@ -483,7 +483,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     ],
     recovery:
       "Re-analysing a solicitation marks an already-built package stale rather than leaving you to submit the old one. Rebuild from the opportunity.",
-    recoveryHref: "/opportunities",
+    recoveryHref: "/pipeline",
     recoveryLabel: "Open opportunities",
     evidence: "built",
     settings: [],
@@ -534,7 +534,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     ],
     recovery:
       "Some agencies only accept bids through their own portal. Brost Co assembles the files for that upload rather than pretending it can submit for you.",
-    recoveryHref: "/opportunities",
+    recoveryHref: "/pipeline",
     recoveryLabel: "Open opportunities",
     evidence: "submitted",
     settings: [],
@@ -558,7 +558,7 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
     ],
     recovery:
       "Agencies frequently miss their own award dates. Nothing is wrong with the record if it sits here for months; record the outcome whenever you hear.",
-    recoveryHref: "/opportunities",
+    recoveryHref: "/pipeline",
     recoveryLabel: "Open opportunities",
     evidence: "submitted",
     settings: [],
@@ -979,7 +979,7 @@ const FIRST_RUNS: {
     key: "watch",
     label: "Watch the first opportunities arrive",
     hint: "They are pulled from SAM.gov on a schedule rather than on demand, so the first batch is not instant. The workflow map below says how often.",
-    href: "/opportunities",
+    href: "/pipeline",
     hrefLabel: "Open opportunities",
     capability: null,
     done: (f) => f.hasOpportunities,
@@ -1039,7 +1039,7 @@ function hrefLabelFor(href: string): string {
   if (href.includes("/settings/rules")) return "Open automation rules";
   if (href.includes("/settings/billing")) return "Open billing";
   if (href.includes("/settings/account")) return "Open your account";
-  if (href.includes("/opportunities")) return "Open opportunities";
+  if (href.includes("/pipeline") || href.includes("/opportunities")) return "Open opportunities";
   return "Open";
 }
 

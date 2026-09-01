@@ -40,6 +40,7 @@ import { orgHasKey } from "@/lib/integration-keys";
 import type { AutomationRules } from "@/lib/domain/intake";
 import { currency, shortDate, timeAgo } from "@/lib/format";
 import { withGuideQuery } from "@/lib/guide-links";
+import { isPlatformAdmin } from "@/lib/platform-admin";
 import { TodayBulkCalls } from "@/components/today-bulk-calls";
 import { TodayBulkTriage } from "@/components/today-bulk-triage";
 import { ReplyReviewList } from "@/components/reply-review-list";
@@ -571,8 +572,10 @@ export default async function TodayPage({
   // also receive them here or every renewal is counted twice in the one
   // number. The section below still SHOWS them together, so it keeps its own
   // count of what it renders.
+  const canSeeAuthority = isPlatformAdmin(viewer?.email);
   const approvalCount =
-    data.proposedWeights.length + (data.backlinkApprovals > 0 ? 1 : 0);
+    data.proposedWeights.length +
+    (canSeeAuthority && data.backlinkApprovals > 0 ? 1 : 0);
   const approvalSectionCount = approvalCount + data.complianceAlerts.length;
   /*
    * One ledger, shared with the Guide Me panel.
@@ -1089,13 +1092,16 @@ export default async function TodayPage({
                       </div>
                     </div>
                   ))}
-                  {data.backlinkApprovals > 0 && (
+                  {canSeeAuthority && data.backlinkApprovals > 0 && (
                     <Link href="/authority" className={ROW}>
                       <div className="min-w-0 flex-1">
                         <p className="eyebrow-gold">Site authority</p>
                         <p className="mt-1 truncate text-sm font-medium text-foreground">
-                          Approve {data.backlinkApprovals} drafted outreach email
-                          {data.backlinkApprovals === 1 ? "" : "s"} before they send
+                          Approve{" "}
+                          {data.backlinkApprovals === 1
+                            ? "1 drafted outreach email"
+                            : `${data.backlinkApprovals} drafted outreach emails`}{" "}
+                          before they send
                         </p>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           Site Authority drafted these to earn backlinks. Nothing sends
@@ -1111,8 +1117,10 @@ export default async function TodayPage({
               {data.snoozedCount > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-2 border border-dashed border-border/55 px-4 py-2.5 text-xs text-muted-foreground dark:border-white/15">
                   <span>
-                    {data.snoozedCount} snoozed item
-                    {data.snoozedCount === 1 ? "" : "s"} hidden for now. Each returns
+                    {data.snoozedCount === 1
+                      ? "1 snoozed item hidden for now."
+                      : `${data.snoozedCount} snoozed items hidden for now.`}{" "}
+                    Each returns
                     automatically; deadline alerts keep running meanwhile.
                   </span>
                   <ActionButton

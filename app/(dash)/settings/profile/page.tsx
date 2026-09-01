@@ -148,7 +148,7 @@ export default async function ProfilePage() {
           <div className="scroll-thin flex-1 overflow-y-auto p-5">
             <EmptyState
               title="No active company profile"
-              description="Run npm run db:seed to create the default profile, or save a new profile below once the editor loads."
+              description="Nothing is saved for this company yet. Fill in the company details and save them so scoring has something to match against."
             />
           </div>
         ) : (
