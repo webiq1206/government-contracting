@@ -215,5 +215,25 @@ describe("assessAutomation", () => {
     });
     expect(h.failureRate).toBe(0.5);
     expect(h.runs24h).toBe(4);
+    expect(h.errors24h).toBe(2);
+  });
+
+  it("does not call a failing window healthy because the newest sample is clean", () => {
+    /*
+     * Production printed "Running normally" while Solicitation Analyst was
+     * failing: the sidebar sampled the newest 500 rows, all scoring successes,
+     * and never saw the seven failures sitting further back.
+     */
+    const h = assessAutomation({
+      ...BEATING,
+      runs: [run(), run()],
+      windowRuns: 1270,
+      windowErrors: 7,
+    });
+    expect(h.state).toBe("degraded");
+    expect(h.headline).not.toContain("Running normally");
+    expect(h.errors24h).toBe(7);
+    expect(h.runs24h).toBe(1270);
+    expect(h.failureRate).toBeCloseTo(7 / 1270);
   });
 });

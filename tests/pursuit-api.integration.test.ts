@@ -24,6 +24,10 @@ vi.mock("../lib/auth", async (orig) => ({
   ...(await orig<typeof import("../lib/auth")>()),
   currentUser: async () => CURRENT,
 }));
+vi.mock("../lib/queue", () => ({
+  enqueue: vi.fn(async () => "job"),
+  QUEUE_NAMES: [],
+}));
 
 d("the pursuit lifecycle API", () => {
   let query: typeof import("../lib/db").query;

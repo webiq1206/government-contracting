@@ -31,7 +31,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   // panel, it is the 402 that every mutating route returns independently.
 
   const [counts, health, automation, quotas, inboxWaiting] = await Promise.all([
-    queueCounts().catch(() => ({ review: 0, callQueue: 0 })),
+    queueCounts().catch(() => ({ review: 0, callQueue: 0, today: 0 })),
     automationHealth().catch(() => null),
     getAutomationState().catch(() => ({ paused: false, changed_at: null, changed_by: null })),
     // Only a trial has meters to show; a paid org pays for none of this work.
@@ -83,6 +83,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
       <MobileTabBar
         reviewCount={counts.review}
         callCount={counts.callQueue}
+        todayCount={counts.today}
         inboxCount={inboxWaiting}
       />
     </ToastProvider>

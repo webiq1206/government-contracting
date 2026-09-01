@@ -53,16 +53,22 @@ export function MobileTabBar({
   reviewCount,
   callCount,
   inboxCount = 0,
+  todayCount,
 }: {
   reviewCount: number;
   callCount: number;
   /** Conversations waiting on a reply. Same ledger the Communications page uses. */
   inboxCount?: number;
+  /**
+   * Work still waiting on a person. Defaults to review + calls when the
+   * caller has not counted the rest of the ledger.
+   */
+  todayCount?: number;
 }) {
   const pathname = usePathname();
   const counts = {
     // Today's badge is the queue total: everything pending, not one slice.
-    queue: reviewCount + callCount,
+    queue: todayCount ?? reviewCount + callCount,
     calls: callCount,
     /*
      * More carries whatever is waiting behind it.

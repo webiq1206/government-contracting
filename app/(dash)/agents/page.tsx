@@ -1,6 +1,5 @@
 import Link from "next/link";
 import {
-  agentHealth,
   agentLogsPaged,
   agentRun,
   agentStatuses,
@@ -134,11 +133,10 @@ export default async function AgentsPage({
   const levelFilter = searchParams?.level;
   const q = searchParams?.q ?? "";
   const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
-  const [runs, paged, automation, health, statuses, live, provider] = await Promise.all([
+  const [runs, paged, automation, statuses, live, provider] = await Promise.all([
     jobRunsSummary() as Promise<Row[]>,
     agentLogsPaged({ agent: agentFilter, level: levelFilter, q, page }),
     getAutomationState(),
-    agentHealth(),
     agentStatuses(),
     automationHealth(),
     providerUsage(),
@@ -266,12 +264,12 @@ export default async function AgentsPage({
           incidentCauses={live.incidents.map((i) => i.cause)}
         />
 
-        {health.errors24h > 0 && (
+        {live.errors24h > 0 && (
           <p className="text-xs text-muted-foreground">
             <Link href={link({ level: "error", page: undefined })} className="underline underline-offset-2">
               See every failed run
             </Link>{" "}
-            ({health.errors24h} of {health.runs24h} runs in the last 24 hours).
+            ({live.errors24h} of {live.runs24h} runs in the last 24 hours).
           </p>
         )}
 

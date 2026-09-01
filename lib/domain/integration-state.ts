@@ -180,6 +180,14 @@ export function integrationState(f: IntegrationFacts, now = new Date()): Integra
   const fromRealUse = newest != null && used != null && newest.getTime() === used.getTime();
 
   if (!newest) {
+    if (f.connectionLive === true) {
+      return {
+        state: "configured",
+        reason: "Connected. Nothing has been sent or read through it yet.",
+        cause: null,
+        nextAction: null,
+      };
+    }
     return {
       state: "configured",
       reason: "Saved, and never used or tested.",

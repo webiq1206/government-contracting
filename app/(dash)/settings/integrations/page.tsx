@@ -11,6 +11,8 @@ import { INTEGRATION_DEFS } from "@/lib/integration-defs";
 import { recentAiTrouble, troubleSummary } from "@/lib/integration-health";
 import { gmail } from "@/lib/integrations/gmail";
 import { integrationState } from "@/lib/domain/integration-state";
+import { queryOne } from "@/lib/db";
+import { currentOrg } from "@/lib/data";
 
 const CORE_IDS = new Set(["sam", "claude"]);
 const OUTREACH_IDS = new Set(["gmail", "twilio", "hunter"]);
@@ -30,7 +32,7 @@ export default async function IntegrationsPage({
   searchParams?: { gmail?: string; gmailError?: string };
 }) {
   await hydrateIntegrationEnv();
-  const [sources, inbox, aiTrouble] = await Promise.all([
+  const [sources, inbox, aiTrouble, gmailUsed] = await Promise.all([
     settingSources(),
     gmail
       .connection()
@@ -39,6 +41,16 @@ export default async function IntegrationsPage({
     // through a day in which Anthropic refused every request for want of
     // credits, which is the one day it mattered.
     recentAiTrouble().catch(() => ({ count: 0, reason: null, lastAt: null })),
+    currentOrg()
+      .then((org) =>
+        queryOne<{ at: string | null }>(
+          `select max(created_at)::text as at
+             from communications
+            where org_id = $1 and provider = 'gmail'`,
+          [org]
+        )
+      )
+      .catch(() => null),
   ]);
   const gmailConnected = inbox.connected;
   // Platform-owned integrations (our Ahrefs, our document storage) are hidden
@@ -121,7 +133,8 @@ export default async function IntegrationsPage({
         lastValidatedAt: def.last_tested_at ?? def.last_validated_at,
         // Ranked above a test wherever both exist: a test says the credential
         // parses, a successful call says the thing works for what it is for.
-        lastSuccessAt: def.last_success_at,
+        lastSuccessAt:
+          def.id === "gmail" ? (def.last_success_at ?? gmailUsed?.at ?? null) : def.last_success_at,
         // Only the OAuth one has a connection that can lapse. Undefined for
         // the key-based integrations, which have nothing to expire.
         connectionLive: def.id === "gmail" ? gmailConnected : undefined,
@@ -255,7 +268,7 @@ export default async function IntegrationsPage({
                   initial={{ ...inbox, available: config.gmail.configured }}
                 />
                 <IntegrationManager
-                  initial={initial.filter((i) => OUTREACH_IDS.has(i.id))}
+                  initial={initial.filter((i) => OUTREACH_IDS.has(i.id) && i.id !== "gmail")}
                 />
               </div>
             ),

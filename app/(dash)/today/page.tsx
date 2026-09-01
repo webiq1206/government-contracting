@@ -21,6 +21,7 @@ import { outreachLabel } from "@/lib/domain/sub-contact";
 import { DOC_LABEL } from "@/lib/domain/sub-compliance";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { ActionButton } from "@/components/action-button";
+import { PassButton } from "@/components/pass-button";
 import { SnoozeButton } from "@/components/snooze-button";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
 import { TodayLive } from "@/components/today-live";
@@ -28,6 +29,14 @@ import { TodayGreeting } from "@/components/today-greeting";
 import { WorkQueue } from "@/components/work-queue";
 import { focusCount } from "@/lib/domain/pipeline-focus";
 import { EmptyState } from "@/components/empty-state";
+import { SystemStatusPanel } from "@/components/system-status-panel";
+import {
+  automationStatusItem,
+  inboxStatusItem,
+  samStatusItem,
+} from "@/lib/domain/system-status";
+import { gmail } from "@/lib/integrations/gmail";
+import { orgHasKey } from "@/lib/integration-keys";
 import type { AutomationRules } from "@/lib/domain/intake";
 import { currency, shortDate, timeAgo } from "@/lib/format";
 import { withGuideQuery } from "@/lib/guide-links";
@@ -164,20 +173,9 @@ function OppActionRow({
             >
               Pursue opportunity
             </ActionButton>
-            <ActionButton
-              endpoint={`/api/opportunities/${o.id}/action`}
-              body={{ action: "dismiss" }}
-              className="btn-danger min-h-11 flex-1 text-xs sm:min-h-0 sm:flex-none"
-              toast={{
-                message: `Dismissed "${o.title ?? "opportunity"}". It's archived, not deleted.`,
-                undo: {
-                  endpoint: `/api/opportunities/${o.id}/action`,
-                  body: { action: "restore" },
-                },
-              }}
-            >
-              Pass on this
-            </ActionButton>
+            <PassButton opportunityId={o.id} title={o.title}>
+              Pass on this opportunity
+            </PassButton>
             <span className="text-xs font-medium text-gold-text sm:ml-1">Open brief</span>
           </StopClickPropagation>
         ) : (
@@ -439,7 +437,7 @@ export default async function TodayPage({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   const rules = await getAutomationRules();
-  const [data, profile, automation, digest, queueItems, pulse, health, done] = await Promise.all([
+  const [data, profile, automation, digest, queueItems, pulse, health, done, inbox, samConfigured] = await Promise.all([
     actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
     getAutomationState(),
@@ -466,6 +464,13 @@ export default async function TodayPage({
       console.error("[today] completed-today count failed:", e);
       return { calls: 0, quotes: 0, bidsSubmitted: 0, decisions: 0, complianceResolved: 0, total: 0 };
     }),
+    gmail.connection().catch(() => ({
+      connected: false,
+      email: null,
+      status: "none",
+      lastError: null,
+    })),
+    orgHasKey("SAM_API_KEY").catch(() => false),
   ]);
 
   /*
@@ -649,6 +654,56 @@ export default async function TodayPage({
                 </div>
               )}
 
+              {data.awardCompliance.length > 0 && (
+                <Section
+                  id="award-compliance"
+                  eyebrow="Urgent problems"
+                  title="Subs on the job without complete paperwork"
+                  count={data.awardCompliance.length}
+                >
+                  {data.awardCompliance.map((row) => {
+                    const a = row.assessment;
+                    const lapsed = a.expired.length > 0;
+                    return (
+                      <Link
+                        key={`${row.contractId}-${row.subcontractorId}`}
+                        href={`/subs/${row.subcontractorId}#compliance`}
+                        className={ROW}
+                      >
+                        <div className="min-w-[14rem] flex-1">
+                          <p className="eyebrow-gold">
+                            {row.namedOnContract ? "On the contract" : "Quoted, not designated"}
+                          </p>
+                          <p className="mt-1 truncate text-sm font-medium text-foreground">
+                            {row.companyName}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {row.opportunityTitle ?? "Won work"}
+                            {" · "}
+                            {a.blockReason
+                              ? a.blockReason.replace(/^Cannot send work: /, "")
+                              : a.expiringSoon
+                                  .map(
+                                    (e) =>
+                                      `${DOC_LABEL[e.docType]} expires ${shortDate(e.expiresAt)}`
+                                  )
+                                  .join("; ")}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-3">
+                          <span
+                            className={`badge ${lapsed ? "bg-risk/15 text-risk" : "bg-review/15 text-review"}`}
+                          >
+                            {lapsed ? "Not covered" : "Needs chasing"}
+                          </span>
+                          <CtaArrow label="Open paperwork" />
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </Section>
+              )}
+
               {/* The one list of everything waiting on a person, above the
                   themed sections. The sections stay for context; this answers
                   "what should I do next" before any of them are opened. */}
@@ -731,59 +786,6 @@ export default async function TodayPage({
                       rules={rules}
                     />
                   ))}
-                </Section>
-              )}
-
-              {/* Above the reply queue on purpose. Everything else here costs
-                  a missed opportunity; this one is a sub on a live contract
-                  working without cover, which is the prime's breach. */}
-              {data.awardCompliance.length > 0 && (
-                <Section
-                  id="award-compliance"
-                  eyebrow="Won work"
-                  title="Subs on the job without complete paperwork"
-                  count={data.awardCompliance.length}
-                >
-                  {data.awardCompliance.map((row) => {
-                    const a = row.assessment;
-                    const lapsed = a.expired.length > 0;
-                    return (
-                      <Link
-                        key={`${row.contractId}-${row.subcontractorId}`}
-                        href={`/subs/${row.subcontractorId}#compliance`}
-                        className={ROW}
-                      >
-                        <div className="min-w-[14rem] flex-1">
-                          <p className="eyebrow-gold">
-                            {row.namedOnContract ? "On the contract" : "Quoted, not designated"}
-                          </p>
-                          <p className="mt-1 truncate text-sm font-medium text-foreground">
-                            {row.companyName}
-                          </p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {row.opportunityTitle ?? "Won work"}
-                            {" · "}
-                            {a.blockReason
-                              ? a.blockReason.replace(/^Cannot send work: /, "")
-                              : a.expiringSoon
-                                  .map(
-                                    (e) =>
-                                      `${DOC_LABEL[e.docType]} expires ${shortDate(e.expiresAt)}`
-                                  )
-                                  .join("; ")}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3">
-                          <span
-                            className={`badge ${lapsed ? "bg-risk/15 text-risk" : "bg-review/15 text-review"}`}
-                          >
-                            {lapsed ? "Not covered" : "Needs chasing"}
-                          </span>
-                          <CtaArrow label="Open paperwork" />
-                        </div>
-                      </Link>
-                    );
-                  })}
                 </Section>
               )}
 
@@ -1156,6 +1158,28 @@ export default async function TodayPage({
                 * everything recorded should not look the same either.
                 */}
               <CompletedTodayPanel done={done} />
+
+              <SystemStatusPanel
+                items={[
+                  health
+                    ? automationStatusItem({
+                        state: health.state,
+                        headline: health.headline,
+                        detail: health.detail,
+                      })
+                    : {
+                        id: "automation",
+                        label: "Background work",
+                        kind: "delayed" as const,
+                        detail:
+                          "Could not check whether background work is running. Refresh this page. If this stays, open Automation Health.",
+                        actionLabel: "Open automation health",
+                        href: "/agents",
+                      },
+                  inboxStatusItem(inbox),
+                  samStatusItem(samConfigured),
+                ]}
+              />
 
             </div>
 

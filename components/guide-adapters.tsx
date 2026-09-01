@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ActionButton } from "@/components/action-button";
+import { PassButton } from "@/components/pass-button";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { CallWorkspace, type CallWorkspaceData } from "@/components/call-workspace";
 import { TokenMultiSelect } from "@/components/token-multi-select";
@@ -53,21 +54,13 @@ export function GuideStepActions({
         >
           Pursue
         </ActionButton>
-        <ActionButton
-          endpoint={`/api/opportunities/${step.opportunityId}/action`}
-          body={{ action: "dismiss" }}
+        <PassButton
+          opportunityId={step.opportunityId}
           className="btn-danger text-xs"
           onDone={() => void onDone()}
-          toast={{
-            message: "Dismissed. It's archived, not deleted.",
-            undo: {
-              endpoint: `/api/opportunities/${step.opportunityId}/action`,
-              body: { action: "restore" },
-            },
-          }}
         >
-          Dismiss
-        </ActionButton>
+          Pass on this opportunity
+        </PassButton>
         <Link
           href={`/opportunity/${step.opportunityId}`}
           className="btn-ghost text-xs"

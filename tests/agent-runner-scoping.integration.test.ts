@@ -147,13 +147,14 @@ d("agent runner tenant context (integration)", () => {
 
   it("reports a payload that names two organizations", async () => {
     seen.length = 0;
-    await runAgent(probeAgent(), "queue", {
+    const result = await runAgent(probeAgent(), "queue", {
       opportunityId: orgA.opp,
       subcontractorId: orgB.sub,
     });
-    // It still runs, under the opportunity's org, because refusing would strand
-    // the job in the queue's retry loop. But it says so.
-    expect(seen[0].orgId).toBe(orgA.id);
+    // Running under either organization would do work in the wrong tenant.
+    expect(seen.length).toBe(0);
+    expect(result.ok).toBe(false);
+    expect(result.permanent).toBe(true);
     const mismatch = await query<{ message: string | null }>(
       `select message from agent_logs
         where agent = $1 and action = 'payload-org-mismatch'`,
@@ -161,6 +162,7 @@ d("agent runner tenant context (integration)", () => {
     );
     expect(mismatch.length).toBe(1);
     expect(mismatch[0].message).toContain(orgB.id);
+    expect(mismatch[0].message).toMatch(/Abandoned rather than run/i);
   });
 
   it("files the runner's own log lines under the job's organization", async () => {

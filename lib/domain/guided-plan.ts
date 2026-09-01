@@ -434,8 +434,8 @@ export function buildGuidedPlan(input: GuidedPlanInput): GuidedPlan {
   let closed: GuidedPlan["closed"];
   if (input.stage === "dismissed") {
     closed = {
-      label: "Dismissed",
-      note: "This opportunity was dismissed. It is archived, not deleted, and can be restored.",
+      label: "Passed",
+      note: "This opportunity was passed on. It is archived, not deleted, and can be restored.",
     };
   } else if (input.expired) {
     closed = {

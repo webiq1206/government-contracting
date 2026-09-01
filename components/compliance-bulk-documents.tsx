@@ -85,7 +85,9 @@ export function ComplianceBulkDocuments({ targets }: { targets: BulkDocTarget[] 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h2 className="label">
-            {targets.length} item{targets.length === 1 ? "" : "s"} with no document on file
+            {targets.length === 1
+              ? "1 item with no document on file"
+              : `${targets.length} items with no document on file`}
           </h2>
           {/*
             The cost, not the count. A date being watched is not the same as a

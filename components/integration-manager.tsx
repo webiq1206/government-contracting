@@ -233,8 +233,8 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                 {def.stateAction}
               </p>
             )}
-            {def.state !== "healthy" && def.without && (
-              <p className="text-xs text-review">Right now: {def.without}</p>
+            {def.state === "not_configured" && def.without && (
+              <p className="text-xs text-review">Without this: {def.without}</p>
             )}
             {/* Not always a failed test any more: this also carries a service
                 that refused real work, where "Last check failed" would have

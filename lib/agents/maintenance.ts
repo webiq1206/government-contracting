@@ -154,6 +154,8 @@ async function lastCallForOrg(orgId: string): Promise<number> {
        join subcontractors s on s.id = os.subcontractor_id
       where o.org_id = $1
         and o.status = 'open'
+        and coalesce(o.pursuit_state, 'active') = 'active'
+        and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
         and o.deadline is not null
         and o.deadline > now()
         and o.deadline <= now() + interval '4 days'
@@ -461,6 +463,9 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
         and c.channel='email' and c.direction='outbound'
         and c.follow_up_at is not null and c.follow_up_at <= now()
         and c.replied_at is null
+        and o.status = 'open'
+        and coalesce(o.pursuit_state, 'active') = 'active'
+        and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
         /*
          * Has this firm answered us about this job AT ALL?
          *
@@ -817,6 +822,18 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
         row.subcontractor_id,
       ]);
       sent++;
+    } else if (res.disabled) {
+      // The pursuit was paused, aborted, passed, or expired between the
+      // due-list and the send. Leave the marker consumed so the next sweep
+      // does not try again. Restoring it is how a closed job keeps emailing.
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send",
+        level: "info",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: `Follow-up was not sent because this opportunity is no longer active. ${res.error ?? ""}`.trim(),
+      });
     } else if (res.blocked) {
       // Content was refused; a retry would refuse the same content, so the
       // marker stays consumed and a human is flagged instead.
@@ -1380,14 +1397,34 @@ async function expireForOrg(orgId: string): Promise<{ archived: number; deleted:
     const expired = await query<{ id: string; title: string | null; stage: string; deadline: string }>(
       `update opportunities
           set status='archived', human_action_required=false,
+              pursuit_state='aborted',
+              pursuit_reason='expired',
+              pursuit_changed_at=now(),
               risk_flags = (select array(select distinct unnest(coalesce(risk_flags,'{}') || array['expired'])))
         where org_id = $1
           and status='open'
           and stage not in ('submitted','won','lost')
           and deadline is not null and deadline < now()
+          and not exists (
+                select 1 from bids b
+                 where b.opportunity_id = opportunities.id
+                   and (
+                     b.submitted_at is not null
+                     or coalesce(b.submission_state, '') in
+                        ('sending','sent','receipt_confirmed','accepted')
+                   )
+              )
         returning id, title, stage, deadline`,
       [orgId]
     );
+    if (expired.length > 0) {
+      const { stopOpportunityAutomation } = await import("../close-opportunity-work");
+      await stopOpportunityAutomation(
+        orgId,
+        expired.map((o) => o.id),
+        "expired"
+      );
+    }
     for (const o of expired) {
       await logAgent({
         agent: "expired-opportunity-sweep",

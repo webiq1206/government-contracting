@@ -65,9 +65,17 @@ export async function currentOrg(): Promise<string> {
  *
  * Expects the aliases cc (call_cards), o (opportunities) and s (subcontractors).
  */
+/**
+ * Aborted pursuits stay in history. They leave every active work list.
+ * Paused stays visible so the operator can resume. A missing value is active.
+ * Expects the opportunities table aliased as `o`.
+ */
+export const ACTIVE_PURSUIT_SQL = `coalesce(o.pursuit_state, 'active') <> 'aborted'`;
+
 export const WORKABLE_CALL_CARD_SQL = `
   cc.status = 'pending'
   and o.status = 'open'
+  and ${ACTIVE_PURSUIT_SQL}
   and (cc.snoozed_until is null or cc.snoozed_until <= now())
   -- Uncallable cards (no phone) are never shown; Call Prep refuses to create
   -- them going forward, and this keeps historical empties out of the count.
@@ -84,27 +92,91 @@ export const WORKABLE_CALL_CARD_SQL = `
  *
  * Expects the opportunities table aliased as `o`.
  */
-export const TRIAGE_WHERE_SQL = `o.status='open' and o.tier='review' and o.human_action_required=true
+export const TRIAGE_WHERE_SQL = `o.status='open' and ${ACTIVE_PURSUIT_SQL} and o.tier='review' and o.human_action_required=true
   and (o.snoozed_until is null or o.snoozed_until <= now())`;
 
-export async function queueCounts(): Promise<{ review: number; callQueue: number }> {
+export async function queueCounts(): Promise<{
+  review: number;
+  callQueue: number;
+  today: number;
+}> {
   const { tryResolveTenantOrgId } = await import("./tenant");
   const { LEGACY_ORG_ID } = await import("./tenant-context");
   const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
   if (!/^[0-9a-f-]{36}$/i.test(orgId)) {
-    return { review: 0, callQueue: 0 };
+    return { review: 0, callQueue: 0, today: 0 };
   }
-  const row = await queryOne<{ review: string; call: string }>(
+  /*
+   * Review and Calls stay as the named badges they always were. Today is the
+   * ledger-shaped total: every bucket that still needs a person, not just
+   * those two slices. The phone tab used to add only review + calls, so a
+   * morning of deadlines, replies and bid work looked empty until someone
+   * opened the page.
+   */
+  const row = await queryOne<{
+    review: string;
+    call: string;
+    urgent: string;
+    replies: string;
+    bid_work: string;
+    quotes: string;
+    follow_ups: string;
+    flagged: string;
+    compliance: string;
+  }>(
     `select
        (select count(*) from opportunities o
          where o.org_id = $1 and ${TRIAGE_WHERE_SQL}) as review,
        (select count(*) from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
-        where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}) as call`,
+        where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}) as call,
+       (select count(*) from opportunities o
+         where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
+           and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
+           and o.deadline is not null and o.deadline > now()
+           and o.deadline <= now() + interval '3 days'
+           and (o.snoozed_until is null or o.snoozed_until <= now())) as urgent,
+       (select count(*) from subcontractor_reply_events e
+         left join opportunities o on o.id = e.opportunity_id
+        where e.needs_review and e.reviewed_at is null
+          and (e.org_id = $1 or (e.org_id is null and o.org_id = $1))
+          and (o.id is null or ${ACTIVE_PURSUIT_SQL})) as replies,
+       (select count(*) from opportunities o
+         where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
+           and o.stage in ('quote_entry','bid_building')
+           and (o.snoozed_until is null or o.snoozed_until <= now())) as bid_work,
+       (select count(*) from quotes q
+         join opportunities o on o.id = q.opportunity_id
+        where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
+          and q.is_out_of_range) as quotes,
+       (select count(*) from opportunity_subs os
+         join opportunities o on o.id = os.opportunity_id
+        where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
+          and os.outreach_state in ('followed_up','unresponsive')) as follow_ups,
+       (select count(*) from opportunities o
+         where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
+           and o.human_action_required=true and o.tier is distinct from 'review'
+           and (o.snoozed_until is null or o.snoozed_until <= now())) as flagged,
+       (select count(*) from compliance_items ci
+        where ci.org_id = $1
+          and coalesce(ci.status_override, ci.status)
+              in ('conflicting','expired','blocked','needs_review','expiring_soon')) as compliance`,
     [orgId]
   );
-  return { review: Number(row?.review ?? 0), callQueue: Number(row?.call ?? 0) };
+  const review = Number(row?.review ?? 0);
+  const callQueue = Number(row?.call ?? 0);
+  const today =
+    Number(row?.urgent ?? 0) +
+    Number(row?.replies ?? 0) +
+    review +
+    callQueue +
+    Number(row?.bid_work ?? 0) +
+    Number(row?.quotes ?? 0) +
+    Number(row?.follow_ups ?? 0) +
+    Number(row?.flagged ?? 0) +
+    Number(row?.compliance ?? 0);
+  return { review, callQueue, today };
 }
 
 export const PIPELINE_STAGES: { key: string; label: string }[] = [
@@ -129,6 +201,7 @@ export async function pipelineOpportunities(): Promise<Opportunity[]> {
   return query<Opportunity>(
     `select * from opportunities
       where org_id = $1 and stage <> 'dismissed' and status <> 'archived'
+        and coalesce(pursuit_state, 'active') <> 'aborted'
       order by (deadline is null), deadline asc
       limit 500`,
     [orgId]
@@ -256,7 +329,10 @@ function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
   const where: string[] = [];
   // The board's own scope. A dismissed record is history, not pipeline, and
   // mixing it in makes every count on the page disagree with the board.
-  if (!f.includeClosed) where.push("stage <> 'dismissed' and status <> 'archived'");
+  if (!f.includeClosed) {
+    where.push("stage <> 'dismissed' and status <> 'archived'");
+    where.push("coalesce(pursuit_state, 'active') <> 'aborted'");
+  }
   if (f.stage) {
     params.push(f.stage);
     where.push(`stage = $${params.length}`);
@@ -2461,33 +2537,60 @@ export async function agentStatuses(orgId?: string): Promise<AgentStatusRow[]> {
   // its own page. LEGACY_ORG_ID is a real organization id, so that fallback is
   // still a scope and not a fall-open.
   const org = orgId ?? (await currentOrg());
-  return query<AgentStatusRow>(
-    `select r.agent,
-            count(*) filter (where r.started_at > now() - interval '24 hours')::int as runs_24h,
-            count(*) filter (where r.status = 'error'
-                               and r.started_at > now() - interval '24 hours')::int as errors_24h,
-            max(r.started_at)::text as last_run,
-            (last.finished_at)::text as last_finished,
-            last.status  as last_status,
-            last.error   as last_error,
-            last.summary as last_summary
-       from job_runs r
-       -- The most recent run for this agent, which is the one the operator is
-       -- asking about; the counts beside it are the context for it. Scoped
-       -- inside the lateral as well as outside: without it the counts would be
-       -- this organization's and the error text beside them somebody else's,
-       -- which is the same leak wearing a filter.
-       join lateral (
-         select status, error, summary, finished_at
-           from job_runs x
-          where x.agent = r.agent and x.org_id = $1
-          order by x.started_at desc
-          limit 1
-       ) last on true
-      where r.org_id = $1
-      group by r.agent, last.status, last.error, last.summary, last.finished_at`,
-    [org]
-  ).catch(() => []);
+  const [fromJobs, fromLogs] = await Promise.all([
+    query<AgentStatusRow>(
+      `select r.agent,
+              count(*) filter (where r.started_at > now() - interval '24 hours')::int as runs_24h,
+              count(*) filter (where r.status = 'error'
+                                 and r.started_at > now() - interval '24 hours')::int as errors_24h,
+              max(r.started_at)::text as last_run,
+              (last.finished_at)::text as last_finished,
+              last.status  as last_status,
+              last.error   as last_error,
+              last.summary as last_summary
+         from job_runs r
+         -- The most recent run for this agent, which is the one the operator is
+         -- asking about; the counts beside it are the context for it. Scoped
+         -- inside the lateral as well as outside: without it the counts would be
+         -- this organization's and the error text beside them somebody else's,
+         -- which is the same leak wearing a filter.
+         join lateral (
+           select status, error, summary, finished_at
+             from job_runs x
+            where x.agent = r.agent and x.org_id = $1
+            order by x.started_at desc
+            limit 1
+         ) last on true
+        where r.org_id = $1
+        group by r.agent, last.status, last.error, last.summary, last.finished_at`,
+      [org]
+    ).catch(() => [] as AgentStatusRow[]),
+    // Fan-out agents (opportunity-monitor) write one job_runs row for the
+    // sweep and per-org evidence in agent_logs. Without this fallback the
+    // roster said "Has never run" on an account that had just ingested work.
+    query<AgentStatusRow>(
+      `select agent,
+              count(*) filter (where created_at > now() - interval '24 hours')::int as runs_24h,
+              count(*) filter (where status = 'error'
+                                 and created_at > now() - interval '24 hours')::int as errors_24h,
+              max(created_at)::text as last_run,
+              max(created_at)::text as last_finished,
+              (array_agg(status order by created_at desc))[1] as last_status,
+              (array_agg(message order by created_at desc)
+                 filter (where status = 'error'))[1] as last_error,
+              null as last_summary
+         from agent_logs
+        where org_id = $1
+          and status in ('ok','error')
+        group by agent`,
+      [org]
+    ).catch(() => [] as AgentStatusRow[]),
+  ]);
+  const byAgent = new Map(fromJobs.map((row) => [row.agent, row]));
+  for (const row of fromLogs) {
+    if (!byAgent.has(row.agent)) byAgent.set(row.agent, row);
+  }
+  return [...byAgent.values()];
 }
 
 /** This organization's run tallies. See agentStatuses for why the scope. */
@@ -2963,18 +3066,18 @@ function actionOppCount(orgId: string): string {
  */
 const ACTION_OPP_WHERE = {
   triage: `and ${TRIAGE_WHERE_SQL}`,
-  bidWork: `and o.status='open' and o.stage in ('quote_entry','bid_building')
+  bidWork: `and o.status='open' and ${ACTIVE_PURSUIT_SQL} and o.stage in ('quote_entry','bid_building')
             and (o.snoozed_until is null or o.snoozed_until <= now())`,
-  awaitingOutcome: `and o.status='open' and o.stage='submitted'
+  awaitingOutcome: `and o.status='open' and ${ACTIVE_PURSUIT_SQL} and o.stage='submitted'
                     and (o.snoozed_until is null or o.snoozed_until <= now())`,
-  urgent: `and o.status='open'
+  urgent: `and o.status='open' and ${ACTIVE_PURSUIT_SQL}
            and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
            and o.deadline is not null and o.deadline > now()
            and o.deadline <= now() + make_interval(days => $1)
            and (o.snoozed_until is null or o.snoozed_until <= now())`,
   // `is distinct from` so records without a tier yet (e.g. a flagged
   // sources-sought notice racing its first scoring run) still surface.
-  flagged: `and o.status='open' and o.human_action_required=true
+  flagged: `and o.status='open' and ${ACTIVE_PURSUIT_SQL} and o.human_action_required=true
             and o.tier is distinct from 'review'
             and (o.snoozed_until is null or o.snoozed_until <= now())`,
 } as const;
@@ -3082,6 +3185,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          join subcontractors s on s.id = os.subcontractor_id
         where o.org_id = '${orgId}'
           and o.status = 'open'
+          and ${ACTIVE_PURSUIT_SQL}
           and o.stage in ('outreach','call_queue','quote_entry','sub_research')
           and (o.snoozed_until is null or o.snoozed_until <= now())
           and os.outreach_state in ('followed_up','unresponsive')
@@ -3111,6 +3215,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          left join subcontractors s on s.id = q.subcontractor_id
         where o.org_id = $1
           and o.status = 'open'
+          and ${ACTIVE_PURSUIT_SQL}
           and q.is_out_of_range = true
           and o.stage in ('quote_entry','bid_building','call_queue','outreach')
           and (o.snoozed_until is null or o.snoozed_until <= now())
@@ -3166,7 +3271,9 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     ),
     query<{ stage: string; count: number }>(
       `select stage, count(*)::int as count from opportunities
-          where status='open' and org_id='${orgId}' group by stage`
+          where status='open' and org_id='${orgId}'
+            and coalesce(pursuit_state, 'active') <> 'aborted'
+          group by stage`
     ),
     // Replies the platform held back rather than acted on. Scoped by org so
     // one tenant never sees another's subcontractor correspondence.
@@ -3180,6 +3287,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          left join opportunities o on o.id = e.opportunity_id
         where e.needs_review and e.reviewed_at is null
           and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))
+          and (o.id is null or ${ACTIVE_PURSUIT_SQL})
         order by e.created_at desc
         limit 20`
     ).catch(() => []),
@@ -3209,14 +3317,16 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
          (select count(*)::int from opportunity_subs os
             join opportunities o on o.id = os.opportunity_id
            where o.org_id = '${orgId}' and o.status='open'
+             and ${ACTIVE_PURSUIT_SQL}
              and os.outreach_state in ('followed_up','unresponsive')) as sub_follow_ups,
          (select count(*)::int from quotes q
             join opportunities o on o.id = q.opportunity_id
-           where o.org_id = '${orgId}' and o.status='open' and q.is_out_of_range) as quote_reviews,
+           where o.org_id = '${orgId}' and o.status='open' and ${ACTIVE_PURSUIT_SQL} and q.is_out_of_range) as quote_reviews,
          (select count(*)::int from subcontractor_reply_events e
             left join opportunities o on o.id = e.opportunity_id
            where e.needs_review and e.reviewed_at is null
-             and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))) as reply_reviews,
+             and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))
+             and (o.id is null or ${ACTIVE_PURSUIT_SQL})) as reply_reviews,
          (select count(*)::int from compliance_items ci
            where ci.org_id = '${orgId}'
              and coalesce(ci.status_override, ci.status)
@@ -3336,18 +3446,23 @@ export interface AgentHealth {
 
 /** One-look answer to "is the machine OK?", shown atop the Automation Log. */
 export async function agentHealth(): Promise<AgentHealth> {
+  const org = await currentOrg();
   const [totals, worst] = await Promise.all([
     queryOne<{ runs: number; errors: number; last_run: string | null }>(
       `select count(*)::int as runs,
               count(*) filter (where status='error')::int as errors,
               max(started_at) as last_run
          from job_runs
-        where started_at > now() - interval '24 hours'`
+        where org_id = $1
+          and started_at > now() - interval '24 hours'`,
+      [org]
     ),
     queryOne<{ agent: string }>(
       `select agent from job_runs
-        where status='error' and started_at > now() - interval '24 hours'
-        group by agent order by count(*) desc limit 1`
+        where org_id = $1
+          and status='error' and started_at > now() - interval '24 hours'
+        group by agent order by count(*) desc limit 1`,
+      [org]
     ),
   ]);
   return {
@@ -3607,13 +3722,15 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
          join subcontractors s on s.id = e.subcontractor_id
          left join opportunities o on o.id = e.opportunity_id
         where e.org_id=$1 and e.needs_review and e.reviewed_at is null
+          and (o.id is null or ${ACTIVE_PURSUIT_SQL})
         order by e.created_at desc
         limit 20`,
       [orgId]
     ),
     query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null; assigned_to: string | null }>(
       `select id, title, deadline, review_expires_at, assigned_to from opportunities
-        where org_id=$1 and tier='review' and human_action_required=true and status='open'`,
+        where org_id=$1 and tier='review' and human_action_required=true and status='open'
+          and coalesce(pursuit_state, 'active') <> 'aborted'`,
       [orgId]
     ),
     query<{ id: string; company_name: string; trade: string | null; opp_title: string | null; deadline: string | null; assigned_to: string | null }>(
@@ -3628,7 +3745,8 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
          from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
-        where o.org_id=$1 and cc.status='pending' and o.status='open'`,
+        where o.org_id=$1 and cc.status='pending' and o.status='open'
+          and ${ACTIVE_PURSUIT_SQL}`,
       [orgId]
     ),
     query<{
@@ -3641,6 +3759,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
     }>(
       `select id, title, stage, deadline, risk_flags, assigned_to from opportunities
         where org_id=$1 and human_action_required=true and status='open'
+          and coalesce(pursuit_state, 'active') <> 'aborted'
           and not (tier='review' and stage='scoring')`,
       [orgId]
     ),
@@ -3687,6 +3806,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
          join opportunities o on o.id = os.opportunity_id
          join subcontractors s on s.id = os.subcontractor_id
         where o.org_id=$1 and o.status='open'
+          and ${ACTIVE_PURSUIT_SQL}
           and os.outreach_state = 'sent'
         order by os.created_at asc
         limit 25`,

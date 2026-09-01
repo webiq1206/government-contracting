@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { MouseEvent } from "react";
 import { ActionButton } from "./action-button";
+import { PassButton } from "./pass-button";
 import { openEditorialTarget } from "@/lib/editorial-nav";
 import { deriveStep, PARTY_LABEL, type StepInput } from "@/lib/domain/journey";
 
@@ -66,20 +67,12 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
             >
               Pursue
             </ActionButton>
-            <ActionButton
-              endpoint={`/api/opportunities/${opportunityId}/action`}
-              body={{ action: "dismiss" }}
+            <PassButton
+              opportunityId={opportunityId}
               className="btn-danger text-xs"
-              toast={{
-                message: "Dismissed. It's archived, not deleted.",
-                undo: {
-                  endpoint: `/api/opportunities/${opportunityId}/action`,
-                  body: { action: "restore" },
-                },
-              }}
             >
-              Dismiss
-            </ActionButton>
+              Pass on this opportunity
+            </PassButton>
           </>
         )}
         {step.decision === "outcome" && (

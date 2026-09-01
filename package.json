@@ -12,7 +12,7 @@
     "dev:worker": "tsx watch worker/index.ts",
     "build": "next build",
     "start": "concurrently -n web,worker -c cyan,magenta --kill-others-on-fail=false --restart-tries -1 --restart-after 5000 \"npm:start:web\" \"npm:start:worker\"",
-    "start:web": "next start -p ${PORT:-3000}",
+    "start:web": "tsx scripts/migrate.ts && next start -p ${PORT:-3000}",
     "start:worker": "tsx worker/index.ts",
     "worker": "tsx worker/index.ts",
     "db:migrate": "tsx scripts/migrate.ts",

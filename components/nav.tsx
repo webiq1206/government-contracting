@@ -174,6 +174,7 @@ const SECTIONS: Section[] = [
       // Delivery. An outage affecting every customer used to be findable only
       // by opening accounts one at a time until a pattern appeared.
       { href: "/admin/health", label: "System Health" },
+      { href: "/admin/recap", label: "Platform Recap" },
     ],
   },
   {

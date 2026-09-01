@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: "/settings/profile", label: "Profile", match: "/settings/profile" },
+  { href: "/settings/profile", label: "Company", match: "/settings/profile" },
   { href: "/settings/rules", label: "Rules", match: "/settings/rules" },
   { href: "/settings/content", label: "Content", match: "/settings/content" },
   {

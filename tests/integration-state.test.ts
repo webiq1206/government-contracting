@@ -181,4 +181,16 @@ describe("real use outranks a test", () => {
     expect(v.state).toBe("configured");
     expect(v.reason).toContain("never used or tested");
   });
+
+  it("does not call a live mailbox unused just because no key was tested", () => {
+    const v = integrationState({
+      ...base,
+      lastValidatedAt: null,
+      lastSuccessAt: null,
+      connectionLive: true,
+    });
+    expect(v.state).toBe("configured");
+    expect(v.reason).toContain("Connected");
+    expect(v.reason).not.toContain("never used or tested");
+  });
 });

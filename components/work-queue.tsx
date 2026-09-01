@@ -5,6 +5,7 @@ import { DeadlineBadge } from "@/components/deadline-badge";
 import { describeOwner } from "@/lib/domain/ownership";
 import { SnoozeButton } from "@/components/snooze-button";
 import { ActionButton } from "@/components/action-button";
+import { PassButton } from "@/components/pass-button";
 
 /**
  * The one list of everything waiting on the operator, each row carrying the
@@ -118,22 +119,13 @@ export function WorkQueue({
                       >
                         Pursue
                       </ActionButton>
-                      <ActionButton
-                        endpoint={`/api/opportunities/${item.actions.decide.opportunityId}/action`}
-                        body={{ action: "dismiss" }}
+                      <PassButton
+                        opportunityId={item.actions.decide.opportunityId}
+                        title={item.actions.decide.title}
                         className="btn-ghost min-h-11 text-xs lg:min-h-0"
-                        toast={{
-                          message: `Passed on "${item.actions.decide.title}". It is archived, not deleted.`,
-                          // Undo, because a pass made from a list is the one
-                          // most likely to have been the wrong row.
-                          undo: {
-                            endpoint: `/api/opportunities/${item.actions.decide.opportunityId}/action`,
-                            body: { action: "restore" },
-                          },
-                        }}
                       >
-                        Pass
-                      </ActionButton>
+                        Pass on this opportunity
+                      </PassButton>
                     </>
                   )}
                 </div>

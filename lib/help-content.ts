@@ -9,9 +9,10 @@ export const PAGE_HELP: Record<string, HelpContent> = {
   today: {
     title: "Your starting point, every day",
     points: [
-      "Everything that needs you is listed here, most urgent first.",
-      "Click any item to jump straight to where the work happens.",
-      "Empty list means the automation is handling everything right now.",
+      "Problems with email, search, or background work appear first, with the exact fix.",
+      "Then the work that needs you today, then deadlines, then what is waiting on someone else.",
+      "Click any item to jump straight to the record and the action.",
+      "An empty list means the automation is handling everything right now.",
     ],
   },
   workbench: {

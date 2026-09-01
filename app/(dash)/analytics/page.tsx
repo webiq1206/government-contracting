@@ -541,8 +541,8 @@ export default async function AnalyticsPage({
           ) : (
             <div className="card">
               <p className="mb-3 text-xs leading-relaxed text-slate-500">
-                One batch of {steps[0].count} opportunit
-                {steps[0].count === 1 ? "y" : "ies"} found in this period, followed to
+                One batch of {steps[0].count}{" "}
+                {steps[0].count === 1 ? "opportunity" : "opportunities"} found in this period, followed to
                 wherever each one got to since. Work that stopped short is split between
                 what has closed and what is still moving, because a bid that has not been
                 submitted yet is not a bid that was lost.
@@ -698,9 +698,9 @@ export default async function AnalyticsPage({
                   {currency(valueReport.split.known.total)}
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  {valueReport.split.known.count} opportunit
-                  {valueReport.split.known.count === 1 ? "y" : "ies"} carrying a figure from
-                  the notice or from a person.
+                  {valueReport.split.known.count === 1
+                    ? "1 opportunity carrying a figure from the notice or from a person."
+                    : `${valueReport.split.known.count} opportunities carrying a figure from the notice or from a person.`}
                 </p>
               </div>
               <div>
