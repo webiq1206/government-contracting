@@ -15,6 +15,7 @@
  * with it.
  */
 import { query, queryOne } from "../db";
+import { TRIAGE_WHERE_SQL, WORKABLE_CALL_CARD_SQL } from "../data";
 import type {
   BidFact,
   CallFact,
@@ -311,12 +312,10 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
     ),
 
     query<Record<string, unknown>>(
-      `select id, title, score, tier, review_expires_at
-         from opportunities
-        where org_id = $1 and status = 'open' and tier = 'review'
-          and human_action_required = true
-          and (snoozed_until is null or snoozed_until <= now())
-        order by review_expires_at asc nulls last
+      `select o.id, o.title, o.score, o.tier, o.review_expires_at
+         from opportunities o
+        where o.org_id = $1 and ${TRIAGE_WHERE_SQL}
+        order by o.review_expires_at asc nulls last
         limit 25`,
       [orgId]
     ),
@@ -327,11 +326,7 @@ export async function gatherRecapFacts(input: GatherInput): Promise<RecapFacts> 
          from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          left join subcontractors s on s.id = cc.subcontractor_id
-        where cc.org_id = $1
-          and cc.status = 'pending'
-          and o.status = 'open'
-          and (cc.snoozed_until is null or cc.snoozed_until <= now())
-          and nullif(btrim(coalesce(s.phone, '')), '') is not null
+        where cc.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}
         order by cc.created_at asc limit 25`,
       [orgId]
     ),

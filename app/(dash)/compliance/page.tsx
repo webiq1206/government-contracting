@@ -1102,9 +1102,9 @@ function SubcontractorArea({ board }: { board: ReturnType<typeof subcontractorCo
 
       {pinned.length > 0 && (
         <p className={rest.length > 0 ? "mt-2 text-xs text-slate-500" : "text-xs text-slate-500"}>
-          {pinned.length} subcontractor{pinned.length === 1 ? "" : "s"} in this area need
-          {pinned.length === 1 ? "s" : ""} attention now and {pinned.length === 1 ? "is" : "are"}{" "}
-          shown at the top of the page.
+          {pinned.length === 1
+            ? "1 subcontractor in this area needs attention now and is shown at the top of the page."
+            : `${pinned.length} subcontractors in this area need attention now and are shown at the top of the page.`}
         </p>
       )}
 
