@@ -26,6 +26,7 @@
  */
 
 import { INTEGRATION_DEFS } from "../integration-defs";
+import type { CompanyProfileJson } from "../types";
 
 /**
  * The plain-English "why" for an integration step, taken from the same catalog
@@ -116,19 +117,33 @@ export interface IntegrationProof {
 export interface SetupInputs {
   /** The organization's name, for the one step that is already done. */
   orgName?: string | null;
-  profile: {
-    uei?: string | null;
-    cage_code?: string | null;
-    naics_codes?: string[] | null;
-    service_areas?: string[] | null;
-    certifications?: string[] | null;
-    /** Who the outreach is signed by, and how a subcontractor calls back. */
-    owner_name?: string | null;
-    company_name?: string | null;
-    phone?: string | null;
-    outreach_email?: string | null;
-    email?: string | null;
-  } | null;
+  /*
+   * The saved company profile, named as a slice of the real record rather
+   * than as a hand-written lookalike.
+   *
+   * It was the lookalike, with every field optional, and that is how this list
+   * came to demand a company name nobody could ever supply: the shape declared
+   * `company_name`, the profile has always called it `legal_name`, and a type
+   * whose every field is optional accepts a record missing all of them. The
+   * key read as permanently blank, the step read as permanently unfinished,
+   * and no compiler had anything to object to.
+   *
+   * Pick<> instead, so the profile itself decides what these are called and a
+   * renamed field fails the build here rather than in somebody's setup list.
+   */
+  profile: Pick<
+    CompanyProfileJson,
+    | "uei"
+    | "cage_code"
+    | "naics_codes"
+    | "service_areas"
+    | "certifications"
+    | "legal_name"
+    | "owner_name"
+    | "phone"
+    | "outreach_email"
+    | "email"
+  > | null;
   integrations: {
     sam: boolean;
     claude: boolean;
@@ -439,7 +454,7 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
    * nobody sees it, which is exactly why the gap belongs on this list.
    */
   const senderMissing: string[] = [];
-  if (!filled(p?.company_name)) senderMissing.push("your company name");
+  if (!filled(p?.legal_name)) senderMissing.push("your company name");
   if (!filled(p?.owner_name)) senderMissing.push("who signs the emails");
   if (!filled(p?.phone)) senderMissing.push("a callback number");
   if (!filled(p?.outreach_email) && !filled(p?.email)) senderMissing.push("an outreach address");
