@@ -2825,7 +2825,11 @@ export async function opportunityDetail(id: string) {
       [id]
     ),
     queryOne<{ n: number }>(
-      `select count(*)::int as n from call_cards where opportunity_id=$1 and status='pending'`,
+      `select count(*)::int as n
+         from call_cards cc
+         join opportunities o on o.id = cc.opportunity_id
+         join subcontractors s on s.id = cc.subcontractor_id
+        where cc.opportunity_id = $1 and ${WORKABLE_CALL_CARD_SQL}`,
       [id]
     ),
     // Calls are part of the record too. The activity feed listed agent logs
@@ -3753,8 +3757,7 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
          from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
-        where o.org_id=$1 and cc.status='pending' and o.status='open'
-          and ${ACTIVE_PURSUIT_SQL}`,
+        where o.org_id=$1 and ${WORKABLE_CALL_CARD_SQL}`,
       [orgId]
     ),
     query<{

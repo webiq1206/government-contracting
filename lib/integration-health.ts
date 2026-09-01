@@ -90,17 +90,33 @@ const WINDOW = "6 hours";
  * platform key never created one. Agent logs are the proof that the model
  * actually answered.
  */
-export async function lastAiSuccess(orgId?: string): Promise<Date | null> {
+async function lastAgentSuccess(
+  agents: string[],
+  orgId?: string
+): Promise<Date | null> {
+  if (agents.length === 0) return null;
   const org = orgId ?? (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
   const row = await queryOne<{ at: Date | null }>(
     `select max(created_at) as at
        from agent_logs
       where org_id = $1
         and level in ('success', 'info')
-        and agent in ('scoring-engine', 'solicitation-analyst', 'pricing-research')`,
-    [org]
+        and agent = any($2::text[])`,
+    [org, agents]
   ).catch(() => null);
   return row?.at ?? null;
+}
+
+export async function lastAiSuccess(orgId?: string): Promise<Date | null> {
+  return lastAgentSuccess(
+    ["scoring-engine", "solicitation-analyst", "pricing-research"],
+    orgId
+  );
+}
+
+/** When pricing comps last came back from USASpending for this account. */
+export async function lastPricingSuccess(orgId?: string): Promise<Date | null> {
+  return lastAgentSuccess(["pricing-research"], orgId);
 }
 
 export async function recentAiTrouble(orgId?: string): Promise<ServiceTrouble> {

@@ -55,4 +55,10 @@ describe("what a failed revocation reports", () => {
     const form = readFileSync("components/account-forms.tsx", "utf8");
     expect(form).toContain('setMsg({ tone: "bad", text: data.error');
   });
+
+  it("lets a person confirm the default time zone instead of leaving Save dead", () => {
+    const form = readFileSync("components/account-forms.tsx", "utf8");
+    expect(form).toContain("zone === initial && !isDefault");
+    expect(form).not.toContain("disabled={busy || zone === initial}");
+  });
 });
