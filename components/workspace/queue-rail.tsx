@@ -28,9 +28,13 @@ const TONE_CLASS: Record<QueueTone, string> = {
 };
 
 export interface QueueEntry {
-  /** Stable identity, used for the React key only. */
+  /** Stable identity: the React key, and what `onSelect` is called with. */
   id: string;
-  href: string;
+  /**
+   * Where the row goes. Required for a rail whose selection lives in the URL,
+   * which is most of them; omitted for one driven by `onSelect`.
+   */
+  href?: string;
   title: string;
   /** The record it belongs to, e.g. the solicitation title. */
   context?: string | null;
@@ -55,6 +59,7 @@ export function QueueRail({
   summary,
   empty,
   toolbar,
+  onSelect,
   /** Rendered above the rows, under the toolbar. Filters, chips, a guide. */
   children,
 }: {
@@ -65,6 +70,18 @@ export function QueueRail({
   summary?: string;
   empty?: ReactNode;
   toolbar?: ReactNode;
+  /**
+   * Select without navigating.
+   *
+   * Every queue in the product puts its open item in the URL, and should: the
+   * back button works and a position is a link. One does not, and the reason
+   * is specific. The requirements workspace holds a rendered PDF beside the
+   * list, and navigating to change rows would tear that iframe down and
+   * refetch it on every press of J, which is the round trip that screen exists
+   * to remove. Where this is passed the rows are buttons; everywhere else they
+   * stay links.
+   */
+  onSelect?: (id: string) => void;
   children?: ReactNode;
 }) {
   const position = entries.findIndex((e) => e.id === selectedId);
@@ -111,12 +128,10 @@ export function QueueRail({
             const active = e.id === selectedId;
             return (
               <li key={e.id}>
-                <Link
+                <Row
                   href={e.href}
-                  aria-current={active ? "true" : undefined}
-                  className={`flex gap-3 border-b border-border/40 px-4 py-3 transition-colors hover:bg-foreground/[0.03] dark:border-white/5 ${
-                    active ? "bg-gold/10" : ""
-                  }`}
+                  onSelect={onSelect ? () => onSelect(e.id) : undefined}
+                  active={active}
                 >
                   <span
                     aria-hidden
@@ -163,12 +178,54 @@ export function QueueRail({
                       </span>
                     )}
                   </span>
-                </Link>
+                </Row>
               </li>
             );
           })}
         </ol>
       )}
     </div>
+  );
+}
+
+/**
+ * One row, as a link or as a button.
+ *
+ * The two are not interchangeable to a keyboard or a screen reader, and
+ * rendering a button as an anchor with `href="#"` -- which is what the first
+ * draft of the requirements rail did -- produces a control that announces
+ * itself as a link, does nothing when pressed, and puts a `#` in the address
+ * bar. So the element follows what the row actually does.
+ */
+function Row({
+  href,
+  onSelect,
+  active,
+  children,
+}: {
+  href?: string;
+  onSelect?: () => void;
+  active: boolean;
+  children: ReactNode;
+}) {
+  const className = `flex w-full gap-3 border-b border-border/40 px-4 py-3 text-left transition-colors hover:bg-foreground/[0.03] dark:border-white/5 ${
+    active ? "bg-gold/10" : ""
+  }`;
+  if (onSelect) {
+    return (
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-current={active ? "true" : undefined}
+        className={className}
+      >
+        {children}
+      </button>
+    );
+  }
+  return (
+    <Link href={href ?? "#"} aria-current={active ? "true" : undefined} className={className}>
+      {children}
+    </Link>
   );
 }

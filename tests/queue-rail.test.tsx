@@ -66,6 +66,25 @@ describe("the numbered rail", () => {
     expect(rail()).toContain('aria-current="true"');
   });
 
+  it("renders rows as buttons when selection does not navigate", () => {
+    /*
+     * A button rendered as an anchor with href="#" announces itself as a link,
+     * does nothing when pressed, and puts a hash in the address bar. The first
+     * draft of the requirements rail did exactly that.
+     */
+    const html = renderToStaticMarkup(
+      <QueueRail entries={entries(2)} selectedId={null} onSelect={() => {}} />
+    );
+    expect(html).toContain("<button");
+    expect(html).not.toContain('href="#"');
+  });
+
+  it("renders rows as links when selection is a URL", () => {
+    const html = rail();
+    expect(html).toContain('href="/q?i=id-0"');
+    expect(html).not.toContain("<button");
+  });
+
   it("renders its empty state instead of an empty list", () => {
     const html = renderToStaticMarkup(
       <QueueRail entries={[]} selectedId={null} empty={<p>Nothing here</p>} />

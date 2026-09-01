@@ -39,6 +39,56 @@ export interface SearchResult {
   cluster?: { count: number; href: string };
 }
 
+/**
+ * A result that can be read without leaving the search.
+ *
+ * Only two kinds, and the limit is honest rather than arbitrary: an
+ * opportunity and a subcontractor each have a peek loader and a drawer already
+ * built, and the other three do not. A contract row points at the contracts
+ * list, a message row at the conversation centre and a document row at the
+ * record it hangs off, so there is no single record id to preview even if
+ * there were something to show.
+ *
+ * Derived from the href rather than carried as a field, because the href is
+ * the one identity every result already has and adding a parallel id would
+ * give two places for them to disagree.
+ */
+export interface PeekTarget {
+  kind: "opportunity" | "subcontractor";
+  id: string;
+}
+
+const PEEKABLE: { kind: PeekTarget["kind"]; pattern: RegExp }[] = [
+  { kind: "opportunity", pattern: /^\/opportunity\/([0-9a-f-]{36})(?:[#?]|$)/i },
+  { kind: "subcontractor", pattern: /^\/subs\/([0-9a-f-]{36})(?:[#?]|$)/i },
+];
+
+export function peekTarget(result: Pick<SearchResult, "href">): PeekTarget | null {
+  for (const { kind, pattern } of PEEKABLE) {
+    const m = pattern.exec(result.href);
+    if (m) return { kind, id: m[1] };
+  }
+  return null;
+}
+
+/** The query parameter a peek is addressed by: "opportunity:<id>". */
+export function peekParam(target: PeekTarget): string {
+  return `${target.kind}:${target.id}`;
+}
+
+/** The inverse, refusing anything that is not one of the two kinds. */
+export function parsePeekParam(raw: string | string[] | undefined): PeekTarget | null {
+  const v = Array.isArray(raw) ? raw[0] : raw;
+  if (!v) return null;
+  const at = v.indexOf(":");
+  if (at <= 0) return null;
+  const kind = v.slice(0, at);
+  const id = v.slice(at + 1);
+  if (kind !== "opportunity" && kind !== "subcontractor") return null;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  return { kind, id };
+}
+
 export const KIND_LABEL: Record<ResultKind, string> = {
   opportunity: "Opportunity",
   subcontractor: "Subcontractor",

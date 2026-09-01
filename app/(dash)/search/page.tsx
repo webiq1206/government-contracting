@@ -7,11 +7,18 @@ import {
   KIND_LABEL,
   KIND_ORDER,
   KIND_PLURAL,
+  parsePeekParam,
+  peekParam,
+  peekTarget,
   type ResultKind,
   type SearchResult,
 } from "@/lib/domain/search-results";
 import { searchEverything } from "@/lib/search";
-import { currentOrg } from "@/lib/data";
+import { currentOrg, oppPeek, subPeek } from "@/lib/data";
+import { OppPeek } from "@/components/opp-peek";
+import { SubPeek } from "@/components/sub-peek";
+import { can } from "@/lib/domain/roles";
+import { currentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -72,11 +79,40 @@ export default async function SearchPage({
     return `/search?${p.toString()}`;
   })();
 
+  /*
+   * The open preview, as a query parameter.
+   *
+   * Every result used to navigate away, so answering "is this the one" cost a
+   * page load and a trip back to a search box that had been cleared. This is
+   * the same drawer the roster and the account table use, addressed by kind
+   * and id, so a preview is a link and the back button steps out of it.
+   */
+  const peek = parsePeekParam(searchParams?.peek);
+  const [viewer, peekedOpp, peekedSub] = await Promise.all([
+    currentUser().catch(() => null),
+    peek?.kind === "opportunity" ? oppPeek(peek.id) : Promise.resolve(null),
+    peek?.kind === "subcontractor" ? subPeek(peek.id) : Promise.resolve(null),
+  ]);
+
+  const peekHref = (value: string | null) => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (kind) p.set("kind", kind);
+    if (showAll) p.set("all", "1");
+    if (value) p.set("peek", value);
+    return `/search?${p.toString()}`;
+  };
+
   const hrefFor = (k: ResultKind | null) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
     if (k) p.set("kind", k);
     if (showAll) p.set("all", "1");
+    /*
+     * The preview is dropped when the kind filter changes. Keeping it would
+     * leave an opportunity open beside a list filtered to subcontractors,
+     * which reads as the filter having failed.
+     */
     return `/search?${p.toString()}`;
   };
 
@@ -91,7 +127,8 @@ export default async function SearchPage({
             : `${all.length} result${all.length === 1 ? "" : "s"}`
         }
       />
-      <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-5">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="scroll-thin min-w-0 flex-1 space-y-5 overflow-y-auto p-5">
         <form method="get" action="/search" className="flex flex-wrap items-center gap-2">
           <input
             type="search"
@@ -205,6 +242,15 @@ export default async function SearchPage({
                     {/* Outside the link, because it goes somewhere else: a
                         folded count nobody can open is a fact stated and then
                         withheld. */}
+                    {peekTarget(r) && (
+                      <Link
+                        href={peekHref(peekParam(peekTarget(r)!))}
+                        scroll={false}
+                        className="tap mt-1 inline-flex pl-3 text-xs text-muted-foreground underline-offset-2 hover:text-accent"
+                      >
+                        Quick look
+                      </Link>
+                    )}
                     {r.cluster && (
                       <Link
                         href={r.cluster.href}
@@ -219,6 +265,16 @@ export default async function SearchPage({
             </section>
           ))
         )}
+      </div>
+
+      {peekedOpp && <OppPeek data={peekedOpp} closeHref={peekHref(null)} />}
+      {peekedSub && (
+        <SubPeek
+          sub={peekedSub}
+          closeHref={peekHref(null)}
+          canManage={can(viewer?.orgRole, "manage_subs")}
+        />
+      )}
       </div>
     </>
   );
