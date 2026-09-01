@@ -601,7 +601,7 @@ export function computeSetupChecklist(i: SetupInputs): SetupChecklist {
     blocker: firstDone || discoveryReady
       ? undefined
       : "Nothing can be found until SAM.gov is connected and your NAICS codes are saved.",
-    href: "/opportunities",
+    href: "/pipeline",
     done: firstDone,
     required: false,
   });

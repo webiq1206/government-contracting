@@ -65,7 +65,7 @@ export default async function AccountSettingsPage() {
       <PageFrame
         title="Your account"
         explanation="Your details, what your role lets you do, your password, and every device signed in as you."
-        breadcrumbs={[{ label: "Settings", href: "/settings/notifications" }]}
+        breadcrumbs={[{ label: "Settings", href: "/settings/profile" }]}
         status={roleLabel(role)}
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">

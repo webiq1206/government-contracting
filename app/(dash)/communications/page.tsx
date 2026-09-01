@@ -154,7 +154,7 @@ export default async function CommunicationsPage({
             title="No mail either way yet"
             description="Conversations appear here once outreach runs on an opportunity you are pursuing, and once subcontractors write back."
             action={
-              <Link href="/opportunities" className="btn-ghost text-sm">
+              <Link href="/pipeline" className="btn-ghost text-sm">
                 Open Opportunities
               </Link>
             }

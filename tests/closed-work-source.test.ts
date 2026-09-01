@@ -97,6 +97,21 @@ describe("pass and abort stop leftover work", () => {
   });
 });
 
+describe("the opportunities page is the pipeline", () => {
+  it("does not send operators to a 404 named /opportunities", () => {
+    const comms = readFileSync("app/(dash)/communications/page.tsx", "utf8");
+    const setup = readFileSync("lib/domain/setup.ts", "utf8");
+    const knowledge = readFileSync("lib/domain/knowledge.ts", "utf8");
+    const how = readFileSync("app/(dash)/how-it-works/page.tsx", "utf8");
+    expect(comms).toContain('href="/pipeline"');
+    expect(comms).not.toContain('href="/opportunities"');
+    expect(setup).toContain('href: "/pipeline"');
+    expect(knowledge).toContain('recoveryHref: "/pipeline?closed=1"');
+    expect(knowledge).not.toContain('"/opportunities?status=archived"');
+    expect(how).toContain('opportunity: "/pipeline"');
+  });
+});
+
 describe("gmail is not shown as unused while it is connected", () => {
   it("does not render a second Google Inbox card next to the connect button", () => {
     expect(INTEGRATIONS_PAGE).toContain('i.id !== "gmail"');

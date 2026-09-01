@@ -36,6 +36,8 @@ const EXEMPT = new Map<string, string>([
   // page that does not exist.
   ["/settings", "Redirects to /settings/profile, which is swept."],
   ["/email-log", "Redirects to /communications, which is swept."],
+  ["/opportunities", "Redirects to /pipeline, which is swept."],
+  ["/admin", "Redirects to /admin/accounts, which is swept."],
   ["/terms", "Static legal copy."],
   // Record pages need a live id, which the sweep has no way to choose without
   // reaching into the database. Their layout is exercised by the pages above

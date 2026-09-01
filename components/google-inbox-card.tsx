@@ -68,13 +68,13 @@ export function GoogleInboxCard({ initial }: { initial: InboxConnection }) {
             live ? "bg-pursue/15 text-pursue" : "bg-review/15 text-review"
           }`}
         >
-          {live ? "Connected" : "Not connected"}
+          {live ? "Working" : "Not connected"}
         </span>
       </div>
 
       {live ? (
         <div className="rounded-md border border-border bg-muted/40 p-3">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Connected as</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Sending as</p>
           <p className="num mt-1 break-all text-sm font-medium text-foreground">
             {initial.email ?? "your Google account"}
           </p>

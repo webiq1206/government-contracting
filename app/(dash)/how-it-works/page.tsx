@@ -75,7 +75,7 @@ function articlesFromHelp(): Article[] {
     rules: "/settings/rules",
     integrations: "/settings/integrations",
     content: "/settings/content",
-    opportunity: "/opportunities",
+    opportunity: "/pipeline",
     "how-it-works": "/how-it-works",
   };
   return Object.entries(PAGE_HELP)
