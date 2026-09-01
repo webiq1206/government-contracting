@@ -318,8 +318,14 @@ export default async function AgentsPage({
                     )}
                     {st && st.runs_24h > 0 && (
                       <p className="mt-1 text-xs text-slate-500">
-                        {st.runs_24h} run{st.runs_24h === 1 ? "" : "s"} in 24h
-                        {st.errors_24h > 0 ? `, ${st.errors_24h} failed` : ""}
+                        {st.runs_24h === 1
+                          ? "1 run in 24h"
+                          : `${st.runs_24h} runs in 24h`}
+                        {st.errors_24h > 0
+                          ? st.errors_24h === 1
+                            ? ", 1 failed"
+                            : `, ${st.errors_24h} failed`
+                          : ""}
                       </p>
                     )}
                   </div>

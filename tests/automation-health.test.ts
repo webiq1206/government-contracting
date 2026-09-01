@@ -56,6 +56,14 @@ describe("classifyFailure", () => {
     expect(classifyFailure("   ")).toBe("unknown");
   });
 
+  it("reads an unreadable model reply as a known analysis failure", () => {
+    expect(
+      classifyFailure("completeJson failed after 2 attempts: unbalanced JSON in response")
+    ).toBe("model_output");
+    expect(causeSpec("model_output").title).toMatch(/unreadable/);
+    expect(causeSpec("model_output").blocking).toBe(false);
+  });
+
   it("marks the causes that stop work as blocking and the rest as not", () => {
     expect(causeSpec("provider_credit").blocking).toBe(true);
     expect(causeSpec("provider_auth").blocking).toBe(true);

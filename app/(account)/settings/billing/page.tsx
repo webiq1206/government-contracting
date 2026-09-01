@@ -440,7 +440,9 @@ export default async function BillingSettingsPage({
             <p className="text-sm leading-relaxed text-slate-600">
               There is no plan, no renewal date and no payment method on this account,
               because nothing is charged.
-              {org?.billing_exempt_reason ? ` ${org.billing_exempt_reason}.` : ""}{" "}
+              {org?.billing_exempt_reason
+                ? ` ${org.billing_exempt_reason.replace(/\.\s*$/, "")}.`
+                : ""}{" "}
               Every feature is available exactly as it is on a paid account.
             </p>
             <p className="text-xs leading-relaxed text-muted-foreground">

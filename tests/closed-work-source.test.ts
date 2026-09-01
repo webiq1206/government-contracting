@@ -137,6 +137,12 @@ describe("operator pages keep the names and chrome they already have", () => {
     expect(src).toContain('import("@/lib/integrations/storage")');
   });
 
+  it("does not contradict a working Claude card with never-used copy", () => {
+    const src = readFileSync("components/integration-manager.tsx", "utf8");
+    expect(src).toContain('def.state === "configured"');
+    expect(src).not.toContain("def.configured && !def.last_success_at && !def.last_tested_at");
+  });
+
   it("treats a successful scoring run as Claude having been used", () => {
     expect(INTEGRATIONS_PAGE).toContain("lastAiSuccess");
     expect(INTEGRATIONS_PAGE).toContain('def.id === "claude"');
