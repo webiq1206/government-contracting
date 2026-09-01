@@ -43,6 +43,9 @@ describe("active work lists hide aborted pursuits", () => {
     expect(DATA).toContain("export const ACTIVE_PURSUIT_SQL");
     expect(DATA).toContain("and ${ACTIVE_PURSUIT_SQL}");
     expect(DATA).toContain("WORKABLE_CALL_CARD_SQL");
+    expect(DATA).toContain("declined");
+    expect(DATA).toContain("not_a_fit");
+    expect(DATA).toContain("unavailable");
     expect(DATA).toContain("TRIAGE_WHERE_SQL");
   });
 
@@ -98,6 +101,13 @@ describe("pass and abort stop leftover work", () => {
 });
 
 describe("the opportunities page is the pipeline", () => {
+  it("does not send operators to a 404 named /automation", () => {
+    const page = readFileSync("app/(dash)/automation/page.tsx", "utf8");
+    const how = readFileSync("app/(dash)/how-it-works/page.tsx", "utf8");
+    expect(page).toContain('redirect("/agents")');
+    expect(how).toContain("automation: \"/agents\"");
+  });
+
   it("does not send operators to a 404 named /opportunities", () => {
     const comms = readFileSync("app/(dash)/communications/page.tsx", "utf8");
     const setup = readFileSync("lib/domain/setup.ts", "utf8");
@@ -135,6 +145,12 @@ describe("operator pages keep the names and chrome they already have", () => {
     expect(src).not.toMatch(/^import .*storage/m);
     expect(src).not.toMatch(/^import .*sub-compliance-store/m);
     expect(src).toContain('import("@/lib/integrations/storage")');
+  });
+
+  it("does not split need/needs across a line on a subcontractor plan", () => {
+    const src = readFileSync("components/guided-plan.tsx", "utf8");
+    expect(src).toContain("1 step needs something fixed.");
+    expect(src).not.toContain('need\n            {problems.length === 1 ? "s" : ""}');
   });
 
   it("does not contradict a working Claude card with never-used copy", () => {

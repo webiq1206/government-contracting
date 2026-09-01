@@ -66,6 +66,42 @@ describe("call-prep with calling off", () => {
     );
   });
 
+  it("does not reopen a declined pairing or write a new call card", async () => {
+    const { callPrep } = await import("@/lib/agents/call-prep");
+    areCallsEnabled.mockResolvedValue(true);
+    queryOne
+      .mockResolvedValueOnce({
+        id: "sub-1",
+        company_name: "Acme HVAC",
+        phone: "555-0100",
+      })
+      .mockResolvedValueOnce({
+        id: "opp-1",
+        title: "Base HVAC",
+        org_id: "org-1",
+      })
+      .mockResolvedValueOnce({
+        trade: "HVAC",
+        outreach_state: "declined",
+        verification_json: null,
+      });
+
+    const res = await callPrep.handler({
+      payload: { opportunityId: "opp-1", subcontractorId: "sub-1" },
+    } as never);
+
+    expect(res.ok).toBe(true);
+    expect(res.humanActionRequired).toBe(false);
+    expect(res.summary).toMatch(/declined/);
+    expect(query.mock.calls.map(([sql]) => sql).join("\n")).toMatch(/pairing_closed/);
+    expect(query.mock.calls.map(([sql]) => sql).join("\n")).not.toMatch(
+      /insert into call_cards/
+    );
+    expect(logAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: "call-prep", action: "skip-closed-pairing" })
+    );
+  });
+
   it("still reports ok when the record had already moved past the call stage", async () => {
     const { callPrep } = await import("@/lib/agents/call-prep");
     advancePastCallStep.mockResolvedValueOnce(false);

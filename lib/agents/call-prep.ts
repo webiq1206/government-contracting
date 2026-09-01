@@ -25,6 +25,7 @@ import { coerceQuestions, type CallQuestion } from "../domain/call-guide";
 import { suppressionBlocking } from "../suppressions";
 import { describeSuppression } from "../domain/suppression";
 import { actingOrgId } from "../tenant-context";
+import { isClosedOutreach } from "../domain/decline-closeout";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity, Subcontractor } from "../types";
 
@@ -141,13 +142,38 @@ export const callPrep: AgentDefinition = {
 
     const oppSub = await queryOne<{
       trade: string | null;
+      outreach_state: string | null;
       verification_json: { needs_project_history?: boolean } | null;
     }>(
-      `select trade, verification_json from opportunity_subs
+      `select trade, outreach_state, verification_json from opportunity_subs
        where opportunity_id=$1 and subcontractor_id=$2
        order by created_at asc limit 1`,
       [opportunityId, subcontractorId]
     );
+
+    if (isClosedOutreach(oppSub?.outreach_state)) {
+      await query(
+        `update call_cards
+            set status = 'skipped',
+                response_json = coalesce(response_json, '{}'::jsonb)
+                  || jsonb_build_object('skip_reason', 'pairing_closed')
+          where opportunity_id = $1 and subcontractor_id = $2 and status = 'pending'`,
+        [opportunityId, subcontractorId]
+      );
+      await logAgent({
+        agent: "call-prep",
+        action: "skip-closed-pairing",
+        opportunityId,
+        subcontractorId,
+        level: "info",
+        message: `No call card built: this pairing is already closed (${oppSub?.outreach_state}).`,
+      });
+      return {
+        ok: true,
+        summary: `No call card for ${sub.company_name}: pairing is ${oppSub?.outreach_state}.`,
+        humanActionRequired: false,
+      };
+    }
 
     /*
      * The operator said not to ring them, and this is the run that would
@@ -316,7 +342,8 @@ export const callPrep: AgentDefinition = {
       await query(
         `update opportunity_subs
            set outreach_state='responsive', responded_at=now()
-         where opportunity_id=$1 and subcontractor_id=$2`,
+         where opportunity_id=$1 and subcontractor_id=$2
+           and outreach_state not in ('declined','not_a_fit','unavailable')`,
         [opportunityId, subcontractorId]
       );
     }

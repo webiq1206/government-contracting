@@ -47,6 +47,12 @@ describe("sub readiness plan", () => {
     expect(plan.active?.status).toBe("blocked");
     expect(plan.active?.blockers).toHaveLength(3);
     expect(plan.active?.blockers?.[0].what).toBe("W-9 is not on file.");
+    expect(plan.active?.blockers?.[0].how).toContain("signed W-9");
+    expect(plan.active?.blockers?.[1].what).toBe("General liability insurance is not on file.");
+    expect(plan.active?.blockers?.[1].how).not.toContain("W-9");
+    expect(plan.active?.blockers?.[1].how).toContain("certificate");
+    expect(plan.active?.blockers?.[2].how).toContain("certificate");
+    expect(plan.active?.blockers?.[2].how).not.toContain("W-9");
     expect(plan.active?.blockers?.every((b) => b.href === "#compliance")).toBe(true);
   });
 

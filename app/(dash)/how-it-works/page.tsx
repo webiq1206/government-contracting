@@ -70,6 +70,7 @@ function articlesFromHelp(): Article[] {
     analytics: "/analytics",
     authority: "/authority",
     "email-log": "/communications",
+    automation: "/agents",
     agents: "/agents",
     profile: "/settings/profile",
     rules: "/settings/rules",

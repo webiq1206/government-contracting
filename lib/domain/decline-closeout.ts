@@ -13,6 +13,26 @@ import {
 
 export type DeclineCloseoutSource = "email_reply" | "call_workspace";
 
+/**
+ * Pairings that are finished. Call Prep must not reopen them, and leftover
+ * pending cards must not stay in the Call Queue.
+ */
+export const CLOSED_OUTREACH_STATES = [
+  "declined",
+  "not_a_fit",
+  "unavailable",
+] as const;
+export type ClosedOutreachState = (typeof CLOSED_OUTREACH_STATES)[number];
+
+export function isClosedOutreach(
+  state: string | null | undefined
+): state is ClosedOutreachState {
+  return (
+    state != null &&
+    (CLOSED_OUTREACH_STATES as readonly string[]).includes(state)
+  );
+}
+
 export interface DeclineThankYouInput {
   firstName?: string | null;
   companyName?: string | null;
