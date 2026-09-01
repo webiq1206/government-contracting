@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import { PageFrame } from "@/components/page-frame";
 import { RecapView } from "@/components/recap-view";
 import { RecapDayPicker } from "@/components/recap-day-picker";
+import { AdminAccountPeek } from "@/components/admin/account-peek";
+import { adminAccount } from "@/lib/admin/accounts";
+import { parsePeekParam } from "@/lib/domain/search-results";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import {
   addLocalDays,
@@ -32,7 +35,7 @@ export const dynamic = "force-dynamic";
 export default async function PlatformRecapPage({
   searchParams,
 }: {
-  searchParams?: { date?: string };
+  searchParams?: { date?: string; peek?: string };
 }) {
   const auth = await requirePlatformAdmin();
   if (auth instanceof Response) notFound();
@@ -55,6 +58,25 @@ export default async function PlatformRecapPage({
     partial: localDate === today,
   });
 
+  /*
+   * The open preview, restricted to accounts.
+   *
+   * Every row on this page points at an organization, and the two
+   * organization-scoped loaders would refuse them anyway: oppPeek and subPeek
+   * both scope to the CURRENT org, so a platform row naming another tenant's
+   * record resolves to nothing. Naming the allowed kind here rather than
+   * relying on that is the difference between a guard and a coincidence.
+   */
+  const peek = parsePeekParam(searchParams?.peek, ["account"]);
+  const peeked = peek ? await adminAccount(peek.id).catch(() => null) : null;
+  const peekHref = (value: string | null) => {
+    const p = new URLSearchParams();
+    if (requested) p.set("date", localDate);
+    if (value) p.set("peek", value);
+    const q = p.toString();
+    return q ? `/admin/recap?${q}` : "/admin/recap";
+  };
+
   return (
     <>
       <PageFrame
@@ -70,7 +92,8 @@ export default async function PlatformRecapPage({
           </Link>
         }
       />
-      <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="scroll-thin min-w-0 flex-1 space-y-4 overflow-y-auto p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="eyebrow-gold">Across every account</p>
@@ -84,10 +107,19 @@ export default async function PlatformRecapPage({
             today={today}
             yesterday={yesterday}
             earliest={addLocalDays(today, -90)}
+            basePath="/admin/recap"
           />
         </div>
 
-        <RecapView recap={recap} />
+        <RecapView
+          recap={recap}
+          peekKinds={["account"]}
+          peekHref={(v) => peekHref(v)}
+          openPeek={searchParams?.peek ?? null}
+        />
+      </div>
+
+      {peeked && <AdminAccountPeek account={peeked} closeHref={peekHref(null)} />}
       </div>
     </>
   );

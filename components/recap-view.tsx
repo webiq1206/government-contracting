@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Recap, RecapItem, RecapSection } from "@/lib/domain/recap/types";
 import { ageNote } from "@/lib/domain/recap/sections";
+import { peekParam, peekTarget, type PeekTarget } from "@/lib/domain/search-results";
 
 /**
  * The recap, on the page.
@@ -28,8 +29,26 @@ function toneClasses(section: RecapSection, item: RecapItem): string {
   return "border-border bg-surface";
 }
 
-function ItemRow({ section, item }: { section: RecapSection; item: RecapItem }) {
+function ItemRow({
+  section,
+  item,
+  peekKinds,
+  peekHref,
+  openPeek,
+}: {
+  section: RecapSection;
+  item: RecapItem;
+  peekKinds: readonly PeekTarget["kind"][];
+  peekHref: ((value: string) => string) | null;
+  openPeek: string | null;
+}) {
   const age = ageNote(item.ageDays);
+  /*
+   * The preview reads the record's address, not the row's link. Rows for work
+   * that can be finished point into the workbench; that is a queue address,
+   * not a record, so it carries the record separately for exactly this.
+   */
+  const peek = peekTarget({ href: item.recordHref ?? item.href }, peekKinds);
   const tag =
     item.reason ??
     (section.emphasis === "urgent"
@@ -61,6 +80,30 @@ function ItemRow({ section, item }: { section: RecapSection; item: RecapItem }) 
       {item.detail && <p className="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>}
       {item.when && <p className="mt-0.5 text-xs text-foreground/80">{item.when}</p>}
       {age && <p className="mt-1 text-xs italic text-muted-foreground">{age}</p>}
+      {/*
+        * Read the record without leaving the day.
+        *
+        * A recap is a digest whose every row points somewhere else: nine
+        * different destinations across the sections. Following one to find out
+        * what it is about costs the page, and the recap does not remember
+        * where you were in it. Offered only where there is a single record
+        * behind the row and a loader for it; the rest keep their link and
+        * nothing else, which is the honest answer.
+        */}
+      {peek && peekHref && (
+        <Link
+          href={peekHref(peekParam(peek))}
+          scroll={false}
+          aria-current={openPeek === peekParam(peek) ? "true" : undefined}
+          className={`tap mt-1.5 inline-flex text-xs underline-offset-2 hover:text-accent ${
+            openPeek === peekParam(peek)
+              ? "font-medium text-accent"
+              : "text-muted-foreground"
+          }`}
+        >
+          Quick look
+        </Link>
+      )}
     </li>
   );
 }
@@ -87,7 +130,17 @@ function Totals({ section }: { section: RecapSection }) {
   );
 }
 
-function Section({ section }: { section: RecapSection }) {
+function Section({
+  section,
+  peekKinds,
+  peekHref,
+  openPeek,
+}: {
+  section: RecapSection;
+  peekKinds: readonly PeekTarget["kind"][];
+  peekHref: ((value: string) => string) | null;
+  openPeek: string | null;
+}) {
   const urgent = section.emphasis === "urgent" && section.items.length > 0;
   const problem = section.emphasis === "problem" && section.items.length > 0;
 
@@ -118,7 +171,14 @@ function Section({ section }: { section: RecapSection }) {
       {section.items.length > 0 ? (
         <ul className="mt-2 space-y-2">
           {section.items.map((item) => (
-            <ItemRow key={item.key} section={section} item={item} />
+            <ItemRow
+              key={item.key}
+              section={section}
+              item={item}
+              peekKinds={peekKinds}
+              peekHref={peekHref}
+              openPeek={openPeek}
+            />
           ))}
         </ul>
       ) : (
@@ -130,7 +190,28 @@ function Section({ section }: { section: RecapSection }) {
   );
 }
 
-export function RecapView({ recap }: { recap: Recap }) {
+export function RecapView({
+  recap,
+  /**
+   * Which kinds of record this surface can actually load a preview for.
+   *
+   * The daily recap serves an organization's own opportunities and
+   * subcontractors; the platform recap serves accounts. They are not
+   * interchangeable: the record loaders are scoped to the current
+   * organization, and the account loader is platform-admin only. Passing the
+   * wrong list here would offer a control that opens nothing at best.
+   */
+  peekKinds = ["opportunity", "subcontractor"],
+  /** Builds the URL that opens a preview. Omitted disables previews entirely. */
+  peekHref = null,
+  /** The preview currently open, so its row can say so. */
+  openPeek = null,
+}: {
+  recap: Recap;
+  peekKinds?: readonly PeekTarget["kind"][];
+  peekHref?: ((value: string) => string) | null;
+  openPeek?: string | null;
+}) {
   if (recap.quiet) {
     return (
       <div className="card mx-auto max-w-2xl p-6 text-center">
@@ -160,7 +241,13 @@ export function RecapView({ recap }: { recap: Recap }) {
         </p>
       )}
       {recap.sections.map((section) => (
-        <Section key={section.key} section={section} />
+        <Section
+          key={section.key}
+          section={section}
+          peekKinds={peekKinds}
+          peekHref={peekHref}
+          openPeek={openPeek}
+        />
       ))}
       <p className="text-xs leading-relaxed text-muted-foreground">
         Every figure here comes from records in the app, counted for {recap.dayLabel} in{" "}

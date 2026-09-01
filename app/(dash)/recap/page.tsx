@@ -3,6 +3,10 @@ import { redirect } from "next/navigation";
 import { PageFrame } from "@/components/page-frame";
 import { RecapView } from "@/components/recap-view";
 import { RecapDayPicker } from "@/components/recap-day-picker";
+import { OppPeek } from "@/components/opp-peek";
+import { SubPeek } from "@/components/sub-peek";
+import { oppPeek, subPeek } from "@/lib/data";
+import { parsePeekParam } from "@/lib/domain/search-results";
 import { currentUser } from "@/lib/auth";
 import { queryOne } from "@/lib/db";
 import { can } from "@/lib/domain/roles";
@@ -35,7 +39,7 @@ export const dynamic = "force-dynamic";
 export default async function RecapPage({
   searchParams,
 }: {
-  searchParams?: { date?: string };
+  searchParams?: { date?: string; peek?: string };
 }) {
   const user = await currentUser().catch(() => null);
   if (!user) redirect("/login");
@@ -74,6 +78,31 @@ export default async function RecapPage({
   const isToday = localDate === today;
   const canManage = can(user.orgRole, "manage_rules");
 
+  /*
+   * The open preview, as a query parameter.
+   *
+   * Every row in a recap points somewhere else, across nine destinations, so
+   * finding out what one is about cost the page and the recap did not remember
+   * where you were in it. The drawer answers it in place, and the day stays in
+   * the URL beside it so a preview is still a link somebody can send.
+   *
+   * The kinds are the organization-scoped two. The platform recap passes
+   * `["account"]` instead, and the loaders enforce it again: oppPeek and
+   * subPeek both scope to the current organization.
+   */
+  const peek = parsePeekParam(searchParams?.peek);
+  const [peekedOpp, peekedSub] = await Promise.all([
+    peek?.kind === "opportunity" ? oppPeek(peek.id) : Promise.resolve(null),
+    peek?.kind === "subcontractor" ? subPeek(peek.id) : Promise.resolve(null),
+  ]);
+  const peekHref = (value: string | null) => {
+    const p = new URLSearchParams();
+    if (requested) p.set("date", localDate);
+    if (value) p.set("peek", value);
+    const q = p.toString();
+    return q ? `/recap?${q}` : "/recap";
+  };
+
   return (
     <>
       <PageFrame
@@ -96,7 +125,8 @@ export default async function RecapPage({
         }
       />
 
-      <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="scroll-thin min-w-0 flex-1 space-y-4 overflow-y-auto p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="eyebrow-gold">{isToday ? "Today so far" : "Recap for"}</p>
@@ -118,7 +148,21 @@ export default async function RecapPage({
           />
         </div>
 
-        <RecapView recap={recap} />
+        <RecapView
+          recap={recap}
+          peekHref={(v) => peekHref(v)}
+          openPeek={searchParams?.peek ?? null}
+        />
+      </div>
+
+      {peekedOpp && <OppPeek data={peekedOpp} closeHref={peekHref(null)} />}
+      {peekedSub && (
+        <SubPeek
+          sub={peekedSub}
+          closeHref={peekHref(null)}
+          canManage={can(user.orgRole, "manage_subs")}
+        />
+      )}
       </div>
     </>
   );

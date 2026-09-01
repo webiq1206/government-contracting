@@ -62,9 +62,21 @@ export async function GET(req: Request) {
         // A preview of live data should never be served from a cache; the
         // whole point is that it shows the account as it is right now.
         "Cache-Control": "no-store",
-        // It is rendered inside a sandboxed frame on our own page and nowhere
-        // else.
-        "X-Frame-Options": "SAMEORIGIN",
+        /*
+         * Framed by the settings page and nowhere else.
+         *
+         * Said with frame-ancestors rather than X-Frame-Options, because this
+         * response cannot win an argument with X-Frame-Options: the blanket
+         * DENY in next.config.mjs is already on it, a value set here is
+         * appended rather than substituted, and a browser handed two
+         * conflicting values takes the stricter one. The frame showed
+         * "refused to connect" from the day this preview shipped.
+         *
+         * A policy carrying frame-ancestors makes the browser ignore
+         * X-Frame-Options outright, which is both the modern spelling of the
+         * rule and the only one that can override an inherited header.
+         */
+        "Content-Security-Policy": "frame-ancestors 'self'",
       },
     });
   }

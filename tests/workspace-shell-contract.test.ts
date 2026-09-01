@@ -53,7 +53,10 @@ describe("the workspace shell itself", () => {
  * no exit. The flag has to come from the URL.
  */
 const HOSTS: { file: string; flag: string }[] = [
-  { file: "app/(dash)/workbench/page.tsx", flag: "const opened = Boolean(selectedKey);" },
+  {
+    file: "app/(dash)/workbench/page.tsx",
+    flag: "const opened = Boolean(selectedKey) && !missing;",
+  },
   { file: "app/(dash)/contracts/page.tsx", flag: "const opened = Boolean(searchParams?.c);" },
   { file: "app/(dash)/authority/page.tsx", flag: "const opened = Boolean(requested);" },
   { file: "app/(dash)/compliance/page.tsx", flag: "const opened = Boolean(requested);" },
@@ -140,4 +143,34 @@ describe("every workspace offers a way back on a phone", () => {
       expect(src).toMatch(/lg:hidden/);
     });
   }
+});
+
+describe("a link naming an item the queue no longer holds", () => {
+  /*
+   * The workbench is now linked to from outside itself: the daily recap points
+   * decisions, calls and flagged replies at `?i=<key>`, and those links are
+   * read hours after the queue that produced them.
+   *
+   * `resolveSelection` falls back to the first item, which is right when
+   * nobody asked for anything in particular and wrong when they did: opening
+   * an unrelated reply under a link that named a specific one is how somebody
+   * answers the wrong subcontractor. The page has to notice and say so.
+   */
+  const src = readFileSync("app/(dash)/workbench/page.tsx", "utf8");
+
+  it("is detected rather than silently swapped", () => {
+    expect(src).toContain(
+      "const missing = selectedKey != null && !shown.some((i) => i.key === selectedKey);"
+    );
+  });
+
+  it("opens nothing, so the fallback is never mistaken for the named item", () => {
+    expect(src).toContain("const selected = missing ? null : resolved;");
+  });
+
+  it("says what happened, in a live region", () => {
+    expect(src).toContain("{missing && (");
+    expect(src).toContain('role="status"');
+    expect(src).toContain("not in the queue any more");
+  });
 });
