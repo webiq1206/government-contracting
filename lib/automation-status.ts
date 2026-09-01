@@ -129,7 +129,7 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
  * backend. Null when the table is not there or Redis is in use, because
  * reporting those as zero is how a growing backlog stays invisible.
  */
-async function queueBacklogDepth(): Promise<number | null> {
+export async function queueBacklogDepth(): Promise<number | null> {
   const { config } = await import("./config");
   if (config.queue.backend !== "pgboss") return null;
   const { queryOne } = await import("./db");

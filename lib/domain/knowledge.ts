@@ -401,9 +401,9 @@ export const WORKFLOW_STEPS: WorkflowStep[] = [
       "Your own limit on how many are contacted in one run, which holds the rest back rather than dropping them.",
     ],
     recovery:
-      "Nothing sends while the inbox is disconnected. Reconnect it and a recovery sweep clears the backlog; the Email Log shows every attempt, including the ones that bounced.",
-    recoveryHref: "/email-log",
-    recoveryLabel: "Open the email log",
+      "Nothing sends while the inbox is disconnected. Reconnect it and a recovery sweep clears the backlog; Communications shows every attempt, including the ones that bounced.",
+    recoveryHref: "/communications",
+    recoveryLabel: "Open Communications",
     evidence: "emailed",
     settings: ["followup", "batch"],
     terms: ["outreach_state", "follow_up_due", "contact_status"],

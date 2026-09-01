@@ -123,7 +123,7 @@ export default async function ProfilePage() {
     <>
       <PageFrame
         help={PAGE_HELP["profile"]}
-        title="Company Profile"
+        title="Company"
         status={
           profile
             ? `Version ${profile.version} · updated ${shortDate(profile.updated_at)}`

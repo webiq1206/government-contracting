@@ -258,7 +258,7 @@ export default async function AccountSettingsPage() {
               <p className="mt-0.5 leading-relaxed text-muted-foreground">
                 Set on each table, above it, and remembered per page in this browser. Kept
                 there rather than here because comfortable rows suit the opportunity list and
-                compact ones suit the email log, and one switch for both would be wrong on one
+                compact ones suit Communications, and one switch for both would be wrong on one
                 of them.
               </p>
             </li>

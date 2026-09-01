@@ -69,7 +69,7 @@ function articlesFromHelp(): Article[] {
     compliance: "/compliance",
     analytics: "/analytics",
     authority: "/authority",
-    "email-log": "/email-log",
+    "email-log": "/communications",
     agents: "/agents",
     profile: "/settings/profile",
     rules: "/settings/rules",

@@ -241,7 +241,7 @@ export default async function BillingSettingsPage({
       <PageFrame
         title="Billing"
         explanation="What this account can do, what it is charged, and how to change either."
-        breadcrumbs={[{ label: "Settings", href: "/settings" }]}
+        breadcrumbs={[{ label: "Settings", href: "/settings/profile" }]}
         status={accountFacts.effective.value}
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">

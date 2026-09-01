@@ -8,7 +8,7 @@ import { GoogleInboxCard } from "@/components/google-inbox-card";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-settings";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
-import { recentAiTrouble, troubleSummary } from "@/lib/integration-health";
+import { lastAiSuccess, recentAiTrouble, troubleSummary } from "@/lib/integration-health";
 import { gmail } from "@/lib/integrations/gmail";
 import { integrationState } from "@/lib/domain/integration-state";
 import { queryOne } from "@/lib/db";
@@ -32,7 +32,7 @@ export default async function IntegrationsPage({
   searchParams?: { gmail?: string; gmailError?: string };
 }) {
   await hydrateIntegrationEnv();
-  const [sources, inbox, aiTrouble, gmailUsed] = await Promise.all([
+  const [sources, inbox, aiTrouble, gmailUsed, claudeUsed] = await Promise.all([
     settingSources(),
     gmail
       .connection()
@@ -51,6 +51,7 @@ export default async function IntegrationsPage({
         )
       )
       .catch(() => null),
+    lastAiSuccess().catch(() => null),
   ]);
   const gmailConnected = inbox.connected;
   // Platform-owned integrations (our Ahrefs, our document storage) are hidden
@@ -134,7 +135,11 @@ export default async function IntegrationsPage({
         // Ranked above a test wherever both exist: a test says the credential
         // parses, a successful call says the thing works for what it is for.
         lastSuccessAt:
-          def.id === "gmail" ? (def.last_success_at ?? gmailUsed?.at ?? null) : def.last_success_at,
+          def.id === "gmail"
+            ? (def.last_success_at ?? gmailUsed?.at ?? null)
+            : def.id === "claude"
+              ? (def.last_success_at ?? claudeUsed ?? null)
+              : def.last_success_at,
         // Only the OAuth one has a connection that can lapse. Undefined for
         // the key-based integrations, which have nothing to expire.
         connectionLive: def.id === "gmail" ? gmailConnected : undefined,

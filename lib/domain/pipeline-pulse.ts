@@ -261,7 +261,7 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
           }. It is waiting on the "${input.workerPhase}" step, so nothing is being found, emailed, or followed up yet. ` +
           "It keeps retrying on its own. If this does not clear within a few minutes, restart the deployment.",
       href: "/agents",
-      cta: "Open the Automation Log",
+      cta: "Open Automation Health",
     });
     return findings;
   }
@@ -284,7 +284,7 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
           : `Nothing has run for ${Math.floor(workerAge!)} hour(s). New deals are not being found and no emails are going out. On Replit this means the app is not deployed as an always-on process: use a Reserved VM deployment (an Autoscale deployment sleeps between visits, which stops all background work).` +
             lastSeen,
       href: "/agents",
-      cta: "Open the Automation Log",
+      cta: "Open Automation Health",
     });
     // Everything below depends on the worker; one alarm is a diagnosis,
     // four alarms with one cause is noise.
@@ -304,7 +304,7 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
         workerAge
       )} hour(s), which usually means automation is paused or nothing was due.`,
       href: "/agents",
-      cta: "Open the Automation Log",
+      cta: "Open Automation Health",
     });
   }
 
@@ -334,7 +334,7 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
                 } once the worker is up; you can also run it now from the Agents page.`
               : `The Opportunity Monitor last completed ${Math.floor(monitorAge ?? 0)} hour(s) ago; it should run ${
                   input.monitorCadence ? input.monitorCadence.toLowerCase() : "on a schedule"
-                }. Check the Automation Log for what stopped it, or run it now from the Agents page.`,
+                }. Check Automation Health for what stopped it, or run it now from that page.`,
           href: "/agents",
           cta: "Run it now",
         });

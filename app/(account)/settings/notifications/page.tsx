@@ -50,7 +50,7 @@ export default async function NotificationSettingsPage() {
       <PageFrame
         title="Notifications"
         explanation="Which alerts reach you by email, which live only in the product, and which cannot be switched off."
-        breadcrumbs={[{ label: "Settings", href: "/settings" }]}
+        breadcrumbs={[{ label: "Settings", href: "/settings/profile" }]}
         status={
           emailed.length === 0
             ? "No email reaches this account"

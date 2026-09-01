@@ -112,6 +112,37 @@ describe("the opportunities page is the pipeline", () => {
   });
 });
 
+describe("operator pages keep the names and chrome they already have", () => {
+  it("sends mail recovery to Communications, not the old email-log name", () => {
+    const knowledge = readFileSync("lib/domain/knowledge.ts", "utf8");
+    const recap = readFileSync("lib/domain/recap/sections.ts", "utf8");
+    const how = readFileSync("app/(dash)/how-it-works/page.tsx", "utf8");
+    expect(knowledge).toContain('recoveryHref: "/communications"');
+    expect(knowledge).not.toContain('recoveryHref: "/email-log"');
+    expect(recap).toContain('href: "/communications"');
+    expect(recap).not.toContain('href: "/email-log"');
+    expect(how).toContain('"email-log": "/communications"');
+  });
+
+  it("keeps the desktop sidebar on subscribed billing pages", () => {
+    const layout = readFileSync("app/(account)/layout.tsx", "utf8");
+    expect(layout).toContain("<Nav");
+    expect(layout).toContain("todayCount={counts.today}");
+  });
+
+  it("does not load file storage just to open the Feedback page", () => {
+    const src = readFileSync("lib/feedback.ts", "utf8");
+    expect(src).not.toMatch(/^import .*storage/m);
+    expect(src).not.toMatch(/^import .*sub-compliance-store/m);
+    expect(src).toContain('import("@/lib/integrations/storage")');
+  });
+
+  it("treats a successful scoring run as Claude having been used", () => {
+    expect(INTEGRATIONS_PAGE).toContain("lastAiSuccess");
+    expect(INTEGRATIONS_PAGE).toContain('def.id === "claude"');
+  });
+});
+
 describe("gmail is not shown as unused while it is connected", () => {
   it("does not render a second Google Inbox card next to the connect button", () => {
     expect(INTEGRATIONS_PAGE).toContain('i.id !== "gmail"');

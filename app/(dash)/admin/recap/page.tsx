@@ -82,7 +82,7 @@ export default async function PlatformRecapPage({
       <PageFrame
         title="Platform Recap"
         explanation="What happened across every account on one day: what broke, whose mail did not arrive, and who has gone quiet."
-        breadcrumbs={[{ label: "Admin", href: "/admin/health" }]}
+        breadcrumbs={[{ label: "Platform admin", href: "/admin/accounts" }]}
         status={
           recap.urgentCount > 0 ? `${recap.urgentCount} needing attention` : "Nothing urgent"
         }

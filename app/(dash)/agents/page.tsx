@@ -393,7 +393,7 @@ export default async function AgentsPage({
               name="q"
               defaultValue={q}
               placeholder="Search messages…"
-              aria-label="Search the automation log"
+              aria-label="Search Automation Health"
             />
             <select
               className="select w-auto"

@@ -30,7 +30,7 @@ export default async function FeedbackPage() {
     return (
       <>
         <PageFrame
-          title="Feedback"
+          title="Feedback and feature requests"
           explanation="Tell us what is wrong with this product."
         />
         <div className="p-5">
@@ -43,7 +43,7 @@ export default async function FeedbackPage() {
     );
   }
 
-  const previous = await feedbackFor(ctx.orgId, 10);
+  const previous = await feedbackFor(ctx.orgId, 10).catch(() => []);
 
   return (
     <>

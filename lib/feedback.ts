@@ -1,6 +1,4 @@
 import { query, queryOne } from "@/lib/db";
-import { storage } from "@/lib/integrations/storage";
-import { ALLOWED_UPLOAD_MIME, MAX_UPLOAD_BYTES } from "@/lib/sub-compliance-store";
 import {
   isFeedbackCategory,
   messageProblem,
@@ -78,6 +76,17 @@ export async function submitFeedback(input: FeedbackInput): Promise<FeedbackOutc
   if (input.screenshot && input.screenshot.size > 0) {
     const file = input.screenshot;
     const mime = file.type || "application/octet-stream";
+    /*
+     * Storage and the upload allow-list are loaded here, not at the top of
+     * this module. The Feedback page only needs to list reports. Importing
+     * those modules pulled PDF rendering and W-9 crypto into the page's
+     * server graph, and a failure anywhere in that graph 500'd the form
+     * before anyone could type a word.
+     */
+    const [{ storage }, { ALLOWED_UPLOAD_MIME, MAX_UPLOAD_BYTES }] = await Promise.all([
+      import("@/lib/integrations/storage"),
+      import("@/lib/sub-compliance-store"),
+    ]);
     if (file.size > MAX_UPLOAD_BYTES) {
       screenshotProblem = "The screenshot was over 12 MB, so it was not attached. The report was sent without it.";
     } else if (!ALLOWED_UPLOAD_MIME.has(mime) && !/\.(png|jpe?g|gif|webp)$/i.test(file.name)) {

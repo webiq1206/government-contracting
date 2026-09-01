@@ -388,10 +388,10 @@ export default async function CompliancePage({
         <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
           <EmptyState
             title="Compliance Monitor has not run yet"
-            description="Trigger Compliance Monitor from Automation Log, or add your own renewal items below to start tracking dates."
+            description="Trigger Compliance Monitor from Automation Health, or add your own renewal items below to start tracking dates."
             action={
               <Link href="/agents" className="btn-ghost text-sm">
-                Open Automation Log
+                Open Automation Health
               </Link>
             }
           />
