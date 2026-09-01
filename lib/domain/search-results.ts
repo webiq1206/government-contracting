@@ -54,17 +54,39 @@ export interface SearchResult {
  * give two places for them to disagree.
  */
 export interface PeekTarget {
-  kind: "opportunity" | "subcontractor";
+  kind: "opportunity" | "subcontractor" | "account";
   id: string;
 }
 
 const PEEKABLE: { kind: PeekTarget["kind"]; pattern: RegExp }[] = [
   { kind: "opportunity", pattern: /^\/opportunity\/([0-9a-f-]{36})(?:[#?]|$)/i },
   { kind: "subcontractor", pattern: /^\/subs\/([0-9a-f-]{36})(?:[#?]|$)/i },
+  /*
+   * An organization, for the platform recap, whose rows all point at accounts.
+   *
+   * Kept in the same list rather than a parallel one so a caller cannot offer a
+   * preview it has no loader for, but note that the three are NOT
+   * interchangeable across scopes: the opportunity and subcontractor loaders
+   * are scoped to the current organization, so a platform surface must not
+   * offer those, and the account loader is platform-admin only, so a customer
+   * surface must not offer this one. Each caller passes the kinds it can
+   * actually serve.
+   */
+  { kind: "account", pattern: /^\/admin\/accounts\/([0-9a-f-]{36})(?:[#?]|$)/i },
 ];
 
-export function peekTarget(result: Pick<SearchResult, "href">): PeekTarget | null {
+export function peekTarget(
+  result: { href?: string | null },
+  /**
+   * The kinds this surface can actually load. Omitted means the two
+   * organization-scoped ones, which is what search and the daily recap serve;
+   * the platform recap passes `["account"]`.
+   */
+  kinds: readonly PeekTarget["kind"][] = ["opportunity", "subcontractor"]
+): PeekTarget | null {
+  if (!result.href) return null;
   for (const { kind, pattern } of PEEKABLE) {
+    if (!kinds.includes(kind)) continue;
     const m = pattern.exec(result.href);
     if (m) return { kind, id: m[1] };
   }
@@ -77,15 +99,27 @@ export function peekParam(target: PeekTarget): string {
 }
 
 /** The inverse, refusing anything that is not one of the two kinds. */
-export function parsePeekParam(raw: string | string[] | undefined): PeekTarget | null {
+export function parsePeekParam(
+  raw: string | string[] | undefined,
+  /**
+   * The kinds the reading surface may serve. Enforced here as well as at the
+   * link, because the parameter arrives from a URL somebody can edit and a
+   * customer surface must never resolve `account:<id>` into the platform-admin
+   * loader.
+   */
+  allowed: readonly PeekTarget["kind"][] = ["opportunity", "subcontractor"]
+): PeekTarget | null {
   const v = Array.isArray(raw) ? raw[0] : raw;
   if (!v) return null;
   const at = v.indexOf(":");
   if (at <= 0) return null;
   const kind = v.slice(0, at);
   const id = v.slice(at + 1);
-  if (kind !== "opportunity" && kind !== "subcontractor") return null;
+  if (kind !== "opportunity" && kind !== "subcontractor" && kind !== "account") {
+    return null;
+  }
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  if (!allowed.includes(kind)) return null;
   return { kind, id };
 }
 

@@ -71,6 +71,16 @@ export interface RecapItem {
   title: string;
   detail?: string;
   href?: string;
+  /**
+   * The record's own page, when `href` goes somewhere the work gets done.
+   *
+   * A row for a borderline opportunity links into the workbench, which is
+   * where the decision is actually made. That link is not a record address,
+   * so the preview pane has nothing to read it from. This is that address,
+   * carried separately: what the row is about, as opposed to where the row
+   * takes you.
+   */
+  recordHref?: string;
   /** Mornings this item has already appeared on. 0 means it is new today. */
   ageDays?: number;
   /** Why it is urgent, when it is. */

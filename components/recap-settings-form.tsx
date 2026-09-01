@@ -195,9 +195,99 @@ export function RecapSettingsForm({
   const threshold = (key: keyof RecapSettings["urgent"]) => (value: number) =>
     setForm((f) => ({ ...f, urgent: { ...f.urgent, [key]: value } }));
 
+  const sendsNeedingADecision = history.filter((h) => canRetry(h)).length;
+
   return (
     <fieldset disabled={readOnly} className="contents">
-      <div className="space-y-5">
+      <div className="lg:flex lg:items-start lg:gap-5">
+        {/*
+          * The rail.
+          *
+          * Six groups of settings, several hundred lines of them, and the two
+          * questions people actually arrive with -- "who is getting this" and
+          * "did yesterday's go out" -- sit furthest down. Reaching either meant
+          * scrolling past everything else, and the Save button was somewhere in
+          * the middle of that scroll.
+          *
+          * So the sections are named up front, each with the state that would
+          * make you pick it, and the save control rides along. Wide screens
+          * only: on a phone the sections are already one column in the order
+          * you read them, and a rail above them would be a second list to
+          * scroll past before reaching the first.
+          */}
+        <nav
+          aria-label="Recap settings"
+          className="hidden lg:sticky lg:top-0 lg:block lg:w-[220px] lg:shrink-0 lg:self-start"
+        >
+          <ul className="space-y-0.5">
+            {[
+              {
+                id: "recap-send",
+                label: "The morning send",
+                note: form.enabled ? form.send_at : "off",
+                warn: !form.enabled,
+              },
+              {
+                id: "recap-sections",
+                label: "Sections",
+                note: `${form.sections.length} of ${RECAP_SECTION_KEYS.length}`,
+                warn: form.sections.length === 0,
+              },
+              {
+                id: "recap-recipients",
+                label: "Recipients",
+                note: String(members.filter((m) => m.receiving).length),
+                warn: members.every((m) => !m.receiving),
+              },
+              { id: "recap-urgent", label: "What counts as urgent", note: null, warn: false },
+              { id: "recap-preview", label: "Preview and test", note: null, warn: false },
+              {
+                id: "recap-history",
+                label: "What actually went out",
+                note: sendsNeedingADecision > 0 ? `${sendsNeedingADecision} to decide` : null,
+                warn: sendsNeedingADecision > 0,
+              },
+            ].map((s) => (
+              <li key={s.id}>
+                <a
+                  href={`#${s.id}`}
+                  className="tap flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-accent-soft hover:text-foreground"
+                >
+                  <span>{s.label}</span>
+                  {s.note && (
+                    <span
+                      className={`num shrink-0 text-xs ${
+                        s.warn ? "text-risk" : "text-muted-foreground"
+                      }`}
+                    >
+                      {s.note}
+                    </span>
+                  )}
+                </a>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-3 border-t border-border pt-3">
+            <button
+              type="button"
+              className="btn-primary w-full"
+              onClick={save}
+              disabled={saving || !dirty}
+            >
+              {saving ? "Saving..." : "Save settings"}
+            </button>
+            <p className="mt-1.5 text-xs text-muted-foreground" aria-live="polite">
+              {dirty && !saving
+                ? "Unsaved changes."
+                : savedAt
+                  ? `Saved at ${savedAt}`
+                  : "Nothing changed yet."}
+            </p>
+          </div>
+        </nav>
+
+        <div className="min-w-0 flex-1 space-y-5">
         {!mailReady && (
           <p className="rounded-md border border-risk/50 bg-risk/5 px-3 py-2 text-sm text-foreground">
             <strong className="text-risk">No recap can be delivered right now.</strong> The
@@ -218,7 +308,7 @@ export function RecapSettingsForm({
         )}
 
         {/* 1. Whether it runs, and when. */}
-        <section className="card p-4">
+        <section id="recap-send" className="card scroll-mt-4 p-4">
           <h2 className="font-display text-base font-semibold text-foreground">
             The morning send
           </h2>
@@ -295,7 +385,7 @@ export function RecapSettingsForm({
         </section>
 
         {/* 2. What is in it. */}
-        <section className="card p-4">
+        <section id="recap-sections" className="card scroll-mt-4 p-4">
           <h2 className="font-display text-base font-semibold text-foreground">Sections</h2>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             Turn off what you do not read. The order never changes, whatever you pick: the
@@ -330,7 +420,7 @@ export function RecapSettingsForm({
         </section>
 
         {/* 3. Who gets it. */}
-        <section className="card p-4">
+        <section id="recap-recipients" className="card scroll-mt-4 p-4">
           <h2 className="font-display text-base font-semibold text-foreground">Recipients</h2>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             By role, with exceptions by name. Everybody on the account sees the same recap;
@@ -408,7 +498,7 @@ export function RecapSettingsForm({
         </section>
 
         {/* 4. What counts as urgent. */}
-        <section className="card p-4">
+        <section id="recap-urgent" className="card scroll-mt-4 p-4">
           <h2 className="font-display text-base font-semibold text-foreground">
             What counts as urgent
           </h2>
@@ -460,7 +550,13 @@ export function RecapSettingsForm({
           </div>
         </section>
 
-        <div className="flex flex-wrap items-center gap-3">
+        {/*
+          * The narrow-screen copy of the save control. On a wide screen the
+          * rail carries it and stays on screen, so exactly one of the two is
+          * ever visible: a settings page with two Save buttons in view is a
+          * page somebody presses twice.
+          */}
+        <div className="flex flex-wrap items-center gap-3 lg:hidden">
           <button type="button" className="btn-primary" onClick={save} disabled={saving || !dirty}>
             {saving ? "Saving..." : "Save settings"}
           </button>
@@ -471,7 +567,7 @@ export function RecapSettingsForm({
         </div>
 
         {/* 5. Check it, send it, see what went out. */}
-        <section className="card p-4">
+        <section id="recap-preview" className="card scroll-mt-4 p-4">
           <h2 className="font-display text-base font-semibold text-foreground">
             Preview and test
           </h2>
@@ -510,73 +606,13 @@ export function RecapSettingsForm({
           )}
         </section>
 
-        <section className="card p-4">
-          <h2 className="font-display text-base font-semibold text-foreground">
-            What actually went out
-          </h2>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            The delivery record, including failures. A failed send keeps the mail that was
-            written for that morning, so a retry sends that copy rather than a fresh recap
-            describing a different day.
-          </p>
-
-          {history.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">Nothing has been sent yet.</p>
-          ) : (
-            <ul className="mt-3 space-y-2">
-              {history.map((h) => (
-                <li
-                  key={h.id}
-                  className="panel-inset flex flex-wrap items-start justify-between gap-2 rounded-md px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm text-foreground">
-                      {h.subject ?? "Nothing to report, so no email was sent"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {h.localDate} · {h.recipientEmail} · {h.timezone}
-                      {h.test ? " · test" : ""}
-                      {h.late ? " · late" : ""}
-                      {h.attempts > 1 ? ` · ${h.attempts} attempts` : ""}
-                    </p>
-                    {h.error && <p className="mt-0.5 text-xs text-risk">{h.error}</p>}
-                    {h.status === "pending" && isStuck(h) && (
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        This one was handed to the mail service and never confirmed, so we cannot
-                        tell whether it arrived. Nothing was sent again automatically, because a
-                        second copy is the one thing that cannot be undone. Send it again if the
-                        recipient says it never came.
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={
-                        h.status === "sent"
-                          ? "rounded border border-pursue/50 bg-pursue/10 px-1.5 py-0.5 text-xs text-pursue-strong"
-                          : h.status === "pending"
-                            ? "rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground"
-                            : "rounded border border-risk/50 bg-risk/10 px-1.5 py-0.5 text-xs text-risk"
-                      }
-                    >
-                      {h.status === "pending" && isStuck(h) ? "not confirmed" : h.status}
-                    </span>
-                    {(h.status === "failed" || h.status === "bounced" || isStuck(h)) && (
-                      <button
-                        type="button"
-                        className="btn-secondary text-xs"
-                        onClick={() => retry(h.id)}
-                        disabled={retrying === h.id}
-                      >
-                        {retrying === h.id ? "Sending..." : "Send it again"}
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        <DeliveryHistory
+          history={history}
+          retry={retry}
+          retrying={retrying}
+          readOnly={readOnly}
+        />
+        </div>
       </div>
     </fieldset>
   );
@@ -610,5 +646,230 @@ function Threshold({
       />
       <span className="text-xs text-muted-foreground">{suffix}</span>
     </label>
+  );
+}
+/** The status word, and the colour that only ever repeats it. */
+function statusLabel(h: RecapDeliveryRow): string {
+  return h.status === "pending" && isStuck(h) ? "not confirmed" : h.status;
+}
+
+function statusClasses(h: RecapDeliveryRow): string {
+  if (h.status === "sent") {
+    return "rounded border border-pursue/50 bg-pursue/10 px-1.5 py-0.5 text-xs text-pursue-strong";
+  }
+  if (h.status === "pending") {
+    return "rounded border border-border px-1.5 py-0.5 text-xs text-muted-foreground";
+  }
+  return "rounded border border-risk/50 bg-risk/10 px-1.5 py-0.5 text-xs text-risk";
+}
+
+function canRetry(h: RecapDeliveryRow): boolean {
+  return h.status === "failed" || h.status === "bounced" || isStuck(h);
+}
+
+/**
+ * What actually went out, with the mail itself beside the list.
+ *
+ * The delivery record has always kept the rendered copy: that is what makes a
+ * retry send the mail written for that morning rather than a fresh recap
+ * describing a different day. Nobody could read it. The history showed a
+ * subject, an address and, on a bad morning, a provider's error string, and
+ * the only way to answer "what did they actually receive" was to ask them to
+ * forward it back.
+ *
+ * So: the sends on the left, the one you picked on the right, in a frame, as
+ * it arrived. Deciding whether to resend is reading the thing and then
+ * pressing the button, and both are now in one place.
+ *
+ * The selection is client state rather than a query parameter on purpose. It
+ * lives inside a settings form that holds unsaved edits, and navigating to
+ * carry a selection in the URL would throw them away. That makes the phone
+ * rule stricter, not looser: with no URL to return to, the pane must start
+ * closed and must carry its own way back to the list.
+ */
+function DeliveryHistory({
+  history,
+  retry,
+  retrying,
+  readOnly,
+}: {
+  history: RecapDeliveryRow[];
+  retry: (id: string) => void;
+  retrying: string | null;
+  readOnly: boolean;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [opened, setOpened] = useState(false);
+  const selected = history.find((h) => h.id === selectedId) ?? null;
+  const problems = history.filter((h) => canRetry(h)).length;
+
+  function open(id: string) {
+    setSelectedId(id);
+    setOpened(true);
+  }
+
+  return (
+    <section id="recap-history" className="card scroll-mt-4 p-4">
+      <h2 className="font-display text-base font-semibold text-foreground">
+        What actually went out
+      </h2>
+      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+        The delivery record, including failures. Pick one to read the mail
+        exactly as it was sent. A failed send keeps its copy, so a retry sends
+        that copy rather than a fresh recap describing a different day.
+      </p>
+
+      {history.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Nothing has been sent yet.
+        </p>
+      ) : (
+        <div className="mt-3 lg:flex lg:items-start lg:gap-4">
+          <div
+            className={`${opened ? "hidden lg:block" : "block"} lg:w-[320px] lg:shrink-0`}
+          >
+            {problems > 0 && (
+              <p className="mb-2 text-xs text-risk">
+                {problems === 1
+                  ? "1 send needs a decision."
+                  : `${problems} sends need a decision.`}
+              </p>
+            )}
+            <ul className="scroll-thin space-y-2 lg:max-h-[520px] lg:overflow-y-auto lg:pr-1">
+              {history.map((h) => {
+                const active = h.id === selectedId;
+                return (
+                  <li key={h.id}>
+                    <button
+                      type="button"
+                      onClick={() => open(h.id)}
+                      aria-current={active ? "true" : undefined}
+                      className={`panel-inset w-full rounded-md px-3 py-2 text-left transition-colors ${
+                        active
+                          ? "ring-1 ring-gold"
+                          : "hover:border-foreground/30"
+                      }`}
+                    >
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm text-foreground">
+                            {h.subject ??
+                              "Nothing to report, so no email was sent"}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {h.localDate} · {h.recipientEmail}
+                            {h.test ? " · test" : ""}
+                            {h.late ? " · late" : ""}
+                          </span>
+                        </span>
+                        <span className={`${statusClasses(h)} shrink-0`}>
+                          {statusLabel(h)}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <div
+            className={`${opened ? "block" : "hidden lg:block"} min-w-0 flex-1`}
+          >
+            {selected ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setOpened(false)}
+                  className="btn-ghost mb-2 text-xs lg:hidden"
+                >
+                  Back to the list
+                </button>
+
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      {selected.subject ??
+                        "Nothing to report, so no email was sent"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {selected.localDate} · {selected.recipientEmail} ·{" "}
+                      {selected.timezone}
+                      {selected.attempts > 1
+                        ? ` · ${selected.attempts} attempts`
+                        : ""}
+                      {selected.sentAt
+                        ? ` · sent ${new Date(selected.sentAt).toLocaleString()}`
+                        : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={statusClasses(selected)}>
+                      {statusLabel(selected)}
+                    </span>
+                    {canRetry(selected) && !readOnly && (
+                      <button
+                        type="button"
+                        className="btn-secondary text-xs"
+                        onClick={() => retry(selected.id)}
+                        disabled={retrying === selected.id}
+                      >
+                        {retrying === selected.id
+                          ? "Sending..."
+                          : "Send it again"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {selected.error && (
+                  <p className="mt-2 rounded-md border border-risk/50 bg-risk/5 px-3 py-2 text-xs text-foreground">
+                    <strong className="text-risk">
+                      The mail service refused it.
+                    </strong>{" "}
+                    {selected.error}
+                  </p>
+                )}
+
+                {selected.status === "pending" && isStuck(selected) && (
+                  <p className="mt-2 rounded-md border border-review/50 bg-review/5 px-3 py-2 text-xs text-foreground">
+                    This one was handed to the mail service and never confirmed,
+                    so we cannot tell whether it arrived. Nothing was sent again
+                    automatically, because a second copy is the one thing that
+                    cannot be undone. Send it again if the recipient says it
+                    never came.
+                  </p>
+                )}
+
+                {selected.quiet && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    A quiet morning: the short variant was sent rather than
+                    eight empty sections.
+                  </p>
+                )}
+
+                {/*
+                 * The stored copy, sandboxed. Same treatment as the live
+                 * preview above: it is mail written elsewhere, rendered on our
+                 * page, and it gets no script and no origin.
+                 */}
+                <iframe
+                  key={selected.id}
+                  title={`Recap sent to ${selected.recipientEmail} for ${selected.localDate}`}
+                  src={`/api/recap/deliveries/${selected.id}/html`}
+                  sandbox=""
+                  className="mt-3 h-[520px] w-full rounded-md border border-border bg-white"
+                />
+              </div>
+            ) : (
+              <p className="panel-inset rounded-md p-5 text-sm text-muted-foreground">
+                Pick a send to read the mail that went out, and to decide
+                whether it needs sending again.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

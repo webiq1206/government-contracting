@@ -257,6 +257,78 @@ row points at the list, a message row at the conversation centre, and a
 document row at whatever record it hangs off, so there is no single record to
 preview even if there were a loader for it.
 
+### 13. The recap described the work and could not finish any of it
+
+The daily recap and the workbench name the same things in different words. The
+recap says "Rivera Mechanical is waiting on an answer" and "pursue or pass on
+this one"; the workbench holds the item that answers them. Every recap row
+linked to a page where the thing could be *read* -- the opportunity record, the
+call queue, the subcontractor's file -- so a morning list of eleven things was
+eleven trips out to find the control that finishes each one.
+
+The task-shaped rows now point at `/workbench?i=<key>`: a decision opens on
+`Pursue & next` and `Pass`, a call on the card, a flagged reply on the
+subcontractor's own words with the outcome controls under them.
+
+The mapping is a tested module rather than an inline template string
+(`lib/domain/recap/destinations.ts`), because it is the part that rots: the
+recap's queries and the workbench's queries are written separately, and a row
+pointing at a workbench item the workbench would not list lands somebody on
+another person's work. Only rows whose recap filter is a subset of the
+workbench's are converted. Unanswered replies are the one that is not a subset
+-- the recap counts every reply nobody has answered in three weeks, the
+workbench only holds the ones the automatic reader flagged -- and the fact
+carries both flags, so the two are told apart exactly rather than guessed at.
+A drafted, unsent reply has no workbench item of any kind and keeps its old
+destination.
+
+Two consequences worth naming:
+
+**The workbench had to learn to refuse a stale link.** `resolveSelection` falls
+back to the first item so a wide screen is never blank, which is right when
+nobody asked for anything in particular. Under a link that named a specific
+piece of work it is how a person answers the wrong subcontractor. A key the
+queue no longer holds now opens nothing and says so.
+
+**A row that points at work still previews its record.** The workbench link is
+a queue address, not a record, so `RecapItem` carries `recordHref` beside
+`href`: what the row is about, as opposed to where the row takes you. The
+Quick look reads the first and falls back to the second.
+
+### 14. The recap history kept the mail and would not show it
+
+`Settings -> Daily recap` ends in the delivery record, and the delivery record
+has always kept the rendered copy of each send -- that is what lets a retry
+send the mail written for that morning rather than a fresh recap describing a
+different day. It was unreadable. The list showed a subject, an address and, on
+a bad morning, a provider's error string, and answering "what did they actually
+receive" meant asking the recipient to forward it back.
+
+Sends on the left, the one you picked on the right: its state, its error, the
+retry, and the mail itself in a sandboxed frame, served by
+`/api/recap/deliveries/[id]/html` and scoped to the caller's own organization.
+
+Fixing that turned up a header bug that had been breaking the live preview
+beside it since the day it shipped. `next.config.mjs` sets
+`X-Frame-Options: DENY` for every path; a route handler setting `SAMEORIGIN`
+has its value **appended** rather than substituted, the browser receives two
+conflicting values and takes the stricter, and the preview frame has been a
+"localhost refused to connect" panel ever since. Both routes now say it with
+`Content-Security-Policy: frame-ancestors 'self'`, which a browser honours over
+`X-Frame-Options` and which is the only form that can override an inherited
+header.
+
+### 15. Six groups of settings in one scroll
+
+The same page is 600 lines of stacked cards, and the two questions people
+arrive with -- who is getting this, and did yesterday's go out -- are the two
+furthest down. It has a rail now: the sections named up front with the state
+that would make you pick one (the send time, how many sections are on, how many
+recipients, how many sends need a decision), and the Save button riding along
+so it is on screen wherever you jumped to. Wide screens only. On a phone the
+sections are already one column in reading order, and a rail above them is a
+second list to scroll past before reaching the first.
+
 ---
 
 ## Considered and deliberately not converted
@@ -309,9 +381,11 @@ boards. Nothing in them is processed row by row.
 | `lib/workbench.ts` | Loading the record behind the open task, per task |
 | `components/requirements-workspace.tsx` | The checklist beside the document it was read from |
 | `components/agent-run-peek.tsx` | One automation run, in full |
+| `lib/domain/recap/destinations.ts` | Which recap rows can be finished, and where |
 
 Tests: `tests/workspace-queue.test.ts`, `tests/workbench-panes.test.ts`,
 `tests/workspace-keyboard.test.ts`, `tests/workspace-shell-contract.test.ts`,
 `tests/work-queue-destination.test.ts`, `tests/queue-rail.test.tsx`,
 `tests/requirements-workspace.test.tsx`, `tests/agent-run-detail.test.ts`,
-`tests/search-peek.test.ts`.
+`tests/search-peek.test.ts`, `tests/recap-destinations.test.ts`,
+`tests/recap-delivery-pane.test.ts`.

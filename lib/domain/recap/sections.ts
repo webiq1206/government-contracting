@@ -34,6 +34,12 @@ import {
   type RecapSettings,
   type RecapTotal,
 } from "./types";
+import {
+  callDestination,
+  draftDestination,
+  replyDestination,
+  reviewDestination,
+} from "./destinations";
 
 // ---------------------------------------------------------------------------
 // Time in words. Local to this module so the wording is one edit, not six.
@@ -144,7 +150,8 @@ export function collectUrgent(
       detail: [r.opportunity, r.intent ? `they wrote about a ${r.intent}` : null]
         .filter(Boolean)
         .join(" · "),
-      href: r.subcontractorId ? `/subs/${r.subcontractorId}` : "/communications",
+      href: replyDestination(r),
+      recordHref: r.subcontractorId ? `/subs/${r.subcontractorId}` : undefined,
       reason: "Reply unanswered",
       when: `They wrote ${whenSince(r.createdAt, now)}`,
       severity: hours >= t.unanswered_reply_hours * 2 ? "critical" : "warning",
@@ -384,7 +391,8 @@ function buildSection(
           ]
             .filter(Boolean)
             .join(" · "),
-          href: `/opportunity/${r.id}`,
+          href: reviewDestination(r.id),
+          recordHref: `/opportunity/${r.id}`,
           ageDays: ages[`review:${r.id}`] ?? 0,
           when: r.expiresAt ? `Decision window closes ${whenDue(r.expiresAt, now)}` : undefined,
           severity: "normal",
@@ -395,7 +403,8 @@ function buildSection(
           key: `call:${c.id}`,
           title: `Call ${c.subcontractor ?? "a subcontractor"}`,
           detail: c.opportunity ?? undefined,
-          href: "/call-queue",
+          href: callDestination(c.id),
+          recordHref: c.subcontractorId ? `/subs/${c.subcontractorId}` : undefined,
           ageDays: ages[`call:${c.id}`] ?? 0,
           when: `Queued ${whenSince(c.createdAt, now)}`,
           severity: "normal",
@@ -406,7 +415,7 @@ function buildSection(
           key: `draft:${d.id}`,
           title: `A reply to ${d.subcontractor ?? "a subcontractor"} is drafted and unsent`,
           detail: "Written for you, waiting on your read",
-          href: d.subcontractorId ? `/subs/${d.subcontractorId}` : "/communications",
+          href: draftDestination(d.subcontractorId),
           ageDays: ages[`draft:${d.id}`] ?? 0,
           when: `Drafted ${whenSince(d.generatedAt, now)}`,
           severity: "normal",

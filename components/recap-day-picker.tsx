@@ -20,11 +20,21 @@ export function RecapDayPicker({
   today,
   yesterday,
   earliest,
+  basePath = "/recap",
 }: {
   value: string;
   today: string;
   yesterday: string;
   earliest: string;
+  /**
+   * The page the picker belongs to.
+   *
+   * It was hardcoded to `/recap`, and the platform recap renders the same
+   * component: an administrator changing the day on `/admin/recap` was thrown
+   * onto their own organization's recap, silently, with the date they asked
+   * for. Every control here has to stay on the page it was pressed from.
+   */
+  basePath?: string;
 }) {
   const router = useRouter();
 
@@ -45,8 +55,8 @@ export function RecapDayPicker({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {tab(`/recap?date=${yesterday}`, "Yesterday", value === yesterday)}
-      {tab(`/recap?date=${today}`, "Today so far", value === today)}
+      {tab(`${basePath}?date=${yesterday}`, "Yesterday", value === yesterday)}
+      {tab(`${basePath}?date=${today}`, "Today so far", value === today)}
       <label className="flex items-center gap-2 text-xs text-muted-foreground">
         <span>Any day</span>
         <input
@@ -56,7 +66,7 @@ export function RecapDayPicker({
           max={today}
           onChange={(e) => {
             const next = e.target.value;
-            if (next) router.push(`/recap?date=${next}`);
+            if (next) router.push(`${basePath}?date=${next}`);
           }}
           className="rounded border border-border bg-surface px-2 py-1 text-xs text-foreground"
         />

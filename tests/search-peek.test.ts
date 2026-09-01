@@ -51,6 +51,48 @@ describe("which results can be read without leaving the search", () => {
     expect(peekTarget(result("/opportunity/42"))).toBeNull();
     expect(peekTarget(result("/subs/../../etc/passwd"))).toBeNull();
   });
+
+  it("survives an item with no link at all", () => {
+    // Recap totals and some problem rows carry no href.
+    expect(peekTarget({ href: null })).toBeNull();
+    expect(peekTarget({})).toBeNull();
+  });
+});
+
+describe("what each surface is allowed to preview", () => {
+  /*
+   * The kinds are not interchangeable across scopes, and this is the assertion
+   * that keeps them apart. The opportunity and subcontractor loaders are scoped
+   * to the current organization, so a platform surface must not offer them; the
+   * account loader is platform-admin only, so a customer surface must not offer
+   * it. A recap row on the platform page points at an account, and the same
+   * shaped row on a customer page must not resolve.
+   */
+  it("does not offer an account preview to a surface that serves records", () => {
+    expect(peekTarget(result(`/admin/accounts/${ID}`))).toBeNull();
+  });
+
+  it("offers it to a surface that asks for accounts", () => {
+    expect(peekTarget(result(`/admin/accounts/${ID}`), ["account"])).toEqual({
+      kind: "account",
+      id: ID,
+    });
+  });
+
+  it("does not offer records to a surface that only serves accounts", () => {
+    expect(peekTarget(result(`/opportunity/${ID}`), ["account"])).toBeNull();
+    expect(peekTarget(result(`/subs/${ID}`), ["account"])).toBeNull();
+  });
+
+  it("refuses a hand-edited parameter naming a kind the surface cannot serve", () => {
+    // The URL is editable, so the allowlist is enforced again at the parse.
+    expect(parsePeekParam(`account:${ID}`)).toBeNull();
+    expect(parsePeekParam(`account:${ID}`, ["account"])).toEqual({
+      kind: "account",
+      id: ID,
+    });
+    expect(parsePeekParam(`opportunity:${ID}`, ["account"])).toBeNull();
+  });
 });
 
 describe("the peek parameter", () => {

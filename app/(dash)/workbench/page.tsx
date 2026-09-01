@@ -141,7 +141,21 @@ export default async function WorkbenchPage({
   };
   const { forItem, base } = queueHrefBuilder("/workbench", params, "i");
 
-  const selected = resolveSelection(shown, (i) => i.key, selectedKey);
+  const resolved = resolveSelection(shown, (i) => i.key, selectedKey);
+  /*
+   * A link that names an item the queue no longer holds.
+   *
+   * Recap rows, bookmarks and yesterday's tabs all carry an item key, and the
+   * queue is rebuilt from live records every time: the reply gets read, the
+   * decision gets made, the card gets called. `resolveSelection` falls back to
+   * the first item so a wide screen is never blank, which is right when nobody
+   * asked for anything in particular -- but silently swapping in somebody
+   * else's work under a link that named a specific piece is how a person
+   * answers the wrong subcontractor. So the page says what happened, and opens
+   * nothing.
+   */
+  const missing = selectedKey != null && !shown.some((i) => i.key === selectedKey);
+  const selected = missing ? null : resolved;
   /*
    * Whether the URL actually names an item, as opposed to the page having
    * picked the first one for a wide screen.
@@ -152,7 +166,7 @@ export default async function WorkbenchPage({
    * that just did it. Auto-selecting is right on a desktop, where the queue is
    * still on screen beside it.
    */
-  const opened = Boolean(selectedKey);
+  const opened = Boolean(selectedKey) && !missing;
   const ids = shown.map((i) => i.key);
   const position = queuePosition(ids, selected?.key ?? null);
   const nextKey = advanceTarget(ids, selected?.key ?? null);
@@ -190,6 +204,19 @@ export default async function WorkbenchPage({
             </Link>
           }
         />
+
+        {missing && (
+          <div className="px-5 pt-3">
+            <p
+              role="status"
+              className="rounded-sm border border-review/50 bg-review/5 px-3 py-2 text-sm text-foreground"
+            >
+              That item is not in the queue any more. It was finished, dismissed,
+              or it belongs to a view you are not looking at. Nothing was opened
+              for you; pick from the list below.
+            </p>
+          </div>
+        )}
 
         <PageToolbar>
           <form method="get" action="/workbench" className="flex flex-wrap items-center gap-2">
