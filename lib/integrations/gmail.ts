@@ -83,19 +83,59 @@ export function getAuthUrl(state?: string): string {
 export async function exchangeCode(
   code: string,
   orgId: string
-): Promise<{ email?: string }> {
+): Promise<{ email?: string; senderReset?: boolean }> {
   const client = oauthClient();
   const { tokens } = await client.getToken(code);
 
+  /*
+   * Which mailbox this grant belongs to, or no grant at all.
+   *
+   * The address is the identity: it is the From on every email the tenant
+   * sends and the mailbox their replies are read from. A token stored without
+   * it is worse than no token, because the connection then looks healthy while
+   * the app sends under whatever address was there before, which may belong to
+   * an account this grant cannot send as. Tried twice for a transient failure,
+   * then refused, which leaves the previous connection exactly as it was and
+   * asks the operator to try again.
+   */
   let email: string | undefined;
   client.setCredentials(tokens);
-  try {
-    const api = google.gmail({ version: "v1", auth: client });
-    const prof = await api.users.getProfile({ userId: "me" });
-    email = prof.data.emailAddress ?? undefined;
-  } catch {
-    // A profile read failure is not a reason to discard a valid grant.
+  const api = google.gmail({ version: "v1", auth: client });
+  for (let attempt = 0; attempt < 2 && !email; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 400));
+    try {
+      const prof = await api.users.getProfile({ userId: "me" });
+      email = prof.data.emailAddress ?? undefined;
+    } catch {
+      // Retried once above; reported below if it never succeeds.
+    }
   }
+  if (!email) {
+    throw new Error(
+      "Google did not say which account was authorized, so the connection was not saved. Nothing changed. Try connecting again."
+    );
+  }
+
+  /*
+   * Whether the chosen sending address may survive this reconnect.
+   *
+   * It may, and should, when the same mailbox is being reconnected: that is
+   * ordinary maintenance (a grant lapsed, the owner signed in again), and
+   * clearing it would silently revert every outreach email to the authorized
+   * address with nobody told.
+   *
+   * It may not when a different mailbox is connected. An alias belongs to the
+   * account that verified it, so carried across, Gmail refuses every send and
+   * outreach stops dead.
+   */
+  const prior = await queryOne<{ email: string | null; send_as: string | null }>(
+    `select email, send_as from integration_tokens where provider = 'gmail' and org_id = $1`,
+    [orgId]
+  ).catch(() => null);
+  const keepSendAs = Boolean(
+    !prior?.email || email.toLowerCase() === prior.email.toLowerCase()
+  );
+  const senderReset = Boolean(prior?.send_as) && !keepSendAs;
 
   await query(
     `insert into integration_tokens (provider, org_id, data, email, status, last_error, updated_at)
@@ -103,14 +143,25 @@ export async function exchangeCode(
      on conflict (provider, org_id) do update set
        -- Merge so a reconnect without a fresh refresh_token keeps the old one.
        data       = integration_tokens.data || excluded.data,
-       email      = coalesce(excluded.email, integration_tokens.email),
+       -- Not coalesced: the grant being stored is this mailbox's, so the
+       -- stored identity has to be this mailbox and never the previous one.
+       email      = excluded.email,
+       send_as    = case when $4 then integration_tokens.send_as else null end,
        status     = 'connected',
        last_error = null,
        updated_at = now()`,
-    [orgId, JSON.stringify(encryptTokenData(tokens as Record<string, unknown>)), email ?? null]
+    [
+      orgId,
+      JSON.stringify(encryptTokenData(tokens as Record<string, unknown>)),
+      email,
+      keepSendAs,
+    ]
   );
 
-  return { email };
+  // A new grant can see a different set of verified addresses.
+  sendAsCache.delete(orgId);
+
+  return { email, senderReset };
 }
 
 /** Which organization's inbox to act as, defaulting to the caller's tenant. */
@@ -168,6 +219,40 @@ const AUTH_PROBE_TTL_MS = 60 * 1000;
 /** Test seam: forget cached auth probes. */
 export function __resetAuthProbeCache(): void {
   authProbeCache.clear();
+}
+
+/**
+ * One address this mailbox is allowed to send as.
+ *
+ * Either the account Google authorized, or a "Send mail as" address the owner
+ * has already verified with Google. Both are things Gmail will accept in a
+ * From header; nothing else is, which is why the settings UI offers a list
+ * from Google rather than a text box.
+ */
+export interface GmailSendAsOption {
+  address: string;
+  displayName: string | null;
+  /** The account's own address, as opposed to an alias added to it. */
+  isPrimary: boolean;
+}
+
+export type GmailSendAsList =
+  | { ok: true; options: GmailSendAsOption[] }
+  | { ok: false; error: string };
+
+/**
+ * Google's answer changes only when somebody edits their Gmail settings, and
+ * it is read on every render of the integrations page to check that the
+ * chosen address is still verified. Cached briefly so that page costs one
+ * call rather than one per visit.
+ */
+const sendAsCache = new Map<string, { at: number; list: GmailSendAsList }>();
+const SEND_AS_TTL_MS = 5 * 60 * 1000;
+
+/** Test seam, and the way a save re-reads Google instead of a stale list. */
+export function __resetSendAsCache(orgId?: string): void {
+  if (orgId) sendAsCache.delete(orgId);
+  else sendAsCache.clear();
 }
 
 /** Authorized Gmail client for one organization, or null if not connected. */
@@ -444,6 +529,24 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+/**
+ * What a failed send means, in the operator's terms.
+ *
+ * One refusal deserves its own sentence: Gmail rejecting the From header. It
+ * means the chosen sending address is no longer one this mailbox may use,
+ * usually because the alias was removed or unverified in Gmail, and Google's
+ * own wording ("Invalid From header") sends whoever reads it looking for a
+ * bug in the email rather than at the setting that caused it.
+ */
+export function describeSendFailure(message: string, from: string): string {
+  const fromRefused = /invalid from|from header|does not match|not.*allowed to send|delegation denied/i.test(
+    message
+  );
+  if (!fromRefused) return message;
+  const address = from.match(/<([^>]+)>/)?.[1] ?? from;
+  return `Google refused to send as ${address}. Check that it is still listed as a verified address in Gmail under Settings, Accounts, Send mail as, or choose a different sending address in Settings, Integrations. (Google said: ${message})`;
+}
+
 export const gmail = {
   configured: () => config.gmail.configured,
 
@@ -491,21 +594,26 @@ export const gmail = {
     email: string | null;
     status: string;
     lastError: string | null;
+    /** The chosen "Send mail as" address, or null to use the authorized one. */
+    sendAs: string | null;
   }> {
     const org = await resolveOrg(orgId);
-    if (!org) return { connected: false, email: null, status: "none", lastError: null };
+    if (!org) {
+      return { connected: false, email: null, status: "none", lastError: null, sendAs: null };
+    }
     const row = await queryOne<{
       email: string | null;
       status: string;
       last_error: string | null;
+      send_as: string | null;
       data: { refresh_token?: string };
     }>(
-      `select email, status, last_error, data from integration_tokens
+      `select email, status, last_error, send_as, data from integration_tokens
         where provider = 'gmail' and org_id = $1`,
       [org]
     ).catch(() => null);
     if (!row || !readRefreshToken(row.data)) {
-      return { connected: false, email: null, status: "none", lastError: null };
+      return { connected: false, email: null, status: "none", lastError: null, sendAs: null };
     }
     return {
       // "revoked" means the grant is gone even though a row still exists, so
@@ -514,7 +622,105 @@ export const gmail = {
       email: row.email,
       status: row.status,
       lastError: row.last_error,
+      sendAs: row.send_as,
     };
+  },
+
+  /**
+   * Every address Google will let this mailbox send as.
+   *
+   * Read from Gmail rather than typed by the operator, because Gmail is the
+   * only authority on it: an address it has not verified is refused at send
+   * time, and an operator who can type freely will eventually type one.
+   * Unverified aliases are dropped from the list for the same reason.
+   *
+   * Never throws. A failure is returned as text the settings page can show,
+   * because the alternative is a page that renders no addresses and no reason.
+   */
+  async sendAsAddresses(
+    orgId?: string,
+    opts?: { refresh?: boolean }
+  ): Promise<GmailSendAsList> {
+    const org = await resolveOrg(orgId);
+    if (!org) return { ok: false, error: "No organization in context." };
+    if (opts?.refresh) sendAsCache.delete(org);
+    const cached = sendAsCache.get(org);
+    if (cached && Date.now() - cached.at < SEND_AS_TTL_MS) return cached.list;
+
+    const client = await gmailClient(org);
+    if (!client) {
+      return { ok: false, error: "No inbox is connected, so there is nothing to send as yet." };
+    }
+
+    let list: GmailSendAsList;
+    try {
+      const res = await client.users.settings.sendAs.list({ userId: "me" });
+      const options = (res.data.sendAs ?? [])
+        .filter((s) => {
+          // The primary address needs no verification; it IS the account.
+          if (s.isPrimary) return true;
+          return s.verificationStatus === "accepted";
+        })
+        .map((s) => ({
+          address: (s.sendAsEmail ?? "").trim(),
+          displayName: s.displayName?.trim() || null,
+          isPrimary: Boolean(s.isPrimary),
+        }))
+        .filter((s) => s.address);
+      list = { ok: true, options };
+    } catch (e) {
+      const message = (e as Error).message ?? "Unknown error";
+      // A grant made before this feature shipped can lack the settings scope.
+      // Say what fixes it rather than reporting Google's wording.
+      const scope = /insufficient|scope|permission|403/i.test(message);
+      list = {
+        ok: false,
+        error: scope
+          ? "Your Google connection does not include permission to read your verified sending addresses. Click Reconnect Google Inbox above to grant it."
+          : `Google could not list your verified sending addresses: ${message}`,
+      };
+    }
+
+    sendAsCache.set(org, { at: Date.now(), list });
+    return list;
+  },
+
+  /**
+   * Point this tenant's outgoing mail at one of its verified addresses.
+   *
+   * The address is checked against Google's list here, at the write, rather
+   * than trusted from the form: this is the one place a sending identity can
+   * be set, so it is the one place the check has to hold.
+   */
+  async setSendAs(
+    address: string | null,
+    orgId?: string
+  ): Promise<{ ok: true; sendAs: string | null } | { ok: false; error: string }> {
+    const org = await resolveOrg(orgId);
+    if (!org) return { ok: false, error: "No organization in context." };
+
+    let value: string | null = null;
+    if (address && address.trim()) {
+      const wanted = address.trim().toLowerCase();
+      const list = await this.sendAsAddresses(org, { refresh: true });
+      if (!list.ok) return { ok: false, error: list.error };
+      const match = list.options.find((o) => o.address.toLowerCase() === wanted);
+      if (!match) {
+        return {
+          ok: false,
+          error:
+            "Google has not verified that address for this mailbox, so mail sent from it would be refused. Add it in Gmail under Settings, Accounts, Send mail as, then try again.",
+        };
+      }
+      value = match.address;
+    }
+
+    await query(
+      `update integration_tokens set send_as = $2, updated_at = now()
+        where provider = 'gmail' and org_id = $1`,
+      [org, value]
+    );
+    return { ok: true, sendAs: value };
   },
 
   /** Forget a tenant's connection. Their inbox is untouched at Google. */
@@ -563,10 +769,11 @@ export const gmail = {
     const org = await resolveOrg(params.orgId);
     const client = await gmailClient(org ?? undefined);
     if (!client) return { disabled: true };
+    // params.from overrides GMAIL_SENDER so the outreach transport can lock
+    // the sender to the address chosen for this tenant regardless of which
+    // account is OAuth'd. Declared outside the try so a refusal can name it.
+    const from = params.from ?? config.gmail.sender ?? "me";
     try {
-      // params.from overrides GMAIL_SENDER so the outreach transport can lock
-      // the sender to info@brostco.com regardless of which account is OAuth'd.
-      const from = params.from ?? config.gmail.sender ?? "me";
       const raw = buildGmailRawMessage(params, from);
       const res = await client.users.messages.send({
         userId: "me",
@@ -623,7 +830,7 @@ export const gmail = {
         rfc822MessageId,
       };
     } catch (err) {
-      const message = (err as Error).message;
+      const message = describeSendFailure((err as Error).message, from);
       if (org) await markConnectionError(org, message);
       return { error: message };
     }

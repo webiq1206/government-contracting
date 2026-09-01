@@ -11,6 +11,28 @@ import { gmail } from "./integrations/gmail";
 import { currentImpersonator } from "./impersonation";
 import { logAgent } from "./logger";
 import { LEGACY_ORG_ID } from "./tenant-context";
+import { resolveOutreachSender } from "./domain/sender-identity";
+
+/**
+ * The From / Reply-To pair for this organization, or nothing.
+ *
+ * Backlink outreach is still outreach: it goes to a stranger, over the
+ * company's name, and it has to carry the same address as everything else the
+ * company sends. Left unset, Gmail stamps whichever account authorized the
+ * connection, which is the exact discrepancy this identity exists to remove.
+ *
+ * Nothing is returned when the identity cannot be read. That is deliberate:
+ * this is a background sweep of already-approved mail, so falling back to the
+ * connected account is better than holding it, and the address is visible on
+ * the settings page either way.
+ */
+async function senderHeaders(
+  orgId: string
+): Promise<{ from: string; replyTo: string } | Record<string, never>> {
+  const sender = await resolveOutreachSender(orgId).catch(() => null);
+  if (!sender?.connected || !sender.from) return {};
+  return { from: sender.from, replyTo: sender.replyTo };
+}
 
 /**
  * The organization whose outreach this is.
@@ -86,7 +108,8 @@ export async function sendApprovedOutreach(
   const trackingId = randomUUID();
   const plain = row.body ?? "";
   const html = plain.replace(/\n/g, "<br>");
-  // Named, not inferred: this decides whose mailbox the outreach leaves from.
+  // Named, not inferred: this decides whose mailbox the outreach leaves from,
+  // and which of that mailbox's verified addresses it appears to come from.
   const res = await gmail.send({
     to: row.contact_email,
     subject: row.subject ?? "Hello",
@@ -94,6 +117,7 @@ export async function sendApprovedOutreach(
     text: plain,
     trackingId,
     orgId,
+    ...(await senderHeaders(orgId)),
   });
 
   if (res.disabled) return { status: "skipped", reason: "Gmail not connected" };
@@ -190,6 +214,9 @@ export async function sendFollowUps(
   );
   if (!rows.length || (await blockedBySupportSession())) return { sent: 0 };
   if (!(await gmail.isConnected(orgId))) return { sent: 0 };
+  // Read once for the sweep: a follow-up has to arrive from the same address
+  // as the message it is following up on.
+  const sender = await senderHeaders(orgId);
   let sent = 0;
   for (const r of rows) {
     const body = `Hi,\n\nJust following up on my note below in case it slipped through. No worries if now isn't a good time.\n\n${r.body ?? ""}`;
@@ -200,6 +227,7 @@ export async function sendFollowUps(
       text: body,
       trackingId: r.tracking_id ?? undefined,
       orgId,
+      ...sender,
     });
     if (!res.error && !res.disabled) {
       sent++;

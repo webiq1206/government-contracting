@@ -34,14 +34,20 @@ export const dynamic = "force-dynamic";
 export default async function IntegrationsPage({
   searchParams,
 }: {
-  searchParams?: { gmail?: string; gmailError?: string };
+  searchParams?: { gmail?: string; gmailError?: string; sender?: string };
 }) {
   await hydrateIntegrationEnv();
   const [sources, inbox, aiTrouble, gmailUsed, claudeUsed, pricingUsed] = await Promise.all([
     settingSources(),
     gmail
       .connection()
-      .catch(() => ({ connected: false, email: null, status: "none", lastError: null })),
+      .catch(() => ({
+        connected: false,
+        email: null,
+        status: "none",
+        lastError: null,
+        sendAs: null,
+      })),
     // "Connected" here has only ever meant "a key is saved". It said so
     // through a day in which Anthropic refused every request for want of
     // credits, which is the one day it mattered.
@@ -70,6 +76,29 @@ export default async function IntegrationsPage({
   const status = { ...integrationStatus(), ...(await orgIntegrationStatus()) };
   const gmailParam = searchParams?.gmail;
   const gmailError = searchParams?.gmailError;
+
+  /*
+   * A chosen sending address is only good while Google still says so. An
+   * alias removed in Gmail leaves the app trying to send as an address the
+   * account no longer owns, and Google refuses every one of those sends. The
+   * check runs only when an address has actually been chosen, so the ordinary
+   * case costs nothing, and only when the inbox is live, because a dead grant
+   * has a louder problem to report first.
+   */
+  let sendAsProblem: string | null = null;
+  if (gmailConnected && inbox.sendAs) {
+    const verified = await gmail.sendAsAddresses().catch(() => null);
+    if (verified?.ok) {
+      const stillThere = verified.options.some(
+        (o) => o.address.toLowerCase() === inbox.sendAs!.toLowerCase()
+      );
+      if (!stillThere) {
+        sendAsProblem = `Google no longer lists ${inbox.sendAs} as a verified address for this mailbox, so outreach from it will be refused. Choose another address, or re-add it in Gmail under Settings, Accounts, Send mail as.`;
+      }
+    }
+  }
+  const { can } = await import("@/lib/domain/roles");
+  const canManageIntegrations = can(viewer?.orgRole, "manage_integrations");
 
   const initial = INTEGRATION_DEFS.filter(
     (def) => showPlatformOnly || !def.platformOnly
@@ -206,6 +235,13 @@ export default async function IntegrationsPage({
               Gmail connected successfully. Outreach emails can now send.
             </div>
           )}
+          {searchParams?.sender === "reset" && (
+            <div className="card border-review/40 bg-review/5 text-sm text-review">
+              Email is now going out from the account you just connected. The address you
+              had chosen belonged to the previous mailbox, so it was cleared. Pick the one
+              you want under Sending as below.
+            </div>
+          )}
           {gmailParam === "denied" && (
             <div className="card border-review/40 bg-review/5 text-sm text-review">
               Gmail connection was denied. You can retry below.
@@ -278,7 +314,12 @@ export default async function IntegrationsPage({
                     a customer takes, and nothing else in outreach works
                     without it. */}
                 <GoogleInboxCard
-                  initial={{ ...inbox, available: config.gmail.configured }}
+                  initial={{
+                    ...inbox,
+                    available: config.gmail.configured,
+                    sendAsProblem,
+                  }}
+                  canManage={canManageIntegrations}
                 />
                 <IntegrationManager
                   initial={initial.filter((i) => OUTREACH_IDS.has(i.id) && i.id !== "gmail")}

@@ -36,9 +36,15 @@ export async function GET(req: Request) {
     // the session rather than from anything in the callback URL, so a crafted
     // redirect cannot attach an inbox to someone else's tenant.
     const orgId = await resolveTenantOrgId();
-    const { email } = await exchangeCode(code, orgId);
+    const { email, senderReset } = await exchangeCode(code, orgId);
     return NextResponse.redirect(
-      `${config.appUrl}/settings/integrations?gmail=connected${email ? `&email=${encodeURIComponent(email)}` : ""}`
+      // senderReset says the chosen sending address did not carry over,
+      // because this is a different mailbox or because Google would not say
+      // which mailbox it is. Silence there would leave outreach quietly going
+      // out from the connected account again.
+      `${config.appUrl}/settings/integrations?gmail=connected${
+        email ? `&email=${encodeURIComponent(email)}` : ""
+      }${senderReset ? "&sender=reset" : ""}`
     );
   } catch (e) {
     return NextResponse.redirect(

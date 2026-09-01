@@ -12,6 +12,7 @@
 import { gmail } from "./gmail";
 import { config } from "../config";
 import { LEGACY_ORG_ID } from "../tenant-context";
+import { resolveOutreachSender } from "../domain/sender-identity";
 
 export interface SystemMailResult {
   disabled?: boolean;
@@ -29,6 +30,25 @@ function asHtml(text: string): string {
     /\n/g,
     "<br />"
   )}</div>`;
+}
+
+/**
+ * The From header for platform mail.
+ *
+ * Same address subcontractors see on outreach, because it is the same
+ * company: a password reset arriving from a different address than every
+ * other email we send reads as a phishing attempt, and looks like one to a
+ * spam filter too.
+ *
+ * SYSTEM_MAIL_FROM still wins where it is set, so an operator can split the
+ * two deliberately. Otherwise the chosen sending address for the platform's
+ * own inbox is used, and if that cannot be read the header is omitted and
+ * Gmail falls back to the authorized account rather than the send failing.
+ */
+async function systemMailFrom(): Promise<string | null> {
+  if (config.systemMail.from) return config.systemMail.from;
+  const sender = await resolveOutreachSender(LEGACY_ORG_ID).catch(() => null);
+  return sender?.connected && sender.from ? sender.from : null;
 }
 
 export const systemMail = {
@@ -70,6 +90,7 @@ export const systemMail = {
     const to = Array.isArray(params.to) ? params.to.join(", ") : params.to;
     if (!to.trim()) return { disabled: true, error: "No recipient." };
 
+    const from = await systemMailFrom();
     const res = await gmail.send({
       to,
       subject: params.subject,
@@ -78,7 +99,7 @@ export const systemMail = {
       // The platform's own inbox, explicitly. Falling back to ambient tenant
       // context here would send a password reset from a customer's mailbox.
       orgId: LEGACY_ORG_ID,
-      ...(config.systemMail.from ? { from: config.systemMail.from } : {}),
+      ...(from ? { from } : {}),
     });
 
     if (res.disabled) {
