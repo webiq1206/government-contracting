@@ -459,6 +459,18 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
   };
 }
 
+/**
+ * How to print a failure rate so a handful of errors cannot read as none.
+ *
+ * `Math.round(0.0027 * 100)` is 0. Four failures in 1471 runs is not a
+ * perfect record, and "0% of 1471" is the sentence that claimed it was.
+ */
+export function formatFailureRate(rate: number, runs: number): string {
+  const pct = Math.round(rate * 100);
+  if (rate > 0 && pct === 0) return `Under 1% of ${runs}`;
+  return `${pct}% of ${runs}`;
+}
+
 /** The tone a status chip should carry, paired with the label, never alone. */
 export function stateTone(state: AutomationState): "good" | "warn" | "bad" | "neutral" {
   switch (state) {

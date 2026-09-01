@@ -635,7 +635,7 @@ export function AutomationRulesForm({
                     checked={!form.auto_dismiss_review}
                     onChange={() => setForm((f) => ({ ...f, auto_dismiss_review: false }))}
                     label="Keep it and tell me (default)"
-                    hint="It stays in Review past its window, and the Automation Log records that the window closed with no decision."
+                    hint="It stays in Review past its window, and Automation Health records that the window closed with no decision."
                   />
                   <Choice
                     name="auto_dismiss_review"

@@ -179,7 +179,7 @@ export function collectUrgent(
         facts.failedSends.length > 3
           ? `${names} and ${facts.failedSends.length - 3} more`
           : names,
-      href: "/email-log",
+      href: "/communications",
       reason: "Delivery failed",
       when: first ? `Most recent ${whenSince(first.createdAt, now)}` : undefined,
       severity: "critical",
@@ -449,7 +449,7 @@ function buildSection(
         {
           label: "Outreach emails sent",
           value: t.outreachSent,
-          href: "/email-log",
+          href: "/communications",
           note:
             t.outreachFailed > 0
               ? `${plural(t.outreachFailed, "failed to deliver")}`
@@ -572,7 +572,7 @@ function buildSection(
             "subcontractor"
           )}`,
           detail: bySub.size > 6 ? `${named} and others` : named,
-          href: "/email-log",
+          href: "/communications",
           severity: "normal",
         });
       }

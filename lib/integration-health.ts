@@ -82,6 +82,27 @@ export function agoInWords(at: Date, now = new Date()): string {
  */
 const WINDOW = "6 hours";
 
+/**
+ * When scoring or analysis last succeeded for this account.
+ *
+ * The Integrations card used to say "Saved, and never used" for Claude while
+ * scoring ran all day: usage is written onto a saved-key row, and an env or
+ * platform key never created one. Agent logs are the proof that the model
+ * actually answered.
+ */
+export async function lastAiSuccess(orgId?: string): Promise<Date | null> {
+  const org = orgId ?? (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const row = await queryOne<{ at: Date | null }>(
+    `select max(created_at) as at
+       from agent_logs
+      where org_id = $1
+        and level in ('success', 'info')
+        and agent in ('scoring-engine', 'solicitation-analyst', 'pricing-research')`,
+    [org]
+  ).catch(() => null);
+  return row?.at ?? null;
+}
+
 export async function recentAiTrouble(orgId?: string): Promise<ServiceTrouble> {
   const org = orgId ?? (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
   const row = await queryOne<{ n: number; message: string | null; last_at: Date | null }>(

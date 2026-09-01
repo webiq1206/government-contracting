@@ -57,7 +57,8 @@ export function BidRequirements({
         <p className="label">What it takes to bid</p>
         <p className="mt-1.5 text-sm text-muted-foreground">
           No submission requirements were extracted yet. Until the analysis finishes, treat
-          the original solicitation as the source of truth for what has to be submitted.
+          the original solicitation as the source of truth. Retry analysis from the Files
+          tab if the solicitation is already attached.
         </p>
       </div>
     );

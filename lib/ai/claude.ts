@@ -149,6 +149,22 @@ export function clearClaudeClients(): void {
   _clients.clear();
 }
 
+/** Stamp the Integrations card with the org that actually made the call. */
+function recordClaudeUse(outcome: { ok: boolean; error?: string }): void {
+  void Promise.all([
+    import("../tenant"),
+    import("../tenant-context"),
+    import("../integration-settings"),
+  ]).then(([{ tryResolveTenantOrgId }, { LEGACY_ORG_ID }, settings]) =>
+    tryResolveTenantOrgId().then((org) =>
+      settings.recordIntegrationUse("ANTHROPIC_API_KEY", {
+        ...outcome,
+        orgId: org ?? LEGACY_ORG_ID,
+      })
+    )
+  );
+}
+
 async function client(): Promise<Anthropic> {
   const { orgApiKey } = await import("../integration-keys");
   const { tryResolveTenantOrgId } = await import("../tenant");
@@ -354,18 +370,14 @@ export async function complete(
      * database, and this module is imported by code paths that must not pull
      * a connection in just by being loaded.
      */
-    void import("../integration-settings").then((m) =>
-      m.recordIntegrationUse("ANTHROPIC_API_KEY", {
-        ok: false,
-        error: cause?.reason ?? (err as Error).message,
-      })
-    );
+    void recordClaudeUse({
+      ok: false,
+      error: cause?.reason ?? (err as Error).message,
+    });
     if (cause) throw new ClaudeUnavailableError(cause.reason, cause.status, cause.retryable);
     throw err;
   }
-  void import("../integration-settings").then((m) =>
-    m.recordIntegrationUse("ANTHROPIC_API_KEY", { ok: true })
-  );
+  void recordClaudeUse({ ok: true });
   const rawText = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)

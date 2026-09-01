@@ -8,8 +8,12 @@ import { requireOrgContext } from "@/lib/org-guard";
 import { can } from "@/lib/domain/roles";
 import { workQueue } from "@/lib/data";
 import { assignableMembers, ownersFor } from "@/lib/ownership";
-import { parseOwnerFilter } from "@/lib/domain/ownership";
-import type { Owner } from "@/lib/domain/ownership";
+import {
+  OWNER_FILTERS,
+  OWNER_FILTER_LABEL,
+  parseOwnerFilter,
+  type Owner,
+} from "@/lib/domain/ownership";
 import { OwnerPicker } from "@/components/owner-picker";
 import { getAutomationRules } from "@/lib/app-settings";
 import {
@@ -108,10 +112,12 @@ export default async function WorkbenchPage({
   /*
    * "Completed today" is a cut of the ledger rather than of this list, and
    * filterWorkItems throws rather than quietly returning an empty array. The
-   * workbench has nothing to work on in that view, so it is not offered here;
-   * an old link carrying it falls back to everything rather than to a crash.
+   * workbench has nothing to work on in that view, so it is not offered here.
+   * An old link carrying it falls back to everything and says so, rather than
+   * crashing or pretending All was what they asked for.
    */
-  const bucket = isCompletedFilter(rawBucket) ? "all" : rawBucket;
+  const askedCompletedToday = isCompletedFilter(rawBucket);
+  const bucket = askedCompletedToday ? "all" : rawBucket;
   const kind: WorkKind | null = parseKindFilter(searchParams?.kind);
   const owner = parseOwnerFilter(searchParams?.owner);
   const selectedKey = one(searchParams?.i) ?? null;
@@ -205,16 +211,31 @@ export default async function WorkbenchPage({
           }
         />
 
-        {missing && (
-          <div className="px-5 pt-3">
-            <p
-              role="status"
-              className="rounded-sm border border-review/50 bg-review/5 px-3 py-2 text-sm text-foreground"
-            >
-              That item is not in the queue any more. It was finished, dismissed,
-              or it belongs to a view you are not looking at. Nothing was opened
-              for you; pick from the list below.
-            </p>
+        {(missing || askedCompletedToday) && (
+          <div className="px-5 pt-3 space-y-2">
+            {missing && (
+              <p
+                role="status"
+                className="rounded-sm border border-review/50 bg-review/5 px-3 py-2 text-sm text-foreground"
+              >
+                That item is not in the queue any more. It was finished, dismissed,
+                or it belongs to a view you are not looking at. Nothing was opened
+                for you; pick from the list below.
+              </p>
+            )}
+            {askedCompletedToday && (
+              <p
+                role="status"
+                className="rounded-sm border border-border bg-muted/40 px-3 py-2 text-sm text-foreground"
+              >
+                What you finished today lives on Today, not here. This list is work
+                that is still waiting.{" "}
+                <Link href="/today?due=completed_today" className="underline underline-offset-2">
+                  Open today&apos;s finished work
+                </Link>
+                .
+              </p>
+            )}
           </div>
         )}
 
@@ -283,6 +304,23 @@ export default async function WorkbenchPage({
                 </Link>
               );
             })}
+          </nav>
+
+          <nav aria-label="Filter by owner" className="mt-2 flex flex-wrap gap-2">
+            {OWNER_FILTERS.map((o) => (
+              <Link
+                key={o}
+                href={chip({ owner: o === "anyone" ? undefined : o })}
+                aria-current={owner === o ? "page" : undefined}
+                className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
+                  owner === o
+                    ? "border-gold bg-gold/15 text-foreground"
+                    : "border-border text-foreground hover:border-foreground/30"
+                }`}
+              >
+                {OWNER_FILTER_LABEL[o]}
+              </Link>
+            ))}
           </nav>
 
           <nav

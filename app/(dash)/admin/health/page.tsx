@@ -20,6 +20,7 @@ import {
   type ServiceState,
 } from "@/lib/domain/platform-health";
 import { INCIDENT_SPECS } from "@/lib/domain/automation-health";
+import { queueBacklogDepth } from "@/lib/automation-status";
 import { timeAgo } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -56,15 +57,11 @@ export default async function PlatformHealthPage() {
     platformImpact(),
     webhookPulse(),
     /*
-     * Queue depth is deliberately not measured.
-     *
-     * The queue lives in a different backend depending on deployment, and
-     * nothing in this codebase can read a depth from all of them. The honest
-     * answer is that it is unknown, which the service card says in those
-     * words; reporting nought would be how a growing backlog stays invisible
-     * on the one page that exists to notice it.
+     * Same counter Automation Health uses: pg-boss jobs in created/retry.
+     * Null when this deployment cannot measure it (Redis, or no table),
+     * because reporting nought is how a growing backlog stays invisible.
      */
-    Promise.resolve<number | null>(null),
+    queueBacklogDepth().catch(() => null),
   ]);
 
   const webhook = webhookHealth(pulse.lastEventAt, pulse.billableAccounts, refreshedAt);

@@ -1153,7 +1153,7 @@ export default async function TodayPage({
                     >
                       <span className="font-semibold text-gold-text">Last 24 hours:</span>{" "}
                       {digestParts.join(" · ")}
-                      <span className="text-foreground/45"> · open Automation Log</span>
+                      <span className="text-foreground/45"> · open Automation Health</span>
                     </Link>
                   )}
                 </div>

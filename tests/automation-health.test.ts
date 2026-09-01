@@ -16,6 +16,7 @@ import {
   assessAutomation,
   classifyFailure,
   causeSpec,
+  formatFailureRate,
   type RunFact,
 } from "@/lib/domain/automation-health";
 
@@ -235,5 +236,11 @@ describe("assessAutomation", () => {
     expect(h.errors24h).toBe(7);
     expect(h.runs24h).toBe(1270);
     expect(h.failureRate).toBeCloseTo(7 / 1270);
+  });
+
+  it("does not print 0% when a handful of jobs failed", () => {
+    expect(formatFailureRate(4 / 1471, 1471)).toBe("Under 1% of 1471");
+    expect(formatFailureRate(0, 1471)).toBe("0% of 1471");
+    expect(formatFailureRate(0.5, 4)).toBe("50% of 4");
   });
 });

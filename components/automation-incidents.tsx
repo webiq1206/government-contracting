@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { timeAgo } from "@/lib/format";
-import type { AutomationHealth, AutomationState } from "@/lib/domain/automation-health";
+import {
+  formatFailureRate,
+  type AutomationHealth,
+  type AutomationState,
+} from "@/lib/domain/automation-health";
 
 /**
  * The automation state, and what to do about it.
@@ -102,7 +106,7 @@ export function AutomationStatusPanel({
               ? health.runs24h === 0
                 ? "No runs in 24 hours"
                 : `Too few runs to say (${health.runs24h})`
-              : `${Math.round(health.failureRate * 100)}% of ${health.runs24h}`
+              : formatFailureRate(health.failureRate, health.runs24h)
           }
         />
         <Fact
