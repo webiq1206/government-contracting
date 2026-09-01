@@ -155,28 +155,34 @@ export function AutomationRulesForm({
       {preview && (
         <ul className="mt-3 space-y-1.5 text-sm text-slate-700">
           <li>
-            <span className="num font-semibold">{preview.past_due_open}</span> open opportunit
-            {preview.past_due_open === 1 ? "y has" : "ies have"} already passed their deadline;
+            <span className="num font-semibold">{preview.past_due_open}</span>{" "}
+            {preview.past_due_open === 1 ? "open opportunity has" : "open opportunities have"} already passed their deadline;
             the hourly sweep will archive {preview.past_due_open === 1 ? "it" : "them"} (with
             history preserved).
           </li>
           <li>
-            <span className="num font-semibold">{preview.below_lead_time}</span> not-yet-scored
-            opportunit{preview.below_lead_time === 1 ? "y" : "ies"} would fail the minimum
+            <span className="num font-semibold">{preview.below_lead_time}</span>{" "}
+            {preview.below_lead_time === 1
+              ? "not-yet-scored opportunity"
+              : "not-yet-scored opportunities"}{" "}
+            would fail the minimum
             lead-time rule{form.min_lead_days === 0 ? " (rule is off)" : ""}.
           </li>
           <li>
-            <span className="num font-semibold">{preview.past_retention}</span> archived record
-            {preview.past_retention === 1 ? "" : "s"} would be permanently deleted by the
+            <span className="num font-semibold">{preview.past_retention}</span>{" "}
+            {preview.past_retention === 1
+              ? "archived record"
+              : "archived records"}{" "}
+            would be permanently deleted by the
             retention rule
             {form.retention_days === 0 ? " (retention is set to keep forever)" : ""}.
           </li>
           {!form.calls_enabled && (
             <li>
-              <span className="num font-semibold">{preview.queued_calls}</span> queued call
-              {preview.queued_calls === 1 ? "" : "s"} and opportunit
-              {preview.queued_calls === 1 ? "y" : "ies"} waiting on a call would be cleared and
-              moved on to collecting quotes.
+              <span className="num font-semibold">{preview.queued_calls}</span>{" "}
+              {preview.queued_calls === 1
+                ? "queued call and opportunity waiting on a call would be cleared and moved on to collecting quotes."
+                : "queued calls and opportunities waiting on a call would be cleared and moved on to collecting quotes."}
             </li>
           )}
         </ul>

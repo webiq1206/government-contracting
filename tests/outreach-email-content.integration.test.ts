@@ -157,7 +157,8 @@ d("the assembled outreach email (integration)", () => {
       trigger: "queue",
       payload: { opportunityId: opp.id, subcontractorId: sub.id, trade },
     });
-    expect(res.ok).toBe(true);
+    expect(res.ok, res.summary).toBe(true);
+    expect(res.humanActionRequired, res.summary).toBeFalsy();
 
     const stored = await queryOne<{ subject: string; body: string }>(
       `select subject, body from communications

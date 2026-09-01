@@ -24,6 +24,7 @@ import {
   type PursuitState,
   type PursuitVerdict,
 } from "./domain/pursuit-state";
+import { closedRecordReason, recordIsClosed } from "./domain/closed-work";
 
 export interface PursuitStatus extends PursuitVerdict {
   state: PursuitState;
@@ -42,10 +43,20 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
   if (!opportunityId) {
     return { state: "aborted", mayAct: false, known: false, reason: "No opportunity was named." };
   }
-  let row: { pursuit_state: string; pursuit_reason: string | null } | null;
+  let row: {
+    pursuit_state: string;
+    pursuit_reason: string | null;
+    status: string | null;
+    stage: string | null;
+  } | null;
   try {
-    row = await queryOne<{ pursuit_state: string; pursuit_reason: string | null }>(
-      `select pursuit_state, pursuit_reason from opportunities where id = $1`,
+    row = await queryOne<{
+      pursuit_state: string;
+      pursuit_reason: string | null;
+      status: string | null;
+      stage: string | null;
+    }>(
+      `select pursuit_state, pursuit_reason, status, stage from opportunities where id = $1`,
       [opportunityId]
     );
   } catch {
@@ -69,6 +80,20 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
     };
   }
   const state = parsePursuitState(row.pursuit_state);
+  if (
+    recordIsClosed({
+      status: row.status,
+      stage: row.stage,
+      pursuitState: state,
+    })
+  ) {
+    return {
+      state,
+      known: true,
+      mayAct: false,
+      reason: closedRecordReason({ status: row.status, stage: row.stage }),
+    };
+  }
   const verdict = pursuitVerdict({ state, reason: row.pursuit_reason });
   return { state, known: true, ...verdict };
 }

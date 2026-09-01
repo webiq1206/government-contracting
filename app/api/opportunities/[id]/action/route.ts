@@ -169,9 +169,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       `update opportunities
           set tier='review', stage='scoring', status='open',
               human_action_required=true,
-              review_expires_at=now() + interval '24 hours'
+              review_expires_at=now() + interval '24 hours',
+              pursuit_state='active',
+              pursuit_reason=null,
+              pursuit_note=null,
+              pursuit_changed_at=now(),
+              pursuit_changed_by=$2
         where id=$1`,
-      [params.id]
+      [params.id, auth.email]
     );
     await logAgent({
       agent: "operator",

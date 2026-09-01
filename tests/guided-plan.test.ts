@@ -204,7 +204,7 @@ describe("guided plan", () => {
 
   it("closes the plan instead of faking a position for dismissed and expired records", () => {
     const dismissed = buildGuidedPlan(input({ stage: "dismissed", score: 40 }));
-    expect(dismissed.closed?.label).toBe("Dismissed");
+    expect(dismissed.closed?.label).toBe("Passed");
     expect(dismissed.active).toBeUndefined();
 
     const expired = buildGuidedPlan(input({ stage: "quote_entry", score: 70, expired: true }));

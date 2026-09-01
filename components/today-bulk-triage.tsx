@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ActionOppRow } from "@/lib/data";
 import type { AutomationRules } from "@/lib/domain/intake";
 import { ActionButton } from "@/components/action-button";
+import { PassButton } from "@/components/pass-button";
 import { SnoozeButton } from "@/components/snooze-button";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { StopClickPropagation } from "@/components/stop-click-propagation";
@@ -89,20 +90,9 @@ export function TodayBulkTriage({
                 >
                   Pursue opportunity
                 </ActionButton>
-                <ActionButton
-                  endpoint={`/api/opportunities/${o.id}/action`}
-                  body={{ action: "dismiss" }}
-                  className="btn-danger min-h-11 flex-1 text-xs sm:min-h-0 sm:flex-none"
-                  toast={{
-                    message: `Dismissed "${o.title ?? "opportunity"}". It's archived, not deleted.`,
-                    undo: {
-                      endpoint: `/api/opportunities/${o.id}/action`,
-                      body: { action: "restore" },
-                    },
-                  }}
-                >
-                  Pass on this
-                </ActionButton>
+                <PassButton opportunityId={o.id} title={o.title}>
+                  Pass on this opportunity
+                </PassButton>
                 <span className="text-xs font-medium text-gold-text sm:ml-1">Open brief</span>
               </StopClickPropagation>
             </div>

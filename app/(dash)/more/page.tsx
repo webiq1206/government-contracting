@@ -27,6 +27,7 @@ const GROUPS: {
   {
     title: "Work",
     items: [
+      { href: "/workbench", label: "Workbench", hint: "Work the whole queue on one screen" },
       { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass" },
       { href: "/call-queue", label: "Call Queue", hint: "Work calls one after another" },
     ],
@@ -56,6 +57,7 @@ const GROUPS: {
   {
     title: "Performance",
     items: [
+      { href: "/recap", label: "Daily Recap", hint: "What happened yesterday, urgent things first" },
       { href: "/analytics", label: "Analytics", hint: "What the pipeline is actually producing" },
       { href: "/agents", label: "Automation Health", hint: "Whether the automation is working, and what is stopping it" },
     ],
@@ -79,6 +81,9 @@ const GROUPS: {
       { href: "/settings/content", label: "Content", hint: "The emails and proposal language reused across bids" },
       { href: "/settings/integrations", label: "Integrations", hint: "The services this runs on" },
       { href: "/settings/billing", label: "Billing", hint: "Your plan and invoices" },
+      { href: "/settings/recap", label: "Daily Recap settings", hint: "Who gets the recap and when" },
+      { href: "/settings/notifications", label: "Notifications", hint: "What is emailed and what stays in the product" },
+      { href: "/settings/account", label: "Your account", hint: "Name, password, and signed-in devices" },
     ],
   },
   {
@@ -88,6 +93,9 @@ const GROUPS: {
       { href: "/admin/accounts", label: "Accounts", hint: "Every customer account" },
       { href: "/admin/invitations", label: "Invitations", hint: "Outstanding invitations" },
       { href: "/admin/billing", label: "Customer Billing", hint: "Subscriptions and payments" },
+      { href: "/admin/audit", label: "Audit Log", hint: "What changed on customer accounts" },
+      { href: "/admin/health", label: "System Health", hint: "Platform-wide automation health" },
+      { href: "/admin/recap", label: "Platform Recap", hint: "Yesterday's incidents across every account" },
     ],
   },
 ];

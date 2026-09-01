@@ -215,6 +215,14 @@ export interface HealthInput {
   /** Opportunities held up by the failures, when the caller can count them. */
   affectedOpportunities?: number;
   now?: Date;
+  /**
+   * Total ok+error runs in the window, when `runs` is a sample rather than
+   * every row. A newest-500 cap of successes hid older failures and printed
+   * "Running normally" over a failing analyst.
+   */
+  windowRuns?: number;
+  /** Failed runs in the window, when `runs` does not contain every failure. */
+  windowErrors?: number;
 }
 
 export interface Incident {
@@ -250,6 +258,8 @@ export interface AutomationHealth {
   failureRate: number | null;
   /** How many runs the rate is computed over, so the caller can say why it is absent. */
   runs24h: number;
+  /** Failed runs in the window. Independent of the sample passed in `runs`. */
+  errors24h: number;
   /** True when a banner should interrupt the operator rather than wait. */
   interrupt: boolean;
 }
@@ -281,7 +291,9 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
       .sort()
       .pop() ?? null;
 
-  const failureRate = runs.length >= MIN_RUNS_FOR_RATE ? failures.length / runs.length : null;
+  const errorCount = input.windowErrors ?? failures.length;
+  const runs24h = input.windowRuns ?? runs.length;
+  const failureRate = runs24h >= MIN_RUNS_FOR_RATE ? errorCount / runs24h : null;
 
   // Group by cause rather than by agent. Five agents failing on one exhausted
   // credit balance is one problem with one fix, and showing it five times is
@@ -341,7 +353,8 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
     backlog,
     affectedOpportunities,
     failureRate,
-    runs24h: runs.length,
+    runs24h,
+    errors24h: errorCount,
   };
 
   // Order below is the order of precedence, and each step is a claim about
@@ -407,7 +420,7 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
     };
   }
 
-  if (incidents.length > 0 || (backlog != null && backlog >= BACKLOG_ALARM)) {
+  if (incidents.length > 0 || errorCount > 0 || (backlog != null && backlog >= BACKLOG_ALARM)) {
     const worst = incidents[0];
     return {
       ...base,
@@ -415,7 +428,9 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
       headline: "Automation is degraded",
       detail: worst
         ? `${worst.spec.title}. ${worst.spec.effect}`
-        : `${backlog} jobs are waiting to run, which is more than usual. Work is still moving but is behind.`,
+        : errorCount > 0
+          ? `${errorCount} job${errorCount === 1 ? "" : "s"} failed in the last 24 hours. Work is still moving.`
+          : `${backlog} jobs are waiting to run, which is more than usual. Work is still moving but is behind.`,
       interrupt: false,
     };
   }

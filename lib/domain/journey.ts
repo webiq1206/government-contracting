@@ -73,7 +73,11 @@ export const STAGE_LABEL: Record<string, string> = {
   submitted: "Submitted",
   won: "Won",
   lost: "Lost",
-  dismissed: "Dismissed",
+  dismissed: "Passed",
+  expired: "Expired",
+  aborted: "Aborted",
+  canceled: "Canceled",
+  archived: "Archived",
 };
 
 export function stageLabel(stage: string | null | undefined): string {

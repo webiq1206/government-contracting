@@ -104,8 +104,20 @@ export const DEFAULT_WINDOW_DAYS = 30;
 
 function asDate(v: string | Date | null | undefined): Date | null {
   if (!v) return null;
+  if (typeof v === "string") {
+    const day = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (day) return new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
+  }
   const d = v instanceof Date ? v : new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (Number.isNaN(d.getTime())) return null;
+  /*
+   * A Postgres `date` arrives as local midnight. Use that calendar day in
+   * UTC so a June 30 renewal stays June 30 west of UTC.
+   */
+  if (d.getHours() === 0 && d.getMinutes() === 0 && d.getUTCHours() !== 0) {
+    return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  }
+  return d;
 }
 
 export function complianceState(f: ComplianceFacts, now = new Date()): ComplianceVerdict {
@@ -338,5 +350,11 @@ export function nextDueDate(
    * year.
    */
   if (next.getUTCDate() !== day) next.setUTCDate(0);
-  return next.toISOString();
+  const y = next.getUTCFullYear();
+  const m = String(next.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(next.getUTCDate()).padStart(2, "0");
+  // Calendar day, not an instant. A timestamptz write of midnight UTC
+  // becomes the previous local day in the US, and the board then shows
+  // the wrong anniversary.
+  return `${y}-${m}-${d}`;
 }

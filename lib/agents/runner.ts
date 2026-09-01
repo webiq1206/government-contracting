@@ -71,10 +71,11 @@ export function recordRefs(payload: Record<string, unknown>): {
 async function payloadOrgId(
   agentName: string,
   payload: Record<string, unknown>
-): Promise<{ orgId: string | null; missing: PayloadRecord[] }> {
+): Promise<{ orgId: string | null; missing: PayloadRecord[]; conflict: boolean }> {
   let resolved = typeof payload.orgId === "string" && payload.orgId ? payload.orgId : null;
   const records = await lookupPayloadRecords(payload);
   const missing = records.filter(isPermanentlyGone);
+  let conflict = false;
 
   for (const { key, orgId } of records) {
     if (!orgId) continue;
@@ -84,12 +85,11 @@ async function payloadOrgId(
     }
     if (resolved !== orgId) {
       /**
-       * Two records in one payload owned by different organizations. The job
-       * runs under the first, because refusing would strand it in the queue's
-       * retry loop, but this is always a symptom: something upstream paired
-       * one tenant's record with another's. It is logged at error level so it
-       * lands on the Automation Log instead of passing unremarked.
+       * Two records in one payload owned by different organizations. Running
+       * under the first one would do work in the wrong tenant. Refusing is
+       * permanent so the queue does not retry the same mixed payload.
        */
+      conflict = true;
       await logAgent({
         agent: agentName,
         action: "payload-org-mismatch",
@@ -99,7 +99,7 @@ async function payloadOrgId(
         subcontractorId: (payload.subcontractorId as string) ?? null,
         message:
           `Job payload names records from two organizations (${resolved} and ${orgId} via ${key}). ` +
-          `Running as ${resolved}. Something upstream paired one organization's record with another's.`,
+          `Abandoned rather than run under either one. Something upstream paired one organization's record with another's.`,
       });
     }
   }
@@ -118,7 +118,7 @@ async function payloadOrgId(
     if (typeof queuedBy === "string" && queuedBy) resolved = queuedBy;
   }
 
-  return { orgId: resolved, missing };
+  return { orgId: resolved, missing, conflict };
 }
 
 /**
@@ -168,9 +168,17 @@ export async function runAgent(
     };
   }
 
-  const { orgId, missing } = await payloadOrgId(def.name, payload);
+  const { orgId, missing, conflict } = await payloadOrgId(def.name, payload);
   const inOrg = <T>(fn: () => Promise<T>): Promise<T> =>
     orgId === null ? fn() : runWithOrg(orgId, fn);
+
+  if (conflict) {
+    return {
+      ok: false,
+      permanent: true,
+      summary: `${def.name} abandoned: payload names records from two organizations. Nothing was run.`,
+    };
+  }
 
   /*
    * And this one is the customer's own switch, which is why it has to come

@@ -62,7 +62,7 @@ function asDate(v: Date | string | null | undefined): Date | null {
 /** "on 4 September", or null. Never "soon", which is not a date. */
 function on(d: Date | null): string | null {
   if (!d) return null;
-  return d.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
 }
 
 export function paymentState(f: PaymentFacts): PaymentView {

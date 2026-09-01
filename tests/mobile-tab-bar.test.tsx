@@ -25,7 +25,12 @@ vi.mock("next/navigation", () => ({
 
 const { MobileTabBar } = await import("../components/mobile-tab-bar");
 
-function render(props: { reviewCount: number; callCount: number; inboxCount?: number }) {
+function render(props: {
+  reviewCount: number;
+  callCount: number;
+  inboxCount?: number;
+  todayCount?: number;
+}) {
   return renderToStaticMarkup(<MobileTabBar {...props} />);
 }
 
@@ -68,6 +73,12 @@ describe("what the badges count", () => {
   it("puts the whole pending queue on Today, not one slice", () => {
     const html = render({ reviewCount: 3, callCount: 4 });
     expect(html).toContain(">7<");
+  });
+
+  it("uses the ledger total when the caller counted the rest of the work", () => {
+    const html = render({ reviewCount: 3, callCount: 4, todayCount: 18 });
+    expect(html).toContain(">18<");
+    expect(html).not.toContain(">7<");
   });
 
   it("carries the inbox on More, because it lost its own tab", () => {

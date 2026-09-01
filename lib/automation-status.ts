@@ -45,25 +45,51 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
     return assessAutomation({ paused: false, runs: [], backlog: null });
   }
 
-  const [paused, heartbeat, rows, stalled, configured] = await Promise.all([
+  const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog] = await Promise.all([
     getAutomationState()
       .then((s) => s.paused)
       .catch(() => false),
     readWorkerHeartbeat().catch(() => null),
+    query<{ runs: number; errors: number }>(
+      `select count(*)::int as runs,
+              count(*) filter (where status = 'error')::int as errors
+         from agent_logs
+        where org_id = $1
+          and created_at > now() - interval '${WINDOW}'
+          and status in ('ok','error')`,
+      [org]
+    )
+      .then((r) => r[0] ?? { runs: 0, errors: 0 })
+      .catch(() => ({ runs: 0, errors: 0 })),
+    // Every failure in the window, not the newest 500 mixed rows. A busy
+    // scoring engine used to push analyst failures out of the sample so the
+    // sidebar printed "Running normally" over a failing reader.
     query<LogRow>(
       `select agent, status, created_at::text, message
          from agent_logs
         where org_id = $1
           and created_at > now() - interval '${WINDOW}'
-          and status in ('ok','error')
+          and status = 'error'
         order by created_at desc
         limit 500`,
+      [org]
+    ).catch(() => [] as LogRow[]),
+    query<LogRow>(
+      `select agent, status, created_at::text, message
+         from agent_logs
+        where org_id = $1
+          and created_at > now() - interval '${WINDOW}'
+          and status = 'ok'
+        order by created_at desc
+        limit 1`,
       [org]
     ).catch(() => [] as LogRow[]),
     query<{ n: number }>(
       `select count(*)::int as n
          from opportunities
-        where org_id = $1 and status = 'open' and stage not in ('submitted','won','lost')`,
+        where org_id = $1 and status = 'open'
+          and coalesce(pursuit_state, 'active') <> 'aborted'
+          and stage not in ('submitted','won','lost')`,
       [org]
     )
       .then((r) => r[0]?.n ?? 0)
@@ -73,8 +99,10 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
     // analyses or drafts, so its absence is the honest definition of "not
     // configured" rather than a fault to report.
     orgHasKey("ANTHROPIC_API_KEY", org).catch(() => true),
+    queueBacklogDepth().catch(() => null),
   ]);
 
+  const rows = [...errors, ...latestOk];
   const runs: RunFact[] = rows.map((r) => ({
     agent: r.agent,
     label: LABELS.get(r.agent) ?? r.agent,
@@ -88,12 +116,29 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
     heartbeatAt: heartbeat?.updatedAt ?? null,
     phase: heartbeat?.phase ?? null,
     runs,
-    // Left unknown rather than guessed: the queue lives in pg-boss's own
-    // schema when Postgres is the backend and in Redis when it is not, so
-    // there is no one count to read, and reporting an unknown as zero is how
-    // a growing backlog stays invisible.
-    backlog: null,
+    backlog,
     configured,
     affectedOpportunities: stalled,
+    windowRuns: totals.runs,
+    windowErrors: totals.errors,
   });
+}
+
+/**
+ * Jobs waiting to be picked up. Counted from pg-boss when that is the
+ * backend. Null when the table is not there or Redis is in use, because
+ * reporting those as zero is how a growing backlog stays invisible.
+ */
+async function queueBacklogDepth(): Promise<number | null> {
+  const { config } = await import("./config");
+  if (config.queue.backend !== "pgboss") return null;
+  const { queryOne } = await import("./db");
+  const exists = await queryOne<{ job: string | null }>(
+    `select to_regclass('pgboss.job')::text as job`
+  );
+  if (!exists?.job) return null;
+  const row = await queryOne<{ n: number }>(
+    `select count(*)::int as n from pgboss.job where state in ('created', 'retry')`
+  );
+  return row?.n ?? 0;
 }

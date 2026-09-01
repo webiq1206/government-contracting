@@ -197,7 +197,7 @@ export const OUTREACH_VARS: VarSpec[] = [
     description:
       "Everything affecting their ability to perform or price: licenses, insurance, bonding, wage determinations, site visits, hours, permits, quote validity.",
     dataSource: "Solicitation qualifications, special requirements, site visit and acceptance period",
-    example: "- License: State mechanical contractor license (required)\n- Site visit: August 14, 2026 (required)",
+    example: "- License: State mechanical contractor license (required)\n- Site visit: August 14, 2099 (required)",
     required: false,
     fallback:
       "Empty when the solicitation states no conditions, and the section is left out rather than shown blank.",
@@ -220,7 +220,7 @@ export const OUTREACH_VARS: VarSpec[] = [
     description:
       "When OUR bid is due to the agency. Never present this to a subcontractor as their own deadline.",
     dataSource: "Opportunity, deadline",
-    example: "August 29, 2026 at 2:00 PM EDT",
+    example: "August 29, 2099 at 2:00 PM EDT",
     required: true,
     fallback: "None. Outreach is blocked.",
     category: "schedule",
@@ -231,7 +231,7 @@ export const OUTREACH_VARS: VarSpec[] = [
     description:
       "When this subcontractor's price must be back with us. Always earlier than the government deadline, by enough time to review, chase a replacement, apply markup and assemble the package.",
     dataSource: "Calculated back from the government deadline",
-    example: "August 22, 2026 at 3:00 PM MDT",
+    example: "August 22, 2099 at 3:00 PM MDT",
     required: true,
     fallback:
       "None. If the bid is too close for any honest date, outreach is blocked rather than given a date nobody can meet.",
@@ -242,7 +242,7 @@ export const OUTREACH_VARS: VarSpec[] = [
     label: "Estimated start",
     description: "When work is expected to begin, only when the solicitation says so.",
     dataSource: "Solicitation key dates",
-    example: "October 1, 2026",
+    example: "October 1, 2099",
     required: false,
     fallback: "The line is left out entirely. Never estimated.",
     category: "schedule",

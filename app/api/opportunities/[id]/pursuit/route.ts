@@ -10,6 +10,13 @@ import {
   RESTART_REVALIDATION,
   type AbortReason,
 } from "@/lib/domain/pursuit-state";
+import { enqueue } from "@/lib/queue";
+import {
+  RESTART_REQUEUE_AGENTS,
+  restartMayProceed,
+} from "@/lib/domain/restart-revalidation";
+import { startVerification } from "@/lib/reverification";
+import { verificationKey } from "@/lib/domain/reverification";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -161,12 +168,40 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         `No further automatic work runs for it. Everything already sent stands and cannot be recalled; ` +
         `everything received is kept and readable.`
     );
+    const { stopOpportunityAutomation } = await import("@/lib/close-opportunity-work");
+    await stopOpportunityAutomation(ctx.orgId, [params.id], "aborted");
     return NextResponse.json({ ok: true, state: "aborted", reason });
   }
 
   if (body.action === "restart") {
     if (state === "active") {
       return NextResponse.json({ error: "This pursuit is already running." }, { status: 409 });
+    }
+    const facts = await queryOne<{
+      status: string;
+      stage: string;
+      deadline: string | null;
+      title: string | null;
+      solicitation_number: string | null;
+      naics_code: string | null;
+      set_aside_type: string | null;
+      solicitation_analysis: {
+        required_trades?: unknown;
+        compliance_matrix?: unknown;
+      } | null;
+    }>(
+      `select status, stage, deadline::text as deadline, title, solicitation_number,
+              naics_code, set_aside_type, solicitation_analysis
+         from opportunities where id = $1`,
+      [params.id]
+    );
+    const gate = restartMayProceed({
+      status: facts?.status,
+      stage: facts?.stage,
+      deadline: facts?.deadline,
+    });
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: 409 });
     }
     /*
      * The version bump is what stops a restart reviving the work the abort
@@ -179,10 +214,58 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       true,
       `Pursuit restarted by ${actor}. Its facts are rechecked before anything is sent: ${RESTART_REVALIDATION.join("; ")}.`
     );
+
+    const queued: string[] = [];
+    if (facts) {
+      try {
+        const { run, alreadyRunning } = await startVerification({
+          orgId: ctx.orgId,
+          opportunityId: params.id,
+          scope: "full",
+          requestedBy: actor,
+          snapshot: {
+            title: facts.title,
+            solicitationNumber: facts.solicitation_number,
+            deadline: facts.deadline,
+            naics: facts.naics_code,
+            setAside: facts.set_aside_type,
+            requiredTrades: facts.solicitation_analysis?.required_trades ?? [],
+            complianceMatrix: facts.solicitation_analysis?.compliance_matrix ?? [],
+          },
+        });
+        if (!alreadyRunning) {
+          await enqueue(
+            "reverify",
+            {
+              runId: run.id,
+              opportunityId: params.id,
+              scope: "full",
+              orgId: ctx.orgId,
+            },
+            { singletonKey: verificationKey(params.id, "full"), singletonSeconds: 3600 }
+          );
+        }
+        queued.push("reverify");
+      } catch (err) {
+        await logAgent({
+          agent: "operator",
+          action: "pursuit-restart-reverify-failed",
+          level: "warn",
+          opportunityId: params.id,
+          message: `Restart is active, but the source check did not queue: ${(err as Error).message}`,
+        }).catch(() => {});
+      }
+    }
+    for (const agent of RESTART_REQUEUE_AGENTS) {
+      await enqueue(agent, { opportunityId: params.id });
+      queued.push(agent);
+    }
+
     return NextResponse.json({
       ok: true,
       state: "active",
       revalidation: RESTART_REVALIDATION,
+      queued,
       /*
        * Said out loud rather than assumed. A restart that silently resumed
        * outreach would be the one-click resume the instructions rule out.

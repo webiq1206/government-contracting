@@ -523,6 +523,20 @@ export async function purgeOrganization(orgId: string): Promise<void> {
       throw new Error(`Gave up clearing ${remaining.join(", ")}.`);
     }
 
+    // Child rows that do not carry org_id still block the organization
+    // delete. Clear them by walking the items they belong to.
+    await tx.query(
+      `delete from compliance_item_events
+        where item_id in (select id from compliance_items where org_id = $1)`,
+      [orgId]
+    ).catch(() => {});
+    await tx.query(
+      `delete from compliance_item_documents
+        where item_id in (select id from compliance_items where org_id = $1)`,
+      [orgId]
+    ).catch(() => {});
+    await tx.query(`delete from compliance_items where org_id = $1`, [orgId]).catch(() => {});
+
     await tx.query(`delete from organizations where id = $1`, [orgId]);
   });
 }

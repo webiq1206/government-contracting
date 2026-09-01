@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
+import { stopOpportunityAutomation } from "@/lib/close-opportunity-work";
 
 /**
  * The three stage changes an operator can make, in one place.
@@ -85,15 +86,20 @@ export async function passOpportunity(
     `update opportunities
         set tier='dismiss', stage='dismissed', status='archived',
             human_action_required=false, review_expires_at=null, review_warned_at=null,
+            pursuit_state='aborted',
+            pursuit_reason='passed',
+            pursuit_changed_at=now(),
+            pursuit_changed_by=$4,
             notes = case
               when coalesce(notes, '') = '' then $3
               else notes || E'\n' || $3
             end
       where id=$1 and org_id=$2
       returning id`,
-    [id, orgId, `Passed: ${reason}`]
+    [id, orgId, `Passed: ${reason}`, actorEmail]
   );
   if (rows.length === 0) return false;
+  await stopOpportunityAutomation(orgId, [id], "passed");
   await logAgent({
     agent: "operator",
     action: "dismiss",

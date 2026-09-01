@@ -186,7 +186,12 @@ function shortDay(v: string | Date): string {
   const d = v instanceof Date ? v : new Date(v);
   return Number.isNaN(d.getTime())
     ? "an unknown date"
-    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    : d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      });
 }
 
 // ---------------------------------------------------------------------------

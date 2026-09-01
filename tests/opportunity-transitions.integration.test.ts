@@ -62,6 +62,9 @@ d("opportunity transitions (integration)", () => {
     for (const org of [mine, theirs]) {
       if (!org.id) continue;
       await query(`delete from agent_logs where org_id=$1`, [org.id]).catch(() => {});
+      await query(`delete from communications where org_id=$1`, [org.id]).catch(() => {});
+      await query(`delete from call_cards where org_id=$1`, [org.id]).catch(() => {});
+      await query(`delete from subcontractors where org_id=$1`, [org.id]).catch(() => {});
       await query(`delete from opportunities where org_id=$1`, [org.id]);
       await query(`delete from organizations where id=$1`, [org.id]);
     }
@@ -96,6 +99,12 @@ d("opportunity transitions (integration)", () => {
     expect(a?.review_warned_at).toBeNull();
     // The reason is appended to the notes rather than replacing them.
     expect(a?.notes).toContain("Out of our area");
+    const pursuit = await queryOne<{ pursuit_state: string; status: string }>(
+      `select pursuit_state, status from opportunities where id=$1`,
+      [passed]
+    );
+    expect(pursuit?.pursuit_state).toBe("aborted");
+    expect(pursuit?.status).toBe("archived");
 
     const moved = await makeOpp(mine.id);
     await t.moveOpportunity(mine.id, moved, "outreach", "op@x.invalid", "scoring");
@@ -125,6 +134,39 @@ d("opportunity transitions (integration)", () => {
       [automatic]
     );
     expect(b?.human_action_required).toBe(false);
+  });
+
+  it("stops scheduled follow-ups and pending calls when an opportunity is passed", async () => {
+    const id = await makeOpp(mine.id);
+    const sub = await queryOne<{ id: string }>(
+      `insert into subcontractors (org_id, company_name, email)
+       values ($1,'Close Work Sub','sub@x.invalid') returning id`,
+      [mine.id]
+    );
+    await query(
+      `insert into communications
+         (org_id, opportunity_id, subcontractor_id, channel, direction, subject, body, follow_up_at)
+       values ($1,$2,$3,'email','outbound','Quote?','Please quote', now() + interval '1 day')`,
+      [mine.id, id, sub!.id]
+    );
+    await query(
+      `insert into call_cards (org_id, opportunity_id, subcontractor_id, card_json, status)
+       values ($1,$2,$3,'{}','pending')`,
+      [mine.id, id, sub!.id]
+    );
+
+    await t.passOpportunity(mine.id, id, "Wrong trade", "op@x.invalid");
+
+    const follow = await queryOne<{ follow_up_at: Date | null }>(
+      `select follow_up_at from communications where opportunity_id=$1`,
+      [id]
+    );
+    const call = await queryOne<{ status: string }>(
+      `select status from call_cards where opportunity_id=$1`,
+      [id]
+    );
+    expect(follow?.follow_up_at).toBeNull();
+    expect(call?.status).toBe("skipped");
   });
 
   it("refuses to touch another organization's record", async () => {
