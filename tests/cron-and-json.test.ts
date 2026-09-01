@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { cronMatches } from "@/lib/cron";
-import { extractJson } from "@/lib/ai/claude";
+import { extractJson, JSON_RETRY_TOKEN_CAP } from "@/lib/ai/claude";
+import { readFileSync } from "node:fs";
 
 describe("cron matcher", () => {
   it("matches every 2 hours at minute 0", () => {
@@ -53,5 +54,14 @@ describe("extractJson", () => {
 
   it("throws when no JSON present", () => {
     expect(() => extractJson("no json here")).toThrow();
+  });
+
+  it("gives a truncated analysis room to finish on retry", () => {
+    const src = readFileSync("lib/ai/claude.ts", "utf8");
+    expect(JSON_RETRY_TOKEN_CAP).toBeGreaterThan(8192);
+    expect(src).toContain("JSON_RETRY_TOKEN_CAP");
+    expect(readFileSync("lib/agents/solicitation-analyst.ts", "utf8")).toContain(
+      "maxTokens: 8192"
+    );
   });
 });

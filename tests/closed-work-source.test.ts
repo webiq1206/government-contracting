@@ -9,6 +9,8 @@ const MAINTENANCE = readFileSync("lib/agents/maintenance.ts", "utf8");
 const PASS = readFileSync("lib/opportunity-transitions.ts", "utf8");
 const ABORT = readFileSync("app/api/opportunities/[id]/pursuit/route.ts", "utf8");
 const DATA = readFileSync("lib/data.ts", "utf8");
+const RECAP_GATHER = readFileSync("lib/recap/gather.ts", "utf8");
+const COMPLIANCE = readFileSync("app/(dash)/compliance/page.tsx", "utf8");
 const HEALTH = readFileSync("lib/automation-status.ts", "utf8");
 const RUNNER = readFileSync("lib/agents/runner.ts", "utf8");
 const INTEGRATIONS_PAGE = readFileSync("app/(dash)/settings/integrations/page.tsx", "utf8");
@@ -145,6 +147,17 @@ describe("operator pages keep the names and chrome they already have", () => {
     expect(src).not.toMatch(/^import .*storage/m);
     expect(src).not.toMatch(/^import .*sub-compliance-store/m);
     expect(src).toContain('import("@/lib/integrations/storage")');
+  });
+
+  it("does not list leftover declined calls or aborted review items on the recap", () => {
+    expect(RECAP_GATHER).toContain("WORKABLE_CALL_CARD_SQL");
+    expect(RECAP_GATHER).toContain("TRIAGE_WHERE_SQL");
+    expect(RECAP_GATHER).not.toMatch(/cc\.status = 'pending'\s*\n\s*and o\.status = 'open'/);
+  });
+
+  it("does not split need/needs across a line on the compliance board", () => {
+    expect(COMPLIANCE).toContain("1 subcontractor in this area needs attention now");
+    expect(COMPLIANCE).not.toContain('need\n          {pinned.length === 1 ? "s" : ""}');
   });
 
   it("does not split need/needs across a line on a subcontractor plan", () => {

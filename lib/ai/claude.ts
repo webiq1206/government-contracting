@@ -409,6 +409,9 @@ export async function complete(
  * defensively extract the first balanced object. If a Zod schema is supplied,
  * we validate and (on failure) retry once with the validation error appended.
  */
+/** Ceiling for a truncated JSON retry. Must sit above the analyst's 8192 start. */
+export const JSON_RETRY_TOKEN_CAP = 16384;
+
 export async function completeJson<T = unknown>(
   prompt: string,
   // The `any` input param decouples the schema's INPUT type from its OUTPUT type
@@ -444,7 +447,11 @@ export async function completeJson<T = unknown>(
       // retrying at the SAME budget just truncates again. Bump the budget instead
       // (capped) so the retry has room to finish the object.
       if (stopReason === "max_tokens") {
-        maxTokens = Math.min(maxTokens * 2, 8192);
+        // Solicitation analysis already starts at 8192. Capping the retry at
+        // the same number made the second attempt identical to the first:
+        // truncated JSON, then "unbalanced JSON in response". Sonnet can
+        // finish the object if the retry actually has more room.
+        maxTokens = Math.min(maxTokens * 2, JSON_RETRY_TOKEN_CAP);
         extra = "\n\nYour previous response was cut off before the JSON was complete. Return the COMPLETE, valid JSON object only.";
       } else {
         extra = `\n\nYour previous response could not be parsed/validated (${(err as Error).message}). Return corrected, strictly-valid JSON only.`;
