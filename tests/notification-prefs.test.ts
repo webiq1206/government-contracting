@@ -102,12 +102,11 @@ describe("categoryStatuses", () => {
     ]);
   });
 
-  it("says assignments are not produced at all rather than implying they exist somewhere", () => {
-    // There is no assignee column anywhere, so calling this "in app" would
-    // suggest the information is on a page. It is not.
+  it("says assignment email is not sent, not that assignment does not exist", () => {
     const s = byKey(facts(), "assignments");
     expect(s.route).toBe("not_sent");
-    expect(s.statement).toContain("no way to assign work");
+    expect(s.statement).toContain("Nobody is emailed");
+    expect(s.statement).not.toContain("no way to assign work");
   });
 });
 

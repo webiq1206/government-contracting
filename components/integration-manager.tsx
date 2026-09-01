@@ -259,7 +259,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                 )}
               </p>
             )}
-            {def.configured && !def.last_success_at && !def.last_tested_at && (
+            {def.state === "configured" && !def.last_success_at && !def.last_tested_at && (
               <p className="text-xs text-slate-500">
                 Saved, and not used or tested yet.
               </p>

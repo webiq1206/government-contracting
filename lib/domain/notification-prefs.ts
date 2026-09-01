@@ -195,7 +195,7 @@ function statementFor(
       return "Emailed to this deployment's operations address, not to the account.";
     case "not_sent":
       return def.key === "assignments"
-        ? "Nothing produces these. There is no way to assign work to a person yet, so there is nothing to notify anybody about."
+        ? "Work can be put on a person from Today and Workbench. Nobody is emailed when that happens; they see it in their queue."
         : "Not sent. Product updates are announced in the release notes rather than by email.";
     case "in_app_only":
     default:

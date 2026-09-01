@@ -56,6 +56,7 @@ export type IncidentCause =
   | "database"
   | "network"
   | "not_configured"
+  | "model_output"
   | "unknown";
 
 export interface IncidentSpec {
@@ -144,6 +145,14 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     repairHref: "/settings/integrations",
     blocking: false,
   },
+  model_output: {
+    title: "An analysis came back unreadable",
+    effect:
+      "Scoring still ran, but some solicitations were not analysed, so briefs and bid packages wait on those records.",
+    repair:
+      "The agent retries on its own. If the same records keep failing, open the incident and send the sample to support.",
+    blocking: false,
+  },
   unknown: {
     title: "Jobs are failing for an unrecognised reason",
     effect: "Some automated work is not completing.",
@@ -178,6 +187,8 @@ export function classifyFailure(error: string | null | undefined): IncidentCause
   if (/5\d\d|server error|overloaded|service unavailable/.test(text)) return "provider_unavailable";
   if (/fetch failed|enotfound|etimedout|network|timeout|aborted/.test(text)) return "network";
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";
+  if (/unbalanced json|invalid json|completejson|could not parse|json parse/.test(text))
+    return "model_output";
   return "unknown";
 }
 
