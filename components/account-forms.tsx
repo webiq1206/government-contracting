@@ -104,7 +104,7 @@ export function TimeZoneForm({
           <button
             type="button"
             className="btn-primary text-sm"
-            disabled={busy || zone === initial}
+            disabled={busy || (zone === initial && !isDefault)}
             onClick={() => save({ timezone: zone })}
           >
             {busy ? "Saving" : "Save"}

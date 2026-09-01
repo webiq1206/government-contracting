@@ -8,7 +8,12 @@ import { GoogleInboxCard } from "@/components/google-inbox-card";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import { hydrateIntegrationEnv, settingSources } from "@/lib/integration-settings";
 import { INTEGRATION_DEFS } from "@/lib/integration-defs";
-import { lastAiSuccess, recentAiTrouble, troubleSummary } from "@/lib/integration-health";
+import {
+  lastAiSuccess,
+  lastPricingSuccess,
+  recentAiTrouble,
+  troubleSummary,
+} from "@/lib/integration-health";
 import { gmail } from "@/lib/integrations/gmail";
 import { integrationState } from "@/lib/domain/integration-state";
 import { queryOne } from "@/lib/db";
@@ -32,7 +37,7 @@ export default async function IntegrationsPage({
   searchParams?: { gmail?: string; gmailError?: string };
 }) {
   await hydrateIntegrationEnv();
-  const [sources, inbox, aiTrouble, gmailUsed, claudeUsed] = await Promise.all([
+  const [sources, inbox, aiTrouble, gmailUsed, claudeUsed, pricingUsed] = await Promise.all([
     settingSources(),
     gmail
       .connection()
@@ -52,6 +57,7 @@ export default async function IntegrationsPage({
       )
       .catch(() => null),
     lastAiSuccess().catch(() => null),
+    lastPricingSuccess().catch(() => null),
   ]);
   const gmailConnected = inbox.connected;
   // Platform-owned integrations (our Ahrefs, our document storage) are hidden
@@ -139,7 +145,9 @@ export default async function IntegrationsPage({
             ? (def.last_success_at ?? gmailUsed?.at ?? null)
             : def.id === "claude"
               ? (def.last_success_at ?? claudeUsed ?? null)
-              : def.last_success_at,
+              : def.id === "usaspending"
+                ? (def.last_success_at ?? pricingUsed ?? null)
+                : def.last_success_at,
         // Only the OAuth one has a connection that can lapse. Undefined for
         // the key-based integrations, which have nothing to expire.
         connectionLive: def.id === "gmail" ? gmailConnected : undefined,

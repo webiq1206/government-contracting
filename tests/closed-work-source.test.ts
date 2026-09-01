@@ -176,6 +176,16 @@ describe("operator pages keep the names and chrome they already have", () => {
     expect(INTEGRATIONS_PAGE).toContain("lastAiSuccess");
     expect(INTEGRATIONS_PAGE).toContain('def.id === "claude"');
   });
+
+  it("treats a successful pricing-research run as USASpending having been used", () => {
+    expect(INTEGRATIONS_PAGE).toContain("lastPricingSuccess");
+    expect(INTEGRATIONS_PAGE).toContain('def.id === "usaspending"');
+  });
+
+  it("keeps leftover declined calls off Today and the opportunity pending count", () => {
+    expect(DATA).toContain("where o.org_id=$1 and ${WORKABLE_CALL_CARD_SQL}");
+    expect(DATA).toContain("where cc.opportunity_id = $1 and ${WORKABLE_CALL_CARD_SQL}");
+  });
 });
 
 describe("gmail is not shown as unused while it is connected", () => {

@@ -356,7 +356,9 @@ export default async function PipelinePage({
    * single stage (its bar chart), and both filter to exactly what was
    * counted, because the stage lists live in one module.
    */
-  const focus = focusSet(typeof searchParams?.focus === "string" ? searchParams.focus : undefined);
+  const rawFocus = typeof searchParams?.focus === "string" ? searchParams.focus : undefined;
+  const focus = focusSet(rawFocus);
+  const unknownFocus = Boolean(rawFocus) && !focus;
   const rawStage = typeof searchParams?.stage === "string" ? searchParams.stage : undefined;
   const focusStage =
     rawStage && PIPELINE_STAGES.some((s) => s.key === rawStage) ? rawStage : null;
@@ -419,7 +421,9 @@ export default async function PipelinePage({
               : `${opps.length} active · ${(byLane.get("you") ?? []).length} need you`
         }
         explanation={
-          focusLabel
+          unknownFocus
+            ? "That filter is not a slice this board knows, so every open opportunity is showing."
+            : focusLabel
             ? (focusBlurb ??
               `Only opportunities at the ${focusLabel.toLowerCase()} stage.`)
             : view === "lanes"
@@ -428,7 +432,7 @@ export default async function PipelinePage({
         }
         primaryAction={
           <>
-        {focusLabel && (
+        {(focusLabel || unknownFocus) && (
           <Link href="/pipeline?view=lanes" className="btn-ghost text-xs">
             Show all ({allOpps.length})
           </Link>

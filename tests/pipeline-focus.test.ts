@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   FOCUS_KEYS,
   FOCUS_SETS,
@@ -43,6 +44,14 @@ describe("pipeline focus sets", () => {
     expect(focusSet("nonsense")).toBeNull();
     expect(focusSet(null)).toBeNull();
     expect(focusSet(undefined)).toBeNull();
+  });
+
+  it("tells the operator when a focus slice is not one the board knows", () => {
+    const page = readFileSync("app/(dash)/pipeline/page.tsx", "utf8");
+    expect(page).toContain("unknownFocus");
+    expect(page).toContain(
+      "That filter is not a slice this board knows, so every open opportunity is showing."
+    );
   });
 
   it("gives every set a label and an explanation for the filtered board", () => {
