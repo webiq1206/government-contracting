@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeSetupChecklist, type SetupInputs } from "@/lib/domain/setup";
+import { defaultCompanyProfile } from "@/lib/domain/default-profile";
 
 /**
  * The rule these guard: a saved key is not a working key.
@@ -28,7 +29,7 @@ const allOn: SetupInputs = {
     service_areas: ["Idaho"],
     certifications: ["Small Business"],
     owner_name: "Pat Brost",
-    company_name: "Brost Co",
+    legal_name: "Brost Co",
     phone: "208-555-0100",
     outreach_email: "bids@brostco.test",
   },
@@ -376,5 +377,58 @@ describe("access and contact limits", () => {
     const r = item({ ...allOff, rules: { reviewed: false, outreachBatchLimit: 50 } }, "rules");
     expect(r.done).toBe(false);
     expect(r.hint).toContain("defaults until you look at them");
+  });
+});
+
+/**
+ * The step that could never be finished.
+ *
+ * "Add your company name" sat on every account's setup list as Required,
+ * permanently, whatever anybody typed into the profile editor. The checklist
+ * read `company_name`; the company profile has always called that field
+ * `legal_name`, and nothing has ever written `company_name` into it. The key
+ * was blank on every account that has ever existed.
+ *
+ * The tests did not catch it because the fixture above had invented the same
+ * field the code invented: the two agreed with each other and disagreed with
+ * the product. So these build the profile with the function the application
+ * itself builds one with, rather than by hand. A fixture written from the real
+ * record cannot quietly grow a field the record does not have.
+ */
+describe("the sender identity reads the profile the product actually saves", () => {
+  const saved = (over: Partial<ReturnType<typeof defaultCompanyProfile>> = {}) => ({
+    ...defaultCompanyProfile({
+      legalName: "Brost Co Holdings",
+      email: "bids@brostco.test",
+      ownerName: "Pat Brost",
+    }),
+    phone: "208-555-0100",
+    ...over,
+  });
+
+  const senderStep = (profile: SetupInputs["profile"]) =>
+    item({ ...allOff, profile }, "sender_identity");
+
+  it("is finished by a profile saved through the editor", () => {
+    const s = senderStep(saved());
+    expect(s.done).toBe(true);
+    expect(s.label).toBe("Say who the emails come from");
+  });
+
+  it("asks for the company name only when the legal name is genuinely blank", () => {
+    const s = senderStep(saved({ legal_name: "" }));
+    expect(s.done).toBe(false);
+    expect(s.label).toBe("Add your company name");
+  });
+
+  it("does not read a key the company profile has never had", () => {
+    /*
+     * The exact regression. A record carrying `company_name` and nothing in
+     * `legal_name` is not a filled-in profile, and must not read as one; the
+     * inverse -- the shape every real account has -- must.
+     */
+    const wrongKey = { ...saved({ legal_name: "" }), company_name: "Brost Co Holdings" };
+    expect(senderStep(wrongKey as SetupInputs["profile"]).done).toBe(false);
+    expect(senderStep(saved()).done).toBe(true);
   });
 });
