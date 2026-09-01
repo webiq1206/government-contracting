@@ -93,8 +93,10 @@ export function GuidedPlanPanel({
         )}
         {problems.length > 0 && (
           <p className="mt-1 text-xs font-medium text-risk">
-            {problems.length} step{problems.length === 1 ? "" : "s"} need
-            {problems.length === 1 ? "s" : ""} something fixed. Open the list below.
+            {problems.length === 1
+              ? "1 step needs something fixed."
+              : `${problems.length} steps need something fixed.`}{" "}
+            Open the list below.
           </p>
         )}
       </div>

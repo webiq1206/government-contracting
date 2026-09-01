@@ -13,6 +13,19 @@
 import { DOC_LABEL, type DocType } from "./sub-compliance";
 import { assemblePlan, type PlanBlocker, type PlanStep, type StepPlan } from "./step-plan";
 
+function howToCollectMissing(d: DocType): string {
+  if (d === "w9") {
+    return "Request it in the Compliance section; a signed W-9 can be collected by link.";
+  }
+  if (d.startsWith("coi_")) {
+    return "Request a current certificate in the Compliance section.";
+  }
+  if (d === "license") {
+    return "Request a current license in the Compliance section.";
+  }
+  return "Request it in the Compliance section.";
+}
+
 export interface SubPlanInput {
   hasEmail: boolean;
   hasPhone: boolean;
@@ -115,7 +128,7 @@ export function buildSubPlan(input: SubPlanInput): StepPlan {
     for (const d of c.missing)
       items.push({
         what: `${DOC_LABEL[d]} is not on file.`,
-        how: "Request it in the Compliance section; a signed W-9 can be collected by link.",
+        how: howToCollectMissing(d),
         href: "#compliance",
       });
     for (const d of c.expired)

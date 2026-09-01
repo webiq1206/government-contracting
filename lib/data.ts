@@ -79,7 +79,15 @@ export const WORKABLE_CALL_CARD_SQL = `
   and (cc.snoozed_until is null or cc.snoozed_until <= now())
   -- Uncallable cards (no phone) are never shown; Call Prep refuses to create
   -- them going forward, and this keeps historical empties out of the count.
-  and nullif(btrim(coalesce(s.phone, '')), '') is not null`;
+  and nullif(btrim(coalesce(s.phone, '')), '') is not null
+  -- A decline already closed this pairing. Leftover pending cards stay in
+  -- history; they leave the queue the same way an expired bid leaves Today.
+  and not exists (
+    select 1 from opportunity_subs os
+     where os.opportunity_id = cc.opportunity_id
+       and os.subcontractor_id = cc.subcontractor_id
+       and os.outreach_state in ('declined', 'not_a_fit', 'unavailable')
+  )`;
 
 /**
  * An opportunity waiting on a pursue-or-pass decision.
