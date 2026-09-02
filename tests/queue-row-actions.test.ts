@@ -15,6 +15,25 @@ const SRC = readFileSync("components/work-queue.tsx", "utf8");
 const DATA = readFileSync("lib/data.ts", "utf8");
 const ROW_ACTIONS = readFileSync("components/row-actions.tsx", "utf8");
 
+/**
+ * The queue row's markup, located rather than assumed.
+ *
+ * `SRC.indexOf("<li key={item.key}")` was the locator, and the tag is spread
+ * over two lines now, so it returned -1 and every slice taken from it silently
+ * addressed the whole file instead of the row. The guard below it went on
+ * passing while measuring nothing, which is the failure mode a source-scanning
+ * test is most prone to: it cannot tell "the rule holds" from "I did not find
+ * the code". So this throws when it cannot find the row.
+ */
+function queueRow(): { start: number; end: number; text: string } {
+  const m = /<li[\s\S]{0,60}?key=\{item\.key\}/.exec(SRC);
+  if (!m) throw new Error("the queue row markup moved; these guards need updating");
+  const start = m.index;
+  const end = SRC.indexOf("</li>", start);
+  if (end === -1) throw new Error("the queue row has no closing tag; guards need updating");
+  return { start, end, text: SRC.slice(start, end) };
+}
+
 describe("the controls on a row", () => {
   it("are outside the link rather than inside it swallowing clicks", () => {
     /*
@@ -22,17 +41,39 @@ describe("the controls on a row", () => {
      * all, and lands in a strange place in the tab order. Outside, a keyboard
      * reaches it in the order it reads.
      */
-    const rowStart = SRC.indexOf("<li key={item.key}");
-    const linkEnd = SRC.indexOf("</Link>", rowStart);
-    const actions = SRC.indexOf("item.actions?.snooze", rowStart);
+    const { start } = queueRow();
+    const linkEnd = SRC.indexOf("</Link>", start);
+    const actions = SRC.indexOf("<RowActionsForItem", start);
+    expect(linkEnd).toBeGreaterThan(start);
     expect(actions).toBeGreaterThan(linkEnd);
   });
 
   it("appear under the row on a phone rather than being hidden there", () => {
-    // Hiding them below sm would mean the device most of this queue is worked
-    // from is the one that cannot work it.
-    expect(SRC).not.toContain("hidden shrink-0 sm:inline-flex");
-    expect(SRC).toContain("px-4 pb-3 sm:shrink-0");
+    /*
+     * Hiding them below sm would mean the device most of this queue is worked
+     * from is the one that cannot work it.
+     *
+     * Written against the property rather than the class that once carried
+     * it. The row was a flex line with the controls pulled out of the flow by
+     * `px-4 pb-3 sm:shrink-0`; it is a grid now, one column on a phone so the
+     * controls land under the row and two from sm so they sit beside it. Both
+     * satisfy the rule, and a guard pinned to either spelling fails the next
+     * time somebody re-lays out a row without breaking anything. What must
+     * stay true is that the row stacks before sm and that nothing hides the
+     * action column on the way.
+     */
+    const row = queueRow().text;
+
+    // One column on a phone, two from the small breakpoint up.
+    expect(row).toMatch(/grid-cols-1\b/);
+    expect(row).toMatch(/\bsm:grid-cols-\[/);
+
+    // And nothing takes the controls away on a narrow screen.
+    const actionsAt = row.indexOf("<RowActionsForItem");
+    expect(actionsAt, "the row no longer renders RowActionsForItem").toBeGreaterThan(-1);
+    const actionColumn = row.slice(row.lastIndexOf("<div", actionsAt), actionsAt);
+    expect(actionColumn).not.toMatch(/\bhidden\b/);
+    expect(actionColumn).not.toMatch(/\bsm:(?:inline-)?(?:flex|block)\b/);
   });
 
   it("offer undo on the one that archives something", () => {
