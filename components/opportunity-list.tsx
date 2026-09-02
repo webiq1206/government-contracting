@@ -4,6 +4,8 @@ import type { AutomationRules } from "@/lib/domain/intake";
 import type { TradeCoverage } from "@/lib/data";
 import type { Owner } from "@/lib/domain/ownership";
 import { DeadlineBadge } from "@/components/deadline-badge";
+import { RowActions } from "@/components/row-actions";
+import { opportunityRowActions } from "@/lib/domain/row-actions";
 import { ScoreBadge } from "@/components/badges";
 import { EstimatedValue } from "@/components/estimated-value";
 import { AgencyPath } from "@/components/agency-path";
@@ -36,6 +38,8 @@ export function OpportunityList({
   owners,
   viewerId,
   nextAction,
+  role,
+  members = [],
 }: {
   rows: Opportunity[];
   rules?: AutomationRules;
@@ -44,6 +48,10 @@ export function OpportunityList({
   viewerId?: string;
   /** Stage to the sentence describing what happens next. */
   nextAction?: Record<string, string>;
+  /** What the reader may do. Without it a row offers nothing. */
+  role?: string | null;
+  /** Everybody a row could be handed to. Without it, reassign is dropped. */
+  members?: Owner[];
 }) {
   if (rows.length === 0) {
     return (
@@ -89,6 +97,33 @@ export function OpportunityList({
               <BlockerChip flags={o.risk_flags} />
             </div>
           </Link>
+          {/*
+            The row's controls sit under the link rather than inside it. A
+            button nested in an anchor navigates as well as acting, and the
+            navigation cancels the request it just sent.
+          */}
+          <div className="flex justify-end px-4 pb-2">
+            <RowActions
+              actions={opportunityRowActions(
+                {
+              id: o.id,
+              title: o.title,
+              stage: o.stage,
+              status: o.status,
+              // A record already asleep is offered waking rather than a second
+              // snooze, and a pursuit already called off is not offered an abort.
+              snoozedUntil: o.snoozed_until ?? null,
+              pursuitState: o.pursuit_state ?? null,
+            },
+                { role }
+              )}
+              members={members}
+              owner={owners.get(o.id) ?? null}
+              viewerId={viewerId}
+              recordLabel={o.title ?? "this opportunity"}
+              compact
+            />
+          </div>
         </li>
       ))}
     </ul>

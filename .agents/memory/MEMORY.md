@@ -16,4 +16,5 @@
 - [Landing product film](product-film.md) — rendered frame-by-frame, not live; phone downscale sets a hard type floor; public assets need a middleware prefix or logged-out visitors get redirected.
 - [Worker boot that hangs](silent-boot-hang.md) — a dead socket never rejects; bound every query, narrate every boot step, never cache a failed start.
 - [Scheduled digest sends](scheduled-digest-sends.md) — resolve local send times by round-trip, not by guessing an offset; stamp the provider handoff before the call; never count a capped list.
+- [Row-level actions](row-level-actions.md) — match the endpoint's capability and payload, or the button lies; controls sit beside the row anchor, never inside it.
 - [Worker liveness](worker-liveness.md) — a job log cannot tell "gone" from "idle" from "stuck starting"; a phase-carrying heartbeat can.

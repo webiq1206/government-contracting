@@ -11,6 +11,8 @@ import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
 import { describeOwner, type Owner } from "@/lib/domain/ownership";
 import { AgencyPath } from "@/components/agency-path";
+import { RowActions } from "@/components/row-actions";
+import { opportunityRowActions } from "@/lib/domain/row-actions";
 
 /**
  * Every opportunity, as a table.
@@ -35,6 +37,8 @@ export function OpportunitiesTable({
   peekBase,
   owners,
   viewerId,
+  role,
+  members = [],
 }: {
   rows: Opportunity[];
   total: number;
@@ -48,6 +52,10 @@ export function OpportunitiesTable({
   /** Owners by opportunity id, read once for the page rather than per row. */
   owners?: Map<string, Owner>;
   viewerId?: string;
+  /** What the reader may do. Without it a row offers nothing. */
+  role?: string | null;
+  /** Everybody a row could be handed to. Without it, reassign is dropped. */
+  members?: Owner[];
 }) {
   const columns: Column<Opportunity>[] = [
     {
@@ -196,13 +204,40 @@ export function OpportunitiesTable({
       key: "peek",
       header: "",
       render: (o) => (
-        <Link
-          href={`${peekBase}peek=${o.id}`}
-          scroll={false}
-          className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
-        >
-          Quick look
-        </Link>
+        <span className="flex items-center justify-end gap-2">
+          <Link
+            href={`${peekBase}peek=${o.id}`}
+            scroll={false}
+            className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+          >
+            Quick look
+          </Link>
+          {/*
+            The same actions the board's cards carry. A table is where
+            somebody works through twenty records in a sitting, which is
+            exactly where opening each one to snooze it costs the most.
+          */}
+          <RowActions
+            actions={opportunityRowActions(
+              {
+              id: o.id,
+              title: o.title,
+              stage: o.stage,
+              status: o.status,
+              // A record already asleep is offered waking rather than a second
+              // snooze, and a pursuit already called off is not offered an abort.
+              snoozedUntil: o.snoozed_until ?? null,
+              pursuitState: o.pursuit_state ?? null,
+            },
+              { role }
+            )}
+            members={members}
+            owner={owners?.get(o.id) ?? null}
+            viewerId={viewerId}
+            recordLabel={o.title ?? "this opportunity"}
+            compact
+          />
+        </span>
       ),
     },
   ];

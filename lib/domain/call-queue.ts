@@ -15,6 +15,12 @@
 export interface CallCardFacts {
   id: string;
   companyName: string;
+  /**
+   * The firm behind the card, for the controls that act on them rather than
+   * on the call: stopping outreach is about a subcontractor, and a card id
+   * cannot say who that is.
+   */
+  subcontractorId?: string | null;
   trade: string | null;
   opportunityId: string | null;
   opportunityTitle: string | null;

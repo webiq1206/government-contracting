@@ -6,12 +6,15 @@ import { SubPeek } from "@/components/sub-peek";
 import { QueueKeys } from "@/components/workspace/workspace-keys";
 import { queuePosition } from "@/lib/domain/workspace-queue";
 import { currentUser } from "@/lib/auth";
+import { assignableMembers } from "@/lib/ownership";
 import { can } from "@/lib/domain/roles";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
 import { FilterToolbar } from "@/components/filter-toolbar";
 import { SubsTable } from "@/components/subs-table";
+import { RowActions } from "@/components/row-actions";
+import { subcontractorRowActions } from "@/lib/domain/row-actions";
 import {
   parseFilters,
   parseSort,
@@ -256,9 +259,11 @@ export default async function SubsPage({
    * record does and needs no separate branch.
    */
   const peekId = typeof searchParams.peek === "string" ? searchParams.peek : null;
-  const [peeked, viewer] = await Promise.all([
+  const [peeked, viewer, members] = await Promise.all([
     peekId ? subPeek(peekId) : Promise.resolve(null),
     currentUser().catch(() => null),
+    // Everybody a firm could be handed to, read once for the page.
+    assignableMembers().catch(() => []),
   ]);
 
   function withoutPeek(): string {
@@ -390,9 +395,34 @@ export default async function SubsPage({
                 * them, which is how a control stops working for no visible
                 * reason.
                 */}
-              <Link href={withPeek(s.id)} className="btn-ghost mt-2 inline-flex text-xs">
-                Quick look
-              </Link>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <Link href={withPeek(s.id)} className="btn-ghost inline-flex text-xs">
+                  Quick look
+                </Link>
+                {/*
+                  The same controls the table's rows carry. This list is what
+                  a phone actually gets: the table beside it is hidden below
+                  lg, so wiring only the table would have left every narrow
+                  screen with nothing but navigation.
+                */}
+                <RowActions
+                  actions={subcontractorRowActions(
+                    {
+                      id: s.id,
+                      companyName: s.company_name,
+                      phone: s.phone,
+                      email: s.email,
+                      emailVerified: s.email_verified,
+                      outreachStopped: Boolean(s.blacklisted || s.archived_at),
+                    },
+                    { role: viewer?.orgRole }
+                  )}
+                  members={members}
+                  viewerId={viewer?.id}
+                  recordLabel={s.company_name}
+                  compact
+                />
+              </div>
             </li>
           ))}
         </ul>
@@ -400,6 +430,8 @@ export default async function SubsPage({
         <div className="hidden lg:block">
           <SubsTable
             peekBase={peekBase}
+            role={viewer?.orgRole}
+            members={members}
             rows={subs}
             total={total}
             filters={values}

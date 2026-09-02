@@ -8,6 +8,9 @@ import { ContactQuickEdit } from "@/components/contact-quick-edit";
 import type { FilterValues, PageState, SortState } from "@/lib/domain/table-view";
 import type { Subcontractor } from "@/lib/types";
 import { subState, SUB_STATE_TONE } from "@/lib/domain/sub-state";
+import type { Owner } from "@/lib/domain/ownership";
+import { RowActions } from "@/components/row-actions";
+import { subcontractorRowActions } from "@/lib/domain/row-actions";
 
 /**
  * The roster's read of a row, from the same function every other surface uses.
@@ -49,6 +52,8 @@ export function SubsTable({
   paging,
   emptyState,
   peekBase,
+  role,
+  members = [],
 }: {
   rows: Subcontractor[];
   total: number;
@@ -63,6 +68,10 @@ export function SubsTable({
    * implementation of the same string.
    */
   peekBase: string;
+  /** What the reader may do. Without it a row offers nothing. */
+  role?: string | null;
+  /** Everybody a firm could be handed to. Without it, reassign is dropped. */
+  members?: Owner[];
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -266,13 +275,32 @@ export function SubsTable({
       key: "peek",
       header: "",
       render: (s) => (
-        <Link
-          href={`${peekBase}peek=${s.id}`}
-          scroll={false}
-          className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
-        >
-          Quick look
-        </Link>
+        <span className="flex items-center justify-end gap-2">
+          <Link
+            href={`${peekBase}peek=${s.id}`}
+            scroll={false}
+            className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+          >
+            Quick look
+          </Link>
+          <RowActions
+            actions={subcontractorRowActions(
+              {
+                id: s.id,
+                companyName: s.company_name,
+                phone: s.phone,
+                email: s.email,
+                emailVerified: Boolean(s.email_verified),
+                // A firm nobody may write to has nothing left to stop.
+                outreachStopped: Boolean(s.blacklisted || s.archived_at),
+              },
+              { role }
+            )}
+            members={members}
+            recordLabel={s.company_name}
+            compact
+          />
+        </span>
       ),
     },
   ];
@@ -298,7 +326,7 @@ export function SubsTable({
       paging={paging}
       total={total}
       prefsKey="brostco.subs.table"
-      card={(s) => <SubCard row={s} peekBase={peekBase} selected={selected.has(s.id)}
+      card={(s) => <SubCard row={s} peekBase={peekBase} role={role} members={members} selected={selected.has(s.id)}
         onToggle={() => setSelected((prev) => {
           const next = new Set(prev);
           if (next.has(s.id)) next.delete(s.id);
@@ -354,12 +382,15 @@ export function SubsTable({
  * together: who they are, where they stand, and the two taps that reach them.
  */
 function SubCard({
-  row, peekBase, selected, onToggle,
+  row, peekBase, selected, onToggle, role, members = [],
 }: {
   row: Subcontractor;
   peekBase: string;
   selected: boolean;
   onToggle: () => void;
+  /** What the reader may do. Without it the card offers nothing extra. */
+  role?: string | null;
+  members?: Owner[];
 }) {
   const v = rowState(row);
   const area = [row.city, row.state].filter(Boolean).join(", ");
@@ -428,6 +459,29 @@ function SubCard({
         >
           Quick look
         </Link>
+        {/*
+          Everything the bar has no room for. On a phone the menu opens as a
+          sheet, so the choices are full-width taps rather than a dropdown
+          pinned to the edge of a card.
+        */}
+        <span className="flex min-h-11 items-center justify-center px-3">
+          <RowActions
+            actions={subcontractorRowActions(
+              {
+                id: row.id,
+                companyName: row.company_name,
+                // Call and Email are already the bar beside this menu.
+                phone: null,
+                email: null,
+                outreachStopped: Boolean(row.blacklisted || row.archived_at),
+              },
+              { role }
+            )}
+            members={members}
+            recordLabel={row.company_name}
+            compact
+          />
+        </span>
       </div>
     </div>
   );

@@ -21,9 +21,8 @@ import { outreachLabel } from "@/lib/domain/sub-contact";
 import { DOC_LABEL } from "@/lib/domain/sub-compliance";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { ActionButton } from "@/components/action-button";
-import { PassButton } from "@/components/pass-button";
-import { SnoozeButton } from "@/components/snooze-button";
-import { StopClickPropagation } from "@/components/stop-click-propagation";
+import { RowActions } from "@/components/row-actions";
+import { opportunityRowActions } from "@/lib/domain/row-actions";
 import { TodayLive } from "@/components/today-live";
 import { TodayGreeting } from "@/components/today-greeting";
 import { WorkQueue } from "@/components/work-queue";
@@ -89,6 +88,7 @@ function OppActionRow({
   category,
   focused = false,
   index,
+  role,
 }: {
   o: ActionOppRow;
   action: string;
@@ -96,6 +96,8 @@ function OppActionRow({
   rules?: AutomationRules;
   /** Render Pursue/Dismiss right on the row so the decision happens here. */
   inlineTriage?: boolean;
+  /** What the reader is allowed to do. Without it the row offers nothing. */
+  role?: string | null;
   /** Opens Guide Me focused on this Today bucket when the opportunity loads. */
   guideStep?: string;
   category: string;
@@ -114,12 +116,13 @@ function OppActionRow({
   const n = index != null ? String(index).padStart(2, "0") : null;
 
   return (
+    <div className={`${ROW} ${focused ? "focus-rail pl-3" : ""}`}>
     <Link
       href={withGuideQuery(`/opportunity/${o.id}`, {
         step: guideStep,
         focus: "next-step",
       })}
-      className={`${ROW} ${focused ? "focus-rail pl-3" : ""}`}
+      className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-1.5"
     >
       {n && (
         <span className="font-mono text-[9px] tracking-[0.08em] text-muted-foreground sm:w-8">
@@ -148,42 +151,29 @@ function OppActionRow({
           </span>
         )}
         <DeadlineBadge deadline={o.deadline} rules={rules} />
-        {!inlineTriage && (
-          <StopClickPropagation className="inline-flex">
-            <SnoozeButton
-              kind="opportunity"
-              id={o.id}
-              className="shell-ghost min-h-11 text-xs lg:min-h-0"
-            />
-          </StopClickPropagation>
-        )}
         {inlineTriage ? (
-          <StopClickPropagation className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-            <SnoozeButton
-              kind="opportunity"
-              id={o.id}
-              className="shell-ghost min-h-11 text-xs lg:min-h-0"
-            />
-            <ActionButton
-              endpoint={`/api/opportunities/${o.id}/action`}
-              body={{ action: "pursue" }}
-              className="btn-success min-h-11 flex-1 text-xs sm:min-h-0 sm:flex-none"
-              toast={{
-                message: "Pursued. Analysis and pricing are running.",
-              }}
-            >
-              Pursue opportunity
-            </ActionButton>
-            <PassButton opportunityId={o.id} title={o.title}>
-              Pass on this opportunity
-            </PassButton>
-            <span className="text-xs font-medium text-gold-text sm:ml-1">Open brief</span>
-          </StopClickPropagation>
+          <span className="text-xs font-medium text-gold-text sm:ml-1">Open brief</span>
         ) : (
           <CtaArrow label={action} />
         )}
       </div>
     </Link>
+      {/*
+        The row's controls, from the same place every other list gets theirs,
+        and beside the link rather than inside it. A button nested in an
+        anchor is invalid markup, and the navigation it sets off alongside the
+        click cancels the request the button just sent.
+      */}
+      <RowActions
+        actions={opportunityRowActions({ id: o.id, title: o.title, stage: o.stage }, { role })}
+        recordLabel={o.title ?? "this opportunity"}
+        className={
+          inlineTriage
+            ? "flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0"
+            : "sm:shrink-0"
+        }
+      />
+    </div>
   );
 }
 
@@ -500,6 +490,14 @@ export default async function TodayPage({
    */
   const { currentUser } = await import("@/lib/auth");
   const viewer = await currentUser().catch(() => null);
+  /*
+   * Everybody a row could be handed to. Read once for the page rather than
+   * per row: the queue renders up to five, the sections below it many more,
+   * and a picker that queried per row would be forty round trips to render
+   * one morning.
+   */
+  const { assignableMembers } = await import("@/lib/ownership");
+  const members = await assignableMembers().catch(() => []);
   const queueKind: WorkKind | null = parseKindFilter(searchParams?.kind);
   const counts = queueCounts(queueItems);
   const kindCounts = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).reduce(
@@ -740,7 +738,13 @@ export default async function TodayPage({
                   {showingCompleted ? (
                     <CompletedList items={completedItems} />
                   ) : shownQueue.length > 0 ? (
-                    <WorkQueue items={shownQueue} limit={5} viewerId={viewer?.id} />
+                    <WorkQueue
+                      items={shownQueue}
+                      limit={5}
+                      viewerId={viewer?.id}
+                      role={viewer?.orgRole}
+                      members={members}
+                    />
                   ) : (
                     <EmptyState
                       tone="success"
@@ -781,6 +785,7 @@ export default async function TodayPage({
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      role={viewer?.orgRole}
                       index={i + 1}
                       category="Deadline"
                       focused={i === 0}
@@ -821,6 +826,7 @@ export default async function TodayPage({
                   <TodayBulkTriage
                     rows={data.triage}
                     rules={rules}
+                    role={viewer?.orgRole}
                     focusedFirst={firstOpen === "triage"}
                   />
                 </Section>
@@ -843,6 +849,7 @@ export default async function TodayPage({
                     calls={data.calls.rows}
                     totalCount={data.calls.count}
                     rules={rules}
+                    role={viewer?.orgRole}
                     focusedFirst={firstOpen === "calls"}
                   />
                 </Section>
@@ -956,6 +963,7 @@ export default async function TodayPage({
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      role={viewer?.orgRole}
                       index={i + 1}
                       category={
                         o.has_bid && !o.bid_submitted ? "Final approval" : "Bid work"
@@ -992,6 +1000,7 @@ export default async function TodayPage({
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      role={viewer?.orgRole}
                       index={i + 1}
                       category="Outcome"
                       action="Record result"
@@ -1011,6 +1020,7 @@ export default async function TodayPage({
                     <OppActionRow
                       key={o.id}
                       o={o}
+                      role={viewer?.orgRole}
                       index={i + 1}
                       category="Flagged"
                       action="Open"

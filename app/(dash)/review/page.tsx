@@ -134,6 +134,7 @@ export default async function ReviewPage({
                     opps={opps}
                     selectedId={currentId}
                     hrefBase="/review?o="
+                    role={ctx.user.orgRole}
                   />
                 </div>
               </div>

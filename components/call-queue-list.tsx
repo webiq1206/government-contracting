@@ -12,6 +12,8 @@ import {
   type CallRules,
 } from "@/lib/domain/call-queue";
 import { shortDate, countdown } from "@/lib/format";
+import { RowActions } from "@/components/row-actions";
+import { callCardRowActions } from "@/lib/domain/row-actions";
 
 /**
  * The queue, as rows somebody can decide from without opening anything.
@@ -29,6 +31,7 @@ export function CallQueueList({
   hrefBase,
   now,
   rules,
+  role,
 }: {
   cards: CallCardFacts[];
   grouping: CallGrouping;
@@ -38,6 +41,8 @@ export function CallQueueList({
   now: Date;
   /** The operator's calling window and attempt limit, from Automation Rules. */
   rules: CallRules;
+  /** What the reader may do. Without it a row offers nothing. */
+  role?: string | null;
 }) {
   const groups = groupCalls(cards, grouping);
 
@@ -186,6 +191,31 @@ export function CallQueueList({
                       )}
                     </div>
                   </Link>
+                  {/*
+                    The controls sit under the link rather than inside it: a
+                    card is a link to the guided workspace, and a button
+                    nested in one navigates as well as acting. Beside it they
+                    need no click-swallowing wrapper, and must not have one:
+                    "Start the call" is itself a link, and a wrapper that
+                    cancels default behaviour would stop it opening.
+                  */}
+                  <div className="mt-1 flex justify-end">
+                    <RowActions
+                      actions={callCardRowActions(
+                        {
+                          id: c.id,
+                          companyName: c.companyName,
+                          trade: c.trade,
+                          subcontractorId: c.subcontractorId ?? null,
+                          opportunityId: c.opportunityId,
+                          openHref: `${hrefBase}${c.id}`,
+                        },
+                        { role }
+                      )}
+                      recordLabel={c.companyName}
+                      compact
+                    />
+                  </div>
                 </li>
               );
             })}

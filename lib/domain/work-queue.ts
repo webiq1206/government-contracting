@@ -142,6 +142,19 @@ export interface WorkItem {
     snooze?: { kind: "opportunity" | "call_card"; id: string };
     /** Pursue or pass, for a task that is genuinely that decision. */
     decide?: { opportunityId: string; title: string };
+    /**
+     * Who the call is to, for the controls that have to name them.
+     *
+     * Skipping a call asks why and how far the decision reaches, and both
+     * questions are about a firm rather than a card id. The title says
+     * "Call Rivera Mechanical about HVAC" and parsing the name back out of a
+     * sentence is a bug waiting for a firm called "about".
+     */
+    call?: {
+      companyName: string;
+      trade?: string | null;
+      subcontractorId?: string | null;
+    };
   };
 }
 

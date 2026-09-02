@@ -2,10 +2,9 @@ import Link from "next/link";
 import type { WorkItem } from "@/lib/domain/work-queue";
 import { summarizeQueue } from "@/lib/domain/work-queue";
 import { DeadlineBadge } from "@/components/deadline-badge";
-import { describeOwner } from "@/lib/domain/ownership";
-import { SnoozeButton } from "@/components/snooze-button";
-import { ActionButton } from "@/components/action-button";
-import { PassButton } from "@/components/pass-button";
+import { describeOwner, type Owner } from "@/lib/domain/ownership";
+import { RowActions } from "@/components/row-actions";
+import { workItemRowActions } from "@/lib/domain/row-actions";
 
 /**
  * The one list of everything waiting on the operator, each row carrying the
@@ -21,11 +20,21 @@ export function WorkQueue({
   items,
   limit,
   viewerId,
+  role,
+  members = [],
 }: {
   items: WorkItem[];
   limit?: number;
   /** So a row assigned to the reader says "You" rather than their own name. */
   viewerId?: string;
+  /**
+   * The reader's role, which decides what the row offers. Absent means the
+   * caller did not ask, and a row with no role offers nothing rather than
+   * guessing: the alternative is a button that fails on click.
+   */
+  role?: string | null;
+  /** Everybody the record could be handed to. Without it, reassign is dropped. */
+  members?: Owner[];
 }) {
   const shown = limit ? items.slice(0, limit) : items;
   const more = items.length - shown.length;
@@ -100,36 +109,12 @@ export function WorkQueue({
                 sit outside the Link rather than inside it with a click
                 swallowed, so a keyboard reaches them in the order they read.
               */}
-              {(item.actions?.snooze || item.actions?.decide) && (
-                <div className="flex flex-wrap items-center gap-2 px-4 pb-3 sm:shrink-0 sm:px-5 sm:pb-0">
-                  {item.actions.snooze && (
-                    <SnoozeButton
-                      kind={item.actions.snooze.kind}
-                      id={item.actions.snooze.id}
-                      className="shell-ghost min-h-11 text-xs lg:min-h-0"
-                    />
-                  )}
-                  {item.actions.decide && (
-                    <>
-                      <ActionButton
-                        endpoint={`/api/opportunities/${item.actions.decide.opportunityId}/action`}
-                        body={{ action: "pursue" }}
-                        className="btn-success min-h-11 text-xs lg:min-h-0"
-                        toast={{ message: "Pursued. Analysis and pricing are running." }}
-                      >
-                        Pursue
-                      </ActionButton>
-                      <PassButton
-                        opportunityId={item.actions.decide.opportunityId}
-                        title={item.actions.decide.title}
-                        className="btn-ghost min-h-11 text-xs lg:min-h-0"
-                      >
-                        Pass on this opportunity
-                      </PassButton>
-                    </>
-                  )}
-                </div>
-              )}
+              <RowActionsForItem
+                item={item}
+                role={role}
+                members={members}
+                viewerId={viewerId}
+              />
             </li>
           ))}
         </ul>
@@ -141,5 +126,51 @@ export function WorkQueue({
         </p>
       )}
     </section>
+  );
+}
+
+/**
+ * One row's controls, worked out from the row itself.
+ *
+ * Split out so the queue's markup stays readable and so the mapping from a
+ * work item to its actions has one name. What is offered is decided in
+ * `lib/domain/row-actions`, which every other surface uses too: a rule fixed
+ * there is fixed here without this file changing.
+ */
+function RowActionsForItem({
+  item,
+  role,
+  members,
+  viewerId,
+}: {
+  item: WorkItem;
+  role?: string | null;
+  members: Owner[];
+  viewerId?: string;
+}) {
+  const actions = workItemRowActions(
+    {
+      record: item.record ?? null,
+      opportunityId: item.opportunityId ?? null,
+      href: item.href,
+      actionLabel: item.actionLabel,
+      decide: Boolean(item.actions?.decide),
+      snooze: item.actions?.snooze ?? null,
+      call: item.actions?.call ?? null,
+      title: item.actions?.decide?.title ?? item.context ?? item.title,
+    },
+    { role }
+  );
+  if (actions.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 pb-3 sm:shrink-0 sm:px-5 sm:pb-0">
+      <RowActions
+        actions={actions}
+        members={members}
+        owner={item.owner ?? null}
+        viewerId={viewerId}
+        recordLabel={item.title}
+      />
+    </div>
   );
 }

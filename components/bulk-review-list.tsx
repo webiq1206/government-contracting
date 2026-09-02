@@ -3,12 +3,12 @@
 import Link from "next/link";
 import type { Opportunity } from "@/lib/types";
 import { ScoreBadge, TierBadge } from "@/components/badges";
-import { ActionButton } from "@/components/action-button";
+import { RowActions } from "@/components/row-actions";
+import { opportunityRowActions } from "@/lib/domain/row-actions";
 import { countdown } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
 import { InfoTip } from "@/components/info-tip";
-import { StopClickPropagation } from "@/components/stop-click-propagation";
 import {
   BulkActionBar,
   BulkSelectAllCheckbox,
@@ -26,10 +26,13 @@ function ReviewCard({
   o,
   href,
   selected,
+  role,
 }: {
   o: Opportunity;
   href: string;
   selected: boolean;
+  /** What the reader may do. Without it the card offers nothing. */
+  role?: string | null;
 }) {
   const dims = o.score_breakdown?.dimensions ?? [];
   const expiry = countdown(o.review_expires_at);
@@ -40,23 +43,35 @@ function ReviewCard({
     .slice(0, 2);
 
   return (
-    <Link
-      href={href}
-      aria-current={selected ? "true" : undefined}
-      /*
-       * Selects the brief beside it rather than jumping to the record. The
-       * record is one click further on, from the brief, which is where
-       * somebody goes when the brief did not settle it.
-       */
-      className={`card block space-y-3 transition-all hover:border-accent/60 hover:shadow-md ${
+    /*
+     * The card is a container, and the link inside it covers the facts. It
+     * used to be the other way round, with the checkbox, the score breakdown
+     * and now the row's controls all nested in the anchor and each needing a
+     * wrapper that swallowed clicks to work at all. Interactive things inside
+     * an anchor are invalid markup, they land oddly in the tab order, and a
+     * wrapper that cancels default behaviour breaks any control that is
+     * itself a link.
+     */
+    <div
+      className={`card space-y-3 transition-all hover:border-accent/60 hover:shadow-md ${
         selected ? "border-gold bg-gold/[0.06]" : "border-border"
       }`}
     >
+      <div className="flex items-start gap-3">
+        <div className="pt-1">
+          <BulkSelectCheckbox id={o.id} label={`Select ${o.title ?? "opportunity"}`} />
+        </div>
+        {/*
+         * Selects the brief beside it rather than jumping to the record. The
+         * record is one click further on, from the brief, which is where
+         * somebody goes when the brief did not settle it.
+         */}
+        <Link
+          href={href}
+          aria-current={selected ? "true" : undefined}
+          className="block min-w-0 flex-1 space-y-3"
+        >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <StopClickPropagation className="pt-1">
-            <BulkSelectCheckbox id={o.id} label={`Select ${o.title ?? "opportunity"}`} />
-          </StopClickPropagation>
           <div className="min-w-0">
             <p className="text-sm font-medium text-slate-900">{o.title ?? "Untitled"}</p>
             <p className="mt-0.5 truncate text-xs text-slate-500">
@@ -70,7 +85,6 @@ function ReviewCard({
                 .join(" · ")}
             </p>
           </div>
-        </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <ScoreBadge score={o.score} />
           <TierBadge tier={o.tier} />
@@ -136,8 +150,11 @@ function ReviewCard({
         </div>
       )}
 
+        </Link>
+      </div>
+
       {dims.length > 0 && (
-        <StopClickPropagation>
+        <div>
           <details className="rounded-md border border-border bg-surface/60 px-3 py-2">
             <summary className="cursor-pointer text-xs font-medium text-slate-600 hover:text-accent">
               Score factors ({dims.length}), open for full breakdown
@@ -168,30 +185,37 @@ function ReviewCard({
               </p>
             )}
           </details>
-        </StopClickPropagation>
+        </div>
       )}
 
-      <StopClickPropagation className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-        <span className="text-xs font-medium text-accent-strong">Open brief</span>
-        <div className="flex gap-2">
-          <ActionButton
-            endpoint={`/api/opportunities/${o.id}/action`}
-            body={{ action: "pursue" }}
-            className="btn-success"
-            toast={{ message: "Pursued. Analysis and pricing are running." }}
-          >
-            Pursue opportunity
-          </ActionButton>
-          {/*
-            * The per-card Pass is gone. It passed with no reason, which is the
-            * thing the audit asked to stop, and the brief beside this card now
-            * carries Pass with the reason box attached. Two controls for one
-            * decision, one of which skipped the requirement, is worse than one
-            * that asks.
-            */}
-        </div>
-      </StopClickPropagation>
-    </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        <Link href={href} className="text-xs font-medium text-accent-strong">
+          Open brief
+        </Link>
+        {/*
+          Pursue as the button, everything else behind the menu. The per-card
+          Pass that used to sit here passed with no reason at all; the one in
+          this menu is the same control the brief uses, so it asks for a line
+          first and offers the undo afterwards.
+        */}
+        <RowActions
+          actions={opportunityRowActions(
+            {
+              id: o.id,
+              title: o.title,
+              stage: o.stage,
+              status: o.status,
+              // A record already asleep is offered waking rather than a second
+              // snooze, and a pursuit already called off is not offered an abort.
+              snoozedUntil: o.snoozed_until ?? null,
+              pursuitState: o.pursuit_state ?? null,
+            },
+            { role }
+          )}
+          recordLabel={o.title ?? "this opportunity"}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -199,9 +223,12 @@ export function BulkReviewList({
   opps,
   selectedId = null,
   hrefBase,
+  role,
 }: {
   opps: Opportunity[];
   selectedId?: string | null;
+  /** What the reader may do, passed down to each card's controls. */
+  role?: string | null;
   /**
    * Prefix for a card's link, with the id appended. A string rather than a
    * function because this is a client component and a function prop cannot
@@ -228,6 +255,7 @@ export function BulkReviewList({
               o={o}
               href={hrefBase ? `${hrefBase}${o.id}` : `/opportunity/${o.id}`}
               selected={String(o.id) === selectedId}
+              role={role}
             />
           ))}
         </div>

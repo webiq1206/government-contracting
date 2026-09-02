@@ -18,6 +18,14 @@ interface ActionButtonProps {
    * while it is open.
    */
   confirm?: string;
+  /**
+   * What the action does, and what it does not, under the question.
+   *
+   * The title alone can only name the record. "Abort this bid?" and "Delete
+   * this rule?" both read as small until somebody is told that the first
+   * stops eleven queued messages and the second cannot be undone.
+   */
+  confirmBody?: React.ReactNode;
   /** Names the act in the dialog's own button. Defaults to the button's label. */
   confirmLabel?: string;
   /** Red rather than accent, for the ones that remove something. */
@@ -55,6 +63,7 @@ export function ActionButton({
   refresh = true,
   successText,
   toast,
+  confirmBody,
   confirmLabel,
   danger = false,
 }: ActionButtonProps) {
@@ -127,6 +136,7 @@ export function ActionButton({
         <ConfirmDialog
           open={asking}
           title={confirm}
+          body={confirmBody}
           confirmLabel={confirmLabel ?? "Yes, do it"}
           danger={danger}
           busy={loading}

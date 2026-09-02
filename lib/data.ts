@@ -3745,13 +3745,13 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
           and coalesce(pursuit_state, 'active') <> 'aborted'`,
       [orgId]
     ),
-    query<{ id: string; company_name: string; trade: string | null; opp_title: string | null; deadline: string | null; assigned_to: string | null }>(
+    query<{ id: string; company_name: string; subcontractor_id: string | null; trade: string | null; opp_title: string | null; deadline: string | null; assigned_to: string | null }>(
       // The trade is inside card_json, not a column. `cc.trade` has never
       // existed, so this whole function has been throwing -- and Today wraps
       // it in .catch(() => []), so the work queue simply never appeared. A
       // silent catch around a query is how a feature goes missing without a
       // single error reaching anybody.
-      `select cc.id, s.company_name,
+      `select cc.id, s.company_name, cc.subcontractor_id,
               coalesce(cc.card_json->>'trade', s.trade_categories[1]) as trade,
               o.title as opp_title, o.deadline, o.assigned_to
          from call_cards cc
@@ -3873,7 +3873,14 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       assignedTo: c.assigned_to,
       // Snoozes the card, not the opportunity: the bid is not on hold
       // because one subcontractor is being rung on Thursday instead.
-      actions: { snooze: { kind: "call_card" as const, id: c.id } },
+      actions: {
+        snooze: { kind: "call_card" as const, id: c.id },
+        call: {
+          companyName: c.company_name,
+          trade: c.trade ?? null,
+          subcontractorId: c.subcontractor_id ?? null,
+        },
+      },
       reason: "Email has not produced a price on this trade, so the next move is a phone call.",
     })),
     ...actionable.map((o) => ({

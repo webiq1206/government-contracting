@@ -26,6 +26,8 @@ import {
 } from "@/lib/domain/conversation-centre";
 import { MESSAGE_STATE_LABEL, MESSAGE_STATE_MEANING } from "@/lib/domain/message-state";
 import { ConversationThreadPane } from "@/components/conversation-centre";
+import { RowActions } from "@/components/row-actions";
+import { conversationRowActions, requestInfoMessage } from "@/lib/domain/row-actions";
 import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
 import { queuePosition } from "@/lib/domain/workspace-queue";
 import { NeedsMatchingInbox } from "@/components/needs-matching-inbox";
@@ -34,11 +36,17 @@ import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-function href(filter: ConversationFilter, q: string, threadKey?: string | null): string {
+function href(
+  filter: ConversationFilter,
+  q: string,
+  threadKey?: string | null,
+  compose?: string | null
+): string {
   const p = new URLSearchParams();
   if (filter !== "all") p.set("filter", filter);
   if (q) p.set("q", q);
   if (threadKey) p.set("c", threadKey);
+  if (compose) p.set("compose", compose);
   const s = p.toString();
   return s ? `/communications?${s}` : "/communications";
 }
@@ -139,6 +147,23 @@ export default async function CommunicationsPage({
    * the list marked every conversation in it read.
    */
   const messages = selected ? await conversationMessages(selected.threadKey) : [];
+
+  /*
+   * A row asked for this thread with a reply already started. "Ask them for
+   * what is missing" is the most common reply in this inbox and the one most
+   * often put off, so the row writes the first and last lines and the person
+   * fills in the middle. Nothing is sent by opening it.
+   */
+  const composeRaw = searchParams?.compose;
+  const compose = Array.isArray(composeRaw) ? composeRaw[0] : composeRaw;
+  const prefill =
+    selected && compose === "request_info"
+      ? requestInfoMessage({
+          companyName: selected.subcontractorName,
+          trade: selected.trade,
+          opportunityTitle: selected.opportunityTitle,
+        })
+      : "";
 
   if (all.length === 0 && !q) {
     return (
@@ -348,6 +373,28 @@ export default async function CommunicationsPage({
                         )}
                       </div>
                     </Link>
+                    {/*
+                      The row's controls, beside the link rather than inside
+                      it: a button nested in an anchor opens the thread as
+                      well as acting.
+                    */}
+                    <div className="flex justify-end px-4 pb-2">
+                      <RowActions
+                        actions={conversationRowActions(
+                          {
+                            threadKey: c.threadKey,
+                            subcontractorId: c.subcontractorId,
+                            subcontractorName: c.subcontractorName,
+                            opportunityId: c.opportunityId,
+                            trade: c.trade,
+                            openHref: href(filter, q, c.threadKey),
+                          },
+                          { role: ctx.user.orgRole }
+                        )}
+                        recordLabel={c.subcontractorName}
+                        compact
+                      />
+                    </div>
                   </li>
                 );
               })}
@@ -361,11 +408,20 @@ export default async function CommunicationsPage({
         >
           {selected ? (
             <ConversationThreadPane
+              /*
+               * Keyed by the thread, so moving to another conversation starts
+               * a fresh reply box. Without it React keeps the same component
+               * instance and the draft typed to one subcontractor survives
+               * into the next one's thread, which is a message sent to the
+               * wrong company waiting to happen.
+               */
+              key={selected.threadKey}
               conversation={selected}
               messages={messages}
               canSend={canSend}
               canSeeRaw={canSeeRaw}
               backHref={href(filter, q)}
+              initialText={prefill}
               stateLabels={MESSAGE_STATE_LABEL}
               stateMeanings={MESSAGE_STATE_MEANING}
             />

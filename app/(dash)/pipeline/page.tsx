@@ -8,7 +8,7 @@ import {
   OPP_SORTS,
 } from "@/lib/data";
 import { FilterToolbar } from "@/components/filter-toolbar";
-import { ownersFor } from "@/lib/ownership";
+import { assignableMembers, ownersFor } from "@/lib/ownership";
 import { tradeCoverageFor, type TradeCoverage } from "@/lib/data";
 import type { Owner } from "@/lib/domain/ownership";
 import { AgencyPath } from "@/components/agency-path";
@@ -31,7 +31,8 @@ import {
 } from "@/lib/domain/table-view";
 import { ScoreBadge } from "@/components/badges";
 import { PageFrame } from "@/components/page-frame";
-import { PipelineCardMenu } from "@/components/pipeline-card-menu";
+import { RowActions } from "@/components/row-actions";
+import { opportunityRowActions } from "@/lib/domain/row-actions";
 import { DraggableCard, StageDropColumn } from "@/components/pipeline-dnd";
 import { stageMode } from "@/lib/stage-meta";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -344,11 +345,14 @@ export default async function PipelinePage({
    * the shape that turns a fast page into a slow one without anybody changing
    * the page.
    */
-  const [tableOwners, viewer] = await Promise.all([
+  const [tableOwners, viewer, members] = await Promise.all([
     tableRows.length > 0
       ? ownersFor("opportunity", tableRows.map((r) => r.id)).catch(() => new Map())
       : Promise.resolve(new Map()),
     currentUser().catch(() => null),
+    // Everybody a card could be handed to, once for the board rather than
+    // once per card menu.
+    assignableMembers().catch(() => [] as Owner[]),
   ]);
   /**
    * Counts elsewhere in the product are clickable, and they land here. The
@@ -498,6 +502,8 @@ export default async function PipelinePage({
               peekBase={peekBase}
               owners={tableOwners}
               viewerId={viewer?.id}
+              role={viewer?.orgRole}
+              members={members}
               rows={tableRows}
               total={tableTotal}
               filters={tableValues}
@@ -541,6 +547,8 @@ export default async function PipelinePage({
             owners={boardOwners}
             viewerId={viewer?.id}
             nextAction={NEXT_ACTION}
+            role={viewer?.orgRole}
+            members={members}
           />
         </div>
       )}
@@ -572,6 +580,8 @@ export default async function PipelinePage({
                       <PipelineCard
                       key={o.id}
                       o={o}
+                      role={viewer?.orgRole}
+                      members={members}
                       rules={rules}
                       coverage={boardCoverage.get(o.id)}
                       owner={boardOwners.get(o.id) ?? null}
@@ -621,6 +631,8 @@ export default async function PipelinePage({
                     <DraggableCard key={o.id} opportunityId={o.id}>
                       <PipelineCard
                         o={o}
+                        role={viewer?.orgRole}
+                        members={members}
                         rules={rules}
                         coverage={boardCoverage.get(o.id)}
                         owner={boardOwners.get(o.id) ?? null}
@@ -673,6 +685,8 @@ export default async function PipelinePage({
                   <PipelineCard
                       key={o.id}
                       o={o}
+                      role={viewer?.orgRole}
+                      members={members}
                       rules={rules}
                       coverage={boardCoverage.get(o.id)}
                       owner={boardOwners.get(o.id) ?? null}
@@ -753,21 +767,26 @@ function PipelineCard({
   coverage,
   owner,
   viewerId,
+  role,
+  members = [],
 }: {
   o: Opportunity;
   rules?: AutomationRules;
   coverage?: TradeCoverage;
   owner?: Owner | null;
   viewerId?: string;
+  /** What the reader may do. Without it the card offers nothing. */
+  role?: string | null;
+  members?: Owner[];
 }) {
   return (
     <CardPreview opportunityId={o.id}>
-    <Link
-      href={`/opportunity/${o.id}`}
-      className={`card card-hover block ${
+    <div
+      className={`card card-hover ${
         o.human_action_required ? "focus-rail border-gold/40 bg-gold/[0.04]" : ""
       }`}
     >
+    <Link href={`/opportunity/${o.id}`} className="block">
       {/* Gold eyebrow label for mobile list cards */}
       <p className="eyebrow mb-2 md:hidden">{NEXT_ACTION[o.stage] ?? o.stage}</p>
       <div className="flex items-start justify-between gap-2">
@@ -776,9 +795,6 @@ function PipelineCard({
         </p>
         <div className="flex shrink-0 items-center gap-1">
           <ScoreBadge score={o.score} />
-          {o.stage !== "won" && o.stage !== "lost" && (
-            <PipelineCardMenu opportunityId={o.id} stage={o.stage} />
-          )}
         </div>
       </div>
       <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-600">
@@ -807,6 +823,34 @@ function PipelineCard({
         <span className="ml-1 font-medium text-gold-text">Open ↗</span>
       </p>
     </Link>
+      {/*
+        The card's controls sit under the link rather than inside it. A button
+        nested in an anchor is invalid markup, and the navigation it triggers
+        alongside the click cancels the request the button just sent.
+      */}
+      <div className="mt-2 flex justify-end">
+        <RowActions
+          actions={opportunityRowActions(
+            {
+              id: o.id,
+              title: o.title,
+              stage: o.stage,
+              status: o.status,
+              // A record already asleep is offered waking rather than a second
+              // snooze, and a pursuit already called off is not offered an abort.
+              snoozedUntil: o.snoozed_until ?? null,
+              pursuitState: o.pursuit_state ?? null,
+            },
+            { role }
+          )}
+          members={members}
+          owner={owner ?? null}
+          viewerId={viewerId}
+          recordLabel={o.title ?? "this opportunity"}
+          compact
+        />
+      </div>
+    </div>
     </CardPreview>
   );
 }

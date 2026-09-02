@@ -187,6 +187,16 @@ export interface Opportunity {
   notes: string | null;
   human_action_required: boolean;
   review_expires_at: string | null;
+  /**
+   * When it comes back, and whether its pursuit was called off.
+   *
+   * Optional because most queries filter snoozed records out and never select
+   * either column. Where a list does show them, a row that cannot read these
+   * offers a second snooze to a record already asleep and an abort to a bid
+   * already aborted.
+   */
+  snoozed_until?: string | null;
+  pursuit_state?: string | null;
   created_at: string;
   updated_at: string;
 }

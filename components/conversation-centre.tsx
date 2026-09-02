@@ -70,6 +70,7 @@ export function ConversationThreadPane({
   backHref,
   stateLabels,
   stateMeanings,
+  initialText = "",
 }: {
   conversation: ConversationSummary;
   messages: CentreMessage[];
@@ -86,9 +87,16 @@ export function ConversationThreadPane({
   backHref: string;
   stateLabels: Record<MessageState, string>;
   stateMeanings: Record<MessageState, string>;
+  /**
+   * A reply already written, from a row that opened this thread in order to
+   * ask for something. Only a starting point: it lands in the box and the
+   * operator edits and sends it themselves, because nothing here mails a
+   * subcontractor without a person reading it first.
+   */
+  initialText?: string;
 }) {
   const router = useRouter();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [busy, setBusy] = useState<null | "send" | "resolve" | "address">(null);
   const [error, setError] = useState<string | null>(null);
   const [address, setAddress] = useState(conversation.subcontractorEmail ?? "");
@@ -166,6 +174,22 @@ export function ConversationThreadPane({
    * the only moment that means "read". Fire and forget: if it fails the
    * conversation stays unread, which is the safe direction to be wrong in.
    */
+  /*
+   * A prefilled reply follows the thread it was asked for. Without this the
+   * pane keeps whatever was in the box when the reader moves on, so opening
+   * "ask them for what is missing" on a second conversation showed the first
+   * one's draft, addressed to the wrong firm.
+   *
+   * Only when the box is empty or still holds the previous prefill: a half
+   * written reply is the reader's, not ours to replace.
+   */
+  const [lastPrefill, setLastPrefill] = useState(initialText);
+  useEffect(() => {
+    if (initialText === lastPrefill) return;
+    setLastPrefill(initialText);
+    setText((current) => (current.trim() === "" || current === lastPrefill ? initialText : current));
+  }, [initialText, lastPrefill]);
+
   useEffect(() => {
     const key = conversation.threadKey;
     if (conversation.unreadCount === 0) return;

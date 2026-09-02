@@ -28,7 +28,13 @@ export default async function CallQueuePage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const [allCards, callsEnabled] = await Promise.all([callQueue(), areCallsEnabled()]);
+  const { currentUser } = await import("@/lib/auth");
+  // Who is looking, because what a row offers depends on what they may do.
+  const [allCards, callsEnabled, viewer] = await Promise.all([
+    callQueue(),
+    areCallsEnabled(),
+    currentUser().catch(() => null),
+  ]);
   // Deep link support: /call-queue?open=<cardId> opens that card's workspace
   // immediately (used by the Today page so one click lands in the call).
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
@@ -58,6 +64,7 @@ export default async function CallQueuePage({
   const facts: CallCardFacts[] = cards.map((c) => ({
     id: c.id,
     companyName: c.company_name,
+    subcontractorId: c.subcontractor_id ?? null,
     trade: c.trade ?? null,
     opportunityId: c.opportunity_id ?? null,
     opportunityTitle: c.opportunity_title ?? null,
@@ -316,7 +323,8 @@ export default async function CallQueuePage({
                   selectedId={openId ?? null}
                   hrefBase={openBase}
                   now={now}
-          rules={rules}
+                  rules={rules}
+                  role={viewer?.orgRole}
                 />
               )}
             </section>

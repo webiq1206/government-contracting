@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 
 const SRC = readFileSync("components/work-queue.tsx", "utf8");
 const DATA = readFileSync("lib/data.ts", "utf8");
+const ROW_ACTIONS = readFileSync("components/row-actions.tsx", "utf8");
 
 describe("the controls on a row", () => {
   it("are outside the link rather than inside it swallowing clicks", () => {
@@ -35,10 +36,16 @@ describe("the controls on a row", () => {
   });
 
   it("offer undo on the one that archives something", () => {
-    // A pass made from a list is the one most likely to have been the wrong
-    // row.
-    expect(SRC).toContain("PassButton");
-    expect(SRC).toContain("Pass on this opportunity");
+    /*
+     * A pass made from a list is the one most likely to have been the wrong
+     * row, so it goes through the control that asks for a reason and offers
+     * the undo. The queue no longer draws that control itself: it asks the
+     * shared module what this row can do, and the shared component hands a
+     * pass to the same PassButton the record page uses. Two thinner copies of
+     * one decision is how two screens end up disagreeing about what it means.
+     */
+    expect(SRC).toContain("workItemRowActions");
+    expect(ROW_ACTIONS).toContain("PassButton");
   });
 });
 
