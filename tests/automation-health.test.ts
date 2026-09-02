@@ -12,6 +12,7 @@
  * stopped, and that a deliberate pause is never dressed up as a fault.
  */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   assessAutomation,
   classifyFailure,
@@ -250,5 +251,14 @@ describe("assessAutomation", () => {
     expect(formatFailureRate(4 / 1471, 1471)).toBe("Under 1% of 1471");
     expect(formatFailureRate(0, 1471)).toBe("0% of 1471");
     expect(formatFailureRate(0.5, 4)).toBe("50% of 4");
+  });
+});
+
+describe("what 'open opportunities affected' is allowed to count", () => {
+  it("counts records waiting on analysis, not the whole live pipeline", () => {
+    const src = readFileSync("lib/automation-status.ts", "utf8");
+    expect(src).toContain("stage = 'analysis'");
+    expect(src).toContain("stalled_analysis");
+    expect(src).not.toContain("stage not in ('submitted','won','lost')");
   });
 });

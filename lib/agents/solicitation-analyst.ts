@@ -15,7 +15,7 @@ import { z } from "zod";
 import { config } from "../config";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
-import { completeJson, ClaudeNotConfiguredError } from "../ai/claude";
+import { completeJson, ClaudeNotConfiguredError, JSON_RETRY_TOKEN_CAP } from "../ai/claude";
 import { analysisInputHash, inputsUnchanged } from "../domain/analysis-inputs";
 import { tightenAnalysisProse } from "../domain/analysis-prose";
 import { requirementsFingerprint } from "../domain/package";
@@ -151,133 +151,23 @@ async function inBatches<T, R>(
 
 const NA = "Not specified in the provided documents";
 
-export const AnalysisSchema = z.object({
-  project_overview: z.string().default(NA),
-  scope_plain_language: z.string().default(NA),
-  location: z.string().default(NA),
-  estimated_value: z.string().default(NA),
-  due_date: z.string().default(NA),
-  qualifications: z
-    .object({
-      certifications: z.array(z.string()).default([]),
-      licenses: z.array(z.string()).default([]),
-      insurance: z.array(z.string()).default([]),
-      bonding: z.array(z.string()).default([]),
-      experience: z.array(z.string()).default([]),
-      other: z.array(z.string()).default([]),
-    })
-    .default({}),
-  prebid_meeting: z
-    .object({ required: z.boolean().default(false), details: z.string().optional() })
-    .nullable()
-    .default(null),
-  site_visit: z
-    .object({ required: z.boolean().default(false), details: z.string().optional() })
-    .nullable()
-    .default(null),
-  submission_method: z.string().default(NA),
-  /**
-   * Two facts that belong ON the offer and were never extracted at all, so
-   * the transmittal letter and the pricing schedule could not state them:
-   * how long the work runs, and how long the price stands. A contracting
-   * officer looks for both, and an offer that omits the acceptance period can
-   * be treated as non-conforming. Verbatim from the documents or the "Not
-   * specified" string, never a customary default.
-   */
-  period_of_performance: z.string().default(NA),
-  offer_acceptance_period: z.string().default(NA),
-  /**
-   * The agency's OWN schedule of items, verbatim.
-   *
-   * Federal solicitations price by CLIN: numbered line items with a
-   * description, a quantity and a unit, and the offer is expected on that
-   * structure. Our pricing schedule was a rollup of subcontractor trades
-   * ("Electrical", "Roofing"), which is not what the agency asked to be
-   * filled in, and nothing anywhere held the agency's structure so nothing
-   * could tell the difference. Empty when the solicitation does not enumerate
-   * line items; never reconstructed from the scope.
-   */
-  bid_schedule: z
-    .array(
-      z.object({
-        clin: z.string().optional().catch(undefined),
-        description: z.string(),
-        quantity: z.string().optional().catch(undefined),
-        unit: z.string().optional().catch(undefined),
-      })
-    )
-    .default([]),
-  submission_requirements: z.array(z.string()).default([]),
-  evaluation_criteria: z.array(z.string()).default([]),
-  required_forms: z
-    .array(z.object({ name: z.string(), note: z.string().optional() }))
-    .default([]),
-  key_dates: z.array(z.object({ label: z.string(), date: z.string() })).default([]),
-  contacts: z
-    .array(
-      z.object({
-        name: z.string().optional(),
-        role: z.string().optional(),
-        email: z.string().optional(),
-        phone: z.string().optional(),
-      })
-    )
-    .default([]),
-  qa_addenda: z
-    .array(z.object({ label: z.string(), summary: z.string(), date: z.string().optional() }))
-    .default([]),
-  special_requirements: z.array(z.string()).default([]),
-  attention_items: z.array(z.string()).default([]),
-  pursue_recommendation: z.string().default(NA),
-  required_trades: z.array(z.string()).default([]),
-  trade_scopes: z
-    .array(z.object({ trade: z.string(), work: z.string() }))
-    .default([]),
-  geographic_area: z.string().default(NA),
-  risk_flags: z.array(z.string()).default([]),
-  // No default and no coercion meant one unexpected word here threw away the
-  // whole analysis. Unrecognised now routes to prime_only, which blocks and
-  // asks a person, rather than silently sourcing subs for a bid whose past
-  // performance rules were never actually read.
-  past_perf_classification: z.unknown().transform(toPastPerf),
-  questions_for_subs: z.array(z.string()).default([]),
-  draft_sow: z.string().default(""),
-  set_aside: z.string().nullable().default(null),
-  compliance_matrix: z
-    .array(
-      z.object({
-        id: z.string().catch(""),
-        title: z.string(),
-        // Coerced, never rejected. `.default()` only fires on undefined, so a
-        // model that answered "certifications" instead of "certification"
-        // threw, and because the throw happens on the whole object, ONE
-        // out-of-enum word destroyed the entire analysis: scope, dates,
-        // trades, every requirement. The retry usually repeated it. Mapping
-        // the near miss keeps the other forty fields, and an unrecognised
-        // value lands on the safe side rather than nowhere.
-        category: z.unknown().transform(toCategory),
-        mandatory: z.boolean().catch(true),
-        source: z.string().catch(NA),
-        format: z.string().optional().catch(undefined),
-        signature_required: z.boolean().catch(false),
-        satisfied_by: z.unknown().transform(toSatisfiedBy),
-        instructions: z.string().optional().catch(undefined),
-        official_form: z.string().optional().catch(undefined),
-        /*
-         * Where this requirement actually came from, as an anchor rather than
-         * a sentence. `source` says "Section L.3", which is where it is
-         * stated; these say which file and which page, which is what lets a
-         * person open it and check. Resolved against the inventory after the
-         * model answers, so a name that matches nothing becomes no anchor
-         * rather than a link to the wrong document.
-         */
-        source_document: z.string().optional().catch(undefined),
-        source_page: z.number().optional().catch(undefined),
-        source_document_id: z.string().optional().catch(undefined),
-      })
-    )
-    .default([]),
-});
+/**
+ * Keep every row that can be read. Drop the one that cannot.
+ *
+ * A truncated last requirement used to fail the whole matrix, and failing
+ * the matrix failed the analysis. The operator then saw "An analysis came
+ * back unreadable" over a solicitation whose scope and trades had already
+ * arrived.
+ */
+function keepValid<T>(item: z.ZodType<T, z.ZodTypeDef, any>) {
+  return z.unknown().transform((v): T[] => {
+    const rows = Array.isArray(v) ? v : [];
+    return rows.flatMap((row) => {
+      const parsed = item.safeParse(row);
+      return parsed.success ? [parsed.data] : [];
+    });
+  });
+}
 
 function toPastPerf(v: unknown): "not_required" | "team_accepted" | "prime_only" {
   const s = String(v ?? "").toLowerCase().trim();
@@ -328,6 +218,124 @@ function toSatisfiedBy(v: unknown): SatisfiedBy {
   // a word we do not know would mark an item done with nothing behind it.
   return "operator_provided";
 }
+
+const MatrixRowSchema = z.object({
+  id: z.string().catch(""),
+  title: z.string(),
+  // Coerced, never rejected. `.default()` only fires on undefined, so a
+  // model that answered "certifications" instead of "certification"
+  // threw, and because the throw happens on the whole object, ONE
+  // out-of-enum word destroyed the entire analysis: scope, dates,
+  // trades, every requirement. The retry usually repeated it. Mapping
+  // the near miss keeps the other forty fields, and an unrecognised
+  // value lands on the safe side rather than nowhere.
+  category: z.unknown().transform(toCategory),
+  mandatory: z.boolean().catch(true),
+  source: z.string().catch(NA),
+  format: z.string().optional().catch(undefined),
+  signature_required: z.boolean().catch(false),
+  satisfied_by: z.unknown().transform(toSatisfiedBy),
+  instructions: z.string().optional().catch(undefined),
+  official_form: z.string().optional().catch(undefined),
+  /*
+   * Where this requirement actually came from, as an anchor rather than
+   * a sentence. `source` says "Section L.3", which is where it is
+   * stated; these say which file and which page, which is what lets a
+   * person open it and check. Resolved against the inventory after the
+   * model answers, so a name that matches nothing becomes no anchor
+   * rather than a link to the wrong document.
+   */
+  source_document: z.string().optional().catch(undefined),
+  source_page: z.number().optional().catch(undefined),
+  source_document_id: z.string().optional().catch(undefined),
+});
+
+export const AnalysisSchema = z.object({
+  project_overview: z.string().default(NA),
+  scope_plain_language: z.string().default(NA),
+  location: z.string().default(NA),
+  estimated_value: z.string().default(NA),
+  due_date: z.string().default(NA),
+  qualifications: z
+    .object({
+      certifications: z.array(z.string()).default([]),
+      licenses: z.array(z.string()).default([]),
+      insurance: z.array(z.string()).default([]),
+      bonding: z.array(z.string()).default([]),
+      experience: z.array(z.string()).default([]),
+      other: z.array(z.string()).default([]),
+    })
+    .default({}),
+  prebid_meeting: z
+    .object({ required: z.boolean().default(false), details: z.string().optional() })
+    .nullable()
+    .default(null),
+  site_visit: z
+    .object({ required: z.boolean().default(false), details: z.string().optional() })
+    .nullable()
+    .default(null),
+  submission_method: z.string().default(NA),
+  /**
+   * Two facts that belong ON the offer and were never extracted at all, so
+   * the transmittal letter and the pricing schedule could not state them:
+   * how long the work runs, and how long the price stands. A contracting
+   * officer looks for both, and an offer that omits the acceptance period can
+   * be treated as non-conforming. Verbatim from the documents or the "Not
+   * specified" string, never a customary default.
+   */
+  period_of_performance: z.string().default(NA),
+  offer_acceptance_period: z.string().default(NA),
+  /**
+   * The agency's OWN schedule of items, verbatim.
+   *
+   * Federal solicitations price by CLIN: numbered line items with a
+   * description, a quantity and a unit, and the offer is expected on that
+   * structure. Our pricing schedule was a rollup of subcontractor trades
+   * ("Electrical", "Roofing"), which is not what the agency asked to be
+   * filled in, and nothing anywhere held the agency's structure so nothing
+   * could tell the difference. Empty when the solicitation does not enumerate
+   * line items; never reconstructed from the scope.
+   */
+  bid_schedule: keepValid(
+    z.object({
+      clin: z.string().optional().catch(undefined),
+      description: z.string(),
+      quantity: z.string().optional().catch(undefined),
+      unit: z.string().optional().catch(undefined),
+    })
+  ),
+  submission_requirements: z.array(z.string()).default([]),
+  evaluation_criteria: z.array(z.string()).default([]),
+  required_forms: keepValid(z.object({ name: z.string(), note: z.string().optional() })),
+  key_dates: keepValid(z.object({ label: z.string(), date: z.string() })),
+  contacts: keepValid(
+    z.object({
+      name: z.string().optional(),
+      role: z.string().optional(),
+      email: z.string().optional(),
+      phone: z.string().optional(),
+    })
+  ),
+  qa_addenda: keepValid(
+    z.object({ label: z.string(), summary: z.string(), date: z.string().optional() })
+  ),
+  special_requirements: z.array(z.string()).default([]),
+  attention_items: z.array(z.string()).default([]),
+  pursue_recommendation: z.string().default(NA),
+  required_trades: z.array(z.string()).default([]),
+  trade_scopes: keepValid(z.object({ trade: z.string(), work: z.string() })),
+  geographic_area: z.string().default(NA),
+  risk_flags: z.array(z.string()).default([]),
+  // No default and no coercion meant one unexpected word here threw away the
+  // whole analysis. Unrecognised now routes to prime_only, which blocks and
+  // asks a person, rather than silently sourcing subs for a bid whose past
+  // performance rules were never actually read.
+  past_perf_classification: z.unknown().transform(toPastPerf),
+  questions_for_subs: z.array(z.string()).default([]),
+  draft_sow: z.string().default(""),
+  set_aside: z.string().nullable().default(null),
+  compliance_matrix: keepValid(MatrixRowSchema),
+});
 
 const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25MB cap per file
 /**
@@ -1071,7 +1079,8 @@ export const solicitationAnalyst: AgentDefinition = {
       const { data, usage } = await completeJson(buildPrompt(opp, attachmentContext), {
         schema: AnalysisSchema,
         model: config.claude.modelSmart, // bid-critical extraction, never omit a requirement
-        maxTokens: 8192,
+        maxTokens: JSON_RETRY_TOKEN_CAP,
+        retries: 2,
       });
       // Hard rule: strip em dashes from all AI text before it is stored or shown.
       // Then put the long-form fields into the one-item-per-line shape the

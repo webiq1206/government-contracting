@@ -409,8 +409,16 @@ export async function complete(
  * defensively extract the first balanced object. If a Zod schema is supplied,
  * we validate and (on failure) retry once with the validation error appended.
  */
-/** Ceiling for a truncated JSON retry. Must sit above the analyst's 8192 start. */
+/**
+ * Ceiling for a truncated JSON retry.
+ *
+ * The analyst used to start at 8192 and retry at the same number, which
+ * produced the same cut-off object twice and then "An analysis came back
+ * unreadable". The first attempt now starts at this budget; a still-truncated
+ * retry can double once more, up to twice this.
+ */
 export const JSON_RETRY_TOKEN_CAP = 16384;
+export const JSON_RETRY_TOKEN_HARD_CAP = 32768;
 
 export async function completeJson<T = unknown>(
   prompt: string,
@@ -447,11 +455,7 @@ export async function completeJson<T = unknown>(
       // retrying at the SAME budget just truncates again. Bump the budget instead
       // (capped) so the retry has room to finish the object.
       if (stopReason === "max_tokens") {
-        // Solicitation analysis already starts at 8192. Capping the retry at
-        // the same number made the second attempt identical to the first:
-        // truncated JSON, then "unbalanced JSON in response". Sonnet can
-        // finish the object if the retry actually has more room.
-        maxTokens = Math.min(maxTokens * 2, JSON_RETRY_TOKEN_CAP);
+        maxTokens = Math.min(Math.max(maxTokens * 2, JSON_RETRY_TOKEN_CAP), JSON_RETRY_TOKEN_HARD_CAP);
         extra = "\n\nYour previous response was cut off before the JSON was complete. Return the COMPLETE, valid JSON object only.";
       } else {
         extra = `\n\nYour previous response could not be parsed/validated (${(err as Error).message}). Return corrected, strictly-valid JSON only.`;
@@ -504,5 +508,48 @@ export function extractJson(text: string): unknown {
       if (depth === 0) return JSON.parse(trimmed.slice(start, i + 1));
     }
   }
-  throw new Error("unbalanced JSON in response");
+  // Cut off mid-object. Closing what was already written keeps the fields
+  // that arrived, which is a usable analysis. Throwing here is how one
+  // truncated compliance matrix erased the scope, trades and deadline.
+  return closeTruncatedJson(trimmed.slice(start));
+}
+
+/**
+ * Finish a truncated object or array so JSON.parse can read it.
+ *
+ * The last property may be dropped or set to null. That is the point: a
+ * solicitation analysis that names the trades and misses the last form is
+ * a brief somebody can work. "unbalanced JSON in response" is not.
+ */
+export function closeTruncatedJson(text: string): unknown {
+  const start = text.search(/[{[]/);
+  if (start === -1) throw new Error("unbalanced JSON in response");
+  let s = text.slice(start);
+  const stack: Array<"{" | "["> = [];
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === "{") stack.push("{");
+    else if (ch === "[") stack.push("[");
+    else if (ch === "}" || ch === "]") stack.pop();
+  }
+  if (inStr) s += '"';
+  s = s.replace(/,\s*$/, "");
+  if (/:\s*$/.test(s)) s += "null";
+  while (stack.length > 0) {
+    s += stack.pop() === "{" ? "}" : "]";
+  }
+  try {
+    return JSON.parse(s);
+  } catch {
+    throw new Error("unbalanced JSON in response");
+  }
 }

@@ -85,11 +85,22 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
       [org]
     ).catch(() => [] as LogRow[]),
     query<{ n: number }>(
+      /*
+       * Held up by the failure, not every open bid.
+       *
+       * The old count was the whole live pipeline. One unreadable analysis
+       * then printed "221 open opportunities affected" on a card about a
+       * single workflow, which is how a handful of truncated JSON replies
+       * looked like the book was on fire.
+       */
       `select count(*)::int as n
          from opportunities
         where org_id = $1 and status = 'open'
           and coalesce(pursuit_state, 'active') <> 'aborted'
-          and stage not in ('submitted','won','lost')`,
+          and (
+            stage = 'analysis'
+            or coalesce(risk_flags, '{}') && array['stalled_analysis','analysis_needs_claude']::text[]
+          )`,
       [org]
     )
       .then((r) => r[0]?.n ?? 0)

@@ -67,6 +67,20 @@ describe("AnalysisSchema", () => {
     ).toBe("team_accepted");
   });
 
+  it("keeps the analysis when one matrix row is truncated", () => {
+    const parsed = AnalysisSchema.parse({
+      ...base,
+      scope_plain_language: "Replace 14 rooftop units.",
+      compliance_matrix: [
+        { id: "reps", title: "Reps and certs", category: "certification" },
+        { id: "broken" },
+      ],
+    });
+    expect(parsed.scope_plain_language).toBe("Replace 14 rooftop units.");
+    expect(parsed.compliance_matrix).toHaveLength(1);
+    expect(parsed.compliance_matrix[0].title).toBe("Reps and certs");
+  });
+
   it("survives a matrix row with the wrong type in a scalar field", () => {
     const parsed = AnalysisSchema.parse({
       ...base,

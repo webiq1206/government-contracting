@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { cronMatches } from "@/lib/cron";
-import { extractJson, JSON_RETRY_TOKEN_CAP } from "@/lib/ai/claude";
+import { extractJson, JSON_RETRY_TOKEN_CAP, JSON_RETRY_TOKEN_HARD_CAP } from "@/lib/ai/claude";
 import { readFileSync } from "node:fs";
 
 describe("cron matcher", () => {
@@ -59,9 +59,24 @@ describe("extractJson", () => {
   it("gives a truncated analysis room to finish on retry", () => {
     const src = readFileSync("lib/ai/claude.ts", "utf8");
     expect(JSON_RETRY_TOKEN_CAP).toBeGreaterThan(8192);
-    expect(src).toContain("JSON_RETRY_TOKEN_CAP");
+    expect(JSON_RETRY_TOKEN_HARD_CAP).toBeGreaterThan(JSON_RETRY_TOKEN_CAP);
+    expect(src).toContain("JSON_RETRY_TOKEN_HARD_CAP");
     expect(readFileSync("lib/agents/solicitation-analyst.ts", "utf8")).toContain(
-      "maxTokens: 8192"
+      "maxTokens: JSON_RETRY_TOKEN_CAP"
     );
+  });
+
+  it("closes a cut-off object so the fields that arrived are kept", () => {
+    expect(extractJson('{"scope":"Paint the hangar","trades":["painting"')).toEqual({
+      scope: "Paint the hangar",
+      trades: ["painting"],
+    });
+  });
+
+  it("closes a cut-off string so the fields that arrived are kept", () => {
+    expect(extractJson('{"scope":"Paint the hangar","draft":"The contractor shall')).toEqual({
+      scope: "Paint the hangar",
+      draft: "The contractor shall",
+    });
   });
 });
