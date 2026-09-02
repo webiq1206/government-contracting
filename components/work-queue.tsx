@@ -43,7 +43,7 @@ export function WorkQueue({
   const more = items.length - shown.length;
 
   return (
-    <section className="card p-0" data-guide-target="work-queue">
+    <section className="card min-w-0 p-0" data-guide-target="work-queue">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
         <h2 className="font-display text-lg font-semibold text-foreground">Your queue</h2>
         <p className="text-xs text-muted-foreground">{summarizeQueue(items)}</p>
@@ -54,70 +54,62 @@ export function WorkQueue({
           Nothing needs you right now. The system keeps working; new items land here.
         </p>
       ) : (
-        <ul className="divide-y divide-border/60">
+        <ul className="min-w-0 divide-y divide-border/60">
           {shown.map((item, i) => (
-            <li key={item.key} className="sm:flex sm:items-center">
+            <li
+              key={item.key}
+              className={`grid min-w-0 grid-cols-1 items-start gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4 sm:px-5 ${
+                i === 0 ? "border-l-2 border-gold bg-gold/[0.03]" : ""
+              }`}
+            >
               <Link
                 href={item.href}
-                className="flex min-h-14 flex-1 items-center gap-3 px-4 py-3 transition-colors hover:bg-surface/70 sm:px-5"
+                className="min-w-0 transition-colors hover:text-gold-text"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{item.title}</p>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    {item.context && (
-                      <span className="truncate text-xs text-muted-foreground">
-                        {item.context}
-                      </span>
-                    )}
-                    <DeadlineBadge deadline={item.due ?? null} />
-                    {/*
-                      Whose it is. Shown on every row including unassigned
-                      ones, because "nobody has picked this up" is the state
-                      worth seeing: a blank column reads as a rendering fault
-                      and gets ignored, where the word is something to act on.
-                    */}
-                    <span className="text-xs text-muted-foreground">
-                      {describeOwner(item.owner, viewerId)}
+                <p className="line-clamp-2 text-sm font-medium text-foreground">{item.title}</p>
+                <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                  {item.context && (
+                    <span className="max-w-full truncate text-xs text-muted-foreground">
+                      {item.context}
                     </span>
-                  </div>
+                  )}
+                  <DeadlineBadge deadline={item.due ?? null} />
                   {/*
-                    The blocker before the reason: when automation named
-                    something it could not get past, that IS the reason, and
-                    repeating a generic one underneath it would be noise.
+                    Whose it is. Shown on every row including unassigned
+                    ones, because "nobody has picked this up" is the state
+                    worth seeing: a blank column reads as a rendering fault
+                    and gets ignored, where the word is something to act on.
                   */}
-                  {item.blocker ? (
-                    <p className="mt-1 line-clamp-2 text-xs text-review">
-                      <span className="label mr-1 inline">Blocked</span>
-                      {item.blocker}
-                    </p>
-                  ) : item.reason ? (
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.reason}</p>
-                  ) : null}
+                  <span className="text-xs text-muted-foreground">
+                    {describeOwner(item.owner, viewerId)}
+                  </span>
                 </div>
-                <span
-                  className={`${
-                    i === 0 ? "btn-primary" : "btn-ghost"
-                  } pointer-events-none shrink-0 whitespace-nowrap px-3 py-1.5 text-xs`}
-                >
-                  {item.actionLabel}
-                </span>
+                {/*
+                  The blocker before the reason: when automation named
+                  something it could not get past, that IS the reason, and
+                  repeating a generic one underneath it would be noise.
+                */}
+                {item.blocker ? (
+                  <p className="mt-1 line-clamp-2 text-xs text-review">
+                    <span className="label mr-1 inline">Blocked</span>
+                    {item.blocker}
+                  </p>
+                ) : item.reason ? (
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.reason}</p>
+                ) : null}
               </Link>
               {/*
-                The row's own controls, beside the link on a wide screen and
-                under it on a phone rather than hidden there.
-                Without these the one queue was the least capable place to work
-                from: deciding meant opening the record, deciding, and coming
-                back to a list that had moved, while the themed sections
-                further down the page had had these controls all along. They
-                sit outside the Link rather than inside it with a click
-                swallowed, so a keyboard reaches them in the order they read.
+                One action column, always inside the card. The old row put a
+                fake button inside the link AND the real controls beside it,
+                which is why "Start the call" drew twice and slid under the
+                sidebar.
               */}
-              <div className="flex flex-wrap items-center gap-2 px-4 pb-3 sm:shrink-0 sm:px-5 sm:pb-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
                 {peekHrefFor && (
                   <Link
                     href={peekHrefFor(item)}
                     scroll={false}
-                    className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+                    className="tap shrink-0 text-xs text-slate-500 underline-offset-2 hover:text-accent"
                   >
                     Quick look
                   </Link>

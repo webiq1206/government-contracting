@@ -66,7 +66,7 @@ export function QueueFilters({
 
   return (
     <div className="space-y-2">
-      <form method="get" action="/today" className="flex items-center gap-2">
+      <form method="get" action="/today" className="search-row">
         {bucket !== "all" && <input type="hidden" name="due" value={bucket} />}
         {kind && <input type="hidden" name="kind" value={kind} />}
         {owner !== "anyone" && <input type="hidden" name="owner" value={owner} />}
@@ -94,7 +94,7 @@ export function QueueFilters({
         "which of it is calls".
       */}
       {ownerHrefFor && (
-        <nav aria-label="Filter by owner" className="flex flex-wrap gap-2">
+        <nav aria-label="Filter by owner" className="chip-row">
           {OWNER_FILTERS.map((o) => (
             <Link
               key={o}
@@ -109,7 +109,7 @@ export function QueueFilters({
       )}
 
       {kinds.length > 1 && (
-        <nav aria-label="Filter by kind of work" className="flex flex-wrap gap-2">
+        <nav aria-label="Filter by kind of work" className="chip-row">
           <Link
             href={hrefFor({ kind: null })}
             aria-current={kind == null ? "page" : undefined}

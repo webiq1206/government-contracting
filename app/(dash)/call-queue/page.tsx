@@ -284,7 +284,7 @@ export default async function CallQueuePage({
               }`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1.5">
+                <div className="hidden flex-wrap gap-1.5 lg:flex">
                   <KeyHint keys="J / K" label="move" />
                   <KeyHint keys="Esc" label="back to the list" />
                 </div>
@@ -314,7 +314,7 @@ export default async function CallQueuePage({
                 />
               )}
 
-              <form method="get" action="/call-queue" className="flex flex-wrap items-center gap-2">
+              <form method="get" action="/call-queue" className="search-row">
                 {focusId && <input type="hidden" name="opportunity" value={focusId} />}
                 {grouping !== "none" && <input type="hidden" name="group" value={grouping} />}
                 <input
@@ -323,7 +323,7 @@ export default async function CallQueuePage({
                   defaultValue={q}
                   placeholder="Company, trade or solicitation…"
                   aria-label="Search the call queue"
-                  className="input w-full max-w-xs text-sm"
+                  className="input text-sm"
                 />
                 <button type="submit" className="btn-ghost text-sm">
                   Search
@@ -335,7 +335,7 @@ export default async function CallQueuePage({
                 )}
               </form>
 
-              <nav aria-label="Group the queue" className="flex flex-wrap gap-2">
+              <nav aria-label="Group the queue" className="chip-row">
                 {CALL_GROUPINGS.map((g) => (
                   <Link
                     key={g}

@@ -77,6 +77,12 @@ export function BidBrief({
               solicitation itself, so it says so. */}
           <p className="eyebrow-gold">The solicitation, in plain English</p>
           <h2 className="mt-1 font-display text-2xl font-normal text-foreground">Bid Brief</h2>
+          {analysis.brief_source === "notice" && (
+            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+              This summary is from the notice and the score, not a full reading of the
+              solicitation documents.
+            </p>
+          )}
         </div>
         {documents.length > 0 && (
           <a href="#attachments" className="btn-ghost text-xs">

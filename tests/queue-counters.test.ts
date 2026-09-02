@@ -15,6 +15,8 @@ import {
   parseKindFilter,
   needsYou,
   needsYouCount,
+  countByKind,
+  summarizeQueue,
   QUEUE_FILTERS,
   QUEUE_FILTER_LABEL,
   KIND_FILTER_LABEL,
@@ -74,6 +76,32 @@ describe("queueCounts", () => {
 
   it("is all zeroes on an empty queue, which is a real answer", () => {
     expect(queueCounts([], NOW)).toEqual({ overdue: 0, dueToday: 0, remaining: 0, total: 0 });
+  });
+
+  it("names the leftover bucket Later, not Remaining", () => {
+    expect(QUEUE_FILTER_LABEL.remaining).toBe("Later");
+  });
+});
+
+describe("countByKind", () => {
+  it("adds up to the list length, so chips and the headline cannot drift", () => {
+    const items = [
+      item({ key: "1", kind: "call" }),
+      item({ key: "2", kind: "call" }),
+      item({ key: "3", kind: "decide" }),
+      item({ key: "4", kind: "fix_blocker" }),
+    ];
+    const byKind = countByKind(items);
+    expect(byKind.call + byKind.decide + byKind.fix_blocker).toBe(items.length);
+    expect(byKind.call + byKind.decide + byKind.fix_blocker).toBe(
+      byKind.read_reply +
+        byKind.review_bid +
+        byKind.enter_quote +
+        byKind.call +
+        byKind.decide +
+        byKind.fix_blocker
+    );
+    expect(summarizeQueue(items)).toBe("4 to do: 2 calls, 1 decision, 1 blocker");
   });
 });
 

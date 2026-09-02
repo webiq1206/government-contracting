@@ -232,11 +232,24 @@ export function sortWorkItems(items: WorkItem[]): WorkItem[] {
   });
 }
 
+/** Every kind, including zeroes, so a missing kind is 0 rather than absent. */
+export function countByKind(items: WorkItem[]): Record<WorkKind, number> {
+  const counts = {
+    read_reply: 0,
+    review_bid: 0,
+    enter_quote: 0,
+    call: 0,
+    decide: 0,
+    fix_blocker: 0,
+  };
+  for (const i of items) counts[i.kind] += 1;
+  return counts;
+}
+
 /** "3 to do: 1 bid to review, 2 calls" — the queue's one-line summary. */
 export function summarizeQueue(items: WorkItem[]): string {
   if (items.length === 0) return "Nothing waiting on you";
-  const counts = new Map<WorkKind, number>();
-  for (const i of items) counts.set(i.kind, (counts.get(i.kind) ?? 0) + 1);
+  const counts = countByKind(items);
   const LABEL: Record<WorkKind, [string, string]> = {
     read_reply: ["reply to read", "replies to read"],
     review_bid: ["bid to review", "bids to review"],
@@ -245,9 +258,10 @@ export function summarizeQueue(items: WorkItem[]): string {
     decide: ["decision", "decisions"],
     fix_blocker: ["blocker", "blockers"],
   };
-  const parts = [...counts.entries()]
-    .sort((a, b) => KIND_ORDER[a[0]] - KIND_ORDER[b[0]])
-    .map(([k, n]) => `${n} ${LABEL[k][n === 1 ? 0 : 1]}`);
+  const parts = (Object.keys(KIND_ORDER) as WorkKind[])
+    .filter((k) => counts[k] > 0)
+    .sort((a, b) => KIND_ORDER[a] - KIND_ORDER[b])
+    .map((k) => `${counts[k]} ${LABEL[k][counts[k] === 1 ? 0 : 1]}`);
   return `${items.length} to do: ${parts.join(", ")}`;
 }
 
@@ -271,7 +285,10 @@ export function summarizeQueue(items: WorkItem[]): string {
 export interface QueueCounts {
   overdue: number;
   dueToday: number;
-  /** Everything else still waiting, including work with no date at all. */
+  /**
+   * Still open, and not due today: a later deadline, or no date at all.
+   * Never "the rest of the day" as a vague leftover.
+   */
   remaining: number;
   total: number;
 }
@@ -384,7 +401,7 @@ export const QUEUE_FILTER_LABEL: Record<QueueFilter, string> = {
   due_today: "Due today",
   waiting_on_others: "Waiting on others",
   blocked: "Blocked",
-  remaining: "Remaining",
+  remaining: "Later",
   completed_today: "Completed today",
 };
 

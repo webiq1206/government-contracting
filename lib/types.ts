@@ -423,6 +423,13 @@ export interface SolicitationAnalysis {
   special_requirements: string[];
   attention_items: string[]; // risks / unusual clauses / things needing a human look
   pursue_recommendation: string; // 1-3 sentence "should we pursue and why"
+  /**
+   * How the brief was produced. `notice` is a listing-and-score fallback so
+   * Overview is never blank while the document read is still running, or on
+   * a record that was scored but never pursued. Absent on older rows, which
+   * were always a model read.
+   */
+  brief_source?: "notice" | "model";
 
   // --- Downstream-agent fields (retained) ---
   required_trades: string[];

@@ -72,6 +72,7 @@ import { stageLabel } from "@/lib/domain/journey";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
+import { noticeBriefFromOpportunity } from "@/lib/domain/notice-brief";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -111,7 +112,8 @@ export default async function OpportunityPage({ params }: { params: { id: string
     : null;
   const bid = detail.bid as Bid | null;
   const breakdown = opp.score_breakdown as ScoreBreakdown | null;
-  const analysis = opp.solicitation_analysis as SolicitationAnalysis | null;
+  const storedAnalysis = opp.solicitation_analysis as SolicitationAnalysis | null;
+  const analysis = storedAnalysis ?? noticeBriefFromOpportunity(opp, breakdown);
   const pricing = (opp.raw_json as { pricing_summary?: Record<string, unknown> } | null)
     ?.pricing_summary;
 
@@ -737,20 +739,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 </div>
               </div>
 
-              {analysis ? (
-                <BidBrief analysis={analysis} documents={briefDocs} states={tracking?.states} />
-              ) : (
-                <div className="card">
-                  <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
-                    Plain-English summary
-                  </h2>
-                  <p className="mt-2 text-sm text-slate-500">
-                    The plain-English analysis has not run yet. Everything you need is still
-                    available in the other tabs: score, pricing, subcontractors, and original
-                    attachments.
-                  </p>
-                </div>
-              )}
+              <BidBrief analysis={analysis} documents={briefDocs} states={tracking?.states} />
 
               {/*
                 * Moved here from a tab labelled "More". It said so itself:
@@ -1328,7 +1317,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
           reserved height lands at the end of this record's content and not
           under the side panel, which has its own scroller.
         */}
-        <RecordActionBar step={step} />
+        <RecordActionBar step={step} opportunityId={opp.id} />
         </div>
 
         <aside className="hidden w-96 shrink-0 flex-col border-l border-border xl:flex">

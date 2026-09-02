@@ -331,7 +331,7 @@ export default async function WorkbenchPage({
         )}
 
         <PageToolbar>
-          <form method="get" action="/workbench" className="flex flex-wrap items-center gap-2">
+          <form method="get" action="/workbench" className="search-row">
             {bucket !== "all" && <input type="hidden" name="due" value={bucket} />}
             {kind && <input type="hidden" name="kind" value={kind} />}
             {owner !== "anyone" && <input type="hidden" name="owner" value={owner} />}
@@ -344,7 +344,7 @@ export default async function WorkbenchPage({
               name="q"
               defaultValue={q}
               placeholder="Company, solicitation, or why it is here…"
-              className="input w-full max-w-sm"
+              className="input text-sm"
             />
             <button type="submit" className="btn-ghost text-sm">
               Search
@@ -363,7 +363,7 @@ export default async function WorkbenchPage({
             */}
           <nav
             aria-label="Queue views"
-            className="scroll-thin -mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 lg:pb-0"
+            className="chip-row mt-2"
           >
             {QUEUE_FILTERS.filter((f) => !isCompletedFilter(f)).map((f) => {
               const active = f === bucket;
@@ -397,7 +397,7 @@ export default async function WorkbenchPage({
             })}
           </nav>
 
-          <nav aria-label="Filter by owner" className="mt-2 flex flex-wrap gap-2">
+          <nav aria-label="Filter by owner" className="chip-row mt-2">
             {OWNER_FILTERS.map((o) => (
               <Link
                 key={o}
@@ -416,7 +416,7 @@ export default async function WorkbenchPage({
 
           <nav
             aria-label="Kinds of work"
-            className="scroll-thin -mx-1 mt-2 flex gap-2 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0 lg:pb-0"
+            className="chip-row mt-2"
           >
             {(Object.keys(KIND_FILTER_LABEL) as WorkKind[]).map((k) => {
               const active = k === kind;

@@ -60,7 +60,9 @@ describe("the three surfaces cannot diverge", () => {
     const src = readFileSync("app/(dash)/today/page.tsx", "utf8");
     expect(src).toContain("const actionable = needsYou(queueItems)");
     expect(src).toContain("const totalActions = counts.total");
+    expect(src).toContain("actionBreakdown={summarizeQueue(actionable)}");
     expect(src).not.toMatch(/const totalActions = ledger\.total/);
+    expect(src).not.toContain("actionBreakdown={ledgerBreakdown(ledger)}");
   });
 
   it("the Today tab badge counts distinct records, not a sum of buckets", () => {
@@ -76,6 +78,12 @@ describe("the three surfaces cannot diverge", () => {
   it("Guide Me uses the same badge total when it has one", () => {
     const src = readFileSync("lib/guide/load.ts", "utf8");
     expect(src).toContain("needsYouTotal: badge.today");
+  });
+
+  it("keeps queue actions inside the card, with one button per row", () => {
+    const src = readFileSync("components/work-queue.tsx", "utf8");
+    expect(src).toContain("sm:grid-cols-[minmax(0,1fr)_auto]");
+    expect(src).not.toContain("pointer-events-none");
   });
 
   it("does not lead the home screen with a bare integer", () => {

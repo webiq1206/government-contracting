@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { openEditorialTarget } from "@/lib/editorial-nav";
+import { ActionButton } from "./action-button";
+import { PassButton } from "./pass-button";
 import type { NextStep } from "@/lib/domain/journey";
 
 /**
@@ -12,16 +14,24 @@ import type { NextStep } from "@/lib/domain/journey";
  * means leaving the tab that says what to do, and coming back means scrolling
  * a long page to find it again. So the action follows the reader.
  *
- * One action, never a row of them. A bar with four buttons on a 375-pixel
- * screen is four buttons nobody presses, and the point of this is that the
- * next move is unmissable rather than that everything is available.
+ * Decision steps (pursue/pass, won/lost) put those buttons on the bar. A bar
+ * that only says "See details below" is a signpost to a place the operator
+ * already left.
  *
  * Mobile only. Above the tab bar, clear of the home indicator, and it pads the
  * page behind it so the last line of content is not permanently underneath it.
  */
-export function RecordActionBar({ step }: { step: NextStep }) {
-  // Nothing to press and nowhere to go is not a bar worth the space it takes.
-  if (!step.cta || !(step.href || step.anchor)) return null;
+export function RecordActionBar({
+  step,
+  opportunityId,
+}: {
+  step: NextStep;
+  opportunityId: string;
+}) {
+  const isTriage = step.decision === "triage";
+  const isOutcome = step.decision === "outcome";
+  const hasLink = Boolean(step.cta && (step.href || step.anchor));
+  if (!isTriage && !isOutcome && !hasLink) return null;
 
   const tone =
     step.tone === "action"
@@ -33,55 +43,72 @@ export function RecordActionBar({ step }: { step: NextStep }) {
 
   return (
     <>
-      {/*
-        A fixed bar covers whatever is under it, permanently, and the thing
-        under it is the last line of the page. This reserves the height in
-        normal flow so the end of a document is reachable rather than sitting
-        behind the control that is meant to help.
-      */}
-      <div className="h-[4.25rem] lg:hidden" aria-hidden />
       <div
-      /*
-       * bottom-16 clears the mobile tab bar, which is fixed at bottom-0 and
-       * four rem tall; its own safe-area padding sits below that, so the
-       * inset is added here rather than doubled.
-       */
-      className="fixed inset-x-0 bottom-16 z-50 border-t border-border bg-background/95 px-3 py-2 backdrop-blur lg:hidden"
-      style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))" }}
-    >
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-muted-foreground">Next step</p>
-          {/*
-            One line, truncated. The full sentence and the reason are on
-            Overview; repeating them here would make a bar tall enough to
-            cover the content it sits over.
-          */}
-          <p className="truncate text-sm font-medium text-foreground">{step.title}</p>
+        className="h-[4.75rem] lg:hidden"
+        style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+        aria-hidden
+      />
+      <div
+        className="fixed inset-x-0 z-50 border-t border-border bg-background/95 px-3 py-2 backdrop-blur lg:hidden"
+        style={{ bottom: "calc(4rem + env(safe-area-inset-bottom, 0px))" }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground">Next step</p>
+            <p className="line-clamp-2 text-sm font-medium text-foreground">{step.title}</p>
+          </div>
+          {isTriage && (
+            <div className="flex shrink-0 items-center gap-2">
+              <ActionButton
+                endpoint={`/api/opportunities/${opportunityId}/action`}
+                body={{ action: "pursue" }}
+                className="btn-success text-xs"
+              >
+                Pursue
+              </ActionButton>
+              <PassButton opportunityId={opportunityId} className="btn-danger text-xs">
+                Pass
+              </PassButton>
+            </div>
+          )}
+          {isOutcome && (
+            <div className="flex shrink-0 items-center gap-2">
+              <ActionButton
+                endpoint={`/api/opportunities/${opportunityId}/outcome`}
+                body={{ outcome: "won" }}
+                className="btn-success text-xs"
+                confirm="Mark as WON and create the contract?"
+              >
+                Won
+              </ActionButton>
+              <ActionButton
+                endpoint={`/api/opportunities/${opportunityId}/outcome`}
+                body={{ outcome: "lost" }}
+                className="btn-danger text-xs"
+                confirm="Mark this bid as lost?"
+              >
+                Lost
+              </ActionButton>
+            </div>
+          )}
+          {!isTriage && !isOutcome && step.href && (
+            <Link href={step.href} className={button}>
+              {step.cta}
+            </Link>
+          )}
+          {!isTriage && !isOutcome && !step.href && step.anchor && (
+            <a
+              href={`#${step.anchor}`}
+              className={button}
+              onClick={(e) => {
+                e.preventDefault();
+                openEditorialTarget(step.anchor!);
+              }}
+            >
+              {step.cta}
+            </a>
+          )}
         </div>
-        {step.href ? (
-          <Link href={step.href} className={button}>
-            {step.cta}
-          </Link>
-        ) : (
-          /*
-           * An in-page target is a tab on this record, not a scroll position.
-           * A plain hash would move the viewport to a panel the tab strip has
-           * not opened, which on a phone means an apparently empty screen.
-           * openEditorialTarget opens the tab first and then scrolls.
-           */
-          <a
-            href={`#${step.anchor}`}
-            className={button}
-            onClick={(e) => {
-              e.preventDefault();
-              openEditorialTarget(step.anchor!);
-            }}
-          >
-            {step.cta}
-          </a>
-        )}
-      </div>
       </div>
     </>
   );

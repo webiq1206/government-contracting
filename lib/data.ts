@@ -1156,6 +1156,11 @@ export interface CompletedToday {
   bidsSubmitted: number;
   decisions: number;
   complianceResolved: number;
+  /** Notices ingested today. The system did this; it still belongs on the day. */
+  found: number;
+  /** Outbound emails that left the account today, not drafts or failed sends. */
+  emailsSent: number;
+  /** Operator-finished work. Found and emails sit beside this, not inside it. */
   total: number;
 }
 
@@ -1170,13 +1175,22 @@ export async function completedToday(): Promise<CompletedToday> {
          where q.org_id = $1 and q.created_at >= date_trunc('day', now()))::text as quotes,
        (select count(*) from bids b
          where b.org_id = $1 and b.submitted_at >= date_trunc('day', now()))::text as bids,
-       (select count(*) from opportunities o
-         where o.org_id = $1 and o.human_action_required = false
-           and o.updated_at >= date_trunc('day', now())
-           and o.stage <> 'discovered')::text as decisions,
+       (select count(distinct l.opportunity_id) from agent_logs l
+         where l.org_id = $1
+           and l.agent = 'operator'
+           and l.action in ('pursue', 'dismiss')
+           and l.created_at >= date_trunc('day', now()))::text as decisions,
        (select count(*) from compliance_items ci
          where ci.org_id = $1 and ci.status_override = 'resolved'
-           and ci.updated_at >= date_trunc('day', now()))::text as compliance`,
+           and ci.updated_at >= date_trunc('day', now()))::text as compliance,
+       (select count(*) from opportunities o
+         where o.org_id = $1 and o.created_at >= date_trunc('day', now()))::text as found,
+       (select count(*) from communications c
+         where c.org_id = $1
+           and c.channel = 'email'
+           and c.direction = 'outbound'
+           and coalesce(c.delivery_state, 'sent') not in ('failed', 'bounced')
+           and c.created_at >= date_trunc('day', now()))::text as emails`,
     [orgId]
   );
 
@@ -1189,12 +1203,16 @@ export async function completedToday(): Promise<CompletedToday> {
   const bidsSubmitted = n(row?.bids);
   const decisions = n(row?.decisions);
   const complianceResolved = n(row?.compliance);
+  const found = n(row?.found);
+  const emailsSent = n(row?.emails);
   return {
     calls,
     quotes,
     bidsSubmitted,
     decisions,
     complianceResolved,
+    found,
+    emailsSent,
     total: calls + quotes + bidsSubmitted + decisions + complianceResolved,
   };
 }
@@ -1260,9 +1278,11 @@ export async function recentChanges(opts: {
  * somebody actually has at five o'clock. A count of 6 and a list of the six
  * are different objects and only one of them can be checked against memory.
  */
+export type CompletedKind = WorkKind | "found" | "email";
+
 export interface CompletedItem {
   key: string;
-  kind: WorkKind;
+  kind: CompletedKind;
   /** What was done, in the words the rest of the queue uses. */
   title: string;
   /** The record it happened to. */
@@ -1275,10 +1295,10 @@ export interface CompletedItem {
 /**
  * What was finished today, as records rather than as a total.
  *
- * From the five places the work leaves its mark, which is the same five the
- * counter above adds up. Deliberately not from the queue: the queue holds what
- * is LEFT, so deriving completions from it would give the same answer for
- * "nothing to do" and "everything done", which are opposite mornings.
+ * From the same places the counter above adds up, plus bids found and emails
+ * sent. Deliberately not from the queue: the queue holds what is LEFT, so
+ * deriving completions from it would give the same answer for "nothing to do"
+ * and "everything done", which are opposite mornings.
  *
  * Capped, and ordered newest first. An operator scanning what they finished
  * wants the last hour before the first, and a day that produced two hundred
@@ -1338,11 +1358,18 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
          'Decided: ' || o.stage,
          coalesce(o.title, 'An opportunity'),
          '/opportunity/' || o.id::text,
-         o.updated_at
-       from opportunities o
-       where o.org_id = $1 and o.human_action_required = false
-         and o.updated_at >= date_trunc('day', now())
-         and o.stage <> 'discovered'
+         l.created_at
+       from (
+         select distinct on (opportunity_id) opportunity_id, created_at
+           from agent_logs
+          where org_id = $1
+            and agent = 'operator'
+            and action in ('pursue', 'dismiss')
+            and created_at >= date_trunc('day', now())
+            and opportunity_id is not null
+          order by opportunity_id, created_at desc
+       ) l
+       join opportunities o on o.id = l.opportunity_id
 
        union all
        select
@@ -1355,6 +1382,34 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
        from compliance_items ci
        where ci.org_id = $1 and ci.status_override = 'resolved'
          and ci.updated_at >= date_trunc('day', now())
+
+       union all
+       select
+         'found:' || o.id::text,
+         'found',
+         'Found ' || coalesce(o.title, 'an opportunity'),
+         coalesce(o.agency, 'New notice'),
+         '/opportunity/' || o.id::text,
+         o.created_at
+       from opportunities o
+       where o.org_id = $1 and o.created_at >= date_trunc('day', now())
+
+       union all
+       select
+         'email:' || c.id::text,
+         'email',
+         'Sent email' || coalesce(' to ' || s.company_name, ''),
+         coalesce(o.title, coalesce(c.subject, 'Outreach')),
+         coalesce('/opportunity/' || o.id::text, '/communications'),
+         c.created_at
+       from communications c
+       left join subcontractors s on s.id = c.subcontractor_id
+       left join opportunities o on o.id = c.opportunity_id
+       where c.org_id = $1
+         and c.channel = 'email'
+         and c.direction = 'outbound'
+         and coalesce(c.delivery_state, 'sent') not in ('failed', 'bounced')
+         and c.created_at >= date_trunc('day', now())
      ) done
      order by at desc
      limit $2`,
@@ -1362,7 +1417,7 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
   );
   return rows.map((r) => ({
     key: r.key,
-    kind: r.kind as WorkKind,
+    kind: r.kind as CompletedKind,
     title: r.title,
     context: r.context,
     href: r.href,

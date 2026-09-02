@@ -15,7 +15,7 @@ import { HelpPopover } from "@/components/help-popover";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { accountSetup } from "@/lib/setup-facts";
 import { flagSummary } from "@/lib/flag-labels";
-import { buildWorkLedger, ledgerHeadline, ledgerBreakdown } from "@/lib/domain/work-ledger";
+import { ledgerHeadline } from "@/lib/domain/work-ledger";
 import { stageParty, PARTY_LABEL, STAGE_LABEL } from "@/lib/domain/journey";
 import { outreachLabel } from "@/lib/domain/sub-contact";
 import { DOC_LABEL } from "@/lib/domain/sub-compliance";
@@ -51,12 +51,13 @@ import {
 } from "@/lib/domain/row-actions";
 import {
   queueCounts,
+  countByKind,
   filterWorkItems,
   isCompletedFilter,
   parseQueueFilter,
   parseKindFilter,
   needsYou,
-  KIND_FILTER_LABEL,
+  summarizeQueue,
   type WorkItem,
   type WorkKind,
   type QueueFilter,
@@ -286,7 +287,7 @@ function PipelineHealthRail({
 }: {
   stageCounts: { stage: string; count: number }[];
   totalActions: number;
-  /** The ledger's own wording, so this rail cannot phrase the count its own way. */
+  /** Same wording as the greeting, from the unique queue count. */
   actionHeadline: string;
   actionBreakdown: string;
   digestParts: string[];
@@ -428,7 +429,7 @@ function PipelineHealthRail({
             href="/agents"
             className="block shell-panel p-4 text-sm text-foreground/65 transition-colors hover:border-gold/40"
           >
-            <p className="eyebrow-gold">Recent activity</p>
+            <p className="eyebrow-gold">Last 24 hours</p>
             <p className="mt-2 leading-relaxed">{digestParts.join(" · ")}</p>
           </Link>
         )}
@@ -468,7 +469,16 @@ export default async function TodayPage({
      */
     completedToday().catch((e) => {
       console.error("[today] completed-today count failed:", e);
-      return { calls: 0, quotes: 0, bidsSubmitted: 0, decisions: 0, complianceResolved: 0, total: 0 };
+      return {
+        calls: 0,
+        quotes: 0,
+        bidsSubmitted: 0,
+        decisions: 0,
+        complianceResolved: 0,
+        found: 0,
+        emailsSent: 0,
+        total: 0,
+      };
     }),
     gmail.connection().catch(() => ({
       connected: false,
@@ -521,13 +531,7 @@ export default async function TodayPage({
    */
   const actionable = needsYou(queueItems);
   const counts = queueCounts(actionable);
-  const kindCounts = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).reduce(
-    (acc, k) => {
-      acc[k] = actionable.filter((i) => i.kind === k).length;
-      return acc;
-    },
-    {} as Record<WorkKind, number>
-  );
+  const kindCounts = countByKind(actionable);
   /*
    * The one filter served from somewhere else.
    *
@@ -701,36 +705,6 @@ export default async function TodayPage({
     data.proposedWeights.length +
     (canSeeAuthority && data.backlinkApprovals > 0 ? 1 : 0);
   const approvalSectionCount = approvalCount + data.complianceAlerts.length;
-  /*
-   * One ledger, shared with the Guide Me panel.
-   *
-   * This used to be eleven `.length`s added up here, while the guide added up
-   * a different eight of its own, and the work queue below listed a third
-   * set. One account was told it had 56 things to do, then 46, then shown a
-   * list of neither length -- on one screen. Two of those numbers were also
-   * counting query caps rather than work, and one was counting submitted bids
-   * that need nobody. buildWorkLedger is now the only place that decides.
-   */
-  const ledger = buildWorkLedger({
-    urgent: data.totals.urgent,
-    replyReviews: data.totals.replyReviews,
-    triage: data.totals.triage,
-    calls: data.calls.count,
-    bidWork: data.totals.bidWork,
-    quoteReviews: data.totals.quoteReviews,
-    subFollowUps: data.totals.subFollowUps,
-    // totals.compliance, not complianceAlerts.length: that list is `limit 8`
-    // because it also renders a preview strip, so its length reports the cap.
-    compliance: data.totals.compliance,
-    // awardCompliance is genuinely uncapped (loadAwardCompliance has no limit)
-    // and needsAttentionOnWonWork is a JS predicate over a computed
-    // assessment, so its length IS the count. Writing the predicate a second
-    // time in SQL to get a "proper" total would create the second source of
-    // truth this ledger exists to remove.
-    awardCompliance: data.awardCompliance.length,
-    flagged: data.totals.flagged,
-    approvals: approvalCount,
-  });
   const totalActions = counts.total;
 
   const firstOpen =
@@ -751,8 +725,8 @@ export default async function TodayPage({
       <TodayLive />
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="scroll-thin min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-          <div className="mb-2 flex justify-end">
+        <div className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6 sm:py-8">
+          <div className="mb-2 hidden justify-end lg:flex">
             <HelpPopover help={PAGE_HELP["today"]} />
           </div>
 
@@ -770,8 +744,8 @@ export default async function TodayPage({
             setupRemaining={setup.total - setup.done}
           />
 
-          <div className="mt-8 flex gap-10">
-            <div className="min-w-0 flex-1 space-y-10">
+          <div className="mt-4 flex gap-10 lg:mt-8">
+            <div className="min-w-0 flex-1 space-y-6 lg:space-y-10">
               <AutomationPausedBanner state={automation} />
 
               {!automation.paused && <PipelinePulse findings={pulse} />}
@@ -843,7 +817,11 @@ export default async function TodayPage({
                 and "everything done" rendered identically, which is the one
                 pair this page exists to tell apart.
               */}
-              {(queueItems.length > 0 || done.total > 0 || showingCompleted) && (
+              {(queueItems.length > 0 ||
+                done.total > 0 ||
+                done.found > 0 ||
+                done.emailsSent > 0 ||
+                showingCompleted) && (
                 <div id="queue" className="scroll-mt-6 space-y-4">
                   <TodayCounters
                     counts={counts}
@@ -1333,7 +1311,7 @@ export default async function TodayPage({
               stageCounts={data.stageCounts}
               totalActions={totalActions}
               actionHeadline={ledgerHeadline(totalActions)}
-              actionBreakdown={ledgerBreakdown(ledger)}
+              actionBreakdown={summarizeQueue(actionable)}
               digestParts={digestParts}
               callsEnabled={rules.calls_enabled}
             />

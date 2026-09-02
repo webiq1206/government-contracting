@@ -183,7 +183,7 @@ export function DisplayNameForm({ initial }: { initial: string }) {
       <label htmlFor="account-name" className="label block">
         Your name
       </label>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <input
           id="account-name"
           value={name}
@@ -192,7 +192,7 @@ export function DisplayNameForm({ initial }: { initial: string }) {
           autoComplete="name"
           className="input min-w-0 flex-1 text-sm"
         />
-        <button type="submit" className="btn-primary text-sm" disabled={busy || name === initial}>
+        <button type="submit" className="btn-primary shrink-0 text-sm" disabled={busy || name === initial}>
           {busy ? "Saving" : "Save"}
         </button>
       </div>

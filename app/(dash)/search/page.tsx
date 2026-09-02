@@ -135,14 +135,14 @@ export default async function SearchPage({
       />
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="scroll-thin min-w-0 flex-1 space-y-5 overflow-y-auto p-5">
-        <form method="get" action="/search" className="flex flex-wrap items-center gap-2">
+        <form method="get" action="/search" className="search-row">
           <input
             type="search"
             name="q"
             defaultValue={q}
             placeholder="Search this account…"
             aria-label="Search everything in this account"
-            className="input w-full max-w-md text-sm"
+            className="input text-sm"
           />
           {kind && <input type="hidden" name="kind" value={kind} />}
           <button type="submit" className="btn-ghost text-sm">
@@ -169,7 +169,7 @@ export default async function SearchPage({
         )}
 
         {counts.length > 0 && (
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by kind">
+          <div className="chip-row" role="group" aria-label="Filter by kind">
             <Link
               href={hrefFor(null)}
               aria-current={!kind ? "true" : undefined}

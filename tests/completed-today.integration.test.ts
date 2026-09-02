@@ -90,6 +90,12 @@ d("completed today (integration)", () => {
       [mine.id, opp.id, s!.id]
     );
     await query(
+      `insert into communications (
+         org_id, opportunity_id, subcontractor_id, channel, direction, subject, body, delivery_state
+       ) values ($1,$2,$3,'email','outbound','Quote request','Please price this.','sent')`,
+      [mine.id, opp.id, s!.id]
+    );
+    await query(
       /*
        * The evidence columns are not optional here. A submitted bid without a
        * method, a destination and a timezone is refused by the database, which
@@ -118,6 +124,7 @@ d("completed today (integration)", () => {
   afterAll(async () => {
     for (const org of [mine, theirs]) {
       if (!org.id) continue;
+      await query(`delete from communications where org_id=$1`, [org.id]);
       await query(`delete from call_cards where org_id=$1`, [org.id]);
       await query(`delete from quotes where org_id=$1`, [org.id]);
       await query(`delete from bids where org_id=$1`, [org.id]);
@@ -135,6 +142,8 @@ d("completed today (integration)", () => {
     expect(kinds).toContain("call");
     expect(kinds).toContain("enter_quote");
     expect(kinds).toContain("review_bid");
+    expect(kinds).toContain("found");
+    expect(kinds).toContain("email");
     const times = items.map((i) => new Date(i.at).getTime());
     expect(times).toEqual([...times].sort((a, b) => b - a));
   });
@@ -152,6 +161,7 @@ d("completed today (integration)", () => {
     const mineItems = await completedTodayItems();
     expect(JSON.stringify(mineItems)).not.toContain("Their Sub");
     expect(JSON.stringify(mineItems)).not.toContain(otherOpp.id);
+    expect(mineItems.some((i) => i.kind === "email")).toBe(true);
 
     asOrg(theirs.id);
     const theirItems = await completedTodayItems();

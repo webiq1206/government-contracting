@@ -49,7 +49,7 @@ export function HelpPopover({
         aria-expanded={open}
         title="What is this page?"
         onClick={() => setOpen((o) => !o)}
-        className={`tap h-9 w-9 shrink-0 rounded-full border text-xs font-semibold transition-colors sm:h-6 sm:w-6 ${
+        className={`tap h-8 w-8 shrink-0 rounded-full border text-xs font-semibold transition-colors lg:h-6 lg:w-6 ${
           open
             ? "border-gold bg-gold text-ink"
             : "border-border-strong/40 text-muted-foreground hover:border-gold hover:text-gold-text"

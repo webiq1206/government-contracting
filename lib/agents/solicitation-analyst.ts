@@ -1,15 +1,14 @@
 /**
- * SOLICITATION ANALYST, triggered when an opportunity reaches the pursue tier.
- * Reads the solicitation (description + attachment names/urls; best-effort fetch
- * of attachment text where trivially possible), then uses Claude to produce a
- * structured SolicitationAnalysis: plain-language scope, submission requirements,
- * evaluation criteria, required trades, geographic area, risk flags, a past-perf
- * classification, questions for subs, a draft SOW, and key dates.
+ * SOLICITATION ANALYST, triggered after scoring (pursue or review) and again
+ * when an operator pursues. Reads the solicitation (description + attachment
+ * names/urls; best-effort fetch of attachment text where trivially possible),
+ * then uses Claude to produce a structured SolicitationAnalysis.
  *
- * ROUTING: if past_perf_classification is "prime_only" we BLOCK, flag for human
- * review, keep the opportunity in 'analysis', add a "prime_only_blocked" risk
- * flag, and do NOT enqueue downstream work. Otherwise (not_required |
- * team_accepted) we advance the stage to 'sub_research' and trigger Sub Finder.
+ * ROUTING: review (and dismissed) keep their stage. The brief is the input
+ * to a human decision; it must not start Sub Finder. Pursue that is still in
+ * analysis advances to sub_research unless prime-only is blocked or the
+ * packet is incomplete. A review-time brief that already exists is reused
+ * when the operator later pursues: skip the model, start the pursue work.
  */
 import { z } from "zod";
 import { config } from "../config";
@@ -29,6 +28,10 @@ import {
 import { logAgent } from "../logger";
 import { deepNoEmDash } from "../sanitize";
 import { extractValueFromText } from "../domain/value-extract";
+import {
+  routeAfterAnalysis,
+  shouldContinuePursueAfterExistingBrief,
+} from "../domain/analysis-routing";
 import {
   evaluateSolicitationCompleteness,
   type AttachmentFetchOutcome,
@@ -857,11 +860,109 @@ async function computeAnalysisInputHash(
   });
 }
 
+/**
+ * A review-time brief already exists and the operator has now pursued.
+ * Start the work pursue is supposed to start without billing the model again.
+ */
+async function continuePursueFromExistingBrief(
+  opportunityId: string,
+  opp: Opportunity
+): Promise<AgentResult> {
+  const analysis = opp.solicitation_analysis;
+  if (!analysis) return { ok: false, summary: "no analysis to continue from" };
+
+  const profile = await getProfileJson();
+  if (!profile) return { ok: false, summary: "no active Company Profile" };
+
+  const isPrimeOnly = analysis.past_perf_classification === "prime_only";
+  const blockedPrime =
+    isPrimeOnly && profile.decision_thresholds.block_prime_only === true;
+
+  let blockedIncomplete = analysis.completeness ? !analysis.completeness.ok : false;
+  if (analysis.completeness == null) {
+    const storedDocs = await queryOne<{ n: string }>(
+      `select count(*)::text as n from documents
+        where opportunity_id = $1 and kind in ('solicitation','sow')`,
+      [opportunityId]
+    ).catch(() => ({ n: "0" }));
+    const completeness = evaluateSolicitationCompleteness({
+      solicitationNumber: opp.solicitation_number,
+      agency: opp.agency,
+      deadline: opp.deadline,
+      locationState: opp.location_state,
+      locationText: opp.location_text,
+      naicsCode: opp.naics_code,
+      setAsideType: opp.set_aside_type,
+      valueEstimated: opp.value_estimated,
+      description: opp.description,
+      storedDocumentCount: Number(storedDocs?.n ?? 0),
+      attachmentOutcomes: [],
+      analysis,
+    });
+    blockedIncomplete = !completeness.ok;
+  }
+
+  const live = await queryOne<
+    Pick<Opportunity, "tier" | "stage" | "status" | "human_action_required">
+  >(
+    `select tier, stage, status, human_action_required from opportunities where id = $1`,
+    [opportunityId]
+  );
+  const route = routeAfterAnalysis({
+    tier: live?.tier ?? opp.tier,
+    stage: live?.stage ?? opp.stage,
+    status: live?.status ?? opp.status,
+    humanActionRequired: live?.human_action_required ?? opp.human_action_required,
+    blockedPrime,
+    blockedIncomplete,
+  });
+
+  await query(`update opportunities set stage = $2, human_action_required = $3 where id = $1`, [
+    opportunityId,
+    route.stage,
+    route.humanAction,
+  ]);
+
+  const enqueued: AgentResult["enqueued"] = [];
+  if (route.enqueueSubFinder) {
+    enqueued.push({ agent: "sub-finder", payload: { opportunityId } });
+  }
+
+  if (route.reason === "prime_only") {
+    return {
+      ok: true,
+      summary:
+        "Brief already written. Past performance is prime-only, BLOCKED (block_prime_only is on). No downstream work triggered.",
+      humanActionRequired: true,
+    };
+  }
+  if (route.reason === "incomplete") {
+    return {
+      ok: true,
+      summary:
+        "Brief already written, but the solicitation is still incomplete. Held in analysis until the gaps are resolved.",
+      humanActionRequired: true,
+    };
+  }
+  if (route.enqueueSubFinder) {
+    return {
+      ok: true,
+      summary: "Brief already written during review; advanced to sub research.",
+      enqueued,
+    };
+  }
+  return {
+    ok: true,
+    summary: `Brief already written; stage left at ${route.stage}.`,
+    enqueued,
+  };
+}
+
 export const solicitationAnalyst: AgentDefinition = {
   name: "solicitation-analyst",
   label: "Solicitation Analyst",
   description:
-    "Reads the solicitation + attachments, produces a structured analysis, classifies past performance, and routes to sub research (or blocks prime-only).",
+    "Reads the solicitation + attachments, produces a structured analysis, classifies past performance, and routes to sub research on pursue (or holds the brief on review).",
   cron: undefined,
   worksWithoutClaude: false,
   async handler(ctx): Promise<AgentResult> {
@@ -892,6 +993,9 @@ export const solicitationAnalyst: AgentDefinition = {
       ctx.trigger === "manual" ||
       ctx.payload.trigger === "manual";
     if (opp.solicitation_analysis && !forced) {
+      if (shouldContinuePursueAfterExistingBrief(opp)) {
+        return continuePursueFromExistingBrief(opportunityId, opp);
+      }
       return {
         ok: true,
         summary: `Opportunity ${opportunityId} already analyzed; skipped duplicate run.`,
@@ -1087,6 +1191,7 @@ export const solicitationAnalyst: AgentDefinition = {
       // prompt asks for, since compliance with that varies run to run and the
       // fix belongs in one place rather than at each display and email site.
       analysis = tightenAnalysisProse(deepNoEmDash(data));
+      analysis.brief_source = "model";
       // Every requirement needs a stable handle and a name a person can read.
       // A blank id would collide with every other blank id when confirmations
       // are matched; a blank title is not a requirement anybody can act on.
@@ -1291,14 +1396,32 @@ export const solicitationAnalyst: AgentDefinition = {
     }
 
     const enqueued: AgentResult["enqueued"] = [];
-    let stage = opp.stage;
-    let humanAction = opp.human_action_required;
     const blockedIncomplete = !completeness.ok;
 
-    if (blockedPrime || blockedIncomplete) {
-      // Stay in analysis until prime-only (opt-in) or completeness is resolved.
-      stage = "analysis";
-      humanAction = true;
+    // Re-read tier/stage. The operator may have pursued or passed while this
+    // job was reading attachments; routing from the row we loaded at start
+    // would write review back onto a pursued record, or start sourcing on
+    // one they just passed.
+    const live = await queryOne<
+      Pick<Opportunity, "tier" | "stage" | "status" | "human_action_required">
+    >(
+      `select tier, stage, status, human_action_required from opportunities where id = $1`,
+      [opportunityId]
+    );
+    const route = routeAfterAnalysis({
+      tier: live?.tier ?? opp.tier,
+      stage: live?.stage ?? opp.stage,
+      status: live?.status ?? opp.status,
+      humanActionRequired: live?.human_action_required ?? opp.human_action_required,
+      blockedPrime,
+      blockedIncomplete,
+    });
+    const stage = route.stage;
+    const humanAction = route.humanAction;
+    if (route.enqueueSubFinder) {
+      enqueued.push({ agent: "sub-finder", payload: { opportunityId } });
+    }
+    if (route.reason === "prime_only" || route.reason === "incomplete") {
       await logAgent({
         agent: "solicitation-analyst",
         action: "gate",
@@ -1311,9 +1434,6 @@ export const solicitationAnalyst: AgentDefinition = {
               .map((m) => m.key)
               .join(", ")}); held in analysis until resolved.`,
       });
-    } else {
-      stage = "sub_research";
-      enqueued.push({ agent: "sub-finder", payload: { opportunityId } });
     }
 
     /**
@@ -1410,6 +1530,21 @@ export const solicitationAnalyst: AgentDefinition = {
       ]
     );
 
+    if (route.reason === "hold_review") {
+      return {
+        ok: true,
+        summary: `Solicitation analyzed (past-perf: ${analysis.past_perf_classification}). Brief saved; this opportunity stays in review until you pursue or pass.`,
+        reasoning: analysis.scope_plain_language,
+        data: {
+          past_perf_classification: analysis.past_perf_classification,
+          required_trades: analysis.required_trades,
+          risk_flags: mergedRiskFlags,
+          completeness: analysis.completeness,
+        },
+        humanActionRequired: true,
+      };
+    }
+
     if (blockedPrime) {
       return {
         ok: true,
@@ -1446,7 +1581,7 @@ export const solicitationAnalyst: AgentDefinition = {
       ok: true,
       summary: `Solicitation analyzed (past-perf: ${analysis.past_perf_classification}${
         isPrimeOnly ? ", prime-only, flagged but auto-pursuing" : ""
-      }); advanced to sub research.`,
+      })${route.reason === "advance" ? "; advanced to sub research." : `. Stage left at ${stage}.`}`,
       reasoning: analysis.scope_plain_language,
       data: {
         past_perf_classification: analysis.past_perf_classification,

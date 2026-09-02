@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   QUEUE_FILTERS,
   QUEUE_FILTER_LABEL,
@@ -70,5 +71,20 @@ describe("what the queue does when asked for it", () => {
     expect(filterWorkItems([ITEM], { bucket: "needs_attention" })).toHaveLength(1);
     expect(filterWorkItems([ITEM], { bucket: "blocked" })).toHaveLength(0);
     expect(filterWorkItems([ITEM], { bucket: "all" })).toHaveLength(1);
+  });
+});
+
+describe("what the counter actually counts", () => {
+  it("counts bids found and emails sent, and only real pursue or pass as a decision", () => {
+    const src = readFileSync("lib/data.ts", "utf8");
+    const at = src.indexOf("export async function completedToday()");
+    expect(at).toBeGreaterThan(-1);
+    const fn = src.slice(at, src.indexOf("export interface RecentChange", at));
+    expect(fn).toContain("as found");
+    expect(fn).toContain("as emails");
+    expect(fn).toContain("action in ('pursue', 'dismiss')");
+    expect(fn).not.toContain("stage <> 'discovered'");
+    expect(fn).toContain("channel = 'email'");
+    expect(fn).toContain("direction = 'outbound'");
   });
 });

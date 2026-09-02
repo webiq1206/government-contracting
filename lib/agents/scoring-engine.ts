@@ -3,8 +3,9 @@
  * Applies the 100-point rubric from the Company Profile. Checks hard exclusions
  * FIRST (deterministic + Claude for free-text rules). Assigns tier: pursue (>=70),
  * review (50-69), dismiss (<50). Logs the full breakdown. On pursue: triggers
- * Solicitation Analyst and Pricing Research in parallel. On review: sets a 4-hour
- * auto-dismiss timer and surfaces a review card. On dismiss: closes + logs.
+ * Solicitation Analyst and Pricing Research in parallel. On review: writes the
+ * brief (analyst only, no sourcing) and sets the auto-dismiss timer. On dismiss:
+ * closes + logs.
  */
 import { z } from "zod";
 import { query, queryOne } from "../db";
@@ -27,6 +28,7 @@ import {
   type ScoreFacts,
 } from "../domain/score-confidence";
 import { getAutomationRules } from "../app-settings";
+import { queuedAfterScore } from "../domain/score-downstream";
 import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
@@ -330,18 +332,7 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
     // stop it here; a human still reviews before any bid is submitted.
     stage = "analysis";
     humanAction = false;
-    enqueued.push(
-      {
-        agent: "solicitation-analyst",
-        payload: { opportunityId },
-        opts: { singletonKey: `analyze:${opportunityId}`, singletonSeconds: 3600 },
-      },
-      {
-        agent: "pricing-research",
-        payload: { opportunityId },
-        opts: { singletonKey: `price:${opportunityId}`, singletonSeconds: 3600 },
-      }
-    );
+    enqueued.push(...queuedAfterScore("pursue", opportunityId));
     await logAgent({
       agent: "scoring-engine",
       action: "auto-pursue",
@@ -355,6 +346,9 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
     reviewExpires = new Date(
       Date.now() + profile.decision_thresholds.review_auto_dismiss_hours * 3_600_000
     ).toISOString();
+    // The brief is the input to pursue-or-pass. Leaving it unqueued meant
+    // Overview stayed empty on the records people actually open.
+    enqueued.push(...queuedAfterScore("review", opportunityId));
   } else {
     stage = "dismissed";
     status = "archived";

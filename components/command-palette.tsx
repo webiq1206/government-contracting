@@ -385,18 +385,32 @@ export function Marked({ text, query }: { text: string; query: string }) {
 }
 
 /** The nav's clickable entry point; opens the same palette. */
-export function SearchButton({ className = "" }: { className?: string }) {
+export function SearchButton({
+  className = "",
+  iconOnly = false,
+}: {
+  className?: string;
+  /** Icon-only control for the phone app bar, where the word "Search" does not fit. */
+  iconOnly?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
       className={className}
+      aria-label="Search everything"
       title="Search everything (⌘K)"
     >
-      <span aria-hidden>⌕</span> Search
-      <kbd className="ml-auto hidden rounded border border-current/25 px-1 text-[10px] opacity-60 md:inline">
-        ⌘K
-      </kbd>
+      <span aria-hidden>⌕</span>
+      {!iconOnly && (
+        <>
+          {" "}
+          Search
+          <kbd className="ml-auto hidden rounded border border-current/25 px-1 text-[10px] opacity-60 lg:inline">
+            ⌘K
+          </kbd>
+        </>
+      )}
     </button>
   );
 }

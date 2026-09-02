@@ -2,7 +2,8 @@
 
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/settings/profile", label: "Company", match: "/settings/profile" },
@@ -20,7 +21,6 @@ const TABS = [
     label: "Notifications",
     match: "/settings/notifications",
   },
-  // Yours, not the company's: name, role, password, signed-in devices.
   { href: "/settings/account", label: "Your account", match: "/settings/account" },
 ] as const;
 
@@ -29,35 +29,43 @@ const TABS = [
  * page (page-shell does not scroll), so in-page EditorialTabs can use
  * layout="fill" without a second sticky offset fighting this bar.
  *
- * On a phone an eight-tab strip is a sideways hunt. A full-width picker is
- * the same destinations, in the shape a thumb can actually use. The strip
- * stays once the sidebar is on screen.
+ * On a phone a native select felt like a desktop form squeezed into a column.
+ * The same destinations now sit on a thumb rail, matching every other chip
+ * row in the product. The underline strip stays once the sidebar is on screen.
  */
 export function SettingsNav() {
   const pathname = usePathname();
-  const router = useRouter();
-  const current =
-    TABS.find((t) => pathname === t.match || pathname.startsWith(t.match + "/")) ?? TABS[0];
+  const activeRef = useRef<HTMLAnchorElement | null>(null);
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [pathname]);
 
   return (
     <>
-      <div className="border-b border-border bg-surface px-4 py-2 lg:hidden">
-        <label htmlFor="settings-section" className="sr-only">
-          Settings section
-        </label>
-        <select
-          id="settings-section"
-          className="input w-full"
-          value={current.href}
-          onChange={(e) => router.push(e.target.value)}
-        >
-          {TABS.map((t) => (
-            <option key={t.href} value={t.href}>
+      <nav
+        aria-label="Settings sections"
+        className="chip-row border-b border-border bg-surface px-4 py-2 lg:hidden"
+      >
+        {TABS.map((t) => {
+          const active = pathname === t.match || pathname.startsWith(t.match + "/");
+          return (
+            <Link
+              key={t.href}
+              href={t.href}
+              ref={active ? activeRef : undefined}
+              aria-current={active ? "page" : undefined}
+              className={`inline-flex min-h-11 shrink-0 items-center rounded-full border px-3 text-xs font-medium ${
+                active
+                  ? "border-gold bg-gold/15 text-foreground"
+                  : "border-border text-foreground"
+              }`}
+            >
               {t.label}
-            </option>
-          ))}
-        </select>
-      </div>
+            </Link>
+          );
+        })}
+      </nav>
       <div
         role="navigation"
         aria-label="Settings sections"

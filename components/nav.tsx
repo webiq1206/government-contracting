@@ -267,7 +267,7 @@ export function Nav({
   }, [automationPaused]);
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
+    const mq = window.matchMedia("(max-width: 1023px)");
     const sync = () => setIsMobile(mq.matches);
     sync();
     mq.addEventListener("change", sync);
@@ -448,25 +448,10 @@ export function Nav({
 
         <div className="flex-1" />
 
-        {/*
-          * Guide Me on the app bar, where the audit puts it. It used to be
-          * reachable on a phone only by opening the navigation drawer and
-          * scrolling to the top of it, which is three taps to ask for help
-          * with the screen you are already looking at.
-          */}
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new Event("open-guide-wizard"))}
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-gold-text"
-          aria-label="Guide Me"
-          aria-haspopup="dialog"
-        >
-          <span aria-hidden className="text-lg leading-none">
-            ?
-          </span>
-        </button>
-
-        <ThemeToggle compact className="mr-1 shrink-0" />
+        <SearchButton
+          iconOnly
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+        />
 
         {localPaused && (
           <button
@@ -667,8 +652,7 @@ export function Nav({
             drawer, scrolling past every link, and spotting grey-on-grey text.
             Now it is a real control with a thumb-sized target. */}
         <div className="shrink-0 space-y-3 border-t border-border/55 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] dark:border-white/10">
-          {/* Desktop: theme lives in the sidebar. Mobile header already has the toggle. */}
-          <ThemeToggle className="hidden w-full justify-stretch lg:inline-flex [&>button]:flex-1" />
+          <ThemeToggle className="w-full justify-stretch [&>button]:flex-1" />
           <div className="flex items-center gap-3">
             <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-border-strong/40 text-xs font-medium text-foreground dark:border-white/20">
               {initials}

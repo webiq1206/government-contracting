@@ -67,7 +67,7 @@ export function PageHeader({
         </div>
         <div className="mt-1.5 hidden h-px w-8 bg-gold sm:block sm:mt-2 sm:w-12" />
         {status != null && status !== "" && (
-          <div className="mt-1 truncate text-xs font-medium text-muted-foreground sm:mt-1.5 sm:text-sm">
+          <div className="mt-1 line-clamp-2 text-xs font-medium text-muted-foreground sm:mt-1.5 sm:line-clamp-none sm:text-sm">
             {status}
           </div>
         )}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NextResponse } from "next/server";
 import { PageFrame } from "@/components/page-frame";
+import { MoreAccount } from "@/components/more-account";
 import { requireOrgContext } from "@/lib/org-guard";
 import { isPlatformAdmin } from "@/lib/platform-admin";
 
@@ -29,7 +30,6 @@ const GROUPS: {
     items: [
       { href: "/workbench", label: "Workbench", hint: "Work the whole queue on one screen" },
       { href: "/review", label: "Review", hint: "Borderline opportunities to pursue or pass" },
-      { href: "/call-queue", label: "Call Queue", hint: "Work calls one after another" },
     ],
   },
   {
@@ -115,7 +115,7 @@ export default async function MorePage() {
       <PageFrame
         title="More"
         status="Everything not on the bottom bar"
-        explanation="The rest of the product, grouped the way the sidebar groups it on a wider screen."
+        explanation="Workbench, Review, messages, settings, and the rest of the product."
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-4">
         {GROUPS.filter((g) => !g.adminOnly || admin).map((g) => (
@@ -136,6 +136,7 @@ export default async function MorePage() {
             </ul>
           </section>
         ))}
+        <MoreAccount email={ctx.user.email} />
       </div>
     </div>
   );

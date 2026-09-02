@@ -308,7 +308,7 @@ export function deriveStep(s: StepInput): NextStep {
       title: "Decide whether to pursue this as an exception",
       why: "The agency requires past performance from your company itself, which you can't show yet. Automation stopped so you can make the call: pursue anyway or dismiss.",
       after: "Pursue restarts the automatic pipeline from analysis; dismiss archives the record.",
-      cta: "See details below",
+      cta: "Pursue or pass",
       anchor: "#attachments",
       tone: "warn",
       decision: "triage",

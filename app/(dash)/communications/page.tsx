@@ -253,7 +253,7 @@ export default async function CommunicationsPage({
         />
 
         <PageToolbar>
-        <form method="get" action="/communications" className="flex flex-wrap items-center gap-2">
+        <form method="get" action="/communications" className="search-row">
           {filter !== "all" && <input type="hidden" name="filter" value={filter} />}
           <input
             type="search"
@@ -261,7 +261,7 @@ export default async function CommunicationsPage({
             defaultValue={q}
             placeholder="Search by company, subject or solicitation…"
             aria-label="Search conversations by company, subject or solicitation"
-            className="input w-full max-w-sm"
+            className="input text-sm"
           />
           <button type="submit" className="btn-ghost text-sm">
             Search
@@ -273,7 +273,7 @@ export default async function CommunicationsPage({
           )}
         </form>
 
-        <nav aria-label="Conversation filters" className="mt-2 flex flex-wrap gap-2">
+        <nav aria-label="Conversation filters" className="chip-row mt-2">
           {CONVERSATION_FILTERS.map((f) => {
             /*
              * Counted with the same predicate that decides membership, so a

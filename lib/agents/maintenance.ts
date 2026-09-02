@@ -1287,7 +1287,7 @@ export const scoringRecoverySweep: AgentDefinition = {
   name: "scoring-recovery-sweep",
   label: "Scoring Recovery",
   description:
-    "Safety net: re-queues scoring for any opportunity that was ingested but never scored, so nothing can sit in Scoring forever.",
+    "Safety net: re-queues scoring for opportunities that were ingested but never scored, and re-queues the analyst for open scored records that still have no brief.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     // Deliberately its OWN job rather than a step inside the Opportunity
@@ -1339,12 +1339,57 @@ export const scoringRecoverySweep: AgentDefinition = {
           "Their original scoring job was lost or failed out of retries. Scoring is idempotent, so re-running is safe.",
       });
     }
+
+    // The analyst used to run only on auto-pursue. Review records, lost jobs,
+    // and Claude outages left scored opportunities with no brief forever.
+    const unbriefed: { id: string }[] = [];
+    for (const org of orgs) {
+      const rows = await query<{ id: string }>(
+        `select id from opportunities
+          where org_id = $1
+            and status='open'
+            and stage in ('scoring','analysis')
+            and score is not null
+            and solicitation_analysis is null
+            and created_at < now() - interval '20 minutes'
+          order by created_at asc
+          limit 200`,
+        [org.id]
+      );
+      unbriefed.push(...rows);
+    }
+    for (const o of unbriefed) {
+      await enqueue(
+        "solicitation-analyst",
+        { opportunityId: o.id, trigger: "recovery" },
+        { singletonKey: `analyze:${o.id}`, singletonSeconds: 3600 }
+      ).catch(() => {});
+    }
+    if (unbriefed.length > 0) {
+      await logAgent({
+        agent: "scoring-recovery-sweep",
+        action: "requeue-analysis",
+        level: "info",
+        message: `Re-queued the solicitation analyst for ${unbriefed.length} opportunit${unbriefed.length === 1 ? "y" : "ies"} that were scored but never given a brief.`,
+        reasoning:
+          "Review-tier scoring now queues the analyst immediately. This sweep catches rows scored before that, or whose job was lost.",
+      });
+    }
+
+    const parts: string[] = [];
+    if (unscored.length > 0) {
+      parts.push(
+        `Re-queued scoring for ${unscored.length} unscored opportunit${unscored.length === 1 ? "y" : "ies"}`
+      );
+    }
+    if (unbriefed.length > 0) {
+      parts.push(
+        `re-queued analysis for ${unbriefed.length} opportunit${unbriefed.length === 1 ? "y" : "ies"} missing a brief`
+      );
+    }
     return {
       ok: true,
-      summary:
-        unscored.length > 0
-          ? `Re-queued scoring for ${unscored.length} unscored opportunit${unscored.length === 1 ? "y" : "ies"}.`
-          : "No unscored opportunities; nothing to recover.",
+      summary: parts.length > 0 ? `${parts.join("; ")}.` : "Nothing to recover.",
     };
   },
 };

@@ -232,7 +232,7 @@ export default async function KnowledgeCenterPage({
             <h2 id="kb-search" className="sr-only">
               Search the Knowledge Center
             </h2>
-            <form method="get" action="/how-it-works" className="flex flex-wrap items-center gap-2">
+            <form method="get" action="/how-it-works" className="search-row">
               {full && <input type="hidden" name="full" value="1" />}
               <input
                 type="search"

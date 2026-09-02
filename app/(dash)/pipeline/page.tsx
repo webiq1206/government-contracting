@@ -851,7 +851,7 @@ function PipelineCard({
     >
     <Link href={`/opportunity/${o.id}`} className="block">
       {/* Gold eyebrow label for mobile list cards */}
-      <p className="eyebrow mb-2 md:hidden">{NEXT_ACTION[o.stage] ?? o.stage}</p>
+      <p className="eyebrow mb-2 lg:hidden">{NEXT_ACTION[o.stage] ?? o.stage}</p>
       <div className="flex items-start justify-between gap-2">
         <p className="line-clamp-2 text-sm font-medium text-slate-900">
           {o.title ?? "Untitled"}
@@ -881,7 +881,7 @@ function PipelineCard({
         <OwnerChip owner={owner} viewerId={viewerId} />
         <BlockerChip flags={o.risk_flags} />
       </div>
-      <p className="mt-2 text-xs font-semibold text-accent-strong">
+      <p className="mt-2 hidden text-xs font-semibold text-accent-strong lg:block">
         {NEXT_ACTION[o.stage] ?? o.stage}
         <span className="ml-1 font-medium text-gold-text">Open ↗</span>
       </p>

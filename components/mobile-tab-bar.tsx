@@ -11,7 +11,8 @@ import {
 } from "@/components/tab-icons";
 
 /**
- * Fixed bottom tabs on phones. Hidden on md+ where the sidebar rules.
+ * Fixed bottom tabs on phones and tablet portrait. Hidden at lg (1024px)
+ * where the sidebar takes over.
  *
  * The five the brief names: Today, Opportunities, Subs, Calls, More.
  *

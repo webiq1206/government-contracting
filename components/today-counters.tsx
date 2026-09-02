@@ -35,22 +35,27 @@ export function TodayCounters({
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
       {cells.map((c) => (
         <Link
           key={c.key}
           href={hrefFor(active === c.key ? "all" : c.key)}
           aria-current={active === c.key ? "page" : undefined}
-          className={`rounded-md border px-3 py-2.5 transition-colors ${
+          title={
+            c.key === "remaining"
+              ? "Not due today, including work with no date"
+              : undefined
+          }
+          className={`rounded-md border px-2 py-2 transition-colors sm:px-3 sm:py-2.5 ${
             active === c.key
               ? "border-gold bg-gold/10"
               : "border-border/55 hover:border-foreground/30 dark:border-white/10"
           }`}
         >
-          <span className="block text-xs uppercase tracking-wide text-slate-500">
+          <span className="block text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs">
             {QUEUE_FILTER_LABEL[c.key]}
           </span>
-          <span className={`num block text-2xl ${c.tone}`}>{c.value}</span>
+          <span className={`num block text-xl sm:text-2xl ${c.tone}`}>{c.value}</span>
         </Link>
       ))}
 
@@ -62,16 +67,23 @@ export function TodayCounters({
       <Link
         href={completedHref}
         aria-current={active === "completed_today" ? "page" : undefined}
-        className={`rounded-md border px-3 py-2.5 transition-colors ${
+        className={`rounded-md border px-2 py-2 transition-colors sm:px-3 sm:py-2.5 ${
           active === "completed_today"
             ? "border-gold bg-gold/10"
             : "border-border/55 hover:border-foreground/30 dark:border-white/10"
         }`}
       >
-        <span className="block text-xs uppercase tracking-wide text-slate-500">
+          <span className="block text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs">
           Completed today
         </span>
-        <span className="num block text-2xl text-pursue">{done.total}</span>
+        <span className="num block text-xl text-pursue sm:text-2xl">{done.total}</span>
+        <span className="mt-0.5 block text-[10px] leading-tight text-muted-foreground">
+          <span className="num">{done.found}</span> found
+          <span aria-hidden className="mx-0.5">
+            ·
+          </span>
+          <span className="num">{done.emailsSent}</span> emails
+        </span>
       </Link>
     </div>
   );
@@ -117,8 +129,8 @@ export function CompletedList({ items }: { items: CompletedItem[] | null }) {
       <section className="card p-6 text-center">
         <p className="text-sm text-foreground">Nothing finished yet today.</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Calls placed, quotes entered, bids submitted, decisions recorded and compliance items
-          resolved all land here.
+          Bids found, emails sent, calls, quotes, submitted bids, decisions and
+          compliance items all land here.
         </p>
       </section>
     );
@@ -156,6 +168,8 @@ export function CompletedList({ items }: { items: CompletedItem[] | null }) {
 
 export function CompletedTodayPanel({ done }: { done: CompletedToday }) {
   const parts = [
+    done.found > 0 && `${done.found} bid${done.found === 1 ? "" : "s"} found`,
+    done.emailsSent > 0 && `${done.emailsSent} email${done.emailsSent === 1 ? "" : "s"} sent`,
     done.calls > 0 && `${done.calls} call${done.calls === 1 ? "" : "s"} placed`,
     done.quotes > 0 && `${done.quotes} quote${done.quotes === 1 ? "" : "s"} entered`,
     done.bidsSubmitted > 0 &&
@@ -170,8 +184,8 @@ export function CompletedTodayPanel({ done }: { done: CompletedToday }) {
       <h2 className="text-xs uppercase tracking-wide text-slate-500">Completed today</h2>
       {parts.length === 0 ? (
         <p className="mt-1 text-sm text-slate-500">
-          Nothing finished yet today. This fills in as calls are placed, quotes go in
-          and bids go out.
+          Nothing finished yet today. Bids found, emails sent, calls, quotes and
+          submitted bids land here.
         </p>
       ) : (
         <p className="mt-1 text-sm text-slate-600">{parts.join(" · ")}.</p>
