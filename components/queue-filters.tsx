@@ -66,18 +66,19 @@ export function QueueFilters({
 
   return (
     <div className="space-y-2">
-      <form method="get" action="/today" className="flex flex-wrap items-center gap-2">
+      <form method="get" action="/today" className="flex items-center gap-2">
         {bucket !== "all" && <input type="hidden" name="due" value={bucket} />}
         {kind && <input type="hidden" name="kind" value={kind} />}
+        {owner !== "anyone" && <input type="hidden" name="owner" value={owner} />}
         <input
           type="search"
           name="q"
           defaultValue={q}
           placeholder="Search the queue…"
           aria-label="Search the work queue"
-          className="input w-full max-w-xs text-sm"
+          className="input min-w-0 flex-1 text-sm"
         />
-        <button type="submit" className="btn-ghost text-sm">
+        <button type="submit" className="btn-ghost shrink-0 text-sm">
           Search
         </button>
         {(q || bucket !== "all" || kind) && (

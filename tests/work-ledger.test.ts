@@ -142,6 +142,23 @@ describe("Today and Guide Me agree", () => {
     expect(guide.totalActions).toBe(today.total);
   });
 
+  it("uses the work-queue total when the caller already has one", () => {
+    const facts = {
+      urgent: [1, 2],
+      triage: [1, 2, 3],
+      calls: { count: 4 },
+      bidWork: [1],
+      subFollowUps: [1, 2],
+      quoteReviews: [1],
+      complianceAlerts: [1],
+      awardCompliance: [1, 2],
+      proposedWeights: [1],
+      backlinkApprovals: 1,
+      needsYouTotal: 7,
+    };
+    expect(summarizeActions(facts).totalActions).toBe(7);
+  });
+
   it("counts the work, not the size of the preview list", () => {
     /*
      * The action-center queries cap at ten rows because they also feed a

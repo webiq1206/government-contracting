@@ -55,6 +55,7 @@ import {
   isCompletedFilter,
   parseQueueFilter,
   parseKindFilter,
+  needsYou,
   KIND_FILTER_LABEL,
   type WorkItem,
   type WorkKind,
@@ -513,10 +514,16 @@ export default async function TodayPage({
   const { assignableMembers } = await import("@/lib/ownership");
   const members = await assignableMembers().catch(() => []);
   const queueKind: WorkKind | null = parseKindFilter(searchParams?.kind);
-  const counts = queueCounts(queueItems);
+  /*
+   * The headline, the Live queue card, and these three counters are the same
+   * set: unique items that still need a person. In-flight quote requests stay
+   * on the "Waiting on others" filter and are not actions.
+   */
+  const actionable = needsYou(queueItems);
+  const counts = queueCounts(actionable);
   const kindCounts = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).reduce(
     (acc, k) => {
-      acc[k] = queueItems.filter((i) => i.kind === k).length;
+      acc[k] = actionable.filter((i) => i.kind === k).length;
       return acc;
     },
     {} as Record<WorkKind, number>
@@ -539,7 +546,7 @@ export default async function TodayPage({
     : [];
   const shownQueue = showingCompleted
     ? []
-    : filterWorkItems(queueItems, {
+    : filterWorkItems(queueBucket === "waiting_on_others" ? queueItems : actionable, {
         bucket: queueBucket,
         kind: queueKind,
         q: queueQ,
@@ -724,7 +731,7 @@ export default async function TodayPage({
     flagged: data.totals.flagged,
     approvals: approvalCount,
   });
-  const totalActions = ledger.total;
+  const totalActions = counts.total;
 
   const firstOpen =
     data.urgent.length > 0
@@ -1325,7 +1332,7 @@ export default async function TodayPage({
             <PipelineHealthRail
               stageCounts={data.stageCounts}
               totalActions={totalActions}
-              actionHeadline={ledgerHeadline(ledger)}
+              actionHeadline={ledgerHeadline(totalActions)}
               actionBreakdown={ledgerBreakdown(ledger)}
               digestParts={digestParts}
               callsEnabled={rules.calls_enabled}

@@ -333,6 +333,22 @@ export function queueCounts(items: WorkItem[], now = new Date()): QueueCounts {
 }
 
 /**
+ * Work that still needs a person.
+ *
+ * Quote requests that are out and unanswered stay on the list under
+ * "Waiting on others", but they are not actions. Counting them in the
+ * headline is how a morning of in-flight packets read as 404 things to do.
+ */
+export function needsYou(items: WorkItem[]): WorkItem[] {
+  return items.filter((item) => stateOf(item) !== "waiting_on_others");
+}
+
+/** The one number every Today surface is allowed to print. */
+export function needsYouCount(items: WorkItem[]): number {
+  return needsYou(items).length;
+}
+
+/**
  * The filters the queue offers, in the order they are shown.
  *
  * Two axes in one control, deliberately. `overdue`, `due_today` and

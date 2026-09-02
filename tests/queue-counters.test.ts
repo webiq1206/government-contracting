@@ -13,6 +13,8 @@ import {
   filterWorkItems,
   parseQueueFilter,
   parseKindFilter,
+  needsYou,
+  needsYouCount,
   QUEUE_FILTERS,
   QUEUE_FILTER_LABEL,
   KIND_FILTER_LABEL,
@@ -72,6 +74,31 @@ describe("queueCounts", () => {
 
   it("is all zeroes on an empty queue, which is a real answer", () => {
     expect(queueCounts([], NOW)).toEqual({ overdue: 0, dueToday: 0, remaining: 0, total: 0 });
+  });
+});
+
+describe("needsYou", () => {
+  it("does not count work that is waiting on somebody else", () => {
+    const items = [
+      item({ key: "call:1" }),
+      item({
+        key: "awaiting:2",
+        title: "Waiting on Rivera Mechanical",
+        waitingOn: { party: "Rivera Mechanical" },
+      }),
+    ];
+    expect(needsYou(items)).toHaveLength(1);
+    expect(needsYouCount(items)).toBe(1);
+    const c = queueCounts(needsYou(items), NOW);
+    expect(c.overdue + c.dueToday + c.remaining).toBe(c.total);
+    expect(c.total).toBe(1);
+  });
+
+  it("keeps blocked work, because that still needs a person", () => {
+    const items = [
+      item({ key: "act:1", blocker: "Claude could not read the packet" }),
+    ];
+    expect(needsYouCount(items)).toBe(1);
   });
 });
 

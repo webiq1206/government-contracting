@@ -125,11 +125,12 @@ export function buildWorkLedger(input: LedgerInput): WorkLedger {
 }
 
 /** "56 actions need you" -- the audit's wording, and the honest one. */
-export function ledgerHeadline(ledger: WorkLedger): string {
-  if (ledger.total === 0) return "Nothing needs you";
+export function ledgerHeadline(ledgerOrTotal: WorkLedger | number): string {
+  const total = typeof ledgerOrTotal === "number" ? ledgerOrTotal : ledgerOrTotal.total;
+  if (total === 0) return "Nothing needs you";
   // "Decisions" was wrong as a label for the whole queue: it also holds calls,
   // deadlines, approvals and compliance work, none of which are decisions.
-  return `${ledger.total} action${ledger.total === 1 ? "" : "s"} need${ledger.total === 1 ? "s" : ""} you`;
+  return `${total} action${total === 1 ? "" : "s"} need${total === 1 ? "s" : ""} you`;
 }
 
 /** "1 bid to work, 2 calls, 3 decisions" -- the breakdown behind the number. */

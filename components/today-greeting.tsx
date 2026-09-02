@@ -69,13 +69,11 @@ export function TodayGreeting({
           ) : (
             <>
               {/*
-                "Decisions" was wrong as a name for this queue and the audit
-                said so: it holds calls, deadlines, approvals and compliance
-                renewals, and none of those is a decision. The ledger already
-                phrases it correctly for the sidebar and the Guide panel, and
-                this headline -- the largest text on the busiest screen -- was
-                the one place still using the old word.
+                Greeting first. A bare integer as the first word of the
+                largest type on the home screen read as a missing page when
+                the count was 404, which was also the wrong number.
               */}
+              {parts.greeting}.{" "}
               <span className="num">{actionCount}</span>{" "}
               {actionCount === 1 ? "action needs" : "actions need"} you.
             </>
@@ -89,8 +87,7 @@ export function TodayGreeting({
           </p>
         ) : !clear ? (
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            {parts.greeting}. Work the queue in order. Each row opens the exact place to finish
-            the task.
+            Work the queue in order. Each row opens the exact place to finish the task.
           </p>
         ) : null}
       </div>

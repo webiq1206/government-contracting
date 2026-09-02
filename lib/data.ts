@@ -116,75 +116,54 @@ export async function queueCounts(): Promise<{
   }
   /*
    * Review and Calls stay as the named badges they always were. Today is the
-   * ledger-shaped total: every bucket that still needs a person, not just
-   * those two slices. The phone tab used to add only review + calls, so a
-   * morning of deadlines, replies and bid work looked empty until someone
-   * opened the page.
+   * same set the work queue lists: unique records that still need a person.
+   * Adding urgent + replies + review + calls + bid work used to count one
+   * opportunity three times and print 404 next to a list of 351.
+   *
+   * Awaiting replies are not in this number. They are on the queue under
+   * "Waiting on others" and they need nobody.
    */
-  const row = await queryOne<{
-    review: string;
-    call: string;
-    urgent: string;
-    replies: string;
-    bid_work: string;
-    quotes: string;
-    follow_ups: string;
-    flagged: string;
-    compliance: string;
-  }>(
-    `select
+  const row = await queryOne<{ review: string; call: string; today: string }>(
+    `with needs as (
+       select e.id::text as fp
+         from subcontractor_reply_events e
+         left join opportunities o on o.id = e.opportunity_id
+        where e.needs_review and e.reviewed_at is null
+          and (e.org_id = $1 or (e.org_id is null and o.org_id = $1))
+          and (o.id is null or ${ACTIVE_PURSUIT_SQL})
+       union
+       select o.id::text
+         from opportunities o
+        where o.org_id = $1 and ${TRIAGE_WHERE_SQL}
+       union
+       select cc.id::text
+         from call_cards cc
+         join opportunities o on o.id = cc.opportunity_id
+         join subcontractors s on s.id = cc.subcontractor_id
+        where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}
+       union
+       select o.id::text
+         from opportunities o
+        where o.org_id = $1 and o.status = 'open' and ${ACTIVE_PURSUIT_SQL}
+          and o.human_action_required = true
+          and not (o.tier = 'review' and o.stage = 'scoring')
+          and (o.snoozed_until is null or o.snoozed_until <= now())
+     )
+     select
        (select count(*) from opportunities o
          where o.org_id = $1 and ${TRIAGE_WHERE_SQL}) as review,
        (select count(*) from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
         where o.org_id = $1 and ${WORKABLE_CALL_CARD_SQL}) as call,
-       (select count(*) from opportunities o
-         where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
-           and o.stage in ('analysis','sub_research','outreach','call_queue','quote_entry','bid_building')
-           and o.deadline is not null and o.deadline > now()
-           and o.deadline <= now() + interval '3 days'
-           and (o.snoozed_until is null or o.snoozed_until <= now())) as urgent,
-       (select count(*) from subcontractor_reply_events e
-         left join opportunities o on o.id = e.opportunity_id
-        where e.needs_review and e.reviewed_at is null
-          and (e.org_id = $1 or (e.org_id is null and o.org_id = $1))
-          and (o.id is null or ${ACTIVE_PURSUIT_SQL})) as replies,
-       (select count(*) from opportunities o
-         where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
-           and o.stage in ('quote_entry','bid_building')
-           and (o.snoozed_until is null or o.snoozed_until <= now())) as bid_work,
-       (select count(*) from quotes q
-         join opportunities o on o.id = q.opportunity_id
-        where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
-          and q.is_out_of_range) as quotes,
-       (select count(*) from opportunity_subs os
-         join opportunities o on o.id = os.opportunity_id
-        where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
-          and os.outreach_state in ('followed_up','unresponsive')) as follow_ups,
-       (select count(*) from opportunities o
-         where o.org_id = $1 and o.status='open' and ${ACTIVE_PURSUIT_SQL}
-           and o.human_action_required=true and o.tier is distinct from 'review'
-           and (o.snoozed_until is null or o.snoozed_until <= now())) as flagged,
-       (select count(*) from compliance_items ci
-        where ci.org_id = $1
-          and coalesce(ci.status_override, ci.status)
-              in ('conflicting','expired','blocked','needs_review','expiring_soon')) as compliance`,
+       (select count(*) from needs) as today`,
     [orgId]
   );
-  const review = Number(row?.review ?? 0);
-  const callQueue = Number(row?.call ?? 0);
-  const today =
-    Number(row?.urgent ?? 0) +
-    Number(row?.replies ?? 0) +
-    review +
-    callQueue +
-    Number(row?.bid_work ?? 0) +
-    Number(row?.quotes ?? 0) +
-    Number(row?.follow_ups ?? 0) +
-    Number(row?.flagged ?? 0) +
-    Number(row?.compliance ?? 0);
-  return { review, callQueue, today };
+  return {
+    review: Number(row?.review ?? 0),
+    callQueue: Number(row?.call ?? 0),
+    today: Number(row?.today ?? 0),
+  };
 }
 
 export const PIPELINE_STAGES: { key: string; label: string }[] = [
@@ -3735,14 +3714,12 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
          left join opportunities o on o.id = e.opportunity_id
         where e.org_id=$1 and e.needs_review and e.reviewed_at is null
           and (o.id is null or ${ACTIVE_PURSUIT_SQL})
-        order by e.created_at desc
-        limit 20`,
+        order by e.created_at desc`,
       [orgId]
     ),
     query<{ id: string; title: string | null; deadline: string | null; review_expires_at: string | null; assigned_to: string | null }>(
-      `select id, title, deadline, review_expires_at, assigned_to from opportunities
-        where org_id=$1 and tier='review' and human_action_required=true and status='open'
-          and coalesce(pursuit_state, 'active') <> 'aborted'`,
+      `select id, title, deadline, review_expires_at, assigned_to from opportunities o
+        where o.org_id=$1 and ${TRIAGE_WHERE_SQL}`,
       [orgId]
     ),
     query<{ id: string; company_name: string; subcontractor_id: string | null; trade: string | null; opp_title: string | null; deadline: string | null; assigned_to: string | null }>(
@@ -3768,10 +3745,11 @@ export async function workQueue(): Promise<import("./domain/work-queue").WorkIte
       risk_flags: string[] | null;
       assigned_to: string | null;
     }>(
-      `select id, title, stage, deadline, risk_flags, assigned_to from opportunities
-        where org_id=$1 and human_action_required=true and status='open'
-          and coalesce(pursuit_state, 'active') <> 'aborted'
-          and not (tier='review' and stage='scoring')`,
+      `select id, title, stage, deadline, risk_flags, assigned_to from opportunities o
+        where o.org_id=$1 and o.human_action_required=true and o.status='open'
+          and ${ACTIVE_PURSUIT_SQL}
+          and not (o.tier='review' and o.stage='scoring')
+          and (o.snoozed_until is null or o.snoozed_until <= now())`,
       [orgId]
     ),
     /*

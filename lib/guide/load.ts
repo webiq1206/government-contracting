@@ -1,4 +1,4 @@
-import { actionCenter, opportunityDetail, subDetail, recentChanges } from "@/lib/data";
+import { actionCenter, opportunityDetail, subDetail, recentChanges, queueCounts } from "@/lib/data";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { accountSetup, type SetupUser } from "@/lib/setup-facts";
@@ -52,7 +52,7 @@ export async function loadGuideBundle(
   // workload to whoever opened the panel.
   const orgId = await tryResolveTenantOrgId();
 
-  const [profile, automation, callsEnabled, actionsRaw, experienceRow, pulseRow] =
+  const [profile, automation, callsEnabled, actionsRaw, experienceRow, pulseRow, badge] =
     await Promise.all([
     getActiveProfile().catch(() => null),
     getAutomationState().catch(() => ({
@@ -101,6 +101,7 @@ export async function loadGuideBundle(
           [orgId]
         ).catch(() => null)
       : Promise.resolve(null),
+    queueCounts().catch(() => ({ review: 0, callQueue: 0, today: 0 })),
   ]);
 
   // Through accountSetup, so this panel and the Today page beside it cannot
@@ -114,7 +115,7 @@ export async function loadGuideBundle(
   // guide's number is the same one Today shows rather than a second opinion
   // assembled from page-sized lists.
   const actions = actionsRaw
-    ? summarizeActions(actionsRaw)
+    ? summarizeActions({ ...actionsRaw, needsYouTotal: badge.today })
     : {
         urgent: 0,
         triage: 0,

@@ -24,6 +24,7 @@ import {
   bucketOf,
   filterWorkItems,
   isCompletedFilter,
+  needsYou,
   parseKindFilter,
   parseQueueFilter,
   queueCounts,
@@ -138,16 +139,17 @@ export default async function WorkbenchPage({
   const owner = parseOwnerFilter(searchParams?.owner);
   const selectedKey = one(searchParams?.i) ?? null;
 
-  const counts = queueCounts(items);
+  const actionable = needsYou(items);
+  const counts = queueCounts(actionable);
   const kindCounts = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).reduce(
     (acc, k) => {
-      acc[k] = items.filter((i) => i.kind === k).length;
+      acc[k] = actionable.filter((i) => i.kind === k).length;
       return acc;
     },
     {} as Record<WorkKind, number>
   );
 
-  const shown = filterWorkItems(items, {
+  const shown = filterWorkItems(bucket === "waiting_on_others" ? items : actionable, {
     bucket,
     kind,
     q,

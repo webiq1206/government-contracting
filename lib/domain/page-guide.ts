@@ -372,6 +372,12 @@ export function summarizeActions(data: {
     quoteReviews: number;
     replyReviews: number;
   };
+  /**
+   * The one action count, when the caller already has the work queue.
+   * Without it this still sums overlapping buckets, which is how Today
+   * said 404 and the list said 351.
+   */
+  needsYouTotal?: number;
 }): ActionSummary {
   const approvals = data.proposedWeights.length + data.backlinkApprovals;
   /*
@@ -397,7 +403,7 @@ export function summarizeActions(data: {
     flagged: t?.flagged ?? 0,
     approvals,
   });
-  const totalActions = ledger.total;
+  const totalActions = data.needsYouTotal ?? ledger.total;
 
   let firstHref: string | undefined;
   let firstLabel: string | undefined;
