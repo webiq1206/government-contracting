@@ -1,93 +1,164 @@
 /**
- * The work ledger must count work, not the size of a preview list.
+ * Today's headline must count work, not the size of a capped query.
  *
- * Several of Today's queries are capped because they render a preview strip
- * as well as feeding a number: `limit 8`, `limit 10`, `limit 20`. Passing such
- * a list's `.length` into the ledger reports the cap. An account with thirty
- * borderline opportunities was once told it had ten, which is the defect the
- * `totals` block was added to fix.
+ * The original defect: several of Today's queries were capped because they
+ * rendered a preview strip as well as feeding a number -- `limit 8`,
+ * `limit 10`, `limit 20` -- and passing such a list's `.length` into the work
+ * ledger reported the cap. An account with thirty borderline opportunities was
+ * told it had ten. A number that is wrong in the safe direction is still a
+ * number somebody plans a morning around.
  *
- * It fixed nine of the eleven inputs. `compliance` still passed
- * `complianceAlerts.length`, and that query is `limit 8`, so an account with
- * twenty overdue registrations was told in its headline number that it had
- * eight. A number that is wrong in the safe direction is still a number
- * somebody plans a morning around.
+ * The shape has since changed completely. Today no longer assembles eleven
+ * bucket counts and hands them to `buildWorkLedger`; it takes one deduplicated
+ * list from `workQueue()`, drops what is waiting on somebody else, and counts
+ * what is left. The old guard read the arguments of a call that no longer
+ * exists, and said so when it failed rather than passing silently, which is
+ * the one thing a source-scanning test must get right.
  *
- * This reads the source of the call site rather than mocking it, because the
- * defect was not in any function's logic: every function was correct and the
- * wrong one was being called. Only the call site shows that.
+ * The risk did not go away with the call. It moved: the headline is now only
+ * as honest as the queries behind `workQueue()`, and a `limit` added to any of
+ * them would undercount the headline in exactly the old way, silently. So this
+ * guards the new path instead.
+ *
+ * Read from source rather than mocked, because the defect was never in any
+ * function's logic: each function was correct and the wrong one was being
+ * called. Only the call site shows that.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const todaySource = readFileSync(join(process.cwd(), "app/(dash)/today/page.tsx"), "utf8");
+const DATA = readFileSync(join(process.cwd(), "lib/data.ts"), "utf8");
+const TODAY = readFileSync(join(process.cwd(), "app/(dash)/today/page.tsx"), "utf8");
 
-/** The argument object literal passed to buildWorkLedger on Today. */
-function ledgerCallArgs(): string {
-  const at = todaySource.indexOf("buildWorkLedger({");
-  expect(at, "Today no longer calls buildWorkLedger; this guard needs updating").toBeGreaterThan(-1);
-  const open = todaySource.indexOf("{", at);
-  let depth = 0;
-  for (let i = open; i < todaySource.length; i++) {
-    if (todaySource[i] === "{") depth++;
-    else if (todaySource[i] === "}") {
-      depth--;
-      if (depth === 0) return todaySource.slice(open, i + 1);
-    }
+/** The body of `workQueue()`, which is where every headline item comes from. */
+function workQueueSource(): string {
+  const at = DATA.indexOf("export async function workQueue(");
+  if (at === -1) {
+    throw new Error("workQueue() moved or was renamed; these guards need updating");
   }
-  throw new Error("unbalanced braces in the buildWorkLedger call");
+  const next = DATA.indexOf("\nexport ", at + 1);
+  return DATA.slice(at, next === -1 ? DATA.length : next);
 }
 
-describe("Today's work ledger inputs", () => {
-  it("takes compliance from the uncapped total, not the capped preview list", () => {
-    const args = ledgerCallArgs();
-    expect(args).toMatch(/compliance:\s*data\.totals\.compliance/);
-    expect(args).not.toMatch(/compliance:\s*data\.complianceAlerts\.length/);
-  });
+/**
+ * The value of a shared SQL fragment, e.g. `TRIAGE_WHERE_SQL`.
+ *
+ * The queries are assembled from named constants -- `${TRIAGE_WHERE_SQL}`,
+ * `${ACTIVE_PURSUIT_SQL}` -- so reading the template literal alone would let a
+ * `limit` hide one level down, in a fragment several queries share, where it
+ * would be least visible and do the most damage.
+ */
+function sqlFragment(name: string): string {
+  const m = new RegExp(`\\bconst ${name}\\s*=\\s*\`([^\`]*)\``).exec(DATA);
+  return m ? m[1] : "";
+}
 
-  it("uses no capped list length for any input except the one that is genuinely uncapped", () => {
-    /*
-     * awardCompliance is the single legitimate `.length`: loadAwardCompliance
-     * has no LIMIT, and needsAttentionOnWonWork is a JS predicate over a
-     * computed assessment. Reproducing that predicate in SQL to obtain a
-     * "proper" total would create a second source of truth, which is the thing
-     * this ledger exists to remove. Any OTHER `.length` is the bug returning.
-     */
-    const args = ledgerCallArgs();
-    const lengths = [...args.matchAll(/(\w+):\s*data\.(\w+)\.length/g)].map((m) => m[1]);
-    expect(lengths).toEqual(["awardCompliance"]);
-  });
-
-  it("still passes every bucket the ledger knows about", () => {
-    // A guard that silently stopped covering a bucket would be worse than none.
-    const args = ledgerCallArgs();
-    for (const key of [
-      "urgent", "replyReviews", "triage", "calls", "bidWork", "quoteReviews",
-      "subFollowUps", "compliance", "awardCompliance", "flagged", "approvals",
-    ]) {
-      expect(args, `ledger input ${key} is missing`).toMatch(new RegExp(`\\b${key}:`));
+/**
+ * The table a query is actually reading, as opposed to one it merely mentions.
+ *
+ * `outreach_state` was the discriminator once, and it stopped being unique the
+ * moment the fragments above were inlined: the call-card query's own filter
+ * reaches into `opportunity_subs` too. The first FROM is the row this query
+ * returns, which is the thing being asked about.
+ */
+function mainTable(sql: string): string {
+  /*
+   * At paren depth zero. Taking the first FROM in the text finds the one
+   * inside a correlated subselect in the SELECT list -- the awaiting-reply
+   * query reads `communications` that way to get a send time -- and names the
+   * wrong table for the row being returned.
+   */
+  let depth = 0;
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql[i];
+    if (c === "(") depth++;
+    else if (c === ")") depth--;
+    else if (depth === 0 && (c === "f" || c === "F")) {
+      const m = /^from\s+([a-z_][a-z0-9_]*)/i.exec(sql.slice(i));
+      // Only at a word boundary, so "...as from_addr" is not a FROM clause.
+      if (m && !/[a-z0-9_]/i.test(sql[i - 1] ?? " ")) return m[1].toLowerCase();
     }
+  }
+  return "";
+}
+
+/** Every SQL literal inside it, with its shared fragments inlined. */
+function queueQueries(): string[] {
+  const found = [...workQueueSource().matchAll(/`([^`]*)`/g)]
+    .map((m) => m[1])
+    .filter((q) => /\bselect\b/i.test(q) && /\bfrom\b/i.test(q))
+    .map((q) => q.replace(/\$\{(\w+)\}/g, (_, name: string) => ` ${sqlFragment(name)} `));
+  if (found.length === 0) {
+    throw new Error("no SQL found in workQueue(); these guards need updating");
+  }
+  return found;
+}
+
+describe("the queries behind Today's headline", () => {
+  it("caps only the bucket that is not part of the headline", () => {
+    /*
+     * One legitimate cap. `awaitingReply` is outreach that has gone out and
+     * not come back: nothing is wrong and nobody should act, so those rows
+     * carry `waitingOn` and `needsYou()` drops them before anything is
+     * counted. Capping a list nobody counts costs nothing.
+     *
+     * A `limit` on any OTHER query is the original bug returning by a new
+     * route: the row would be missing from the headline AND from the list,
+     * with no sign that the number was a floor rather than a count.
+     */
+    const capped = queueQueries().filter((q) => /\blimit\s+\d+/i.test(q));
+    expect(
+      capped.map((q) => q.replace(/\s+/g, " ").trim().slice(0, 80)),
+      "only the awaiting-reply query may be capped"
+    ).toHaveLength(1);
+    expect(mainTable(capped[0])).toBe("opportunity_subs");
+  });
+
+  it("still caps that one, so the rule above is guarding something real", () => {
+    /*
+     * If somebody lifts the limit, the assertion above starts passing for a
+     * reason that has nothing to do with the rule and this file becomes
+     * folklore. Fail loudly instead, so the comment gets corrected rather
+     * than quietly outliving its reason.
+     */
+    const awaiting = queueQueries().find((q) => mainTable(q) === "opportunity_subs");
+    expect(awaiting, "the awaiting-reply query moved").toBeDefined();
+    expect(awaiting!).toMatch(/\blimit\s+\d+/i);
+  });
+
+  it("keeps that bucket out of the headline by marking it waiting on somebody", () => {
+    /*
+     * The cap is only harmless while these rows are excluded, and they are
+     * excluded because `stateOf()` reads `waitingOn` first. Drop that field
+     * and the capped bucket walks straight into the count.
+     */
+    const src = workQueueSource();
+    const at = src.indexOf("...awaitingReply.map");
+    expect(at, "the awaiting-reply rows moved").toBeGreaterThan(-1);
+    expect(src.slice(at, src.indexOf("})),", at))).toMatch(/waitingOn:\s*\{/);
   });
 });
 
-describe("the capped query this was about", () => {
-  it("is still capped, so the guard above is still guarding something", () => {
+describe("what Today prints", () => {
+  it("counts only work that still needs a person", () => {
+    // needsYou() first, then the count. Counting the raw queue would put every
+    // in-flight quote request into the headline as an action.
+    expect(TODAY).toMatch(/needsYou\(queueItems\)/);
+    expect(TODAY).toMatch(/queueCounts\(actionable\)/);
+    expect(TODAY).toMatch(/totalActions\s*=\s*counts\.total/);
+  });
+
+  it("prints that one number and does not recompute it from a rendered list", () => {
     /*
-     * If somebody lifts the LIMIT from complianceAlerts, the guard above stops
-     * describing a real risk and starts being folklore. This fails loudly in
-     * that case so the comment can be corrected rather than quietly outliving
-     * its reason.
+     * The headline, the queue card and the counters were three separate sums
+     * once, and they disagreed. Whatever is shown must come from the single
+     * total; a `.length` of something the page has already sliced for display
+     * is the old defect wearing new clothes.
      */
-    const data = readFileSync(join(process.cwd(), "lib/data.ts"), "utf8");
-    const at = data.indexOf("from compliance_items\n        where org_id = $1");
-    expect(at, "the complianceAlerts query moved; re-check whether it is still capped").toBeGreaterThan(-1);
-    /*
-     * Wide enough to survive a comment inside the query. A fixed window that
-     * only just reached the LIMIT failed the moment somebody explained a
-     * clause above it, which is a test punishing the wrong thing.
-     */
-    const q = data.slice(at);
-    expect(q.slice(0, q.indexOf("`", 1))).toMatch(/limit\s+\d+/);
+    const at = TODAY.indexOf("const totalActions");
+    expect(at).toBeGreaterThan(-1);
+    const line = TODAY.slice(at, TODAY.indexOf("\n", at));
+    expect(line).not.toMatch(/\.length/);
   });
 });
