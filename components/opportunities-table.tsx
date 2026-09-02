@@ -253,6 +253,99 @@ export function OpportunitiesTable({
       total={total}
       prefsKey="brostco.opportunities.table"
       emptyState={emptyState}
+      card={(o) => (
+        <OpportunityTableCard
+          o={o}
+          peekBase={peekBase}
+          rules={rules}
+          owners={owners}
+          viewerId={viewerId}
+          role={role}
+          members={members}
+        />
+      )}
     />
+  );
+}
+
+function OpportunityTableCard({
+  o,
+  peekBase,
+  rules,
+  owners,
+  viewerId,
+  role,
+  members,
+}: {
+  o: Opportunity;
+  peekBase: string;
+  rules?: AutomationRules;
+  owners?: Map<string, Owner>;
+  viewerId?: string;
+  role?: string | null;
+  members?: Owner[];
+}) {
+  const stage = STAGE_LABEL[o.stage] ?? o.stage.replace(/_/g, " ");
+  return (
+    <div
+      className={`rounded-md border border-border bg-surface ${
+        o.human_action_required ? "border-gold/40 bg-gold/[0.04]" : ""
+      }`}
+    >
+      <Link href={`/opportunity/${o.id}`} className="block p-3">
+        <p className="line-clamp-2 text-sm font-medium text-foreground">
+          {o.title ?? "Untitled opportunity"}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {[stage, o.location_state].filter(Boolean).join(" \u00b7 ")}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {o.human_action_required ? (
+            <span className="badge bg-review/15 text-review">Waiting on you</span>
+          ) : (
+            <span className="badge bg-muted text-muted-foreground">Not you</span>
+          )}
+          {o.score != null ? <ScoreBadge score={o.score} /> : null}
+          {o.deadline ? <DeadlineBadge deadline={o.deadline} rules={rules} /> : null}
+          {o.value_estimated != null ? (
+            <span className="text-xs text-muted-foreground">{currency(o.value_estimated)}</span>
+          ) : null}
+        </div>
+        {owners ? (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {describeOwner(owners.get(o.id), viewerId)}
+          </p>
+        ) : null}
+      </Link>
+      <div className="flex divide-x divide-border border-t border-border">
+        <Link
+          href={`${peekBase}peek=${o.id}`}
+          scroll={false}
+          className="tap flex min-h-11 flex-1 items-center justify-center text-sm text-accent"
+        >
+          Quick look
+        </Link>
+        <span className="flex min-h-11 items-center justify-center px-3">
+          <RowActions
+            actions={opportunityRowActions(
+              {
+                id: o.id,
+                title: o.title,
+                stage: o.stage,
+                status: o.status,
+                snoozedUntil: o.snoozed_until ?? null,
+                pursuitState: o.pursuit_state ?? null,
+              },
+              { role }
+            )}
+            members={members}
+            owner={owners?.get(o.id) ?? null}
+            viewerId={viewerId}
+            recordLabel={o.title ?? "this opportunity"}
+            compact
+          />
+        </span>
+      </div>
+    </div>
   );
 }

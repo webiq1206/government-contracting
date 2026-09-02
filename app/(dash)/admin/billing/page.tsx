@@ -169,12 +169,38 @@ export default async function AdminBillingPage() {
           ))}
         </div>
 
-        <div className="card overflow-x-auto">
-          {rows.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-600">
-              No organizations yet.
-            </p>
-          ) : (
+        {rows.length === 0 ? (
+          <p className="card py-6 text-center text-sm text-slate-600">
+            No organizations yet.
+          </p>
+        ) : (
+          <>
+            <ul className="space-y-2 lg:hidden">
+              {rows.map((r) => (
+                <li key={r.org_id} className="card p-3">
+                  <p className="font-medium text-foreground">{r.org_name}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {r.owner_email ?? "no owner on file"}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span
+                      className={`badge ${STATUS_TONE[r.subscription_status] ?? "bg-slate-200 text-slate-600"}`}
+                    >
+                      {r.subscription_status.replace(/_/g, " ")}
+                    </span>
+                    <span className="num text-sm">{money(r.amount_cents)}</span>
+                  </div>
+                  <p className="mt-1 text-xs capitalize text-slate-500">
+                    {r.plan_key} · {r.billing_interval === "year" ? "annual" : "monthly"}
+                    {r.price_locked ? " · rate locked" : ""}
+                  </p>
+                  {r.cancel_at_period_end ? (
+                    <p className="mt-1 text-xs text-review">Cancels at period end</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <div className="card hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[64rem] text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase tracking-wide text-slate-500">
@@ -269,8 +295,9 @@ export default async function AdminBillingPage() {
                 ))}
               </tbody>
             </table>
-          )}
-        </div>
+            </div>
+          </>
+        )}
 
         <p className="text-xs leading-relaxed text-slate-500">
           Read from this application&apos;s own records, which the Stripe webhook keeps

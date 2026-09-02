@@ -350,35 +350,51 @@ export default async function AgentsPage({
         {/* Job run summary */}
         <section>
           <h2 className="label mb-2">Recent job runs</h2>
-          <div className="card overflow-x-auto p-0">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="th">Agent</th>
-                  <th className="th">OK</th>
-                  <th className="th">Errors</th>
-                  <th className="th">Last run</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.length === 0 && (
-                  <tr>
-                    <td className="td text-slate-600" colSpan={4}>
-                      No job runs recorded yet. Press Run now on any agent below.
-                    </td>
-                  </tr>
-                )}
+          {runs.length === 0 ? (
+            <p className="card text-sm text-slate-600">
+              No job runs recorded yet. Press Run now on any agent below.
+            </p>
+          ) : (
+            <>
+              <ul className="space-y-2 lg:hidden">
                 {runs.map((r) => (
-                  <tr key={str(r.agent)} className="border-b border-border">
-                    <td className="td font-mono text-xs">{str(r.agent)}</td>
-                    <td className="td text-pursue">{num(r.ok) ?? 0}</td>
-                    <td className="td text-risk">{num(r.error) ?? 0}</td>
-                    <td className="td text-slate-600">{timeAgo(str(r.last_run) || null)}</td>
-                  </tr>
+                  <li key={str(r.agent)} className="card p-3">
+                    <p className="font-mono text-xs text-foreground">{str(r.agent)}</p>
+                    <p className="mt-1 text-sm">
+                      <span className="text-pursue">{num(r.ok) ?? 0} ok</span>
+                      <span className="text-muted-foreground"> · </span>
+                      <span className="text-risk">{num(r.error) ?? 0} errors</span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      {timeAgo(str(r.last_run) || null)}
+                    </p>
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </ul>
+              <div className="card hidden overflow-x-auto p-0 lg:block">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="th">Agent</th>
+                      <th className="th">OK</th>
+                      <th className="th">Errors</th>
+                      <th className="th">Last run</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {runs.map((r) => (
+                      <tr key={str(r.agent)} className="border-b border-border">
+                        <td className="td font-mono text-xs">{str(r.agent)}</td>
+                        <td className="td text-pursue">{num(r.ok) ?? 0}</td>
+                        <td className="td text-risk">{num(r.error) ?? 0}</td>
+                        <td className="td text-slate-600">{timeAgo(str(r.last_run) || null)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </section>
 
         {/* Log feed */}
@@ -391,10 +407,10 @@ export default async function AgentsPage({
           </div>
 
           {/* Search + level filter (GET form so links stay shareable) */}
-          <form method="get" action="/agents" className="mb-2 flex flex-wrap items-center gap-2">
+          <form method="get" action="/agents" className="mb-2 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
             {agentFilter && <input type="hidden" name="agent" value={agentFilter} />}
             <input
-              className="input max-w-xs"
+              className="input w-full lg:max-w-xs"
               type="search"
               name="q"
               defaultValue={q}
@@ -402,7 +418,7 @@ export default async function AgentsPage({
               aria-label="Search Automation Health"
             />
             <select
-              className="select w-auto"
+              className="select w-full lg:w-auto"
               name="level"
               defaultValue={levelFilter ?? ""}
               aria-label="Filter the log by severity"
@@ -413,7 +429,7 @@ export default async function AgentsPage({
               <option value="warn">Warnings</option>
               <option value="error">Errors</option>
             </select>
-            <button className="btn-ghost" type="submit">
+            <button className="btn-ghost w-full lg:w-auto" type="submit">
               Filter
             </button>
             {(q || levelFilter) && (

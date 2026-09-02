@@ -180,6 +180,46 @@ export function AdminAccountsTable({
       total={total}
       prefsKey="brostco.admin.accounts.table"
       emptyState={emptyState}
+      card={(r) => <AdminAccountCard row={r} peekBase={peekBase} />}
     />
+  );
+}
+
+function AdminAccountCard({
+  row,
+  peekBase,
+}: {
+  row: AdminAccountRow;
+  peekBase: string;
+}) {
+  const access = ACCESS_LABEL[row.access] ?? {
+    text: row.access,
+    tone: "bg-muted text-muted-foreground",
+  };
+  const activity = activityOf(row.last_active_at, row.created_at);
+  return (
+    <div className="rounded-md border border-border bg-surface p-3">
+      <Link href={`/admin/accounts/${row.id}`} className="block">
+        <p className="truncate text-sm font-medium text-foreground">{row.name}</p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {row.owner_email ?? "No owner on file"}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <span className={`badge ${access.tone}`}>{access.text}</span>
+          {row.suspended_at ? <span className="badge bg-risk/15 text-risk">Suspended</span> : null}
+          {row.billing_exempt ? <span className="badge bg-pursue/15 text-pursue">Comped</span> : null}
+        </div>
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          {activity.state === "never" ? "Never signed in" : `Last used ${activity.daysSince}d ago`}
+        </p>
+      </Link>
+      <Link
+        href={`${peekBase}peek=${row.id}`}
+        scroll={false}
+        className="tap mt-2 inline-flex min-h-11 items-center text-sm text-accent"
+      >
+        Quick look
+      </Link>
+    </div>
   );
 }

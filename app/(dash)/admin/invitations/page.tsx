@@ -65,7 +65,47 @@ export default async function AdminInvitationsPage() {
             A link is good for {INVITATION_DAYS} days and works once. Sending a
             new link replaces the old one.
           </p>
-          <div className="overflow-x-auto panel-inset">
+          <ul className="space-y-2 lg:hidden">
+            {ranked.map(({ row, state }) => (
+              <li key={row.id} className="panel-inset p-3">
+                <p className="font-medium text-foreground">{row.email}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">by {row.invited_by_email}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATE_TONE[state]}`}>
+                    {STATE_LABEL[state]}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {row.plan_key} · {row.billing_interval === "year" ? "annual" : "monthly"}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {describeConcession({
+                    kind: row.concession_kind,
+                    percent: row.concession_percent,
+                    months: row.concession_months,
+                  })}
+                </p>
+                {state === "outstanding" ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    until {shortDate(row.expires_at)}
+                  </p>
+                ) : null}
+                <div className="mt-2">
+                  <InvitationActions
+                    id={row.id}
+                    email={row.email}
+                    canResend={state === "outstanding" || state === "expired"}
+                  />
+                </div>
+              </li>
+            ))}
+            {ranked.length === 0 ? (
+              <li className="panel-inset px-4 py-8 text-center text-muted-foreground">
+                Nobody has been invited yet.
+              </li>
+            ) : null}
+          </ul>
+          <div className="panel-inset hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[52rem] text-left text-sm">
               <thead className="bg-surface text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>

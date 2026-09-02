@@ -84,7 +84,38 @@ export default async function AdminAuditPage({
               : "No administrative action has been taken on a real account. Test history is hidden; include it above if you are looking for a specific run."}
           </p>
         ) : (
-          <div className="panel-inset scroll-thin overflow-x-auto">
+          <>
+          <ul className="space-y-2 lg:hidden">
+            {entries.map((a) => (
+              <li key={a.id} className="panel-inset p-3">
+                <p className="text-xs text-muted-foreground">{shortDate(a.created_at)}</p>
+                <p className="mt-1 text-sm font-medium text-foreground">{a.action.replace(/_/g, " ")}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{a.admin_email}</p>
+                <p className="mt-1 text-sm">
+                  {a.target_org_id ? (
+                    <Link
+                      href={`/admin/accounts/${a.target_org_id}`}
+                      className="text-accent hover:underline"
+                    >
+                      {a.target_org_name ?? a.target_org_id}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      {a.target_org_name ?? "-"}
+                    </span>
+                  )}
+                </p>
+                {a.detail && Object.keys(a.detail).length > 0 ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {Object.entries(a.detail)
+                      .map(([k, v]) => `${k.replace(/_/g, " ")}: ${String(v)}`)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <div className="panel-inset scroll-thin hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[48rem] text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -133,6 +164,7 @@ export default async function AdminAuditPage({
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </>

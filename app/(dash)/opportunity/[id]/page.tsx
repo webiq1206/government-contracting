@@ -536,7 +536,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
   return (
     <div className="flex page-shell bg-background">
       {/* Thin utility bar stays pinned; hero scrolls with content. */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2 sm:px-6">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border px-4 py-2 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
         <div className="flex min-w-0 items-center gap-2">
           {/* The record-page back affordance: every detail page names the
               collection it belongs to and takes you back in one tap. On a
@@ -564,7 +564,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
           it was, or that automation had stopped on something. All of it was on
           the page, at the top, past the scroll.
         */}
-        <div className="flex min-w-0 flex-1 shrink items-center justify-end gap-2">
+        <div className="min-w-0 lg:flex-1 lg:shrink">
           <OpportunityStatusBar
             stageLabel={stageLabel(opp.stage)}
             deadline={opp.deadline ? new Date(opp.deadline).toISOString() : null}

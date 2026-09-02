@@ -370,7 +370,40 @@ function ScenarioTable({
         </button>
       </div>
 
-      <div className="overflow-x-auto">
+      <ul className="divide-y divide-border lg:hidden">
+        {scenarios.map((s) => (
+          <li key={s.label} className="py-3 first:pt-0 last:pb-0">
+            <p className="text-sm text-foreground">{s.label}</p>
+            {s.unknown && <p className="mt-0.5 text-xs text-muted-foreground">{s.unknown}</p>}
+            {s.math.belowCost && (
+              <p className="mt-0.5 text-xs text-risk">This bid is below what the job costs.</p>
+            )}
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <dt className="text-muted-foreground">Bid</dt>
+              <dd className="text-right">
+                <Money value={s.math.bid} strong />
+              </dd>
+              <dt className="text-muted-foreground">Cost + contingency</dt>
+              <dd className="text-right">
+                <Money value={s.math.loadedCost} />
+              </dd>
+              <dt className="text-muted-foreground">Gross profit</dt>
+              <dd className="text-right">
+                <Money value={s.math.grossProfit} />
+              </dd>
+              <dt className="text-muted-foreground">Margin (of bid)</dt>
+              <dd className="text-right">
+                <Percent value={s.math.marginPct} />
+              </dd>
+              <dt className="text-muted-foreground">Markup (of cost)</dt>
+              <dd className="text-right">
+                <Percent value={s.math.markupPct} />
+              </dd>
+            </dl>
+          </li>
+        ))}
+      </ul>
+      <div className="hidden overflow-x-auto lg:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">

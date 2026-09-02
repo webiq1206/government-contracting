@@ -116,7 +116,7 @@ export function RowActions({
             aria-label={recordLabel ? `More actions for ${recordLabel}` : "More actions"}
             onClick={() => setMenuOpen((v) => !v)}
             className={`btn-ghost inline-flex items-center justify-center ${
-              compact ? "min-h-8 px-2 text-xs" : "min-h-11 px-2.5 text-sm sm:min-h-9"
+              compact ? "min-h-8 px-2 text-xs" : "min-h-11 px-2.5 text-sm lg:min-h-9"
             }`}
           >
             <span aria-hidden>⋯</span>
@@ -191,7 +191,7 @@ function PrimaryAction({
   onWidget: (w: RowWidget) => void;
   compact: boolean;
 }) {
-  const size = compact ? "min-h-8 text-xs" : "min-h-11 text-xs sm:min-h-9 sm:text-sm";
+  const size = compact ? "min-h-8 text-xs" : "min-h-11 text-xs lg:min-h-9 lg:text-sm";
   const tone = action.danger ? "btn-danger" : "btn-primary";
   const className = `${tone} ${size}`;
 

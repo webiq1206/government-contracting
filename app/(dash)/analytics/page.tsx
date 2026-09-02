@@ -127,35 +127,55 @@ function BreakdownTable({
 }) {
   if (data.length === 0) return null;
   return (
-    <div className="card scroll-thin overflow-x-auto">
+    <div className="card">
       <h3 className="mb-3 text-sm font-semibold text-slate-900">{title}</h3>
-      <table className="w-full">
-        <thead>
-          <tr>
-            <th className="th">{keyField}</th>
-            <th className="th">Win rate</th>
-            <th className="th">W / L</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((r, i) => {
-            const winRate = num(r.win_rate ?? r.winRate ?? r.rate);
-            const wins = num(r.wins ?? r.won);
-            const losses = num(r.losses ?? r.lost);
-            const key =
-              str(r[keyField] ?? r.key ?? r.name ?? r.label ?? r.code) || "-";
-            return (
-              <tr key={i} className="border-t border-border">
-                <td className="td">{key}</td>
-                <td className="td num">{winRate != null ? pct(winRate) : "-"}</td>
-                <td className="td text-slate-500">
-                  {wins != null || losses != null ? `${wins ?? 0} / ${losses ?? 0}` : "-"}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <ul className="divide-y divide-border lg:hidden">
+        {data.map((r, i) => {
+          const winRate = num(r.win_rate ?? r.winRate ?? r.rate);
+          const wins = num(r.wins ?? r.won);
+          const losses = num(r.losses ?? r.lost);
+          const key =
+            str(r[keyField] ?? r.key ?? r.name ?? r.label ?? r.code) || "-";
+          return (
+            <li key={i} className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+              <span className="min-w-0 truncate text-sm text-foreground">{key}</span>
+              <span className="shrink-0 text-right text-sm text-muted-foreground">
+                {winRate != null ? pct(winRate) : "-"}
+                {wins != null || losses != null ? ` · ${wins ?? 0}/${losses ?? 0}` : ""}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="scroll-thin hidden overflow-x-auto lg:block">
+        <table className="w-full">
+          <thead>
+            <tr>
+              <th className="th">{keyField}</th>
+              <th className="th">Win rate</th>
+              <th className="th">W / L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((r, i) => {
+              const winRate = num(r.win_rate ?? r.winRate ?? r.rate);
+              const wins = num(r.wins ?? r.won);
+              const losses = num(r.losses ?? r.lost);
+              const key =
+                str(r[keyField] ?? r.key ?? r.name ?? r.label ?? r.code) || "-";
+              return (
+                <tr key={i} className="border-t border-border">
+                  <td className="td">{key}</td>
+                  <td className="td num">{winRate != null ? pct(winRate) : "-"}</td>
+                  <td className="td text-slate-500">
+                    {wins != null || losses != null ? `${wins ?? 0} / ${losses ?? 0}` : "-"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -816,7 +836,7 @@ export default async function AnalyticsPage({
         <div className="space-y-6">
         {/* Where the pipeline value is sitting, by stage. */}
         {stageValue.length > 0 && (
-          <div className="card scroll-thin overflow-x-auto">
+          <div className="card">
             <h3 className="mb-3 text-sm font-semibold text-slate-900">
               Pipeline value by stage
             </h3>
@@ -825,6 +845,29 @@ export default async function AnalyticsPage({
               opportunities that carry one. The last column says how many that is, because a
               total across 2 of 41 is not the value of the stage.
             </p>
+            <ul className="divide-y divide-border lg:hidden">
+              {stageValue.map((s) => (
+                <li key={s.stage} className="py-2.5 first:pt-0 last:pb-0">
+                  <p className="text-sm font-medium text-foreground">
+                    {STAGE_LABEL[s.stage] ?? s.stage.replace(/_/g, " ")}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {s.count} opportunit{s.count === 1 ? "y" : "ies"} ·{" "}
+                    {s.valued === 0
+                      ? "value not published"
+                      : `${s.valued === s.count ? "all valued" : `${s.valued} of ${s.count} valued`}`}
+                  </p>
+                  <p className="num mt-1 text-sm">
+                    {s.valued === 0 ? (
+                      <span className="text-slate-500">Not published</span>
+                    ) : (
+                      currency(s.value)
+                    )}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <div className="scroll-thin hidden overflow-x-auto lg:block">
             <table className="w-full">
               <thead>
                 <tr>
@@ -861,6 +904,7 @@ export default async function AnalyticsPage({
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -905,7 +949,26 @@ export default async function AnalyticsPage({
               description="This table cuts the same batch as the funnel above. Once opportunities arrive in the selected period, they appear here grouped by whichever dimension you pick."
             />
           ) : (
-            <div className="card scroll-thin overflow-x-auto">
+            <div className="card">
+              <ul className="divide-y divide-border lg:hidden">
+                {breakdown.map((r) => (
+                  <li key={r.key} className="py-2.5 first:pt-0 last:pb-0">
+                    <p className="text-sm font-medium text-foreground">{r.key}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {r.found} found · {r.pursued} pursued · {r.submitted} submitted
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      {r.won + r.lost === 0
+                        ? r.undecided > 0
+                          ? `${r.undecided} still with the agency`
+                          : "None decided yet"
+                        : `${r.won} won · ${r.lost} lost${r.undecided > 0 ? ` · ${r.undecided} pending` : ""}`}
+                      {r.winRate != null ? ` · ${r.winRate}% win rate` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <div className="scroll-thin hidden overflow-x-auto lg:block">
               <table className="w-full">
                 <caption className="sr-only">
                   {breakdownLabel(by)} breakdown of opportunities found in the{" "}
@@ -968,6 +1031,7 @@ export default async function AnalyticsPage({
                   ))}
                 </tbody>
               </table>
+              </div>
               <p className="mt-3 text-xs leading-relaxed text-slate-500">
                 {/*
                   How this dimension counts, where it is not one row per
@@ -1054,29 +1118,43 @@ export default async function AnalyticsPage({
 
         {/* Sub rankings */}
         {subRankings.length > 0 && (
-          <div className="card scroll-thin overflow-x-auto">
+          <div className="card">
             <h3 className="mb-1 text-sm font-semibold text-slate-900">Top Subcontractors</h3>
             <p className="mb-3 text-xs text-slate-500">{freshness.label} by the Analytics Engine.</p>
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className="th">Sub</th>
-                  <th className="th">Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subRankings.map((r, i) => (
-                  <tr key={i} className="border-t border-border">
-                    <td className="td">
-                      {str(r.company_name ?? r.name ?? r.sub ?? r.label)}
-                    </td>
-                    <td className="td num">
-                      {num(r.score ?? r.reliability_score ?? r.rating) ?? "-"}
-                    </td>
+            <ul className="divide-y divide-border lg:hidden">
+              {subRankings.map((r, i) => (
+                <li key={i} className="flex items-baseline justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <span className="min-w-0 truncate text-sm text-foreground">
+                    {str(r.company_name ?? r.name ?? r.sub ?? r.label)}
+                  </span>
+                  <span className="num shrink-0 text-sm">
+                    {num(r.score ?? r.reliability_score ?? r.rating) ?? "-"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="scroll-thin hidden overflow-x-auto lg:block">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className="th">Sub</th>
+                    <th className="th">Score</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {subRankings.map((r, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="td">
+                        {str(r.company_name ?? r.name ?? r.sub ?? r.label)}
+                      </td>
+                      <td className="td num">
+                        {num(r.score ?? r.reliability_score ?? r.rating) ?? "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 

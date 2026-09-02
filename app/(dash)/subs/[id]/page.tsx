@@ -377,7 +377,7 @@ export default async function SubDetailPage({
                 ]}
               />
 
-              {/* Contact metrics — live totals from saved communications */}
+              {/* Contact metrics: live totals from saved communications */}
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-7">
                 <Stat
                   label="Emails sent"
@@ -619,7 +619,38 @@ export default async function SubDetailPage({
                 {quotes.length === 0 ? (
                   <p className="text-sm text-slate-500">No quotes on file.</p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <>
+                  <ul className="divide-y divide-border lg:hidden">
+                    {quotes.map((q, i) => {
+                      const amt = q.quote_amount;
+                      const oppId = s(q.opportunity_id);
+                      const title = s(q.opportunity_title) ?? "-";
+                      return (
+                        <li key={s(q.id) ?? i} className="py-3 first:pt-0 last:pb-0">
+                          <p className="text-sm font-medium text-foreground">
+                            {oppId ? (
+                              <Link
+                                href={`/opportunity/${oppId}`}
+                                className="text-accent hover:underline"
+                              >
+                                {title}
+                              </Link>
+                            ) : (
+                              title
+                            )}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            <span className="num">
+                              {typeof amt === "number" ? currency(amt) : currency(Number(amt) || null)}
+                            </span>
+                            {" · "}
+                            {shortDate(s(q.created_at))}
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="hidden overflow-x-auto lg:block">
                   <table className="w-full min-w-[28rem]">
                     <thead>
                       <tr>
@@ -657,6 +688,7 @@ export default async function SubDetailPage({
                     </tbody>
                   </table>
                   </div>
+                  </>
                 )}
               </Collapsible>
             </div>

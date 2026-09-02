@@ -105,7 +105,7 @@ export function OpportunityStatusBar({
       {nextAction && (
         <Link
           href={nextAction.href}
-          className="btn-primary ml-auto shrink-0 whitespace-nowrap px-3 py-1 text-xs"
+          className="btn-primary ml-auto min-h-11 shrink-0 whitespace-nowrap px-3 text-xs lg:min-h-0 lg:py-1"
         >
           {nextAction.label}
         </Link>

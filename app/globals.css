@@ -523,15 +523,15 @@ body {
     background: rgb(var(--gold-deep));
   }
 
-  /* Inputs: taller on phones for fat-finger accuracy. */
+  /* Inputs: taller until the sidebar arrives. 640px is still a thumb. */
   .input {
-    @apply w-full rounded-sm border border-border-strong/40 bg-background px-3 py-2.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent sm:min-h-0 sm:py-2 sm:text-sm;
+    @apply w-full rounded-sm border border-border-strong/40 bg-background px-3 py-2.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent lg:min-h-0 lg:py-2 lg:text-sm;
     min-height: 2.75rem;
   }
   .dark .input {
     @apply border-white/20 bg-shell focus:border-gold;
   }
-  @media (min-width: 640px) {
+  @media (min-width: 1024px) {
     .input {
       min-height: 0;
     }

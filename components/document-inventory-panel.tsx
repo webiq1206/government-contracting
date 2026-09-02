@@ -61,7 +61,7 @@ export function DocumentInventoryPanel({
         <>
           {/* Desktop: the full manifest, because on a wide screen there is room
               for every column and hiding one behind a click helps nobody. */}
-          <div className="hidden overflow-x-auto md:block">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -84,7 +84,7 @@ export function DocumentInventoryPanel({
 
           {/* Mobile: one card per document, the manifest folded away. The
               problem sentence is never folded: it is the reason to look. */}
-          <ul className="divide-y divide-border md:hidden">
+          <ul className="divide-y divide-border lg:hidden">
             {documents.map((d) => (
               <Card key={d.id} doc={d} canDecide={canDecide} canRunAgents={canRunAgents} />
             ))}

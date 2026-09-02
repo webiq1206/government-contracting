@@ -235,7 +235,39 @@ function Report({
           {unchanged === 1 ? "" : "s"} matched the source.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        <ul className="divide-y divide-border lg:hidden">
+          {[...needsReview, ...automatic].map((f, i) => (
+            <li key={`${f.subject}-${i}`} className="py-3 first:pt-0 last:pb-0">
+              <p
+                className={`font-medium ${
+                  f.impact === "blocking" ? "text-risk" : "text-foreground"
+                }`}
+              >
+                {f.subject}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {SCOPE_LABEL[f.scope]} · {f.kind}
+              </p>
+              {f.note && <p className="mt-1 text-xs text-muted-foreground">{f.note}</p>}
+              <dl className="mt-2 grid grid-cols-1 gap-1 text-xs">
+                <div>
+                  <dt className="text-muted-foreground">On file</dt>
+                  <dd className="text-muted-foreground">{f.before ?? "Nothing"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">At the source</dt>
+                  <dd className="text-foreground">{f.after ?? "No longer published"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Where</dt>
+                  <dd className="text-muted-foreground">{f.citation ?? "Not cited"}</dd>
+                </div>
+              </dl>
+            </li>
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto lg:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -272,6 +304,7 @@ function Report({
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <ul className="mt-3 space-y-1 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
