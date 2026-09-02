@@ -14,6 +14,7 @@ import {
 import { shortDate, countdown } from "@/lib/format";
 import { RowActions } from "@/components/row-actions";
 import { callCardRowActions } from "@/lib/domain/row-actions";
+import { quickViewValue } from "@/lib/domain/quick-view";
 
 /**
  * The queue, as rows somebody can decide from without opening anything.
@@ -29,6 +30,7 @@ export function CallQueueList({
   grouping,
   selectedId,
   hrefBase,
+  peekBase,
   now,
   rules,
   role,
@@ -38,6 +40,8 @@ export function CallQueueList({
   selectedId: string | null;
   /** Prefix for a row's link, with the id appended. */
   hrefBase: string;
+  /** Prefix for a quick-look link, with the encoded target appended. */
+  peekBase: string;
   now: Date;
   /** The operator's calling window and attempt limit, from Automation Rules. */
   rules: CallRules;
@@ -199,7 +203,16 @@ export function CallQueueList({
                     "Start the call" is itself a link, and a wrapper that
                     cancels default behaviour would stop it opening.
                   */}
-                  <div className="mt-1 flex justify-end">
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <Link
+                      href={`${peekBase}${encodeURIComponent(
+                        quickViewValue({ kind: "call_card", id: c.id })
+                      )}`}
+                      scroll={false}
+                      className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+                    >
+                      Quick look
+                    </Link>
                     <RowActions
                       actions={callCardRowActions(
                         {

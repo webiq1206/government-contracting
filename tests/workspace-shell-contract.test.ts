@@ -62,6 +62,37 @@ const HOSTS: { file: string; flag: string }[] = [
   { file: "app/(dash)/compliance/page.tsx", flag: "const opened = Boolean(requested);" },
 ];
 
+describe("the quick view drawer, on the surfaces the shell hosts", () => {
+  it("is a column of the page, never a pane inside the shell", () => {
+    /*
+     * It shipped once as the shell's `context`, which nests a fixed-width
+     * drawer inside a narrower fixed-width aside: clipped at the widest
+     * breakpoint, and stacked underneath the record rather than beside the
+     * queue at the middle one. The drawer already knows how to be a column on
+     * a wide screen and a sheet on a phone, and it can only do that as a
+     * sibling of the shell.
+     */
+    const offenders: string[] = [];
+    for (const file of sourceFiles("app")) {
+      const src = readFileSync(file, "utf8");
+      const at = src.indexOf("context={");
+      if (at < 0) continue;
+      // The slot's own expression, up to the prop that always follows it.
+      const end = src.indexOf("contextLabel", at);
+      const slot = src.slice(at, end > at ? end : at + 2000);
+      if (slot.includes("<QuickViewDrawer")) offenders.push(relative(process.cwd(), file));
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("stands the supporting pane down instead of crowding into a fourth column", () => {
+    for (const file of ["app/(dash)/review/page.tsx", "app/(dash)/workbench/page.tsx"]) {
+      const src = readFileSync(file, "utf8");
+      expect(src).toMatch(/context=\{[^}]*peek/);
+    }
+  });
+});
+
 describe("which pane a phone gets", () => {
   for (const { file, flag } of HOSTS) {
     it(`${file} decides it from the URL, not from the default selection`, () => {
@@ -84,11 +115,13 @@ describe("which pane a phone gets", () => {
     expect(src).toContain("selected={opened}");
   });
 
-  it("Review decides it from its own query parameter", () => {
-    // Review predates the shell and names the parameter differently; the rule
-    // is the same one.
+  it("Review decides it from its own query parameters", () => {
+    // Review predates the shell and names its parameters differently; the
+    // rule is the same one, and the quick-look drawer counts as opened
+    // because on a phone it is the screen.
     const src = readFileSync("app/(dash)/review/page.tsx", "utf8");
-    expect(src).toContain("selected={selectedId != null}");
+    expect(src).toContain("const opened = selectedId != null || peekTarget != null;");
+    expect(src).toContain("selected={opened}");
   });
 
   it("no host feeds a resolved selection to the shell", () => {

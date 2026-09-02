@@ -11,6 +11,7 @@ import { assignableMembers, ownersFor } from "@/lib/ownership";
 import {
   OWNER_FILTERS,
   OWNER_FILTER_LABEL,
+  describeOwner,
   parseOwnerFilter,
   type Owner,
 } from "@/lib/domain/ownership";
@@ -47,7 +48,22 @@ import {
 import { QueueRail, type QueueEntry, type QueueTone } from "@/components/workspace/queue-rail";
 import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
 import { WorkbenchPanel } from "@/components/workbench/workbench-panel";
+import { QuickViewDrawer } from "@/components/quick-view";
 import { countdown, shortDate } from "@/lib/format";
+import {
+  parseQuickView,
+  quickViewValue,
+  workItemQuickView,
+  type QuickView,
+} from "@/lib/domain/quick-view";
+import {
+  callCardQuickViewData,
+  opportunityQuickViewData,
+} from "@/lib/quick-view-data";
+import {
+  workItemRowActions,
+  type RowAction,
+} from "@/lib/domain/row-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +163,21 @@ export default async function WorkbenchPage({
   };
   const { forItem, base } = queueHrefBuilder("/workbench", params, "i");
 
+  function peekHref(value: string | null): string {
+    const p = new URLSearchParams();
+    for (const [key, valueOrValues] of Object.entries(searchParams ?? {})) {
+      if (key === "peek" || valueOrValues == null) continue;
+      if (Array.isArray(valueOrValues)) {
+        valueOrValues.forEach((value) => p.append(key, value));
+      } else {
+        p.set(key, valueOrValues);
+      }
+    }
+    if (value) p.set("peek", value);
+    const query = p.toString();
+    return query ? `/workbench?${query}` : "/workbench";
+  }
+
   const resolved = resolveSelection(shown, (i) => i.key, selectedKey);
   /*
    * A link that names an item the queue no longer holds.
@@ -180,14 +211,72 @@ export default async function WorkbenchPage({
   const prevHref = position.prevId ? forItem(position.prevId) : null;
 
   const now = new Date();
-  const entries: QueueEntry[] = shown.map((i) => ({
+  const peekValues = shown.map((item) => {
+    const kind =
+      item.record?.kind === "opportunity" || item.record?.kind === "call_card"
+        ? item.record.kind
+        : "work";
+    const id = kind === "work" ? item.key : item.record!.id;
+    return quickViewValue({ kind, id });
+  });
+  const entries: QueueEntry[] = shown.map((i, index) => ({
     id: i.key,
     href: forItem(i.key),
+    quickLookHref: peekHref(peekValues[index]),
     title: i.title,
     context: i.context || null,
     meta: i.due ? countdown(i.due) : null,
     state: toneFor(i, now),
   }));
+
+  const peekTarget = parseQuickView(searchParams?.peek, {
+    allowed: ["opportunity", "call_card", "work"],
+  });
+  const peekValue = peekTarget ? quickViewValue(peekTarget) : null;
+  const peekIndex = peekValue ? peekValues.indexOf(peekValue) : -1;
+  const peekItem = peekIndex >= 0 ? shown[peekIndex] : null;
+  let peekView: QuickView | null = null;
+  let peekActions: RowAction[] = [];
+  if (peekTarget && peekItem) {
+    /*
+     * The controls come from the rail row, whatever the drawer is showing.
+     * The row is a piece of work; the drawer is the record behind it. Building
+     * the drawer's controls from the record would offer things the row did
+     * not, and the operator would have two different answers to the same
+     * question about the same item.
+     */
+    peekActions = workItemRowActions(
+      {
+        record: peekItem.record ?? null,
+        opportunityId: peekItem.opportunityId ?? null,
+        href: peekItem.href,
+        actionLabel: peekItem.actionLabel,
+        decide: Boolean(peekItem.actions?.decide),
+        snooze: peekItem.actions?.snooze ?? null,
+        call: peekItem.actions?.call ?? null,
+        title: peekItem.actions?.decide?.title ?? peekItem.context ?? peekItem.title,
+      },
+      { role: ctx.user.orgRole }
+    );
+
+    if (peekTarget.kind === "opportunity") {
+      const data = await opportunityQuickViewData(peekTarget.id, {
+        owner: describeOwner(peekItem.owner, ctx.user.id),
+      });
+      if (data) peekView = data.view;
+    } else if (peekTarget.kind === "call_card") {
+      const data = await callCardQuickViewData(peekTarget.id, {
+        openHref: peekItem.href,
+      });
+      if (data) peekView = data.view;
+    } else {
+      peekView = workItemQuickView({
+        ...peekItem,
+        owner: describeOwner(peekItem.owner, ctx.user.id),
+      });
+    }
+  }
+  const peekPosition = queuePosition(peekValues, peekView ? peekValue : null);
 
   const detail = selected ? await loadWorkbenchDetail(selected, ctx.orgId) : null;
   const owners = selected?.opportunityId
@@ -366,9 +455,14 @@ export default async function WorkbenchPage({
         </div>
       ) : (
         <>
-          <QueueKeys prevHref={prevHref} nextHref={nextHref} closeHref={base} />
+          <QueueKeys
+            prevHref={prevHref}
+            nextHref={nextHref}
+            closeHref={peekView ? peekHref(null) : base}
+          />
+          <div className="flex min-h-0 flex-1 overflow-hidden">
           <WorkspaceShell
-            selected={opened}
+            selected={opened || Boolean(peekView)}
             queueLabel="Work queue"
             queueWidth="lg:w-[400px]"
             queue={
@@ -418,7 +512,7 @@ export default async function WorkbenchPage({
               )
             }
             context={
-              selected ? (
+              peekView ? undefined : selected ? (
                 <div className="space-y-4">
                   <ContextSection title="Why this is here">
                     <p className="text-sm text-foreground">
@@ -530,6 +624,33 @@ export default async function WorkbenchPage({
               ) : undefined
             }
           />
+
+          {/*
+            * The drawer is a column of the page, not a pane inside the shell.
+            *
+            * Nested in the shell's context slot it was a fixed-width drawer
+            * inside a narrower fixed-width aside: clipped on a wide screen,
+            * stacked under the panel on a medium one. Beside the shell it is
+            * the same column every other list gives it. The supporting pane
+            * stands down while it is open rather than crowding into a fourth
+            * column.
+            */}
+          {peekView && (
+            <QuickViewDrawer
+              view={peekView}
+              closeHref={peekHref(null)}
+              actions={peekActions}
+              members={members}
+              viewerId={ctx.user.id}
+              nav={{
+                prevHref: peekPosition.prevId ? peekHref(peekPosition.prevId) : null,
+                nextHref: peekPosition.nextId ? peekHref(peekPosition.nextId) : null,
+                index: peekPosition.index,
+                total: peekPosition.total,
+              }}
+            />
+          )}
+          </div>
         </>
       )}
     </div>

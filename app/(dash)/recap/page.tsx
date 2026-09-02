@@ -3,9 +3,15 @@ import { redirect } from "next/navigation";
 import { PageFrame } from "@/components/page-frame";
 import { RecapView } from "@/components/recap-view";
 import { RecapDayPicker } from "@/components/recap-day-picker";
-import { OppPeek } from "@/components/opp-peek";
-import { SubPeek } from "@/components/sub-peek";
-import { oppPeek, subPeek } from "@/lib/data";
+import { QuickViewDrawer } from "@/components/quick-view";
+import {
+  opportunityQuickViewData,
+  subcontractorQuickViewData,
+} from "@/lib/quick-view-data";
+import {
+  opportunityRowActions,
+  subcontractorRowActions,
+} from "@/lib/domain/row-actions";
 import { parsePeekParam } from "@/lib/domain/search-results";
 import { currentUser } from "@/lib/auth";
 import { queryOne } from "@/lib/db";
@@ -92,8 +98,8 @@ export default async function RecapPage({
    */
   const peek = parsePeekParam(searchParams?.peek);
   const [peekedOpp, peekedSub] = await Promise.all([
-    peek?.kind === "opportunity" ? oppPeek(peek.id) : Promise.resolve(null),
-    peek?.kind === "subcontractor" ? subPeek(peek.id) : Promise.resolve(null),
+    peek?.kind === "opportunity" ? opportunityQuickViewData(peek.id) : Promise.resolve(null),
+    peek?.kind === "subcontractor" ? subcontractorQuickViewData(peek.id) : Promise.resolve(null),
   ]);
   const peekHref = (value: string | null) => {
     const p = new URLSearchParams();
@@ -155,12 +161,20 @@ export default async function RecapPage({
         />
       </div>
 
-      {peekedOpp && <OppPeek data={peekedOpp} closeHref={peekHref(null)} />}
-      {peekedSub && (
-        <SubPeek
-          sub={peekedSub}
+      {peekedOpp && (
+        <QuickViewDrawer
+          view={peekedOpp.view}
           closeHref={peekHref(null)}
-          canManage={can(user.orgRole, "manage_subs")}
+          actions={opportunityRowActions(peekedOpp.actionFacts, { role: user.orgRole })}
+          viewerId={user.id}
+        />
+      )}
+      {peekedSub && (
+        <QuickViewDrawer
+          view={peekedSub.view}
+          closeHref={peekHref(null)}
+          actions={subcontractorRowActions(peekedSub.actionFacts, { role: user.orgRole })}
+          viewerId={user.id}
         />
       )}
       </div>

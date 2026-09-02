@@ -23,6 +23,13 @@ import {
   resolveSelection,
 } from "@/lib/domain/workspace-queue";
 import { EstimatedValue } from "@/components/estimated-value";
+import { QuickViewDrawer } from "@/components/quick-view";
+import {
+  parseQuickView,
+  quickViewValue,
+} from "@/lib/domain/quick-view";
+import { opportunityQuickViewData } from "@/lib/quick-view-data";
+import { opportunityRowActions } from "@/lib/domain/row-actions";
 import type { Opportunity } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -76,6 +83,40 @@ export default async function ReviewPage({
 
   const brief = selected ? briefFor(selected) : null;
 
+  const peekTarget = parseQuickView(searchParams?.peek, {
+    allowed: ["opportunity"],
+  });
+  const peeked = peekTarget
+    ? await opportunityQuickViewData(peekTarget.id)
+    : null;
+  const peekValues = opps.map((o) =>
+    quickViewValue({ kind: "opportunity", id: String(o.id) })
+  );
+  const peekValue = peekTarget ? quickViewValue(peekTarget) : null;
+  const peekPosition = queuePosition(peekValues, peekValue);
+  const {
+    forItem: forPeek,
+    base: closePeekHref,
+  } = queueHrefBuilder("/review", searchParams ?? {}, "peek");
+  const peekBaseQuery = (() => {
+    const p = new URLSearchParams();
+    for (const [key, value] of Object.entries(searchParams ?? {})) {
+      if (key === "peek" || value == null) continue;
+      if (Array.isArray(value)) value.forEach((item) => p.append(key, item));
+      else p.set(key, value);
+    }
+    const query = p.toString();
+    return query ? `/review?${query}&peek=` : "/review?peek=";
+  })();
+
+  /*
+   * Which pane a phone gets, decided from the URL rather than from whichever
+   * record happened to resolve. A quick look counts as opened: on a phone the
+   * drawer is the screen, and leaving the queue mounted underneath it would
+   * put two scrolling lists on top of each other.
+   */
+  const opened = selectedId != null || peekTarget != null;
+
   const urgent = opps.filter((o) => {
     const c = countdown(o.review_expires_at);
     return c === "overdue" || /^(\d|1\d)h/.test(c);
@@ -83,7 +124,7 @@ export default async function ReviewPage({
 
   return (
     <div className="flex page-shell">
-      <div className={selectedId ? "hidden lg:contents" : "contents"}>
+      <div className={opened ? "hidden lg:contents" : "contents"}>
         <PageFrame
           help={PAGE_HELP["review"]}
           title="Review"
@@ -111,9 +152,26 @@ export default async function ReviewPage({
         </div>
       ) : (
         <>
-          <QueueKeys prevHref={prevHref} nextHref={nextHref} closeHref={base} />
+          <QueueKeys
+            prevHref={
+              peeked
+                ? peekPosition.prevId
+                  ? forPeek(peekPosition.prevId)
+                  : null
+                : prevHref
+            }
+            nextHref={
+              peeked
+                ? peekPosition.nextId
+                  ? forPeek(peekPosition.nextId)
+                  : null
+                : nextHref
+            }
+            closeHref={peeked ? closePeekHref : base}
+          />
+          <div className="flex min-h-0 flex-1 overflow-hidden">
           <WorkspaceShell
-            selected={selectedId != null}
+            selected={opened}
             queueLabel="Decision queue"
             queueWidth="lg:w-[420px]"
             queue={
@@ -134,6 +192,7 @@ export default async function ReviewPage({
                     opps={opps}
                     selectedId={currentId}
                     hrefBase="/review?o="
+                    peekHrefBase={peekBaseQuery}
                     role={ctx.user.orgRole}
                   />
                 </div>
@@ -157,9 +216,38 @@ export default async function ReviewPage({
                 </WorkspacePlaceholder>
               )
             }
-            context={selected ? <Evidence o={selected} /> : undefined}
+            context={selected && !peeked ? <Evidence o={selected} /> : undefined}
             contextLabel="The evidence behind the score"
           />
+
+          {/*
+            * The drawer is a column of the page, not a pane inside the shell.
+            *
+            * Nesting it in the shell's context slot put a fixed-width drawer
+            * inside a narrower fixed-width aside, where it was clipped on a
+            * wide screen and stacked underneath the brief on a medium one.
+            * Beside the shell it behaves the way it does on every other list:
+            * its own column on a wide screen, a full sheet on a phone. The
+            * evidence pane steps aside while it is open, so the widest layout
+            * is still three columns rather than four.
+            */}
+          {peeked && (
+            <QuickViewDrawer
+              view={peeked.view}
+              closeHref={closePeekHref}
+              actions={opportunityRowActions(peeked.actionFacts, {
+                role: ctx.user.orgRole,
+              })}
+              viewerId={ctx.user.id}
+              nav={{
+                prevHref: peekPosition.prevId ? forPeek(peekPosition.prevId) : null,
+                nextHref: peekPosition.nextId ? forPeek(peekPosition.nextId) : null,
+                index: peekPosition.index,
+                total: peekPosition.total,
+              }}
+            />
+          )}
+          </div>
         </>
       )}
     </div>

@@ -4,7 +4,6 @@ import {
   PIPELINE_STAGES,
   opportunityTable,
   opportunityTableCount,
-  oppPeek,
   OPP_SORTS,
 } from "@/lib/data";
 import { FilterToolbar } from "@/components/filter-toolbar";
@@ -50,7 +49,10 @@ import { RememberedView } from "@/components/remembered-view";
 import { CardPreview } from "@/components/card-preview";
 import type { AutomationRules } from "@/lib/domain/intake";
 import type { Opportunity } from "@/lib/types";
-import { OppPeek } from "@/components/opp-peek";
+import { QuickViewDrawer } from "@/components/quick-view";
+import { parseQuickView } from "@/lib/domain/quick-view";
+import { opportunityQuickViewData } from "@/lib/quick-view-data";
+import { queuePosition } from "@/lib/domain/workspace-queue";
 
 /**
  * The simple (default) pipeline view groups by who the ball is with rather
@@ -285,8 +287,14 @@ export default async function PipelinePage({
    * decides what is open. An id that is not this org's returns nothing and the
    * table renders without a drawer.
    */
-  const peekId = typeof searchParams?.peek === "string" ? searchParams.peek : null;
-  const peeked = peekId ? await oppPeek(peekId) : null;
+  const peekId =
+    parseQuickView(searchParams?.peek, {
+      allowed: ["opportunity"],
+      // The views here write a bare id; a link from Today or Search names the
+      // kind. Both open the same opportunity.
+      defaultKind: "opportunity",
+    })?.id ?? null;
+  const peeked = peekId ? await opportunityQuickViewData(peekId) : null;
 
   const peekQuery = (() => {
     const p = new URLSearchParams();
@@ -406,6 +414,39 @@ export default async function PipelinePage({
   const byLane = new Map<LaneKey, Opportunity[]>(LANES.map((l) => [l.key, []]));
   for (const o of opps) byLane.get(laneFor(o))!.push(o);
 
+  /*
+   * What the drawer's arrows walk: the records this view is showing, in the
+   * order it shows them. Grouped views are flattened lane by lane and column
+   * by column, because that is the order somebody reading the screen would
+   * go in, and an alphabetical or load order would send them somewhere the
+   * page does not look like it goes.
+   */
+  const peekOrder =
+    view === "table"
+      ? tableRows.map((r) => r.id)
+      : view === "stages"
+        ? stages.flatMap((st) => (byStage.get(st.key) ?? []).map((o) => o.id))
+        : view === "lanes"
+          ? LANES.flatMap((l) => (byLane.get(l.key) ?? []).map((o) => o.id))
+          : opps.map((o) => o.id);
+  const peekNav = queuePosition(peekOrder, peekId);
+  const peekDrawer = peeked ? (
+    <QuickViewDrawer
+      view={peeked.view}
+      closeHref={closePeekHref}
+      /* The same builder the card and the table row call. */
+      actions={opportunityRowActions(peeked.actionFacts, { role: viewer?.orgRole })}
+      members={members}
+      viewerId={viewer?.id}
+      nav={{
+        prevHref: peekNav.prevId ? `${peekBase}peek=${peekNav.prevId}` : null,
+        nextHref: peekNav.nextId ? `${peekBase}peek=${peekNav.nextId}` : null,
+        index: peekNav.index,
+        total: peekNav.total,
+      }}
+    />
+  ) : null;
+
   return (
     <div className="flex page-shell">
       <RememberedView
@@ -519,12 +560,22 @@ export default async function PipelinePage({
               }
             />
           </div>
-          {peeked && <OppPeek data={peeked} closeHref={closePeekHref} />}
+          {peekDrawer}
           </div>
         </>
       )}
 
-      {view !== "table" && opps.length === 0 && <PipelineOnboarding />}
+      {/*
+        Everything that is not the table, beside the drawer rather than above
+        it: on a wide screen the quick look is a column and the board keeps
+        its place, and below that breakpoint the drawer covers the screen and
+        this row is just the page.
+      */}
+      {view !== "table" && (
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+
+      {opps.length === 0 && <PipelineOnboarding />}
 
       {/* Simple view: four owner lanes. A grid from md up; on a phone the same
           four lanes stay side by side and are swiped between, because a lane
@@ -549,6 +600,7 @@ export default async function PipelinePage({
             nextAction={NEXT_ACTION}
             role={viewer?.orgRole}
             members={members}
+            peekHrefFor={(o) => `${peekBase}peek=${o.id}`}
           />
         </div>
       )}
@@ -586,6 +638,7 @@ export default async function PipelinePage({
                       coverage={boardCoverage.get(o.id)}
                       owner={boardOwners.get(o.id) ?? null}
                       viewerId={viewer?.id}
+                      peekHref={`${peekBase}peek=${o.id}`}
                     />
                     ))}
                     {cards.length === 0 && (
@@ -637,6 +690,7 @@ export default async function PipelinePage({
                         coverage={boardCoverage.get(o.id)}
                         owner={boardOwners.get(o.id) ?? null}
                         viewerId={viewer?.id}
+                        peekHref={`${peekBase}peek=${o.id}`}
                       />
                     </DraggableCard>
                   ))}
@@ -691,6 +745,7 @@ export default async function PipelinePage({
                       coverage={boardCoverage.get(o.id)}
                       owner={boardOwners.get(o.id) ?? null}
                       viewerId={viewer?.id}
+                      peekHref={`${peekBase}peek=${o.id}`}
                     />
                 ))}
               </MobileColumn>
@@ -699,6 +754,11 @@ export default async function PipelinePage({
         </SwipeRail>
       </div>
       </>
+      )}
+
+      </div>
+      {peekDrawer}
+      </div>
       )}
     </div>
   );
@@ -769,6 +829,7 @@ function PipelineCard({
   viewerId,
   role,
   members = [],
+  peekHref,
 }: {
   o: Opportunity;
   rules?: AutomationRules;
@@ -778,6 +839,8 @@ function PipelineCard({
   /** What the reader may do. Without it the card offers nothing. */
   role?: string | null;
   members?: Owner[];
+  /** Where the quick look opens: this board, with the drawer on this record. */
+  peekHref?: string;
 }) {
   return (
     <CardPreview opportunityId={o.id}>
@@ -828,7 +891,16 @@ function PipelineCard({
         nested in an anchor is invalid markup, and the navigation it triggers
         alongside the click cancels the request the button just sent.
       */}
-      <div className="mt-2 flex justify-end">
+      <div className="mt-2 flex items-center justify-end gap-2">
+        {peekHref && (
+          <Link
+            href={peekHref}
+            scroll={false}
+            className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+          >
+            Quick look
+          </Link>
+        )}
         <RowActions
           actions={opportunityRowActions(
             {

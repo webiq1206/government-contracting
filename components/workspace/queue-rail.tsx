@@ -42,6 +42,8 @@ export interface QueueEntry {
   meta?: string | null;
   /** One state word, when the row has a state worth naming. */
   state?: { label: string; tone: QueueTone } | null;
+  /** Open this row's summary without changing the rail selection. */
+  quickLookHref?: string;
   /**
    * Finished during this sitting.
    *
@@ -132,6 +134,7 @@ export function QueueRail({
                   href={e.href}
                   onSelect={onSelect ? () => onSelect(e.id) : undefined}
                   active={active}
+                  bordered={!e.quickLookHref}
                 >
                   <span
                     aria-hidden
@@ -179,6 +182,17 @@ export function QueueRail({
                     )}
                   </span>
                 </Row>
+                {e.quickLookHref && (
+                  <div className="border-b border-border/40 px-4 pb-2 pl-12 dark:border-white/5">
+                    <Link
+                      href={e.quickLookHref}
+                      scroll={false}
+                      className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+                    >
+                      Quick look
+                    </Link>
+                  </div>
+                )}
               </li>
             );
           })}
@@ -201,14 +215,18 @@ function Row({
   href,
   onSelect,
   active,
+  bordered,
   children,
 }: {
   href?: string;
   onSelect?: () => void;
   active: boolean;
+  bordered: boolean;
   children: ReactNode;
 }) {
-  const className = `flex w-full gap-3 border-b border-border/40 px-4 py-3 text-left transition-colors hover:bg-foreground/[0.03] dark:border-white/5 ${
+  const className = `flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-foreground/[0.03] ${
+    bordered ? "border-b border-border/40 dark:border-white/5" : ""
+  } ${
     active ? "bg-gold/10" : ""
   }`;
   if (onSelect) {

@@ -26,8 +26,11 @@ import {
 } from "@/lib/domain/conversation-centre";
 import { MESSAGE_STATE_LABEL, MESSAGE_STATE_MEANING } from "@/lib/domain/message-state";
 import { ConversationThreadPane } from "@/components/conversation-centre";
+import { QuickViewDrawer } from "@/components/quick-view";
 import { RowActions } from "@/components/row-actions";
 import { conversationRowActions, requestInfoMessage } from "@/lib/domain/row-actions";
+import { parseQuickView, quickViewValue } from "@/lib/domain/quick-view";
+import { conversationQuickViewData } from "@/lib/quick-view-data";
 import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
 import { queuePosition } from "@/lib/domain/workspace-queue";
 import { NeedsMatchingInbox } from "@/components/needs-matching-inbox";
@@ -129,6 +132,49 @@ export default async function CommunicationsPage({
   const shown = all.filter((c) => matchesFilter(c, filter));
 
   const selected = selectedKey ? all.find((c) => c.threadKey === selectedKey) ?? null : null;
+  const peekTarget = parseQuickView(searchParams?.peek, { allowed: ["conversation"] });
+  /*
+   * Looked up in the whole list rather than the filtered one, so a link
+   * somebody was sent still opens the thread it names even when the view
+   * chips on their end are set to something that excludes it. The arrows
+   * still walk the filtered list, which is what is behind the drawer.
+   */
+  const peekSummary =
+    peekTarget?.kind === "conversation"
+      ? all.find((c) => c.threadKey === peekTarget.id) ?? null
+      : null;
+  const peeked = peekSummary
+    ? await conversationQuickViewData(peekSummary, {
+        openHref: href(filter, q, peekSummary.threadKey),
+      })
+    : null;
+
+  function withPeek(threadKey: string): string {
+    const p = new URLSearchParams();
+    for (const [key, value] of Object.entries(searchParams ?? {})) {
+      if (key === "peek" || value == null) continue;
+      if (Array.isArray(value)) value.forEach((entry) => p.append(key, entry));
+      else p.set(key, value);
+    }
+    p.set("peek", quickViewValue({ kind: "conversation", id: threadKey }));
+    return `/communications?${p.toString()}`;
+  }
+
+  function withoutPeek(): string {
+    const p = new URLSearchParams();
+    for (const [key, value] of Object.entries(searchParams ?? {})) {
+      if (key === "peek" || value == null) continue;
+      if (Array.isArray(value)) value.forEach((entry) => p.append(key, entry));
+      else p.set(key, value);
+    }
+    const queryString = p.toString();
+    return queryString ? `/communications?${queryString}` : "/communications";
+  }
+
+  const peekPosition = queuePosition(
+    shown.map((c) => c.threadKey),
+    peekTarget?.id ?? null
+  );
   /*
    * Where in the filtered list this conversation is, and what is either side.
    *
@@ -146,7 +192,7 @@ export default async function CommunicationsPage({
    * the links in the list, a prefetch runs the server component, and hovering
    * the list marked every conversation in it read.
    */
-  const messages = selected ? await conversationMessages(selected.threadKey) : [];
+  const messages = selected && !peeked ? await conversationMessages(selected.threadKey) : [];
 
   /*
    * A row asked for this thread with a reply already started. "Ask them for
@@ -290,13 +336,31 @@ export default async function CommunicationsPage({
         */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <QueueKeys
-          prevHref={threadPosition.prevId ? href(filter, q, threadPosition.prevId) : null}
-          nextHref={threadPosition.nextId ? href(filter, q, threadPosition.nextId) : null}
-          closeHref={href(filter, q)}
+          prevHref={
+            peeked
+              ? peekPosition.prevId
+                ? withPeek(peekPosition.prevId)
+                : null
+              : threadPosition.prevId
+                ? href(filter, q, threadPosition.prevId)
+                : null
+          }
+          nextHref={
+            peeked
+              ? peekPosition.nextId
+                ? withPeek(peekPosition.nextId)
+                : null
+              : threadPosition.nextId
+                ? href(filter, q, threadPosition.nextId)
+                : null
+          }
+          closeHref={peeked ? withoutPeek() : href(filter, q)}
         />
         <section
           aria-label="Conversations"
-          className={`scroll-thin w-full shrink-0 overflow-y-auto border-r border-border/55 dark:border-white/10 lg:w-[360px] ${
+          className={`scroll-thin w-full overflow-y-auto border-r border-border/55 dark:border-white/10 ${
+            peeked ? "min-w-0 flex-1" : "shrink-0 lg:w-[360px]"
+          } ${
             selected ? "hidden lg:block" : "block"
           }`}
         >
@@ -378,7 +442,14 @@ export default async function CommunicationsPage({
                       it: a button nested in an anchor opens the thread as
                       well as acting.
                     */}
-                    <div className="flex justify-end px-4 pb-2">
+                    <div className="flex items-center justify-between gap-2 px-4 pb-2">
+                      <Link
+                        href={withPeek(c.threadKey)}
+                        scroll={false}
+                        className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+                      >
+                        Quick look
+                      </Link>
                       <RowActions
                         actions={conversationRowActions(
                           {
@@ -402,50 +473,72 @@ export default async function CommunicationsPage({
           )}
         </section>
 
-        <section
-          aria-label="Conversation"
-          className={`min-w-0 flex-1 ${selected ? "flex flex-col" : "hidden lg:flex lg:flex-col"}`}
-        >
-          {selected ? (
-            <ConversationThreadPane
-              /*
-               * Keyed by the thread, so moving to another conversation starts
-               * a fresh reply box. Without it React keeps the same component
-               * instance and the draft typed to one subcontractor survives
-               * into the next one's thread, which is a message sent to the
-               * wrong company waiting to happen.
-               */
-              key={selected.threadKey}
-              conversation={selected}
-              messages={messages}
-              canSend={canSend}
-              canSeeRaw={canSeeRaw}
-              backHref={href(filter, q)}
-              initialText={prefill}
-              stateLabels={MESSAGE_STATE_LABEL}
-              stateMeanings={MESSAGE_STATE_MEANING}
-            />
-          ) : (
-            <div className="flex flex-1 items-center justify-center p-8">
-              <p className="max-w-sm text-center text-sm text-slate-500">
-                Pick a conversation to read it and reply. The list is ordered by the
-                most recent message, and the view chips above narrow it to the ones
-                that need something from you.
-              </p>
-            </div>
-          )}
-        </section>
+        {!peeked && (
+          <section
+            aria-label="Conversation"
+            className={`min-w-0 flex-1 ${
+              selected ? "flex flex-col" : "hidden lg:flex lg:flex-col"
+            }`}
+          >
+            {selected ? (
+              <ConversationThreadPane
+                /*
+                 * Keyed by the thread, so moving to another conversation starts
+                 * a fresh reply box. Without it React keeps the same component
+                 * instance and the draft typed to one subcontractor survives
+                 * into the next one's thread, which is a message sent to the
+                 * wrong company waiting to happen.
+                 */
+                key={selected.threadKey}
+                conversation={selected}
+                messages={messages}
+                canSend={canSend}
+                canSeeRaw={canSeeRaw}
+                backHref={href(filter, q)}
+                initialText={prefill}
+                stateLabels={MESSAGE_STATE_LABEL}
+                stateMeanings={MESSAGE_STATE_MEANING}
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center p-8">
+                <p className="max-w-sm text-center text-sm text-slate-500">
+                  Pick a conversation to read it and reply. The list is ordered by the
+                  most recent message, and the view chips above narrow it to the ones
+                  that need something from you.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
 
-        <aside
-          aria-label="Deliverability"
-          className="scroll-thin hidden w-[300px] shrink-0 overflow-y-auto border-l border-border/55 p-4 dark:border-white/10 xl:block"
-        >
-          {selected ? (
-            <RelatedContext conversation={selected} rates={rates} />
-          ) : (
-            <Deliverability rates={rates} />
-          )}
-        </aside>
+        {!peeked && (
+          <aside
+            aria-label="Deliverability"
+            className="scroll-thin hidden w-[300px] shrink-0 overflow-y-auto border-l border-border/55 p-4 dark:border-white/10 xl:block"
+          >
+            {selected ? (
+              <RelatedContext conversation={selected} rates={rates} />
+            ) : (
+              <Deliverability rates={rates} />
+            )}
+          </aside>
+        )}
+
+        {peeked && (
+          <QuickViewDrawer
+            view={peeked.view}
+            closeHref={withoutPeek()}
+            actions={conversationRowActions(peeked.actionFacts, {
+              role: ctx.user.orgRole,
+            })}
+            nav={{
+              prevHref: peekPosition.prevId ? withPeek(peekPosition.prevId) : null,
+              nextHref: peekPosition.nextId ? withPeek(peekPosition.nextId) : null,
+              index: peekPosition.index,
+              total: peekPosition.total,
+            }}
+          />
+        )}
       </div>
     </div>
   );

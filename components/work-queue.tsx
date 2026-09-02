@@ -22,6 +22,7 @@ export function WorkQueue({
   viewerId,
   role,
   members = [],
+  peekHrefFor,
 }: {
   items: WorkItem[];
   limit?: number;
@@ -35,6 +36,8 @@ export function WorkQueue({
   role?: string | null;
   /** Everybody the record could be handed to. Without it, reassign is dropped. */
   members?: Owner[];
+  /** Today supplies the shareable drawer URL; other renderers keep plain rows. */
+  peekHrefFor?: (item: WorkItem) => string;
 }) {
   const shown = limit ? items.slice(0, limit) : items;
   const more = items.length - shown.length;
@@ -109,12 +112,23 @@ export function WorkQueue({
                 sit outside the Link rather than inside it with a click
                 swallowed, so a keyboard reaches them in the order they read.
               */}
-              <RowActionsForItem
-                item={item}
-                role={role}
-                members={members}
-                viewerId={viewerId}
-              />
+              <div className="flex flex-wrap items-center gap-2 px-4 pb-3 sm:shrink-0 sm:px-5 sm:pb-0">
+                {peekHrefFor && (
+                  <Link
+                    href={peekHrefFor(item)}
+                    scroll={false}
+                    className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+                  >
+                    Quick look
+                  </Link>
+                )}
+                <RowActionsForItem
+                  item={item}
+                  role={role}
+                  members={members}
+                  viewerId={viewerId}
+                />
+              </div>
             </li>
           ))}
         </ul>
@@ -163,14 +177,12 @@ function RowActionsForItem({
   );
   if (actions.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 px-4 pb-3 sm:shrink-0 sm:px-5 sm:pb-0">
-      <RowActions
-        actions={actions}
-        members={members}
-        owner={item.owner ?? null}
-        viewerId={viewerId}
-        recordLabel={item.title}
-      />
-    </div>
+    <RowActions
+      actions={actions}
+      members={members}
+      owner={item.owner ?? null}
+      viewerId={viewerId}
+      recordLabel={item.title}
+    />
   );
 }

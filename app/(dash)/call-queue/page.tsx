@@ -13,6 +13,13 @@ import { countdown } from "@/lib/format";
 import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
 import { queuePosition } from "@/lib/domain/workspace-queue";
 import {
+  parseQuickView,
+  quickViewValue,
+} from "@/lib/domain/quick-view";
+import { callCardQuickViewData } from "@/lib/quick-view-data";
+import { QuickViewDrawer } from "@/components/quick-view";
+import { callCardRowActions } from "@/lib/domain/row-actions";
+import {
   callQueueCounts,
   filterCalls,
   parseCallGrouping,
@@ -39,6 +46,7 @@ export default async function CallQueuePage({
   // immediately (used by the Today page so one click lands in the call).
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const openId = one(searchParams?.open);
+  const peekTarget = parseQuickView(searchParams?.peek, { allowed: ["call_card"] });
   /**
    * /call-queue?opportunity=<id> narrows to one bid's calls. "Start calling"
    * on an opportunity used to drop the operator into the whole queue, where
@@ -116,6 +124,29 @@ export default async function CallQueuePage({
     const str = p.toString();
     return str ? `/call-queue?${str}&open=` : "/call-queue?open=";
   })();
+  function peekHref(value: string | null): string {
+    const p = new URLSearchParams();
+    for (const [key, raw] of Object.entries(searchParams ?? {})) {
+      if (key === "peek" || raw == null) continue;
+      if (Array.isArray(raw)) raw.forEach((item) => p.append(key, item));
+      else p.set(key, raw);
+    }
+    if (value) p.set("peek", value);
+    const str = p.toString();
+    return str ? `/call-queue?${str}` : "/call-queue";
+  }
+  const peekBase = (() => {
+    const href = peekHref(null);
+    return href.includes("?") ? `${href}&peek=` : `${href}?peek=`;
+  })();
+  const peekOrder = shown.map((c) => quickViewValue({ kind: "call_card", id: c.id }));
+  const selectedPeek = peekTarget ? quickViewValue(peekTarget) : null;
+  const peekPosition = queuePosition(peekOrder, selectedPeek);
+  const peeked = peekTarget
+    ? await callCardQuickViewData(peekTarget.id, {
+        openHref: openBase + peekTarget.id,
+      })
+    : null;
   // A filter that matches nothing must say so rather than look like an empty
   // queue: the calls may have been made already, or belong to another bid.
   const focusEmpty = Boolean(focusId) && cards.length === 0 && allCards.length > 0;
@@ -218,9 +249,25 @@ export default async function CallQueuePage({
               * in one hand.
               */}
             <QueueKeys
-              prevHref={callPosition.prevId ? openBase + callPosition.prevId : null}
-              nextHref={callPosition.nextId ? openBase + callPosition.nextId : null}
-              closeHref={queueHref({ open: null })}
+              prevHref={
+                peeked
+                  ? peekPosition.prevId
+                    ? peekHref(peekPosition.prevId)
+                    : null
+                  : callPosition.prevId
+                    ? openBase + callPosition.prevId
+                    : null
+              }
+              nextHref={
+                peeked
+                  ? peekPosition.nextId
+                    ? peekHref(peekPosition.nextId)
+                    : null
+                  : callPosition.nextId
+                    ? openBase + callPosition.nextId
+                    : null
+              }
+              closeHref={peeked ? peekHref(null) : queueHref({ open: null })}
             />
             {/*
               * A permanent split on a wide screen: the queue stays put and the
@@ -322,6 +369,7 @@ export default async function CallQueuePage({
                   grouping={grouping}
                   selectedId={openId ?? null}
                   hrefBase={openBase}
+                  peekBase={peekBase}
                   now={now}
                   rules={rules}
                   role={viewer?.orgRole}
@@ -331,7 +379,9 @@ export default async function CallQueuePage({
 
             <section
               aria-label="Active call"
-              className={`min-w-0 flex-1 ${openId ? "flex flex-col" : "hidden lg:flex lg:flex-col"}`}
+              className={`min-w-0 flex-1 ${
+                peeked ? "hidden" : openId ? "flex flex-col" : "hidden lg:flex lg:flex-col"
+              }`}
             >
               {openId ? (
                 <CallPanel cardId={openId} closeHref={queueHref({ open: null })} />
@@ -344,6 +394,25 @@ export default async function CallQueuePage({
                 </div>
               )}
             </section>
+            {peeked && (
+              <QuickViewDrawer
+                view={peeked.view}
+                closeHref={peekHref(null)}
+                actions={callCardRowActions(peeked.actionFacts, {
+                  role: viewer?.orgRole,
+                })}
+                nav={{
+                  prevHref: peekPosition.prevId
+                    ? peekHref(peekPosition.prevId)
+                    : null,
+                  nextHref: peekPosition.nextId
+                    ? peekHref(peekPosition.nextId)
+                    : null,
+                  index: peekPosition.index,
+                  total: peekPosition.total,
+                }}
+              />
+            )}
           </div>
         )}
       </div>

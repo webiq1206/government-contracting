@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { CERTIFICATIONS } from "@/lib/domain/sub-capability";
 import { DEFAULT_RATE_EVIDENCE } from "@/lib/data";
-import { subDatabase, subDatabaseCount, subPeek, SUB_SORTS } from "@/lib/data";
-import { SubPeek } from "@/components/sub-peek";
+import { subDatabase, subDatabaseCount, SUB_SORTS } from "@/lib/data";
+import { subcontractorQuickViewData } from "@/lib/quick-view-data";
+import { QuickViewDrawer } from "@/components/quick-view";
+import { parseQuickView } from "@/lib/domain/quick-view";
 import { QueueKeys } from "@/components/workspace/workspace-keys";
 import { queuePosition } from "@/lib/domain/workspace-queue";
 import { currentUser } from "@/lib/auth";
 import { assignableMembers } from "@/lib/ownership";
-import { can } from "@/lib/domain/roles";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
 import { PAGE_HELP } from "@/lib/help-content";
@@ -258,9 +259,15 @@ export default async function SubsPage({
    * and the list renders without a drawer, which is the same thing a deleted
    * record does and needs no separate branch.
    */
-  const peekId = typeof searchParams.peek === "string" ? searchParams.peek : null;
+  const peekId =
+    parseQuickView(searchParams.peek, {
+      allowed: ["subcontractor"],
+      // This page writes a bare id and always has; links from elsewhere name
+      // the kind. Both open the same firm.
+      defaultKind: "subcontractor",
+    })?.id ?? null;
   const [peeked, viewer, members] = await Promise.all([
-    peekId ? subPeek(peekId) : Promise.resolve(null),
+    peekId ? subcontractorQuickViewData(peekId) : Promise.resolve(null),
     currentUser().catch(() => null),
     // Everybody a firm could be handed to, read once for the page.
     assignableMembers().catch(() => []),
@@ -477,10 +484,16 @@ export default async function SubsPage({
       </div>
 
       {peeked && (
-        <SubPeek
-          sub={peeked}
+        <QuickViewDrawer
+          view={peeked.view}
           closeHref={withoutPeek()}
-          canManage={can(viewer?.orgRole, "manage_subs")}
+          /*
+           * The same builder the roster row uses, so the drawer and the row
+           * can never offer different things to the same person.
+           */
+          actions={subcontractorRowActions(peeked.actionFacts, { role: viewer?.orgRole })}
+          members={members}
+          viewerId={viewer?.id}
           nav={{
             prevHref: peekNav.prevId ? withPeek(peekNav.prevId) : null,
             nextHref: peekNav.nextId ? withPeek(peekNav.nextId) : null,

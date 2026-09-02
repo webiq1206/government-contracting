@@ -9,6 +9,7 @@ import { countdown } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
 import { InfoTip } from "@/components/info-tip";
+import { quickViewValue } from "@/lib/domain/quick-view";
 import {
   BulkActionBar,
   BulkSelectAllCheckbox,
@@ -27,12 +28,14 @@ function ReviewCard({
   href,
   selected,
   role,
+  peekHref,
 }: {
   o: Opportunity;
   href: string;
   selected: boolean;
   /** What the reader may do. Without it the card offers nothing. */
   role?: string | null;
+  peekHref: string;
 }) {
   const dims = o.score_breakdown?.dimensions ?? [];
   const expiry = countdown(o.review_expires_at);
@@ -189,9 +192,18 @@ function ReviewCard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
-        <Link href={href} className="text-xs font-medium text-accent-strong">
-          Open brief
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href={href} className="text-xs font-medium text-accent-strong">
+            Open brief
+          </Link>
+          <Link
+            href={peekHref}
+            scroll={false}
+            className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+          >
+            Quick look
+          </Link>
+        </div>
         {/*
           Pursue as the button, everything else behind the menu. The per-card
           Pass that used to sit here passed with no reason at all; the one in
@@ -223,6 +235,7 @@ export function BulkReviewList({
   opps,
   selectedId = null,
   hrefBase,
+  peekHrefBase,
   role,
 }: {
   opps: Opportunity[];
@@ -237,6 +250,8 @@ export function BulkReviewList({
    * still works anywhere it is used outside the two-panel Review page.
    */
   hrefBase?: string;
+  /** Prefix preserving the Review page's query before the peek value. */
+  peekHrefBase: string;
 }) {
   const ids = opps.map((o) => o.id);
   return (
@@ -256,6 +271,9 @@ export function BulkReviewList({
               href={hrefBase ? `${hrefBase}${o.id}` : `/opportunity/${o.id}`}
               selected={String(o.id) === selectedId}
               role={role}
+              peekHref={`${peekHrefBase}${encodeURIComponent(
+                quickViewValue({ kind: "opportunity", id: String(o.id) })
+              )}`}
             />
           ))}
         </div>

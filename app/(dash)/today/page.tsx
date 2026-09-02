@@ -9,7 +9,7 @@ import { automationHealth } from "@/lib/automation-status";
 import { AutomationBlockerBanner } from "@/components/automation-incidents";
 import { SetupChecklist } from "@/components/setup-checklist";
 import { workQueue, completedToday, completedTodayItems } from "@/lib/data";
-import { parseOwnerFilter, type OwnerFilter } from "@/lib/domain/ownership";
+import { describeOwner, parseOwnerFilter, type OwnerFilter } from "@/lib/domain/ownership";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
 import { getActiveProfile } from "@/lib/ai/companyProfile";
@@ -22,10 +22,10 @@ import { DOC_LABEL } from "@/lib/domain/sub-compliance";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { ActionButton } from "@/components/action-button";
 import { RowActions } from "@/components/row-actions";
-import { opportunityRowActions } from "@/lib/domain/row-actions";
 import { TodayLive } from "@/components/today-live";
 import { TodayGreeting } from "@/components/today-greeting";
 import { WorkQueue } from "@/components/work-queue";
+import { QuickViewDrawer } from "@/components/quick-view";
 import { focusCount } from "@/lib/domain/pipeline-focus";
 import { EmptyState } from "@/components/empty-state";
 import { SystemStatusPanel } from "@/components/system-status-panel";
@@ -46,15 +46,29 @@ import { ReplyReviewList } from "@/components/reply-review-list";
 import { TodayCounters, CompletedList, CompletedTodayPanel } from "@/components/today-counters";
 import { QueueFilters } from "@/components/queue-filters";
 import {
+  opportunityRowActions,
+  workItemRowActions,
+} from "@/lib/domain/row-actions";
+import {
   queueCounts,
   filterWorkItems,
   isCompletedFilter,
   parseQueueFilter,
   parseKindFilter,
   KIND_FILTER_LABEL,
+  type WorkItem,
   type WorkKind,
   type QueueFilter,
 } from "@/lib/domain/work-queue";
+import {
+  parseQuickView,
+  quickViewValue,
+  workItemQuickView,
+  type QuickView,
+} from "@/lib/domain/quick-view";
+import { callCardQuickViewData, opportunityQuickViewData } from "@/lib/quick-view-data";
+import { queuePosition } from "@/lib/domain/workspace-queue";
+import type { RowAction } from "@/lib/domain/row-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -534,6 +548,111 @@ export default async function TodayPage({
       });
   const queueFiltered = queueBucket !== "all" || queueKind != null || queueQ !== "";
 
+  function targetValue(item: WorkItem): string {
+    if (item.record?.kind === "opportunity") {
+      return quickViewValue({
+        kind: "opportunity",
+        id: item.opportunityId ?? item.record.id,
+      });
+    }
+    if (item.record?.kind === "call_card") {
+      return quickViewValue({ kind: "call_card", id: item.record.id });
+    }
+    return quickViewValue({ kind: "work", id: item.key });
+  }
+
+  function withPeek(value: string): string {
+    const p = new URLSearchParams();
+    for (const [key, raw] of Object.entries(searchParams ?? {})) {
+      if (key === "peek" || raw == null) continue;
+      if (Array.isArray(raw)) raw.forEach((v) => p.append(key, v));
+      else p.set(key, raw);
+    }
+    p.set("peek", value);
+    return `/today?${p.toString()}#queue`;
+  }
+
+  function withoutPeek(): string {
+    const p = new URLSearchParams();
+    for (const [key, raw] of Object.entries(searchParams ?? {})) {
+      if (key === "peek" || raw == null) continue;
+      if (Array.isArray(raw)) raw.forEach((v) => p.append(key, v));
+      else p.set(key, raw);
+    }
+    const query = p.toString();
+    return `${query ? `/today?${query}` : "/today"}#queue`;
+  }
+
+  const visibleQueue = shownQueue.slice(0, 5);
+  const peekValues = visibleQueue.map(targetValue);
+  const peekTarget = parseQuickView(searchParams?.peek, {
+    allowed: ["opportunity", "call_card", "work"],
+  });
+  const selectedValue = peekTarget ? quickViewValue(peekTarget) : null;
+  const selectedItem =
+    selectedValue == null
+      ? null
+      : visibleQueue.find((item) => targetValue(item) === selectedValue) ?? null;
+  let peekView: QuickView | null = null;
+  let peekActions: RowAction[] = [];
+
+  if (peekTarget && selectedItem) {
+    /*
+     * The controls come from the row, whatever the drawer is showing.
+     *
+     * A queue row is a piece of work, not a record: "read the reply", "price
+     * this", "decide". The drawer beside it shows the record behind that work
+     * because the fuller picture is what a peek is for, but building its
+     * controls from the record would offer stage moves and reruns the row
+     * never offered. Same row, same person, same buttons.
+     */
+    peekActions = workItemRowActions(
+      {
+        record: selectedItem.record ?? null,
+        opportunityId: selectedItem.opportunityId ?? null,
+        href: selectedItem.href,
+        actionLabel: selectedItem.actionLabel,
+        decide: Boolean(selectedItem.actions?.decide),
+        snooze: selectedItem.actions?.snooze ?? null,
+        call: selectedItem.actions?.call ?? null,
+        title:
+          selectedItem.actions?.decide?.title ??
+          selectedItem.context ??
+          selectedItem.title,
+      },
+      { role: viewer?.orgRole }
+    );
+
+    if (peekTarget.kind === "opportunity") {
+      const peeked = await opportunityQuickViewData(peekTarget.id, {
+        owner: describeOwner(selectedItem.owner, viewer?.id),
+      });
+      if (peeked) peekView = peeked.view;
+    } else if (peekTarget.kind === "call_card") {
+      const peeked = await callCardQuickViewData(peekTarget.id, {
+        openHref: selectedItem.href,
+      });
+      if (peeked) peekView = peeked.view;
+    } else {
+      peekView = workItemQuickView({
+        key: selectedItem.key,
+        kind: selectedItem.kind,
+        title: selectedItem.title,
+        context: selectedItem.context,
+        due: selectedItem.due,
+        expiresAt: selectedItem.expiresAt,
+        reason: selectedItem.reason,
+        blocker: selectedItem.blocker,
+        waitingOn: selectedItem.waitingOn,
+        owner: describeOwner(selectedItem.owner, viewer?.id),
+        actionLabel: selectedItem.actionLabel,
+        href: selectedItem.href,
+        recordHref: selectedItem.recordHref,
+      });
+    }
+  }
+  const peekNav = queuePosition(peekValues, selectedValue);
+
   function queueHref(
     opts: { bucket?: QueueFilter; kind?: WorkKind | null; q?: string; owner?: OwnerFilter } = {}
   ): string {
@@ -623,7 +742,8 @@ export default async function TodayPage({
   return (
     <div className="flex page-shell bg-background text-foreground">
       <TodayLive />
-      <div className="scroll-thin flex-1 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="scroll-thin min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           <div className="mb-2 flex justify-end">
             <HelpPopover help={PAGE_HELP["today"]} />
@@ -744,6 +864,7 @@ export default async function TodayPage({
                       viewerId={viewer?.id}
                       role={viewer?.orgRole}
                       members={members}
+                      peekHrefFor={(item) => withPeek(targetValue(item))}
                     />
                   ) : (
                     <EmptyState
@@ -1211,6 +1332,22 @@ export default async function TodayPage({
             />
           </div>
         </div>
+      </div>
+      {peekView && (
+        <QuickViewDrawer
+          view={peekView}
+          closeHref={withoutPeek()}
+          actions={peekActions}
+          members={members}
+          viewerId={viewer?.id}
+          nav={{
+            prevHref: peekNav.prevId ? withPeek(peekNav.prevId) : null,
+            nextHref: peekNav.nextId ? withPeek(peekNav.nextId) : null,
+            index: peekNav.index,
+            total: peekNav.total,
+          }}
+        />
+      )}
       </div>
     </div>
   );

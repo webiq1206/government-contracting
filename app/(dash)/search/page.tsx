@@ -14,10 +14,16 @@ import {
   type SearchResult,
 } from "@/lib/domain/search-results";
 import { searchEverything } from "@/lib/search";
-import { currentOrg, oppPeek, subPeek } from "@/lib/data";
-import { OppPeek } from "@/components/opp-peek";
-import { SubPeek } from "@/components/sub-peek";
-import { can } from "@/lib/domain/roles";
+import { currentOrg } from "@/lib/data";
+import {
+  opportunityQuickViewData,
+  subcontractorQuickViewData,
+} from "@/lib/quick-view-data";
+import { QuickViewDrawer } from "@/components/quick-view";
+import {
+  opportunityRowActions,
+  subcontractorRowActions,
+} from "@/lib/domain/row-actions";
 import { currentUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -90,8 +96,8 @@ export default async function SearchPage({
   const peek = parsePeekParam(searchParams?.peek);
   const [viewer, peekedOpp, peekedSub] = await Promise.all([
     currentUser().catch(() => null),
-    peek?.kind === "opportunity" ? oppPeek(peek.id) : Promise.resolve(null),
-    peek?.kind === "subcontractor" ? subPeek(peek.id) : Promise.resolve(null),
+    peek?.kind === "opportunity" ? opportunityQuickViewData(peek.id) : Promise.resolve(null),
+    peek?.kind === "subcontractor" ? subcontractorQuickViewData(peek.id) : Promise.resolve(null),
   ]);
 
   const peekHref = (value: string | null) => {
@@ -267,12 +273,20 @@ export default async function SearchPage({
         )}
       </div>
 
-      {peekedOpp && <OppPeek data={peekedOpp} closeHref={peekHref(null)} />}
-      {peekedSub && (
-        <SubPeek
-          sub={peekedSub}
+      {peekedOpp && (
+        <QuickViewDrawer
+          view={peekedOpp.view}
           closeHref={peekHref(null)}
-          canManage={can(viewer?.orgRole, "manage_subs")}
+          actions={opportunityRowActions(peekedOpp.actionFacts, { role: viewer?.orgRole })}
+          viewerId={viewer?.id}
+        />
+      )}
+      {peekedSub && (
+        <QuickViewDrawer
+          view={peekedSub.view}
+          closeHref={peekHref(null)}
+          actions={subcontractorRowActions(peekedSub.actionFacts, { role: viewer?.orgRole })}
+          viewerId={viewer?.id}
         />
       )}
       </div>

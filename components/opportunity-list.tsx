@@ -40,6 +40,7 @@ export function OpportunityList({
   nextAction,
   role,
   members = [],
+  peekHrefFor,
 }: {
   rows: Opportunity[];
   rules?: AutomationRules;
@@ -52,6 +53,12 @@ export function OpportunityList({
   role?: string | null;
   /** Everybody a row could be handed to. Without it, reassign is dropped. */
   members?: Owner[];
+  /**
+   * Where a row's quick look opens, if the page hosting this list has a
+   * drawer. Omitted on the pages that do not, so the control is absent rather
+   * than dead.
+   */
+  peekHrefFor?: (o: Opportunity) => string;
 }) {
   if (rows.length === 0) {
     return (
@@ -102,7 +109,16 @@ export function OpportunityList({
             button nested in an anchor navigates as well as acting, and the
             navigation cancels the request it just sent.
           */}
-          <div className="flex justify-end px-4 pb-2">
+          <div className="flex items-center justify-end gap-2 px-4 pb-2">
+            {peekHrefFor && (
+              <Link
+                href={peekHrefFor(o)}
+                scroll={false}
+                className="tap text-xs text-slate-500 underline-offset-2 hover:text-accent"
+              >
+                Quick look
+              </Link>
+            )}
             <RowActions
               actions={opportunityRowActions(
                 {
