@@ -12,6 +12,85 @@ import {
   validateOutboundEmail,
   describeProblems,
 } from "@/lib/domain/outreach-validation";
+import { DEFAULT_TEMPLATES } from "@/db/seedData";
+
+describe("an example pasted into a template", () => {
+  /*
+   * The one way the editor's sample data actually reaches a subcontractor.
+   *
+   * It cannot arrive through the variables: a real send builds those from the
+   * opportunity's own records, and the only code that renders with the samples
+   * is the preview, which draws to a screen, and the test send, which is
+   * addressed to the operator. What happens is somebody copying
+   * "W912DR-26-R-0042" out of the palette into the body instead of
+   * {{solicitation_number}}.
+   *
+   * Caught while editing, where it can be fixed, rather than only inside the
+   * outreach agent at 3am where the same email is refused again every night
+   * and nobody is told which template to edit.
+   */
+  const flags = (body: string, subject?: string) =>
+    validateTemplate({ body, subject }).filter((p) => p.kind === "sample_data");
+
+  it("refuses a solicitation number copied out of the variable list", () => {
+    const p = flags("Hi {{owner_name}}, quoting W912DR-26-R-0042.");
+    expect(p).toHaveLength(1);
+    expect(p[0].useInstead).toBe("{{solicitation_number}}");
+  });
+
+  it("names the variable in the message, because that is all the editor shows", () => {
+    // The editor renders p.message live as you type and reads nothing else,
+    // so a suggestion only in useInstead would never be seen.
+    expect(flags("Quoting W912DR-26-R-0042.")[0].message).toContain("{{solicitation_number}}");
+  });
+
+  it("catches a fixed date, which no reusable template can carry", () => {
+    expect(flags("Please reply by August 22, 2099 at 3:00 PM MDT.")).toHaveLength(1);
+  });
+
+  it("catches one bullet out of a multi-line example, not just the whole block", () => {
+    // The palette shows those as a block, and one line is as copyable as all
+    // of it.
+    expect(flags("Scope:\n- Test and balance before closeout")).toHaveLength(1);
+  });
+
+  it("catches it in the subject as well as the body", () => {
+    expect(flags("Hi {{owner_name}}.", "Pricing: HVAC Maintenance Services, Building 36C")).toHaveLength(1);
+  });
+
+  it("leaves the sender's own constants alone", () => {
+    /*
+     * The exempt category, and the reason this check is keyed to the variable
+     * rather than to a guess about the author. A company name and a phone
+     * number are the operator's own, unchanging across every solicitation, and
+     * writing them out instead of using the variable is a legitimate way to
+     * author a template. The example for company_name is a real company's real
+     * name.
+     */
+    expect(flags("This is BROSTCO Holdings LLC. Call (800) 555-0199.")).toEqual([]);
+  });
+
+  it("does not fire on a sentence somebody wrote themselves", () => {
+    // The match is the exact example string. Prose about the same subject is
+    // not evidence of anything, which is the mistake the send-side version of
+    // this check made before it was fixed.
+    expect(flags("We work across the Richmond area and bid federal jobs.")).toEqual([]);
+    expect(flags("- Test and balance before handover")).toEqual([]);
+  });
+
+  it("leaves every template this product ships with saveable", () => {
+    /*
+     * A check that refuses a shipped template would be met by every new
+     * account on its first edit. Asserted over the real seed data rather than
+     * a copy of it, and the count is asserted too: an import that resolved to
+     * undefined would make an empty loop pass while testing nothing.
+     */
+    expect(DEFAULT_TEMPLATES.length).toBeGreaterThan(0);
+    for (const t of DEFAULT_TEMPLATES) {
+      expect(flags(t.body, t.subject), `${t.slug} would be refused`).toEqual([]);
+    }
+  });
+});
 
 describe("validateTemplate", () => {
   it("passes a template using only real variables", () => {

@@ -24,7 +24,7 @@
 import { OUTREACH_VARS, unknownVars, type UnknownVar } from "./outreach-vars";
 
 export interface TemplateProblem {
-  kind: "unknown_variable" | "empty_body" | "deadline_confusion";
+  kind: "unknown_variable" | "empty_body" | "deadline_confusion" | "sample_data";
   message: string;
   /** Set for unknown_variable when a live replacement exists. */
   useInstead?: string | null;
@@ -82,6 +82,57 @@ export function validateTemplate(input: {
       kind: "deadline_confusion",
       message:
         "This asks the subcontractor to reply by {{deadline}}, which is when our bid is due to the agency. Use {{quote_due_date}}: it is calculated to leave time to review the price, chase a replacement if needed, and assemble the package.",
+    });
+  }
+
+  /*
+   * An example from the palette, pasted into the template as literal text.
+   *
+   * This is the one way the editor's sample data actually reaches a
+   * subcontractor. It cannot arrive through the variables: a real send builds
+   * those from the opportunity's own records, and the only code that renders
+   * with the samples is the preview, which draws to a screen, and the test
+   * send, which is addressed to the operator. What does happen is somebody
+   * copying "W912DR-26-R-0042" out of the palette into the body instead of
+   * {{solicitation_number}}, and every real send afterwards quotes a
+   * solicitation that does not exist.
+   *
+   * Caught here rather than only at send time because here is where somebody
+   * can fix it. The send-side check stays as the last line of defence for
+   * templates saved before this existed, but it fires inside the outreach
+   * agent overnight and blocks the same email again every night, telling
+   * nobody which template to edit.
+   *
+   * Two things keep this from becoming a nuisance, both learned from the
+   * send-side version of this check refusing correct mail for a coincidence:
+   *
+   * The `sender` category is exempt. Those are the operator's own constants --
+   * their company name and phone number -- and writing them out instead of
+   * using the variable is a legitimate way to author a template. The example
+   * for company_name is a real company's real name.
+   *
+   * Everything else is opportunity-specific by construction: a title, a
+   * solicitation number, an agency, a scope, a date. Literal text from any of
+   * them is wrong on the next solicitation whoever wrote it, which is what
+   * makes this a property of the variable rather than a guess about the
+   * author. And the match is the exact example string, so a sentence somebody
+   * wrote themselves does not trip it.
+   */
+  const text = `${input.subject ?? ""}\n${body}`;
+  for (const v of OUTREACH_VARS) {
+    if (v.category === "sender") continue;
+    // Each line of a multi-line example too: the palette shows those as a
+    // block, and one bullet is as copyable as the whole thing.
+    const candidates = [v.example, ...v.example.split("\n")]
+      .map((c) => c.trim())
+      .filter((c) => c.length >= 8);
+    if (!candidates.some((c) => text.includes(c))) continue;
+    problems.push({
+      kind: "sample_data",
+      // The variable goes in the message, not only in useInstead: the editor
+      // renders these messages as you type and reads nothing else.
+      message: `This contains the example value for ${v.label}, which is invented data from the variable list. Use {{${v.key}}} instead, or every email built from this template sends that example as fact.`,
+      useInstead: `{{${v.key}}}`,
     });
   }
 
