@@ -21,16 +21,11 @@ const APP = "app";
 
 /** Routes deliberately not swept, each with the reason it cannot be. */
 const EXEMPT = new Map<string, string>([
-  ["/", "Marketing home, outside the operator shell."],
-  ["/login", "Signed out. The sweep signs in before it measures."],
-  ["/signup", "Signed out."],
   ["/setup", "Signed out, and only reachable on a fresh install."],
-  ["/forgot-password", "Signed out."],
   ["/reset-password", "Signed out, and needs a live token."],
   ["/invite", "Signed out, and needs a live invitation token."],
   ["/billing/success", "Post-checkout confirmation; needs a live Stripe session."],
   ["/vendor/[token]", "The subcontractor's own upload page, outside the operator shell."],
-  ["/privacy", "Static legal copy."],
   // Redirects, not pages. The sweep would measure the destination while
   // labelling the finding with the old address, which reads as a defect on a
   // page that does not exist.
@@ -39,7 +34,6 @@ const EXEMPT = new Map<string, string>([
   ["/opportunities", "Redirects to /pipeline, which is swept."],
   ["/automation", "Redirects to /agents, which is swept."],
   ["/admin", "Redirects to /admin/accounts, which is swept."],
-  ["/terms", "Static legal copy."],
   // Record pages need a live id, which the sweep has no way to choose without
   // reaching into the database. Their layout is exercised by the pages above
   // that link to them, and by the per-piece browser probes.
@@ -66,10 +60,25 @@ function routes(dir: string, prefix = "", out: string[] = []): string[] {
   return out;
 }
 
+/**
+ * Both lists the sweep measures, not just the signed-in one.
+ *
+ * This read `ROUTES` alone, so the marketing pages had to be written into the
+ * exempt map to pass -- as "static legal copy", which was not why they were
+ * absent. They were being measured all along, as signed-out routes. A page
+ * excused for a reason that is not the real one is a page nobody can reason
+ * about later, and the next marketing page would have been excused the same
+ * way rather than swept.
+ */
 function sweptRoutes(): string[] {
   const src = readFileSync("scripts/a11y-sweep.ts", "utf8");
-  const block = src.slice(src.indexOf("const ROUTES = ["), src.indexOf("];", src.indexOf("const ROUTES = [")));
-  return [...block.matchAll(/"(\/[^"]*)"/g)].map((m) => m[1]);
+  const arrayNamed = (name: string): string[] => {
+    const at = src.indexOf(`const ${name} = [`);
+    if (at === -1) throw new Error(`${name} moved or was renamed; this guard needs updating`);
+    const block = src.slice(at, src.indexOf("];", at));
+    return [...block.matchAll(/"(\/[^"]*)"/g)].map((m) => m[1]);
+  };
+  return [...arrayNamed("ROUTES"), ...arrayNamed("SIGNED_OUT_ROUTES")];
 }
 
 describe("the accessibility sweep covers the product", () => {

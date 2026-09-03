@@ -1,4 +1,22 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { PUBLIC_ROUTES } from "@/lib/domain/public-routes";
+
+/*
+ * The crawlable pages, from the one declaration.
+ *
+ * These were listed here by hand as well, which made this the fifth copy of
+ * "what is public" -- after the XML sitemap, robots.txt, the HTML site map and
+ * llms.txt -- and the one whose disagreement is worst. A page missing from the
+ * others is merely not advertised; a page missing from here is advertised in
+ * the sitemap and then redirects the crawler to the login form. Deriving it
+ * means a page cannot be published and unreachable at the same time.
+ *
+ * Not the whole list: plenty of paths must be reachable without a session
+ * without being indexable -- the login form, the invitation flow, the
+ * subcontractor portal, the webhook endpoints. Those stay below, because
+ * "reachable" and "crawlable" are different questions with different answers.
+ */
+const CRAWLABLE_PATHS = PUBLIC_ROUTES.map((r) => r.path);
 
 /**
  * Lightweight edge guard: keep marketing and auth routes public, and send
@@ -12,7 +30,6 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 const PUBLIC_PREFIXES = [
   "/login",
-  "/signup",
   "/setup",
   "/forgot-password",
   "/reset-password",
@@ -21,8 +38,6 @@ const PUBLIC_PREFIXES = [
   // invitation we send a dead end.
   "/invite",
   "/api/invitations",
-  "/privacy",
-  "/terms",
   "/billing/success",
   "/settings/billing",
   "/theme-qa",
@@ -49,6 +64,8 @@ function isPublic(pathname: string): boolean {
     pathname.startsWith("/favicon") ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml" ||
+    // Machine-readable, and served to readers that never sign in.
+    pathname === "/llms.txt" ||
     pathname === "/manifest.webmanifest" ||
     pathname === "/og.png" ||
     pathname.endsWith(".png") ||
@@ -57,6 +74,7 @@ function isPublic(pathname: string): boolean {
   ) {
     return true;
   }
+  if (CRAWLABLE_PATHS.includes(pathname)) return true;
   return PUBLIC_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );

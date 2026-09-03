@@ -52,6 +52,14 @@ export function MarketingFooter({
             <a href="mailto:hello@brostco.com">Contact</a>
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>
+            {/*
+              * The site map, linked from every marketing page.
+              *
+              * A site map nothing links to is an orphan, which is the one
+              * thing it cannot afford to be: a crawler reaches it only if it
+              * is reachable, and the footer is where a person looks for it.
+              */}
+            <Link href="/sitemap">Site map</Link>
           </FooterCol>
 
           <FooterCol title="Account" dark={dark}>

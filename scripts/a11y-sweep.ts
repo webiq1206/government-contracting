@@ -120,6 +120,7 @@ const SIGNED_OUT_ROUTES = [
   "/forgot-password",
   "/privacy",
   "/terms",
+  "/sitemap",
 ];
 
 interface Finding {
