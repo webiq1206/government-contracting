@@ -185,7 +185,19 @@ async function login(page: Page, email: string) {
   await page.fill("input[type=email]", email);
   await page.fill("input[type=password]", PASSWORD);
   await page.click("button[type=submit]");
-  await page.waitForURL((u) => !u.pathname.includes("login"), { timeout: 40000 });
+  /*
+   * `commit` rather than the default `load`.
+   *
+   * The signed-in landing page is the heaviest in the product, and waiting for
+   * its load event put the whole sweep behind a 40-second timeout that fired
+   * before a single route was measured -- so the run died at the first account
+   * and reported nothing. The address changing is what this is waiting for;
+   * each route below does its own waiting once it gets there.
+   */
+  await page.waitForURL((u) => !u.pathname.includes("login"), {
+    timeout: 40000,
+    waitUntil: "commit",
+  });
 }
 
 /**
@@ -194,8 +206,19 @@ async function login(page: Page, email: string) {
  * Deliberately narrow: it looks for a zero paired with wording about a value
  * that has to be derived, not for every zero on the page. Zero replies really
  * is zero, and flagging it would bury the case that matters.
+ *
+ * `|` is excluded from the gap because the probe below joins each element's
+ * text with one, so this can no longer read a label in one element and a
+ * number in another as though they sat in the same sentence. It reported four
+ * findings on /analytics that way, all of them the same false positive: the
+ * metric card prints its label, then its value, then how many records back it,
+ * and `textContent` fused the three into "...published value0%Based on 0". The
+ * figure was 0% because none of the open work carried a published value, which
+ * is true, and the 0 this rule matched was the coverage caption saying so.
+ * That caption exists to be honest about coverage; reading it as a suspect
+ * figure punished the page for the very thing it does right.
  */
-const UNKNOWN_AS_ZERO = /(score|confidence|value|rate|margin|coverage)[^.<]{0,24}\b0\b(?!%)/i;
+const UNKNOWN_AS_ZERO = /(score|confidence|value|rate|margin|coverage)[^.<|]{0,24}\b0\b(?!%)/i;
 
 async function sweep(
   ctx: BrowserContext,
@@ -229,7 +252,21 @@ async function sweep(
       const main = document.querySelector("main") ?? document.body;
       return {
         overflow: document.documentElement.scrollWidth > window.innerWidth + 1,
-        text: (main.textContent ?? "").replace(/\s+/g, " ").slice(0, 6000),
+        /*
+         * Joined with a separator rather than read straight off textContent.
+         *
+         * `textContent` concatenates with nothing between elements, so a label
+         * ending one node and a number starting the next arrive as one word
+         * and the rules below cannot tell "0 in this sentence" from "0 in the
+         * caption underneath". A separator no rule reads across keeps a match
+         * inside the element that actually rendered it.
+         */
+        text: [...main.querySelectorAll("*")]
+          .filter((el) => !el.querySelector("*"))
+          .map((el) => (el.textContent ?? "").replace(/\s+/g, " ").trim())
+          .filter(Boolean)
+          .join(" | ")
+          .slice(0, 12000),
         // A page that renders a heading and nothing else is a page that gave
         // up quietly, which is the shape the work queue failure had.
         bodyLength: (main.textContent ?? "").trim().length,
