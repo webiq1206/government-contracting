@@ -121,6 +121,8 @@ const SIGNED_OUT_ROUTES = [
   "/privacy",
   "/terms",
   "/sitemap",
+  "/compare",
+  "/pricing-guide",
 ];
 
 interface Finding {
@@ -468,6 +470,28 @@ async function measure(
     flush();
     return;
   }
+
+  /*
+   * Wait for the page itself, not the sketch of it.
+   *
+   * `domcontentloaded` is the right gate for how long this sweep is allowed to
+   * take and the wrong one for what it measures. Routes with a `loading.tsx`
+   * -- /today, /pipeline, /call-queue, the whole dash group through its shared
+   * one -- flush a skeleton first, and a skeleton has no h1, no labelled
+   * controls and almost no text. Measured in that state the sweep reported
+   * "no h1" against pages that have one, intermittently, on whichever route
+   * happened to be slowest that run. It cost three separate investigations
+   * before the cause was captured, because the finding never reproduced on a
+   * second run and so read as a flake every time.
+   *
+   * Waiting for an h1 rather than for the network to fall idle keeps the sweep
+   * fast on the pages that are already rendered, which is nearly all of them:
+   * the wait resolves immediately when the heading is there. A page that
+   * genuinely has no h1 pays this timeout once and is then reported, which is
+   * the correct outcome and the reason the wait is bounded rather than
+   * indefinite.
+   */
+  await page.waitForSelector("h1", { state: "attached", timeout: 8000 }).catch(() => {});
 
   /*
    * A route the sweep's user cannot reach is a different fact from a route

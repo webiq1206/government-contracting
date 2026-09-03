@@ -114,6 +114,39 @@ export function serializeSort(sort: SortState): string {
 }
 
 /**
+ * One sortable column: the expression to order by, and where its blanks go.
+ *
+ * The two are separate fields because SQL only accepts them in one order --
+ * `expr [asc|desc] [nulls last]` -- and the direction is not known until a
+ * request arrives. Holding "nulls last" inside the expression is what broke
+ * two tables: the whitelists in `lib/data.ts` stored `"deadline nulls last"`
+ * as the column, the query builder appended the direction, and Postgres was
+ * handed `order by deadline nulls last asc`, which is error 42601. Because the
+ * throw happened inside a server component the operator saw no error message,
+ * only the page's error boundary: no heading, no table, no explanation. Six of
+ * the fourteen sortable columns across the two tables were dead, Deadline on
+ * the opportunities table among them.
+ *
+ * Split like this, the invalid string cannot be written down.
+ */
+export interface SortColumn {
+  /** The SQL expression to order by. Never carries a direction or a modifier. */
+  sql: string;
+  /** Blanks last whichever way the column is sorted. */
+  nullsLast?: boolean;
+}
+
+/**
+ * Compose one ORDER BY term, in the order the grammar requires.
+ *
+ * The single place a direction is joined to a column, so two tables cannot
+ * disagree about it and a third cannot reinvent it wrongly.
+ */
+export function sortTerm(column: SortColumn, direction: SortState["direction"]): string {
+  return `${column.sql} ${direction}${column.nullsLast ? " nulls last" : ""}`;
+}
+
+/**
  * What clicking a column header should do next.
  *
  * First click sorts ascending, second flips to descending, third clears back

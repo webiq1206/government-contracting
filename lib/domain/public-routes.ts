@@ -64,6 +64,24 @@ export const PUBLIC_ROUTES: PublicRoute[] = [
     group: "Get started",
   },
   {
+    path: "/compare",
+    label: "Compare the four approaches",
+    summary:
+      "The four ways a federal services contractor runs its bid pipeline -- spreadsheets, a general CRM, a bid alert feed, or hiring a capture person -- what each covers, where each breaks, and who each is genuinely the right answer for.",
+    changeFrequency: "monthly",
+    priority: 0.8,
+    group: "Product",
+  },
+  {
+    path: "/pricing-guide",
+    label: "Pricing explained",
+    summary:
+      "What Brost Co costs monthly and annually, what the free trial includes, which API keys you supply yourself after it, and how to work out whether it pays for itself on your bid volume.",
+    changeFrequency: "monthly",
+    priority: 0.8,
+    group: "Product",
+  },
+  {
     path: "/sitemap",
     label: "Site map",
     summary:

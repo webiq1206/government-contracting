@@ -622,6 +622,16 @@ export function LandingPage({
                   </span>
                 </aside>
               )}
+              <p className="deep-links">
+                <Link href="/pricing-guide">
+                  What is, and is not, on the invoice{" "}
+                  <span aria-hidden="true">&rarr;</span>
+                </Link>
+                <Link href="/compare">
+                  How this compares to the alternatives{" "}
+                  <span aria-hidden="true">&rarr;</span>
+                </Link>
+              </p>
             </div>
             <div className="price-card">
               <header>
@@ -723,11 +733,14 @@ export function LandingPage({
               <a href="#platform">Platform</a>
               <a href="#workflow">How it works</a>
               <a href="#pricing">Pricing</a>
+              <Link href="/pricing-guide">Pricing explained</Link>
+              <Link href="/compare">Compare approaches</Link>
               <a href="#faq">FAQ</a>
             </nav>
             <nav aria-label="Legal navigation">
               <Link href="/privacy">Privacy</Link>
               <Link href="/terms">Terms</Link>
+              <Link href="/sitemap">Site map</Link>
               <Link href={loginHref}>Log in</Link>
               <a href="mailto:hello@brostco.com">Contact</a>
             </nav>
