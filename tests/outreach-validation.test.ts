@@ -145,6 +145,57 @@ describe("validateOutboundEmail", () => {
     expect(p).toEqual([]);
   });
 
+  it("allows sample text that arrived through a different variable", () => {
+    /*
+     * The defect this replaces. The check asked, per key, "is this sample in
+     * the email and is THIS key's value not it", which is the wrong question
+     * whenever the text arrived legitimately through another variable -- and
+     * every one of these samples is a phrase that can.
+     *
+     * Live example: the sample for `estimated_start_date` was
+     * "October 1, 2026". A solicitation whose site visit fell on that date put
+     * the string into `special_conditions`, and the send was refused for
+     * carrying example data in a variable that was empty. The refusal happens
+     * overnight inside the outreach agent, where nobody sees it.
+     */
+    const p = validateOutboundEmail({
+      ...OK,
+      body: "Special conditions:\n- Site visit: October 1, 2026 (required)",
+      vars: {
+        ...OK.vars,
+        estimated_start_date: "",
+        special_conditions: "- Site visit: October 1, 2026 (required)",
+      },
+      sampleValues: { estimated_start_date: "October 1, 2026" },
+    });
+    expect(p).toEqual([]);
+  });
+
+  it("still refuses when no real value on the email accounts for the sample", () => {
+    // The rule is "unexplained", not "absent". Nothing here carries the text,
+    // so it was typed into the template and is about to be sent as fact.
+    const p = validateOutboundEmail({
+      ...OK,
+      body: "Site visit: October 1, 2026 (required)",
+      vars: { ...OK.vars, estimated_start_date: "March 3, 2027" },
+      sampleValues: { estimated_start_date: "October 1, 2026" },
+    });
+    expect(p[0].kind).toBe("sample_data");
+    expect(p[0].message).toContain("estimated_start_date");
+  });
+
+  it("ignores a sample too short to be evidence", () => {
+    // An eight-character floor, because a shorter phrase collides with
+    // ordinary prose often enough that firing on it is noise.
+    const p = validateOutboundEmail({
+      ...OK,
+      body: "The site is in Denver.",
+      vars: { ...OK.vars },
+      sampleValues: { city: "Denver" },
+    });
+    expect(p).toEqual([]);
+  });
+
   it("refuses when the quote deadline is not before the bid deadline", () => {
     for (const quoteDueAt of ["2026-08-29T18:00:00Z", "2026-08-30T18:00:00Z"]) {
       const p = validateOutboundEmail({ ...OK, quoteDueAt });

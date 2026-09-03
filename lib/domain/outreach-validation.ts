@@ -172,16 +172,44 @@ export function validateOutboundEmail(input: {
    * failure: the editor's sample values are realistic on purpose, so nobody
    * notices "W912DR-26-R-0042" is fictional until the subcontractor asks about
    * a solicitation that does not exist.
+   *
+   * The question is whether sample text is present that no real value
+   * accounts for. Asking it per key -- "this sample is in the email and THIS
+   * key's value is not it" -- gets the answer wrong whenever the text arrived
+   * legitimately through a different variable, and every one of these samples
+   * is a phrase that can. The example for `estimated_start_date` was
+   * "October 1, 2026"; a solicitation whose site visit fell on that date put
+   * the string into `special_conditions`, the check found it, blamed a
+   * variable that was empty, and refused the send. That refusal happens
+   * overnight inside the outreach agent, where nobody sees it.
+   *
+   * So an appearance any real value explains is not a leak, whichever
+   * variable carried it.
+   *
+   * The inverse -- several values each EQUALLING their own example, read as
+   * the preview's variable set having reached the sender -- was tried here and
+   * removed. These examples are drawn from realistic procurement data, so a
+   * genuine Army Corps solicitation out of Richmond matches five of them at
+   * once; the integration fixture is exactly that email, and the check refused
+   * to send it. Value equality cannot tell a leak from a common real value,
+   * and the cost of guessing wrong is the silent overnight refusal this whole
+   * comment is about. Preview data must be kept out of the sender at the
+   * source, not inferred here.
    */
-  for (const [key, sample] of Object.entries(input.sampleValues ?? {})) {
-    if (!sample.trim() || sample.length < 8) continue;
-    if (whole.includes(sample) && input.vars[key] !== sample) {
-      problems.push({
-        kind: "sample_data",
-        message: `The email contains the editor's example value for ${key}, not a real one.`,
-      });
-      break;
-    }
+  const realValues = Object.values(input.vars).filter((v) => typeof v === "string" && v.trim());
+  const samples = Object.entries(input.sampleValues ?? {}).filter(
+    // Short samples collide with ordinary prose too readily to be evidence.
+    ([, sample]) => sample.trim() && sample.length >= 8
+  );
+
+  const unexplained = samples.find(
+    ([, sample]) => whole.includes(sample) && !realValues.some((v) => v.includes(sample))
+  );
+  if (unexplained) {
+    problems.push({
+      kind: "sample_data",
+      message: `The email contains the editor's example value for ${unexplained[0]}, and no real value on this email accounts for it.`,
+    });
   }
 
   // The invariant, checked once more on the way out: their date is before ours.
