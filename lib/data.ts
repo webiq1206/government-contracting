@@ -17,6 +17,7 @@ import type { CredentialSource as ProviderCredentialSource } from "./domain/prov
 import type { TemplateCounts } from "./domain/template-health";
 import type { WorkKind } from "./domain/work-queue";
 import { resolveSubWork } from "./domain/sub-work";
+import { sortTerm, type SortColumn } from "./domain/table-view";
 import {
   loadAwardCompliance,
   needsAttentionOnWonWork,
@@ -201,15 +202,15 @@ export async function pipelineOpportunities(): Promise<Opportunity[]> {
  * A whitelist rather than interpolation: a sort key arrives from a query
  * string, and a query string is a place a stranger can write.
  */
-export const OPP_SORTS: Record<string, string> = {
-  title: "title",
-  agency: "agency nulls last",
-  stage: "stage",
-  deadline: "deadline nulls last",
-  score: "coalesce(score,0)",
-  value_estimated: "coalesce(value_estimated,0)",
-  location_state: "location_state nulls last",
-  updated_at: "updated_at",
+export const OPP_SORTS: Record<string, SortColumn> = {
+  title: { sql: "title" },
+  agency: { sql: "agency", nullsLast: true },
+  stage: { sql: "stage" },
+  deadline: { sql: "deadline", nullsLast: true },
+  score: { sql: "coalesce(score,0)" },
+  value_estimated: { sql: "coalesce(value_estimated,0)" },
+  location_state: { sql: "location_state", nullsLast: true },
+  updated_at: { sql: "updated_at" },
 };
 
 export interface OppTableFilters {
@@ -463,7 +464,7 @@ export async function opportunityTable(
   const column = page?.sort ? OPP_SORTS[page.sort] : undefined;
   const direction = page?.direction === "desc" ? "desc" : "asc";
   const orderBy = column
-    ? `${column} ${direction}, id asc`
+    ? `${sortTerm(column, direction)}, id asc`
     : "(deadline is null), deadline asc, id asc";
 
   params.push(page?.limit ?? 100);
@@ -721,13 +722,13 @@ export const DEFAULT_RATE_EVIDENCE = 3;
  * A whitelist rather than string interpolation: a sort key arrives from a
  * query string, and a query string is a place a stranger can write.
  */
-export const SUB_SORTS: Record<string, string> = {
-  company_name: "company_name",
-  state: "state nulls last",
-  reliability_score: "coalesce(reliability_score,0)",
-  google_rating: "coalesce(google_rating,0)",
-  last_contacted: "last_contacted nulls last",
-  license_status: "license_status nulls last",
+export const SUB_SORTS: Record<string, SortColumn> = {
+  company_name: { sql: "company_name" },
+  state: { sql: "state", nullsLast: true },
+  reliability_score: { sql: "coalesce(reliability_score,0)" },
+  google_rating: { sql: "coalesce(google_rating,0)" },
+  last_contacted: { sql: "last_contacted", nullsLast: true },
+  license_status: { sql: "license_status", nullsLast: true },
 };
 
 /**
@@ -938,7 +939,7 @@ export async function subDatabase(
   const column = page?.sort ? SUB_SORTS[page.sort] : undefined;
   const direction = page?.direction === "desc" ? "desc" : "asc";
   const orderBy = column
-    ? `${column} ${direction}, company_name asc`
+    ? `${sortTerm(column, direction)}, company_name asc`
     : "is_preferred desc, coalesce(reliability_score,0) desc, company_name asc";
 
   params.push(page?.limit ?? 500);
