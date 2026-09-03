@@ -31,6 +31,7 @@
  * code path; a count of the rows that actually exist cannot. A trial
  * organization's lifetime is its trial, so lifetime counts are trial counts.
  */
+import { createHash } from "crypto";
 import { query } from "../db";
 
 export type TrialMetric = "outreach_emails" | "ai_briefs" | "bid_packages";
@@ -67,30 +68,108 @@ const COUNT_SQL: Record<TrialMetric, string> = {
   bid_packages: `select count(*)::int as n from bids where org_id = $1`,
 };
 
-export interface QuotaState {
-  metric: TrialMetric;
-  used: number;
-  limit: number;
-  remaining: number;
-  exhausted: boolean;
+/**
+ * A meter that could not be counted, in the words the person reading it needs.
+ *
+ * `reference` is the point of this type. It is derived from the fault itself,
+ * so the same failure produces the same string every time and on every screen
+ * that shows the meter -- which means a customer can quote it, support can
+ * find the matching server log line, and the conversation starts with the
+ * cause instead of "which error?". The same reasoning as the digest on the
+ * route error boundary.
+ */
+export interface QuotaUnreadable {
+  /** Short, stable, quotable. Format: QUOTA-<metric>-<8 hex>. */
+  reference: string;
+  /** One sentence naming what failed, safe to show a customer. */
+  detail: string;
 }
 
+export interface QuotaState {
+  metric: TrialMetric;
+  limit: number;
+  /**
+   * Null when the count could not be read. Deliberately nullable rather than
+   * defaulted to 0: a swallowed error that reads as "0 used" is indistinguishable
+   * from a brand-new trial, so a broken meter would silently stop metering and
+   * nothing on any screen would say so. Null forces every caller to decide what
+   * to show, and the type stops a fake zero being written by accident.
+   */
+  used: number | null;
+  remaining: number | null;
+  exhausted: boolean;
+  /** Present exactly when `used` is null. */
+  unreadable?: QuotaUnreadable;
+}
+
+/**
+ * Counts one metric. Throws if the count cannot be read.
+ *
+ * This used to end in `.catch(() => [])` and return 0, which meant a query
+ * that could not run -- a renamed column, a lost connection -- reported an
+ * untouched meter. Nothing anywhere showed an error: the banner read "0/10",
+ * the quota never reached its limit, and the trial silently stopped being
+ * metered. The failure is now the caller's to handle, and every caller does.
+ */
 async function countMetric(orgId: string, metric: TrialMetric): Promise<number> {
-  const rows = await query<{ n: number }>(COUNT_SQL[metric], [orgId]).catch(() => []);
+  const rows = await query<{ n: number }>(COUNT_SQL[metric], [orgId]);
   return rows[0]?.n ?? 0;
 }
 
-/** One meter's current state. */
+/**
+ * A reference for one fault: same fault, same string, every time.
+ *
+ * Hashed rather than random so that the banner, the billing page and the
+ * server log all name the same reference for the same underlying failure. The
+ * message is hashed rather than shown because a database error can carry
+ * column names and fragments of SQL, which is not something to print on a
+ * customer's screen.
+ */
+function faultReference(metric: TrialMetric, err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  const hash = createHash("sha256").update(`${metric}:${message}`).digest("hex").slice(0, 8);
+  return `QUOTA-${metric.toUpperCase().replace(/_/g, "-")}-${hash}`;
+}
+
+/** One meter's current state, including the state of not being readable. */
 export async function quotaState(orgId: string, metric: TrialMetric): Promise<QuotaState> {
-  const used = await countMetric(orgId, metric);
   const limit = TRIAL_LIMITS[metric];
-  return {
-    metric,
-    used,
-    limit,
-    remaining: Math.max(0, limit - used),
-    exhausted: used >= limit,
-  };
+  try {
+    const used = await countMetric(orgId, metric);
+    return {
+      metric,
+      limit,
+      used,
+      remaining: Math.max(0, limit - used),
+      exhausted: used >= limit,
+    };
+  } catch (err) {
+    const reference = faultReference(metric, err);
+    /*
+     * Logged in full on the server, shown in summary to the customer. The
+     * reference is what joins the two, so the line a customer pastes into a
+     * support message is the line that finds this one.
+     */
+    console.error(
+      `[trial-limits] ${reference} could not count ${metric} for org ${orgId}:`,
+      err
+    );
+    return {
+      metric,
+      limit,
+      used: null,
+      remaining: null,
+      /*
+       * Not exhausted. An unreadable meter must not lock somebody out of work
+       * they have paid nothing to find out about; it is reported instead.
+       */
+      exhausted: false,
+      unreadable: {
+        reference,
+        detail: `This meter could not be read, so the count shown may be out of date. Your ${TRIAL_METRIC_LABEL[metric]} still work.`,
+      },
+    };
+  }
 }
 
 /** Every meter, for the trial banner and the billing page. */
@@ -161,6 +240,15 @@ export async function checkTrialQuota(
   }
 
   const state = await quotaState(orgId, metric);
+  /*
+   * An unreadable meter allows the action, on the same reasoning as the
+   * database error above: the cost of over-allowing a trial is a handful of
+   * emails, and the cost of the opposite is a customer whose work stopped for
+   * a reason nobody can see. What has changed is that it is no longer silent.
+   * `quotaState` has already written the reference to the server log, the
+   * state carries it, and every screen that shows this meter says so.
+   */
+  if (state.unreadable) return { allowed: true, state };
   if (state.exhausted) {
     return { allowed: false, message: TRIAL_METRIC_BLOCKED_COPY[metric], state };
   }

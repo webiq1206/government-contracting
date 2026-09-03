@@ -399,12 +399,30 @@ export default async function BillingSettingsPage({
             </p>
             <ul className="space-y-1.5 text-sm">
               {quotas.map((q) => (
-                <li key={q.metric} className="flex items-center justify-between gap-3">
-                  <span className="text-slate-700">{TRIAL_METRIC_LABEL[q.metric]}</span>
-                  <span className={`num text-sm ${q.exhausted ? "text-risk" : "text-slate-800"}`}>
-                    {q.used} of {q.limit}
-                    {q.exhausted ? " · used up" : ""}
-                  </span>
+                <li key={q.metric} className="flex flex-col gap-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-700">{TRIAL_METRIC_LABEL[q.metric]}</span>
+                    <span
+                      className={`num text-sm ${
+                        q.unreadable || q.exhausted ? "text-risk" : "text-slate-800"
+                      }`}
+                    >
+                      {q.used == null ? "?" : q.used} of {q.limit}
+                      {q.exhausted ? " · used up" : ""}
+                    </span>
+                  </div>
+                  {q.unreadable && (
+                    /*
+                     * Said here in full rather than only in the banner: this is
+                     * the page somebody opens to understand their usage, so it
+                     * is where the explanation and the reference belong.
+                     * Select-all, because it is going into a support message.
+                     */
+                    <p className="text-xs leading-relaxed text-risk">
+                      {q.unreadable.detail} Quote this reference to support:{" "}
+                      <code className="select-all font-mono">{q.unreadable.reference}</code>
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>

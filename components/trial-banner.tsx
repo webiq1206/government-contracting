@@ -33,6 +33,13 @@ export function TrialBanner({
 }) {
   const urgent = daysLeft <= 2;
   const anyExhausted = quotas.some((q) => q.exhausted);
+  /*
+   * A meter that could not be counted is called out rather than drawn as a
+   * number. It used to render "0/10", which is what an untouched trial looks
+   * like, so a broken meter was invisible on the one line that exists to tell
+   * somebody where they stand.
+   */
+  const unreadable = quotas.filter((q) => q.unreadable);
 
   const dayLabel =
     daysLeft <= 0
@@ -57,15 +64,39 @@ export function TrialBanner({
 
       <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-600">
         {quotas.map((q) => (
-          <span key={q.metric} className={q.exhausted ? "text-risk" : undefined}>
+          <span
+            key={q.metric}
+            className={q.unreadable ? "text-risk" : q.exhausted ? "text-risk" : undefined}
+          >
             <span className="num">
-              {q.used}/{q.limit}
+              {q.used == null ? "?" : q.used}/{q.limit}
             </span>{" "}
             <span className="sm:hidden">{SHORT_LABEL[q.metric] ?? q.metric}</span>
             <span className="hidden sm:inline">{TRIAL_METRIC_LABEL[q.metric]}</span>
           </span>
         ))}
       </span>
+
+      {unreadable.length > 0 && (
+        /*
+         * The reference is select-all and monospace for the same reason as the
+         * one on the route error boundary: somebody is going to paste it into
+         * a support message, and it is the string that finds the server log.
+         */
+        <span className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 text-risk">
+          <span>
+            {unreadable.length === 1
+              ? `We could not read your ${TRIAL_METRIC_LABEL[unreadable[0].metric]} meter.`
+              : `We could not read ${unreadable.length} of your usage meters.`}{" "}
+            Your work is unaffected. Send this to support:
+          </span>
+          {unreadable.map((q) => (
+            <code key={q.metric} className="select-all font-mono text-[11px]">
+              {q.unreadable!.reference}
+            </code>
+          ))}
+        </span>
+      )}
 
       <Link href="/settings/billing" className="btn-primary ml-auto shrink-0 text-xs">
         {anyExhausted ? "Remove limits" : "Choose a plan"}
