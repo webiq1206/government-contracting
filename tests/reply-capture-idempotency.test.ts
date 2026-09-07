@@ -3,13 +3,18 @@ import type { ExtractedReply } from "@/lib/ai/reply-extract";
 
 const query = vi.fn();
 const queryOne = vi.fn();
+const persistReplyQuote = vi.fn();
+const enqueue = vi.fn();
 
 async function load() {
   vi.resetModules();
   query.mockReset();
   queryOne.mockReset();
+  persistReplyQuote.mockReset();
+  enqueue.mockReset().mockResolvedValue("job-1");
   vi.doMock("@/lib/db", () => ({ query, queryOne }));
-  vi.doMock("@/lib/queue", () => ({ enqueue: vi.fn(async () => null) }));
+  vi.doMock("@/lib/queue", () => ({ enqueue }));
+  vi.doMock("@/lib/reply-quote", () => ({ persistReplyQuote }));
   vi.doMock("@/lib/logger", () => ({ logAgent: vi.fn(async () => undefined) }));
   vi.doMock("@/lib/auth", () => ({ currentUser: vi.fn(async () => null) }));
   return import("@/lib/reply-capture");
@@ -18,6 +23,7 @@ async function load() {
 afterEach(() => {
   vi.doUnmock("@/lib/db");
   vi.doUnmock("@/lib/queue");
+  vi.doUnmock("@/lib/reply-quote");
   vi.doUnmock("@/lib/logger");
   vi.doUnmock("@/lib/auth");
   vi.resetModules();
@@ -71,6 +77,41 @@ function extracted(intent: ExtractedReply["intent"]): ExtractedReply {
 }
 
 describe("reply capture ownership and weak matching", () => {
+  it.each([
+    { fault: "pricing write", saved: false, expected: "could not be filed together" },
+    { fault: "closed pricing", saved: false, expected: "no longer open" },
+    { fault: "build queue", saved: true, expected: "could not be scheduled" },
+  ])("keeps a durable review task after $fault failure", async ({ fault, saved, expected }) => {
+    const mod = await load();
+    query.mockImplementation(async (sql: string) =>
+      /select distinct trade/.test(sql) ? [{ trade: "Electrical" }] : []
+    );
+    queryOne.mockImplementation(async (sql: string) => {
+      if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
+      if (/insert into communications/.test(sql)) return { id: "in-quote" };
+      return null;
+    });
+    if (fault === "pricing write") persistReplyQuote.mockRejectedValue(new Error("database unavailable"));
+    else persistReplyQuote.mockResolvedValue(fault === "closed pricing" ? "not_editable" : "saved");
+    if (fault === "build queue") enqueue.mockRejectedValue(new Error("queue unavailable"));
+
+    const result = await mod.captureReply({
+      orgId: "org-1", comm, strongMatch: true, fromEmail: comm.sub_email,
+      replyText: "Our electrical price is $42,000.", messageId: "gmail-quote-failed",
+      extract: async () => ({ ...extracted("quote"), isQuote: true, quoteAmount: 42_000 }),
+    });
+    expect(result.quoteSaved).toBe(saved);
+    expect(result.quoteSkippedExisting).toBe(false);
+    expect(result.decision).toMatchObject({ act: false, needsReview: true });
+    expect(result.decision.reviewReason).toContain(expected);
+    const reviewWrite = query.mock.calls.find(([sql]) => /insert into subcontractor_reply_events/.test(sql));
+    expect(reviewWrite?.[1]).toEqual(expect.arrayContaining([
+      "org-1", "sub-1", "opp-1", "Electrical", "gmail-quote-failed", true,
+      expect.stringContaining(expected),
+    ]));
+    if (!saved) expect(enqueue).not.toHaveBeenCalled();
+  });
+
   it("lets only the INSERT winner perform downstream side effects", async () => {
     const mod = await load();
     query.mockImplementation(async (sql: string) =>

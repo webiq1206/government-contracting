@@ -490,6 +490,24 @@ and a trusted partial quote that must leave the other trade unchanged. These
 new cases await the next native CI run. This correction does not resolve the
 separate multi-step capture/retry and provider reconciliation gaps.
 
+The first partial-scope native run (`34168020332`, candidate `2b91957`) passed
+742 of 743 tests. Its removed-pair fixture violated the required removal-reason
+constraint before reaching capture; the fixture now supplies the required
+reason. Production constraints were not weakened.
+
+Automatic quote capture now writes the quote, structured pricing, coverage
+stamp and stage in one transaction, under locks for the tenant's opportunity
+and active pairing. Paused/closed work and approved packages refuse new automatic
+pricing. A failed write cannot leave an orphan quote while advancing the stage.
+Pricing failures and bid-queue exceptions create a durable reply-review task
+with a plain-language explanation and recovery steps. Three unit failure cases
+pass; three new native cases exercise rollback after the pricing write,
+concurrent duplicate prices with a successful retry, and paused-pursuit refusal.
+The full local suite passes 4,280 tests; 734 native/production cases are skipped
+locally. TypeScript and ESLint pass. Native validation for these additions is
+pending. Whole-message capture finalization and external provider outboxes
+remain separate release gates.
+
 Local source inspection confirmed a countdown hydration defect and navigation
 paths with no pending feedback. Local fixes add stable first-render countdown
 and greeting text, visible pending navigation feedback, settings/admin loading

@@ -237,7 +237,8 @@ d("a price from a subcontractor on several trades", () => {
   ])("does not change scope coverage for $name", async ({ strongMatch, sender, confidence, removed }) => {
     await query(
       `update opportunity_subs set quote_full_scope=true,
-         removed_at=case when trade='Electrical' and $3::boolean then now() else null end
+         removed_at=case when trade='Electrical' and $3::boolean then now() else null end,
+         removed_reason=case when trade='Electrical' and $3::boolean then 'Synthetic removal for reply safety test' else null end
         where opportunity_id=$1 and subcontractor_id=$2`,
       [oppId, subId, removed],
     );
@@ -262,7 +263,7 @@ d("a price from a subcontractor on several trades", () => {
       expect(scopes).toHaveLength(2);
       expect(scopes.every(row => row.quote_full_scope === true)).toBe(true);
     } finally {
-      await query(`update opportunity_subs set removed_at=null
+      await query(`update opportunity_subs set removed_at=null, removed_reason=null
         where opportunity_id=$1 and subcontractor_id=$2`, [oppId, subId]);
     }
   });

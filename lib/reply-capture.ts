@@ -32,12 +32,12 @@ import {
   normalizeEmail,
 } from "./reply-matching";
 import { closeOutDeclinedSub } from "./domain/decline-closeout";
-import { decideReply, type ReplyDecision } from "./domain/reply-outcome";
+import { decideReply, recordReplyEvent, type ReplyDecision } from "./domain/reply-outcome";
 import { looksLikeBounce } from "./domain/email-delivery";
 import { enqueue } from "./queue";
 import { logAgent } from "./logger";
 import { proposeRow, type Refusal } from "./domain/quote-fields";
-import { saveProposedRow } from "./pricing-rows";
+import { persistReplyQuote } from "./reply-quote";
 
 export interface MatchedComm {
   id: string;
@@ -797,80 +797,48 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   });
 
   if (autoSaveOk && subId && extracted.quoteAmount != null && proposal.ok) {
-    const trade = proposal.row.trade;
-    const notes = ["Auto-captured from email reply.", extracted.notes ?? ""]
-      .filter(Boolean)
-      .join(" ");
-    const inserted = await queryOne<{ id: string }>(
-      `insert into quotes (org_id, opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes)
-       values ($7,$1,$2,$3,$4,$5,$6)
-       on conflict (opportunity_id, subcontractor_id, (coalesce(trade,''))) do nothing
-       returning id`,
-      [
-        comm.opportunity_id,
-        subId,
-        trade,
-        extracted.quoteAmount,
-        extracted.paymentTerms,
-        notes,
-        orgId,
-      ]
-    );
-    quoteSaved = inserted != null;
-    quoteSkippedExisting = inserted == null;
-    /*
-     * When their price arrived, and whether it covered what was asked for.
-     *
-     * Stamped on the pairing rather than on the quote, because that is where
-     * the date they were given lives, and lateness is the subtraction of the
-     * two. Their Date header rather than our poll time: a reply written on
-     * Friday and collected on Monday was not late.
-     *
-     * The scope judgement here is the extractor's, and it is a real
-     * determination rather than a guess: `partial_scope` is a refusal the
-     * pipeline raises by name when a reply prices only part of the work.
-     * Absence of that refusal on a saved quote is the affirmative reading.
-     */
-    if (quoteSaved) {
-      await query(
-        `update opportunity_subs
-            set quoted_at = coalesce(quoted_at, $4::timestamptz),
-                quote_full_scope = coalesce(quote_full_scope, true)
-          where opportunity_id = $1 and subcontractor_id = $2
-            and coalesce(trade,'') = coalesce($3,'')`,
-        [comm.opportunity_id, subId, trade, replyWrittenAt]
-      );
-    }
-    if (quoteSaved) {
-      /*
-       * Everything the reply actually said, kept as fields rather than prose.
-       *
-       * The `notes` column above is where all of this used to go: what they
-       * excluded, how firm the number is, how long it holds, how soon they can
-       * start. An estimator reading a paragraph has to re-derive every one of
-       * those, and the bid has no way to act on any of them.
-       *
-       * `onlyIfAbsent` because a person's row always wins. An automatic read
-       * of an email must never overwrite a figure somebody typed.
-       */
-      await saveProposedRow({
+    try {
+      const persisted = await persistReplyQuote({
         orgId,
         opportunityId: comm.opportunity_id,
         subcontractorId: subId,
-        sourceQuoteId: inserted!.id,
         proposal: proposal.row,
-        onlyIfAbsent: true,
-      }).catch(() => undefined);
-      // Keep detail / Coverage / Next Step in sync with manual quote entry.
-      await query(
-        `update opportunities
-           set stage='quote_entry', human_action_required=false, updated_at=now()
-         where id=$1 and stage in ('outreach','call_queue')`,
-        [comm.opportunity_id]
+        notes: ["Auto-captured from email reply.", extracted.notes ?? ""].filter(Boolean).join(" "),
+        receivedAt: Number.isNaN(replyWrittenAt.getTime()) ? new Date() : replyWrittenAt,
+      });
+      quoteSaved = persisted === "saved";
+      quoteSkippedExisting = persisted === "kept_existing";
+      if (persisted === "not_editable") {
+        decision = holdForReview(
+          "The reply was saved, but this opportunity or trade is no longer open for automatic pricing. Review its current status before applying the price."
+        );
+      }
+    } catch (error) {
+      console.error("[reply-capture] quote transaction failed:", error);
+      decision = holdForReview(
+        "The reply was saved, but its quote and pricing details could not be filed together. Open the reply and verify the current quote before applying it again."
       );
-      await enqueue("bid-builder", { opportunityId: comm.opportunity_id }).catch(
-        () => undefined
-      );
+    }
+
+    if (quoteSaved) {
+      try {
+        await enqueue("bid-builder", { opportunityId: comm.opportunity_id });
+      } catch (error) {
+        console.error("[reply-capture] bid build could not be queued:", error);
+        decision = holdForReview(
+          "The quote was saved, but automatic bid building could not be scheduled. Check Automation Health, then open the opportunity and retry building its bid."
+        );
+      }
+    }
+    if (decision.needsReview) {
+      // Persist the recovery task here. A later caller failure or duplicate
+      // poll must not erase the explanation after the inbound was recorded.
+      await recordReplyEvent({
+        orgId, subcontractorId: subId, opportunityId: comm.opportunity_id,
+        trade: osRow?.trade ?? null, extracted, originalMessage: replyText,
+        gmailMessageId: input.messageId, gmailThreadId: input.threadId,
+        needsReview: true, reviewReason: decision.reviewReason,
+      });
     }
   }
 
