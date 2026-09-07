@@ -41,7 +41,7 @@ export async function accountDetails(userId: string): Promise<AccountDetails | n
             ) as aliases
        from users u where u.id = $1`,
     [userId]
-  ).catch(() => null);
+  );
   if (!row) return null;
   return {
     id: String(row.id),
@@ -67,7 +67,7 @@ export async function accountSessions(userId: string): Promise<SessionRow[]> {
       order by coalesce(last_seen_at, created_at) desc
       limit 50`,
     [userId]
-  ).catch(() => [] as Record<string, unknown>[]);
+  );
   return rows.map((r) => ({
     id: String(r.id),
     createdAt: iso(r.created_at),

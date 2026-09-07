@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   const pathname = new URL(req.url).searchParams.get("path") || "/today";
   const pageKey = pageKeyFromPath(pathname);
 
-  await hydrateIntegrationEnv().catch(() => undefined);
+  await hydrateIntegrationEnv();
 
   const orgId = await tryResolveTenantOrgId();
 
@@ -54,9 +54,9 @@ export async function GET(req: Request) {
              (select coalesce(max(extract(epoch from updated_at))::bigint, 0)
                 from opportunities where org_id = $1) as opp_stamp`,
           [orgId]
-        ).catch(() => null)
+        )
       : Promise.resolve(null),
-    getActiveProfile().catch(() => null),
+    getActiveProfile(),
     (async () => {
       const id = opportunityIdFromPath(pathname);
       if (!id || !orgId) return null;
@@ -64,7 +64,7 @@ export async function GET(req: Request) {
         `select human_action_required, stage from opportunities
           where id=$1 and org_id=$2`,
         [id, orgId]
-      ).catch(() => null);
+      );
     })(),
   ]);
 

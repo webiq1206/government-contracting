@@ -7,7 +7,7 @@
  * `advance`, which refuses an illegal transition and records an audit line for
  * a legal one.
  */
-import { query, queryOne } from "./db";
+import { query, queryOne, transaction } from "./db";
 import {
   canTransition,
   parseIncidentState,
@@ -204,53 +204,68 @@ export interface AdvanceInput {
  * forgets would get a constraint violation instead of a recovery.
  */
 export async function advance(input: AdvanceInput): Promise<IncidentRow> {
-  const current = await incidentById(input.incidentId, input.orgId);
-  if (!current) throw new Error("No such incident for this organization.");
-  if (current.state === input.to) return current;
-  if (!canTransition(current.state, input.to)) {
-    throw new IllegalTransition(current.state, input.to);
-  }
+  return transaction(async (client) => {
+    const locked = await client.query<Record<string, unknown>>(
+      `${SELECT} where id = $1 and org_id = $2 for update`,
+      [input.incidentId, input.orgId]
+    );
+    const currentRaw = locked.rows[0];
+    if (!currentRaw) throw new Error("No such incident for this organization.");
+    const current = toRow(currentRaw);
+    if (current.state === input.to) return current;
+    if (!canTransition(current.state, input.to)) {
+      throw new IllegalTransition(current.state, input.to);
+    }
 
-  const set = input.set ?? {};
-  await query(
-    `update automation_incidents set
-       state = $3,
-       test_ran_at = coalesce($4, test_ran_at),
-       test_passed = coalesce($5, test_passed),
-       test_detail = coalesce($6, test_detail),
-       requeued_count = coalesce($7, requeued_count),
-       completed_count = coalesce($8, completed_count),
-       remaining_count = coalesce($9, remaining_count),
-       recovery_owner = coalesce($10, recovery_owner),
-       recovery_note = coalesce($11, recovery_note),
-       last_provider_success_at = coalesce($12, last_provider_success_at),
-       recovered_at = case when $3 = 'recovered' then now() else recovered_at end,
-       repair_attempts = case when $3 = 'test_passed' or $3 = 'recovery_failed'
-                              then repair_attempts + 1 else repair_attempts end,
-       updated_at = now()
-     where id = $1 and org_id = $2`,
-    [
-      input.incidentId,
-      input.orgId,
-      input.to,
-      set.testRanAt ?? null,
-      set.testPassed ?? null,
-      set.testDetail ?? null,
-      set.requeuedCount ?? null,
-      set.completedCount ?? null,
-      set.remainingCount ?? null,
-      set.recoveryOwner ?? null,
-      set.recoveryNote ?? null,
-      set.lastProviderSuccessAt ?? null,
-    ]
-  );
-  await query(
-    `insert into incident_events (incident_id, org_id, from_state, to_state, actor, detail)
-     values ($1,$2,$3,$4,$5,$6)`,
-    [input.incidentId, input.orgId, current.state, input.to, input.actor, input.detail ?? null]
-  );
-  const updated = await incidentById(input.incidentId, input.orgId);
-  return updated!;
+    const set = input.set ?? {};
+    const changed = await client.query<{ id: string }>(
+      `update automation_incidents set
+         state = $3,
+         test_ran_at = coalesce($4, test_ran_at),
+         test_passed = coalesce($5, test_passed),
+         test_detail = coalesce($6, test_detail),
+         requeued_count = coalesce($7, requeued_count),
+         completed_count = coalesce($8, completed_count),
+         remaining_count = coalesce($9, remaining_count),
+         recovery_owner = coalesce($10, recovery_owner),
+         recovery_note = coalesce($11, recovery_note),
+         last_provider_success_at = coalesce($12, last_provider_success_at),
+         recovered_at = case when $3 = 'recovered' then now() else recovered_at end,
+         repair_attempts = case when $3 = 'test_passed' or $3 = 'recovery_failed'
+                                then repair_attempts + 1 else repair_attempts end,
+         updated_at = now()
+       where id = $1 and org_id = $2 and state = $13
+       returning id`,
+      [
+        input.incidentId,
+        input.orgId,
+        input.to,
+        set.testRanAt ?? null,
+        set.testPassed ?? null,
+        set.testDetail ?? null,
+        set.requeuedCount ?? null,
+        set.completedCount ?? null,
+        set.remainingCount ?? null,
+        set.recoveryOwner ?? null,
+        set.recoveryNote ?? null,
+        set.lastProviderSuccessAt ?? null,
+        current.state,
+      ]
+    );
+    if (changed.rows.length === 0) {
+      throw new Error("The incident changed before this transition could be recorded.");
+    }
+    await client.query(
+      `insert into incident_events (incident_id, org_id, from_state, to_state, actor, detail)
+       values ($1,$2,$3,$4,$5,$6)`,
+      [input.incidentId, input.orgId, current.state, input.to, input.actor, input.detail ?? null]
+    );
+    const updated = await client.query<Record<string, unknown>>(
+      `${SELECT} where id = $1 and org_id = $2`,
+      [input.incidentId, input.orgId]
+    );
+    return toRow(updated.rows[0]);
+  });
 }
 
 export interface IncidentEvent {

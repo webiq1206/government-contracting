@@ -8,6 +8,7 @@
  * thing in the request they do not control.
  */
 import { createHash } from "node:crypto";
+import type { PoolClient, QueryResultRow } from "pg";
 import { query, queryOne } from "./db";
 import {
   parseConfidence,
@@ -22,6 +23,7 @@ import {
 } from "./domain/pricing-row";
 import { isEmptyCapture, type PricingFromCall } from "./domain/call-capture";
 import type { ProposedRow } from "./domain/quote-fields";
+import { QUOTE_EDIT_STAGES } from "./domain/opportunity-lifecycle";
 
 const COMPONENTS: CostComponent[] = [
   "baseQuote",
@@ -85,7 +87,10 @@ function parseAlternates(v: unknown): Alternate[] {
     const o = raw as Record<string, unknown>;
     const label = typeof o.label === "string" ? o.label.trim() : "";
     if (!label) continue;
-    const amount = typeof o.amount === "number" && Number.isFinite(o.amount) ? o.amount : null;
+    const amount =
+      typeof o.amount === "number" && Number.isFinite(o.amount)
+        ? o.amount
+        : null;
     out.push({ label, amount, included: o.included === true });
   }
   return out;
@@ -112,7 +117,9 @@ function parseExclusions(v: unknown): Exclusion[] {
 
 function parsePending(v: string[] | null): CostComponent[] {
   if (!Array.isArray(v)) return [];
-  return v.filter((c): c is CostComponent => (COMPONENTS as string[]).includes(c));
+  return v.filter((c): c is CostComponent =>
+    (COMPONENTS as string[]).includes(c),
+  );
 }
 
 function toRow(r: DbRow): PricingRow {
@@ -155,16 +162,38 @@ const SELECT = `
          p.availability, p.lead_time_days, p.confidence,
          p.supporting_document_id, p.updated_at, p.updated_by
     from trade_pricing_rows p
-    left join subcontractors sel on sel.id = p.selected_sub_id
-    left join subcontractors bak on bak.id = p.backup_sub_id
+    left join subcontractors sel on sel.id = p.selected_sub_id and sel.org_id = p.org_id
+    left join subcontractors bak on bak.id = p.backup_sub_id and bak.org_id = p.org_id
 `;
 
-export async function pricingRowsFor(opportunityId: string, orgId: string): Promise<PricingRow[]> {
-  const rows = await query<DbRow>(
-    `${SELECT} where p.opportunity_id = $1 and p.org_id = $2 order by p.trade`,
-    [opportunityId, orgId]
+/** Read through the approval transaction when one owns the pricing snapshot. */
+async function pricingQuery<T extends QueryResultRow>(
+  client: PoolClient | null,
+  text: string,
+  params: unknown[],
+): Promise<T[]> {
+  if (client) return (await client.query<T>(text, params)).rows;
+  return query<T>(text, params);
+}
+
+async function pricingRowsForClient(
+  opportunityId: string,
+  orgId: string,
+  client: PoolClient | null,
+): Promise<PricingRow[]> {
+  const rows = await pricingQuery<DbRow>(
+    client,
+    `${SELECT} where p.opportunity_id = $1 and p.org_id = $2 order by p.trade, p.scope_key, p.id`,
+    [opportunityId, orgId],
   );
   return rows.map(toRow);
+}
+
+export async function pricingRowsFor(
+  opportunityId: string,
+  orgId: string,
+): Promise<PricingRow[]> {
+  return pricingRowsForClient(opportunityId, orgId, null);
 }
 
 interface QuoteRow {
@@ -191,24 +220,30 @@ interface QuoteRow {
  * making a decision it has no basis for: the cheapest quote is regularly the
  * one that excluded the most work.
  */
-export async function pricingRowsWithQuotes(
+async function pricingRowsWithQuotesClient(
   opportunityId: string,
-  orgId: string
+  orgId: string,
+  client: PoolClient | null,
 ): Promise<PricingRow[]> {
-  const [stored, quotes] = await Promise.all([
-    pricingRowsFor(opportunityId, orgId),
-    query<QuoteRow>(
+  const readStored = () => pricingRowsForClient(opportunityId, orgId, client);
+  const readQuotes = () =>
+    pricingQuery<QuoteRow>(
+      client,
       `select q.id, q.trade, q.subcontractor_id, s.company_name,
               q.quote_amount, q.payment_terms, q.is_out_of_range
          from quotes q
-         left join subcontractors s on s.id = q.subcontractor_id
-        where q.opportunity_id = $1
+         left join subcontractors s on s.id = q.subcontractor_id and s.org_id = q.org_id
+        where q.opportunity_id = $1 and q.org_id = $2
           and exists (select 1 from opportunities o
                        where o.id = q.opportunity_id and o.org_id = $2)
-        order by q.created_at`,
-      [opportunityId, orgId]
-    ),
-  ]);
+        order by q.created_at, q.id`,
+      [opportunityId, orgId],
+    );
+  // A PoolClient owns one connection, so keep its reads ordered. Independent
+  // pool reads retain the cheaper parallel path used by ordinary page loads.
+  const [stored, quotes] = client
+    ? [await readStored(), await readQuotes()]
+    : await Promise.all([readStored(), readQuotes()]);
 
   const byTrade = new Map<string, QuoteCandidate[]>();
   for (const q of quotes) {
@@ -236,7 +271,9 @@ export async function pricingRowsWithQuotes(
 
   for (const [key, candidates] of byTrade) {
     if (have.has(key)) continue;
-    const original = quotes.find((q) => tradeScopeKey(q.trade ?? "General") === key);
+    const original = quotes.find(
+      (q) => tradeScopeKey(q.trade ?? "General") === key,
+    );
     const only = candidates.length === 1 ? candidates[0] : null;
     out.push({
       ...emptyRow(original?.trade?.trim() || "General"),
@@ -250,7 +287,32 @@ export async function pricingRowsWithQuotes(
     });
   }
 
-  return out.sort((a, b) => a.trade.localeCompare(b.trade));
+  return out.sort(
+    (a, b) =>
+      a.trade.localeCompare(b.trade) || a.scopeKey.localeCompare(b.scopeKey),
+  );
+}
+
+export async function pricingRowsWithQuotes(
+  opportunityId: string,
+  orgId: string,
+): Promise<PricingRow[]> {
+  return pricingRowsWithQuotesClient(opportunityId, orgId, null);
+}
+
+/**
+ * Read the exact pricing facts held by an approval transaction.
+ *
+ * The caller owns row/table serialization. Keeping these reads on its client
+ * prevents an approval from validating one pool connection and committing a
+ * different point-in-time view on another.
+ */
+export async function pricingRowsWithQuotesInTransaction(
+  client: PoolClient,
+  opportunityId: string,
+  orgId: string,
+): Promise<PricingRow[]> {
+  return pricingRowsWithQuotesClient(opportunityId, orgId, client);
 }
 
 export interface SaveRowInput {
@@ -279,7 +341,10 @@ export interface SaveRowInput {
 }
 
 export class PricingRowRejected extends Error {
-  constructor(readonly reason: string) {
+  constructor(
+    readonly reason: string,
+    readonly status: 400 | 409 = 400,
+  ) {
     super(reason);
     this.name = "PricingRowRejected";
   }
@@ -298,10 +363,15 @@ export class PricingRowRejected extends Error {
  */
 export async function savePricingRow(input: SaveRowInput): Promise<PricingRow> {
   const trade = input.trade.trim();
-  if (!trade) throw new PricingRowRejected("A pricing row must name the trade it prices.");
+  if (!trade)
+    throw new PricingRowRejected(
+      "A pricing row must name the trade it prices.",
+    );
   const scopeKey = tradeScopeKey(trade);
   if (!scopeKey) {
-    throw new PricingRowRejected("That trade name has no letters or numbers in it.");
+    throw new PricingRowRejected(
+      "That trade name has no letters or numbers in it.",
+    );
   }
 
   for (const [field, value] of [
@@ -317,7 +387,9 @@ export async function savePricingRow(input: SaveRowInput): Promise<PricingRow> {
     }
     // All money in this system is whole US dollars, never cents.
     if (value > 100_000_000) {
-      throw new PricingRowRejected(`The ${field} figure is over $100M. Enter dollars, not cents.`);
+      throw new PricingRowRejected(
+        `The ${field} figure is over $100M. Enter dollars, not cents.`,
+      );
     }
   }
   if (input.manualAdjustment != null) {
@@ -325,7 +397,9 @@ export async function savePricingRow(input: SaveRowInput): Promise<PricingRow> {
       throw new PricingRowRejected("The manual adjustment must be a number.");
     }
     if (Math.abs(input.manualAdjustment) > 100_000_000) {
-      throw new PricingRowRejected("The manual adjustment is over $100M. Enter dollars, not cents.");
+      throw new PricingRowRejected(
+        "The manual adjustment is over $100M. Enter dollars, not cents.",
+      );
     }
     // Mirrors the check constraint so the operator gets a sentence rather than
     // a database error, and so the constraint stays the thing that is true.
@@ -334,21 +408,39 @@ export async function savePricingRow(input: SaveRowInput): Promise<PricingRow> {
       (input.manualAdjustmentReason ?? "").trim().length < 20
     ) {
       throw new PricingRowRejected(
-        "Say why the price was adjusted, in a sentence. It is the only record of the reason later."
+        "Say why the price was adjusted, in a sentence. It is the only record of the reason later.",
       );
     }
   }
-  if (input.leadTimeDays != null && (!Number.isInteger(input.leadTimeDays) || input.leadTimeDays < 0)) {
-    throw new PricingRowRejected("Lead time is a number of days, zero or more.");
+  if (
+    input.leadTimeDays != null &&
+    (!Number.isInteger(input.leadTimeDays) || input.leadTimeDays < 0)
+  ) {
+    throw new PricingRowRejected(
+      "Lead time is a number of days, zero or more.",
+    );
   }
-  if (input.quoteExpiresOn != null && !/^\d{4}-\d{2}-\d{2}$/.test(input.quoteExpiresOn)) {
+  if (
+    input.quoteExpiresOn != null &&
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.quoteExpiresOn)
+  ) {
     throw new PricingRowRejected("The quote expiry must be a date.");
   }
 
-  const selectedSubId = await ownSub(input.selectedSubId, input.orgId, "selected");
+  const selectedSubId = await ownSub(
+    input.selectedSubId,
+    input.orgId,
+    "selected",
+  );
   const backupSubId = await ownSub(input.backupSubId, input.orgId, "backup");
-  if (selectedSubId != null && backupSubId != null && selectedSubId === backupSubId) {
-    throw new PricingRowRejected("The backup subcontractor cannot be the selected one.");
+  if (
+    selectedSubId != null &&
+    backupSubId != null &&
+    selectedSubId === backupSubId
+  ) {
+    throw new PricingRowRejected(
+      "The backup subcontractor cannot be the selected one.",
+    );
   }
   const documentId = await ownDocument(input.supportingDocumentId, input.orgId);
 
@@ -365,7 +457,16 @@ export async function savePricingRow(input: SaveRowInput): Promise<PricingRow> {
         lead_time_days, confidence, supporting_document_id, updated_by)
      select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16::jsonb,
             $17,$18,$19,$20,$21,$22,$23
-      where exists (select 1 from opportunities where id = $2 and org_id = $1)
+      where exists (
+        select 1 from opportunities
+         where id = $2 and org_id = $1 and status='open'
+           and stage=any($24::text[])
+           and coalesce(pursuit_state, 'active')='active'
+      )
+        and not exists (
+          select 1 from bids
+           where opportunity_id=$2 and org_id=$1 and submission_state <> 'package_ready'
+        )
      on conflict (opportunity_id, scope_key) do update set
         trade = excluded.trade,
         selected_sub_id = excluded.selected_sub_id,
@@ -413,28 +514,48 @@ export async function savePricingRow(input: SaveRowInput): Promise<PricingRow> {
       parseConfidence(input.confidence),
       documentId,
       input.actor,
-    ]
+      QUOTE_EDIT_STAGES,
+    ],
   );
   // The insert is guarded by `where exists`, so no row back means the
   // opportunity is not this org's. Same answer as a missing one, deliberately:
   // a different message would confirm the record exists.
-  if (!row) throw new PricingRowRejected("That opportunity is not on this account.");
+  if (!row) {
+    throw new PricingRowRejected(
+      "That opportunity is not editable. It may have moved, paused, closed, or had its package approved.",
+      409,
+    );
+  }
 
   const saved = await queryOne<DbRow>(`${SELECT} where p.id = $1`, [row.id]);
-  if (!saved) throw new PricingRowRejected("The row was saved but could not be read back.");
+  if (!saved)
+    throw new PricingRowRejected(
+      "The row was saved but could not be read back.",
+    );
   return toRow(saved);
 }
 
 export async function deletePricingRow(
   opportunityId: string,
   orgId: string,
-  scopeKey: string
+  scopeKey: string,
 ): Promise<boolean> {
   const gone = await query<{ id: string }>(
-    `delete from trade_pricing_rows
-      where opportunity_id = $1 and org_id = $2 and scope_key = $3
+    `delete from trade_pricing_rows p
+      where p.opportunity_id = $1 and p.org_id = $2 and p.scope_key = $3
+        and exists (
+          select 1 from opportunities o
+           where o.id=p.opportunity_id and o.org_id=p.org_id and o.status='open'
+             and o.stage=any($4::text[])
+             and coalesce(o.pursuit_state, 'active')='active'
+        )
+        and not exists (
+          select 1 from bids b
+           where b.opportunity_id=p.opportunity_id and b.org_id=p.org_id
+             and b.submission_state <> 'package_ready'
+        )
       returning id`,
-    [opportunityId, orgId, scopeKey]
+    [opportunityId, orgId, scopeKey, QUOTE_EDIT_STAGES],
   );
   return gone.length > 0;
 }
@@ -442,28 +563,34 @@ export async function deletePricingRow(
 async function ownSub(
   id: string | null | undefined,
   orgId: string,
-  which: string
+  which: string,
 ): Promise<string | null> {
   if (!id) return null;
   const owned = await queryOne<{ id: string }>(
     `select id from subcontractors where id = $1 and org_id = $2`,
-    [id, orgId]
-  ).catch(() => null);
+    [id, orgId],
+  );
   if (!owned) {
     throw new PricingRowRejected(
-      `The ${which} subcontractor is not on your roster. Pick one from the list.`
+      `The ${which} subcontractor is not on your roster. Pick one from the list.`,
     );
   }
   return owned.id;
 }
 
-async function ownDocument(id: string | null | undefined, orgId: string): Promise<string | null> {
+async function ownDocument(
+  id: string | null | undefined,
+  orgId: string,
+): Promise<string | null> {
   if (!id) return null;
   const owned = await queryOne<{ id: string }>(
     `select id from documents where id = $1 and org_id = $2`,
-    [id, orgId]
-  ).catch(() => null);
-  if (!owned) throw new PricingRowRejected("That supporting file is not on this account.");
+    [id, orgId],
+  );
+  if (!owned)
+    throw new PricingRowRejected(
+      "That supporting file is not on this account.",
+    );
   return owned.id;
 }
 
@@ -530,7 +657,7 @@ export async function freezeCalculation(input: {
        from bid_calculation_snapshots
       where bid_id = $1 and org_id = $2 and reason = $3 and calculation_hash = $4
       order by taken_at desc limit 1`,
-    [input.bidId, input.orgId, input.reason, hash]
+    [input.bidId, input.orgId, input.reason, hash],
   );
   if (existing) {
     return {
@@ -557,7 +684,7 @@ export async function freezeCalculation(input: {
       input.actor,
       JSON.stringify(input.calculation),
       hash,
-    ]
+    ],
   );
   if (!row) throw new PricingRowRejected("That bid is not on this account.");
   return {
@@ -570,7 +697,10 @@ export async function freezeCalculation(input: {
   };
 }
 
-export async function snapshotsFor(bidId: string, orgId: string): Promise<CalculationSnapshot[]> {
+export async function snapshotsFor(
+  bidId: string,
+  orgId: string,
+): Promise<CalculationSnapshot[]> {
   const rows = await query<{
     id: string;
     reason: string;
@@ -583,7 +713,7 @@ export async function snapshotsFor(bidId: string, orgId: string): Promise<Calcul
        from bid_calculation_snapshots
       where bid_id = $1 and org_id = $2
       order by taken_at desc`,
-    [bidId, orgId]
+    [bidId, orgId],
   );
   return rows.map((r) => ({
     id: r.id,
@@ -612,14 +742,17 @@ export async function snapshotsFor(bidId: string, orgId: string): Promise<Calcul
  * unassigned exclusion. Nothing is upgraded on the way in: the row says what
  * the reply said, and the gaps stay gaps.
  */
-export async function saveProposedRow(input: {
-  orgId: string;
-  opportunityId: string;
-  subcontractorId: string | null;
-  sourceQuoteId?: string | null;
-  proposal: ProposedRow;
-  onlyIfAbsent: boolean;
-}): Promise<"written" | "kept_existing"> {
+export async function saveProposedRow(
+  input: {
+    orgId: string;
+    opportunityId: string;
+    subcontractorId: string | null;
+    sourceQuoteId?: string | null;
+    proposal: ProposedRow;
+    onlyIfAbsent: boolean;
+  },
+  client?: PoolClient,
+): Promise<"written" | "kept_existing" | "not_editable"> {
   const p = input.proposal;
   const conflict = input.onlyIfAbsent
     ? "do nothing"
@@ -639,42 +772,74 @@ export async function saveProposedRow(input: {
          confidence = excluded.confidence,
          updated_at = now()`;
 
-  const row = await queryOne<{ id: string }>(
-    `insert into trade_pricing_rows
+  const sql = `insert into trade_pricing_rows
        (org_id, opportunity_id, scope_key, trade, selected_sub_id,
         base_quote, taxes, freight, mobilization, bonding, pending_components,
         alternates, exclusions, payment_terms, quote_expires_on, availability,
         lead_time_days, confidence, source_quote_id, updated_by)
      select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18,$19,
             'reply-capture'
-      where exists (select 1 from opportunities where id = $2 and org_id = $1)
+      where exists (
+        select 1 from opportunities
+         where id=$2 and org_id=$1 and status='open'
+           and stage=any($20::text[])
+           and coalesce(pursuit_state, 'active')='active'
+      )
+        and not exists (
+          select 1 from bids
+           where opportunity_id=$2 and org_id=$1 and submission_state <> 'package_ready'
+        )
      on conflict (opportunity_id, scope_key) ${conflict}
-     returning id`,
-    [
-      input.orgId,
-      input.opportunityId,
-      p.scopeKey,
-      p.trade,
-      input.subcontractorId,
-      p.baseQuote,
-      p.taxes,
-      p.freight,
-      p.mobilization,
-      p.bonding,
-      p.pendingComponents,
-      JSON.stringify(p.alternates),
-      JSON.stringify(
-        p.exclusions.map((e) => ({ text: e.text, covered_by: e.coveredBy, note: e.note ?? null }))
-      ),
-      p.paymentTerms,
-      p.quoteExpiresOn,
-      p.availability,
-      p.leadTimeDays,
-      p.confidence,
-      input.sourceQuoteId ?? null,
-    ]
-  );
-  return row ? "written" : "kept_existing";
+     returning id`;
+  const params = [
+    input.orgId,
+    input.opportunityId,
+    p.scopeKey,
+    p.trade,
+    input.subcontractorId,
+    p.baseQuote,
+    p.taxes,
+    p.freight,
+    p.mobilization,
+    p.bonding,
+    p.pendingComponents,
+    JSON.stringify(p.alternates),
+    JSON.stringify(
+      p.exclusions.map((e) => ({
+        text: e.text,
+        covered_by: e.coveredBy,
+        note: e.note ?? null,
+      })),
+    ),
+    p.paymentTerms,
+    p.quoteExpiresOn,
+    p.availability,
+    p.leadTimeDays,
+    p.confidence,
+    input.sourceQuoteId ?? null,
+    QUOTE_EDIT_STAGES,
+  ];
+  const row = client
+    ? ((await client.query<{ id: string }>(sql, params)).rows[0] ?? null)
+    : await queryOne<{ id: string }>(sql, params);
+  if (row) return "written";
+
+  // `do nothing` and the editability guard both return no row. They mean
+  // opposite things to a review: keeping an operator's existing price is
+  // safe, while finalizing a reply after no structured price was written is
+  // not. Read through the same connection to distinguish them.
+  if (input.onlyIfAbsent) {
+    const existingSql = `select id from trade_pricing_rows
+      where org_id=$1 and opportunity_id=$2 and scope_key=$3
+      limit 1`;
+    const existingParams = [input.orgId, input.opportunityId, p.scopeKey];
+    const existing = client
+      ? ((await client.query<{ id: string }>(existingSql, existingParams))
+          .rows[0] ?? null)
+      : await queryOne<{ id: string }>(existingSql, existingParams);
+    if (existing) return "kept_existing";
+  }
+  return "not_editable";
 }
 
 /**
@@ -701,7 +866,9 @@ export async function fillPricingFromCall(input: {
   subcontractorId: string | null;
   sourceQuoteId?: string | null;
   capture: PricingFromCall;
-}): Promise<"written" | "filled" | "nothing_to_write" | "no_trade"> {
+}): Promise<
+  "written" | "filled" | "nothing_to_write" | "no_trade" | "not_editable"
+> {
   if (isEmptyCapture(input.capture)) return "nothing_to_write";
   const scopeKey = tradeScopeKey(input.trade);
   // A pricing row is per trade. A call with no trade on it has nowhere to land
@@ -712,16 +879,25 @@ export async function fillPricingFromCall(input: {
   const existed = await queryOne<{ id: string }>(
     `select id from trade_pricing_rows
       where opportunity_id = $1 and scope_key = $2 and org_id = $3`,
-    [input.opportunityId, scopeKey, input.orgId]
+    [input.opportunityId, scopeKey, input.orgId],
   );
 
-  await query(
+  const changed = await query<{ id: string }>(
     `insert into trade_pricing_rows
        (org_id, opportunity_id, scope_key, trade, selected_sub_id,
         alternates, exclusions, payment_terms, quote_expires_on, availability,
         lead_time_days, source_quote_id, updated_by)
      select $1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,'call-workspace'
-      where exists (select 1 from opportunities where id = $2 and org_id = $1)
+      where exists (
+        select 1 from opportunities
+         where id=$2 and org_id=$1 and status='open'
+           and stage=any($13::text[])
+           and coalesce(pursuit_state, 'active')='active'
+      )
+        and not exists (
+          select 1 from bids
+           where opportunity_id=$2 and org_id=$1 and submission_state <> 'package_ready'
+        )
      on conflict (opportunity_id, scope_key) do update set
         /*
          * coalesce, not excluded: a call fills what is empty and never
@@ -739,7 +915,8 @@ export async function fillPricingFromCall(input: {
           when trade_pricing_rows.exclusions = '[]'::jsonb then excluded.exclusions
           else trade_pricing_rows.exclusions
         end,
-        updated_at = now()`,
+        updated_at = now()
+     returning id`,
     [
       input.orgId,
       input.opportunityId,
@@ -756,15 +933,19 @@ export async function fillPricingFromCall(input: {
        * anybody. Both are decisions for a person on the Pricing tab.
        */
       JSON.stringify(
-        c.alternates.map((label) => ({ label, amount: null, included: false }))
+        c.alternates.map((label) => ({ label, amount: null, included: false })),
       ),
-      JSON.stringify(c.exclusions.map((t) => ({ text: t, coveredBy: "unassigned" }))),
+      JSON.stringify(
+        c.exclusions.map((t) => ({ text: t, coveredBy: "unassigned" })),
+      ),
       c.paymentTerms,
       c.quoteExpiresOn,
       c.availability,
       c.leadTimeDays,
       input.sourceQuoteId ?? null,
-    ]
+      QUOTE_EDIT_STAGES,
+    ],
   );
+  if (changed.length === 0) return "not_editable";
   return existed ? "filled" : "written";
 }

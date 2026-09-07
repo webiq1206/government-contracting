@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser, type SessionUser } from "./auth";
 import { accessLevel, accessBlockedReason, entitlementOf } from "./billing/entitlements";
 import { can, permissionMessage, roleLabel, type Capability } from "./domain/roles";
+import { impersonationRefusal } from "./impersonation";
 
 /**
  * Guard for API route handlers. Returns the user, or a 401 response to return
@@ -11,7 +12,19 @@ import { can, permissionMessage, roleLabel, type Capability } from "./domain/rol
  *   // auth is SessionUser
  */
 export async function requireUser(): Promise<SessionUser | NextResponse> {
-  const user = await currentUser().catch(() => null);
+  let user: SessionUser | null;
+  try {
+    user = await currentUser();
+  } catch (error) {
+    console.error("[auth] session or organization lookup failed:", error);
+    return NextResponse.json(
+      {
+        error:
+          "Your account could not be checked right now. Nothing was changed. Try again when the service recovers.",
+      },
+      { status: 503, headers: { "Retry-After": "5" } }
+    );
+  }
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   return user;
 }
@@ -59,6 +72,8 @@ export async function requireCapability(
 ): Promise<SessionUser | NextResponse> {
   const auth = await requireSubscriber();
   if (auth instanceof NextResponse) return auth;
+  const supportRefusal = impersonationRefusal(auth);
+  if (supportRefusal) return supportRefusal;
   if (!can(auth.orgRole, capability)) {
     return NextResponse.json(
       {

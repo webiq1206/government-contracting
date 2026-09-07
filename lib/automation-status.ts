@@ -14,10 +14,14 @@
  * a stranger's failure rate in their sidebar. Liveness still comes from the
  * worker heartbeat, which is genuinely platform-wide and genuinely the same
  * answer for everyone.
+ *
+ * These reads intentionally fail together. Replacing an unavailable error
+ * count, pause switch, or credential check with zero/false/true can produce a
+ * confident "Running normally" from facts that were never read. Page callers
+ * catch the failure and display an unavailable-state warning instead.
  */
 import { query } from "./db";
-import { tryResolveTenantOrgId } from "./tenant";
-import { LEGACY_ORG_ID } from "./tenant-context";
+import { resolveTenantOrgId } from "./tenant";
 import { getAutomationState } from "./app-settings";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { orgHasKey } from "./integration-keys";
@@ -39,17 +43,11 @@ interface LogRow {
 }
 
 export async function automationHealth(orgId?: string): Promise<AutomationHealth> {
-  const org = orgId ?? (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  if (!/^[0-9a-f-]{36}$/i.test(org)) {
-    // No resolvable tenant is not an outage; there is simply nothing to report.
-    return assessAutomation({ paused: false, runs: [], backlog: null });
-  }
+  const org = orgId ?? (await resolveTenantOrgId());
 
   const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog] = await Promise.all([
-    getAutomationState()
-      .then((s) => s.paused)
-      .catch(() => false),
-    readWorkerHeartbeat().catch(() => null),
+    getAutomationState().then((s) => s.paused),
+    readWorkerHeartbeat(),
     query<{ runs: number; errors: number }>(
       `select count(*)::int as runs,
               count(*) filter (where status = 'error')::int as errors
@@ -58,9 +56,7 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
           and created_at > now() - interval '${WINDOW}'
           and status in ('ok','error')`,
       [org]
-    )
-      .then((r) => r[0] ?? { runs: 0, errors: 0 })
-      .catch(() => ({ runs: 0, errors: 0 })),
+    ).then((r) => r[0] ?? { runs: 0, errors: 0 }),
     // Every failure in the window, not the newest 500 mixed rows. A busy
     // scoring engine used to push analyst failures out of the sample so the
     // sidebar printed "Running normally" over a failing reader.
@@ -73,7 +69,7 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
         order by created_at desc
         limit 500`,
       [org]
-    ).catch(() => [] as LogRow[]),
+    ),
     query<LogRow>(
       `select agent, status, created_at::text, message
          from agent_logs
@@ -83,7 +79,7 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
         order by created_at desc
         limit 1`,
       [org]
-    ).catch(() => [] as LogRow[]),
+    ),
     query<{ n: number }>(
       /*
        * Held up by the failure, not every open bid.
@@ -102,15 +98,13 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
             or coalesce(risk_flags, '{}') && array['stalled_analysis','analysis_needs_claude']::text[]
           )`,
       [org]
-    )
-      .then((r) => r[0]?.n ?? 0)
-      .catch(() => 0),
+    ).then((r) => r[0]?.n ?? 0),
     // "Has automation ever been set up" is a question about credentials, and
     // the AI key is the one every core agent needs. Without it nothing scores,
     // analyses or drafts, so its absence is the honest definition of "not
     // configured" rather than a fault to report.
-    orgHasKey("ANTHROPIC_API_KEY", org).catch(() => true),
-    queueBacklogDepth().catch(() => null),
+    orgHasKey("ANTHROPIC_API_KEY", org),
+    queueBacklogDepth(),
   ]);
 
   const rows = [...errors, ...latestOk];

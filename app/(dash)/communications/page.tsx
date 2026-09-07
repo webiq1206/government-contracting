@@ -36,20 +36,25 @@ import { queuePosition } from "@/lib/domain/workspace-queue";
 import { NeedsMatchingInbox } from "@/components/needs-matching-inbox";
 import { needsMatching } from "@/lib/needs-matching";
 import { query } from "@/lib/db";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
+
+const CONVERSATION_PAGE_SIZE = 50;
 
 function href(
   filter: ConversationFilter,
   q: string,
   threadKey?: string | null,
-  compose?: string | null
+  compose?: string | null,
+  page = 1
 ): string {
   const p = new URLSearchParams();
   if (filter !== "all") p.set("filter", filter);
   if (q) p.set("q", q);
   if (threadKey) p.set("c", threadKey);
   if (compose) p.set("compose", compose);
+  if (page > 1) p.set("page", String(page));
   const s = p.toString();
   return s ? `/communications?${s}` : "/communications";
 }
@@ -99,9 +104,10 @@ export default async function CommunicationsPage({
   const filter = parseConversationFilter(searchParams?.filter);
   const selectedRaw = searchParams?.c;
   const selectedKey = (Array.isArray(selectedRaw) ? selectedRaw[0] : selectedRaw) ?? null;
+  const loadWarnings: string[] = [];
 
   const [all, rates, pending, matchTargets] = await Promise.all([
-    conversationList({ q: q || undefined }),
+    conversationList(),
     deliverabilityMessages().then(deliverability),
     /*
      * Mail that arrived and could not be placed.
@@ -112,7 +118,10 @@ export default async function CommunicationsPage({
      * log, which is a stream for when the machinery misbehaves, not a queue of
      * customer messages.
      */
-    needsMatching(ctx.orgId).catch(() => []),
+    needsMatching(ctx.orgId).catch(() => {
+      loadWarnings.push("Unmatched inbound messages could not be checked.");
+      return [];
+    }),
     query<{ id: string; title: string }>(
       `select id, title from opportunities
         where org_id = $1 and coalesce(pursuit_state,'active') = 'active'
@@ -120,7 +129,10 @@ export default async function CommunicationsPage({
         order by coalesce(deadline, created_at) desc
         limit 100`,
       [ctx.orgId]
-    ).catch(() => []),
+    ).catch(() => {
+      loadWarnings.push("Opportunities for manually filing a reply could not be loaded.");
+      return [];
+    }),
   ]);
 
   /*
@@ -129,9 +141,38 @@ export default async function CommunicationsPage({
    * is open is describing the search, not the inbox.
    */
   const counts = conversationCounts(all);
-  const shown = all.filter((c) => matchesFilter(c, filter));
+  const searched = q
+    ? all.filter((conversation) => {
+        const needle = q.toLocaleLowerCase();
+        return [
+          conversation.subcontractorName,
+          conversation.subject,
+          conversation.opportunityTitle,
+        ]
+          .filter(Boolean)
+          .some((value) => String(value).toLocaleLowerCase().includes(needle));
+      })
+    : all;
+  const filtered = searched.filter((c) => matchesFilter(c, filter));
 
   const selected = selectedKey ? all.find((c) => c.threadKey === selectedKey) ?? null : null;
+  const selectedIndex = selectedKey
+    ? filtered.findIndex((conversation) => conversation.threadKey === selectedKey)
+    : -1;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / CONVERSATION_PAGE_SIZE));
+  const pageRaw = searchParams?.page;
+  const requestedPage = Math.max(
+    1,
+    Number(Array.isArray(pageRaw) ? pageRaw[0] : pageRaw ?? "1") || 1
+  );
+  const page =
+    selectedIndex >= 0
+      ? Math.floor(selectedIndex / CONVERSATION_PAGE_SIZE) + 1
+      : Math.min(requestedPage, totalPages);
+  const shown = filtered.slice(
+    (page - 1) * CONVERSATION_PAGE_SIZE,
+    page * CONVERSATION_PAGE_SIZE
+  );
   const peekTarget = parseQuickView(searchParams?.peek, { allowed: ["conversation"] });
   /*
    * Looked up in the whole list rather than the filtered one, so a link
@@ -220,6 +261,7 @@ export default async function CommunicationsPage({
           status="No conversations yet"
           explanation="Every conversation with a subcontractor, what arrived, and who is waiting on whom."
         />
+        <ShellDataWarning items={loadWarnings} />
         <div className="scroll-thin flex-1 overflow-y-auto p-5">
           <EmptyState
             title="No mail either way yet"
@@ -328,6 +370,8 @@ export default async function CommunicationsPage({
         )}
       </div>
 
+      <ShellDataWarning items={loadWarnings} />
+
       {/*
         * Three panes on a wide screen, one at a time on a narrow one. The
         * mobile rule is the whole reason this is a query parameter rather than
@@ -375,6 +419,30 @@ export default async function CommunicationsPage({
               </span>
             )}
           </div>
+          {totalPages > 1 && (
+            <nav
+              aria-label="Conversation pages"
+              className="flex items-center justify-between gap-3 border-b border-border/40 px-4 py-2 text-xs dark:border-white/5"
+            >
+              {page > 1 ? (
+                <Link href={href(filter, q, null, null, page - 1)} className="tap text-accent">
+                  Previous 50
+                </Link>
+              ) : (
+                <span />
+              )}
+              <span className="num text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              {page < totalPages ? (
+                <Link href={href(filter, q, null, null, page + 1)} className="tap text-accent">
+                  Next 50
+                </Link>
+              ) : (
+                <span />
+              )}
+            </nav>
+          )}
           {shown.length === 0 ? (
             <div className="p-4">
               <EmptyState
@@ -399,7 +467,7 @@ export default async function CommunicationsPage({
                 return (
                   <li key={c.threadKey}>
                     <Link
-                      href={href(filter, q, c.threadKey)}
+                      href={href(filter, q, c.threadKey, null, page)}
                       aria-current={active ? "true" : undefined}
                       className={`block border-b border-border/40 px-4 py-3 transition-colors hover:bg-foreground/[0.03] dark:border-white/5 ${
                         active ? "bg-gold/10" : ""
@@ -458,7 +526,7 @@ export default async function CommunicationsPage({
                             subcontractorName: c.subcontractorName,
                             opportunityId: c.opportunityId,
                             trade: c.trade,
-                            openHref: href(filter, q, c.threadKey),
+                            openHref: href(filter, q, c.threadKey, null, page),
                           },
                           { role: ctx.user.orgRole }
                         )}
@@ -494,7 +562,7 @@ export default async function CommunicationsPage({
                 messages={messages}
                 canSend={canSend}
                 canSeeRaw={canSeeRaw}
-                backHref={href(filter, q)}
+                backHref={href(filter, q, null, null, page)}
                 initialText={prefill}
                 stateLabels={MESSAGE_STATE_LABEL}
                 stateMeanings={MESSAGE_STATE_MEANING}

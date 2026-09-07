@@ -11,6 +11,7 @@ import {
   deliverySummary,
   type CategoryStatus,
 } from "@/lib/domain/notification-prefs";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -31,15 +32,26 @@ export const dynamic = "force-dynamic";
  * that does carry the information.
  */
 export default async function NotificationSettingsPage() {
-  const user = await currentUser().catch(() => null);
+  const user = await currentUser();
   const org = user?.organizationId ? await getOrganization(user.organizationId) : null;
-  const members = org ? await adminAccountMembers(org.id).catch(() => []) : [];
+  const loadWarnings: string[] = [];
+  let deliveryStatusUnavailable = false;
+  const members = org ? await adminAccountMembers(org.id).catch(() => {
+    deliveryStatusUnavailable = true;
+    loadWarnings.push("Account recipients could not be loaded, so delivery status is unknown.");
+    return [];
+  }) : [];
   const owner = members.find((m) => m.role === "owner") ?? members[0] ?? null;
+  const mailEnabled = await systemMail.enabled().catch(() => {
+    deliveryStatusUnavailable = true;
+    loadWarnings.push("The notification mailbox could not be checked.");
+    return false;
+  });
 
   const statuses = categoryStatuses({
     isOperationsOrg: org?.id === LEGACY_ORG_ID,
     hasOperationsAddress: Boolean(config.systemMail.digestTo),
-    mailEnabled: await systemMail.enabled().catch(() => false),
+    mailEnabled,
     ownerEmail: owner?.email ?? null,
   });
   const summary = deliverySummary(statuses);
@@ -52,11 +64,14 @@ export default async function NotificationSettingsPage() {
         explanation="Which alerts reach you by email, which live only in the product, and which cannot be switched off."
         breadcrumbs={[{ label: "Settings", href: "/settings/profile" }]}
         status={
-          emailed.length === 0
+          deliveryStatusUnavailable
+            ? "Email delivery status unavailable"
+            : emailed.length === 0
             ? "No email reaches this account"
             : `${emailed.length} of ${statuses.length} kinds emailed`
         }
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-5">
         <div className="callout-panel max-w-3xl text-sm leading-relaxed text-slate-700">
           <p>{summary}</p>

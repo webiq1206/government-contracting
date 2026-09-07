@@ -1,21 +1,113 @@
 /**
  * Ahrefs API v3 client for the Site Authority / backlink module. Direct HTTP so
  * the background workers can run autonomously (the MCP connection is only
- * available in an interactive session). Requires AHREFS_API_KEY; when unset,
- * every method returns a disabled/empty result so agents log a skip instead of
- * crashing, exactly like the other integrations.
+ * available in an interactive session). The platform-owner credential and
+ * target are resolved through the same per-organization settings store the
+ * admin UI writes. When unset, methods return a disabled result. Provider
+ * failures throw so a failed scan can never be logged as a successful empty
+ * scan.
  *
  * NOTE ON COST: Ahrefs bills per row and some columns cost extra units (traffic
  * = 10 units/row, several = 5). Methods here keep `select` minimal and bound
  * `limit` so a scheduled run can't blow the monthly quota.
  */
-import { config } from "../config";
-import { fetchJson, withRetry } from "./http";
+import { orgApiKey } from "../integration-keys";
+import { recordIntegrationUse } from "../integration-settings";
+import { LEGACY_ORG_ID } from "../tenant-context";
+import { fetchJson, withRetry, type FetchJsonOptions } from "./http";
 
 const BASE = "https://api.ahrefs.com/v3";
+const DEFAULT_TARGET = "brostco.com";
 
-function auth(): Record<string, string> {
-  return { Authorization: `Bearer ${config.ahrefs.apiKey}`, Accept: "application/json" };
+interface AhrefsCredentials {
+  apiKey: string;
+  target: string;
+  orgId: string;
+}
+
+export interface AhrefsConfiguration {
+  enabled: boolean;
+  target: string;
+}
+
+export class AhrefsProviderError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "AhrefsProviderError";
+  }
+}
+
+function auth(apiKey: string): Record<string, string> {
+  return { Authorization: `Bearer ${apiKey}`, Accept: "application/json" };
+}
+
+/** Domain-only form accepted by Ahrefs and safe to place in a public URL. */
+export function normalizeAhrefsTarget(raw: string): string | null {
+  let value = raw.trim().toLowerCase();
+  if (!value) return null;
+  try {
+    if (/^https?:\/\//i.test(value)) value = new URL(value).hostname;
+  } catch {
+    return null;
+  }
+  value = value.replace(/^www\./, "").replace(/\.$/, "");
+  if (
+    value.length > 253 ||
+    !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(value) ||
+    !value.includes(".") ||
+    value.includes("..")
+  ) {
+    return null;
+  }
+  return value;
+}
+
+async function credentials(orgId = LEGACY_ORG_ID): Promise<AhrefsCredentials> {
+  const [apiKey, savedTarget] = await Promise.all([
+    orgApiKey("AHREFS_API_KEY", orgId),
+    orgApiKey("AHREFS_TARGET", orgId),
+  ]);
+  const target = normalizeAhrefsTarget(savedTarget || DEFAULT_TARGET);
+  if (!target) {
+    throw new Error(
+      "The saved Ahrefs target is not a valid domain. Enter a domain such as brostco.com in Settings, Integrations."
+    );
+  }
+  return { apiKey, target, orgId };
+}
+
+function providerReason(error: unknown, apiKey: string): string {
+  const raw = error instanceof Error ? error.message : "Unknown provider error";
+  const redacted = apiKey ? raw.split(apiKey).join("[redacted]") : raw;
+  return redacted.replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
+async function providerCall<T>(
+  creds: AhrefsCredentials,
+  path: string,
+  options: FetchJsonOptions
+): Promise<T> {
+  try {
+    const data = await withRetry(() =>
+      fetchJson<T>(`${BASE}${path}`, {
+        ...options,
+        headers: { ...options.headers, ...auth(creds.apiKey) },
+      })
+    );
+    await recordIntegrationUse("AHREFS_API_KEY", { ok: true, orgId: creds.orgId });
+    return data;
+  } catch (error) {
+    const reason = providerReason(error, creds.apiKey);
+    await recordIntegrationUse("AHREFS_API_KEY", {
+      ok: false,
+      error: `Ahrefs request failed: ${reason}`,
+      orgId: creds.orgId,
+    });
+    throw new AhrefsProviderError(
+      `Ahrefs could not return live data (${reason}). No empty result was recorded as a successful scan. Check the API key, plan quota, and provider status, then retry.`,
+      { cause: error }
+    );
+  }
 }
 
 function today(): string {
@@ -61,48 +153,61 @@ export interface BrokenBacklink {
 }
 
 export const ahrefs = {
-  enabled: () => config.ahrefs.enabled,
+  async configuration(orgId = LEGACY_ORG_ID): Promise<AhrefsConfiguration> {
+    const resolved = await credentials(orgId);
+    return { enabled: resolved.apiKey.length > 0, target: resolved.target };
+  },
+
+  async enabled(orgId = LEGACY_ORG_ID): Promise<boolean> {
+    return (await this.configuration(orgId)).enabled;
+  },
+
+  async target(orgId = LEGACY_ORG_ID): Promise<string> {
+    return (await this.configuration(orgId)).target;
+  },
 
   /** Domain Rating for a target (our own DR trend, or a prospect's authority). */
-  async domainRating(target: string): Promise<number | null> {
-    if (!config.ahrefs.enabled || !target) return null;
-    try {
-      const data = await withRetry(() =>
-        fetchJson<{ domain_rating?: { domain_rating?: number } }>(
-          `${BASE}/site-explorer/domain-rating`,
-          { headers: auth(), query: { target, date: today(), output: "json" } }
-        )
-      );
-      const dr = data.domain_rating?.domain_rating;
-      return typeof dr === "number" ? dr : null;
-    } catch {
-      return null;
-    }
+  async domainRating(target: string, orgId = LEGACY_ORG_ID): Promise<number | null> {
+    const creds = await credentials(orgId);
+    if (!creds.apiKey || !target) return null;
+    const data = await providerCall<{ domain_rating?: { domain_rating?: number } }>(
+      creds,
+      "/site-explorer/domain-rating",
+      { query: { target, date: today(), output: "json" } }
+    );
+    const dr = data.domain_rating?.domain_rating;
+    return typeof dr === "number" ? dr : null;
   },
 
   /** Referring-domains + backlinks totals for a target (authority snapshot). */
-  async backlinksStats(target: string): Promise<{ live_refdomains: number | null; live: number | null } | null> {
-    if (!config.ahrefs.enabled || !target) return null;
-    try {
-      const data = await withRetry(() =>
-        fetchJson<{ metrics?: { live_refdomains?: number; live?: number } }>(
-          `${BASE}/site-explorer/backlinks-stats`,
-          { headers: auth(), query: { target, date: today(), mode: "subdomains", output: "json" } }
-        )
-      );
-      return {
-        live_refdomains: data.metrics?.live_refdomains ?? null,
-        live: data.metrics?.live ?? null,
-      };
-    } catch {
-      return null;
-    }
+  async backlinksStats(
+    target: string,
+    orgId = LEGACY_ORG_ID
+  ): Promise<{ live_refdomains: number | null; live: number | null } | null> {
+    const creds = await credentials(orgId);
+    if (!creds.apiKey || !target) return null;
+    const data = await providerCall<{
+      metrics?: { live_refdomains?: number; live?: number };
+    }>(creds, "/site-explorer/backlinks-stats", {
+      query: { target, date: today(), mode: "subdomains", output: "json" },
+    });
+    return {
+      live_refdomains: data.metrics?.live_refdomains ?? null,
+      live: data.metrics?.live ?? null,
+    };
   },
 
   /** Our combined authority snapshot (DR + referring domains + backlinks). */
-  async authoritySnapshot(target: string): Promise<AuthoritySnapshot | null> {
-    if (!config.ahrefs.enabled || !target) return null;
-    const [dr, stats] = await Promise.all([this.domainRating(target), this.backlinksStats(target)]);
+  async authoritySnapshot(
+    target: string,
+    orgId = LEGACY_ORG_ID
+  ): Promise<AuthoritySnapshot | null> {
+    const configured = await this.enabled(orgId);
+    if (!configured || !target) return null;
+    const [dr, stats] = await Promise.all([
+      this.domainRating(target, orgId),
+      this.backlinksStats(target, orgId),
+    ]);
     if (dr == null && !stats) return null;
     return {
       domain_rating: dr,
@@ -119,34 +224,33 @@ export const ahrefs = {
    */
   async referringDomains(
     target: string,
-    { limit = 100, minDr = 0 }: { limit?: number; minDr?: number } = {}
+    { limit = 100, minDr = 0 }: { limit?: number; minDr?: number } = {},
+    orgId = LEGACY_ORG_ID
   ): Promise<{ disabled?: boolean; items: RefDomain[] }> {
-    if (!config.ahrefs.enabled || !target) return { disabled: true, items: [] };
+    const creds = await credentials(orgId);
+    if (!creds.apiKey || !target) return { disabled: true, items: [] };
     const where =
       minDr > 0
         ? JSON.stringify({ field: "domain_rating", is: ["gte", minDr] })
         : undefined;
-    try {
-      const data = await withRetry(() =>
-        fetchJson<{ refdomains?: RefDomain[] }>(`${BASE}/site-explorer/refdomains`, {
-          headers: auth(),
-          query: {
-            target,
-            mode: "subdomains",
-            select:
-              "domain,domain_rating,traffic_domain,is_spam,is_root_domain,dofollow_links,links_to_target,first_seen,last_seen",
-            order_by: "domain_rating:desc",
-            limit,
-            where,
-            history: "live",
-            output: "json",
-          },
-        })
-      );
-      return { items: data.refdomains ?? [] };
-    } catch {
-      return { items: [] };
-    }
+    const data = await providerCall<{ refdomains?: RefDomain[] }>(
+      creds,
+      "/site-explorer/refdomains",
+      {
+        query: {
+          target,
+          mode: "subdomains",
+          select:
+            "domain,domain_rating,traffic_domain,is_spam,is_root_domain,dofollow_links,links_to_target,first_seen,last_seen",
+          order_by: "domain_rating:desc",
+          limit,
+          where,
+          history: "live",
+          output: "json",
+        },
+      }
+    );
+    return { items: data.refdomains ?? [] };
   },
 
   /**
@@ -156,32 +260,28 @@ export const ahrefs = {
    */
   async organicCompetitors(
     target: string,
-    { limit = 20, country = "us" }: { limit?: number; country?: string } = {}
+    { limit = 20, country = "us" }: { limit?: number; country?: string } = {},
+    orgId = LEGACY_ORG_ID
   ): Promise<{ disabled?: boolean; items: Competitor[] }> {
-    if (!config.ahrefs.enabled || !target) return { disabled: true, items: [] };
-    try {
-      const data = await withRetry(() =>
-        fetchJson<{ competitors?: Competitor[] }>(
-          `${BASE}/site-explorer/organic-competitors`,
-          {
-            headers: auth(),
-            query: {
-              target,
-              mode: "subdomains",
-              country,
-              date: today(),
-              select: "competitor_domain,domain_rating,traffic,keywords_common",
-              order_by: "keywords_common:desc",
-              limit,
-              output: "json",
-            },
-          }
-        )
-      );
-      return { items: data.competitors ?? [] };
-    } catch {
-      return { items: [] };
-    }
+    const creds = await credentials(orgId);
+    if (!creds.apiKey || !target) return { disabled: true, items: [] };
+    const data = await providerCall<{ competitors?: Competitor[] }>(
+      creds,
+      "/site-explorer/organic-competitors",
+      {
+        query: {
+          target,
+          mode: "subdomains",
+          country,
+          date: today(),
+          select: "competitor_domain,domain_rating,traffic,keywords_common",
+          order_by: "keywords_common:desc",
+          limit,
+          output: "json",
+        },
+      }
+    );
+    return { items: data.competitors ?? [] };
   },
 
   /**
@@ -192,36 +292,32 @@ export const ahrefs = {
    */
   async brokenBacklinks(
     target: string,
-    { limit = 20, minDr = 0 }: { limit?: number; minDr?: number } = {}
+    { limit = 20, minDr = 0 }: { limit?: number; minDr?: number } = {},
+    orgId = LEGACY_ORG_ID
   ): Promise<{ disabled?: boolean; items: BrokenBacklink[] }> {
-    if (!config.ahrefs.enabled || !target) return { disabled: true, items: [] };
+    const creds = await credentials(orgId);
+    if (!creds.apiKey || !target) return { disabled: true, items: [] };
     const where =
       minDr > 0
         ? JSON.stringify({ field: "domain_rating_source", is: ["gte", minDr] })
         : undefined;
-    try {
-      const data = await withRetry(() =>
-        fetchJson<{ backlinks?: BrokenBacklink[] }>(
-          `${BASE}/site-explorer/broken-backlinks`,
-          {
-            headers: auth(),
-            query: {
-              target,
-              mode: "subdomains",
-              aggregation: "1_per_domain",
-              select:
-                "root_name_source,url_from,domain_rating_source,traffic_domain,is_spam,is_dofollow,url_to,anchor,title",
-              order_by: "domain_rating_source:desc",
-              limit,
-              where,
-              output: "json",
-            },
-          }
-        )
-      );
-      return { items: data.backlinks ?? [] };
-    } catch {
-      return { items: [] };
-    }
+    const data = await providerCall<{ backlinks?: BrokenBacklink[] }>(
+      creds,
+      "/site-explorer/broken-backlinks",
+      {
+        query: {
+          target,
+          mode: "subdomains",
+          aggregation: "1_per_domain",
+          select:
+            "root_name_source,url_from,domain_rating_source,traffic_domain,is_spam,is_dofollow,url_to,anchor,title",
+          order_by: "domain_rating_source:desc",
+          limit,
+          where,
+          output: "json",
+        },
+      }
+    );
+    return { items: data.backlinks ?? [] };
   },
 };

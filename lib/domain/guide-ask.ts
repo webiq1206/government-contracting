@@ -30,6 +30,9 @@ export function buildAskUserPrompt(input: {
     g.stageLabel ? `Stage: ${g.stageLabel}` : "",
     g.scoreLine ? `Score: ${g.scoreLine}` : "",
     g.automationPaused ? "Automation: paused" : "",
+    g.dataWarnings?.length
+      ? `Unverified facts: ${g.dataWarnings.join("; ")}. Do not infer zero, complete, or healthy from these gaps.`
+      : "",
     g.completed.length ? `Complete: ${g.completed.join("; ")}` : "",
     g.needsAttention.length ? `Needs attention: ${g.needsAttention.join("; ")}` : "",
     g.brostHandling.length ? `Brost handling: ${g.brostHandling.join("; ")}` : "",

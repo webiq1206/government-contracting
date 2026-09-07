@@ -32,7 +32,12 @@ export async function GET() {
    * than a button that says there is nothing to do.
    */
   const health = await automationHealth(ctx.orgId);
-  await syncAutomationIncidents(ctx.orgId, health).catch(() => {});
+  let warning: string | null = null;
+  await syncAutomationIncidents(ctx.orgId, health).catch((error) => {
+    console.error("[recovery] incident synchronization failed:", error);
+    warning =
+      "Current automation health could not be synchronized with the recovery list. The list may be incomplete. Reload it, and do not treat an empty list as confirmation that everything is clear.";
+  });
   const incidents = await openIncidents(ctx.orgId);
   const withHistory = await Promise.all(
     incidents.map(async (i) => ({
@@ -69,7 +74,7 @@ export async function GET() {
       })),
     }))
   );
-  return NextResponse.json({ incidents: withHistory });
+  return NextResponse.json({ incidents: withHistory, warning });
 }
 
 /**
@@ -98,13 +103,36 @@ export async function POST(req: Request) {
   const incident = await incidentById(incidentId, ctx.orgId);
   if (!incident) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (incident.state === "recovered") {
-    return NextResponse.json(
-      { error: "This incident is already closed. A new outage opens a new incident." },
-      { status: 409 }
-    );
+    return NextResponse.json({
+      incidentId: incident.id,
+      state: incident.state,
+      stateLabel: INCIDENT_STATE_LABEL[incident.state],
+      nextAction: INCIDENT_NEXT_ACTION[incident.state],
+      testPassed: incident.testPassed,
+      testDetail: "This incident was already recovered. No work was queued again.",
+      plan: "No replay was needed because this incident is already closed.",
+      requeued: 0,
+      skipped: 0,
+      remaining: 0,
+      confirmation: incident.recoveryNote,
+      message: "This incident is already recovered. A later outage will open a new incident.",
+      alreadyRecovered: true,
+    });
   }
 
-  const result = await runRecoveryCheck(incidentId, ctx.orgId, ctx.user.email);
+  let result: Awaited<ReturnType<typeof runRecoveryCheck>>;
+  try {
+    result = await runRecoveryCheck(incidentId, ctx.orgId, ctx.user.email);
+  } catch (error) {
+    console.error("[recovery] recovery check failed:", error);
+    return NextResponse.json(
+      {
+        error:
+          "The recovery check could not finish. Any work already queued remains protected against duplicates. Reload the incident to see its current state, then retry after the database and queue are available.",
+      },
+      { status: 503 }
+    );
+  }
   return NextResponse.json({
     incidentId: result.incidentId,
     state: result.state,

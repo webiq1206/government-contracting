@@ -191,7 +191,7 @@ export const complianceMonitor: AgentDefinition = {
       : "";
     const note = fanoutNote(fanout);
     return {
-      ok: fanout.error == null,
+      ok: fanout.error == null && failed.length === 0,
       summary: note
         ? note
         : (summaries.length === 1 && failed.length === 0
@@ -221,7 +221,7 @@ async function checkForOrg(
 
   // --- 1) SAM registration. ---
   if (profile.uei) {
-    const reg = await sam.getEntityRegistration(profile.uei);
+    const reg = await sam.getEntityRegistration(profile.uei, orgId);
     if (reg && !reg.disabled && reg.expiresAt) {
       const days = daysBetween(now, new Date(reg.expiresAt));
       const status = deadlineStatus(days, t.sam_alert_days, { blockAtZero: true });
@@ -253,7 +253,12 @@ async function checkForOrg(
         monitorable: false,
         detail: {
           uei: profile.uei,
-          note: reg?.disabled ? "SAM API disabled" : "no expiry returned; verify manually",
+          note:
+            reg?.disabledReason === "quota_exhausted"
+              ? "SAM call budget exhausted for today; monitoring retries after midnight UTC"
+              : reg?.disabled
+                ? "SAM API key is not connected for this account"
+                : "SAM did not return an expiry; verify the registration manually",
         },
       });
       tally("cannot_monitor");

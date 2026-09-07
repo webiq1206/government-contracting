@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import { queuedAfterScore } from "@/lib/domain/score-downstream";
 
 describe("work queued after scoring", () => {
-  it("starts the full pipeline on pursue", () => {
+  it("waits for document analysis before pricing or sourcing on pursue", () => {
     const jobs = queuedAfterScore("pursue", "opp-1");
-    expect(jobs.map((j) => j.agent)).toEqual(["solicitation-analyst", "pricing-research"]);
+    expect(jobs.map((j) => j.agent)).toEqual(["solicitation-analyst"]);
+    expect(jobs[0].payload.preScoring).toBe(true);
     expect(jobs.some((j) => j.payload.briefOnly)).toBe(false);
   });
 

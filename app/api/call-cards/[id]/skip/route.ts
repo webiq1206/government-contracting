@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOrgContext, findOrgRecord, notFoundResponse } from "@/lib/org-guard";
 import { skipCallCard } from "@/lib/skip-call";
 import { parseScope, parseSkipReason } from "@/lib/domain/suppression";
+import { SuppressionRejected } from "@/lib/suppressions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,10 +31,6 @@ export async function POST(
   const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
 
-  // skipCallCard works by bare id; prove the card is ours before handing over.
-  const card = await findOrgRecord("call_cards", params.id, ctx.orgId, "id");
-  if (!card) return notFoundResponse();
-
   const body = (await req.json().catch(() => ({}))) as {
     reason?: string;
     note?: string;
@@ -44,6 +41,11 @@ export async function POST(
   const structured = parseSkipReason(body.reason);
 
   try {
+    // An inexpensive not-found decision before the helper locks and rechecks
+    // the same tenant boundary inside its transaction.
+    const card = await findOrgRecord("call_cards", params.id, ctx.orgId, "id");
+    if (!card) return notFoundResponse();
+
     const result = await skipCallCard(params.id, {
       // An unrecognised reason is kept as the note rather than dropped: the
       // operator wrote a sentence and it belongs somewhere.
@@ -59,13 +61,22 @@ export async function POST(
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     const message = (err as Error).message;
-    const status =
-      message === "Call card not found."
-        ? 404
-        : message.includes("cannot be skipped") ||
-            message.includes("Only a skipped")
-          ? 400
-          : 400;
-    return NextResponse.json({ error: message }, { status });
+    if (message === "Call card not found.") {
+      return NextResponse.json({ error: message }, { status: 404 });
+    }
+    if (message.includes("cannot be skipped") || message.includes("Only a skipped")) {
+      return NextResponse.json({ error: message }, { status: 409 });
+    }
+    if (err instanceof SuppressionRejected) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    console.error("[call-skip] transaction failed:", err);
+    return NextResponse.json(
+      {
+        error:
+          "The call decision could not be saved, so no change was completed. Reload the queue and try again. If it continues, contact support before calling this subcontractor.",
+      },
+      { status: 503 }
+    );
   }
 }

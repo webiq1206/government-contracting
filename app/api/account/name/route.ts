@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { query } from "@/lib/db";
+import { impersonationRefusal } from "@/lib/impersonation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,8 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
+  const supportRefusal = impersonationRefusal(auth);
+  if (supportRefusal) return supportRefusal;
 
   const body = (await req.json().catch(() => null)) as { name?: unknown } | null;
   const raw = typeof body?.name === "string" ? body.name.trim() : "";

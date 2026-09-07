@@ -23,6 +23,11 @@ export function buildNarrateUserPrompt(guide: PageGuide): string {
   if (guide.stageLabel) lines.push(`Stage: ${guide.stageLabel}`);
   if (guide.scoreLine) lines.push(`Score: ${guide.scoreLine}`);
   if (guide.automationPaused) lines.push("Automation: paused");
+  if (guide.dataWarnings?.length) {
+    lines.push(
+      `Unverified facts: ${guide.dataWarnings.join("; ")}. Do not describe those facts as zero, complete, or healthy.`
+    );
+  }
   if (guide.completed.length) lines.push(`Already complete: ${guide.completed.join("; ")}`);
   if (guide.needsAttention.length)
     lines.push(`Needs attention: ${guide.needsAttention.join("; ")}`);

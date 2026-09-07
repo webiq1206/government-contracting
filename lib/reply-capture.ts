@@ -59,6 +59,8 @@ export interface CaptureReplyInput {
   comm: MatchedComm;
   /** Reply correlated reliably (Gmail thread id or Resend plus-address token). */
   strongMatch: boolean;
+  /** A signed-in operator explicitly placed this message against this record. */
+  attributionConfirmed?: boolean;
   fromEmail: string;
   replyText: string;
   threadId?: string | null;
@@ -84,6 +86,8 @@ export interface CaptureReplyInput {
   attachmentNames?: string[];
   /** The reply's own RFC822 Message-ID, so a later message can cite it. */
   rfc822MessageId?: string | null;
+  /** The message's RFC822 reference chain, oldest first. */
+  references?: string[];
   /**
    * Attachments that looked like a quote but could not be read. Their contents
    * are unknown, not absent, so a reply carrying one is never acted on
@@ -218,11 +222,12 @@ export async function matchInboundReply(opts: {
   fromEmail: string;
 }): Promise<{ comm: MatchedComm | null; strongMatch: boolean }> {
   const select = `select c.id, c.subcontractor_id, c.opportunity_id,
-            s.company_name, s.email as sub_email, o.title as opportunity_title,
+            s.company_name, coalesce(c.recipient_email, s.email) as sub_email,
+            o.title as opportunity_title,
             (c.meta->>'trade') as trade
        from communications c
-       left join subcontractors s on s.id = c.subcontractor_id
-       join opportunities o on o.id = c.opportunity_id
+       left join subcontractors s on s.id = c.subcontractor_id and s.org_id = $1
+       join opportunities o on o.id = c.opportunity_id and o.org_id = $1
       where c.org_id = $1`;
   if (opts.trackingToken) {
     const comm = await queryOne<MatchedComm>(
@@ -289,14 +294,44 @@ export async function matchInboundReply(opts: {
    * to that year-old solicitation. Ninety days is far longer than any live
    * bid cycle and far shorter than "forever".
    */
-  const comm = await queryOne<MatchedComm>(
-    `${select}
-      and lower(s.email) = $2 and c.direction='outbound'
-      and c.created_at > now() - interval '90 days'
-      order by c.created_at desc limit 1`,
+  const candidates = await query<MatchedComm>(
+    `select id, subcontractor_id, opportunity_id, company_name, sub_email,
+            opportunity_title, trade
+       from (
+         select c.id, c.subcontractor_id, c.opportunity_id,
+                s.company_name, coalesce(c.recipient_email, s.email) as sub_email,
+                o.title as opportunity_title, (c.meta->>'trade') as trade,
+                c.created_at,
+                row_number() over (
+                  partition by c.opportunity_id, coalesce(c.meta->>'trade', ''),
+                               coalesce(c.gmail_thread_id, '')
+                  order by c.created_at desc
+                ) as conversation_rank
+           from communications c
+           left join subcontractors s on s.id = c.subcontractor_id and s.org_id = $1
+           join opportunities o on o.id = c.opportunity_id and o.org_id = $1
+          where c.org_id = $1 and c.direction = 'outbound'
+            and lower(coalesce(c.recipient_email, s.email)) = $2
+            and c.created_at > now() - interval '90 days'
+            and exists (
+              select 1 from opportunity_subs os
+               where os.opportunity_id = c.opportunity_id
+                 and os.subcontractor_id = c.subcontractor_id
+                 and os.removed_at is null
+                 and coalesce(os.trade, '') = coalesce(c.meta->>'trade', '')
+            )
+       ) candidate
+      where conversation_rank = 1
+      order by created_at desc
+      limit 2`,
     [opts.orgId, normalizeEmail(opts.fromEmail)]
   );
-  return { comm, strongMatch: false };
+  // Sender alone identifies a firm, not a solicitation. It is usable only
+  // when exactly one live conversation could possibly be the answer.
+  return {
+    comm: candidates.length === 1 ? candidates[0]! : null,
+    strongMatch: false,
+  };
 }
 
 export async function captureReply(input: CaptureReplyInput): Promise<CaptureReplyResult> {
@@ -386,17 +421,22 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // is stamped in the comm's meta at send time), then the pairing row, but
   // only when the pair has exactly ONE trade. An unordered `limit 1` over a
   // multi-trade pair picked an arbitrary trade and the outcome landed on it.
-  const pairTrades = comm.subcontractor_id
+  let pairTrades = comm.subcontractor_id
     ? await query<{ trade: string | null }>(
-        `select distinct trade from opportunity_subs where opportunity_id=$1 and subcontractor_id=$2`,
+        `select distinct trade from opportunity_subs
+          where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null`,
         [comm.opportunity_id, comm.subcontractor_id]
-      ).catch(() => [])
+      )
     : [];
-  const osRow: { trade: string | null } | null = comm.trade
+  const commTradeIsActive = Boolean(
+    comm.trade && pairTrades.some((p) => (p.trade ?? "") === comm.trade)
+  );
+  let osRow: { trade: string | null } | null = commTradeIsActive
     ? { trade: comm.trade }
-    : pairTrades.length === 1
+    : !comm.trade && pairTrades.length === 1
       ? pairTrades[0]
       : null;
+  let linkedPair = comm.subcontractor_id != null && osRow != null;
 
   const extracted = await extract(replyText, {
     opportunityTitle: comm.opportunity_title,
@@ -419,9 +459,25 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
    * apply on top of this: they establish who is speaking, this establishes
    * whether we understood them.
    */
-  const decision = decideReply(extracted, {
+  const readingDecision = decideReply(extracted, {
     unreadableAttachments: input.unreadableAttachments ?? [],
   });
+
+  // When several active trade assignments exist and the outbound row did not
+  // carry one, use the reply's own explicit trade only if it identifies one
+  // pairing uniquely. Anything less stays unassigned for a person to resolve.
+  if (!osRow && pairTrades.length > 1 && extracted.tradesMentioned.length > 0) {
+    const mentioned = new Set(
+      extracted.tradesMentioned.map((trade) => trade.trim().toLowerCase()).filter(Boolean)
+    );
+    const matches = pairTrades.filter((pair) =>
+      pair.trade ? mentioned.has(pair.trade.trim().toLowerCase()) : false
+    );
+    if (matches.length === 1) {
+      osRow = matches[0];
+      linkedPair = comm.subcontractor_id != null;
+    }
+  }
 
   // Resolve the subcontractor. Sender ownership: the reply must come from the
   // mailbox of the sub the outreach was addressed to; when the comm had no
@@ -429,7 +485,8 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // verification by definition.
   let subId = comm.subcontractor_id;
   let companyName = comm.company_name;
-  let senderVerified = senderMatchesSub(fromEmail, comm.sub_email);
+  let senderVerified =
+    input.attributionConfirmed === true || senderMatchesSub(fromEmail, comm.sub_email);
   if (!subId) {
     // Scoped to this org: the same firm sits on several customers' rosters, so
     // an unscoped match hands back another customer's subcontractor and pairs
@@ -461,18 +518,63 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       companyName = name;
       if (subId) {
         senderVerified = true; // sub is defined by this sender's address
-        await query(`update communications set subcontractor_id=$2 where id=$1`, [
-          comm.id,
-          subId,
-        ]);
-        await query(
-          `insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state)
-           values ($1,$2,$3,'responsive')
-           on conflict do nothing`,
-          [comm.opportunity_id, subId, osRow?.trade ?? null]
-        );
       }
     }
+
+    if (subId) {
+      await query(`update communications set subcontractor_id=$2 where id=$1`, [
+        comm.id,
+        subId,
+      ]);
+      // The message has just established the missing relationship. Use a
+      // not-exists insert because the historical unique constraint treats a
+      // null trade as distinct and `on conflict` alone can create duplicates.
+      await query(
+        `insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state)
+         select $1,$2,$3,'pending'
+          where not exists (
+            select 1 from opportunity_subs
+             where opportunity_id=$1 and subcontractor_id=$2
+               and removed_at is null
+               and coalesce(trade, '') = coalesce($3::text, '')
+          )`,
+        [comm.opportunity_id, subId, osRow?.trade ?? comm.trade ?? null]
+      );
+      pairTrades = await query<{ trade: string | null }>(
+        `select distinct trade from opportunity_subs
+          where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null`,
+        [comm.opportunity_id, subId]
+      );
+      if (!osRow && pairTrades.length === 1) osRow = pairTrades[0];
+      linkedPair = osRow != null;
+    }
+  }
+
+  const holdForReview = (reason: string): ReplyDecision => ({
+    outcome: "unclear",
+    proposed:
+      readingDecision.outcome === "unclear"
+        ? readingDecision.proposed
+        : readingDecision.outcome,
+    act: false,
+    needsReview: true,
+    reviewReason: readingDecision.reviewReason
+      ? `${readingDecision.reviewReason} ${reason}`
+      : reason,
+  });
+  let decision = readingDecision;
+  if (!linkedPair) {
+    decision = holdForReview(
+      "This subcontractor is no longer active on that opportunity, so the reply was saved but no workflow status was changed."
+    );
+  } else if (!strongMatch && input.attributionConfirmed !== true) {
+    decision = holdForReview(
+      "The message matched only by sender address, not by a conversation identifier. Confirm which solicitation it answers."
+    );
+  } else if (!senderVerified) {
+    decision = holdForReview(
+      "The sender address differs from the contact that received the request. Confirm who sent it before applying the answer."
+    );
   }
 
   const meta = {
@@ -506,10 +608,13 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // Record the inbound reply and mark the outbound as replied. The partial
   // unique index (migration 022) makes this race-safe under concurrent
   // webhook retries.
-  await query(
+  const inbound = await queryOne<{ id: string }>(
     `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta)
      values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb)
-     on conflict do nothing`,
+     on conflict (org_id, gmail_message_id)
+       where direction = 'inbound' and gmail_message_id is not null and org_id is not null
+     do nothing
+     returning id`,
     [
       subId,
       comm.opportunity_id,
@@ -528,6 +633,30 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       JSON.stringify(meta),
     ]
   );
+  // The pre-read above makes ordinary retries cheap; RETURNING is what makes
+  // concurrent webhook and poller deliveries safe. Only the transaction that
+  // won the unique insert may update status, save a quote, or send a closeout.
+  if (!inbound) {
+    return {
+      subId: comm.subcontractor_id,
+      companyName: comm.company_name,
+      extracted: emptyExtracted(),
+      decision: {
+        outcome: "none",
+        proposed: null,
+        act: false,
+        needsReview: false,
+        reviewReason: null,
+      },
+      quoteSaved: false,
+      quoteSkippedExisting: false,
+      senderVerified: false,
+      trade: null,
+      duplicate: true,
+      declined: false,
+      thankYouSent: false,
+    };
+  }
   await query(`update communications set replied_at = now() where id = $1`, [comm.id]);
 
   // Closing a sub out ends their involvement in this solicitation and emails
@@ -535,6 +664,7 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // not just a recognised sender.
   const autoDecline =
     decision.act &&
+    strongMatch &&
     !!subId &&
     shouldAutoDecline({
       senderVerified,
@@ -553,12 +683,18 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       .join(" ");
 
     const close = await closeOut({
+      orgId,
       opportunityId: comm.opportunity_id,
       subcontractorId: subId,
       trade: osRow?.trade ?? null,
       source: "email_reply",
       capabilityNotes: capabilityNotes || null,
       sendThankYou: true,
+      recipientEmail: fromEmail,
+      threadId: input.rfc822MessageId ? input.threadId ?? null : null,
+      inReplyTo: input.rfc822MessageId ?? null,
+      references: input.references ?? [],
+      originalSubject: input.subject ?? null,
     });
 
     return {
@@ -576,11 +712,12 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     };
   }
 
-  if (subId) {
+  if (subId && decision.act && strongMatch && senderVerified) {
     await query(
       `update opportunity_subs set outreach_state='responsive', responded_at=now()
-        where opportunity_id=$1 and subcontractor_id=$2`,
-      [comm.opportunity_id, subId]
+        where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null
+          and ($3::text is null or coalesce(trade, '') = coalesce($3, ''))`,
+      [comm.opportunity_id, subId, osRow?.trade ?? null]
     );
   }
 

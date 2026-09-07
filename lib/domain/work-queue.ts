@@ -14,6 +14,7 @@
  */
 
 import { matchesOwner, type Owner, type OwnerFilter } from "./ownership";
+import { DEFAULT_TIMEZONE, dayWindow, localDateOf, safeTimeZone } from "./recap/day-window";
 
 export type WorkKind =
   | "read_reply" // a sub answered and the reply needs a human's eyes
@@ -293,10 +294,11 @@ export interface QueueCounts {
   total: number;
 }
 
-/** Local-day boundaries, so "today" means the operator's today. */
-function dayBounds(now: Date): { start: number; end: number } {
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  return { start, end: start + 86_400_000 };
+/** Explicit local-day boundaries, including daylight-saving changes. */
+function dayBounds(now: Date, timezone = DEFAULT_TIMEZONE): { start: number; end: number } {
+  const zone = safeTimeZone(timezone);
+  const window = dayWindow(localDateOf(now, zone), zone);
+  return { start: window.start.getTime(), end: window.end.getTime() };
 }
 
 export type QueueBucket = "overdue" | "due_today" | "remaining";
@@ -328,20 +330,28 @@ export function stateOf(item: WorkItem): QueueState {
  * and on this page it would fill the overdue counter with work that is not
  * late and has no way of becoming late.
  */
-export function bucketOf(item: WorkItem, now = new Date()): QueueBucket {
+export function bucketOf(
+  item: WorkItem,
+  now = new Date(),
+  timezone = DEFAULT_TIMEZONE
+): QueueBucket {
   if (!item.due) return "remaining";
   const t = new Date(item.due).getTime();
   if (Number.isNaN(t)) return "remaining";
-  const { start, end } = dayBounds(now);
+  const { start, end } = dayBounds(now, timezone);
   if (t < start) return "overdue";
   if (t < end) return "due_today";
   return "remaining";
 }
 
-export function queueCounts(items: WorkItem[], now = new Date()): QueueCounts {
+export function queueCounts(
+  items: WorkItem[],
+  now = new Date(),
+  timezone = DEFAULT_TIMEZONE
+): QueueCounts {
   const counts: QueueCounts = { overdue: 0, dueToday: 0, remaining: 0, total: items.length };
   for (const item of items) {
-    const b = bucketOf(item, now);
+    const b = bucketOf(item, now, timezone);
     if (b === "overdue") counts.overdue += 1;
     else if (b === "due_today") counts.dueToday += 1;
     else counts.remaining += 1;
@@ -459,7 +469,8 @@ export function filterWorkItems(
     owner?: OwnerFilter;
     viewerId?: string;
   },
-  now = new Date()
+  now = new Date(),
+  timezone = DEFAULT_TIMEZONE
 ): WorkItem[] {
   if (opts.bucket && isCompletedFilter(opts.bucket)) {
     /*
@@ -479,7 +490,7 @@ export function filterWorkItems(
       const wantState = STATE_FILTERS[opts.bucket];
       if (wantState) {
         if (stateOf(item) !== wantState) return false;
-      } else if (bucketOf(item, now) !== opts.bucket) {
+      } else if (bucketOf(item, now, timezone) !== opts.bucket) {
         return false;
       }
     }

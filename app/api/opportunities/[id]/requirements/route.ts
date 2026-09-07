@@ -65,7 +65,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!result.ok) {
     return NextResponse.json(
       { error: result.error ?? "Could not update the package." },
-      { status: result.error === "No package to update." ? 400 : 404 }
+      { status: result.conflict ? 409 : result.error === "No package to update." ? 400 : 404 }
     );
   }
   const validation = result.validation!;
@@ -82,5 +82,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }.`,
   });
 
-  return NextResponse.json({ ok: true, package_ready: ready, validation });
+  return NextResponse.json({
+    ok: true,
+    package_ready: ready,
+    validation,
+    warning: result.warning ?? null,
+  });
 }

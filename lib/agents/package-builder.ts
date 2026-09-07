@@ -4,8 +4,8 @@
  * reps & certifications, capability statement, and the compliance checklist.
  * Called by the Bid Builder after pricing. Returns the documents_json rows.
  */
-import { query } from "../db";
-import { storage } from "../integrations/storage";
+import { createHash, randomUUID } from "node:crypto";
+import { storage, type StorageBackend } from "../integrations/storage";
 import { documents } from "../integrations/documents";
 import { ARTIFACT_KIND } from "../domain/package";
 import type { CompanyProfileJson, Opportunity, ResolvedRequirement } from "../types";
@@ -21,23 +21,27 @@ interface DocRow {
   name: string;
   storage_path: string;
   kind: string;
+  storage_backend: StorageBackend;
+  content_hash: string;
 }
 
 async function storeDoc(
   opportunityId: string,
+  buildToken: string,
   kind: string,
   displayName: string,
   buf: Buffer
 ): Promise<DocRow> {
-  const key = `bids/${opportunityId}/${kind}.pdf`;
+  const key = `bids/${opportunityId}/${buildToken}/${kind}.pdf`;
   const up = await storage.upload(key, buf, "application/pdf");
-  await query(`delete from documents where opportunity_id = $1 and kind = $2`, [opportunityId, kind]);
-  await query(
-    `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime)
-     values ($1,$2,$3,$4,$5,'application/pdf')`,
-    [opportunityId, kind, displayName, up.path, up.backend]
-  );
-  return { name: displayName, storage_path: up.path, kind };
+  const contentHash = createHash("sha256").update(buf).digest("hex");
+  return {
+    name: displayName,
+    storage_path: up.path,
+    kind,
+    storage_backend: up.backend,
+    content_hash: contentHash,
+  };
 }
 
 /**
@@ -67,9 +71,19 @@ export async function assemblePackageDocuments(args: {
   resolved: ResolvedRequirement[];
   lineItems: Array<{ label: string; amount: number }>;
   bidAmount: number;
+  buildToken?: string;
   amendments?: Array<{ label: string; date?: string; summary?: string }>;
 }): Promise<DocRow[]> {
-  const { opportunityId, opp, profile, resolved, lineItems, bidAmount, amendments = [] } = args;
+  const {
+    opportunityId,
+    opp,
+    profile,
+    resolved,
+    lineItems,
+    bidAmount,
+    buildToken = randomUUID(),
+    amendments = [],
+  } = args;
   const need = new Set(resolved.map((r) => r.artifact_kind).filter(Boolean) as string[]);
   const out: DocRow[] = [];
   const title = opp.title ?? "(untitled opportunity)";
@@ -97,7 +111,16 @@ export async function assemblePackageDocuments(args: {
 
   // Cover / transmittal letter (lists everything enclosed, in order).
   if (need.has(ARTIFACT_KIND.coverLetter)) {
-    out.push(await renderCoverLetter({ opportunityId, opp, profile, resolved, bidAmount }));
+    out.push(
+      await renderCoverLetter({
+        opportunityId,
+        opp,
+        profile,
+        resolved,
+        bidAmount,
+        buildToken,
+      })
+    );
   }
 
   // Pricing / bid schedule.
@@ -111,7 +134,15 @@ export async function assemblePackageDocuments(args: {
       agency_schedule: analysis?.bid_schedule ?? [],
       ...solicitationFacts,
     });
-    out.push(await storeDoc(opportunityId, ARTIFACT_KIND.pricingSchedule, "Pricing schedule", buf));
+    out.push(
+      await storeDoc(
+        opportunityId,
+        buildToken,
+        ARTIFACT_KIND.pricingSchedule,
+        "Pricing schedule",
+        buf
+      )
+    );
   }
 
   // Prefilled representations & certifications.
@@ -136,7 +167,13 @@ export async function assemblePackageDocuments(args: {
       solicitation_number: sol,
     });
     out.push(
-      await storeDoc(opportunityId, ARTIFACT_KIND.repsCerts, "Reps & certifications (prefilled)", buf)
+      await storeDoc(
+        opportunityId,
+        buildToken,
+        ARTIFACT_KIND.repsCerts,
+        "Reps & certifications (prefilled)",
+        buf
+      )
     );
   }
 
@@ -149,7 +186,13 @@ export async function assemblePackageDocuments(args: {
       amendments,
     });
     out.push(
-      await storeDoc(opportunityId, ARTIFACT_KIND.amendmentAck, "Amendment acknowledgment", buf)
+      await storeDoc(
+        opportunityId,
+        buildToken,
+        ARTIFACT_KIND.amendmentAck,
+        "Amendment acknowledgment",
+        buf
+      )
     );
   }
 
@@ -165,7 +208,15 @@ export async function assemblePackageDocuments(args: {
       service_areas: profile.service_areas ?? [],
       contact: [profile.phone, profile.email].filter(Boolean).join(" · ") || undefined,
     });
-    out.push(await storeDoc(opportunityId, ARTIFACT_KIND.capability, "Capability statement", buf));
+    out.push(
+      await storeDoc(
+        opportunityId,
+        buildToken,
+        ARTIFACT_KIND.capability,
+        "Capability statement",
+        buf
+      )
+    );
   }
 
   // Compliance checklist cover page (always).
@@ -190,7 +241,13 @@ export async function assemblePackageDocuments(args: {
     })),
   });
   out.push(
-    await storeDoc(opportunityId, ARTIFACT_KIND.complianceChecklist, "Compliance checklist", checklist)
+    await storeDoc(
+      opportunityId,
+      buildToken,
+      ARTIFACT_KIND.complianceChecklist,
+      "Compliance checklist",
+      checklist
+    )
   );
 
   return out;
@@ -213,8 +270,9 @@ export async function renderCoverLetter(args: {
   profile: CompanyProfileJson;
   resolved: ResolvedRequirement[];
   bidAmount: number;
+  buildToken?: string;
 }): Promise<DocRow> {
-  const { opportunityId, opp, profile, resolved, bidAmount } = args;
+  const { opportunityId, opp, profile, resolved, bidAmount, buildToken = randomUUID() } = args;
   const analysis = opp.solicitation_analysis ?? null;
   const amendments = (analysis?.qa_addenda ?? []).map((a) => a.label).filter(Boolean);
   const buf = await documents.buildCoverLetterPdf({
@@ -240,7 +298,13 @@ export async function renderCoverLetter(args: {
     offer_acceptance_period: statedValue(analysis?.offer_acceptance_period),
     amendments_acknowledged: amendments,
   });
-  return storeDoc(opportunityId, ARTIFACT_KIND.coverLetter, "Cover letter", buf);
+  return storeDoc(
+    opportunityId,
+    buildToken,
+    ARTIFACT_KIND.coverLetter,
+    "Cover letter",
+    buf
+  );
 }
 
 /**

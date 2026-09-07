@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 /**
  * A permanent, unmissable marker that this is not your account.
@@ -18,20 +17,34 @@ export function ImpersonationBanner({
   adminEmail: string;
   viewingEmail: string;
 }) {
-  const router = useRouter();
   const [leaving, setLeaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function stop() {
     setLeaving(true);
+    setError(null);
     try {
       const res = await fetch("/api/admin/impersonate", { method: "DELETE" });
-      const data = (await res.json().catch(() => ({}))) as { redirect?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        redirect?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(
+          data.error ??
+            "The support session could not be closed. You are still viewing the customer account. Try again, then contact support if it continues."
+        );
+        setLeaving(false);
+        return;
+      }
       // Full navigation, not router.push: the session cookie just changed and
       // every cached server component belongs to the other account.
       window.location.href = data.redirect ?? "/admin/accounts";
     } catch {
+      setError(
+        "The server could not be reached. You are still viewing the customer account. Check your connection and try again."
+      );
       setLeaving(false);
-      router.refresh();
     }
   }
 
@@ -42,17 +55,23 @@ export function ImpersonationBanner({
     >
       <span className="font-semibold uppercase tracking-wide">Support session</span>
       <span className="min-w-0 flex-1">
-        You are signed in as <strong>{viewingEmail}</strong> ({adminEmail}). Outreach
-        email is blocked and billing changes are refused.
+        You are viewing <strong>{viewingEmail}</strong> as {adminEmail}. This session is
+        read-only: messages, account settings, billing, and customer data cannot be changed.
       </span>
       <button
         type="button"
         onClick={stop}
         disabled={leaving}
-        className="rounded-md bg-white/95 px-3 py-1 font-semibold text-risk transition-colors hover:bg-white disabled:opacity-60"
+        aria-describedby={error ? "support-session-exit-error" : undefined}
+        className="min-h-11 rounded-md bg-white/95 px-4 py-2 font-semibold text-risk transition-colors hover:bg-white disabled:opacity-60"
       >
         {leaving ? "Returning…" : "Return to my account"}
       </button>
+      {error && (
+        <p id="support-session-exit-error" role="alert" className="w-full font-semibold">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -180,19 +180,45 @@ export function BulkActionBar({
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         processed?: number;
+        failed?: number;
+        errors?: string[];
       };
       if (!res.ok) {
         push({ message: data.error ?? "Bulk action failed." });
         return;
       }
+      if (typeof data.processed !== "number") {
+        push({
+          message:
+            "The server response could not be verified. Keep these items selected and try again before assuming anything changed.",
+        });
+        return;
+      }
+      if ((data.failed ?? 0) > 0) {
+        const detail = data.errors?.find((value) => value.trim()) ?? "One or more items could not be changed.";
+        push({
+          message: `${data.processed} completed, ${data.failed} failed. ${detail} The failed items remain selected so you can retry.`,
+        });
+        router.refresh();
+        return;
+      }
+      if (data.processed < selectedIds.length) {
+        push({
+          message: `${data.processed} of ${selectedIds.length} ${plural} completed. The rest may have changed or may no longer be available. They remain selected so you can review and retry.`,
+        });
+        router.refresh();
+        return;
+      }
       push({
-        message:
-          typeof data.processed === "number"
-            ? `${success} (${data.processed} ${data.processed === 1 ? noun : `${noun}s`}).`
-            : success,
+        message: `${success} (${data.processed} ${data.processed === 1 ? noun : `${noun}s`}).`,
       });
       clear();
       router.refresh();
+    } catch {
+      push({
+        message:
+          "The server could not be reached. Nothing is being reported as complete. Check your connection and try again.",
+      });
     } finally {
       setBusy(false);
     }

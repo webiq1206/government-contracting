@@ -7,6 +7,7 @@
  * the subcontractor record. Outcomes land on opportunity_subs (scoped to the
  * opportunity, and to the trade when known) and on a history row.
  */
+import type { PoolClient, QueryResultRow } from "pg";
 import { query } from "../db";
 import type { ExtractedReply, ReplyIntent } from "../ai/reply-extract";
 
@@ -96,7 +97,7 @@ export function outcomeForIntent(
   intent: ReplyIntent,
   isQuote: boolean,
   /** False only when the reply says it is covering part of the work. */
-  coversFullScope?: boolean | null
+  coversFullScope?: boolean | null,
 ): ReplyOutcome {
   /*
    * Partial coverage beats a price.
@@ -106,7 +107,8 @@ export function outcomeForIntent(
    * the trade being covered. The email reads like a complete quote, so nobody
    * caught it until the bid was short a building.
    */
-  if (intent === "partial_scope" || coversFullScope === false) return "partial_scope";
+  if (intent === "partial_scope" || coversFullScope === false)
+    return "partial_scope";
   if (isQuote) return "quoted";
   switch (intent) {
     case "quote":
@@ -167,12 +169,12 @@ export function decideReply(
      * unsupported format). Their contents are unknown, not absent.
      */
     unreadableAttachments?: string[];
-  } = {}
+  } = {},
 ): ReplyDecision {
   const outcome = outcomeForIntent(
     extracted.intent,
     extracted.isQuote,
-    extracted.coversFullScope
+    extracted.coversFullScope,
   );
   const unread = opts.unreadableAttachments ?? [];
 
@@ -224,7 +226,13 @@ export function decideReply(
         "The reply was unclear, so nothing was changed automatically. Please read it and decide.",
     };
   }
-  return { outcome, proposed: null, act: true, needsReview: false, reviewReason: null };
+  return {
+    outcome,
+    proposed: null,
+    act: true,
+    needsReview: false,
+    reviewReason: null,
+  };
 }
 
 /**
@@ -232,7 +240,10 @@ export function decideReply(
  * strength of this reply. Returned so the caller can hold the workflow and ask
  * the sub for what is missing.
  */
-export function blockingGaps(extracted: ExtractedReply, outcome: ReplyOutcome): string[] {
+export function blockingGaps(
+  extracted: ExtractedReply,
+  outcome: ReplyOutcome,
+): string[] {
   /*
    * Partial coverage is chased as hard as a full quote, because it is a real
    * price against a scope we have to be able to describe. The one thing we
@@ -280,6 +291,25 @@ export interface OutcomeApplied {
   refused: "no_state_for_outcome" | "ambiguous_trade" | null;
   /** The trades that would have been stamped, for the review task. */
   candidateTrades: string[];
+  /**
+   * Automation that must start only after a caller-owned transaction commits.
+   * Ordinary callers enqueue it before this helper returns; transactional
+   * callers receive it and become responsible for surfacing queue failures.
+   */
+  enqueue?: {
+    agent: "sub-finder";
+    payload: { opportunityId: string; trade: string; trigger: "partial_scope" };
+    opts: { singletonKey: string; singletonSeconds: number };
+  };
+}
+
+async function outcomeQuery<T extends QueryResultRow>(
+  client: PoolClient | undefined,
+  text: string,
+  params: unknown[],
+): Promise<T[]> {
+  if (client) return (await client.query<T>(text, params)).rows;
+  return query<T>(text, params);
 }
 
 /**
@@ -288,23 +318,32 @@ export interface OutcomeApplied {
  * Returns what it did, because one case is a refusal a caller has to act on
  * rather than ignore.
  */
-export async function applyOutcomeToSolicitation(input: {
-  opportunityId: string;
-  subcontractorId: string;
-  trade?: string | null;
-  outcome: ReplyOutcome;
-}): Promise<OutcomeApplied> {
+export async function applyOutcomeToSolicitation(
+  input: {
+    opportunityId: string;
+    subcontractorId: string;
+    trade?: string | null;
+    outcome: ReplyOutcome;
+  },
+  client?: PoolClient,
+): Promise<OutcomeApplied> {
   const state = OUTREACH_STATE[input.outcome];
-  if (!state) return { applied: false, refused: "no_state_for_outcome", candidateTrades: [] };
+  if (!state)
+    return {
+      applied: false,
+      refused: "no_state_for_outcome",
+      candidateTrades: [],
+    };
 
   let trade = input.trade ?? null;
   let candidateTrades: string[] = [];
   if (trade == null) {
-    const rows = await query<{ trade: string | null }>(
+    const rows = await outcomeQuery<{ trade: string | null }>(
+      client,
       `select distinct trade from opportunity_subs
         where opportunity_id = $1 and subcontractor_id = $2`,
-      [input.opportunityId, input.subcontractorId]
-    ).catch(() => []);
+      [input.opportunityId, input.subcontractorId],
+    );
     candidateTrades = rows.map((r) => r.trade).filter((t): t is string => !!t);
     // Exactly one trade on the pairing means that is the trade this reply is
     // about, whether or not the message named it.
@@ -329,12 +368,13 @@ export async function applyOutcomeToSolicitation(input: {
       return { applied: false, refused: "ambiguous_trade", candidateTrades };
     }
   }
-  await query(
+  await outcomeQuery(
+    client,
     `update opportunity_subs
         set outreach_state = $4, responded_at = now()
       where opportunity_id = $1 and subcontractor_id = $2
         and ($3::text is null or coalesce(trade, '') = coalesce($3, ''))`,
-    [input.opportunityId, input.subcontractorId, trade, state]
+    [input.opportunityId, input.subcontractorId, trade, state],
   );
 
   /*
@@ -348,15 +388,16 @@ export async function applyOutcomeToSolicitation(input: {
    * than discovered when the numbers do not add up.
    */
   if (input.outcome === "partial_scope") {
-    await query(
+    await outcomeQuery(
+      client,
       `update opportunities
           set human_action_required = true,
               risk_flags = (
                 select array(select distinct unnest(coalesce(risk_flags,'{}') || array['partial_scope_coverage']))
               )
         where id = $1`,
-      [input.opportunityId]
-    ).catch(() => {});
+      [input.opportunityId],
+    );
 
     /*
      * Go and find someone for the rest of it.
@@ -374,18 +415,28 @@ export async function applyOutcomeToSolicitation(input: {
      * point sourcing three times over.
      */
     if (trade) {
-      const { enqueue } = await import("../queue");
-      await enqueue(
-        "sub-finder",
-        { opportunityId: input.opportunityId, trade, trigger: "partial_scope" },
-        {
+      const followUp = {
+        agent: "sub-finder" as const,
+        payload: {
+          opportunityId: input.opportunityId,
+          trade,
+          trigger: "partial_scope" as const,
+        },
+        opts: {
           singletonKey: `resource:${input.opportunityId}:${trade}`,
           singletonSeconds: 3600,
-        }
-      ).catch(() => {
-        // Sourcing is the follow-up, not the outcome. A queue that refuses the
-        // job must not lose the status change that was the point of the call.
-      });
+        },
+      };
+      if (client) {
+        return {
+          applied: true,
+          refused: null,
+          candidateTrades,
+          enqueue: followUp,
+        };
+      }
+      const { enqueue } = await import("../queue");
+      await enqueue(followUp.agent, followUp.payload, followUp.opts);
     }
   }
 
@@ -422,7 +473,8 @@ export async function recordReplyEvent(input: {
         original_message, gmail_message_id, gmail_thread_id, extracted,
         confidence, needs_review, review_reason)
      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13)
-     on conflict (gmail_message_id) where gmail_message_id is not null
+     on conflict (org_id, gmail_message_id)
+       where gmail_message_id is not null and org_id is not null
      do nothing`,
     [
       input.orgId,
@@ -439,6 +491,6 @@ export async function recordReplyEvent(input: {
       input.extracted.confidence,
       input.needsReview,
       input.reviewReason,
-    ]
+    ],
   );
 }

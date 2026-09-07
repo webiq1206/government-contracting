@@ -58,15 +58,91 @@ export const outreach: AgentDefinition = {
   async handler(ctx): Promise<AgentResult> {
     const opportunityId = ctx.payload.opportunityId as string;
     const subcontractorId = ctx.payload.subcontractorId as string;
-    const trade = (ctx.payload.trade as string | undefined) ?? "";
+    let trade = (ctx.payload.trade as string | undefined) ?? "";
     if (!opportunityId || !subcontractorId)
       return { ok: false, summary: "missing opportunityId or subcontractorId in payload" };
 
+    // Derive the owning account from both records. A queue payload identifies
+    // records, not a tenant, and an ambient context alone is not proof that
+    // the opportunity and subcontractor belong together.
+    const { tryResolveTenantOrgId } = await import("../tenant");
+    const owner = await queryOne<{ org_id: string }>(
+      `select o.org_id
+         from opportunities o
+         join subcontractors s on s.id = $2 and s.org_id = o.org_id
+        where o.id = $1`,
+      [opportunityId, subcontractorId]
+    );
+    if (!owner) {
+      return {
+        ok: false,
+        summary:
+          "Outreach was held because the opportunity and subcontractor do not belong to the same account. Nothing was sent.",
+      };
+    }
+    const orgId = owner.org_id;
+    const ambientOrgId = await tryResolveTenantOrgId();
+    if (ambientOrgId && ambientOrgId !== orgId) {
+      return {
+        ok: false,
+        summary: "Outreach was held because the queued account does not own these records. Nothing was sent.",
+      };
+    }
+
     const sub = await queryOne<Subcontractor>(
-      `select * from subcontractors where id = $1`,
-      [subcontractorId]
+      `select * from subcontractors where id = $1 and org_id = $2`,
+      [subcontractorId, orgId]
     );
     if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found` };
+
+    /*
+     * Jobs are queued against a pairing, and that pairing can be removed while
+     * the job is waiting. Treat removal as cancellation before doing any
+     * packet work, and before falling back to a phone call. A deleted choice
+     * must not remain an active automation instruction.
+     */
+    const activePairs = await query<{ trade: string | null }>(
+      `select distinct os.trade from opportunity_subs os
+        join opportunities o on o.id = os.opportunity_id and o.org_id = $4
+        where os.opportunity_id = $1 and os.subcontractor_id = $2
+          and os.removed_at is null
+          and ($3::text = '' or coalesce(os.trade, '') = $3)`,
+      [opportunityId, subcontractorId, trade, orgId]
+    );
+    if (activePairs.length === 0) {
+      await logAgent({
+        agent: "outreach",
+        action: "skip-removed-pairing",
+        level: "info",
+        status: "skipped",
+        opportunityId,
+        subcontractorId,
+        message: `Skipped queued outreach to ${sub.company_name}: this subcontractor is no longer active on that trade.`,
+      });
+      return {
+        ok: true,
+        summary: `Skipped ${sub.company_name}: the opportunity pairing was removed before outreach ran.`,
+      };
+    }
+    if (activePairs.length > 1) {
+      await logAgent({
+        agent: "outreach",
+        action: "skip-ambiguous-trade",
+        level: "error",
+        status: "error",
+        opportunityId,
+        subcontractorId,
+        message:
+          "Outreach was held because this subcontractor is active for several trades and the queued job did not identify one. Nothing was sent. Choose the trade and retry outreach.",
+      });
+      return {
+        ok: false,
+        summary: `Held outreach to ${sub.company_name}: choose which trade this email covers, then retry.`,
+        humanActionRequired: true,
+      };
+    }
+    const activePair = activePairs[0]!;
+    if (!trade) trade = activePair.trade ?? "";
 
     /*
      * A record put aside, or folded into another, does not get email.
@@ -97,8 +173,10 @@ export const outreach: AgentDefinition = {
         await query(
           `update opportunity_subs
               set outreach_state = 'no_email'
-            where opportunity_id = $1 and subcontractor_id = $2`,
-          [opportunityId, subcontractorId]
+            where opportunity_id = $1 and subcontractor_id = $2
+              and removed_at is null
+              and coalesce(trade, '') = $3`,
+          [opportunityId, subcontractorId, trade]
         );
         await logAgent({
           agent: "outreach",
@@ -137,12 +215,15 @@ export const outreach: AgentDefinition = {
       await query(
         `update opportunity_subs
             set outreach_state = 'no_email'
-          where opportunity_id = $1 and subcontractor_id = $2`,
-        [opportunityId, subcontractorId]
+          where opportunity_id = $1 and subcontractor_id = $2
+            and removed_at is null
+            and coalesce(trade, '') = $3`,
+        [opportunityId, subcontractorId, trade]
       );
       await query(
-        `update opportunities set human_action_required = true where id = $1`,
-        [opportunityId]
+        `update opportunities set human_action_required = true
+          where id = $1 and org_id = $2`,
+        [opportunityId, orgId]
       );
       return {
         ok: true,
@@ -152,8 +233,8 @@ export const outreach: AgentDefinition = {
     }
 
     const opp = await queryOne<Opportunity>(
-      `select * from opportunities where id = $1`,
-      [opportunityId]
+      `select * from opportunities where id = $1 and org_id = $2`,
+      [opportunityId, orgId]
     );
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
 
@@ -163,8 +244,7 @@ export const outreach: AgentDefinition = {
     // Org-aware: this tenant's own copy if they saved one, else the platform
     // default. Never another tenant's edit.
     const { activeTemplate } = await import("../domain/template-store");
-    const { tryResolveTenantOrgId } = await import("../tenant");
-    const tmpl = await activeTemplate("template_1_outreach", await tryResolveTenantOrgId());
+    const tmpl = await activeTemplate("template_1_outreach", orgId);
     if (!tmpl) return { ok: false, summary: "no active template_1_outreach template" };
 
     const analysis = opp.solicitation_analysis;
@@ -173,7 +253,7 @@ export const outreach: AgentDefinition = {
     // know whether any arrived before it can decide the email is sendable.
     // Trade-filtered official docs (unaltered PDFs). Generated copy is
     // scrubbed; source PDFs are not rewritten.
-    const gathered = await gatherTradeAttachments(opp, trade);
+    const gathered = await gatherTradeAttachments(orgId, opp, trade);
 
     /*
      * Is what we gathered actually usable?
@@ -229,8 +309,8 @@ export const outreach: AgentDefinition = {
                 risk_flags = (
                   select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
                 )
-          where id = $1`,
-        [opportunityId]
+          where id = $1 and org_id = $2`,
+        [opportunityId, orgId]
       );
       await logAgent({
         agent: "outreach",
@@ -278,8 +358,8 @@ export const outreach: AgentDefinition = {
                 risk_flags = (
                   select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
                 )
-          where id = $1`,
-        [opportunityId]
+          where id = $1 and org_id = $2`,
+        [opportunityId, orgId]
       );
       await logAgent({
         agent: "outreach",
@@ -348,8 +428,8 @@ export const outreach: AgentDefinition = {
                 risk_flags = (
                   select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
                 )
-          where id = $1`,
-        [opportunityId]
+          where id = $1 and org_id = $2`,
+        [opportunityId, orgId]
       );
       await logAgent({
         agent: "outreach",
@@ -443,8 +523,8 @@ export const outreach: AgentDefinition = {
                 risk_flags = (
                   select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
                 )
-          where id = $1`,
-        [opportunityId]
+          where id = $1 and org_id = $2`,
+        [opportunityId, orgId]
       );
       await logAgent({
         agent: "outreach",
@@ -475,14 +555,14 @@ export const outreach: AgentDefinition = {
     // this guard must NOT block them — only a genuine prior send.
     const priorSend = await queryOne<{ id: string }>(
       `select id from communications
-        where opportunity_id = $1 and subcontractor_id = $2
+        where org_id = $4 and opportunity_id = $1 and subcontractor_id = $2
           and channel = 'email' and direction = 'outbound'
           and provider is not null
           and coalesce(meta->>'trade', '') = $3
           and coalesce(meta->>'kind', '') not in ('decline_thank_you', 'final_nudge')
         limit 1`,
-      [opportunityId, subcontractorId, trade ?? ""]
-    ).catch(() => null);
+      [opportunityId, subcontractorId, trade ?? "", orgId]
+    );
     if (priorSend) {
       await logAgent({
         agent: "outreach",
@@ -526,6 +606,7 @@ export const outreach: AgentDefinition = {
         text: fullPlain,
         trackingId,
         attachments: gathered.files,
+        orgId,
         // Re-checked at the provider boundary: this job has been assembling a
         // packet since the runner's check, and that is long enough for an
         // abort to land in between.
@@ -546,8 +627,7 @@ export const outreach: AgentDefinition = {
           status: "skipped",
           opportunityId,
           subcontractorId,
-          message:
-            "No email transport available (connect Gmail or configure Resend); outreach stored as draft for manual send.",
+          message: `Outreach was not sent (${res.error ?? "Gmail is paused or unavailable"}). It was stored as a draft and will be retried after the account can send again.`,
         });
       } else if (res.error) {
         humanAction = true;
@@ -579,11 +659,12 @@ export const outreach: AgentDefinition = {
 
     await query(
       `insert into communications
-         (subcontractor_id, opportunity_id, channel, direction, subject, body,
+         (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body,
           gmail_message_id, gmail_thread_id, tracking_id, follow_up_at, provider,
           recipient_email, meta, rfc822_message_id, delivery_state)
-       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13)`,
+       values ($1,$2,$3,'email','outbound',$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13,$14)`,
       [
+        orgId,
         subcontractorId,
         opportunityId,
         subject,
@@ -657,6 +738,7 @@ export const outreach: AgentDefinition = {
                 else quote_due_at
               end
        where opportunity_id=$1 and subcontractor_id=$2
+         and removed_at is null
          and coalesce(trade,'') = $4`,
       [
         opportunityId,
@@ -669,15 +751,21 @@ export const outreach: AgentDefinition = {
     );
 
     if (sent) {
-      await query(`update subcontractors set last_contacted=now() where id=$1`, [
-        subcontractorId,
-      ]);
+      await query(
+        `update subcontractors set last_contacted=now()
+          where id=$1 and org_id=$2`,
+        [subcontractorId, orgId]
+      );
     }
 
     // Only claim "Contacting subs" when a message actually left the building.
     // Drafts / failed sends keep the prior stage and flag the operator instead.
     if (sent) {
-      await query(`update opportunities set stage='outreach' where id=$1`, [opportunityId]);
+      await query(
+        `update opportunities set stage='outreach'
+          where id=$1 and org_id=$2`,
+        [opportunityId, orgId]
+      );
     } else {
       await query(
         `update opportunities
@@ -688,8 +776,8 @@ export const outreach: AgentDefinition = {
                    coalesce(risk_flags, '{}') || array['outreach_send_failed']::text[]
                  ) as x
                )
-         where id=$1`,
-        [opportunityId]
+         where id=$1 and org_id=$2`,
+        [opportunityId, orgId]
       );
     }
 

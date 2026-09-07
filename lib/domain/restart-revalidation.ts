@@ -28,14 +28,18 @@ export function restartMayProceed(facts: {
       error: "This bid already has a result. Start a new opportunity rather than restarting it.",
     };
   }
-  if ((facts.status ?? "open") !== "open" && stage !== "dismissed") {
+  if (stage === "submitted") {
+    return {
+      ok: false,
+      error:
+        "This bid was already sent. Record the agency outcome, or create a controlled revision instead of restarting the old pursuit.",
+    };
+  }
+  if ((facts.status ?? "open") !== "open") {
     return {
       ok: false,
       error: "This opportunity is closed. Restore it first if it should be worked again.",
     };
-  }
-  if (["submitted", "won", "lost"].includes(stage)) {
-    return { ok: true };
   }
   if (!facts.deadline) return { ok: true };
   const deadline = facts.deadline instanceof Date ? facts.deadline : new Date(facts.deadline);

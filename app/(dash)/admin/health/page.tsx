@@ -22,6 +22,8 @@ import {
 import { INCIDENT_SPECS } from "@/lib/domain/automation-health";
 import { queueBacklogDepth } from "@/lib/automation-status";
 import { timeAgo } from "@/lib/format";
+import { getPlatformAutomationState } from "@/lib/app-settings";
+import { PlatformAutomationControl } from "@/components/admin/platform-automation-control";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +53,7 @@ export default async function PlatformHealthPage() {
   if (auth instanceof Response) notFound();
 
   const refreshedAt = new Date();
-  const [facts, failures, impact, pulse, depth] = await Promise.all([
+  const [facts, failures, impact, pulse, depth, platformAutomation] = await Promise.all([
     agentRunFacts(),
     recentFailures(),
     platformImpact(),
@@ -62,6 +64,7 @@ export default async function PlatformHealthPage() {
      * because reporting nought is how a growing backlog stays invisible.
      */
     queueBacklogDepth().catch(() => null),
+    getPlatformAutomationState(),
   ]);
 
   const webhook = webhookHealth(pulse.lastEventAt, pulse.billableAccounts, refreshedAt);
@@ -94,6 +97,7 @@ export default async function PlatformHealthPage() {
         status={`${platform.headline} · read at ${refreshedLabel(refreshedAt)}`}
       />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
+        <PlatformAutomationControl state={platformAutomation} />
         {/* 1. Overall status, and when this was read. */}
         <section
           aria-labelledby="platform-state"

@@ -138,6 +138,9 @@ const dollarsToCents = (v: string | number | null | undefined): number | null =>
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function contractRecord(
   orgId: string,
   contractId: string
@@ -149,22 +152,23 @@ export async function contractRecord(
             c.closeout_started_at::text as closeout_started_at,
             c.closeout_completed_at::text as closeout_completed_at,
             c.closeout_notes, c.cpars_due_at::text as cpars_due_at, c.cpars_status,
-            c.created_manually, c.opportunity_id,
+            c.created_manually, o.id as opportunity_id,
             o.title as opportunity_title,
             -- The record showed a title and a number and never once said who
             -- the work is for.
             o.agency, o.solicitation_number,
-            c.primary_sub_id, ps.company_name as primary_sub_name,
-            c.backup_sub_id, bs.company_name as backup_sub_name,
-            c.assigned_to,
+            ps.id as primary_sub_id, ps.company_name as primary_sub_name,
+            bs.id as backup_sub_id, bs.company_name as backup_sub_name,
+            cm.user_id as assigned_to,
             coalesce(nullif(btrim(au.name), ''), split_part(au.email, '@', 1)) as assigned_name,
             b.sub_quote_total, b.target_margin_pct
        from contracts c
-       left join opportunities o on o.id = c.opportunity_id
-       left join subcontractors ps on ps.id = c.primary_sub_id
-       left join subcontractors bs on bs.id = c.backup_sub_id
-       left join users au on au.id = c.assigned_to
-       left join bids b on b.id = c.bid_id
+       left join opportunities o on o.id = c.opportunity_id and o.org_id = c.org_id
+       left join subcontractors ps on ps.id = c.primary_sub_id and ps.org_id = c.org_id
+       left join subcontractors bs on bs.id = c.backup_sub_id and bs.org_id = c.org_id
+       left join organization_members cm on cm.user_id = c.assigned_to and cm.org_id = c.org_id
+       left join users au on au.id = cm.user_id
+       left join bids b on b.id = c.bid_id and b.org_id = c.org_id
       where c.id = $1 and c.org_id = $2`,
     [contractId, orgId]
   );
@@ -382,8 +386,12 @@ export async function saveModification(input: {
 }): Promise<ContractResult> {
   const modNumber = input.modNumber.trim();
   const summary = input.summary.trim();
+  const supersedes = input.supersedes?.trim() || null;
   if (!modNumber) return { ok: false, status: 400, error: "Which modification number is this?" };
   if (!summary) return { ok: false, status: 400, error: "Say what the modification changed." };
+  if (supersedes && !UUID_RE.test(supersedes)) {
+    return { ok: false, status: 400, error: "That earlier modification is not a valid record." };
+  }
   if (!["scope", "value", "schedule", "administrative", "termination"].includes(input.kind)) {
     return { ok: false, status: 400, error: "That is not a kind of modification." };
   }
@@ -412,6 +420,22 @@ export async function saveModification(input: {
       return { ok: false as const, status: 404, error: "No such contract." };
     }
 
+    if (supersedes) {
+      const prior = await client.query(
+        `select id from contract_modifications
+          where id = $3 and contract_id = $1 and org_id = $2
+          for update`,
+        [input.contractId, input.orgId, supersedes]
+      );
+      if (prior.rowCount === 0) {
+        return {
+          ok: false as const,
+          status: 404,
+          error: "That earlier modification is not on this contract.",
+        };
+      }
+    }
+
     const dupe = await client.query(
       `select id from contract_modifications
         where contract_id = $1 and org_id = $2 and lower(btrim(mod_number)) = lower($3)`,
@@ -438,12 +462,17 @@ export async function saveModification(input: {
       ]
     );
 
-    if (input.supersedes) {
-      await client.query(
+    if (supersedes) {
+      const replaced = await client.query(
         `update contract_modifications set superseded_by = $3
           where id = $4 and contract_id = $1 and org_id = $2`,
-        [input.contractId, input.orgId, res.rows[0].id, input.supersedes]
+        [input.contractId, input.orgId, res.rows[0].id, supersedes]
       );
+      if (replaced.rowCount !== 1) {
+        throw new ContractRefusal(
+          "The earlier modification changed while this one was being recorded. Nothing was saved; reload and try again."
+        );
+      }
     }
 
     /*
@@ -628,28 +657,50 @@ export async function logCoordination(input: {
 }): Promise<ContractResult> {
   const withWhom = input.withWhom.trim();
   const summary = input.summary.trim();
+  const subcontractorId = input.subcontractorId?.trim() || null;
   if (!withWhom) return { ok: false, status: 400, error: "Who was this with?" };
   if (!summary) return { ok: false, status: 400, error: "Say what was discussed." };
+  if (subcontractorId && !UUID_RE.test(subcontractorId)) {
+    return { ok: false, status: 400, error: "That subcontractor is not a valid record." };
+  }
   if (!["call", "email", "meeting", "site_visit", "other"].includes(input.channel)) {
     return { ok: false, status: 400, error: "That is not a way to have talked to somebody." };
   }
-  const rows = await query<{ id: string }>(
-    `insert into contract_coordination
-       (org_id, contract_id, happened_at, channel, with_whom, summary, subcontractor_id, recorded_by)
-     select c.org_id, c.id, coalesce($3::timestamptz, now()), $4, $5, $6,
-            -- Only a subcontractor on this organization's roster.
-            (select s.id from subcontractors s where s.id = $7::uuid and s.org_id = c.org_id),
-            $8::uuid
-       from contracts c where c.id = $1 and c.org_id = $2
-     returning id`,
-    [
-      input.contractId, input.orgId, input.happenedAt || null, input.channel,
-      withWhom, summary, input.subcontractorId || null, input.actorId,
-    ]
-  );
-  return rows.length
-    ? { ok: true, id: rows[0].id }
-    : { ok: false, status: 404, error: "No such contract." };
+  return transaction(async (client) => {
+    const contract = await client.query(
+      `select id from contracts where id = $1 and org_id = $2 for key share`,
+      [input.contractId, input.orgId]
+    );
+    if (contract.rowCount === 0) {
+      return { ok: false as const, status: 404, error: "No such contract." };
+    }
+
+    if (subcontractorId) {
+      const subcontractor = await client.query(
+        `select id from subcontractors where id = $1 and org_id = $2 for key share`,
+        [subcontractorId, input.orgId]
+      );
+      if (subcontractor.rowCount === 0) {
+        return {
+          ok: false as const,
+          status: 404,
+          error: "That subcontractor is not on this account.",
+        };
+      }
+    }
+
+    const res = await client.query<{ id: string }>(
+      `insert into contract_coordination
+         (org_id, contract_id, happened_at, channel, with_whom, summary, subcontractor_id, recorded_by)
+       values ($2,$1,coalesce($3::timestamptz, now()),$4,$5,$6,$7::uuid,$8::uuid)
+       returning id`,
+      [
+        input.contractId, input.orgId, input.happenedAt || null, input.channel,
+        withWhom, summary, subcontractorId, input.actorId,
+      ]
+    );
+    return { ok: true as const, id: res.rows[0].id };
+  });
 }
 
 export async function updateContractTerms(input: {
@@ -706,6 +757,7 @@ export async function createContract(input: {
   opportunityId?: string | null;
 }): Promise<ContractResult> {
   const number = input.contractNumber.trim();
+  const opportunityId = input.opportunityId?.trim() || null;
   if (!number) return { ok: false, status: 400, error: "A contract needs its number." };
   if (input.awardAmount != null && (!Number.isFinite(input.awardAmount) || input.awardAmount < 0)) {
     return { ok: false, status: 400, error: "An award amount cannot be negative." };
@@ -713,25 +765,39 @@ export async function createContract(input: {
   if (input.startDate && input.endDate && input.endDate < input.startDate) {
     return { ok: false, status: 400, error: "The end date cannot be before the start date." };
   }
+  if (opportunityId && !UUID_RE.test(opportunityId)) {
+    return { ok: false, status: 400, error: "That opportunity is not a valid record." };
+  }
 
-  const rows = await query<{ id: string }>(
-    `insert into contracts
-       (org_id, contract_number, award_amount, start_date, end_date, status,
-        created_manually, created_by, opportunity_id)
-     values ($1,$2,$3,$4::date,$5::date,'active',true,$6::uuid,
-             -- Only an opportunity this organization owns, resolved in the
-             -- statement rather than trusted from the request.
-             (select o.id from opportunities o where o.id = $7::uuid and o.org_id = $1))
-     returning id`,
-    [
-      input.orgId, number, input.awardAmount ?? null,
-      input.startDate || null, input.endDate || null,
-      input.actorId, input.opportunityId || null,
-    ]
-  );
-  return rows.length
-    ? { ok: true, id: rows[0].id }
-    : { ok: false, status: 500, error: "The contract could not be created." };
+  return transaction(async (client) => {
+    if (opportunityId) {
+      const opportunity = await client.query(
+        `select id from opportunities where id = $1 and org_id = $2 for key share`,
+        [opportunityId, input.orgId]
+      );
+      if (opportunity.rowCount === 0) {
+        return {
+          ok: false as const,
+          status: 404,
+          error: "That opportunity is not in this account.",
+        };
+      }
+    }
+
+    const res = await client.query<{ id: string }>(
+      `insert into contracts
+         (org_id, contract_number, award_amount, start_date, end_date, status,
+          created_manually, created_by, opportunity_id)
+       values ($1,$2,$3,$4::date,$5::date,'active',true,$6::uuid,$7::uuid)
+       returning id`,
+      [
+        input.orgId, number, input.awardAmount ?? null,
+        input.startDate || null, input.endDate || null,
+        input.actorId, opportunityId,
+      ]
+    );
+    return { ok: true as const, id: res.rows[0].id };
+  });
 }
 
 export { ownsContract };
@@ -746,91 +812,99 @@ export { ownsContract };
  * head had done it before.
  *
  * Idempotent on the key, so re-recording a win or re-running a repair does not
- * produce a second set. Failures are swallowed per row rather than for the
- * batch: a contract that exists with four of its five milestones is better
- * than a win that refused to record because one insert tripped.
+ * produce a second set. The whole startup list is one transaction: a partial
+ * checklist is more dangerous than a visible failure because it looks complete
+ * while silently omitting an obligation.
  */
 export async function seedContractStartup(input: {
   orgId: string;
   contractId: string;
 }): Promise<{ milestones: number; compliance: number }> {
-  const c = await queryOne<{
-    start_date: string | null;
-    end_date: string | null;
-    bond_required_cents: string | number | null;
-    primary_sub_id: string | null;
-    contract_number: string | null;
-  }>(
-    `select start_date::text as start_date, end_date::text as end_date,
-            bond_required_cents, primary_sub_id, contract_number
-       from contracts where id = $1 and org_id = $2`,
-    [input.contractId, input.orgId]
-  );
-  if (!c) return { milestones: 0, compliance: 0 };
+  return transaction(async (client) => {
+    const found = await client.query<{
+      start_date: string | null;
+      end_date: string | null;
+      bond_required_cents: string | number | null;
+      primary_sub_id: string | null;
+      contract_number: string | null;
+    }>(
+      `select start_date::text as start_date, end_date::text as end_date,
+              bond_required_cents, primary_sub_id, contract_number
+         from contracts where id = $1 and org_id = $2
+         for update`,
+      [input.contractId, input.orgId]
+    );
+    const c = found.rows[0];
+    if (!c) {
+      throw new ContractRefusal(
+        "The contract startup checklist could not be created because the contract is not in this account."
+      );
+    }
 
-  const facts = {
-    startDate: c.start_date,
-    endDate: c.end_date,
-    bondRequired: c.bond_required_cents != null,
-    hasSubcontractor: Boolean(c.primary_sub_id),
-  };
+    const facts = {
+      startDate: c.start_date,
+      endDate: c.end_date,
+      bondRequired: c.bond_required_cents != null,
+      hasSubcontractor: Boolean(c.primary_sub_id),
+    };
 
-  let milestones = 0;
-  for (const m of plannedMilestones(facts)) {
-    const rows = await query<{ id: string }>(
-      /*
-       * Keyed on the name within the contract. There is no natural key for a
-       * generated milestone, and matching on the name is what makes a second
-       * run a no-op rather than a duplicate list.
-       */
-      `insert into contract_milestones
-         (org_id, contract_id, kind, name, detail, due_at, sort_order)
-       select c.org_id, c.id, $3, $4, $5, $6::date,
-              coalesce((select max(sort_order) + 1 from contract_milestones x where x.contract_id = c.id), 0)
-         from contracts c
-        where c.id = $1 and c.org_id = $2
-          and not exists (
-            select 1 from contract_milestones e
-             where e.contract_id = c.id and lower(e.name) = lower($4)
-          )
-       returning id`,
-      [input.contractId, input.orgId, m.kind, m.name, `${m.detail} ${GENERATED_NOTE}`, m.dueAt]
-    ).catch(() => []);
-    milestones += rows.length;
-  }
+    let milestones = 0;
+    for (const m of plannedMilestones(facts)) {
+      const rows = await client.query<{ id: string }>(
+        /*
+         * Keyed on the name within the contract. There is no natural key for a
+         * generated milestone, and matching on the name is what makes a second
+         * run a no-op rather than a duplicate list.
+         */
+        `insert into contract_milestones
+           (org_id, contract_id, kind, name, detail, due_at, sort_order)
+         select c.org_id, c.id, $3, $4, $5, $6::date,
+                coalesce((select max(sort_order) + 1 from contract_milestones x where x.contract_id = c.id), 0)
+           from contracts c
+          where c.id = $1 and c.org_id = $2
+            and not exists (
+              select 1 from contract_milestones e
+               where e.contract_id = c.id and lower(e.name) = lower($4)
+            )
+         returning id`,
+        [input.contractId, input.orgId, m.kind, m.name, `${m.detail} ${GENERATED_NOTE}`, m.dueAt]
+      );
+      milestones += rows.rows.length;
+    }
 
-  let compliance = 0;
-  for (const item of plannedComplianceItems(facts)) {
-    const label = c.contract_number ? `${item.label} (${c.contract_number})` : item.label;
-    const rows = await query<{ id: string }>(
-      /*
-       * `contract_deadline` is a category the compliance page has always known
-       * how to display and nothing has ever written. These are the rows it was
-       * built for.
-       *
-       * Written as source 'monitor' would let the daily sweep overwrite them;
-       * 'contract' marks them as belonging to this award, so an operator's
-       * edits survive.
-       */
-      `insert into compliance_items
-         (org_id, category, label, contract_id, due_at, status, detail, source,
-          window_days, monitorable, required)
-       select c.org_id, $3, $4, c.id, $5::timestamptz, 'incomplete', $6::jsonb, 'contract',
-              $7, false, true
-         from contracts c
-        where c.id = $1 and c.org_id = $2
-          and not exists (
-            select 1 from compliance_items e
-             where e.contract_id = c.id and lower(e.label) = lower($4)
-          )
-       returning id`,
-      [
-        input.contractId, input.orgId, item.category, label, item.dueAt,
-        JSON.stringify({ note: item.detail, generated: true }), item.windowDays,
-      ]
-    ).catch(() => []);
-    compliance += rows.length;
-  }
+    let compliance = 0;
+    for (const item of plannedComplianceItems(facts)) {
+      const label = c.contract_number ? `${item.label} (${c.contract_number})` : item.label;
+      const rows = await client.query<{ id: string }>(
+        /*
+         * `contract_deadline` is a category the compliance page has always known
+         * how to display and nothing has ever written. These are the rows it was
+         * built for.
+         *
+         * Written as source 'monitor' would let the daily sweep overwrite them;
+         * 'contract' marks them as belonging to this award, so an operator's
+         * edits survive.
+         */
+        `insert into compliance_items
+           (org_id, category, label, contract_id, due_at, status, detail, source,
+            window_days, monitorable, required)
+         select c.org_id, $3, $4, c.id, $5::timestamptz, 'incomplete', $6::jsonb, 'contract',
+                $7, false, true
+           from contracts c
+          where c.id = $1 and c.org_id = $2
+            and not exists (
+              select 1 from compliance_items e
+               where e.contract_id = c.id and lower(e.label) = lower($4)
+            )
+         returning id`,
+        [
+          input.contractId, input.orgId, item.category, label, item.dueAt,
+          JSON.stringify({ note: item.detail, generated: true }), item.windowDays,
+        ]
+      );
+      compliance += rows.rows.length;
+    }
 
-  return { milestones, compliance };
+    return { milestones, compliance };
+  });
 }

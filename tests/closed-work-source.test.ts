@@ -24,11 +24,12 @@ describe("follow-up selection refuses closed opportunities", () => {
   });
 
   it("does not restore a follow-up marker after a closed-record refusal", () => {
-    expect(MAINTENANCE).toContain("} else if (res.disabled) {");
-    const disabled = MAINTENANCE.indexOf("} else if (res.disabled) {");
-    const restore = MAINTENANCE.indexOf("follow_up_at = now() + interval '15 minutes'");
-    expect(disabled).toBeGreaterThan(-1);
-    expect(restore).toBeGreaterThan(disabled);
+    const terminal = MAINTENANCE.indexOf("res.disabled && res.retryable === false");
+    const retryable = MAINTENANCE.indexOf("} else if (res.disabled) {", terminal);
+    const clear = MAINTENANCE.indexOf("set follow_up_at = null", terminal);
+    expect(terminal).toBeGreaterThan(-1);
+    expect(clear).toBeGreaterThan(terminal);
+    expect(clear).toBeLessThan(retryable);
   });
 });
 
@@ -184,7 +185,10 @@ describe("operator pages keep the names and chrome they already have", () => {
 
   it("keeps leftover declined calls off Today and the opportunity pending count", () => {
     expect(DATA).toContain("where o.org_id=$1 and ${WORKABLE_CALL_CARD_SQL}");
-    expect(DATA).toContain("where cc.opportunity_id = $1 and ${WORKABLE_CALL_CARD_SQL}");
+    expect(DATA).toContain(
+      "where cc.opportunity_id = $1 and cc.org_id = $2 and o.org_id = $2"
+    );
+    expect(DATA).toContain("and s.org_id = $2 and ${WORKABLE_CALL_CARD_SQL}");
   });
 });
 

@@ -17,11 +17,22 @@ import { TrialBanner } from "@/components/trial-banner";
 import { PaymentFailedBanner } from "@/components/payment-failed-banner";
 import { TrialExpiredModal } from "@/components/trial-expired-modal";
 import { allQuotaStates } from "@/lib/billing/trial-limits";
+import { ShellDataWarning } from "@/components/shell-data-warning";
+import { SessionLoadFailure } from "@/components/session-load-failure";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashLayout({ children }: { children: React.ReactNode }) {
-  const user = await currentUser().catch(() => null);
+  const auth = await currentUser().then(
+    (user) => ({ ok: true as const, user }),
+    (error) => {
+      console.error("[dashboard] session or organization could not be loaded:", error);
+      return { ok: false as const, user: null };
+    }
+  );
+  if (!auth.ok) return <SessionLoadFailure />;
+  // Only a successful null means this browser is signed out.
+  const user = auth.user;
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/signup");
 
@@ -30,18 +41,34 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   // the customer sees what they built while deciding. Enforcement is not this
   // panel, it is the 402 that every mutating route returns independently.
 
+  const shellWarnings: string[] = [];
   const [counts, health, automation, quotas, inboxWaiting] = await Promise.all([
-    queueCounts().catch(() => ({ review: 0, callQueue: 0, today: 0 })),
-    automationHealth().catch(() => null),
-    getAutomationState().catch(() => ({ paused: false, changed_at: null, changed_by: null })),
+    queueCounts().catch(() => {
+      shellWarnings.push("Navigation task counts are unknown, not zero.");
+      return { review: 0, callQueue: 0, today: 0 };
+    }),
+    automationHealth().catch(() => {
+      shellWarnings.push("Automation health is unavailable.");
+      return null;
+    }),
+    getAutomationState().catch(() => {
+      shellWarnings.push("The account pause-switch state is unavailable.");
+      return { paused: false, changed_at: null, changed_by: null };
+    }),
     // Only a trial has meters to show; a paid org pays for none of this work.
-    access === "trial" ? allQuotaStates(user.organizationId).catch(() => []) : [],
+    access === "trial" ? allQuotaStates(user.organizationId).catch(() => {
+      shellWarnings.push("Trial usage meters are unavailable.");
+      return [];
+    }) : [],
     /*
      * Zero on failure rather than a badge that lies upward. An inbox badge
      * that over-counts sends somebody to a page with nothing on it; one that
      * under-counts costs them the trip they were going to make anyway.
      */
-    inboxNeedsReplyCount().catch(() => 0),
+    inboxNeedsReplyCount().catch(() => {
+      shellWarnings.push("The inbox badge is unknown, not zero.");
+      return 0;
+    }),
   ]);
   return (
     <ToastProvider>
@@ -72,11 +99,12 @@ export default async function DashLayout({ children }: { children: React.ReactNo
             <TrialBanner daysLeft={trialDaysLeft(entitlementOf(user))} quotas={quotas} />
           )}
           {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
+          <ShellDataWarning items={shellWarnings} />
           {children}
         </main>
       </div>
       {access === "none" && <TrialExpiredModal />}
-      <CommandPalette />
+      <CommandPalette storageScope={user.organizationId} />
       <Suspense fallback={null}>
         <GuideWizard />
       </Suspense>

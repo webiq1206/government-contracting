@@ -53,10 +53,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # The integration suites skip themselves when DATABASE_URL is unset,
-      # which it is here: they need a seeded two-tenant database, and a CI
-      # Postgres that silently drifts from the migrations would be worse than
-      # honest skips. The ~940 unit tests do run.
+      # Unit tests run without database or provider credentials. The separate
+      # database job applies this exact branch's migrations to a fresh service.
       - name: Test
         run: npm test
 
@@ -64,3 +62,65 @@ jobs:
       # a bad route export, a build-time failure in a page module.
       - name: Build
         run: npm run build
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: brostco_audit
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d brostco_audit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      # The placeholder satisfies legacy suite discovery. config.database
+      # resolves PG* only, and verifies that it differs from this endpoint.
+      # No production database URL or provider secret is supplied to this job.
+      DATABASE_URL: postgresql://unused@production-not-configured.invalid/unused
+      USE_REPLIT_DEV_DB: "true"
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: brostco_audit
+      PGUSER: postgres
+      PGPASSWORD: disposable-ci-only
+      ALLOW_TESTS_AGAINST_DATABASE_URL: "1"
+      RUN_RLS_INTEGRATION: "1"
+      BROSTCO_TEST_OFFLINE: "1"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Apply and verify exact migration files
+        run: |
+          node --import tsx scripts/migrate.ts
+          node --import tsx scripts/verify-schema.ts
+          node --import tsx scripts/seed.ts
+      - name: Exercise database workflows and restricted-role tenant checks
+        run: >-
+          node node_modules/vitest/vitest.mjs run
+          integration.test.ts enqueue-provenance.test.ts opportunity-ingest.dedupe.test.ts
+          --fileParallelism=false --reporter=default --reporter=json
+          --outputFile=database-test-results.json
+      - name: Reject a skipped or empty database gate
+        run: node scripts/verify-database-test-report.mjs database-test-results.json
+      - name: Preserve database test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-test-results
+          path: database-test-results.json
+          if-no-files-found: warn

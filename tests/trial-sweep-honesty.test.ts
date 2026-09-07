@@ -16,7 +16,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const logged: { action: string; level: string; message: string }[] = [];
-let sendBehaviour: () => Promise<void> = async () => {};
+let sendBehaviour: () => Promise<{ disabled?: boolean; error?: string }> = async () => ({});
 
 vi.mock("@/lib/db", () => ({
   query: vi.fn(async (sql: string) => {
@@ -44,7 +44,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@/lib/integrations/system-mail", () => ({
   systemMail: {
-    enabled: async () => true,
+    deliverable: async () => true,
     send: async () => sendBehaviour(),
   },
 }));
@@ -53,7 +53,7 @@ const { trialSweep } = await import("@/lib/agents/trial-sweep");
 
 beforeEach(() => {
   logged.length = 0;
-  sendBehaviour = async () => {};
+  sendBehaviour = async () => ({});
 });
 
 describe("a trial warning that could not be sent", () => {
@@ -87,6 +87,17 @@ describe("a trial warning that could not be sent", () => {
     };
     const r = await trialSweep.handler({ payload: {} } as never);
     expect(r.summary).toContain("0 warned");
+    expect(r.ok).toBe(false);
+    expect(r.humanActionRequired).toBe(true);
+  });
+
+  it("treats a returned provider refusal as unsent", async () => {
+    sendBehaviour = async () => ({ disabled: true, error: "grant revoked" });
+    const r = await trialSweep.handler({ payload: {} } as never);
+    const warn = logged.find((l) => l.action.startsWith("trial-warning"))!;
+    expect(warn.action).toBe("trial-warning-3d-unsent");
+    expect(warn.message).toContain("grant revoked");
+    expect(r.ok).toBe(false);
   });
 
   it("records the ordinary case as sent, under the deduping action", async () => {

@@ -22,20 +22,25 @@ d("the pursuit guard", () => {
   let query: typeof import("../lib/db").query;
   let pursuitStatus: typeof import("../lib/pursuit-guard").pursuitStatus;
   let assertPursuitActive: typeof import("../lib/pursuit-guard").assertPursuitActive;
+  let runWithPursuitVersion: typeof import("../lib/pursuit-job-context").runWithPursuitVersion;
 
   const org = randomUUID();
   const opp = randomUUID();
 
-  async function setState(state: string, reason: string | null = null) {
+  async function setState(state: string, reason: string | null = null, version?: number) {
     await query(
-      `update opportunities set pursuit_state = $2, pursuit_reason = $3 where id = $1`,
-      [opp, state, reason]
+      `update opportunities
+          set pursuit_state = $2, pursuit_reason = $3,
+              pursuit_version = coalesce($4, pursuit_version)
+        where id = $1`,
+      [opp, state, reason, version ?? null]
     );
   }
 
   beforeAll(async () => {
     ({ query } = await import("../lib/db"));
     ({ pursuitStatus, assertPursuitActive } = await import("../lib/pursuit-guard"));
+    ({ runWithPursuitVersion } = await import("../lib/pursuit-job-context"));
     await query(
       `insert into organizations (id, name, subscription_status, billing_exempt)
        values ($1,'Pursuit Probe','active',true) on conflict (id) do nothing`,
@@ -49,7 +54,7 @@ d("the pursuit guard", () => {
   });
 
   afterEach(async () => {
-    await setState("active", null);
+    await setState("active", null, 1);
   });
 
   afterAll(async () => {
@@ -142,6 +147,23 @@ d("the pursuit guard", () => {
     const atSendBoundary = await pursuitStatus(opp);
     expect(atSendBoundary.mayAct).toBe(false);
     expect(atSendBoundary.reason).toMatch(/aborted/i);
+  });
+
+  it("blocks work from before an abort even after the pursuit is restarted", async () => {
+    await setState("active", null, 3);
+
+    const stale = await runWithPursuitVersion(
+      { opportunityId: opp, version: 1 },
+      () => pursuitStatus(opp)
+    );
+    expect(stale.mayAct).toBe(false);
+    expect(stale.reason).toMatch(/earlier version/i);
+
+    const current = await runWithPursuitVersion(
+      { opportunityId: opp, version: 3 },
+      () => pursuitStatus(opp)
+    );
+    expect(current.mayAct).toBe(true);
   });
 
   it("keeps the record and its history readable after an abort", async () => {

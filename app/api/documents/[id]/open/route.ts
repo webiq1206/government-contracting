@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { queryOne } from "@/lib/db";
-import { LEGACY_ORG_ID } from "@/lib/tenant-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,9 +21,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
 
-  const doc = await queryOne<{ storage_path: string | null; org_id: string | null }>(
-    `select storage_path, org_id from documents where id = $1`,
-    [params.id]
+  const doc = await queryOne<{ storage_path: string | null }>(
+    `select storage_path from documents where id = $1 and org_id = $2`,
+    [params.id, ctx.orgId]
   );
 
   /*
@@ -33,13 +32,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
    * a document id exists and belongs to somebody else, which is the fact worth
    * hiding.
    *
-   * The founding organization's legacy rows predate `org_id`, so a null org
-   * is theirs and nobody else's.
+   * Rows without an owner are unavailable until an operator repairs them from
+   * auditable evidence. Missing ownership never becomes an access rule.
    */
-  const ownedByCaller =
-    doc != null &&
-    (doc.org_id === ctx.orgId || (doc.org_id === null && ctx.orgId === LEGACY_ORG_ID));
-  if (!ownedByCaller || !doc?.storage_path) {
+  if (!doc?.storage_path) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 

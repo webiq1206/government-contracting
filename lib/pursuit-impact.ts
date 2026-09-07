@@ -18,6 +18,7 @@
  * this list is a number an operator can go and look at.
  */
 import { query, queryOne } from "./db";
+import { resolveTenantOrgId } from "./tenant";
 
 export interface PursuitImpact {
   title: string | null;
@@ -39,7 +40,11 @@ export interface PursuitImpact {
   confirmPhrase: string;
 }
 
-export async function pursuitImpact(opportunityId: string): Promise<PursuitImpact | null> {
+export async function pursuitImpact(
+  opportunityId: string,
+  orgId?: string
+): Promise<PursuitImpact | null> {
+  const org = orgId ?? (await resolveTenantOrgId());
   const opp = await queryOne<{
     title: string | null;
     solicitation_number: string | null;
@@ -47,8 +52,8 @@ export async function pursuitImpact(opportunityId: string): Promise<PursuitImpac
     stage: string;
   }>(
     `select title, solicitation_number, deadline::text as deadline, stage
-       from opportunities where id = $1`,
-    [opportunityId]
+       from opportunities where id = $1 and org_id = $2`,
+    [opportunityId, org]
   );
   if (!opp) return null;
 
@@ -62,25 +67,32 @@ export async function pursuitImpact(opportunityId: string): Promise<PursuitImpac
   }>(
     `select
        (select count(*)::int from call_cards
-         where opportunity_id = $1 and status = 'pending') as pending_calls,
-       (select count(*)::int from opportunity_subs
-         where opportunity_id = $1 and outreach_state = 'sent') as awaiting_reply,
+         where opportunity_id = $1 and org_id = $2 and status = 'pending') as pending_calls,
+       (select count(*)::int from opportunity_subs os
+          join subcontractors s on s.id = os.subcontractor_id and s.org_id = $2
+         where os.opportunity_id = $1 and os.outreach_state = 'sent') as awaiting_reply,
        (select count(*)::int from communications
-         where opportunity_id = $1 and direction = 'outbound') as sent_messages,
+         where opportunity_id = $1 and org_id = $2 and direction = 'outbound') as sent_messages,
        (select count(*)::int from communications
-         where opportunity_id = $1 and direction = 'inbound') as replies,
-       (select count(*)::int from quotes where opportunity_id = $1) as quotes,
-       (select count(*)::int from documents where opportunity_id = $1) as documents`,
-    [opportunityId]
-  ).catch(() => null);
+         where opportunity_id = $1 and org_id = $2 and direction = 'inbound') as replies,
+       (select count(*)::int from quotes
+         where opportunity_id = $1 and org_id = $2) as quotes,
+       (select count(*)::int from documents
+         where opportunity_id = $1 and org_id = $2) as documents`,
+    [opportunityId, org]
+  );
+
+  if (!counts) {
+    throw new Error("The pursuit impact could not be counted.");
+  }
 
   const n = {
-    pending_calls: counts?.pending_calls ?? 0,
-    awaiting_reply: counts?.awaiting_reply ?? 0,
-    sent_messages: counts?.sent_messages ?? 0,
-    replies: counts?.replies ?? 0,
-    quotes: counts?.quotes ?? 0,
-    documents: counts?.documents ?? 0,
+    pending_calls: counts.pending_calls,
+    awaiting_reply: counts.awaiting_reply,
+    sent_messages: counts.sent_messages,
+    replies: counts.replies,
+    quotes: counts.quotes,
+    documents: counts.documents,
   };
 
   /*

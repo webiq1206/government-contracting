@@ -11,6 +11,13 @@ import { config } from "../config";
 export type JobPayload = Record<string, unknown>;
 export type JobHandler = (payload: JobPayload) => Promise<void>;
 
+/** Queue-owned generation marker. Request payloads are never trusted to set it. */
+export const PURSUIT_VERSION_KEY = "pursuitVersionAtEnqueue";
+/** Queue-owned link from a replayed job to the incident row waiting on it. */
+export const RECOVERY_REQUEUE_KEY = "recoveryRequeueId";
+/** Queue-owned exception for the one post-award job that must run on closed work. */
+export const CLOSED_OPPORTUNITY_JOB_KEY = "closedOpportunityJob";
+
 export interface EnqueueOptions {
   startAfterSeconds?: number;
   singletonKey?: string; // dedupe: at most one active job with this key
@@ -27,6 +34,10 @@ export interface EnqueueOptions {
    * trusted to say which tenant anything belongs to.
    */
   orgId?: string;
+  /** Internal only. Request payloads cannot set this recovery claim identity. */
+  recoveryRequeueId?: string;
+  /** Internal only. Effective only for the explicitly allowlisted post-award job. */
+  allowClosedOpportunity?: boolean;
 }
 
 export interface Queue {
@@ -111,9 +122,24 @@ export async function enqueue(
   payload: JobPayload = {},
   opts?: EnqueueOptions
 ): Promise<string | null> {
-  const { isAutomationStopped } = await import("../app-settings");
-  if (await isAutomationStopped()) {
-    console.warn(`[queue] enqueue skipped (automation paused): ${name}`);
+  const {
+    [PURSUIT_VERSION_KEY]: _untrustedVersion,
+    [RECOVERY_REQUEUE_KEY]: _untrustedRecovery,
+    [CLOSED_OPPORTUNITY_JOB_KEY]: _untrustedClosedJob,
+    ...safePayload
+  } = payload;
+  let queuedPayload: JobPayload = safePayload;
+  const { isPlatformAutomationPaused, isAutomationPaused } = await import("../app-settings");
+  if (await isPlatformAutomationPaused()) {
+    console.warn(`[queue] enqueue skipped (platform automation paused): ${name}`);
+    return null;
+  }
+  // Resolve the owner before reading its scoped pause switch. Downstream
+  // agents call outside AsyncLocalStorage and identify the owner in opts.
+  const { actingOrgId, runWithOrg } = await import("../tenant-context");
+  const enqueuingOrgId = opts?.orgId ?? (await actingOrgId());
+  if (enqueuingOrgId && (await runWithOrg(enqueuingOrgId, () => isAutomationPaused()))) {
+    console.warn(`[queue] enqueue skipped (account automation paused): ${name}`);
     return null;
   }
   /*
@@ -131,17 +157,36 @@ export async function enqueue(
    * about one record's state, not about permission, so the record is the
    * right thing to ask.
    */
-  const oppId = typeof payload.opportunityId === "string" ? payload.opportunityId : "";
+  const oppId =
+    typeof safePayload.opportunityId === "string" ? safePayload.opportunityId : "";
   if (oppId) {
     const { pursuitStatus } = await import("../pursuit-guard");
     const pursuit = await pursuitStatus(oppId);
-    if (!pursuit.mayAct && pursuit.known) {
+    const mayRunAfterClose =
+      name === "sub-onboarding" && opts?.allowClosedOpportunity === true;
+    if (!pursuit.mayAct && pursuit.known && !mayRunAfterClose) {
       console.warn(`[queue] enqueue skipped (pursuit stopped): ${name} for ${oppId}`);
       return null;
     }
+    if (pursuit.version == null) {
+      console.warn(`[queue] enqueue skipped (pursuit version unavailable): ${name} for ${oppId}`);
+      return null;
+    }
+    queuedPayload = {
+      ...safePayload,
+      [PURSUIT_VERSION_KEY]: pursuit.version,
+      ...(mayRunAfterClose ? { [CLOSED_OPPORTUNITY_JOB_KEY]: true } : {}),
+    };
+  }
+  if (opts?.recoveryRequeueId) {
+    queuedPayload = { ...queuedPayload, [RECOVERY_REQUEUE_KEY]: opts.recoveryRequeueId };
   }
   const q = await getQueue();
-  return q.enqueue(name, await withEnqueuingOrg(payload, opts?.orgId), opts);
+  return q.enqueue(
+    name,
+    await withEnqueuingOrg(queuedPayload, enqueuingOrgId ?? undefined),
+    opts
+  );
 }
 
 /**

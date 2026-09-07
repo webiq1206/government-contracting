@@ -42,16 +42,16 @@ export function RouteError({
   return (
     <div className="flex page-shell items-center justify-center p-6">
       <div className="mx-auto max-w-lg rounded-md border border-risk/30 bg-risk/5 p-6 text-center">
-        <p className="font-display text-xl font-semibold text-foreground">
+        <h1 className="font-display text-xl font-semibold text-foreground">
           This page did not load
-        </p>
+        </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           The page failed while it was being built. Nothing has been changed or
           lost, and the work behind it is untouched. Trying again is usually
           enough.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
-          <button onClick={() => reset()} className="btn-primary">
+          <button type="button" onClick={() => reset()} className="btn-primary">
             Try again
           </button>
           <Link href={backHref} className="btn-ghost">

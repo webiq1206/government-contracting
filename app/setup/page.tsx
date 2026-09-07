@@ -3,6 +3,7 @@ import { currentUser, hasAnyOperator } from "@/lib/auth";
 import { SetupForm } from "@/components/setup-form";
 import { ThemeWordmark } from "@/components/theme-wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SessionLoadFailure } from "@/components/session-load-failure";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,15 @@ export const dynamic = "force-dynamic";
  * normal login page, this route is only reachable once.
  */
 export default async function SetupPage() {
-  const user = await currentUser().catch(() => null);
+  const auth = await currentUser().then(
+    (user) => ({ ok: true as const, user }),
+    (error) => {
+      console.error("[setup] existing session could not be checked:", error);
+      return { ok: false as const, user: null };
+    }
+  );
+  if (!auth.ok) return <SessionLoadFailure />;
+  const user = auth.user;
   if (user) redirect("/today");
   if (await hasAnyOperator()) redirect("/login");
 

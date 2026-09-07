@@ -130,33 +130,10 @@ export async function getOrgRoleForUser(userId: string): Promise<string | null> 
     [userId]
   );
   if (row?.role) return row.role;
-
-  /*
-   * No membership row: the founding single-tenant install, which predates
-   * organization_members entirely and reaches its organization through
-   * resolveTenantOrgId's legacy fallback.
-   *
-   * Without this branch those accounts would normalize to `viewer` -- the
-   * correct default for an unknown role, and catastrophic here, because it
-   * would lock the original customer out of writing to their own product on
-   * the day permissions shipped. The pre-multi-tenancy `users.role` is the
-   * honest answer for them: whoever was the operator of a single-tenant
-   * install owned it.
-   */
-  const legacy = await queryOne<{ role: string }>(
-    `select role from users where id = $1`,
-    [userId]
-  );
-  switch (legacy?.role) {
-    case "operator":
-      return "owner";
-    case "admin":
-      return "admin";
-    case "viewer":
-      return "viewer";
-    default:
-      return null;
-  }
+  // Migration 028 backfilled every historical user and bootstrap now creates
+  // membership atomically. Inferring a tenant role from the old platform role
+  // would turn any future orphaned user into an owner.
+  return null;
 }
 
 /**

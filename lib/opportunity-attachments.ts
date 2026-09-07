@@ -37,8 +37,9 @@ export interface GatheredAttachments {
    * package link rather than a URL per file, because a solicitation with a
    * full drawing set otherwise puts a wall of links in a quote request.
    *
-   * `reachable` records whether the underlying files were read back
-   * successfully before the send. False stops the email.
+   * `reachable` records whether every underlying file was verified before the
+   * send. False means verification failed; undefined means an upstream file
+   * was not preflighted. Both states stop the email.
    */
   links: { name: string; url: string; reachable?: boolean }[];
   /** True when documents THIS SUBCONTRACTOR needs existed to try. */
@@ -128,14 +129,16 @@ export function prioritizeDocsForAttach<T extends { name: string }>(
   );
 }
 
-async function loadDocs(oppId: string): Promise<DocRow[]> {
+async function loadDocs(orgId: string, oppId: string): Promise<DocRow[]> {
+  if (!orgId.trim()) throw new Error("An organization is required to gather documents.");
   return query<DocRow>(
     `select name, storage_path, storage_backend, mime,
             document_class, amendment_number, trade_relevance, relevant_to_all
        from documents
-      where opportunity_id = $1 and kind in ('solicitation','sow')
-      order by created_at asc limit 40`,
-    [oppId]
+      where opportunity_id = $1 and org_id = $2
+        and kind in ('solicitation','sow')
+      order by created_at asc, id asc`,
+    [oppId, orgId]
   );
 }
 
@@ -353,12 +356,19 @@ async function materializeDocs(
      *
      * Checked by reading back the stored objects the package points at, which
      * is the part that actually fails: storage evicted the file, the path was
-     * wrong, the bucket moved. Upstream entries are not fetched here, because
-     * that would mean pulling megabytes from SAM on every send to learn what
-     * the send itself will discover.
+     * wrong, the bucket moved. An upstream URL is deliberately not called
+     * reachable without a bounded preflight. This gatherer does not perform
+     * network requests, so an upstream-only package is explicitly unverified
+     * and the package assessment holds the email until the file is ingested.
      */
     const stored = overflow.filter((o) => o.k === "s");
-    let reachable = true;
+    const upstream = overflow.filter((o) => o.k === "u");
+    let reachable: boolean | undefined = upstream.length === 0 ? true : undefined;
+    if (upstream.length > 0) {
+      console.error(
+        `[attachments] package link contains ${upstream.length} upstream document(s) that were not preflighted; holding outreach until they are stored`
+      );
+    }
     for (const entry of stored) {
       const ok = await storage
         .download(entry.v)
@@ -392,9 +402,10 @@ async function materializeDocs(
 
 /** All solicitation/SOW docs (legacy helper). */
 export async function gatherOpportunityAttachments(
+  orgId: string,
   opp: GatherableOpp
 ): Promise<GatheredAttachments> {
-  const docs = await loadDocs(opp.id);
+  const docs = await loadDocs(orgId, opp.id);
   return materializeDocs(docs, opp, null);
 }
 
@@ -404,9 +415,10 @@ export async function gatherOpportunityAttachments(
  * size budget first; the rest become one signed package link.
  */
 export async function gatherTradeAttachments(
+  orgId: string,
   opp: GatherableOpp,
   trade: string | null | undefined
 ): Promise<GatheredAttachments> {
-  const docs = await loadDocs(opp.id);
+  const docs = await loadDocs(orgId, opp.id);
   return materializeDocs(prioritizeDocsForAttach(docs, trade), opp, trade);
 }

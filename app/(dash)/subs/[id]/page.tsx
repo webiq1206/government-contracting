@@ -4,7 +4,7 @@ import { subDetail } from "@/lib/data";
 import { query, queryOne } from "@/lib/db";
 import { subConversations } from "@/lib/domain/conversation";
 import { draftsForSubcontractor } from "@/lib/domain/reply-draft";
-import { tryResolveTenantOrgId } from "@/lib/tenant";
+import { resolveTenantOrgId } from "@/lib/tenant";
 import { gmail } from "@/lib/integrations/gmail";
 import { ConversationThreads } from "@/components/conversation-threads";
 import { PageFrame } from "@/components/page-frame";
@@ -43,6 +43,7 @@ import { OwnerPicker } from "@/components/owner-picker";
 import { assignableMembers, ownerOf } from "@/lib/ownership";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/domain/roles";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,8 @@ export default async function SubDetailPage({
 }: {
   params: { id: string };
 }) {
+  const loadWarnings = new Set<string>();
+  const orgId = await resolveTenantOrgId();
   const detail = await subDetail(params.id);
   if (!detail) notFound();
 
@@ -101,20 +104,50 @@ export default async function SubDetailPage({
   // letting a reply fail after it is typed.
   const [conversations, inboxConnected, compliance, savedDrafts, subOwner, teamMembers, viewer] =
     await Promise.all([
-    subConversations(params.id),
-    gmail.isConnected().catch(() => false),
-    subComplianceView(params.id),
+    subConversations(params.id, orgId),
+    gmail.isConnected().catch(() => {
+      loadWarnings.add(
+        "The Gmail connection could not be checked, so reply controls are disabled."
+      );
+      return false;
+    }),
+    subComplianceView(params.id).catch(() => {
+      loadWarnings.add(
+        "Compliance documents could not be loaded. Paperwork status is unknown and document actions are disabled until the page reloads."
+      );
+      return null;
+    }),
     // Drafts already written for these threads, so returning to the page shows
     // the work rather than an empty box that costs money to refill.
-    draftsForSubcontractor(params.id, await tryResolveTenantOrgId()).catch(() => ({})),
+    draftsForSubcontractor(params.id, orgId).catch(() => {
+      loadWarnings.add(
+        "Saved reply drafts could not be loaded, so a blank composer may not mean no draft exists."
+      );
+      return {};
+    }),
     /*
      * All three tolerate failure: a picker that cannot load is a field saying
      * Unassigned, where a throw here is a record page that will not open
      * because of a dropdown.
      */
-    ownerOf("subcontractor", params.id).catch(() => null),
-    assignableMembers().catch(() => []),
-    currentUser().catch(() => null),
+    ownerOf("subcontractor", params.id).catch(() => {
+      loadWarnings.add(
+        "The subcontractor owner could not be loaded, so this record may appear unassigned."
+      );
+      return null;
+    }),
+    assignableMembers().catch(() => {
+      loadWarnings.add(
+        "Assignable team members could not be loaded, so assignment controls are unavailable."
+      );
+      return [];
+    }),
+    currentUser().catch(() => {
+      loadWarnings.add(
+        "Your role could not be confirmed, so protected subcontractor actions are disabled."
+      );
+      return null;
+    }),
   ]);
 
   /*
@@ -132,7 +165,7 @@ export default async function SubDetailPage({
    * hand-entered "Ridgeline Mechanical" produced two rows in one trade in one
    * city. Capped, because a picker of four hundred firms is not a picker.
    */
-  const mergeOrgId = (await tryResolveTenantOrgId()) ?? "";
+  const mergeOrgId = orgId;
   const mergeCandidates = mergeOrgId
     ? (
         await query<{ id: string; company_name: string; city: string | null; state: string | null; email: string | null }>(
@@ -145,7 +178,12 @@ export default async function SubDetailPage({
               company_name
             limit 50`,
           [mergeOrgId, params.id, sub.trade_categories ?? [], sub.city ?? ""]
-        ).catch(() => [])
+        ).catch(() => {
+          loadWarnings.add(
+            "Possible duplicate records could not be loaded, so merge suggestions are unavailable."
+          );
+          return [];
+        })
       ).map((c) => ({
         id: c.id,
         name: c.company_name,
@@ -158,7 +196,12 @@ export default async function SubDetailPage({
         await queryOne<{ company_name: string }>(
           `select company_name from subcontractors where id = $1 and org_id = $2`,
           [sub.merged_into, mergeOrgId]
-        ).catch(() => null)
+        ).catch(() => {
+          loadWarnings.add(
+            "The surviving merged record could not be loaded, so its name is unavailable."
+          );
+          return null;
+        })
       )?.company_name ?? null
     : null;
 
@@ -167,22 +210,44 @@ export default async function SubDetailPage({
    * licence for. Loaded together because they are one editing session on one
    * record rather than three unrelated reads.
    */
-  const capOrgId = (await tryResolveTenantOrgId()) ?? "";
+  const capOrgId = orgId;
   const [capability, contacts, licenses, tags] = await Promise.all([
-    capabilityOf(capOrgId, params.id).catch(() => null),
-    contactsOf(capOrgId, params.id).catch(() => []),
-    licensesOf(capOrgId, params.id).catch(() => []),
-    tagsOf(capOrgId, params.id).catch(() => [] as string[]),
+    capabilityOf(capOrgId, params.id).catch(() => {
+      loadWarnings.add(
+        "Capability, contact, licence, or tag details could not be fully loaded."
+      );
+      return null;
+    }),
+    contactsOf(capOrgId, params.id).catch(() => {
+      loadWarnings.add(
+        "Capability, contact, licence, or tag details could not be fully loaded."
+      );
+      return [];
+    }),
+    licensesOf(capOrgId, params.id).catch(() => {
+      loadWarnings.add(
+        "Capability, contact, licence, or tag details could not be fully loaded."
+      );
+      return [];
+    }),
+    tagsOf(capOrgId, params.id).catch(() => {
+      loadWarnings.add(
+        "Capability, contact, licence, or tag details could not be fully loaded."
+      );
+      return [] as string[];
+    }),
   ]);
 
   const capabilityUpdatedAt = sub.capability_updated_at
     ? timeAgo(sub.capability_updated_at)
     : null;
 
-  const performance = await performanceFor(
-    (await tryResolveTenantOrgId()) ?? "",
-    params.id
-  ).catch(() => []);
+  const performance = await performanceFor(orgId, params.id).catch(() => {
+    loadWarnings.add(
+      "Performance history could not be loaded, so reliability details may be incomplete."
+    );
+    return [];
+  });
 
   /*
    * One timeline, from the sources this record is actually made of. The
@@ -190,10 +255,15 @@ export default async function SubDetailPage({
    * the same way on both pages rather than being formatted twice.
    */
   const activity = buildActivityTimeline({
-    logs: await subActivityLogs(params.id).catch(() => []),
+    logs: await subActivityLogs(params.id).catch(() => {
+      loadWarnings.add(
+        "Activity history could not be fully loaded, so the timeline may be incomplete."
+      );
+      return [];
+    }),
     communications,
     quotes,
-    documents: compliance.docs,
+    documents: compliance?.docs ?? [],
     limit: 200,
   });
   const projects: ProjectHistoryItem[] = Array.isArray(sub.project_history)
@@ -212,7 +282,7 @@ export default async function SubDetailPage({
    * platform does it. The rest of the detail is still on the page, in the
    * sections that own it.
    */
-  const state = subState({
+  const assessedState = subState({
     samExcluded: Boolean(sub.sam_excluded),
     blacklisted: Boolean(sub.blacklisted),
     blacklistReason: sub.blacklist_reason ?? null,
@@ -222,24 +292,42 @@ export default async function SubDetailPage({
     email: sub.email,
     emailVerified: Boolean(sub.email_verified),
     phone: sub.phone,
-    missingDocuments: [
-      ...compliance.assessment.missing,
-      ...compliance.assessment.expired,
-    ].map((t) => DOC_LABEL[t]),
+    missingDocuments: compliance
+      ? [
+          ...compliance.assessment.missing,
+          ...compliance.assessment.expired,
+        ].map((t) => DOC_LABEL[t])
+      : [],
     preferred: Boolean(sub.is_preferred),
   });
-  const plan = buildSubPlan({
-    hasEmail: Boolean(sub.email),
-    hasPhone: Boolean(sub.phone),
-    emailVerified: Boolean(sub.email_verified),
-    contactStatus: sub.contact_status ?? null,
-    samExcluded: Boolean(sub.sam_excluded),
-    touches: stats.touches,
-    openPairings,
-    totalPairings: pairings.length,
-    quoteCount: quotes.length,
-    compliance: compliance.assessment,
-  });
+  // Federal exclusion, a local block, an archived record, and bad contact data
+  // remain knowable without documents. A would-be Ready/Preferred result does
+  // not: replace it with an explicit unknown and fail the award gate closed.
+  const state =
+    compliance || ["do_not_use", "put_aside", "bad_contact"].includes(assessedState.state)
+      ? assessedState
+      : {
+          state: "missing_documents" as const,
+          label: "Paperwork status unknown",
+          detail: "Compliance documents could not be checked, so this firm is not cleared for award.",
+          fix: "Reload before relying on paperwork status or sending work.",
+          canContact: assessedState.canContact,
+          canAward: false,
+        };
+  const plan = compliance
+    ? buildSubPlan({
+        hasEmail: Boolean(sub.email),
+        hasPhone: Boolean(sub.phone),
+        emailVerified: Boolean(sub.email_verified),
+        contactStatus: sub.contact_status ?? null,
+        samExcluded: Boolean(sub.sam_excluded),
+        touches: stats.touches,
+        openPairings,
+        totalPairings: pairings.length,
+        quoteCount: quotes.length,
+        compliance: compliance.assessment,
+      })
+    : null;
 
   return (
     <div className="flex page-shell">
@@ -309,6 +397,8 @@ export default async function SubDetailPage({
         }
       />
 
+      <ShellDataWarning items={[...loadWarnings]} />
+
       <div className="min-h-0 flex-1 overflow-hidden">
         <SubcontractorRecord
           capability={
@@ -344,7 +434,17 @@ export default async function SubDetailPage({
 
               {/* The readiness story first: what stands between this listing and a
                   company you can send work to, with the fix for each gap. */}
-              <GuidedPlanPanel plan={plan} eyebrow="Getting this sub job-ready" />
+              {plan ? (
+                <GuidedPlanPanel plan={plan} eyebrow="Getting this sub job-ready" />
+              ) : (
+                <div role="alert" className="rounded-md border border-review/40 bg-review/5 p-4">
+                  <p className="text-sm font-medium text-foreground">Job-readiness is unavailable</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Paperwork could not be checked, so no readiness step is being shown as complete.
+                    Reload this record before sending work or requesting replacement documents.
+                  </p>
+                </div>
+              )}
 
               {/* Every way to reach this company, one tap from the name. Dimmed
                   rather than hidden when a channel is missing, so the row doubles
@@ -697,19 +797,32 @@ export default async function SubDetailPage({
             <div className="space-y-6 px-5 py-6">
               {/* Ahead of the contact card: whether this sub can be sent work at
                   all outranks how to reach them. */}
-              <SubCompliancePanel
-                subId={sub.id}
-                companyName={sub.company_name}
-                docs={compliance.docs.map((d) => ({
-                  ...d,
-                  // Show the status as of now, not as of whenever the row was
-                  // last written. A certificate can lapse between sweeps.
-                  status: compliance.liveStatus[d.id] ?? d.status,
-                }))}
-                blockReason={compliance.assessment.blockReason}
-                cleared={compliance.assessment.clearedForAward}
-                expiringSoon={compliance.assessment.expiringSoon}
-              />
+              {compliance ? (
+                <SubCompliancePanel
+                  subId={sub.id}
+                  companyName={sub.company_name}
+                  docs={compliance.docs.map((d) => ({
+                    ...d,
+                    // Show the status as of now, not as of whenever the row was
+                    // last written. A certificate can lapse between sweeps.
+                    status: compliance.liveStatus[d.id] ?? d.status,
+                  }))}
+                  blockReason={compliance.assessment.blockReason}
+                  cleared={compliance.assessment.clearedForAward}
+                  expiringSoon={compliance.assessment.expiringSoon}
+                />
+              ) : (
+                <div id="compliance" role="alert" className="card border-review/40 bg-review/5">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    Paperwork status could not be loaded
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    No document is being called missing, current, or expired. Upload, verification,
+                    and paperwork-link actions are disabled so a retry cannot create duplicate work.
+                    Reload this record before taking a compliance action.
+                  </p>
+                </div>
+              )}
             </div>
           }
           notes={

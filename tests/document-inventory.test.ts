@@ -171,6 +171,32 @@ describe("inventory coverage", () => {
     expect(cov.summary).toContain("1 could not be collected");
   });
 
+  it("does not let a deliberately excluded historical file block the active packet", () => {
+    const cov = inventoryCoverage([
+      row({ id: "old", disposition: "excluded", extractionState: "unreadable", excludedReason: "Duplicate of PWS.pdf." }),
+      row({ id: "current" }),
+    ]);
+    expect(cov.complete).toBe(true);
+    expect(cov.unreadable).toBe(0);
+    expect(cov.excluded).toBe(1);
+  });
+
+  it("does not count a superseded failed version as an active blocker", () => {
+    const cov = inventoryCoverage([
+      row({
+        id: "old",
+        disposition: "excluded",
+        extractionState: "not_read",
+        excludedReason: "Replaced by a corrected copy.",
+        supersededBy: "current",
+      }),
+      row({ id: "current" }),
+    ]);
+    expect(cov.complete).toBe(true);
+    expect(cov.notRead).toBe(0);
+    expect(cov.excluded).toBe(1);
+  });
+
   it("reports every problem at once rather than the first one", () => {
     const cov = inventoryCoverage([
       row({ id: "a", extractionState: "partial" }),

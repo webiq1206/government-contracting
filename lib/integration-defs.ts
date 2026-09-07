@@ -107,7 +107,12 @@ export const INTEGRATION_DEFS: IntegrationDef[] = [
     where: "ahrefs.com → Account → API keys (requires an API-enabled plan).",
     fields: [
       { env: "AHREFS_API_KEY", label: "API key", secret: true },
-      { env: "AHREFS_TARGET", label: "Your domain", secret: false, placeholder: "brostco.com" },
+      {
+        env: "AHREFS_TARGET",
+        label: "Your domain (optional)",
+        secret: false,
+        placeholder: "brostco.com",
+      },
     ],
     testable: true,
     guide: {

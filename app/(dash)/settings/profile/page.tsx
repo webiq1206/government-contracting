@@ -21,6 +21,7 @@ import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { AutomationSettings } from "@/components/automation-settings";
 import { EditorialTabs } from "@/components/editorial-tabs";
 import type { CompanyProfileJson } from "@/lib/types";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,7 @@ interface ProposedWeightRow {
 export default async function ProfilePage() {
   // Who is reading, so the page can say plainly when it is read-only for
   // them rather than letting them fill in a form that will be refused.
-  const viewer = await currentUser().catch(() => null);
+  const viewer = await currentUser();
 
   const profile = await getActiveProfile({ fresh: true });
   const json: CompanyProfileJson | null = profile?.profile_json ?? null;
@@ -52,7 +53,11 @@ export default async function ProfilePage() {
    * Profile page that will not open: the editor below is the thing somebody
    * came here for.
    */
-  const history = await profileHistory().catch(() => []);
+  let historyUnavailable = false;
+  const history = await profileHistory().catch(() => {
+    historyUnavailable = true;
+    return [];
+  });
 
   // Scoped to the caller's org: unfiltered, this listed every tenant's
   // pending proposals, including their rationale text. The approve route was
@@ -131,6 +136,10 @@ export default async function ProfilePage() {
         }
         explanation="Who the company is, what it can bid on, and where. Scoring, eligibility and every generated document read this as the source of truth."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
+      />
+
+      <ShellDataWarning
+        items={historyUnavailable ? ["Company profile version history could not be loaded."] : []}
       />
 
       {/* Readable at every role; the controls below are gated to the

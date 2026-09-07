@@ -322,7 +322,7 @@ export function DataTable<T extends { id: string }>({
               <Link
                 key={n}
                 href={href({ perPage: n, page: 1 })}
-                className={`rounded px-1.5 py-0.5 transition-colors ${
+                className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded px-1.5 py-0.5 transition-colors lg:min-h-0 lg:min-w-0 ${
                   paging.perPage === n ? "bg-gold/20 text-gold-text" : "hover:text-foreground"
                 }`}
               >
@@ -334,7 +334,10 @@ export function DataTable<T extends { id: string }>({
           {paging.totalPages > 1 && (
             <span className="flex items-center gap-2">
               {paging.page > 1 ? (
-                <Link href={href({ page: paging.page - 1 })} className="hover:text-foreground">
+                <Link
+                  href={href({ page: paging.page - 1 })}
+                  className="inline-flex min-h-11 items-center hover:text-foreground lg:min-h-0"
+                >
                   ← Prev
                 </Link>
               ) : (
@@ -344,7 +347,10 @@ export function DataTable<T extends { id: string }>({
                 {paging.page} / {paging.totalPages}
               </span>
               {paging.page < paging.totalPages ? (
-                <Link href={href({ page: paging.page + 1 })} className="hover:text-foreground">
+                <Link
+                  href={href({ page: paging.page + 1 })}
+                  className="inline-flex min-h-11 items-center hover:text-foreground lg:min-h-0"
+                >
                   Next →
                 </Link>
               ) : (
@@ -365,7 +371,7 @@ export function DataTable<T extends { id: string }>({
           <button
             type="button"
             onClick={() => selection.onToggleAll([])}
-            className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            className="inline-flex min-h-11 items-center text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline lg:min-h-0"
           >
             Clear
           </button>

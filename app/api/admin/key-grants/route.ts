@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
-import {
-  listPlatformGrants,
-  grantPlatformKey,
-  revokePlatformKey,
-} from "@/lib/integration-keys";
+import { listPlatformGrants } from "@/lib/integration-keys";
 import { ALLOWED_ENV_KEYS, isAllowedKey } from "@/lib/integration-settings";
-import { logAgent } from "@/lib/logger";
+import {
+  grantKeyToAccount,
+  revokeKeyFromAccount,
+} from "@/lib/admin/platform-keys";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,14 +48,13 @@ export async function POST(req: Request) {
   }
 
   if (body.revoke) {
-    await revokePlatformKey(orgId, key);
-    await logAgent({
-      agent: "operator",
-      action: "platform-key-revoked",
-      level: "info",
-      message: `${admin.email} revoked the platform ${key} from organization ${orgId}.`,
+    const result = await revokeKeyFromAccount({
+      orgId,
+      key,
+      adminEmail: admin.email,
     });
-    return NextResponse.json({ ok: true, revoked: true });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ ok: true, revoked: true, message: result.message });
   }
 
   // An expiry is optional but encouraged: a grant given for a demo that nobody
@@ -76,24 +74,14 @@ export async function POST(req: Request) {
     expiresAt = parsed.toISOString();
   }
 
-  await grantPlatformKey({
+  const result = await grantKeyToAccount({
     orgId,
     key,
-    grantedBy: admin.id === "env-operator" ? null : admin.id,
-    note: body.note?.trim() || null,
+    adminUserId: admin.id === "env-operator" ? null : admin.id,
+    adminEmail: admin.email,
+    note: body.note?.trim() ?? "",
     expiresAt,
   });
-
-  await logAgent({
-    agent: "operator",
-    action: "platform-key-granted",
-    level: "warn",
-    message:
-      `${admin.email} lent the platform ${key} to organization ${orgId}` +
-      `${expiresAt ? ` until ${expiresAt}` : " with no expiry"}` +
-      `${body.note?.trim() ? `, reason: ${body.note.trim()}` : ""}. ` +
-      `Usage on this key is billed to us.`,
-  });
-
-  return NextResponse.json({ ok: true });
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
+  return NextResponse.json({ ok: true, message: result.message });
 }

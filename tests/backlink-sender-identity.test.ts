@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 
 /**
  * Backlink outreach is outreach, and has to leave from the same address.
@@ -11,6 +11,16 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
  */
 
 const sends: { from?: string; replyTo?: string; to: string }[] = [];
+const sendErrors: string[] = [];
+let gmailConnectionError: Error | null = null;
+let gmailSendError: Error | null = null;
+let senderResult:
+  | { from: string; replyTo: string; connected: boolean; unknown?: boolean }
+  | Error = {
+  from: "BROST CO <hello@brostco.com>",
+  replyTo: "hello@brostco.com",
+  connected: true,
+};
 
 const dbRows = {
   outreach: {
@@ -38,8 +48,11 @@ const dbRows = {
 
 vi.mock("../lib/db", () => ({
   queryOne: async (sql: string) => (/from backlink_outreach o join/.test(sql) ? dbRows.outreach : null),
-  query: async (sql: string) => {
+  query: async (sql: string, params?: unknown[]) => {
     if (/follow_up_at is not null/.test(sql)) return dbRows.followUps;
+    if (/set send_error = \$2/.test(sql) && typeof params?.[1] === "string") {
+      sendErrors.push(params[1]);
+    }
     return [];
   },
 }));
@@ -49,26 +62,41 @@ vi.mock("../lib/logger", () => ({ logAgent: async () => {} }));
 
 vi.mock("../lib/integrations/gmail", () => ({
   gmail: {
-    isConnected: async () => true,
+    isConnected: async () => {
+      if (gmailConnectionError) throw gmailConnectionError;
+      return true;
+    },
     send: async (params: { from?: string; replyTo?: string; to: string }) => {
       sends.push(params);
+      if (gmailSendError) throw gmailSendError;
       return { messageId: "m1", threadId: "t1", rfc822MessageId: "<m1@mail>" };
     },
   },
 }));
 
 vi.mock("../lib/domain/sender-identity", () => ({
-  resolveOutreachSender: async () => ({
-    from: "BROST CO <hello@brostco.com>",
-    replyTo: "hello@brostco.com",
-    connected: true,
-  }),
+  resolveOutreachSender: async () => {
+    if (senderResult instanceof Error) throw senderResult;
+    return senderResult;
+  },
 }));
 
 const { sendApprovedOutreach, sendFollowUps } = await import("../lib/backlink-send");
 
 beforeEach(() => {
   sends.length = 0;
+  sendErrors.length = 0;
+  gmailConnectionError = null;
+  gmailSendError = null;
+  senderResult = {
+    from: "BROST CO <hello@brostco.com>",
+    replyTo: "hello@brostco.com",
+    connected: true,
+  };
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("the address backlink outreach goes out from", () => {
@@ -90,18 +118,61 @@ describe("the address backlink outreach goes out from", () => {
 });
 
 describe("when the identity cannot be read", () => {
-  it("still sends, rather than holding already-approved mail", async () => {
-    vi.resetModules();
-    vi.doMock("../lib/domain/sender-identity", () => ({
-      resolveOutreachSender: async () => {
-        throw new Error("database unavailable");
-      },
-    }));
-    const mod = await import("../lib/backlink-send");
-    const out = await mod.sendApprovedOutreach("o1", "org-1");
-    expect(out.status).toBe("sent");
-    // No From means Gmail uses the connected account: wrong address, working
-    // mail, and the settings page shows which address that is.
-    expect(sends[0].from).toBeUndefined();
+  it("blocks an approved send and records an actionable error", async () => {
+    senderResult = { from: "", replyTo: "", connected: false, unknown: true };
+
+    const out = await sendApprovedOutreach("o1", "org-1");
+
+    expect(out).toMatchObject({
+      status: "error",
+      reason: expect.stringContaining("No email was sent"),
+    });
+    expect(sends).toHaveLength(0);
+    expect(sendErrors).toEqual([expect.stringContaining("account settings could not be read")]);
+  });
+
+  it("also blocks a thrown identity lookup instead of omitting From", async () => {
+    senderResult = new Error("database unavailable");
+
+    const out = await sendApprovedOutreach("o1", "org-1");
+
+    expect(out.status).toBe("error");
+    expect(sends).toHaveLength(0);
+  });
+
+  it("turns an unreadable Gmail connection into a visible unsent outcome", async () => {
+    gmailConnectionError = new Error("token row unavailable");
+
+    const out = await sendApprovedOutreach("o1", "org-1");
+
+    expect(out).toMatchObject({
+      status: "error",
+      reason: expect.stringContaining("Gmail connection could not be checked"),
+    });
+    expect(sends).toHaveLength(0);
+    expect(sendErrors).toHaveLength(1);
+  });
+
+  it("reports unconfirmed delivery and tells the operator to check Sent before retrying", async () => {
+    gmailSendError = new Error("connection state unavailable");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const out = await sendApprovedOutreach("o1", "org-1");
+
+    expect(out).toMatchObject({
+      status: "error",
+      reason: expect.stringContaining("Check the Gmail Sent folder before retrying"),
+    });
+    expect(sendErrors).toHaveLength(1);
+  });
+
+  it("blocks every due follow-up and reports each unsent item to the sweep", async () => {
+    senderResult = { from: "", replyTo: "", connected: false };
+
+    const out = await sendFollowUps("org-1");
+
+    expect(out).toEqual({ sent: 0, errors: 1 });
+    expect(sends).toHaveLength(0);
+    expect(sendErrors).toEqual([expect.stringContaining("No verified sender identity")]);
   });
 });

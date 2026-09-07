@@ -46,7 +46,7 @@ async function loadLiveTrials(): Promise<TrialRow[]> {
         and o.trial_ends_at is not null
         and o.trial_ends_at > now()`,
     [TRIAL_STATUS]
-  ).catch(() => []);
+  );
 }
 
 function warningCopy(org: TrialRow, appUrl: string): { subject: string; text: string } {
@@ -131,26 +131,55 @@ export const trialSweep: AgentDefinition = {
 
     // 2. Warn the trials that are close, once per threshold.
     const live = await loadLiveTrials();
+    const dueForWarning = live.filter((org) =>
+      WARN_AT_DAYS.includes(org.days_left as (typeof WARN_AT_DAYS)[number])
+    );
     let warned = 0;
-    const mailReady = await systemMail.enabled().catch(() => false);
+    let unsent = 0;
+    let dedupeFailures = 0;
+    let mailReady = false;
+    let mailReadinessError: string | null = null;
+    if (dueForWarning.length > 0) {
+      try {
+        mailReady = await systemMail.deliverable();
+      } catch (err) {
+        mailReadinessError = (err as Error).message;
+        await logAgent({
+          agent: "trial-sweep",
+          action: "trial-mail-readiness-failed",
+          level: "error",
+          status: "error",
+          message: `Trial warnings are due, but platform email readiness could not be checked: ${mailReadinessError}. No warning was attempted.`,
+        });
+      }
+    }
 
-    for (const org of live) {
-      if (!WARN_AT_DAYS.includes(org.days_left as (typeof WARN_AT_DAYS)[number])) continue;
+    for (const org of dueForWarning) {
 
       // One warning per org per threshold. The marker is an agent_logs row,
       // so a sweep that runs hourly does not email the same person hourly.
-      const already = await query<{ n: number }>(
-        `select count(*)::int as n from agent_logs
-          where agent = 'trial-sweep'
-            and action = $1
-            and message like $2
-            and created_at > now() - interval '36 hours'`,
-        [`trial-warning-${org.days_left}d`, `%${org.id}%`]
-        // A failed lookup counts as "already warned" and skips this org for
-        // this sweep. Erring toward silence is right here: the alternative is
-        // emailing the same customer on every run of a sweep that runs hourly,
-        // and the next sweep retries anyway.
-      ).catch(() => [{ n: 1 }]);
+      let already: { n: number }[];
+      try {
+        already = await query<{ n: number }>(
+          `select count(*)::int as n from agent_logs
+            where org_id = $3
+              and agent = 'trial-sweep'
+              and action = $1
+              and message like $2
+              and created_at > now() - interval '36 hours'`,
+          [`trial-warning-${org.days_left}d`, `%${org.id}%`, org.id]
+        );
+      } catch (err) {
+        dedupeFailures++;
+        await logAgent({
+          agent: "trial-sweep",
+          action: "trial-warning-history-failed",
+          level: "error",
+          status: "error",
+          message: `${org.name}'s prior warning history could not be checked, so no email was sent to avoid a duplicate: ${(err as Error).message}`,
+        });
+        continue;
+      }
       if ((already[0]?.n ?? 0) > 0) continue;
 
       /*
@@ -167,12 +196,20 @@ export const trialSweep: AgentDefinition = {
       if (org.owner_email && mailReady) {
         const copy = warningCopy(org, appUrl);
         try {
-          await systemMail.send({ to: org.owner_email, subject: copy.subject, text: copy.text });
+          const delivery = await systemMail.send({
+            to: org.owner_email,
+            subject: copy.subject,
+            text: copy.text,
+          });
+          if (delivery.disabled || delivery.error) {
+            sendError = delivery.error ?? "The platform mailbox refused the message.";
+          }
         } catch (err) {
           sendError = (err as Error).message;
         }
       }
       const sent = Boolean(org.owner_email && mailReady && !sendError);
+      if (!sent) unsent++;
       await logAgent({
         agent: "trial-sweep",
         /*
@@ -189,23 +226,35 @@ export const trialSweep: AgentDefinition = {
             ? `Warned ${org.owner_email}.`
             : sendError
               ? `The warning email to ${org.owner_email} failed: ${sendError}. It will be tried again on the next sweep.`
-              : "No warning email could be sent: no owner address on file, or outbound mail is not configured."
+              : mailReadinessError
+                ? `No warning email was attempted because platform mail readiness could not be checked: ${mailReadinessError}.`
+                : "No warning email could be sent: no owner address is on file, or the platform mailbox is not currently deliverable."
         }`.slice(0, 500),
       });
       if (sent) warned++;
     }
 
     return {
-      ok: expiryError == null,
+      ok:
+        expiryError == null &&
+        mailReadinessError == null &&
+        dedupeFailures === 0 &&
+        unsent === 0,
       summary: expiryError
         ? `${live.length} trial(s) running, ${warned} warned. Expired trials could NOT be marked closed, so their stored status disagrees with the access they actually have: ${expiryError}`.slice(
             0,
             500
           )
-        : `${live.length} trial${live.length === 1 ? "" : "s"} running, ${warned} warned, ${expired.length} closed.`,
+        : `${live.length} trial${live.length === 1 ? "" : "s"} running, ${warned} warned, ${expired.length} closed.${
+            unsent > 0 ? ` ${unsent} due warning${unsent === 1 ? " was" : "s were"} not sent.` : ""
+          }${dedupeFailures > 0 ? ` ${dedupeFailures} warning history check${dedupeFailures === 1 ? " failed" : "s failed"}.` : ""}`,
       // A trial closing is a sales event, not an operations failure. Nobody
       // needs to be paged; it belongs in the log and in the digest.
-      humanActionRequired: false,
+      humanActionRequired:
+        expiryError != null ||
+        mailReadinessError != null ||
+        dedupeFailures > 0 ||
+        unsent > 0,
     };
   },
 };

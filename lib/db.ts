@@ -4,6 +4,7 @@
  */
 import { Client, Pool, types, type PoolClient, type QueryResultRow } from "pg";
 import { config, pgSslFor } from "./config";
+import { currentOrgId, runWithOrg } from "./tenant-context";
 
 /**
  * No query may hang forever.
@@ -107,9 +108,11 @@ export function pool(): Pool {
 export function standaloneClient(opts: {
   queryTimeoutMs: number;
   applicationName: string;
+  /** Dedicated owner connection for release-time migrations. */
+  connectionString?: string;
 }): Client {
   assertDisposableDatabaseUnderTest();
-  const url = config.database.url;
+  const url = opts.connectionString ?? config.database.url;
   if (!url) throw new Error("DATABASE_URL is not set.");
   return new Client({
     connectionString: url,
@@ -147,6 +150,8 @@ export async function transaction<T>(
   const client = await pool().connect();
   try {
     await client.query("BEGIN");
+    const orgId = currentOrgId();
+    if (orgId) await setLocalTenantContext(client, orgId);
     const result = await fn(client);
     await client.query("COMMIT");
     return result;
@@ -156,6 +161,65 @@ export async function transaction<T>(
   } finally {
     client.release();
   }
+}
+
+const ORG_ID_RE =
+  /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+/**
+ * Set the organization used by PostgreSQL row-level-security policies.
+ *
+ * `is_local=true` is the important part: PostgreSQL clears this value at the
+ * transaction boundary even when the pooled connection is reused. A session
+ * level SET here would eventually hand one customer's context to another
+ * request through the pool.
+ *
+ * Call this only after BEGIN. Outside a transaction PostgreSQL clears a local
+ * setting at the end of this statement, so it would not protect later work.
+ */
+export async function setLocalTenantContext(
+  client: PoolClient,
+  orgId: string
+): Promise<void> {
+  if (!ORG_ID_RE.test(orgId)) {
+    throw new Error(
+      "A valid organization id is required for tenant database access."
+    );
+  }
+
+  await client.query(
+    `select pg_catalog.set_config('brostco.org_id', $1, true)`,
+    [orgId]
+  );
+}
+
+/**
+ * Run a unit of tenant-owned database work with one transaction-local owner.
+ *
+ * This is the migration path from application-only `where org_id = ...`
+ * filters to PostgreSQL RLS. The callback receives the transaction's client;
+ * every statement in the unit of work must use that client rather than the
+ * process-wide query helper, which may select another pooled connection.
+ *
+ * An existing AsyncLocalStorage tenant cannot be replaced. Background jobs
+ * establish that context from a database-owned record before they begin, and
+ * accepting a different id here would turn a confused-deputy bug into an RLS
+ * bypass inside the application process.
+ */
+export async function tenantTransaction<T>(
+  orgId: string,
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const ambientOrgId = currentOrgId();
+  if (ambientOrgId && ambientOrgId !== orgId) {
+    throw new Error(
+      "Tenant database context does not match the active organization."
+    );
+  }
+
+  return runWithOrg(orgId, () =>
+    transaction((client) => fn(client))
+  );
 }
 
 /** True if the DB is reachable, used by health checks and boot gating. */

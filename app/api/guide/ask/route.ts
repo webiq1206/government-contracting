@@ -73,9 +73,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const { guide } = await loadGuideBundle(auth, pathname);
-
   try {
+    const { guide } = await loadGuideBundle(auth, pathname);
     const { text } = await complete(
       buildAskUserPrompt({ guide, question, history }),
       {
@@ -105,9 +104,13 @@ export async function POST(req: Request) {
         { status: 503 }
       );
     }
+    console.error("[guide-ask] live facts or narration failed", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Ask failed." },
-      { status: 500 }
+      {
+        error:
+          "The answer could not be grounded in live account facts, so no answer was generated. Reload the page and try again after the connection recovers.",
+      },
+      { status: 503 }
     );
   }
 }

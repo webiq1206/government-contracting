@@ -25,6 +25,7 @@ import {
   subcontractorRowActions,
 } from "@/lib/domain/row-actions";
 import { currentUser } from "@/lib/auth";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +62,7 @@ export default async function SearchPage({
    * the operator who now has to decide which of three copies is real.
    */
   const showAll = searchParams?.all === "1";
+  const loadWarnings: string[] = [];
 
   // Same resolver every other page uses, so this page can never search a
   // different organization from the one the operator is looking at.
@@ -95,7 +97,12 @@ export default async function SearchPage({
    */
   const peek = parsePeekParam(searchParams?.peek);
   const [viewer, peekedOpp, peekedSub] = await Promise.all([
-    currentUser().catch(() => null),
+    currentUser().catch(() => {
+      loadWarnings.push(
+        "Your role could not be confirmed, so protected result actions are disabled."
+      );
+      return null;
+    }),
     peek?.kind === "opportunity" ? opportunityQuickViewData(peek.id) : Promise.resolve(null),
     peek?.kind === "subcontractor" ? subcontractorQuickViewData(peek.id) : Promise.resolve(null),
   ]);
@@ -133,6 +140,7 @@ export default async function SearchPage({
             : `${all.length} result${all.length === 1 ? "" : "s"}`
         }
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="scroll-thin min-w-0 flex-1 space-y-5 overflow-y-auto p-5">
         <form method="get" action="/search" className="search-row">

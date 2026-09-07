@@ -12,7 +12,7 @@
  */
 import { z } from "zod";
 import { config } from "../config";
-import { query, queryOne } from "../db";
+import { query, queryOne, transaction } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { completeJson, ClaudeNotConfiguredError, JSON_RETRY_TOKEN_CAP } from "../ai/claude";
 import { analysisInputHash, inputsUnchanged } from "../domain/analysis-inputs";
@@ -30,6 +30,7 @@ import { deepNoEmDash } from "../sanitize";
 import { extractValueFromText } from "../domain/value-extract";
 import {
   routeAfterAnalysis,
+  routeToRescore,
   shouldContinuePursueAfterExistingBrief,
 } from "../domain/analysis-routing";
 import {
@@ -37,7 +38,7 @@ import {
   type AttachmentFetchOutcome,
   type AttachmentFetchStatus,
 } from "../domain/solicitation-completeness";
-import { storage } from "../integrations/storage";
+import { storage, type StorageBackend } from "../integrations/storage";
 import {
   guardedFetch,
   GuardedFetchError,
@@ -47,6 +48,10 @@ import {
 import { extractPdfPages, looksLikePdf, looksLikePdfBytes } from "../integrations/pdf";
 import { ocrPdf } from "../integrations/pdf-ocr";
 import { filenameFromResponse, isArchive, normalizeAttachmentMeta } from "../domain/attachment-meta";
+import {
+  attachmentIdentity,
+  canonicalAttachmentUrl,
+} from "../domain/attachment-identity";
 import {
   amendmentNumber,
   classifyDocumentName,
@@ -96,13 +101,15 @@ function extractionStateFor(status: AttachmentFetchStatus, trimmed: boolean): Ex
   switch (status) {
     case "fetched":
       return trimmed ? "partial" : "extracted";
+    case "partial":
+      return "partial";
     case "not_read":
     case "archive":
       return "not_read";
     case "no_text":
       return "unreadable";
     case "unsupported":
-      return "not_applicable";
+      return "not_read";
     default:
       return "pending";
   }
@@ -126,7 +133,8 @@ async function readInventorySnapshot(opportunityId: string): Promise<InventorySn
   }>(
     `select storage_path as key, name, content_hash, document_class, amendment_number
        from documents
-      where opportunity_id = $1 and kind = 'solicitation' and storage_path is not null`,
+      where opportunity_id = $1 and kind = 'solicitation' and storage_path is not null
+        and superseded_by is null and disposition <> 'excluded'`,
     [opportunityId]
   );
   return rows.map((r) => ({
@@ -372,6 +380,70 @@ function attachmentStatusFor(err: GuardedFetchError): AttachmentFetchStatus {
 }
 
 /**
+ * Put every notice reference in the inventory before attempting the network.
+ * If the worker stops, the row remains blocked with an actionable reason
+ * instead of the source file disappearing from every document count.
+ */
+async function ensureSourceInventory(
+  opportunityId: string,
+  att: Attachment,
+  ingestLabel: string,
+  index: number
+): Promise<{ id: string; sourceKey: string; canonicalSourceUrl: string }> {
+  const sourceKey = attachmentIdentity({
+    name: att.url ? ingestLabel : `${ingestLabel}#${index + 1}`,
+    url: att.url,
+  });
+  const canonicalSourceUrl = canonicalAttachmentUrl(att.url);
+
+  return transaction(async (client) => {
+    await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+      `solicitation-source:${opportunityId}:${sourceKey}`,
+    ]);
+    const existing = await client.query<{ id: string }>(
+      `select id::text as id from documents
+        where opportunity_id=$1 and kind='solicitation'
+          and superseded_by is null
+          and (
+            meta->>'source_key'=$2
+            or ($3::text is not null and source_url=$3)
+            or ($3::text is not null and meta->>'source_url'=$3)
+          )
+        order by created_at desc limit 1`,
+      [opportunityId, sourceKey, att.url ?? null]
+    );
+    if (existing.rows[0]) return { id: existing.rows[0].id, sourceKey, canonicalSourceUrl };
+
+    const inserted = await client.query<{ id: string }>(
+      `insert into documents (
+         opportunity_id, kind, name, source_system, source_url,
+         original_filename, meta, document_class, version,
+         disposition, extraction_state, access_state, last_error
+       ) values (
+         $1, 'solicitation', $2, 'sam.gov', $3, $2, $4::jsonb, $5, 1,
+         'blocked', 'pending', 'unreachable',
+         'Collection has not completed. Retry solicitation analysis.'
+       ) returning id::text as id`,
+      [
+        opportunityId,
+        ingestLabel,
+        att.url ?? null,
+        JSON.stringify({
+          source_key: sourceKey,
+          ...(att.url ? { source_url: att.url } : {}),
+          ...(canonicalSourceUrl ? { canonical_source_url: canonicalSourceUrl } : {}),
+        }),
+        classifyDocumentName(ingestLabel, att.mime),
+      ]
+    );
+    if (!inserted.rows[0]) {
+      throw new Error(`Could not create the document inventory row for ${ingestLabel}.`);
+    }
+    return { id: inserted.rows[0].id, sourceKey, canonicalSourceUrl };
+  });
+}
+
+/**
  * Download a solicitation attachment, persist it (Supabase Storage or local
  * fallback) + record it in `documents`, and return extracted text for Claude:
  *   - PDFs are parsed to text with unpdf.
@@ -399,8 +471,20 @@ async function processAttachment(
    * no row was written, which is itself a fact the caller has to handle
    * rather than a blank to skip over.
    */
-  let documentId: string | null = null;
+  const sourceInventory = await ensureSourceInventory(
+    opportunityId,
+    att,
+    ingestLabel,
+    index
+  );
+  let documentId: string | null = sourceInventory.id;
   if (!att.url) {
+    await query(
+      `update documents set disposition='blocked', extraction_state='not_read',
+              access_state='unreachable', last_error=$2, last_verified_at=now()
+        where id=$1 and superseded_by is null`,
+      [documentId, "No download URL was supplied by the source notice."]
+    );
     return {
       context: `- ${label} (no url)`,
       parsedChars: 0,
@@ -427,6 +511,18 @@ async function processAttachment(
     } catch (err) {
       if (err instanceof GuardedFetchError) {
         const status = attachmentStatusFor(err);
+        const accessState =
+          err.status === 401 || err.status === 403
+            ? "protected"
+            : err.status === 404 || err.status === 410
+              ? "link_expired"
+              : "unreachable";
+        await query(
+          `update documents set disposition='blocked', extraction_state='not_read',
+                  access_state=$2, last_error=$3, last_verified_at=now()
+            where id=$1 and superseded_by is null`,
+          [documentId, accessState, err.message]
+        );
         return {
           context: `- ${label} (${redactUrl(att.url)}), not collected: ${err.message}`,
           parsedChars: 0,
@@ -459,14 +555,15 @@ async function processAttachment(
       mime: ct || null,
       content: buf,
     });
-    // Keep the storage key stable across re-runs: derived from the INGEST
-    // label, never the header-recovered one. A re-run then computes the same
-    // path, finds the existing document row, and the update below renames it
-    // in place; keying on the recovered name would store the same bytes twice
-    // under two names. Openability comes from documents.name/mime and
-    // send-time normalization, plus Content-Type on /api/files.
+    // Keep the storage key stable across re-runs and resource-link reordering.
+    // SAM names most links "attachment", so a positional key points at a
+    // different file whenever an amendment is inserted before it. The source
+    // identity excludes rotated credentials but retains the document selector.
     const safeKeyStem = ingestLabel.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "attachment";
-    const key = `solicitations/${opportunityId}/${index + 1}_${safeKeyStem}`;
+    const sourceKey = sourceInventory.sourceKey;
+    const canonicalSourceUrl = sourceInventory.canonicalSourceUrl;
+    const contentHash = sha256(buf);
+    const key = `solicitations/${opportunityId}/${sourceKey.slice(0, 20)}_${contentHash.slice(0, 20)}_${safeKeyStem}`;
     let stored = false;
     /*
      * The inventory row, not just a filename and a path.
@@ -483,60 +580,111 @@ async function processAttachment(
      * made before the fact it describes.
      */
     const inventory = {
-      hash: sha256(buf),
+      hash: contentHash,
       size: buf.byteLength,
       klass: classifyDocumentName(meta.filename, meta.mime),
       amendment: amendmentNumber(meta.filename),
     };
     try {
       const up = await storage.upload(key, buf, meta.mime);
-      // Upsert-by-path so re-running the analyst does not duplicate document rows.
-      const existing = await queryOne<{ id: string }>(
-        `select id from documents where opportunity_id=$1 and storage_path=$2`,
-        [opportunityId, up.path]
-      );
-      if (!existing) {
-        const row = await queryOne<{ id: string }>(
-          `insert into documents (
-             opportunity_id, kind, name, storage_path, storage_backend, mime, meta,
-             source_system, source_url, original_filename,
-             content_hash, byte_size, document_class, amendment_number,
-             disposition, access_state, received_at, last_verified_at
-           )
-           values ($1,'solicitation',$2,$3,$4,$5,$6,
-                   'sam.gov',$7,$8,
-                   $9,$10,$11,$12,
-                   'delivered','available',now(),now())
-           returning id`,
-          [
-            opportunityId,
-            meta.filename,
-            up.path,
-            up.backend,
-            meta.mime,
-            JSON.stringify({ source_url: att.url }),
-            att.url,
-            ingestLabel,
-            inventory.hash,
-            inventory.size,
-            inventory.klass,
-            inventory.amendment,
-          ]
+      documentId = await transaction(async (client) => {
+        await client.query(`select pg_advisory_xact_lock(hashtext($1))`, [
+          `solicitation-source:${opportunityId}:${sourceKey}`,
+        ]);
+        const bySource = await client.query<{
+          id: string;
+          content_hash: string | null;
+          version: number;
+        }>(
+          `select id::text as id, content_hash, version from documents
+            where opportunity_id=$1 and kind='solicitation'
+              and superseded_by is null
+              and (
+                meta->>'source_key'=$2
+                or source_url=$3
+                or meta->>'source_url'=$3
+              )
+            order by (meta->>'source_key'=$2) desc, created_at asc
+            limit 1`,
+          [opportunityId, sourceKey, att.url]
         );
-        documentId = row?.id ?? null;
-      } else {
-        documentId = existing.id;
-        await query(
+        const byPath = bySource.rows[0]
+          ? null
+          : await client.query<{
+              id: string;
+              content_hash: string | null;
+              version: number;
+            }>(
+              `select id::text as id, content_hash, version from documents
+                where opportunity_id=$1 and storage_path=$2 and superseded_by is null
+                limit 1`,
+              [opportunityId, up.path]
+            );
+        const existing = bySource.rows[0] ?? byPath?.rows[0] ?? null;
+        const changedBytes =
+          existing?.content_hash != null && existing.content_hash !== inventory.hash;
+
+        if (!existing || changedBytes) {
+          const inserted = await client.query<{ id: string }>(
+            `insert into documents (
+               opportunity_id, kind, name, storage_path, storage_backend, mime, meta,
+               source_system, source_url, original_filename,
+               content_hash, byte_size, document_class, amendment_number,
+               version, disposition, access_state, received_at, last_verified_at
+             )
+             values ($1,'solicitation',$2,$3,$4,$5,$6,
+                     'sam.gov',$7,$8,
+                     $9,$10,$11,$12,
+                     $13,'delivered','available',now(),now())
+             returning id::text as id`,
+            [
+              opportunityId,
+              meta.filename,
+              up.path,
+              up.backend,
+              meta.mime,
+              JSON.stringify({
+                source_url: att.url,
+                canonical_source_url: canonicalSourceUrl,
+                source_key: sourceKey,
+              }),
+              att.url,
+              ingestLabel,
+              inventory.hash,
+              inventory.size,
+              inventory.klass,
+              inventory.amendment,
+              existing ? existing.version + 1 : 1,
+            ]
+          );
+          const freshId = inserted.rows[0]?.id;
+          if (!freshId) throw new Error(`Could not record ${meta.filename} in the inventory.`);
+          if (changedBytes && existing) {
+            const superseded = await client.query(
+              `update documents
+                  set superseded_by=$2, disposition='excluded',
+                      excluded_reason='Superseded by changed source bytes from SAM.gov.',
+                      excluded_by='opportunity-monitor', excluded_at=now()
+                where id=$1 and superseded_by is null`,
+              [existing.id, freshId]
+            );
+            if (superseded.rowCount !== 1) {
+              throw new Error(`The active version of ${meta.filename} changed during collection.`);
+            }
+          }
+          return freshId;
+        }
+
+        const updated = await client.query(
           `update documents set
              name=$1, mime=$2, storage_backend=$3,
              source_system='sam.gov', source_url=$5, original_filename=$6,
              content_hash=$7, byte_size=$8, document_class=$9, amendment_number=$10,
+             storage_path=$11,
+             meta=coalesce(meta, '{}'::jsonb) || $12::jsonb,
              disposition='delivered', access_state='available',
-             last_verified_at=now(), last_error=null,
-             -- A file re-issued under the same name with different bytes is a
-             -- new version of that document, not a re-read of the old one.
-             version = case when content_hash is distinct from $7 then version + 1 else version end
-           where id=$4`,
+             extraction_state='pending', last_verified_at=now(), last_error=null
+          where id=$4 and superseded_by is null`,
           [
             meta.filename,
             meta.mime,
@@ -548,9 +696,19 @@ async function processAttachment(
             inventory.size,
             inventory.klass,
             inventory.amendment,
+            up.path,
+            JSON.stringify({
+              source_url: att.url,
+              canonical_source_url: canonicalSourceUrl,
+              source_key: sourceKey,
+            }),
           ]
         );
-      }
+        if (updated.rowCount !== 1) {
+          throw new Error(`The active version of ${meta.filename} changed during collection.`);
+        }
+        return existing.id;
+      });
       stored = true;
     } catch (err) {
       // Extraction continues (analysis still needs the text), but a document
@@ -558,6 +716,11 @@ async function processAttachment(
       // the failure has to be visible, not "best-effort" silence.
       console.error(
         `[solicitation-analyst] failed to store ${redactUrl(att.url)}: ${(err as Error).message}`
+      );
+      await query(
+        `update documents set disposition='blocked', last_error=$2
+          where id=$1 and superseded_by is null`,
+        [documentId, `File storage failed: ${(err as Error).message}`]
       );
     }
 
@@ -571,7 +734,7 @@ async function processAttachment(
       // gets built against a checklist nobody read. The per-attachment budget
       // below decides what actually fits in the prompt; this decides what is
       // available to choose from.
-      const { pages: pageTexts, total: pages } = await extractPdfPages(buf, 400_000);
+      const { pages: pageTexts, total: pages, truncated } = await extractPdfPages(buf, 400_000);
       const text = withPageMarkers(pageTexts);
       if (text) {
         return {
@@ -588,8 +751,12 @@ async function processAttachment(
             // but with no documents row the file cannot ride on outreach, and
             // reporting "fetched" here hid exactly that. (This ternary used to
             // read `stored ? "fetched" : "fetched"`.)
-            status: stored ? "fetched" : "failed",
-            detail: stored ? `${pages} pages` : `${pages} pages read, but the file could not be stored`,
+            status: stored ? (truncated ? "partial" : "fetched") : "failed",
+            detail: stored
+              ? truncated
+                ? `${pages} pages, text exceeded the extraction limit`
+                : `${pages} pages`
+              : `${pages} pages read, but the file could not be stored`,
           },
         };
       }
@@ -612,7 +779,7 @@ async function processAttachment(
           outcome: {
             name: label,
             url: att.url,
-            status: stored ? "fetched" : "failed",
+            status: stored ? (ocr.truncated ? "partial" : "fetched") : "failed",
             detail: stored
               ? `${ocr.pagesRead} of ${ocr.pagesTotal} pages transcribed from a scan`
               : `${ocr.pagesRead} pages transcribed, but the file could not be stored`,
@@ -634,14 +801,25 @@ async function processAttachment(
       };
     }
     if (ct.includes("text") || ct.includes("html") || ct.includes("json")) {
-      const text = buf.toString("utf8").slice(0, 6000);
+      const decoded = buf.toString("utf8");
+      const text = decoded.slice(0, 6000);
+      const truncated = text.length < decoded.length;
       return {
         context: `- ${label}:\n${text}`,
         parsedChars: text.length,
         documentId,
         pages: null,
         ocrState: null,
-        outcome: { name: label, url: att.url, status: "fetched" },
+        outcome: {
+          name: label,
+          url: att.url,
+          status: stored ? (truncated ? "partial" : "fetched") : "failed",
+          detail: stored
+            ? truncated
+              ? "text exceeded the 6,000 character extraction limit"
+              : undefined
+            : "text was read, but the file could not be stored",
+        },
       };
     }
     /*
@@ -684,8 +862,17 @@ async function processAttachment(
       },
     };
   } catch (err) {
+    const message = (err as Error).message;
+    if (documentId) {
+      await query(
+        `update documents set disposition='blocked', extraction_state='not_read',
+                access_state='unreachable', last_error=$2, last_verified_at=now()
+          where id=$1 and superseded_by is null`,
+        [documentId, message]
+      );
+    }
     return {
-      context: `- ${label} (${redactUrl(att.url)}), processing failed (${(err as Error).message})`,
+      context: `- ${label} (${redactUrl(att.url)}), processing failed (${message})`,
       parsedChars: 0,
       documentId,
       pages: null,
@@ -694,10 +881,183 @@ async function processAttachment(
         name: label,
         url: att.url,
         status: "failed",
-        detail: (err as Error).message,
+        detail: message,
       },
     };
   }
+}
+
+interface StoredAnalysisSource {
+  id: string;
+  name: string;
+  storage_path: string | null;
+  storage_backend: StorageBackend | null;
+  mime: string | null;
+  source_url: string | null;
+  source_key: string | null;
+}
+
+/** Read the active operator-supplied replacement bytes, never the superseded URL. */
+async function processStoredAnalysisSource(
+  source: StoredAnalysisSource
+): Promise<{
+  context: string;
+  parsedChars: number;
+  outcome: AttachmentFetchOutcome;
+  documentId: string | null;
+  pages: number | null;
+  ocrState: OcrState | null;
+}> {
+  const failed = async (message: string) => {
+    await query(
+      `update documents set disposition='blocked', last_error=$2
+        where id=$1 and superseded_by is null`,
+      [source.id, message]
+    );
+    return {
+      context: `- ${source.name}, stored replacement could not be read (${message}). Do NOT assume anything about its contents.`,
+      parsedChars: 0,
+      documentId: source.id,
+      pages: null,
+      ocrState: null,
+      outcome: {
+        name: source.name,
+        url: source.source_url,
+        status: "failed" as const,
+        detail: message,
+      },
+    };
+  };
+
+  if (!source.storage_path) return failed("the replacement has no stored file path");
+  let buf: Buffer;
+  try {
+    buf = await storage.download(source.storage_path, source.storage_backend ?? undefined);
+  } catch (err) {
+    return failed(`stored file download failed: ${(err as Error).message}`);
+  }
+
+  const meta = normalizeAttachmentMeta({
+    filename: source.name,
+    mime: source.mime,
+    content: buf,
+  });
+  await query(
+    `update documents set disposition='delivered', access_state='available',
+            last_error=null, content_hash=$2, byte_size=$3, mime=$4,
+            document_class=coalesce(document_class,$5), last_verified_at=now()
+      where id=$1 and superseded_by is null`,
+    [
+      source.id,
+      sha256(buf),
+      buf.byteLength,
+      meta.mime,
+      classifyDocumentName(meta.filename, meta.mime),
+    ]
+  );
+
+  const locator = source.source_url ?? source.name;
+  if (looksLikePdf(locator, meta.mime) || looksLikePdfBytes(buf)) {
+    const extracted = await extractPdfPages(buf, 400_000);
+    const text = withPageMarkers(extracted.pages);
+    if (text) {
+      return {
+        context: `- ${source.name} (${extracted.total} pp, OPERATOR REPLACEMENT, extracted; [p.N] marks the start of page N):\n${text}`,
+        parsedChars: text.length,
+        documentId: source.id,
+        pages: extracted.total,
+        ocrState: "not_needed",
+        outcome: {
+          name: source.name,
+          url: source.source_url,
+          status: extracted.truncated ? "partial" : "fetched",
+          detail: extracted.truncated
+            ? `${extracted.total} pages, text exceeded the extraction limit`
+            : `${extracted.total} pages from the corrected copy`,
+        },
+      };
+    }
+    const ocr = await ocrPdf(buf, { label: source.name, model: config.claude.modelSmart });
+    if (ocr.text) {
+      return {
+        context: `- ${source.name} (${ocr.pagesTotal} pp, OPERATOR REPLACEMENT, SCANNED DOCUMENT):\n${ocr.text}${
+          ocr.truncated ? "\n[part of this scan could not be transcribed]" : ""
+        }`,
+        parsedChars: ocr.text.length,
+        documentId: source.id,
+        pages: ocr.pagesTotal,
+        ocrState: ocr.truncated ? "partial" : "done",
+        outcome: {
+          name: source.name,
+          url: source.source_url,
+          status: ocr.truncated ? "partial" : "fetched",
+          detail: `${ocr.pagesRead} of ${ocr.pagesTotal} pages transcribed from the corrected copy`,
+        },
+      };
+    }
+    return {
+      context: `- ${source.name}, corrected scan stored but it could not be read (${ocr.error ?? "no readable text"}). Do NOT assume anything about its contents.`,
+      parsedChars: 0,
+      documentId: source.id,
+      pages: ocr.pagesTotal,
+      ocrState: "failed",
+      outcome: {
+        name: source.name,
+        url: source.source_url,
+        status: "no_text",
+        detail: ocr.error ?? "PDF had no extractable text",
+      },
+    };
+  }
+
+  if (/text|html|json/.test(meta.mime)) {
+    const decoded = buf.toString("utf8");
+    const text = decoded.slice(0, 6000);
+    const truncated = text.length < decoded.length;
+    return {
+      context: `- ${source.name} (OPERATOR REPLACEMENT):\n${text}`,
+      parsedChars: text.length,
+      documentId: source.id,
+      pages: null,
+      ocrState: null,
+      outcome: {
+        name: source.name,
+        url: source.source_url,
+        status: truncated ? "partial" : "fetched",
+        detail: truncated ? "text exceeded the 6,000 character extraction limit" : undefined,
+      },
+    };
+  }
+
+  if (isArchive(source.name, meta.mime)) {
+    return {
+      context: `- ${source.name}: an OPERATOR REPLACEMENT ARCHIVE, stored but never opened. Do NOT assume anything about what is inside it.`,
+      parsedChars: 0,
+      documentId: source.id,
+      pages: null,
+      ocrState: null,
+      outcome: {
+        name: source.name,
+        url: source.source_url,
+        status: "archive",
+        detail: "archive contents were not opened",
+      },
+    };
+  }
+
+  return {
+    context: `- ${source.name}, corrected ${meta.mime} file stored but not text-parseable`,
+    parsedChars: 0,
+    documentId: source.id,
+    pages: null,
+    ocrState: null,
+    outcome: {
+      name: source.name,
+      url: source.source_url,
+      status: "unsupported",
+      detail: meta.mime,
+    },
+  };
 }
 
 /**
@@ -836,11 +1196,14 @@ async function computeAnalysisInputHash(
     name: string;
     storage_path: string | null;
     version: number;
+    content_hash: string | null;
     created_at: string;
   }>(
-    `select id::text as id, name, storage_path, version, created_at::text as created_at
+    `select id::text as id, name, storage_path, version, content_hash,
+            created_at::text as created_at
        from documents
       where opportunity_id = $1 and kind in ('solicitation','sow')
+        and superseded_by is null and disposition <> 'excluded'
       order by name asc`,
     [opportunityId]
   );
@@ -848,7 +1211,19 @@ async function computeAnalysisInputHash(
   return analysisInputHash({
     title: opp.title,
     solicitationNumber: opp.solicitation_number,
+    agency: opp.agency,
+    subAgency: opp.sub_agency,
+    naicsCode: opp.naics_code,
+    pscCode: opp.psc_code,
+    setAsideType: opp.set_aside_type,
+    valueEstimated: opp.value_estimated,
+    deadline: opp.deadline,
+    postedAt: opp.posted_at,
+    locationState: opp.location_state,
+    locationText: opp.location_text,
+    contact: opp.contact_json,
     description: opp.description,
+    attachments: opp.attachments_json,
     documents: docs.map((d) => ({
       name: d.name,
       // The row id IS the strongest signal available: a replaced or amended
@@ -856,6 +1231,8 @@ async function computeAnalysisInputHash(
       // when the filename is identical.
       storagePath: `${d.id}:${d.storage_path ?? ""}:v${d.version}`,
       updatedAt: d.created_at,
+      contentHash: d.content_hash,
+      version: d.version,
     })),
   });
 }
@@ -882,9 +1259,10 @@ async function continuePursueFromExistingBrief(
   if (analysis.completeness == null) {
     const storedDocs = await queryOne<{ n: string }>(
       `select count(*)::text as n from documents
-        where opportunity_id = $1 and kind in ('solicitation','sow')`,
+        where opportunity_id = $1 and kind in ('solicitation','sow')
+          and superseded_by is null and disposition <> 'excluded'`,
       [opportunityId]
-    ).catch(() => ({ n: "0" }));
+    );
     const completeness = evaluateSolicitationCompleteness({
       solicitationNumber: opp.solicitation_number,
       agency: opp.agency,
@@ -973,6 +1351,23 @@ export const solicitationAnalyst: AgentDefinition = {
       opportunityId,
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
+    if (!opp.org_id) {
+      await logAgent({
+        agent: "solicitation-analyst",
+        action: "missing-organization",
+        opportunityId,
+        level: "error",
+        status: "error",
+        message:
+          "Solicitation analysis stopped because this opportunity has no organization owner. Repair tenant ownership before retrying; no tenant profile or AI key was used.",
+      });
+      return {
+        ok: false,
+        summary:
+          "Solicitation analysis stopped because this opportunity has no organization owner. Repair tenant ownership, then retry.",
+        humanActionRequired: true,
+      };
+    }
 
     // Idempotency: a queue-triggered re-run must not re-download attachments and
     // re-bill a Claude analysis that already exists. Manual runs (or an explicit
@@ -990,8 +1385,11 @@ export const solicitationAnalyst: AgentDefinition = {
     // the original, stale requirements.
     const forced =
       ctx.payload.force === true ||
+      ctx.payload.force === "always" ||
       ctx.trigger === "manual" ||
       ctx.payload.trigger === "manual";
+    const rescoreAfterAnalysis =
+      ctx.payload.preScoring === true || ctx.payload.rescoreAfterAnalysis === true;
     if (opp.solicitation_analysis && !forced) {
       if (shouldContinuePursueAfterExistingBrief(opp)) {
         return continuePursueFromExistingBrief(opportunityId, opp);
@@ -1077,9 +1475,49 @@ export const solicitationAnalyst: AgentDefinition = {
      */
     const inventoryBefore = await readInventorySnapshot(opportunityId);
 
-    const processed = await inBatches(attachments, ATTACHMENT_CONCURRENCY, (att, i) =>
+    const replacements = await query<StoredAnalysisSource>(
+      `select r.id::text as id, r.name, r.storage_path,
+              r.storage_backend, r.mime,
+              coalesce(r.source_url, old.source_url) as source_url,
+              coalesce(r.meta->>'source_key', old.meta->>'source_key') as source_key
+         from documents r
+         left join lateral (
+           select d.source_url, d.meta
+             from documents d
+            where d.superseded_by=r.id
+            order by d.created_at desc
+            limit 1
+         ) old on true
+        where r.opportunity_id=$1
+          and r.source_system='operator_replacement'
+          and r.superseded_by is null
+          and r.disposition <> 'excluded'
+        order by r.created_at asc`,
+      [opportunityId]
+    );
+    const replacementKeys = new Set(
+      replacements.map(
+        (row) =>
+          row.source_key ||
+          attachmentIdentity({ name: row.name, url: row.source_url ?? undefined })
+      )
+    );
+    const seenRemote = new Set<string>();
+    const remoteAttachments = attachments.filter((att) => {
+      const key = attachmentIdentity(att);
+      if (replacementKeys.has(key) || seenRemote.has(key)) return false;
+      seenRemote.add(key);
+      return true;
+    });
+    const remoteProcessed = await inBatches(remoteAttachments, ATTACHMENT_CONCURRENCY, (att, i) =>
       processAttachment(opportunityId, att, i)
     );
+    const replacementProcessed = await inBatches(
+      replacements,
+      ATTACHMENT_CONCURRENCY,
+      (doc) => processStoredAnalysisSource(doc)
+    );
+    const processed = [...remoteProcessed, ...replacementProcessed];
 
     const changes = documentChanges(inventoryBefore, await readInventorySnapshot(opportunityId));
     if (!changes.quiet && inventoryBefore.length > 0) {
@@ -1131,6 +1569,15 @@ export const solicitationAnalyst: AgentDefinition = {
           detail: "no room in the analysis for this document",
         };
       }
+      if (a?.trimmed && (p.outcome.status === "fetched" || p.outcome.status === "partial")) {
+        return {
+          ...p.outcome,
+          status: "partial" as const,
+          detail: [p.outcome.detail, "analysis prompt included only part of this document"]
+            .filter(Boolean)
+            .join("; "),
+        };
+      }
       return p.outcome;
     });
     /*
@@ -1147,24 +1594,23 @@ export const solicitationAnalyst: AgentDefinition = {
       processed.map(async (p, i) => {
         if (!p.documentId) return;
         const a = allocated.get(String(i));
-        const state = extractionStateFor(p.outcome.status, a?.trimmed ?? false);
+        const state = extractionStateFor(attachmentOutcomes[i].status, a?.trimmed ?? false);
         await query(
           `update documents set
              extraction_state=$2, ocr_state=coalesce($3, ocr_state),
              page_count=coalesce($4, page_count),
              extraction_model=$5, extracted_at=now()
-           where id=$1`,
+          where id=$1 and superseded_by is null`,
           [p.documentId, state, p.ocrState, p.pages, config.claude.modelSmart]
-        ).catch((err) => {
-          // The analysis itself is not lost over a bookkeeping write, but the
-          // inventory being wrong is exactly the failure this exists to
-          // prevent, so it is never silent.
-          console.error(
-            `[solicitation-analyst] failed to record inventory for ${p.documentId}: ${(err as Error).message}`
-          );
-        });
+        );
       })
     );
+
+    // The fingerprint of the exact active source set supplied to the model.
+    // It is checked again after the model returns so an operator replacement
+    // or amendment arriving mid-read cannot be labelled as analyzed by this
+    // run even though the prompt contained the previous bytes.
+    const analyzedSourceHash = await computeAnalysisInputHash(opportunityId, opp);
 
     await logAgent({
       agent: "solicitation-analyst",
@@ -1337,6 +1783,44 @@ export const solicitationAnalyst: AgentDefinition = {
       throw err;
     }
 
+    const latestSourceHash = await computeAnalysisInputHash(opportunityId, opp);
+    if (latestSourceHash !== analyzedSourceHash) {
+      await query(
+        `update opportunities
+            set risk_flags=(select array(select distinct unnest(coalesce(risk_flags,'{}') || array['awaiting_document_analysis'])))
+          where id=$1`,
+        [opportunityId]
+      );
+      await logAgent({
+        agent: "solicitation-analyst",
+        action: "source-changed-during-analysis",
+        opportunityId,
+        level: "warn",
+        status: "skipped",
+        message:
+          "The active solicitation documents changed while they were being analyzed. This result was discarded and a fresh read was queued so the current files are never represented by an older brief.",
+      });
+      return {
+        ok: true,
+        summary:
+          "The solicitation changed while analysis was running. The stale result was discarded and the current documents were queued for a fresh read.",
+        enqueued: [
+          {
+            agent: "solicitation-analyst",
+            payload: {
+              opportunityId,
+              force: "always",
+              rescoreAfterAnalysis,
+            },
+            opts: {
+              singletonKey: `analyze-source-change:${opportunityId}:${latestSourceHash.slice(0, 24)}`,
+              singletonSeconds: 3600,
+            },
+          },
+        ],
+      };
+    }
+
     // Persist analysis + past-perf + merge risk flags.
     const isPrimeOnly = analysis.past_perf_classification === "prime_only";
     // Operator preference: by default we do NOT stop for prime-only past
@@ -1347,9 +1831,10 @@ export const solicitationAnalyst: AgentDefinition = {
 
     const storedDocs = await queryOne<{ n: string }>(
       `select count(*)::text as n from documents
-        where opportunity_id = $1 and kind in ('solicitation','sow')`,
+        where opportunity_id = $1 and kind in ('solicitation','sow')
+          and superseded_by is null and disposition <> 'excluded'`,
       [opportunityId]
-    ).catch(() => ({ n: "0" }));
+    );
 
     const completeness = evaluateSolicitationCompleteness({
       solicitationNumber: opp.solicitation_number,
@@ -1380,9 +1865,19 @@ export const solicitationAnalyst: AgentDefinition = {
       evaluated_at: new Date().toISOString(),
     };
 
+    const analysisStateFlags = new Set([
+      "awaiting_document_analysis",
+      "incomplete_solicitation",
+      "missing_attachments",
+      "unopened_archives",
+      "documents_not_read",
+      "documents_partly_read",
+      "unreadable_documents",
+      "unsupported_documents",
+    ]);
     const mergedRiskFlags = [
       ...new Set([
-        ...(opp.risk_flags ?? []),
+        ...(opp.risk_flags ?? []).filter((flag) => !analysisStateFlags.has(flag)),
         ...analysis.risk_flags,
         ...completeness.riskFlags,
       ]),
@@ -1408,7 +1903,7 @@ export const solicitationAnalyst: AgentDefinition = {
       `select tier, stage, status, human_action_required from opportunities where id = $1`,
       [opportunityId]
     );
-    const route = routeAfterAnalysis({
+    const normalRoute = routeAfterAnalysis({
       tier: live?.tier ?? opp.tier,
       stage: live?.stage ?? opp.stage,
       status: live?.status ?? opp.status,
@@ -1416,6 +1911,16 @@ export const solicitationAnalyst: AgentDefinition = {
       blockedPrime,
       blockedIncomplete,
     });
+    const rescoreRoute =
+      rescoreAfterAnalysis && !blockedPrime && !blockedIncomplete
+        ? routeToRescore({
+            stage: live?.stage ?? opp.stage,
+            status: live?.status ?? opp.status,
+            humanActionRequired:
+              live?.human_action_required ?? opp.human_action_required,
+          })
+        : null;
+    const route = rescoreRoute ?? normalRoute;
     const stage = route.stage;
     const humanAction = route.humanAction;
     if (route.enqueueSubFinder) {
@@ -1433,6 +1938,30 @@ export const solicitationAnalyst: AgentDefinition = {
               .filter((m) => m.critical)
               .map((m) => m.key)
               .join(", ")}); held in analysis until resolved.`,
+      });
+    }
+
+    const extractedAnalysisValue =
+      opp.value_estimated == null
+        ? extractValueFromText(analysis.estimated_value)
+        : null;
+    const finalInputHash = await computeAnalysisInputHash(opportunityId, {
+      ...opp,
+      value_estimated: extractedAnalysisValue ?? opp.value_estimated,
+    });
+    if (route.reason === "rescore") {
+      enqueued.push({
+        agent: "scoring-engine",
+        payload: {
+          opportunityId,
+          analysisComplete: true,
+          analysisInputHash: finalInputHash,
+          preserveLifecycle: rescoreRoute?.preserveLifecycle ?? false,
+        },
+        opts: {
+          singletonKey: `score-analysis:${opportunityId}:${finalInputHash.slice(0, 24)}`,
+          singletonSeconds: 3600,
+        },
       });
     }
 
@@ -1496,12 +2025,9 @@ export const solicitationAnalyst: AgentDefinition = {
     // giving up on this opportunity ever getting a number.
     let valueUpdate = "";
     const valueParams: unknown[] = [];
-    if (opp.value_estimated == null) {
-      const fromAnalysis = extractValueFromText(analysis.estimated_value);
-      if (fromAnalysis != null) {
-        valueUpdate = ", value_estimated = $9, value_estimated_source = 'analysis'";
-        valueParams.push(fromAnalysis);
-      }
+    if (extractedAnalysisValue != null) {
+      valueUpdate = ", value_estimated = $9, value_estimated_source = 'analysis'";
+      valueParams.push(extractedAnalysisValue);
     }
 
     await query(
@@ -1525,7 +2051,7 @@ export const solicitationAnalyst: AgentDefinition = {
         stage,
         humanAction,
         solicitationText,
-        currentInputHash,
+        finalInputHash,
         ...valueParams,
       ]
     );

@@ -9,11 +9,11 @@
  *
  * The scopes it can genuinely perform are the deterministic ones: the source's
  * own metadata, its attachment list, the hashes behind those attachments, the
- * close date, the clause list a document deterministically contains, the score
- * the current metadata produces. Trade scopes are the one thing that cannot be
- * re-derived without a fresh analysis, so this agent does not pretend to have
- * re-derived them. When the documents moved it says the trades are unverified;
- * when they did not, it says so and leaves them alone.
+ * close date, the clause list a document deterministically contains, and bid
+ * package fingerprints. Trade scopes and judgment-based score dimensions
+ * cannot be independently re-derived without a fresh analysis, so this agent
+ * does not pretend to have re-derived them. When a requested scope cannot be
+ * established it is recorded as incomplete instead of silently passing.
  *
  * A scope that cannot run goes into `failedScopes`, and the outcome model
  * refuses a clean verdict when that list is non-empty. So an unreachable
@@ -23,6 +23,7 @@ import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { sam } from "../integrations/sam";
 import { guardedFetch, GuardedFetchError } from "../integrations/guarded-fetch";
+import { attachmentIdentity } from "../domain/attachment-identity";
 import { createHash } from "node:crypto";
 import {
   FULL_ORDER,
@@ -102,9 +103,16 @@ export const reverify: AgentDefinition = {
      * partial. What it must never do is continue as though the source
      * confirmed anything.
      */
-    let notice: Awaited<ReturnType<typeof lookupNotice>> = null;
+    let notice: Awaited<ReturnType<typeof lookupNotice>> | null = null;
+    let retryableFailure = false;
     if (wanted.includes("source_and_amendments")) {
-      notice = await lookupNotice(opp);
+      let sourceFailure: string | null = null;
+      try {
+        notice = await lookupNotice(opp);
+      } catch (err) {
+        sourceFailure = err instanceof Error ? err.message : String(err);
+        retryableFailure = true;
+      }
       if (!notice) {
         failed.push("source_and_amendments");
         findings.push({
@@ -114,7 +122,15 @@ export const reverify: AgentDefinition = {
           impact: "material",
           before: opp.solicitation_number ?? null,
           after: null,
-          note: "SAM could not be reached or did not return this notice, so nothing below was confirmed against the source.",
+          note: `${sourceFailure ?? "SAM did not return this notice"}. Nothing below was confirmed against the source.`,
+        });
+        await logAgent({
+          agent: "reverify",
+          action: "source-unreadable",
+          opportunityId,
+          level: "error",
+          status: "error",
+          message: `The solicitation source could not be verified: ${sourceFailure ?? "SAM did not return this notice"}.`,
         });
       } else {
         findings.push(...metadataFindings(opp, notice));
@@ -138,6 +154,7 @@ export const reverify: AgentDefinition = {
       coverage.documentsUnreadable = result.coverage.documentsUnreadable;
       coverage.pagesProcessed = result.coverage.pagesProcessed;
       if (result.couldNotEnumerate) failed.push("documents");
+      if (result.coverage.documentsUnreadable > 0) retryableFailure = true;
     }
 
     if (wanted.includes("requirements_and_deadlines")) {
@@ -174,8 +191,54 @@ export const reverify: AgentDefinition = {
       }
     }
 
+    if (wanted.includes("scoring_and_eligibility")) {
+      /*
+       * Scoring dimensions are judgment produced by the scoring model. Reusing
+       * the stored dimension points, or asking the same model again, is not an
+       * independent verification. This branch used to do nothing at all, which
+       * let a narrow scoring check (and a full check with no other findings)
+       * finish as "verified, no changes" despite never checking the score.
+       */
+      failed.push("scoring_and_eligibility");
+      findings.push({
+        scope: "scoring_and_eligibility",
+        subject: "Score and eligibility judgment",
+        kind: "unreadable",
+        impact: "material",
+        before: opp.score == null ? null : String(opp.score),
+        after: null,
+        note:
+          "This verification does not independently re-score judgment-based dimensions. Re-run Scoring Engine after the current documents are analyzed, then review its evidence before relying on eligibility or tier.",
+      });
+    }
+
     if (wanted.includes("bid_readiness")) {
-      findings.push(...(await readinessFindings(opportunityId, orgId)));
+      try {
+        const readiness = await readinessFindings(opp, orgId);
+        findings.push(...readiness.findings);
+        if (!readiness.complete) failed.push("bid_readiness");
+      } catch (err) {
+        retryableFailure = true;
+        failed.push("bid_readiness");
+        findings.push({
+          scope: "bid_readiness",
+          subject: "Bid package evidence",
+          kind: "unreadable",
+          impact: "blocking",
+          before: null,
+          after: null,
+          note:
+            "Bid readiness could not be read from the database. The package is not verified; retry after the database connection recovers.",
+        });
+        await logAgent({
+          agent: "reverify",
+          action: "bid-readiness-unreadable",
+          opportunityId,
+          level: "error",
+          status: "error",
+          message: `Bid readiness could not be checked: ${(err as Error).message}`,
+        });
+      }
     }
 
     const run = await finishVerification({
@@ -192,11 +255,13 @@ export const reverify: AgentDefinition = {
     const material = findings.filter((f) => f.kind !== "unchanged" && f.impact !== "safe_metadata");
     const impact = downstreamImpact(findings);
 
+    const incomplete = run.state === "partially_verified" || run.state === "failed";
     await logAgent({
       agent: "reverify",
       action: "verification-finished",
       opportunityId,
-      level: material.length > 0 ? "warn" : "info",
+      level: incomplete ? "error" : material.length > 0 ? "warn" : "info",
+      status: incomplete ? "error" : "ok",
       message: `Checked against the source: ${run.state.replace(/_/g, " ")}. ${material.length} material difference${material.length === 1 ? "" : "s"}.`,
       reasoning: impact.lines.join(" "),
     });
@@ -210,10 +275,17 @@ export const reverify: AgentDefinition = {
      * its own audit trail, and firing it from a background job would produce a
      * suppression nobody chose. The finding says outreach should stop, the
      * screen says so, and a person does it.
-     */
+    */
     return {
-      ok: true,
-      summary: `${run.state} with ${material.length} material difference(s)`,
+      ok: !incomplete,
+      ...(incomplete && !retryableFailure ? { permanent: true } : {}),
+      summary:
+        `${run.state} with ${material.length} material difference(s)` +
+        (failed.length > 0
+          ? `; did not complete ${failed.map((item) => item.replace(/_/g, " ")).join(", ")}`
+          : ""),
+      data: { state: run.state, failedScopes: failed, materialDifferences: material.length },
+      humanActionRequired: incomplete || material.length > 0,
     };
   },
 };
@@ -236,19 +308,24 @@ function emptyCoverage(): Coverage {
  */
 async function lookupNotice(opp: Opportunity) {
   const solnum = opp.solicitation_number?.trim();
-  if (!solnum) return null;
+  if (!solnum) throw new Error("No solicitation number is stored on this opportunity");
+  if (!opp.org_id) throw new Error("The opportunity has no organization owner");
   const posted = opp.posted_at ? new Date(opp.posted_at) : null;
   const from = posted ? new Date(posted.getTime() - 7 * 86_400_000) : new Date(Date.now() - 400 * 86_400_000);
-  const res = await sam
-    .searchOpportunities({
+  const res = await sam.searchOpportunities({
       solnum,
       postedFrom: mmddyyyy(from),
       postedTo: mmddyyyy(new Date()),
       limit: 10,
-    })
-    .catch(() => null);
-  if (!res || res.disabled || res.error) return null;
-  return res.items.find((i) => (i.solicitationNumber ?? "").trim() === solnum) ?? res.items[0] ?? null;
+    }, opp.org_id);
+  if (res.error) throw new Error(`SAM search failed: ${res.error}`);
+  if (res.disabled) throw new Error("SAM search is not configured for this account");
+  const notice =
+    res.items.find((i) => (i.solicitationNumber ?? "").trim() === solnum) ??
+    res.items[0] ??
+    null;
+  if (!notice) throw new Error(`SAM returned no notice for solicitation ${solnum}`);
+  return notice;
 }
 
 function mmddyyyy(d: Date): string {
@@ -302,9 +379,10 @@ async function documentFindings(
   }>(
     `select id, name, content_hash, page_count, source_url
        from documents
-      where opportunity_id = $1 and org_id = $2 and kind = 'solicitation'`,
+      where opportunity_id = $1 and org_id = $2 and kind = 'solicitation'
+        and superseded_by is null and disposition <> 'excluded'`,
     [opportunityId, orgId]
-  ).catch(() => []);
+  );
 
   const before: DocumentFacts[] = stored.map((d) => ({
     key: keyFor(d.source_url, d.name),
@@ -329,8 +407,12 @@ async function documentFindings(
 
   const after: DocumentFacts[] = [];
   let unreadable = 0;
+  const seenSourceKeys = new Set<string>();
   for (const link of resourceLinks) {
     const name = nameFromLink(link);
+    const key = keyFor(link, name);
+    if (seenSourceKeys.has(key)) continue;
+    seenSourceKeys.add(key);
     try {
       const res = await guardedFetch(link, {
         maxBytes: MAX_DOC_BYTES,
@@ -338,7 +420,7 @@ async function documentFindings(
         onOversize: "refuse",
       });
       after.push({
-        key: keyFor(link, name),
+        key,
         name,
         contentHash: sha256(res.body),
         // Page count is not recomputed here: opening every PDF to count pages
@@ -350,23 +432,29 @@ async function documentFindings(
     } catch (err) {
       unreadable++;
       after.push({
-        key: keyFor(link, name),
+        key,
         name,
         contentHash: null,
         pageCount: null,
         readable: false,
       });
-      if (err instanceof GuardedFetchError) {
-        // Recorded, not thrown: one attachment behind a login must not stop
-        // the other eight being checked.
-        await logAgent({
-          agent: "reverify",
-          action: "document-unreadable",
-          opportunityId,
-          level: "warn",
-          message: `${name} could not be re-downloaded: ${err.kind}.`,
-        }).catch(() => undefined);
-      }
+      // Recorded, not thrown: one attachment behind a login must not stop the
+      // other eight being checked. Every failure kind is surfaced, not only
+      // GuardedFetchError, because an ordinary network error is equally
+      // important to the document's verification status.
+      const reason = err instanceof GuardedFetchError
+        ? err.kind
+        : err instanceof Error
+          ? err.message
+          : String(err);
+      await logAgent({
+        agent: "reverify",
+        action: "document-unreadable",
+        opportunityId,
+        level: "warn",
+        status: "error",
+        message: `${name} could not be re-downloaded: ${reason}.`,
+      });
     }
   }
 
@@ -384,9 +472,7 @@ async function documentFindings(
 
 /** The source's own id where the URL carries one, else the filename. */
 function keyFor(url: string | null, name: string): string {
-  if (!url) return `name:${name.toLowerCase()}`;
-  const id = /\/files\/([A-Za-z0-9-]+)\//.exec(url)?.[1];
-  return id ? `sam:${id}` : `name:${name.toLowerCase()}`;
+  return attachmentIdentity({ name, url: url ?? undefined });
 }
 
 function nameFromLink(link: string): string {
@@ -410,7 +496,7 @@ function nameFromLink(link: string): string {
  */
 function requirementFindings(
   opp: Opportunity,
-  notice: Awaited<ReturnType<typeof lookupNotice>>
+  notice: Awaited<ReturnType<typeof lookupNotice>> | null
 ): Finding[] {
   const stored: RequirementFacts[] = (opp.solicitation_analysis?.compliance_matrix ?? []).map(
     (r) => ({
@@ -445,7 +531,10 @@ function requirementFindings(
  * Deterministic and cheap: the fingerprint the bid recorded at assembly, and
  * the fingerprint the requirements produce now.
  */
-async function readinessFindings(opportunityId: string, orgId: string): Promise<Finding[]> {
+async function readinessFindings(
+  opp: Opportunity,
+  orgId: string
+): Promise<{ findings: Finding[]; complete: boolean }> {
   const bid = await queryOne<{
     requirements_fingerprint: string | null;
     package_ready: boolean;
@@ -454,37 +543,76 @@ async function readinessFindings(opportunityId: string, orgId: string): Promise<
     `select requirements_fingerprint, package_ready, submission_state
        from bids where opportunity_id = $1 and org_id = $2
       order by created_at desc limit 1`,
-    [opportunityId, orgId]
-  ).catch(() => null);
-  if (!bid) return [];
+    [opp.id, orgId]
+  );
+  if (!bid) {
+    return {
+      complete: false,
+      findings: [
+        {
+          scope: "bid_readiness",
+          subject: "Bid package",
+          kind: "unreadable",
+          impact: "blocking",
+          before: null,
+          after: null,
+          note: "No bid package exists for this opportunity. Build the package before treating it as ready to submit.",
+        },
+      ],
+    };
+  }
 
   const { currentRequirementsFingerprint } = await import("../bid-package-state");
-  const opp = await queryOne<Opportunity>(`select * from opportunities where id = $1`, [
-    opportunityId,
-  ]);
-  const current = opp ? currentRequirementsFingerprint(opp) : null;
-  if (!bid.requirements_fingerprint || !current) return [];
-  if (bid.requirements_fingerprint === current) {
-    return [
-      {
-        scope: "bid_readiness",
-        subject: "Package fingerprint",
-        kind: "unchanged",
-        impact: "safe_metadata",
-        before: bid.requirements_fingerprint,
-        after: current,
-      },
-    ];
+  const current = currentRequirementsFingerprint(opp);
+  const findings: Finding[] = [];
+  let complete = true;
+
+  if (!bid.package_ready) {
+    complete = false;
+    findings.push({
+      scope: "bid_readiness",
+      subject: "Package readiness",
+      kind: "unreadable",
+      impact: "blocking",
+      before: "not ready",
+      after: null,
+      note: "The latest bid is not marked package-ready. Complete the Bid Builder checks before submission.",
+    });
   }
-  return [
-    {
+
+  if (!bid.requirements_fingerprint || !current) {
+    complete = false;
+    findings.push({
       scope: "bid_readiness",
       subject: "Package fingerprint",
-      kind: "changed",
+      kind: "unreadable",
       impact: "blocking",
       before: bid.requirements_fingerprint,
       after: current,
-      note: "The package was assembled against different requirements from the ones on file now. Re-run the Bid Builder before this goes out.",
-    },
-  ];
+      note:
+        "The package or current requirements have no verifiable fingerprint. Rebuild the package from the current requirements before submission.",
+    });
+    return { findings, complete };
+  }
+  if (bid.requirements_fingerprint === current) {
+    findings.push({
+      scope: "bid_readiness",
+      subject: "Package fingerprint",
+      kind: "unchanged",
+      impact: "safe_metadata",
+      before: bid.requirements_fingerprint,
+      after: current,
+    });
+    return { findings, complete };
+  }
+  findings.push({
+    scope: "bid_readiness",
+    subject: "Package fingerprint",
+    kind: "changed",
+    impact: "blocking",
+    before: bid.requirements_fingerprint,
+    after: current,
+    note: "The package was assembled against different requirements from the ones on file now. Re-run the Bid Builder before this goes out.",
+  });
+  return { findings, complete };
 }

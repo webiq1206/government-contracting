@@ -21,6 +21,7 @@ import {
 import { shortDate } from "@/lib/format";
 import { TIMEZONE_CHOICES, sendAtLabel } from "@/lib/domain/recap/day-window";
 import { getRecapSettings, getUserRecapPreference } from "@/lib/recap/settings";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -41,16 +42,41 @@ export const dynamic = "force-dynamic";
  * on the table itself, and a second answer would fight the first.
  */
 export default async function AccountSettingsPage() {
-  const user = await currentUser().catch(() => null);
+  const user = await currentUser();
   if (!user) redirect("/login");
 
+  const loadWarnings: string[] = [];
+  let recapScheduleUnavailable = false;
+  let detailsUnavailable = false;
+  let sessionsUnavailable = false;
   const [details, sessions, sessionId, recapPref, recapSettings] = await Promise.all([
-    accountDetails(user.id),
-    accountSessions(user.id),
+    accountDetails(user.id).catch((error) => {
+      console.error("[account] account details failed to load:", error);
+      detailsUnavailable = true;
+      loadWarnings.push(
+        "Your account details could not be read, so missing values below are not confirmed."
+      );
+      return null;
+    }),
+    accountSessions(user.id).catch((error) => {
+      console.error("[account] session list failed to load:", error);
+      sessionsUnavailable = true;
+      loadWarnings.push(
+        "Your signed-in devices could not be read. No device action is available until this list is verified."
+      );
+      return [];
+    }),
     currentSessionId(),
-    getUserRecapPreference(user.id).catch(() => null),
+    getUserRecapPreference(user.id).catch(() => {
+      loadWarnings.push("Your recap time zone and opt-out status could not be loaded.");
+      return null;
+    }),
     user.organizationId
-      ? getRecapSettings(user.organizationId).catch(() => null)
+      ? getRecapSettings(user.organizationId).catch(() => {
+          recapScheduleUnavailable = true;
+          loadWarnings.push("The account recap schedule could not be loaded.");
+          return null;
+        })
       : Promise.resolve(null),
   ]);
 
@@ -68,6 +94,7 @@ export default async function AccountSettingsPage() {
         breadcrumbs={[{ label: "Settings", href: "/settings/profile" }]}
         status={roleLabel(role)}
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         <section aria-labelledby="acct-details" className="max-w-3xl space-y-3">
           <div className="border-b-2 border-accent/80 pb-2">
@@ -79,7 +106,14 @@ export default async function AccountSettingsPage() {
             </h2>
           </div>
           <div className="panel-inset space-y-4 px-4 py-4">
-            <DisplayNameForm initial={details?.name ?? ""} />
+            {detailsUnavailable ? (
+              <p role="alert" className="text-sm leading-relaxed text-risk">
+                Account details are unavailable. Reload this page before changing your name or
+                relying on the dates shown here.
+              </p>
+            ) : (
+              <DisplayNameForm initial={details?.name ?? ""} />
+            )}
             <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
               <div>
                 <dt className="label">Email address</dt>
@@ -93,7 +127,11 @@ export default async function AccountSettingsPage() {
               <div>
                 <dt className="label">With this account since</dt>
                 <dd className="mt-0.5 text-foreground">
-                  {details?.createdAt ? shortDate(details.createdAt) : "Not recorded"}
+                  {detailsUnavailable
+                    ? "Unavailable"
+                    : details?.createdAt
+                      ? shortDate(details.createdAt)
+                      : "Not recorded"}
                 </dd>
               </div>
             </dl>
@@ -125,6 +163,7 @@ export default async function AccountSettingsPage() {
               optedOut={recapPref?.optedOut ?? false}
               sendAt={sendAtLabel(recapSettings?.send_at ?? "06:00")}
               recapEnabled={recapSettings?.enabled ?? false}
+              recapStatusKnown={!recapScheduleUnavailable}
               choices={TIMEZONE_CHOICES}
             />
           </div>
@@ -227,7 +266,18 @@ export default async function AccountSettingsPage() {
               recorded rather than as a guess.
             </p>
           </div>
-          <SessionList sessions={views} summary={sessionSummary(views)} />
+          {sessionsUnavailable ? (
+            <div role="alert" className="panel-inset border-risk/30 bg-risk/5 px-4 py-3">
+              <p className="text-sm font-semibold text-risk">Signed-in devices are unavailable</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                The database did not confirm which sessions are active. Reload this page. If the
+                list still cannot be read and you are concerned about access, change your password
+                to end every other session.
+              </p>
+            </div>
+          ) : (
+            <SessionList sessions={views} summary={sessionSummary(views)} />
+          )}
         </section>
 
         <section aria-labelledby="acct-display" className="max-w-3xl space-y-3">

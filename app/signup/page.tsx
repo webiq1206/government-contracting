@@ -12,6 +12,7 @@ import {
 } from "@/lib/billing/prices";
 import { entitlementOf, hasAccess } from "@/lib/billing/entitlements";
 import { trackEvent } from "@/lib/analytics";
+import { SessionLoadFailure } from "@/components/session-load-failure";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,15 @@ export default async function SignupPage({
 }: {
   searchParams?: { plan?: string };
 }) {
-  const user = await currentUser().catch(() => null);
+  const auth = await currentUser().then(
+    (user) => ({ ok: true as const, user }),
+    (error) => {
+      console.error("[signup] existing session could not be checked:", error);
+      return { ok: false as const, user: null };
+    }
+  );
+  if (!auth.ok) return <SessionLoadFailure />;
+  const user = auth.user;
   if (user) {
     redirect(hasAccess(entitlementOf(user)) ? "/today" : "/settings/billing");
   }

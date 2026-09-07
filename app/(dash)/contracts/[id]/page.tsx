@@ -4,10 +4,11 @@ import { PageFrame } from "@/components/page-frame";
 import { contractRecord } from "@/lib/contract-record";
 import { VIEW_LABEL } from "@/lib/domain/contract-status";
 import { ContractDetail, contractViewOf } from "@/components/contract-detail";
-import { tryResolveTenantOrgId } from "@/lib/tenant";
 import { assignableMembers, ownerOf } from "@/lib/ownership";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/domain/roles";
+import { currentOrg } from "@/lib/data";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -21,16 +22,32 @@ export const dynamic = "force-dynamic";
  * to be shown because they had nowhere to be recorded.
  */
 export default async function ContractPage({ params }: { params: { id: string } }) {
-  const orgId = (await tryResolveTenantOrgId()) ?? "";
+  const loadWarnings: string[] = [];
+  const orgId = await currentOrg();
   const record = await contractRecord(orgId, params.id);
   if (!record) notFound();
 
   const { header: h, money } = record;
-  const viewer = await currentUser().catch(() => null);
+  const viewer = await currentUser().catch(() => {
+    loadWarnings.push(
+      "Your role could not be confirmed, so contract editing is disabled."
+    );
+    return null;
+  });
   const canEdit = can(viewer?.orgRole, "manage_contracts");
   const [teamMembers, owner] = await Promise.all([
-    assignableMembers().catch(() => []),
-    ownerOf("contract", params.id).catch(() => null),
+    assignableMembers().catch(() => {
+      loadWarnings.push(
+        "Assignable team members could not be loaded, so assignment controls are unavailable."
+      );
+      return [];
+    }),
+    ownerOf("contract", params.id).catch(() => {
+      loadWarnings.push(
+        "The contract owner could not be loaded, so it may appear unassigned."
+      );
+      return null;
+    }),
   ]);
 
   /*
@@ -67,6 +84,7 @@ export default async function ContractPage({ params }: { params: { id: string } 
           </span>
         }
       />
+      <ShellDataWarning items={loadWarnings} />
 
       <div className="scroll-thin flex-1 overflow-y-auto p-4">
         <ContractDetail

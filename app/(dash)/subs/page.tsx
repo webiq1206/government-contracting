@@ -24,6 +24,7 @@ import {
   type FilterSpec,
 } from "@/lib/domain/table-view";
 import type { Subcontractor } from "@/lib/types";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -190,6 +191,7 @@ export default async function SubsPage({
 }: {
   searchParams: Record<string, string | string[] | undefined>;
 }) {
+  const loadWarnings: string[] = [];
   const values = parseFilters(SPECS, searchParams);
   const sort = parseSort(searchParams, SORT_KEYS);
 
@@ -268,9 +270,19 @@ export default async function SubsPage({
     })?.id ?? null;
   const [peeked, viewer, members] = await Promise.all([
     peekId ? subcontractorQuickViewData(peekId) : Promise.resolve(null),
-    currentUser().catch(() => null),
+    currentUser().catch(() => {
+      loadWarnings.push(
+        "Your role could not be confirmed, so protected subcontractor actions are disabled."
+      );
+      return null;
+    }),
     // Everybody a firm could be handed to, read once for the page.
-    assignableMembers().catch(() => []),
+    assignableMembers().catch(() => {
+      loadWarnings.push(
+        "Assignable team members could not be loaded, so assignment controls are unavailable."
+      );
+      return [];
+    }),
   ]);
 
   function withoutPeek(): string {
@@ -331,6 +343,8 @@ export default async function SubsPage({
         }
         explanation="Firms Brost Co finds, verifies and reuses across bids. Preferred subs are contacted first on new work."
       />
+
+      <ShellDataWarning items={loadWarnings} />
 
       <FilterToolbar
         pathname="/subs"

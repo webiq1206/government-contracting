@@ -69,7 +69,7 @@ export function verifyFileToken(key: string, exp: number, sig: string): boolean 
   }
 }
 
-type Backend = "supabase" | "db" | "local";
+export type StorageBackend = "supabase" | "db" | "local";
 
 const LOCAL_ROOT = path.join(process.cwd(), ".data", "storage");
 
@@ -98,25 +98,66 @@ async function readLocal(key: string): Promise<Buffer> {
   return fs.readFile(localPathFor(key));
 }
 
-async function writeDb(key: string, data: Buffer, mime: string): Promise<void> {
-  // Stamp the owning org so account deletion and the retention sweep can clear
-  // the bytes. Without it, file_blobs.org_id was always null and a purged
-  // account's documents (W-9s, insurance certs, bids) survived forever.
-  let orgId: string | null = null;
-  try {
-    const { tryResolveTenantOrgId } = await import("../tenant");
-    orgId = await tryResolveTenantOrgId();
-  } catch {
-    orgId = null;
+/** A path already belongs to another tenant and must never be overwritten. */
+export class StorageOwnershipCollisionError extends Error {
+  constructor(key: string) {
+    super(`Storage path is already owned by another organization: ${key}`);
+    this.name = "StorageOwnershipCollisionError";
   }
-  await query(
+}
+
+/**
+ * Put every new object in a tenant-owned namespace.
+ *
+ * Existing unprefixed paths remain readable. Only new writes are changed, so
+ * no migration or link rewrite is needed. Even if two tenants independently
+ * generate the same logical key, their physical object names cannot collide.
+ */
+export function storageKeyForOrg(key: string, orgId: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orgId)) {
+    throw new Error("A valid organization is required for a storage write.");
+  }
+  const parts = String(key)
+    .split(/[\\/]+/)
+    .filter((part) => part !== "" && part !== ".");
+  if (parts.length === 0 || parts.some((part) => part === ".." || part.includes("\u0000"))) {
+    throw new Error("Storage path is not valid.");
+  }
+  const normalized = parts.join("/");
+  const ownPrefix = `orgs/${orgId}/`;
+  if (normalized.startsWith(ownPrefix)) return normalized;
+  if (normalized.startsWith("orgs/")) throw new StorageOwnershipCollisionError(normalized);
+  return `${ownPrefix}${normalized}`;
+}
+
+async function uploadOrgId(): Promise<string> {
+  const { resolveTenantOrgId } = await import("../tenant");
+  // Uploads are tenant writes. A public request or a global worker without an
+  // explicit runWithOrg scope must fail rather than placing private bytes in
+  // the founding customer's namespace.
+  return resolveTenantOrgId();
+}
+
+async function writeDb(
+  key: string,
+  data: Buffer,
+  mime: string,
+  orgId: string
+): Promise<void> {
+  // The ownership predicate makes collision refusal atomic. A check followed
+  // by an upsert leaves a race where another tenant can claim the path between
+  // those statements and have its bytes replaced.
+  const rows = await query<{ path: string }>(
     `insert into file_blobs (path, mime, bytes, org_id)
        values ($1, $2, $3, $4)
      on conflict (path) do update set mime = excluded.mime, bytes = excluded.bytes,
                                        org_id = coalesce(file_blobs.org_id, excluded.org_id),
-                                       created_at = now()`,
+                                       created_at = now()
+       where file_blobs.org_id is not distinct from excluded.org_id
+     returning path`,
     [key, mime, data, orgId]
   );
+  if (rows.length === 0) throw new StorageOwnershipCollisionError(key);
 }
 
 /** Read a blob from Postgres, or null when it isn't there. */
@@ -127,9 +168,36 @@ async function readDb(key: string): Promise<Buffer | null> {
   return row?.bytes ?? null;
 }
 
+async function removeSupabaseObject(key: string): Promise<void> {
+  if (!config.supabase.enabled) {
+    throw new Error("Supabase storage is not configured, so the object could not be deleted.");
+  }
+  const { error } = await client().storage.from(config.supabase.bucket).remove([key]);
+  if (error) throw new Error(`[storage] Supabase delete failed: ${error.message}`);
+}
+
+async function removeLocalObject(key: string): Promise<void> {
+  try {
+    await fs.unlink(localPathFor(key));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+}
+
+async function removeExternalCopies(
+  key: string,
+  backend?: StorageBackend
+): Promise<void> {
+  if (backend === "db") return;
+  if (backend === "supabase") return removeSupabaseObject(key);
+  if (backend === "local") return removeLocalObject(key);
+  if (config.supabase.enabled) await removeSupabaseObject(key);
+  await removeLocalObject(key);
+}
+
 export interface UploadResult {
   path: string;
-  backend: Backend;
+  backend: StorageBackend;
 }
 
 export const storage = {
@@ -139,26 +207,43 @@ export const storage = {
 
   /** Store a document. Supabase when configured, otherwise durably in Postgres. */
   async upload(key: string, data: Buffer, mime: string): Promise<UploadResult> {
+    const orgId = await uploadOrgId();
+    const ownedKey = storageKeyForOrg(key, orgId);
     if (config.supabase.enabled) {
       const { error } = await client()
         .storage.from(config.supabase.bucket)
-        .upload(key, data, { upsert: true, contentType: mime });
+        .upload(ownedKey, data, { upsert: true, contentType: mime });
       if (error) throw new Error(`[storage] Supabase upload failed: ${error.message}`);
-      return { path: key, backend: "supabase" };
+      return { path: ownedKey, backend: "supabase" };
     }
     // Durable default: store the bytes in Postgres so they survive redeploys.
     try {
-      await writeDb(key, data, mime);
-      return { path: key, backend: "db" };
+      await writeDb(ownedKey, data, mime, orgId);
+      return { path: ownedKey, backend: "db" };
     } catch (err) {
+      // Falling back would turn a refused cross-tenant overwrite into a second
+      // physical object at the same logical address. Ownership errors fail.
+      if (err instanceof StorageOwnershipCollisionError) throw err;
       // Last resort so a document is never silently lost, though local disk is
       // ephemeral on Replit (this path should be rare).
       console.warn(
         `[storage] Postgres write failed, falling back to local disk: ${(err as Error).message}`
       );
-      await writeLocal(key, data);
-      return { path: key, backend: "local" };
+      await writeLocal(ownedKey, data);
+      return { path: ownedKey, backend: "local" };
     }
+  },
+
+  /**
+   * Remove only object-storage and filesystem copies.
+   *
+   * Retention uses this while its Postgres deletion transaction is open, then
+   * removes file_blobs on that same transaction so a rollback restores DB
+   * bytes. This is intentionally low-level: callers must prove globally that
+   * no other tenant references the path before invoking it.
+   */
+  async removeExternal(key: string, backend?: StorageBackend): Promise<void> {
+    await removeExternalCopies(key, backend);
   },
 
   /**
@@ -166,8 +251,8 @@ export const storage = {
    * try Postgres first (the default store) and fall back to local disk so legacy
    * files still resolve.
    */
-  async download(key: string, backend?: Backend): Promise<Buffer> {
-    const target: Backend | undefined =
+  async download(key: string, backend?: StorageBackend): Promise<Buffer> {
+    const target: StorageBackend | undefined =
       backend ?? (config.supabase.enabled ? "supabase" : undefined);
 
     if (target === "supabase") {

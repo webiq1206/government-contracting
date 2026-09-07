@@ -88,7 +88,8 @@ export function TrialBanner({
             {unreadable.length === 1
               ? `We could not read your ${TRIAL_METRIC_LABEL[unreadable[0].metric]} meter.`
               : `We could not read ${unreadable.length} of your usage meters.`}{" "}
-            Your work is unaffected. Send this to support:
+            Actions that use those meters are held until the count can be verified. Send this to
+            support:
           </span>
           {unreadable.map((q) => (
             <code key={q.metric} className="select-all font-mono text-[11px]">

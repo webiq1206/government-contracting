@@ -58,6 +58,19 @@ describe("bucketOf", () => {
     expect(bucketOf(item({ key: "f", due: hours(2) }), NOW)).toBe("due_today");
     expect(bucketOf(item({ key: "g", due: hours(40) }), NOW)).toBe("remaining");
   });
+
+  it("uses the saved timezone instead of the server process timezone", () => {
+    const due = "2026-08-27T00:30:00Z";
+    expect(bucketOf(item({ key: "utc", due }), NOW, "UTC")).toBe("remaining");
+    expect(bucketOf(item({ key: "denver", due }), NOW, "America/Denver")).toBe("due_today");
+  });
+
+  it("uses real local midnights across daylight-saving changes", () => {
+    const spring = new Date("2026-03-08T18:00:00Z");
+    const nextMidnight = "2026-03-09T06:30:00Z";
+    expect(bucketOf(item({ key: "dst", due: nextMidnight }), spring, "America/Denver"))
+      .toBe("remaining");
+  });
 });
 
 describe("queueCounts", () => {

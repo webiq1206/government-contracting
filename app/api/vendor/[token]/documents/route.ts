@@ -7,6 +7,7 @@ import {
 } from "@/lib/sub-compliance-store";
 import { guardRejectedToken, guardWrite } from "@/lib/vendor-throttle";
 import { logAgent } from "@/lib/logger";
+import { runWithOrg } from "@/lib/tenant-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,8 +40,23 @@ export async function POST(req: Request, { params }: { params: { token: string }
   const throttled = guardWrite(req, pointer.s, "upload");
   if (throttled) return throttled;
 
-  const sub = await loadPortalSubject(pointer.s);
+  let sub: Awaited<ReturnType<typeof loadPortalSubject>>;
+  try {
+    sub = await loadPortalSubject(pointer.s);
+  } catch (error) {
+    console.error("[vendor-documents] paperwork owner could not be checked:", error);
+    return NextResponse.json(
+      {
+        error:
+          "We could not check this paperwork link. Nothing was uploaded. Try again in a few minutes.",
+      },
+      { status: 503, headers: { "Retry-After": "5" } }
+    );
+  }
   if (!sub) {
+    return NextResponse.json({ error: "This link is no longer valid." }, { status: 404 });
+  }
+  if (!sub.org_id) {
     return NextResponse.json({ error: "This link is no longer valid." }, { status: 404 });
   }
 
@@ -54,28 +70,34 @@ export async function POST(req: Request, { params }: { params: { token: string }
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  try {
-    const result = await recordUploadedDocument(sub, { ...parsed.value, source: "subcontractor" });
-    return NextResponse.json({
-      ok: true,
-      id: result.id,
-      message: "Got it. Brost Co will check it over, and we will be in touch if anything is missing.",
-    });
-  } catch (err) {
-    await logAgent({
-      agent: "compliance",
-      action: "document-upload-failed",
-      subcontractorId: sub.id,
-      level: "error",
-      status: "error",
-      message: `An upload from ${sub.company_name} could not be saved: ${(err as Error).message}`,
-    });
-    return NextResponse.json(
-      {
-        error:
-          "We could not save that, and it is our end rather than yours. Reply to the email you received and we will sort it out.",
-      },
-      { status: 500 }
-    );
-  }
+  return runWithOrg(sub.org_id, async () => {
+    try {
+      const result = await recordUploadedDocument(sub, {
+        ...parsed.value,
+        source: "subcontractor",
+      });
+      return NextResponse.json({
+        ok: true,
+        id: result.id,
+        message:
+          "Got it. Brost Co will check it over, and we will be in touch if anything is missing.",
+      });
+    } catch (err) {
+      await logAgent({
+        agent: "compliance",
+        action: "document-upload-failed",
+        subcontractorId: sub.id,
+        level: "error",
+        status: "error",
+        message: `An upload from ${sub.company_name} could not be saved: ${(err as Error).message}`,
+      });
+      return NextResponse.json(
+        {
+          error:
+            "We could not save that, and it is our end rather than yours. Reply to the email you received and we will sort it out.",
+        },
+        { status: 500 }
+      );
+    }
+  });
 }

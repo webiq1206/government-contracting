@@ -44,12 +44,8 @@ export function clearIntegrationKeyCache(): void {
  * inside runWithOrg) and then the signed-in user's membership.
  */
 async function owningOrg(): Promise<string> {
-  try {
-    const { tryResolveTenantOrgId } = await import("./tenant");
-    return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  } catch {
-    return LEGACY_ORG_ID;
-  }
+  const { resolveTenantOrgId } = await import("./tenant");
+  return resolveTenantOrgId();
 }
 
 /**
@@ -69,7 +65,7 @@ export async function orgApiKey(key: AllowedEnvKey, orgId?: string): Promise<str
   const row = await queryOne<{ value_enc: string }>(
     `select value_enc from integration_settings where env_key = $1 and org_id = $2`,
     [key, org]
-  ).catch(() => null);
+  );
 
   let value = row ? (decryptSecret(row.value_enc) ?? "") : "";
 
@@ -114,7 +110,7 @@ async function hasPlatformGrant(key: AllowedEnvKey, orgId: string): Promise<bool
       where org_id = $1 and env_key = $2
         and (expires_at is null or expires_at > now())`,
     [orgId, key]
-  ).catch(() => null);
+  );
   return row !== null;
 }
 
@@ -135,7 +131,7 @@ async function trialMayBorrow(key: AllowedEnvKey, orgId: string): Promise<boolea
     `select subscription_status, trial_ends_at::text as trial_ends_at
        from organizations where id = $1`,
     [orgId]
-  ).catch(() => null);
+  );
   if (!org) return false;
 
   const { accessLevel } = await import("./billing/entitlements");
@@ -145,7 +141,7 @@ async function trialMayBorrow(key: AllowedEnvKey, orgId: string): Promise<boolea
   const used = await queryOne<{ calls: number }>(
     `select calls from platform_key_usage where org_id = $1 and env_key = $2`,
     [orgId, key]
-  ).catch(() => null);
+  );
   return (used?.calls ?? 0) < budget;
 }
 
@@ -158,7 +154,7 @@ async function recordPlatformKeyUse(key: AllowedEnvKey, orgId: string): Promise<
      on conflict (org_id, env_key)
        do update set calls = platform_key_usage.calls + 1, last_used = now()`,
     [orgId, key]
-  ).catch(() => {});
+  );
 }
 
 /** Borrowed-key consumption for an organization, for the UI and admin views. */
@@ -170,7 +166,7 @@ export async function platformKeyUsage(
   const rows = await query<{ env_key: string; calls: number }>(
     `select env_key, calls from platform_key_usage where org_id = $1`,
     [orgId]
-  ).catch(() => []);
+  );
   return rows.map((r) => {
     const budget = TRIAL_PLATFORM_KEY_BUDGET[r.env_key as AllowedEnvKey] ?? 0;
     return { ...r, budget, exhausted: budget > 0 && r.calls >= budget };
@@ -195,7 +191,7 @@ export async function listPlatformGrants(): Promise<PlatformGrant[]> {
        from platform_key_grants g
        left join organizations o on o.id = g.org_id
       order by g.granted_at desc`
-  ).catch(() => []);
+  );
 }
 
 /** Lend one platform key to one organization. Overwrites an existing grant. */

@@ -38,6 +38,7 @@ export function OutreachApprovalCard({
   const [body, setBody] = useState(draft.body ?? "");
   const [busy, setBusy] = useState<null | "approve" | "reject">(null);
   const [error, setError] = useState<string | null>(null);
+  const [approvedButUnsent, setApprovedButUnsent] = useState(false);
 
   async function act(action: "approve" | "reject") {
     setBusy(action);
@@ -53,6 +54,13 @@ export function OutreachApprovalCard({
         setError(data.error ?? "Action failed");
         return;
       }
+      if (action === "approve" && data.send?.status === "error") {
+        setApprovedButUnsent(true);
+        setError(
+          `The draft is approved, but no email was sent. ${data.send.reason} Use Retry send after the sender issue is fixed.`
+        );
+        return;
+      }
       if (nextHref || doneHref) router.push(nextHref ?? doneHref!);
       router.refresh();
     } catch (e) {
@@ -66,7 +74,13 @@ export function OutreachApprovalCard({
     <div className="card space-y-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-medium text-foreground">{draft.domain}</p>
-        <span className="badge bg-review/15 text-review">Awaiting approval</span>
+        <span
+          className={`badge ${
+            approvedButUnsent ? "bg-risk/15 text-risk" : "bg-review/15 text-review"
+          }`}
+        >
+          {approvedButUnsent ? "Approved, send failed" : "Awaiting approval"}
+        </span>
       </div>
       <label className="block">
         <span className="label mb-1 block">Subject</span>
@@ -90,14 +104,24 @@ export function OutreachApprovalCard({
       </p>
       <div className="flex items-center gap-2">
         <button
+          type="button"
           className="btn-primary text-sm"
           onClick={() => act("approve")}
           disabled={busy !== null}
           aria-busy={busy === "approve"}
         >
-          {busy === "approve" ? "Approving…" : nextHref ? "Approve & next" : "Approve"}
+          {busy === "approve"
+            ? approvedButUnsent
+              ? "Retrying…"
+              : "Approving…"
+            : approvedButUnsent
+              ? "Retry send"
+              : nextHref
+                ? "Approve & next"
+                : "Approve"}
         </button>
         <button
+          type="button"
           className="btn-ghost text-sm"
           onClick={() => act("reject")}
           disabled={busy !== null}
@@ -106,7 +130,11 @@ export function OutreachApprovalCard({
           {busy === "reject" ? "Rejecting…" : "Reject"}
         </button>
       </div>
-      {error && <p className="text-xs text-risk">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-risk">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

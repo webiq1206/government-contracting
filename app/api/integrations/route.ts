@@ -18,10 +18,10 @@ export const dynamic = "force-dynamic";
 async function assemble() {
   await hydrateIntegrationEnv();
   const sources = await settingSources();
-  const gmailConnected = await gmail.isConnected().catch(() => false);
+  const gmailConnected = await gmail.isConnected();
   // A stored key says nothing about whether the service behind it still
   // answers. This is what happened when we last used it.
-  const aiTrouble = await recentAiTrouble().catch(() => ({ count: 0, reason: null, lastAt: null }));
+  const aiTrouble = await recentAiTrouble();
   return INTEGRATION_DEFS.map((def) => {
     const fields = def.fields.map((f) => ({
       ...f,

@@ -77,7 +77,7 @@ describe("what the queue does when asked for it", () => {
 describe("what the counter actually counts", () => {
   it("counts bids found and emails sent, and only real pursue or pass as a decision", () => {
     const src = readFileSync("lib/data.ts", "utf8");
-    const at = src.indexOf("export async function completedToday()");
+    const at = src.indexOf("export async function completedToday(");
     expect(at).toBeGreaterThan(-1);
     const fn = src.slice(at, src.indexOf("export interface RecentChange", at));
     expect(fn).toContain("as found");
@@ -86,5 +86,8 @@ describe("what the counter actually counts", () => {
     expect(fn).not.toContain("stage <> 'discovered'");
     expect(fn).toContain("channel = 'email'");
     expect(fn).toContain("direction = 'outbound'");
+    expect(fn).toContain("window.start");
+    expect(fn).toContain("window.end");
+    expect(fn).not.toContain("date_trunc('day', now())");
   });
 });

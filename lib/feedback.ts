@@ -145,7 +145,7 @@ export async function feedbackFor(orgId: string, limit = 20): Promise<FeedbackRe
       order by created_at desc
       limit $2`,
     [orgId, limit]
-  ).catch(() => []);
+  );
 }
 
 /** One report, scoped to the org that owns it. */
@@ -160,5 +160,5 @@ export async function feedbackReport(
        from feedback_reports
       where org_id = $1 and id = $2`,
     [orgId, id]
-  ).catch(() => null);
+  );
 }

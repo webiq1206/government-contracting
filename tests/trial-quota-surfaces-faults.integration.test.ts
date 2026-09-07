@@ -16,10 +16,8 @@
  *
  * And it breaks the query on purpose and asserts that the result is reported
  * rather than rounded down to zero: `used` is null, `unreadable` carries a
- * reference, and `exhausted` is false. That last one is the deliberate
- * fail-open -- an unreadable meter must not lock somebody out -- and it is
- * asserted here so that it stays a decision rather than becoming an accident
- * again.
+ * reference, and `exhausted` is false. Unknown is distinct from exhausted;
+ * the action gate separately holds metered work until the count is verified.
  */
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { randomUUID } from "crypto";
@@ -73,8 +71,9 @@ d("trial meters (integration)", () => {
       [org.id, ["hvac"]]
     );
     await query(
-      `insert into communications (org_id, subcontractor_id, channel, direction, subject, body, delivery_state)
-       values ($1,$2,'email','outbound','Quote request','Please price this.','sent')`,
+      `insert into communications
+         (org_id, subcontractor_id, channel, direction, subject, body, provider, delivery_state)
+       values ($1,$2,'email','outbound','Quote request','Please price this.','gmail','sent')`,
       [org.id, sub[0].id]
     );
 
@@ -96,8 +95,8 @@ d("trial meters (integration)", () => {
     expect(state.unreadable, "the fault must be carried, not dropped").toBeTruthy();
     expect(state.unreadable!.reference).toMatch(/^QUOTA-AI-BRIEFS-[0-9a-f]{8}$/);
     expect(state.unreadable!.detail.length).toBeGreaterThan(20);
-    // Deliberate: an unreadable meter allows work and is reported, rather than
-    // locking somebody out for a fault that is not theirs.
+    // Unknown is not falsely labelled exhausted. The action gate uses the
+    // unreadable state to hold metered work with an actionable explanation.
     expect(state.exhausted).toBe(false);
     // The server log carries the same reference the customer is shown.
     expect(

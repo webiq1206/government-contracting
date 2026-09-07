@@ -23,6 +23,7 @@ let sessionUser: { id: string; organizationId: string | null } = {
   orgRole: "owner",
   organizationId: null,
 };
+let PURSUIT_MAY_ACT = true;
 
 vi.mock("../lib/queue/pgboss", () => ({
   createPgBossQueue: async () => ({
@@ -47,6 +48,19 @@ vi.mock("../lib/app-settings", () => ({
   isAutomationStopped: async () => false,
   isPlatformAutomationPaused: async () => false,
   AUTOMATION_PAUSED_ERROR: "paused",
+}));
+vi.mock("../lib/pursuit-guard", () => ({
+  pursuitStatus: async () => ({
+    state: "active",
+    version: 1,
+    mayAct: PURSUIT_MAY_ACT,
+    known: true,
+    retryable: true,
+  }),
+}));
+vi.mock("../lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/auth")>()),
+  currentUser: async () => sessionUser,
 }));
 /*
  * The real module underneath, with only the session pinned. Listing exports
@@ -77,6 +91,7 @@ const KEY = "enqueuedByOrgId";
 describe("who a queued job says it belongs to", () => {
   beforeEach(() => {
     sent.length = 0;
+    PURSUIT_MAY_ACT = true;
   });
 
   it("replaces a provenance the caller tried to set", async () => {
@@ -107,6 +122,56 @@ describe("who a queued job says it belongs to", () => {
     await enqueue("outreach", { subcontractorId: "y" }, { orgId: OURS });
 
     expect(sent[0].payload[KEY]).toBe(OURS);
+  });
+
+  it("replaces recovery and closed-work markers instead of trusting payload fields", async () => {
+    const { enqueue, CLOSED_OPPORTUNITY_JOB_KEY, RECOVERY_REQUEUE_KEY } = await import(
+      "../lib/queue"
+    );
+    const recoveryId = "33333333-3333-4333-8333-333333333333";
+    await enqueue(
+      "bid-builder",
+      {
+        opportunityId: "x",
+        [RECOVERY_REQUEUE_KEY]: "44444444-4444-4444-8444-444444444444",
+        [CLOSED_OPPORTUNITY_JOB_KEY]: true,
+      },
+      { orgId: OURS, recoveryRequeueId: recoveryId }
+    );
+
+    expect(sent[0].payload[RECOVERY_REQUEUE_KEY]).toBe(recoveryId);
+    expect(sent[0].payload[CLOSED_OPPORTUNITY_JOB_KEY]).toBeUndefined();
+  });
+
+  it("allows only trusted won subcontractor onboarding to run after close", async () => {
+    const { enqueue, CLOSED_OPPORTUNITY_JOB_KEY } = await import("../lib/queue");
+    PURSUIT_MAY_ACT = false;
+
+    expect(
+      await enqueue(
+        "sub-onboarding",
+        { opportunityId: "x", [CLOSED_OPPORTUNITY_JOB_KEY]: true },
+        { orgId: OURS }
+      )
+    ).toBeNull();
+    expect(sent).toHaveLength(0);
+
+    await enqueue(
+      "sub-onboarding",
+      { opportunityId: "x" },
+      { orgId: OURS, allowClosedOpportunity: true }
+    );
+    expect(sent).toHaveLength(1);
+    expect(sent[0].payload[CLOSED_OPPORTUNITY_JOB_KEY]).toBe(true);
+
+    expect(
+      await enqueue(
+        "scoring-engine",
+        { opportunityId: "x" },
+        { orgId: OURS, allowClosedOpportunity: true }
+      )
+    ).toBeNull();
+    expect(sent).toHaveLength(1);
   });
 });
 
@@ -220,10 +285,10 @@ d("what the manual run endpoint accepts (integration)", () => {
     expect(sent[0].payload[KEY]).not.toBe(theirOrg);
   });
 
-  it("still allows a sweep that names no record at all", async () => {
+  it("refuses an empty payload for an agent that needs an opportunity", async () => {
     const res = await run({});
 
-    expect(res.status).toBe(200);
-    expect(sent.length).toBe(1);
+    expect(res.status).toBe(400);
+    expect(sent.length).toBe(0);
   });
 });

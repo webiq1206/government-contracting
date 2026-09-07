@@ -62,6 +62,13 @@ vi.mock("../lib/db", () => ({
   query: vi.fn(async () => ({ rows: [], rowCount: 1 })),
   queryOne: vi.fn(async () => null),
 }));
+vi.mock("../lib/domain/sender-identity", () => ({
+  resolveOutreachSender: async () => ({
+    from: "Brost Co <platform@example.invalid>",
+    replyTo: "platform@example.invalid",
+    connected: true,
+  }),
+}));
 vi.mock("../lib/analytics", () => ({ trackEvent: vi.fn(async () => {}) }));
 vi.mock("../lib/auth", () => ({
   hashPassword: (p: string) => `hashed:${p}`,

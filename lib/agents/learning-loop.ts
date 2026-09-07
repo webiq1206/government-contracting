@@ -55,6 +55,11 @@ interface BidOutcomeRow {
   tier: string | null;
 }
 
+interface LearningOrgResult {
+  summary: string;
+  mailError: string | null;
+}
+
 export const learningLoop: AgentDefinition = {
   name: "learning-loop",
   label: "Learning Loop",
@@ -76,24 +81,31 @@ export const learningLoop: AgentDefinition = {
     const fanout = await orgsToSweep(AGENT_NAME);
     const orgs = fanout.orgs;
 
-    const summaries: string[] = [];
+    const results: LearningOrgResult[] = [];
     for (const org of orgs) {
-      summaries.push(await runWithOrg(org.id, () => learnForOrg(org.id)));
+      results.push(await runWithOrg(org.id, () => learnForOrg(org.id)));
     }
 
     const note = fanoutNote(fanout);
+    const mailFailures = results.filter((result) => result.mailError).length;
+    const summary = note
+      ? note
+      : results.length === 1
+        ? results[0]?.summary ?? "No organization was processed."
+        : `Learning loop across ${results.length} organizations. ${results.map((r) => r.summary).join(" | ")}`;
     return {
-      ok: fanout.error == null,
-      summary: note
-        ? note
-        : summaries.length === 1
-          ? summaries[0]
-          : `Learning loop across ${summaries.length} organizations. ${summaries.join(" | ")}`,
+      ok: fanout.error == null && mailFailures === 0,
+      summary: `${summary}${
+        mailFailures
+          ? ` ${mailFailures} configured weekly learning digest could not be sent; check the platform Gmail sender and retry.`
+          : ""
+      }`,
+      humanActionRequired: mailFailures > 0 || fanout.error != null,
     };
   },
 };
 
-async function learnForOrg(orgId: string): Promise<string> {
+async function learnForOrg(orgId: string): Promise<LearningOrgResult> {
   const profile = await getProfileJson();
 
   // --- Load recent decided bids. ---
@@ -251,21 +263,50 @@ async function learnForOrg(orgId: string): Promise<string> {
   // Same rule as the KPI digest: it goes to the platform's own address, so
   // it may only ever carry the platform's own numbers. Sent per tenant it
   // would mail each customer's win/loss record to us, once per customer.
-  if (orgId === LEGACY_ORG_ID && (await systemMail.enabled())) {
+  let mailError: string | null = null;
+  if (orgId === LEGACY_ORG_ID && config.systemMail.digestTo) {
     const html = `<h2>Learning Loop, Weekly Report</h2><pre style="white-space:pre-wrap;font-family:inherit">${escapeHtml(
       report
     )}</pre>`;
-    await systemMail.sendDigest({
-      to: config.systemMail.digestTo,
-      subject: `BROST CO Learning Loop, ${wins}W/${losses}L this cycle`,
-      html,
-      text: report,
-    });
+    try {
+      const ready = await systemMail.deliverable();
+      if (!ready) {
+        mailError = "The platform Gmail connection or verified sender identity is not ready.";
+      } else {
+        const delivery = await systemMail.sendDigest({
+          to: config.systemMail.digestTo,
+          subject: `BROST CO Learning Loop, ${wins}W/${losses}L this cycle`,
+          html,
+          text: report,
+        });
+        if (delivery.disabled || delivery.error) {
+          mailError = delivery.error ?? "The platform inbox refused the weekly learning digest.";
+        }
+      }
+    } catch (err) {
+      mailError = `The platform sender identity could not be checked: ${(err as Error).message}`;
+    }
+
+    if (mailError) {
+      await logAgent({
+        agent: "learning-loop",
+        action: "weekly-digest-unsent",
+        level: "error",
+        status: "error",
+        message: `The weekly learning report was saved, but its digest was not sent: ${mailError}`.slice(
+          0,
+          500
+        ),
+      });
+    }
   }
 
-  return `${outcomes.length} outcomes (${wins}W/${losses}L)${
-    proposedVersion ? `, proposed weights v${proposedVersion}` : ""
-  }; ${subUpdates.updated} subs updated, ${subUpdates.promoted} promoted`;
+  return {
+    summary: `${outcomes.length} outcomes (${wins}W/${losses}L)${
+      proposedVersion ? `, proposed weights v${proposedVersion}` : ""
+    }; ${subUpdates.updated} subs updated, ${subUpdates.promoted} promoted`,
+    mailError,
+  };
 }
 
 function buildAnalysisPrompt(

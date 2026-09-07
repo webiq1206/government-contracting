@@ -11,15 +11,14 @@
  * Cross-tenant, so it lives in lib/admin and nothing here is reachable without
  * requirePlatformAdmin.
  */
-import { query, queryOne } from "../db";
+import { query, queryOne, transaction } from "../db";
 import {
-  grantPlatformKey,
-  revokePlatformKey,
+  clearIntegrationKeyCache,
   platformKeyUsage,
 } from "../integration-keys";
 import type { AllowedEnvKey } from "../integration-settings";
 import { TRIAL_PLATFORM_KEY_BUDGET, isLendableDuringTrial } from "../billing/trial-keys";
-import { recordAdminAction } from "./audit";
+import { recordRequiredAdminAction } from "./audit";
 import type { AdminActionResult } from "./accounts";
 
 /**
@@ -118,7 +117,7 @@ export async function platformKeyStates(orgId: string): Promise<PlatformKeyState
       `select env_key from integration_settings
         where org_id = $1 and coalesce(btrim(value_enc), '') <> ''`,
       [orgId]
-    ).catch(() => []),
+    ),
     query<{
       env_key: string;
       granted_at: string;
@@ -133,7 +132,7 @@ export async function platformKeyStates(orgId: string): Promise<PlatformKeyState
          left join users u on u.id = g.granted_by
         where g.org_id = $1`,
       [orgId]
-    ).catch(() => []),
+    ),
     platformKeyUsage(orgId),
   ]);
 
@@ -219,21 +218,40 @@ export async function grantKeyToAccount(input: {
     return { ok: false, error: "Say why this account is being lent our key." };
   }
 
-  await grantPlatformKey({
-    orgId: input.orgId,
-    key: entry.key,
-    grantedBy: input.adminUserId,
-    note,
-    expiresAt: expires,
-  });
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "platform_key_granted",
-    orgId: input.orgId,
-    orgName: org.name,
-    detail: { env_key: entry.key, reason: note, expires_at: expires },
-  });
+  try {
+    await transaction(async (client) => {
+      await client.query(
+        `insert into platform_key_grants (org_id, env_key, granted_by, note, expires_at)
+         values ($1,$2,$3,$4,$5)
+         on conflict (org_id, env_key) do update
+           set granted_by = excluded.granted_by,
+               granted_at = now(),
+               note = excluded.note,
+               expires_at = excluded.expires_at`,
+        [input.orgId, entry.key, input.adminUserId, note, expires]
+      );
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "platform_key_granted",
+          orgId: input.orgId,
+          orgName: org.name,
+          detail: { env_key: entry.key, reason: note, expires_at: expires },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    console.error("[admin-platform-keys] grant was rolled back", err);
+    return {
+      ok: false,
+      error:
+        "The credential was not lent because the grant and its required audit record could not be saved together. Nothing changed; try again.",
+    };
+  }
+  // A rolled-back grant must not evict the working value. Clear only after
+  // both the grant and its durable audit witness have committed.
+  clearIntegrationKeyCache();
 
   return {
     ok: true,
@@ -258,14 +276,32 @@ export async function revokeKeyFromAccount(input: {
   );
   if (!org) return { ok: false, error: "That account no longer exists." };
 
-  await revokePlatformKey(input.orgId, entry.key);
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "platform_key_revoked",
-    orgId: input.orgId,
-    orgName: org.name,
-    detail: { env_key: entry.key },
-  });
+  try {
+    await transaction(async (client) => {
+      await client.query(
+        `delete from platform_key_grants where org_id = $1 and env_key = $2`,
+        [input.orgId, entry.key]
+      );
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "platform_key_revoked",
+          orgId: input.orgId,
+          orgName: org.name,
+          detail: { env_key: entry.key },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    console.error("[admin-platform-keys] revocation was rolled back", err);
+    return {
+      ok: false,
+      error:
+        "The credential grant was not revoked because the change and its required audit record could not be saved together. Nothing changed; try again.",
+    };
+  }
+  clearIntegrationKeyCache();
 
   return {
     ok: true,

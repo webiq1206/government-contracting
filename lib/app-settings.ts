@@ -4,10 +4,11 @@
  * When paused, cron, queue enqueue, agent runs, and outbound email/SMS all
  * stop. Operator auth, password reset, and billing stay available.
  *
- * Every read degrades gracefully (returns the default) if the table doesn't
- * exist yet or the DB hiccups, so a pending migration can never wedge the
- * worker or the dashboard.
+ * A missing row uses documented defaults. A failed read does not: callers
+ * must be able to distinguish "not configured" from "we could not verify the
+ * switch", especially before sending mail or starting automation.
  */
+import type { PoolClient } from "pg";
 import { query, queryOne } from "./db";
 import { normalizeRules, type AutomationRules } from "./domain/intake";
 import { LEGACY_ORG_ID } from "./tenant-context";
@@ -25,26 +26,17 @@ import { LEGACY_ORG_ID } from "./tenant-context";
  * prefix into a column without changing this module's callers.
  */
 async function scopedKey(key: string): Promise<string> {
-  try {
-    const { tryResolveTenantOrgId } = await import("./tenant");
-    const orgId = await tryResolveTenantOrgId();
-    if (orgId && orgId !== LEGACY_ORG_ID) return `${orgId}:${key}`;
-  } catch {
-    // Fall through to the platform-level key.
-  }
-  return key;
+  const { resolveTenantOrgId } = await import("./tenant");
+  const orgId = await resolveTenantOrgId();
+  return orgId === LEGACY_ORG_ID ? key : `${orgId}:${key}`;
 }
 
 async function getSetting<T>(key: string, fallback: T): Promise<T> {
-  try {
-    const row = await queryOne<{ value_json: T }>(
-      `select value_json from app_settings where key = $1`,
-      [await scopedKey(key)]
-    );
-    return row ? row.value_json : fallback;
-  } catch {
-    return fallback;
-  }
+  const row = await queryOne<{ value_json: T }>(
+    `select value_json from app_settings where key = $1`,
+    [await scopedKey(key)]
+  );
+  return row ? row.value_json : fallback;
 }
 
 async function setSetting(key: string, value: unknown, updatedBy?: string): Promise<void> {
@@ -83,7 +75,7 @@ const AUTOMATION_DEFAULT: AutomationState = { paused: false, changed_at: null, c
 const STATE_CACHE_MS = 2_000;
 const stateCache = new Map<string, { at: number; state: AutomationState }>();
 
-/** Current automation state. Default (and failure mode) is RUNNING. */
+/** Current automation state. A missing setting means running; a failed read throws. */
 export async function getAutomationState(): Promise<AutomationState> {
   const cacheKey = await scopedKey(AUTOMATION_KEY);
   const hit = stateCache.get(cacheKey);
@@ -132,7 +124,7 @@ export async function getPlatformAutomationState(): Promise<AutomationState> {
   const row = await queryOne<{ value_json: Partial<AutomationState> }>(
     `select value_json from app_settings where key = $1`,
     [PLATFORM_AUTOMATION_KEY]
-  ).catch(() => null);
+  );
   const v = row?.value_json ?? {};
   const state: AutomationState = {
     paused: v.paused === true,
@@ -168,21 +160,25 @@ export async function isAutomationStopped(): Promise<boolean> {
 
 export async function setPlatformAutomationPaused(
   paused: boolean,
-  by: string
+  by: string,
+  client?: PoolClient
 ): Promise<AutomationState> {
   const state: AutomationState = {
     paused,
     changed_at: new Date().toISOString(),
     changed_by: by,
   };
-  await query(
-    `insert into app_settings (key, value_json, updated_at, updated_by)
+  const statement = `insert into app_settings (key, value_json, updated_at, updated_by)
      values ($1, $2::jsonb, now(), $3)
      on conflict (key) do update
-       set value_json = excluded.value_json, updated_at = now(), updated_by = excluded.updated_by`,
-    [PLATFORM_AUTOMATION_KEY, JSON.stringify(state), by]
-  );
-  stateCache.set(PLATFORM_AUTOMATION_KEY, { at: Date.now(), state });
+       set value_json = excluded.value_json, updated_at = now(), updated_by = excluded.updated_by`;
+  const params = [PLATFORM_AUTOMATION_KEY, JSON.stringify(state), by];
+  if (client) await client.query(statement, params);
+  else await query(statement, params);
+  // A transaction caller owns the commit. Caching before it commits could
+  // advertise a pause/resume that was rolled back when its required audit
+  // write failed. The caller clears the cache after a successful commit.
+  if (!client) stateCache.set(PLATFORM_AUTOMATION_KEY, { at: Date.now(), state });
   return state;
 }
 
@@ -208,7 +204,7 @@ export function clearAutomationStateCache(): void {
 
 const RULES_KEY = "automation_rules";
 
-/** Current rules; defaults (and failure mode) are the safe DEFAULT_RULES. */
+/** Current rules; a missing row uses defaults, while a failed read throws. */
 export async function getAutomationRules(): Promise<AutomationRules> {
   const stored = await getSetting<Partial<AutomationRules> | null>(RULES_KEY, null);
   return normalizeRules(stored);

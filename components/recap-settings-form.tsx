@@ -111,8 +111,15 @@ export function RecapSettingsForm({
       }
       setForm(data.settings);
       setSavedAt(new Date().toLocaleTimeString());
+      if (typeof data.warning === "string" && data.warning) {
+        setNotice(data.warning);
+      }
       setPreviewKey((k) => k + 1);
       router.refresh();
+    } catch {
+      setError(
+        "The settings could not reach the server, so the save was not confirmed. Check your connection and try again."
+      );
     } finally {
       setSaving(false);
     }
@@ -137,6 +144,10 @@ export function RecapSettingsForm({
         `Sent to ${data.sentTo}. It covers ${data.localDate} and is marked as a test, so nobody else received it.`
       );
       router.refresh();
+    } catch {
+      setError(
+        "The test email could not reach the server. Nothing is being reported as sent. Check your connection and try again."
+      );
     } finally {
       setTesting(false);
     }
@@ -155,6 +166,10 @@ export function RecapSettingsForm({
       }
       setNotice(`Sent again to ${data.sentTo}.`);
       router.refresh();
+    } catch {
+      setError(
+        "The retry could not reach the server. Delivery is still unconfirmed. Check your connection before trying again."
+      );
     } finally {
       setRetrying(null);
     }
@@ -291,8 +306,9 @@ export function RecapSettingsForm({
         {!mailReady && (
           <p className="rounded-md border border-risk/50 bg-risk/5 px-3 py-2 text-sm text-foreground">
             <strong className="text-risk">No recap can be delivered right now.</strong> The
-            platform inbox is not connected, so the morning send has nothing to send through.
-            Everything below can still be set up; nothing will arrive until that is fixed.
+            platform Gmail connection or verified sender identity is not ready, so the morning
+            send is blocked. Everything below can still be set up; nothing will arrive until that
+            is fixed in platform integration settings.
           </p>
         )}
 

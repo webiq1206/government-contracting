@@ -86,6 +86,18 @@ describe("ocrPdf", () => {
     // The hole is named. A dropped batch is a set of requirements nobody
     // knows are missing.
     expect(res.text).toMatch(/pages 16 to 20: could not be read/);
+    expect(res.truncated).toBe(true);
+  });
+
+  it("marks output-limit truncation as partial", async () => {
+    complete.mockResolvedValue({
+      text: "--- page 1 ---\nPARTIAL TRANSCRIPT",
+      usage: { input_tokens: 1, output_tokens: 16000, model: "m" },
+      stopReason: "max_tokens",
+    });
+    const res = await ocrPdf(await pdfOf(2));
+    expect(res.text).toContain("transcription stopped at the output limit");
+    expect(res.truncated).toBe(true);
   });
 
   it("returns no text at all when nothing could be transcribed", async () => {

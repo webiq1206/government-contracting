@@ -11,8 +11,11 @@
  * Everything here is org-scoped: the bid is loaded by opportunity AND org, so
  * a requirement id from one tenant can never reach another tenant's package.
  */
-import { query, queryOne } from "./db";
+import { createHash } from "node:crypto";
+import { query, queryOne, transaction } from "./db";
 import { getProfileJson } from "./ai/companyProfile";
+import { storage, type StorageBackend } from "./integrations/storage";
+import { orgOwnsStorageKey } from "./domain/file-ownership";
 import {
   buildManifest,
   validatePackage,
@@ -25,9 +28,119 @@ import type {
   AuditFinding,
   Bid,
   Opportunity,
+  PackageItem,
   PackageValidation,
   ResolvedRequirement,
 } from "./types";
+
+interface StoredPackageDocument {
+  name?: string;
+  kind: string;
+  storage_path: string;
+  storage_backend?: string;
+  content_hash?: string;
+}
+
+export interface SubmissionPackageHashResult {
+  hash: string | null;
+  error: string | null;
+}
+
+/** Hash the exact artifact set represented by one immutable bid package row. */
+export async function submissionPackageHash(input: {
+  opportunityId: string;
+  orgId: string;
+  manifest: PackageItem[] | null;
+  documents: StoredPackageDocument[] | null;
+}): Promise<SubmissionPackageHashResult> {
+  const manifest = [...(input.manifest ?? [])].sort((a, b) => a.order - b.order);
+  if (manifest.length === 0) {
+    return { hash: null, error: "This bid has no assembled package to identify." };
+  }
+
+  const current = await query<{
+    kind: string;
+    storage_path: string;
+    storage_backend: string | null;
+    content_hash: string | null;
+  }>(
+    `select kind, storage_path, storage_backend, content_hash
+       from documents
+      where opportunity_id=$1 and org_id=$2 and storage_path is not null`,
+    [input.opportunityId, input.orgId]
+  );
+  const byPath = new Map(current.map((doc) => [doc.storage_path, doc]));
+  const byKind = new Map<string, StoredPackageDocument>();
+  for (const doc of input.documents ?? []) {
+    if (doc.kind && doc.storage_path) byKind.set(doc.kind, doc);
+  }
+  for (const doc of current) {
+    if (!byKind.has(doc.kind)) {
+      byKind.set(doc.kind, {
+        kind: doc.kind,
+        storage_path: doc.storage_path,
+        storage_backend: doc.storage_backend ?? undefined,
+        content_hash: doc.content_hash ?? undefined,
+      });
+    }
+  }
+
+  const packageHash = createHash("sha256");
+  for (const item of manifest) {
+    packageHash.update(
+      JSON.stringify({
+        order: item.order,
+        filename: item.filename,
+        requirementId: item.requirement_id,
+        status: item.status,
+        source: item.source,
+      })
+    );
+    if (item.status !== "satisfied") continue;
+
+    const stored = item.document_path
+      ? byPath.get(item.document_path)
+      : item.document_kind
+        ? byKind.get(item.document_kind)
+        : undefined;
+    const path = item.document_path ?? stored?.storage_path ?? null;
+    if (!path) {
+      return {
+        hash: null,
+        error: `The package cannot identify the stored file for ${item.title ?? item.filename}. Rebuild it before recording delivery.`,
+      };
+    }
+
+    let digest = stored?.content_hash ?? byPath.get(path)?.content_hash ?? null;
+    if (!digest || !/^[a-f0-9]{64}$/i.test(digest)) {
+      const owned = byPath.has(path) || (await orgOwnsStorageKey(path, input.orgId));
+      if (!owned) {
+        return {
+          hash: null,
+          error: `The stored file for ${item.title ?? item.filename} is not owned by this account. The package was not marked as sent.`,
+        };
+      }
+      try {
+        const backend = stored?.storage_backend ?? byPath.get(path)?.storage_backend ?? undefined;
+        const bytes = await storage.download(
+          path,
+          backend === "supabase" || backend === "local" || backend === "db"
+            ? backend
+            : undefined
+        );
+        digest = createHash("sha256").update(bytes).digest("hex");
+      } catch {
+        return {
+          hash: null,
+          error: `The stored file for ${item.title ?? item.filename} could not be read. Retry the package download, then record delivery once storage is available.`,
+        };
+      }
+    }
+    packageHash.update(`\n${item.filename}\n${digest}\n`);
+  }
+
+  return { hash: packageHash.digest("hex"), error: null };
+}
 
 export interface PackageChange {
   matrix: ResolvedRequirement[];
@@ -37,6 +150,8 @@ export interface PackageChange {
 export interface PackageChangeResult {
   ok: boolean;
   error?: string;
+  warning?: string;
+  conflict?: boolean;
   validation?: PackageValidation;
   ready?: boolean;
   bidId?: string;
@@ -63,14 +178,26 @@ export async function applyPackageChange(
       | "bid_amount"
       | "sub_quote_total"
       | "markup_pct"
+      | "documents_json"
+      | "submission_state"
     > & { requirements_fingerprint: string | null }
   >(
     `select id, compliance_matrix, audit_findings, bid_amount, sub_quote_total, markup_pct,
-            requirements_fingerprint
+            documents_json, submission_state, requirements_fingerprint
        from bids where opportunity_id=$1 and org_id=$2 order by created_at desc limit 1`,
     [opportunityId, orgId]
   );
   if (!bid?.compliance_matrix) return { ok: false, error: "No package to update." };
+  if (bid.submission_state !== "package_ready") {
+    return {
+      ok: false,
+      conflict: true,
+      error:
+        bid.submission_state === "approved"
+          ? "This package is approved to send. Reopen it as a controlled revision before changing its requirements or files."
+          : "This package has submission history and is locked against requirement and file changes.",
+    };
+  }
 
   const next = mutate({
     matrix: bid.compliance_matrix,
@@ -86,8 +213,8 @@ export async function applyPackageChange(
   );
   const profile = await getProfileJson();
   const docKinds = await query<{ kind: string }>(
-    `select distinct kind from documents where opportunity_id=$1`,
-    [opportunityId]
+    `select distinct kind from documents where opportunity_id=$1 and org_id=$2`,
+    [opportunityId, orgId]
   );
 
   const bidAmount = bid.bid_amount != null ? Number(bid.bid_amount) : null;
@@ -128,12 +255,21 @@ export async function applyPackageChange(
    * when a letter already exists, and a failure here must not lose the state
    * change that prompted it.
    */
+  let refreshedLetter:
+    | {
+        name: string;
+        storage_path: string;
+        kind: string;
+        storage_backend: StorageBackend;
+        content_hash: string;
+      }
+    | null = null;
   if (opp && profile && bidAmount != null) {
     const hasLetter = docKinds.some((d) => d.kind === "cover_letter");
     if (hasLetter) {
       try {
         const { renderCoverLetter } = await import("./agents/package-builder");
-        await renderCoverLetter({
+        refreshedLetter = await renderCoverLetter({
           opportunityId,
           opp,
           profile,
@@ -148,11 +284,19 @@ export async function applyPackageChange(
     }
   }
 
-  await query(
+  const documentsJson = [...(bid.documents_json ?? [])];
+  if (refreshedLetter) {
+    const index = documentsJson.findIndex((doc) => doc.kind === refreshedLetter!.kind);
+    if (index >= 0) documentsJson[index] = refreshedLetter;
+    else documentsJson.push(refreshedLetter);
+  }
+
+  const saved = await query<{ id: string }>(
     `update bids
         set compliance_matrix=$2, audit_findings=$3, package_ready=$4,
-            validation_json=$5, package_manifest=$6, updated_at=now()
-      where id=$1`,
+            validation_json=$5, package_manifest=$6, documents_json=$7, updated_at=now()
+      where id=$1 and org_id=$8 and submission_state='package_ready'
+      returning id`,
     [
       bid.id,
       JSON.stringify(next.matrix),
@@ -160,10 +304,66 @@ export async function applyPackageChange(
       ready,
       JSON.stringify(validation),
       JSON.stringify(manifest),
+      JSON.stringify(documentsJson),
+      orgId,
     ]
   );
+  if (saved.length === 0) {
+    return {
+      ok: false,
+      conflict: true,
+      error:
+        "The package was approved or sent while this change was being saved. The approved package was left unchanged.",
+    };
+  }
 
-  return { ok: true, validation, ready, bidId: bid.id };
+  let warning: string | undefined;
+  if (refreshedLetter) {
+    try {
+      const published = await transaction(async (client) => {
+        const draft = await client.query<{ id: string }>(
+          `select id from bids
+            where id=$1 and org_id=$2 and submission_state='package_ready'
+            for update`,
+          [bid.id, orgId]
+        );
+        if (draft.rows.length === 0) return false;
+        await client.query(
+          `delete from documents
+            where opportunity_id=$1 and org_id=$2 and kind=$3`,
+          [opportunityId, orgId, refreshedLetter.kind]
+        );
+        await client.query(
+          `insert into documents
+             (org_id, opportunity_id, kind, name, storage_path, storage_backend, mime,
+              content_hash, disposition, extraction_state)
+           values ($1,$2,$3,$4,$5,$6,'application/pdf',$7,'delivered','not_applicable')`,
+          [
+            orgId,
+            opportunityId,
+            refreshedLetter.kind,
+            refreshedLetter.name,
+            refreshedLetter.storage_path,
+            refreshedLetter.storage_backend,
+            refreshedLetter.content_hash,
+          ]
+        );
+        return true;
+      });
+      if (!published) {
+        warning =
+          "The package change was saved, but approval finished before the refreshed cover letter could become the current Files entry. The approved package still keeps its exact document version.";
+      }
+    } catch (error) {
+      warning =
+        "The requirement was saved, but the refreshed cover letter could not be published to the Files list. Download the package to verify it before approval.";
+      console.error(
+        `[package-state] cover letter file record failed for ${opportunityId}: ${(error as Error).message}`
+      );
+    }
+  }
+
+  return { ok: true, validation, ready, bidId: bid.id, warning };
 }
 
 /**
@@ -214,7 +414,7 @@ export async function attachToRequirement(args: {
   opportunityId: string;
   orgId: string;
   requirementId: string;
-  doc: { name: string; path: string; mime?: string };
+  doc: { name: string; path: string; mime?: string; content_hash?: string };
   /** The file's bytes, so a page limit can actually be checked. */
   bytes?: Buffer | Uint8Array;
 }): Promise<PackageChangeResult> {

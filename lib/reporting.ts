@@ -802,7 +802,7 @@ export async function pinnedMetric(
       "This metric could not be computed.", def.provenance);
   }
 
-  const raw = await computeCustomKpi(def.id, params).catch(() => null);
+  const raw = await computeCustomKpi(def.id, params);
   return metric(
     def.id,
     def.label,

@@ -89,12 +89,28 @@ async function previewCounts(rules: AutomationRules, orgId: string | null) {
       [orgId, CALL_STAGE]
     ),
   ]);
+  if (!pastDue || !belowLead || !pastRetention || !queuedCalls) {
+    throw new Error("Automation-rule preview counts could not be read.");
+  }
   return {
-    past_due_open: pastDue?.n ?? 0,
-    below_lead_time: belowLead?.n ?? 0,
-    past_retention: pastRetention?.n ?? 0,
-    queued_calls: queuedCalls?.n ?? 0,
+    past_due_open: pastDue.n,
+    below_lead_time: belowLead.n,
+    past_retention: pastRetention.n,
+    queued_calls: queuedCalls.n,
   };
+}
+
+function impactUnavailable(error: unknown) {
+  console.error("[automation-rules] impact preview failed", error);
+  return NextResponse.json(
+    {
+      error:
+        "The live impact of this rule change could not be verified. Nothing was saved. Check the database connection, reload this page, and try again before changing automation.",
+      impacts: null,
+      confirm: false,
+    },
+    { status: 503 }
+  );
 }
 
 /** Read the rules + a live preview of what they would affect. */
@@ -116,9 +132,23 @@ export async function POST(req: Request) {
   if (auth instanceof NextResponse) return auth;
   const body = (await req.json().catch(() => ({}))) as Partial<AutomationRules> & {
     preview_only?: boolean;
+    confirm_impacts?: boolean;
   };
   const normalized = normalizeRules(body);
   const orgId = await tryResolveTenantOrgId();
+  const current = await getAutomationRules();
+  let facts: Awaited<ReturnType<typeof ruleFacts>>;
+  let impacts: ReturnType<typeof ruleImpacts>;
+  let preview: Awaited<ReturnType<typeof previewCounts>>;
+  try {
+    [facts, preview] = await Promise.all([
+      ruleFacts(current, normalized),
+      previewCounts(normalized, orgId),
+    ]);
+    impacts = ruleImpacts(current, normalized, facts);
+  } catch (error) {
+    return impactUnavailable(error);
+  }
   if (body.preview_only) {
     /*
      * Two halves of the same answer, on one request.
@@ -130,22 +160,28 @@ export async function POST(req: Request) {
      * tightening a window needs the second one, and reading the first as the
      * second is how a change costs eleven records when the page said nine.
      */
-    const current = await getAutomationRules();
-    const facts = await ruleFacts(current, normalized).catch(() => null);
-    const impacts = facts ? ruleImpacts(current, normalized, facts) : null;
     return NextResponse.json({
       rules: normalized,
-      preview: await previewCounts(normalized, orgId),
-      /*
-       * Null rather than an empty list when the counting failed. No impacts
-       * and "we could not work out the impacts" look identical to a reader,
-       * and one of them is an invitation to save blind.
-       */
+      preview,
       impacts,
-      confirm: impacts ? needsConfirmation(impacts) : false,
+      confirm: needsConfirmation(impacts),
     });
   }
-  const before = await getAutomationRules();
+
+  if (needsConfirmation(impacts) && body.confirm_impacts !== true) {
+    return NextResponse.json(
+      {
+        error:
+          "This change can remove records or active work. Review the live impact and confirm it before saving. Nothing was changed.",
+        preview,
+        impacts,
+        confirm: true,
+      },
+      { status: 409 }
+    );
+  }
+
+  const before = current;
   const saved = await setAutomationRules(normalized, auth.email);
 
   // Turning calling off has to clear the call work already on the books, or
@@ -162,8 +198,13 @@ export async function POST(req: Request) {
     message: `Automation rules updated by ${auth.email}: min lead ${saved.min_lead_days}d (${saved.lead_action}), deadline badges at ${saved.approaching_days}d/${saved.urgent_days}d, retention ${saved.retention_days === 0 ? "keep forever" : `${saved.retention_days}d`}, calls ${saved.calls_enabled ? "on" : "off (email-only workflow)"}.`,
   });
   return NextResponse.json({
+    ok: true,
     rules: saved,
-    preview: await previewCounts(saved, orgId),
+    // The verified preflight remains available even if a follow-on page
+    // refresh is interrupted. The form immediately requests a fresh preview
+    // against the saved baseline, so this is never presented as a post-save
+    // recount.
+    preview,
     ...(cleared ? { cleared } : {}),
   });
 }

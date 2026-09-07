@@ -53,6 +53,7 @@ import { QuickViewDrawer } from "@/components/quick-view";
 import { parseQuickView } from "@/lib/domain/quick-view";
 import { opportunityQuickViewData } from "@/lib/quick-view-data";
 import { queuePosition } from "@/lib/domain/workspace-queue";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 /**
  * The simple (default) pipeline view groups by who the ball is with rather
@@ -242,7 +243,17 @@ export default async function PipelinePage({
           ? "list"
           : "lanes";
 
-  const [allOpps, rules] = await Promise.all([pipelineOpportunities(), getAutomationRules()]);
+  const loadWarnings: string[] = [];
+  const [allOpps, rules, viewer] = await Promise.all([
+    pipelineOpportunities(),
+    getAutomationRules(),
+    currentUser().catch(() => {
+      loadWarnings.push(
+        "Your role could not be confirmed, so owner filters and protected actions are disabled."
+      );
+      return null;
+    }),
+  ]);
 
   /*
    * The table is fetched separately, filtered and paged in SQL, rather than
@@ -277,7 +288,7 @@ export default async function PipelinePage({
      * looking. Without it the filter would match nothing and the page would
      * say this operator owns none of the pipeline.
      */
-    viewerId: (await currentUser().catch(() => null))?.id,
+    viewerId: viewer?.id,
   };
   const tableTotal = view === "table" ? await opportunityTableCount(tableFilters) : 0;
 
@@ -353,14 +364,23 @@ export default async function PipelinePage({
    * the shape that turns a fast page into a slow one without anybody changing
    * the page.
    */
-  const [tableOwners, viewer, members] = await Promise.all([
+  const [tableOwners, members] = await Promise.all([
     tableRows.length > 0
-      ? ownersFor("opportunity", tableRows.map((r) => r.id)).catch(() => new Map())
+      ? ownersFor("opportunity", tableRows.map((r) => r.id)).catch(() => {
+          loadWarnings.push(
+            "Opportunity owners could not be loaded, so rows may appear unassigned."
+          );
+          return new Map();
+        })
       : Promise.resolve(new Map()),
-    currentUser().catch(() => null),
     // Everybody a card could be handed to, once for the board rather than
     // once per card menu.
-    assignableMembers().catch(() => [] as Owner[]),
+    assignableMembers().catch(() => {
+      loadWarnings.push(
+        "Assignable team members could not be loaded, so assignment controls are unavailable."
+      );
+      return [] as Owner[];
+    }),
   ]);
   /**
    * Counts elsewhere in the product are clickable, and they land here. The
@@ -397,11 +417,21 @@ export default async function PipelinePage({
    * anybody changing the page.
    */
   const [boardCoverage, boardOwners] = await Promise.all([
-    opps.length > 0
-      ? tradeCoverageFor(opps.map((o) => o.id)).catch(() => new Map<string, TradeCoverage>())
+    view !== "table" && opps.length > 0
+      ? tradeCoverageFor(opps.map((o) => o.id)).catch(() => {
+          loadWarnings.push(
+            "Trade coverage could not be checked, so coverage and blocker indicators may be incomplete."
+          );
+          return new Map<string, TradeCoverage>();
+        })
       : Promise.resolve(new Map<string, TradeCoverage>()),
-    opps.length > 0
-      ? ownersFor("opportunity", opps.map((o) => o.id)).catch(() => new Map<string, Owner>())
+    view !== "table" && opps.length > 0
+      ? ownersFor("opportunity", opps.map((o) => o.id)).catch(() => {
+          loadWarnings.push(
+            "Opportunity owners could not be loaded, so cards may appear unassigned."
+          );
+          return new Map<string, Owner>();
+        })
       : Promise.resolve(new Map<string, Owner>()),
   ]);
 
@@ -516,6 +546,7 @@ export default async function PipelinePage({
           </>
         }
       />
+      <ShellDataWarning items={loadWarnings} />
       {view === "table" && (
         <>
           <FilterToolbar

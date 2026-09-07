@@ -90,7 +90,7 @@ export async function gatherPlatformFacts(
           and t.org_id is not null
         order by t.updated_at desc nulls last
         limit 50`
-    ).catch(() => []),
+    ),
 
     query<{ agent: string; errors: number; orgs: number; sample: string | null }>(
       `select agent,
@@ -104,7 +104,7 @@ export async function gatherPlatformFacts(
         order by count(*) desc
         limit 20`,
       [start, end]
-    ).catch(() => []),
+    ),
 
     query<{ org_id: string | null; org_name: string | null; failed: number }>(
       `select c.org_id, o.name as org_name, count(*)::int as failed
@@ -118,7 +118,7 @@ export async function gatherPlatformFacts(
         order by count(*) desc
         limit 25`,
       [start, end]
-    ).catch(() => []),
+    ),
 
     query<{ org_id: string; org_name: string; last_activity: Date | null; days: number }>(
       `select o.id as org_id,
@@ -136,7 +136,7 @@ export async function gatherPlatformFacts(
         order by a.last_activity asc nulls first
         limit 25`,
       [String(QUIET_DAYS)]
-    ).catch(() => []),
+    ),
 
     query<{
       accounts: number;
@@ -168,10 +168,13 @@ export async function gatherPlatformFacts(
          (select count(*)::int from bids
            where submitted_at >= $1 and submitted_at < $2) as bids_submitted`,
       [start, end]
-    ).catch(() => []),
+    ),
   ]);
 
   const c = counts[0];
+  if (!c) {
+    throw new Error("Platform recap totals returned no result.");
+  }
 
   return {
     brokenIntegrations: integrations.map((r) => ({
@@ -197,14 +200,14 @@ export async function gatherPlatformFacts(
       lastActivity: r.last_activity instanceof Date ? r.last_activity.toISOString() : null,
       days: Number(r.days) || 0,
     })),
-    accounts: Number(c?.accounts ?? 0),
-    activeAccounts: Number(c?.active_accounts ?? 0),
-    emailsSent: Number(c?.emails_sent ?? 0),
-    emailsFailed: Number(c?.emails_failed ?? 0),
-    jobRuns: Number(c?.job_runs ?? 0),
-    jobFailures: Number(c?.job_failures ?? 0),
-    newOpportunities: Number(c?.new_opportunities ?? 0),
-    bidsSubmitted: Number(c?.bids_submitted ?? 0),
+    accounts: Number(c.accounts ?? 0),
+    activeAccounts: Number(c.active_accounts ?? 0),
+    emailsSent: Number(c.emails_sent ?? 0),
+    emailsFailed: Number(c.emails_failed ?? 0),
+    jobRuns: Number(c.job_runs ?? 0),
+    jobFailures: Number(c.job_failures ?? 0),
+    newOpportunities: Number(c.new_opportunities ?? 0),
+    bidsSubmitted: Number(c.bids_submitted ?? 0),
   };
 }
 

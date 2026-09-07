@@ -32,6 +32,7 @@ import {
   type AwardComplianceRow,
 } from "../sub-compliance-store";
 import { isEmailable } from "../domain/sub-contactability";
+import { fanoutNote, orgsToSweep } from "./org-fanout";
 import type { AgentDefinition } from "./types";
 import type { AgentResult } from "../types";
 
@@ -49,13 +50,24 @@ const CHASE_COOLDOWN_DAYS = 5;
  */
 async function chasedRecently(subId: string): Promise<boolean> {
   const row = await queryOne<{ n: number }>(
-    `select count(*)::int as n from communications
-      where subcontractor_id = $1
-        and meta->>'kind' = 'compliance-chase'
-        and meta->>'sent' = 'true'
-        and created_at > now() - ($2 || ' days')::interval`,
+    `select (
+       exists(
+         select 1 from communications
+          where subcontractor_id = $1
+            and meta->>'kind' = 'compliance-chase'
+            and meta->>'sent' = 'true'
+            and created_at > now() - ($2 || ' days')::interval
+       ) or exists(
+         select 1 from agent_logs
+          where subcontractor_id = $1
+            and action = 'paperwork-delivery-unconfirmed'
+            and created_at > now() - ($2 || ' days')::interval
+       )
+     )::int as n`,
     [subId, String(CHASE_COOLDOWN_DAYS)]
-  ).catch(() => null);
+  );
+  // A failed cooldown read must stop before the provider boundary. Treating
+  // it as zero can send the same compliance request twice.
   return (row?.n ?? 0) > 0;
 }
 
@@ -84,7 +96,10 @@ function missingList(row: AwardComplianceRow): string {
  * recipient just won work with us and the email should read that way. The link
  * is the only call to action.
  */
-async function chase(row: AwardComplianceRow, needed: string): Promise<boolean> {
+async function chase(
+  row: AwardComplianceRow,
+  needed: string
+): Promise<{ sent: boolean; recordError: string | null; providerError: string | null }> {
   const url = subPortalUrl(row.subcontractorId);
   const job = row.opportunityTitle ?? "a job we have just been awarded";
   const subject = `Before we can start on ${job}: your paperwork`;
@@ -120,27 +135,33 @@ async function chase(row: AwardComplianceRow, needed: string): Promise<boolean> 
   });
   const sent = Boolean(res.provider) && !res.error;
 
-  await query(
-    `insert into communications
-       (subcontractor_id, opportunity_id, channel, direction, subject, body,
-        gmail_message_id, gmail_thread_id, provider, recipient_email, meta)
-     values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9::jsonb)`,
-    [
-      row.subcontractorId,
-      row.opportunityId,
-      subject,
-      text,
-      res.messageId ?? null,
-      res.threadId ?? null,
-      res.provider,
-      row.email,
-      // The marker the cooldown reads. Written whether or not delivery
-      // succeeded, so a broken inbox does not turn into a send every hour.
-      JSON.stringify({ kind: "compliance-chase", sent }),
-    ]
-  ).catch(() => {});
+  let recordError: string | null = null;
+  try {
+    await query(
+      `insert into communications
+         (subcontractor_id, opportunity_id, channel, direction, subject, body,
+          gmail_message_id, gmail_thread_id, provider, recipient_email, meta)
+       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+      [
+        row.subcontractorId,
+        row.opportunityId,
+        subject,
+        text,
+        res.messageId ?? null,
+        res.threadId ?? null,
+        res.provider,
+        row.email,
+        JSON.stringify({ kind: "compliance-chase", sent, error: res.error ?? null }),
+      ]
+    );
+  } catch (err) {
+    recordError = (err as Error).message;
+    console.error(
+      `[sub-onboarding] provider result for ${row.subcontractorId} could not be recorded: ${recordError}`
+    );
+  }
 
-  return sent;
+  return { sent, recordError, providerError: res.error ?? null };
 }
 
 export const subOnboarding: AgentDefinition = {
@@ -159,19 +180,15 @@ export const subOnboarding: AgentDefinition = {
     let candidates: Awaited<ReturnType<typeof loadAwardCompliance>> = [];
     /** Accounts whose compliance could not be read this run. */
     const orgFailures: string[] = [];
+    let sweepNote: string | null = null;
+    let sweepFailed = false;
     if (opportunityId) {
       candidates = await loadAwardCompliance({ opportunityId });
     } else {
-      const { listActiveOrganizations } = await import("../organizations");
-      /*
-       * Deliberately not caught. The empty result below is reported as "no
-       * active contracts with subcontractors attached", which is a positive
-       * statement of absence, and it was being made about a lookup that had
-       * failed. Letting it throw hands the failure to the runner, which logs
-       * it at error status and marks the run failed.
-       */
-      const orgs = await listActiveOrganizations();
-      for (const org of orgs) {
+      const fanout = await orgsToSweep("sub-onboarding");
+      sweepNote = fanoutNote(fanout);
+      sweepFailed = fanout.error != null;
+      for (const org of fanout.orgs) {
         const rows = await runWithOrg(org.id, () =>
           loadAwardCompliance({ orgId: org.id })
         ).catch((err: Error) => {
@@ -189,6 +206,13 @@ export const subOnboarding: AgentDefinition = {
         summary: `No subcontractors could be checked: ${orgFailures.join("; ")}`.slice(0, 500),
       };
     }
+    if (sweepNote && candidates.length === 0) {
+      return {
+        ok: !sweepFailed,
+        summary: sweepNote,
+        humanActionRequired: sweepFailed,
+      };
+    }
     if (candidates.length === 0) {
       return {
         ok: true,
@@ -203,6 +227,7 @@ export const subOnboarding: AgentDefinition = {
     const undesignated: string[] = [];
     const unreachable: string[] = [];
     const blocked: string[] = [];
+    const unrecorded: string[] = [];
 
     for (const row of candidates) {
       if (!needsAttentionOnWonWork(row)) {
@@ -228,20 +253,28 @@ export const subOnboarding: AgentDefinition = {
 
       const inRowOrg = <T,>(fn: () => Promise<T>): Promise<T> =>
         row.orgId ? runWithOrg(row.orgId, fn) : fn();
-      const sent = await inRowOrg(() => chase(row, needed));
-      if (sent) chased++;
+      const attempt = await inRowOrg(() => chase(row, needed));
+      if (attempt.sent) chased++;
       else unreachable.push(row.companyName);
+      if (attempt.recordError) unrecorded.push(row.companyName);
 
       await inRowOrg(() =>
         logAgent({
           agent: "sub-onboarding",
-          action: "paperwork-requested",
+          action: attempt.recordError
+            ? "paperwork-delivery-unconfirmed"
+            : "paperwork-requested",
           subcontractorId: row.subcontractorId,
           opportunityId: row.opportunityId,
-          level: "warn",
-          message: sent
-            ? `${row.companyName} is on won work without complete paperwork (${needed}). Sent them a link to put it right.`
-            : `${row.companyName} is on won work without complete paperwork (${needed}), and the email could not go out. Ring them.`,
+          level: attempt.recordError ? "error" : "warn",
+          status: attempt.recordError || !attempt.sent ? "error" : "ok",
+          message: attempt.recordError
+            ? `${row.companyName}'s paperwork request ${
+                attempt.sent ? "was reported sent by the provider" : "was refused by the provider"
+              }, but its delivery record could not be saved: ${attempt.recordError}. Check the Gmail thread before retrying so they are not emailed twice.`
+            : attempt.sent
+              ? `${row.companyName} is on won work without complete paperwork (${needed}). Sent them a link to put it right.`
+              : `${row.companyName} is on won work without complete paperwork (${needed}), and the email could not go out${attempt.providerError ? `: ${attempt.providerError}` : "."} Ring them.`,
         })
       );
     }
@@ -263,16 +296,22 @@ export const subOnboarding: AgentDefinition = {
       `${chased} chased`,
       undesignated.length ? `${undesignated.length} awaiting designation` : null,
       unreachable.length ? `${unreachable.length} could not be emailed` : null,
+      unrecorded.length ? `${unrecorded.length} delivery result not recorded` : null,
     ]
       .filter(Boolean)
       .join(", ");
 
     return {
-      ok: true,
+      ok: !sweepFailed && orgFailures.length === 0 && unrecorded.length === 0,
       summary: `${summary}.`,
       // Somebody has to designate subs or pick up a phone. An automated chase
       // that went out cleanly is not, by itself, a person's problem.
-      humanActionRequired: undesignated.length > 0 || unreachable.length > 0,
+      humanActionRequired:
+        sweepFailed ||
+        orgFailures.length > 0 ||
+        undesignated.length > 0 ||
+        unreachable.length > 0 ||
+        unrecorded.length > 0,
       data: blocked.length ? { blocked } : undefined,
     };
   },

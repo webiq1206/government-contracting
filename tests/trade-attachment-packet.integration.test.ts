@@ -75,6 +75,7 @@ d("gatherTradeAttachments (integration)", () => {
 
   it("sends the HVAC sub a renamed packet without the electrician's drawings or the prime's paperwork", async () => {
     const gathered = await gatherTradeAttachments(
+      org.id,
       { id: opp.id, title: opp.title, solicitation_number: opp.solicitation_number },
       "HVAC"
     );
@@ -106,6 +107,7 @@ d("gatherTradeAttachments (integration)", () => {
 
   it("gives the electrician their drawings and leaves the HVAC schedule out", async () => {
     const gathered = await gatherTradeAttachments(
+      org.id,
       { id: opp.id, title: opp.title, solicitation_number: opp.solicitation_number },
       "Electrical"
     );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
 
 /**
  * A side panel for the record you are looking at, without leaving the list.
@@ -44,6 +44,7 @@ export function ContextDrawer({
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocusTo = useRef<HTMLElement | null>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -51,7 +52,12 @@ export function ContextDrawer({
     // Remember what opened this, so closing returns the operator to their place
     // in the list rather than to the top of the document.
     returnFocusTo.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
+    const first = panelRef.current?.querySelector<HTMLElement>(
+      "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+    );
+    first?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -62,14 +68,34 @@ export function ContextDrawer({
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
       returnFocusTo.current?.focus?.();
     };
   }, [open, onClose]);
 
+  const trap = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== "Tab") return;
+    const focusable = Array.from(
+      panelRef.current?.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+      ) ?? []
+    ).filter((item) => item.getClientRects().length > 0);
+    if (focusable.length === 0) return;
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, []);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
+    <div className="fixed inset-x-0 top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 flex justify-end lg:bottom-0">
       {/*
         The scrim closes on click but is not the only way out: a pointer-only
         dismissal strands anyone working from the keyboard, which is why Escape
@@ -84,14 +110,15 @@ export function ContextDrawer({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="context-drawer-title"
+        aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative flex h-full w-full max-w-md flex-col border-l border-border bg-surface shadow-xl outline-none sm:max-w-lg"
+        onKeyDown={trap}
+        className="relative flex h-full w-full max-w-md flex-col border-l border-foreground/50 bg-surface shadow-xl outline-none dark:border-white/35 sm:max-w-lg"
       >
         <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <h2
-              id="context-drawer-title"
+              id={titleId}
               className="truncate font-display text-base font-semibold text-foreground"
             >
               {title}

@@ -46,7 +46,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
    * again, and the usual outcome is that they attach the one they remember.
    */
   const stored: string[] = [];
-  const failed: { name: string; error: string }[] = [];
+  const failed: {
+    name: string;
+    error: string;
+    status: 400 | 404 | 409 | 503;
+    retryable: boolean;
+    cleanupRequired: boolean;
+  }[] = [];
   for (const file of files) {
     const outcome = await attachDocument({
       orgId,
@@ -55,13 +61,22 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       kind,
       note,
       actorId: auth.id,
+      actorLabel: auth.email,
       // Only the first file can replace a named one. Pointing several new
       // files at one superseded row would leave the record unable to say
       // which of them replaced it.
       replaces: stored.length === 0 ? replaces : null,
     });
     if (outcome.ok) stored.push(outcome.id);
-    else failed.push({ name: file.name, error: outcome.error });
+    else {
+      failed.push({
+        name: file.name,
+        error: outcome.error,
+        status: outcome.status,
+        retryable: outcome.retryable ?? false,
+        cleanupRequired: outcome.cleanupRequired ?? false,
+      });
+    }
   }
 
   if (stored.length > 0) {
@@ -75,13 +90,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // A post where nothing landed is a failure, whatever the per-file detail
   // says, and returning 200 for it would let the form clear itself.
-  const status = stored.length === 0 ? 400 : 200;
+  const primaryFailure =
+    failed.find((failure) => failure.status === 503) ??
+    failed.find((failure) => failure.status === 409) ??
+    failed.find((failure) => failure.status === 404) ??
+    failed[0];
+  const status = stored.length === 0 ? primaryFailure?.status ?? 400 : 200;
   return NextResponse.json(
     {
       ok: stored.length > 0,
       stored: stored.length,
       failed,
-      error: stored.length === 0 ? failed[0]?.error ?? "Nothing was stored." : undefined,
+      error: stored.length === 0 ? primaryFailure?.error ?? "Nothing was stored." : undefined,
+      retryable: stored.length === 0 ? failed.some((failure) => failure.retryable) : undefined,
+      cleanupRequired:
+        stored.length === 0 ? failed.some((failure) => failure.cleanupRequired) : undefined,
     },
     { status }
   );

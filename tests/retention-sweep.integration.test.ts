@@ -70,8 +70,8 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
       [ids.opp1, OPP1_PATH]
     );
     await query(
-      `insert into file_blobs (path, mime, bytes) values ($1, 'application/pdf', $2)`,
-      [OPP1_PATH, Buffer.from("blob-data-opp1")]
+      `insert into file_blobs (path, mime, bytes, org_id) values ($1, 'application/pdf', $2, $3)`,
+      [OPP1_PATH, Buffer.from("blob-data-opp1"), orgId]
     );
 
     // opp2 — stale archived WITH a quote; must never be deleted
@@ -110,9 +110,9 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
       [ids.oppShared, SHARED_PATH]
     );
     await query(
-      `insert into file_blobs (path, mime, bytes) values ($1, 'application/pdf', $2)
+      `insert into file_blobs (path, mime, bytes, org_id) values ($1, 'application/pdf', $2, $3)
        on conflict (path) do nothing`,
-      [SHARED_PATH, Buffer.from("shared-blob-data")]
+      [SHARED_PATH, Buffer.from("shared-blob-data"), orgId]
     );
 
     // oppJunk — past-deadline in monitoring, no work — expired sweep should delete
@@ -134,8 +134,8 @@ d("purgeOpportunitiesWithBlobs (integration)", () => {
       [ids.oppJunkBlob, JUNK_PATH]
     );
     await query(
-      `insert into file_blobs (path, mime, bytes) values ($1, 'application/pdf', $2)`,
-      [JUNK_PATH, Buffer.from("junk-blob")]
+      `insert into file_blobs (path, mime, bytes, org_id) values ($1, 'application/pdf', $2, $3)`,
+      [JUNK_PATH, Buffer.from("junk-blob"), orgId]
     );
   });
 

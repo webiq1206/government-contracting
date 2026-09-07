@@ -237,6 +237,24 @@ describe("moving a record to a stage", () => {
     for (const t of MOVE_TARGETS) expect(t.label.length).toBeGreaterThan(0);
   });
 
+  it("offers only adjacent moves for the record's current stage", async () => {
+    const { moveTargetsFrom } = await import("@/lib/domain/row-actions");
+    expect(moveTargetsFrom("monitoring").map((target) => target.stage)).toEqual(["scoring"]);
+    expect(moveTargetsFrom("analysis").map((target) => target.stage)).toEqual([
+      "scoring",
+      "sub_research",
+    ]);
+    expect(moveTargetsFrom("submitted")).toEqual([]);
+  });
+
+  it("does not offer move or send-back controls after submission", () => {
+    const submitted = keys(
+      opportunityRowActions({ id: "o1", stage: "submitted", status: "open" }, owner)
+    );
+    expect(submitted).not.toContain("move_stage");
+    expect(submitted).not.toContain("send_back");
+  });
+
   it("counts the call queue as a stage, so a record in it can be sent back", async () => {
     // Left out of the order, the call queue read as position zero, which is
     // the one position with nothing behind it.

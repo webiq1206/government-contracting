@@ -21,16 +21,41 @@ export async function GET() {
   if (auth instanceof NextResponse) return auth;
 
   const orgId = await resolveTenantOrgId();
-  const [connection, list] = await Promise.all([
-    gmail.connection(orgId).catch(() => null),
-    gmail.sendAsAddresses(orgId),
-  ]);
+  let connection: Awaited<ReturnType<typeof gmail.connection>>;
+  let list: Awaited<ReturnType<typeof gmail.sendAsAddresses>>;
+  try {
+    [connection, list] = await Promise.all([
+      gmail.connection(orgId),
+      gmail.sendAsAddresses(orgId),
+    ]);
+  } catch (error) {
+    console.error("[gmail-sender] status lookup failed", error);
+    return NextResponse.json(
+      {
+        error:
+          "The connected inbox and its sending address could not be verified. Nothing was changed. Check the database connection, reload this page, and try again.",
+      },
+      { status: 503 }
+    );
+  }
+
+  if (!list.ok) {
+    return NextResponse.json(
+      {
+        connectedEmail: connection.email,
+        sendAs: connection.sendAs,
+        options: [],
+        error: `${list.error} No sending-address change was made. Reconnect the inbox if Google access was revoked, then try again.`,
+      },
+      { status: connection.connected ? 502 : 409 }
+    );
+  }
 
   return NextResponse.json({
-    connectedEmail: connection?.email ?? null,
-    sendAs: connection?.sendAs ?? null,
-    options: list.ok ? list.options : [],
-    error: list.ok ? null : list.error,
+    connectedEmail: connection.email,
+    sendAs: connection.sendAs,
+    options: list.options,
+    error: null,
   });
 }
 

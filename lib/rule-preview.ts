@@ -106,22 +106,29 @@ export async function ruleFacts(
     ]
   );
 
+  // This is an aggregate query and therefore always returns one row. Null is
+  // not an empty account; it means the impact could not be established and a
+  // destructive rule change must not be offered on invented zeroes.
+  if (!r) {
+    throw new Error("Automation-rule impact counts could not be read.");
+  }
+
   const n = (v: unknown): number => {
     const x = typeof v === "string" ? Number(v) : v;
     return typeof x === "number" && Number.isFinite(x) ? x : 0;
   };
 
   return {
-    belowProposedLead: n(r?.below_proposed_lead),
-    belowCurrentLead: n(r?.below_current_lead),
-    datedOpen: n(r?.dated_open),
-    withinProposedApproaching: n(r?.within_proposed_approaching),
-    withinProposedUrgent: n(r?.within_proposed_urgent),
-    archivedBeyondProposed: n(r?.archived_beyond_proposed),
-    archivedBeyondCurrent: n(r?.archived_beyond_current),
-    followUpsScheduled: n(r?.follow_ups_scheduled),
-    atProposedFollowUpCap: n(r?.at_proposed_followup_cap),
-    callsPending: n(r?.calls_pending),
-    reviewUndecided: n(r?.review_undecided),
+    belowProposedLead: n(r.below_proposed_lead),
+    belowCurrentLead: n(r.below_current_lead),
+    datedOpen: n(r.dated_open),
+    withinProposedApproaching: n(r.within_proposed_approaching),
+    withinProposedUrgent: n(r.within_proposed_urgent),
+    archivedBeyondProposed: n(r.archived_beyond_proposed),
+    archivedBeyondCurrent: n(r.archived_beyond_current),
+    followUpsScheduled: n(r.follow_ups_scheduled),
+    atProposedFollowUpCap: n(r.at_proposed_followup_cap),
+    callsPending: n(r.calls_pending),
+    reviewUndecided: n(r.review_undecided),
   };
 }

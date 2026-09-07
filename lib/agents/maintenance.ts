@@ -15,6 +15,8 @@ import { systemMail } from "../integrations/system-mail";
 import { config } from "../config";
 import { logAgent } from "../logger";
 import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
+import { listActiveOrganizations } from "../organizations";
+import { fanoutNote, orgsToSweep } from "./org-fanout";
 
 /**
  * Active organization ids for a cron sweep that must run per tenant. Falls
@@ -27,11 +29,19 @@ import { runWithOrg, LEGACY_ORG_ID } from "../tenant-context";
  * success. `orgsToSweep` keeps the two apart and logs the failure.
  */
 async function activeOrgIds(): Promise<string[]> {
-  const { orgs } = await orgsToSweep("maintenance");
-  return orgs.length ? orgs.map((o) => o.id) : [LEGACY_ORG_ID];
+  const fanout = await orgsToSweep("maintenance");
+  if (fanout.error) {
+    throw new Error(
+      fanoutNote(fanout) ??
+        "The account list could not be read, so this maintenance sweep did no work."
+    );
+  }
+  // orgsToSweep already supplies the founding-organization fallback for a
+  // genuinely empty deployment. An empty result here means the lookup failed
+  // or every account is paused. A failed lookup throws above so it cannot be
+  // reported as a healthy zero-work sweep.
+  return fanout.orgs.map((o) => o.id);
 }
-import { listActiveOrganizations } from "../organizations";
-import { orgsToSweep } from "./org-fanout";
 import {
   applyOutcomeToSolicitation,
   recordReplyEvent,
@@ -44,10 +54,11 @@ import { looksLikeBounce, parseBounce, type BounceReport } from "../domain/email
 import { readReplyAttachments, combineReplyText } from "../domain/reply-attachments";
 import { advanceIfQuotesComplete, closeIfSubsExhausted } from "../domain/advance-stage";
 import { STALL_HOURS, STAGE_AGENT, STALL_REASONING } from "../domain/journey";
-import { areCallsEnabled, getAutomationRules } from "../app-settings";
+import { areCallsEnabled, getAutomationRules, isAutomationPaused } from "../app-settings";
 import { enqueue } from "../queue";
 import { sendPendingApproved, sendFollowUps } from "../backlink-send";
 import { getProfileJson } from "../ai/companyProfile";
+import { storage, type StorageBackend } from "../integrations/storage";
 import { outreachDisplayName } from "../domain/solicitation-completeness";
 import {
   scrubInternalFailureCopy,
@@ -57,6 +68,10 @@ import { scrubGovtContacts, rewriteSamUrls } from "../integrations/scrub-contact
 import { resolveOutreachVars } from "../domain/outreach-vars";
 import { buildOutreachSections } from "../domain/outreach-sections";
 import { gatherTradeAttachments } from "../opportunity-attachments";
+import {
+  assessAttachmentPackage,
+  describePackageProblems,
+} from "../domain/attachment-package";
 import type { Opportunity } from "../types";
 import {
   renderTemplate,
@@ -89,14 +104,24 @@ export const outreachFollowup: AgentDefinition = {
      * looks like. Letting it throw hands it to the runner, which logs it at
      * error status and marks the run failed.
      */
-    const orgs = await listActiveOrganizations();
+    const fanout = await orgsToSweep("outreach-followup");
+    if (fanout.error) {
+      return {
+        ok: false,
+        summary: fanoutNote(fanout) ?? "No accounts were processed.",
+      };
+    }
     let sentTotal = 0;
     let dueTotal = 0;
     let lastCalls = 0;
-    for (const org of orgs) {
+    let failedTotal = 0;
+    let heldTotal = 0;
+    for (const org of fanout.orgs) {
       const res = await runWithOrg(org.id, () => followUpForOrg(org.id));
       sentTotal += res.sent;
       dueTotal += res.due;
+      failedTotal += res.failures;
+      heldTotal += res.held;
       /*
        * The third message is gated twice, and both gates were missing.
        *
@@ -112,14 +137,23 @@ export const outreachFollowup: AgentDefinition = {
        */
       const nudgeRules = await runWithOrg(org.id, () => getAutomationRules());
       if (nudgeRules.final_nudge_enabled && nudgeRules.followup_max > 0) {
-        lastCalls += await runWithOrg(org.id, () => lastCallForOrg(org.id)).catch(() => 0);
+        const lastCall = await runWithOrg(org.id, () => lastCallForOrg(org.id));
+        lastCalls += lastCall.sent;
+        failedTotal += lastCall.failures;
       }
     }
+    const paused = fanout.pausedCount
+      ? ` Automation is paused for ${fanout.pausedCount} account${fanout.pausedCount === 1 ? "" : "s"}; their schedules were left unchanged.`
+      : "";
     return {
-      ok: true,
+      ok: failedTotal === 0 && heldTotal === 0,
       summary: `Sent ${sentTotal} follow-up(s) of ${dueTotal} due${
         lastCalls > 0 ? `, plus ${lastCalls} last-call nudge(s) before bid deadlines` : ""
-      }.`,
+      }.${heldTotal > 0 ? ` ${heldTotal} follow-up(s) were held with their schedules preserved.` : ""}${
+        failedTotal > 0 ? ` ${failedTotal} follow-up action(s) failed and need attention.` : ""
+      }${paused}`,
+      data: { sent: sentTotal, due: dueTotal, lastCalls, held: heldTotal, failures: failedTotal },
+      humanActionRequired: failedTotal > 0 || heldTotal > 0,
     };
   },
 };
@@ -138,7 +172,9 @@ export const outreachFollowup: AgentDefinition = {
  * follow-up, then the unresponsive mark, then nothing until the operator
  * noticed the deadline themselves.
  */
-async function lastCallForOrg(orgId: string): Promise<number> {
+async function lastCallForOrg(
+  orgId: string
+): Promise<{ sent: number; due: number; failures: number }> {
   const due = await query<{
     opportunity_id: string;
     subcontractor_id: string;
@@ -151,7 +187,7 @@ async function lastCallForOrg(orgId: string): Promise<number> {
             s.email, s.owner_name, o.deadline
        from opportunity_subs os
        join opportunities o on o.id = os.opportunity_id
-       join subcontractors s on s.id = os.subcontractor_id
+       join subcontractors s on s.id = os.subcontractor_id and s.org_id = o.org_id
       where o.org_id = $1
         and o.status = 'open'
         and coalesce(o.pursuit_state, 'active') = 'active'
@@ -159,6 +195,7 @@ async function lastCallForOrg(orgId: string): Promise<number> {
         and o.deadline is not null
         and o.deadline > now()
         and o.deadline <= now() + interval '4 days'
+        and os.removed_at is null
         and os.outreach_state in ('followed_up', 'unresponsive')
         and s.email is not null and s.email_verified
         -- the trade is still unpriced; a priced trade needs no more chasing
@@ -171,19 +208,21 @@ async function lastCallForOrg(orgId: string): Promise<number> {
         -- one last call per sub per solicitation, ever
         and not exists (
               select 1 from communications c
-               where c.opportunity_id = os.opportunity_id
+               where c.org_id = $1
+                 and c.opportunity_id = os.opportunity_id
                  and c.subcontractor_id = os.subcontractor_id
                  and c.direction = 'outbound'
                  and c.meta->>'kind' = 'final_nudge'
             )
       limit 25`,
     [orgId]
-  ).catch(() => []);
-  if (due.length === 0) return 0;
+  );
+  if (due.length === 0) return { sent: 0, due: 0, failures: 0 };
 
-  const profile = await getProfileJson().catch(() => null);
+  const profile = await getProfileJson();
   const senderName = profile ? outreachDisplayName(profile) : "";
   let sent = 0;
+  let failures = 0;
 
   for (const row of due) {
     const first = (row.owner_name ?? "").trim().split(/\s+/)[0] || "there";
@@ -216,12 +255,14 @@ async function lastCallForOrg(orgId: string): Promise<number> {
       subcontractorId: row.subcontractor_id ?? undefined,
       trade: row.trade ?? null,
     });
-    if (res.disabled || res.error) {
+    if (res.disabled || res.blocked || res.error) {
+      failures++;
       // This is the one chance to get a price before the deadline; a silent
       // skip here means the bid goes out short a trade with no explanation.
       await query(
-        `update opportunities set human_action_required = true where id = $1`,
-        [row.opportunity_id]
+        `update opportunities set human_action_required = true
+          where id = $1 and org_id = $2`,
+        [row.opportunity_id, orgId]
       );
       await logAgent({
         agent: "outreach-followup",
@@ -234,23 +275,27 @@ async function lastCallForOrg(orgId: string): Promise<number> {
       });
       continue;
     }
-    sent++;
     await query(
       `insert into communications
-         (subcontractor_id, opportunity_id, channel, direction, subject, body,
-          gmail_message_id, provider, recipient_email, meta)
-       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8::jsonb)`,
+         (org_id, subcontractor_id, opportunity_id, channel, direction,
+          subject, body, gmail_message_id, gmail_thread_id,
+          rfc822_message_id, provider, recipient_email, delivery_state, meta)
+       values ($1,$2,$3,'email','outbound',$4,$5,$6,$7,$8,$9,$10,'sent',$11::jsonb)`,
       [
+        orgId,
         row.subcontractor_id,
         row.opportunity_id,
         subject,
         text,
         res.messageId ?? null,
+        res.threadId ?? null,
+        res.rfc822MessageId ?? null,
         res.provider,
         row.email,
         JSON.stringify({ kind: "final_nudge", trade: row.trade ?? null }),
       ]
     );
+    sent++;
     await logAgent({
       agent: "outreach-followup",
       action: "last-call",
@@ -260,7 +305,7 @@ async function lastCallForOrg(orgId: string): Promise<number> {
       message: `Bid deadline is ${when} and their ${tradeClean || "trade"} price is still out, so they got one final nudge. No further emails will be sent for this solicitation.`,
     });
   }
-  return sent;
+  return { sent, due: due.length, failures };
 }
 
 /**
@@ -282,7 +327,7 @@ async function recordBounce(input: {
   orgId: string;
   threadId: string;
   report: BounceReport;
-}): Promise<void> {
+}): Promise<boolean> {
   const { orgId, threadId, report } = input;
   const state = report.permanent ? "bounced" : "deferred";
 
@@ -315,18 +360,22 @@ async function recordBounce(input: {
       threadId ?? "",
       report.recipient,
     ]
-  ).catch((err) => {
-    console.error(`[maintenance] bounce write failed: ${(err as Error).message}`);
-    return [] as { id: string; recipient_email: string | null }[];
-  });
+  );
 
   if (updated.length === 0) {
-    // Say so rather than dropping it: an unmatched bounce still means mail is
-    // failing somewhere, and silence here is how that stays invisible.
-    console.warn(
-      `[maintenance] unmatched bounce for org ${orgId} (${report.recipient ?? "unknown recipient"}): ${report.reason}`
-    );
-    return;
+    // Keep the provider failure in the tenant-visible automation log and make
+    // the enclosing poll fail honestly. The mailbox cursor can still advance,
+    // avoiding an endless replay of a DSN that cannot be correlated.
+    await logAgent({
+      agent: "reply-poll",
+      action: "bounce-unmatched",
+      level: "error",
+      status: "error",
+      message:
+        `An email delivery failure for ${report.recipient ?? "an unknown recipient"} could not be matched to an outbound message. ` +
+        `${report.reason} Open the connected inbox and correct the affected contact before sending again.`,
+    });
+    return false;
   }
 
   const address = report.recipient ?? updated[0].recipient_email;
@@ -336,9 +385,7 @@ async function recordBounce(input: {
       email: address,
       reason: `Hard bounce: ${report.reason}`,
       source: "bounce",
-    }).catch((err) =>
-      console.error(`[maintenance] bounce suppression failed: ${(err as Error).message}`)
-    );
+    });
 
     /*
      * A dead address is not a verified one.
@@ -355,8 +402,6 @@ async function recordBounce(input: {
           set email_verified = false
         where org_id = $1 and lower(email) = $2 and email_verified`,
       [orgId, address.toLowerCase()]
-    ).catch((err) =>
-      console.error(`[maintenance] bounce unverify failed: ${(err as Error).message}`)
     );
 
     /*
@@ -381,8 +426,6 @@ async function recordBounce(input: {
           -- a later bounce on the same address must not erase.
           and os.outreach_state in ('sent','followed_up')`,
       [orgId, address.toLowerCase()]
-    ).catch((err) =>
-      console.error(`[maintenance] bounce coverage update failed: ${(err as Error).message}`)
     );
   }
 
@@ -393,10 +436,13 @@ async function recordBounce(input: {
     message: report.permanent
       ? `Email to ${address ?? "a subcontractor"} bounced permanently and the address was suppressed. ${report.reason}`
       : `Email to ${address ?? "a subcontractor"} was delayed. ${report.reason}`,
-  }).catch(() => {});
+  });
+  return true;
 }
 
-async function followUpForOrg(orgId: string): Promise<{ sent: number; due: number }> {
+async function followUpForOrg(
+  orgId: string
+): Promise<{ sent: number; due: number; failures: number; held: number }> {
   // Template resolution is org-aware (own copy, else platform default) so a
   // follow-up never goes out with another tenant's wording.
   const { activeTemplate } = await import("../domain/template-store");
@@ -410,7 +456,7 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
   // Chasing switched off entirely. Markers already on file are left alone
   // rather than cleared: turning the rule back on should resume the queue it
   // was paused with, not start from an empty one.
-  if (rules.followup_max <= 0) return { sent: 0, due: 0 };
+  if (rules.followup_max <= 0) return { sent: 0, due: 0, failures: 0, held: 0 };
 
   const due = await query<{
     id: string;
@@ -452,10 +498,15 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
        from communications c
        join subcontractors s on s.id = c.subcontractor_id
        left join opportunities o on o.id = c.opportunity_id
-       left join lateral (
+       join lateral (
          select trade from opportunity_subs
          where opportunity_id = c.opportunity_id
            and subcontractor_id = c.subcontractor_id
+           and removed_at is null
+           and (
+             coalesce(c.meta->>'trade', '') = ''
+             or coalesce(trade, '') = coalesce(c.meta->>'trade', '')
+           )
          order by created_at desc
          limit 1
        ) os on true
@@ -492,6 +543,8 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
           select 1 from opportunity_subs os2
            where os2.opportunity_id = c.opportunity_id
              and os2.subcontractor_id = c.subcontractor_id
+             and os2.removed_at is null
+             and coalesce(os2.trade, '') = coalesce(os.trade, '')
              and os2.outreach_state in
                  ('responsive','quoted','responded','declined','not_a_fit','unavailable')
         )
@@ -504,11 +557,46 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
   const phone = profile?.phone ?? "";
 
   let sent = 0;
+  let failures = 0;
+  let held = 0;
   for (const row of due) {
-    // Consume the follow-up marker up front so a crash mid-loop cannot spam;
-    // it is RESTORED below when the send fails with a retryable error.
-    await query(`update communications set follow_up_at = null where id = $1`, [row.id]);
-    if (!row.email || !row.email_verified) continue;
+    // Claim with a short lease instead of deleting the schedule. Only one
+    // worker can move a due timestamp, and an interrupted worker naturally
+    // makes the item eligible again after the lease expires.
+    const claimed = await query<{ id: string }>(
+      `update communications
+          set follow_up_at = now() + interval '15 minutes'
+        where id = $1 and org_id = $2
+          and follow_up_at is not null and follow_up_at <= now()
+        returning id`,
+      [row.id, orgId]
+    );
+    if (claimed.length === 0) continue;
+    if (!row.email || !row.email_verified) {
+      failures++;
+      await query(
+        `update communications
+            set follow_up_at = now() + interval '6 hours'
+          where id = $1 and org_id = $2`,
+        [row.id, orgId]
+      );
+      await query(
+        `update opportunities set human_action_required = true
+          where id = $1 and org_id = $2`,
+        [row.opportunity_id, orgId]
+      );
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send",
+        level: "error",
+        status: "error",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message:
+          "The follow-up is due, but the subcontractor no longer has a verified email address. Nothing was sent. Correct or verify the address; the schedule was preserved.",
+      });
+      continue;
+    }
 
     /*
      * Ask again, immediately before sending.
@@ -534,7 +622,33 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
        )::int as n`,
       [orgId, row.subcontractor_id, row.opportunity_id]
     ).catch(() => null);
-    if ((answered?.n ?? 0) > 0) continue;
+    if (!answered) {
+      failures++;
+      await query(
+        `update communications
+            set follow_up_at = now() + interval '15 minutes'
+          where id = $1 and org_id = $2`,
+        [row.id, orgId]
+      );
+      await logAgent({
+        agent: "outreach-followup",
+        action: "reply-check-failed",
+        level: "error",
+        status: "error",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message:
+          "Could not verify whether this subcontractor already replied, so the follow-up was held. Nothing was sent and it will be retried after the connection recovers.",
+      });
+      continue;
+    }
+    if (answered.n > 0) {
+      await query(
+        `update communications set follow_up_at = null where id = $1 and org_id = $2`,
+        [row.id, orgId]
+      );
+      continue;
+    }
 
     /*
      * Can this follow-up actually go INSIDE the original conversation?
@@ -554,20 +668,62 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
      * the column is empty and we know the thread, ask Gmail what our own last
      * message in it was, and write the answer back so the next follow-up needs
      * no repair.
-     */
+    */
     let inReplyTo = row.rfc822_message_id ?? null;
     let references: string[] = [];
+    let threadReadFailure: string | null = null;
     if (row.gmail_thread_id) {
-      const recovered = await gmail
-        .threadMessageId(row.gmail_thread_id, orgId)
-        .catch(() => ({ rfc822MessageId: null, references: [] as string[] }));
+      let recovered: Awaited<ReturnType<typeof gmail.threadMessageId>> = {
+        rfc822MessageId: null,
+        references: [],
+      };
+      try {
+        recovered = await gmail.threadMessageId(row.gmail_thread_id, orgId);
+      } catch (err) {
+        threadReadFailure = err instanceof Error ? err.message : String(err);
+        // This lookup enriches the threading headers. A stored Message-ID is
+        // still enough to reply safely; without one, the deliberately
+        // self-contained new-thread fallback below is used. Surface the
+        // provider failure either way so the fallback is never silent.
+        await logAgent({
+          agent: "outreach-followup",
+          action: "thread-read-failed",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          level: "warn",
+          status: "skipped",
+          message:
+            "Gmail could not read the original thread (" +
+            threadReadFailure +
+            "). " +
+            (inReplyTo
+              ? "The stored Message-ID still allows this follow-up to remain a reply; the optional References header was omitted."
+              : "A self-contained new email will be used so the subcontractor still receives the complete request."),
+        });
+      }
       references = recovered.references;
       if (!inReplyTo && recovered.rfc822MessageId) {
         inReplyTo = recovered.rfc822MessageId;
-        await query(`update communications set rfc822_message_id = $2 where id = $1`, [
-          row.id,
-          inReplyTo,
-        ]).catch(() => {});
+        try {
+          await query(
+            `update communications set rfc822_message_id = $2
+              where id = $1 and org_id = $3`,
+            [row.id, inReplyTo, orgId]
+          );
+        } catch (err) {
+          // This is a repair cache, not the evidence used for the send in this
+          // run. Keep the recovered Message-ID in memory, but surface that the
+          // next run may have to read it from Gmail again.
+          await logAgent({
+            agent: "outreach-followup",
+            action: "thread-repair-not-saved",
+            opportunityId: row.opportunity_id,
+            subcontractorId: row.subcontractor_id,
+            level: "warn",
+            status: "skipped",
+            message: `Recovered the original email's Message-ID, but could not save that repair (${(err as Error).message}). This follow-up can still thread correctly; a later follow-up may need to recover it again.`,
+          });
+        }
       }
     }
 
@@ -582,7 +738,9 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
     const threadGap = !row.gmail_thread_id
       ? "no Gmail thread was recorded for the original message"
       : !inReplyTo
-        ? "the original message's RFC822 Message-ID could not be recovered, so the recipient's mail client would not attach the reply to the conversation"
+        ? "the original message's RFC822 Message-ID could not be recovered" +
+          (threadReadFailure ? " because Gmail returned " + threadReadFailure : "") +
+          ", so the recipient's mail client would not attach the reply to the conversation"
         : !threadSubject
           ? "the original message had no subject to inherit"
           : "";
@@ -635,6 +793,127 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
     let plain: string;
     let attachments: Awaited<ReturnType<typeof gatherTradeAttachments>>["files"] = [];
     let attachedNames: string[] = [];
+    let fallbackGathered: Awaited<ReturnType<typeof gatherTradeAttachments>> | null = null;
+
+    if (useFallback) {
+      /*
+       * A new thread has to repeat the complete package. Build and assess it
+       * before rendering either the configured fallback or the emergency
+       * no-template copy, so neither path can send a broken or incomplete
+       * document promise.
+       */
+      const opp = await queryOne<Opportunity>(
+        `select * from opportunities where id = $1 and org_id = $2`,
+        [row.opportunity_id, orgId]
+      );
+      if (!opp) {
+        failures++;
+        await query(
+          `update communications
+              set follow_up_at = now() + interval '6 hours'
+            where id = $1 and org_id = $2`,
+          [row.id, orgId]
+        );
+        await logAgent({
+          agent: "outreach-followup",
+          action: "build-failed",
+          level: "error",
+          status: "error",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          message:
+            "The follow-up could not be rebuilt because its opportunity record is unavailable. Nothing was sent and the schedule was preserved for another attempt.",
+        });
+        continue;
+      }
+
+      try {
+        fallbackGathered = await gatherTradeAttachments(orgId, opp, row.trade ?? "");
+      } catch (err) {
+        failures++;
+        await query(
+          `update communications
+              set follow_up_at = now() + interval '15 minutes'
+            where id = $1 and org_id = $2`,
+          [row.id, orgId]
+        );
+        await logAgent({
+          agent: "outreach-followup",
+          action: "attachment-build-failed",
+          level: "error",
+          status: "error",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          message: `The follow-up package could not be prepared (${(err as Error).message}). Nothing was sent and it will be retried.`,
+        });
+        continue;
+      }
+
+      const packageAssessment = assessAttachmentPackage({
+        files: fallbackGathered.files,
+        links: fallbackGathered.links,
+        expected: fallbackGathered.expected,
+        undelivered: fallbackGathered.undelivered,
+      });
+      for (const soft of packageAssessment.problems.filter((problem) => !problem.blocking)) {
+        await logAgent({
+          agent: "outreach-followup",
+          action: "gap",
+          level: "info",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          message: soft.message,
+        });
+      }
+      if (fallbackGathered.omitted.length > 0) {
+        await logAgent({
+          agent: "outreach-followup",
+          action: "filter",
+          level: "info",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          message: `Left ${fallbackGathered.omitted.length} document(s) out of the ${
+            row.trade || "general"
+          } follow-up packet: ${fallbackGathered.omitted.map((item) => item.reason).join("; ")}.`,
+        });
+      }
+      if (!packageAssessment.ok) {
+        failures++;
+        const why = describePackageProblems(packageAssessment.problems);
+        await query(
+          `update communications
+              set follow_up_at = now() + interval '6 hours'
+            where id = $1 and org_id = $2`,
+          [row.id, orgId]
+        );
+        await query(
+          `update opportunities
+              set human_action_required = true,
+                  risk_flags = (
+                    select array(select distinct unnest(coalesce(risk_flags,'{}') || array['outreach_incomplete']))
+                  )
+            where id = $1 and org_id = $2`,
+          [row.opportunity_id, orgId]
+        );
+        await logAgent({
+          agent: "outreach-followup",
+          action: "attachment-blocked",
+          level: "error",
+          status: "error",
+          opportunityId: row.opportunity_id,
+          subcontractorId: row.subcontractor_id,
+          message: `The follow-up was held because its document package is not usable. ${why} Nothing was sent; correct the package and retry.`,
+          reasoning: packageAssessment.problems
+            .filter((problem) => problem.blocking)
+            .map((problem) => problem.kind)
+            .join(", "),
+        });
+        continue;
+      }
+
+      attachments = fallbackGathered.files;
+      attachedNames = fallbackGathered.files.map((file) => file.filename);
+    }
 
     if (chosen) {
       const renderedSubject = renderTemplate(
@@ -652,39 +931,16 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
          * message below" when there is no message below is worse than not
          * following up at all.
          */
-        const opp = await queryOne<Opportunity>(
-          `select * from opportunities where id = $1`,
-          [row.opportunity_id]
-        ).catch(() => null);
-        const gathered = opp
-          ? await gatherTradeAttachments(opp, row.trade ?? "").catch(() => ({
-              files: [],
-              links: [],
-              expected: false,
-            }))
-          : { files: [], links: [], expected: false };
-        attachments = gathered.files;
-        attachedNames = gathered.files.map((f: { filename: string }) => f.filename);
-
         const sections = buildOutreachSections({
           vars,
           scopeBoundary: resolved.scopeBoundary,
           attachedNames,
-          links: gathered.links,
+          links: fallbackGathered!.links,
         });
         const details = renderOutreachBrief(sections);
         subject = renderedSubject || "Following up on our quote request";
         plain = body + details.plain;
         html = plainToHtml(body) + details.html;
-
-        await logAgent({
-          agent: "outreach-followup",
-          action: "new-thread",
-          level: "warn",
-          opportunityId: row.opportunity_id,
-          subcontractorId: row.subcontractor_id,
-          message: `Followed up with a new email rather than a reply because ${threadGap}. The full scope and ${attachedNames.length} document(s) were sent again so the message stands on its own.`,
-        });
       } else {
         subject = threadSubject!;
         plain = body;
@@ -694,14 +950,70 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       // No template at all. Minimal, and never pretending to be a reply.
       const greeting = vars.owner_name || "there";
       subject = threadSubject ?? "Following up on our quote request";
-      plain = `Hi ${greeting},\n\nJust following up on my previous email. Happy to answer any questions or set up a quick call.\n\n${vars.sender_name}`;
-      html = plainToHtml(plain);
+      const body = `Hi ${greeting},\n\nJust following up on my previous email. Happy to answer any questions or set up a quick call.\n\n${vars.sender_name}`;
+      if (useFallback) {
+        const sections = buildOutreachSections({
+          vars,
+          scopeBoundary: resolved.scopeBoundary,
+          attachedNames,
+          links: fallbackGathered!.links,
+        });
+        const details = renderOutreachBrief(sections);
+        plain = body + details.plain;
+        html = plainToHtml(body) + details.html;
+      } else {
+        plain = body;
+        html = plainToHtml(body);
+      }
     }
+
+    if (useFallback) {
+      await logAgent({
+        agent: "outreach-followup",
+        action: "new-thread",
+        level: "warn",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: `Followed up with a new email rather than a reply because ${threadGap}. The full scope and ${attachedNames.length} attached document(s) were sent again so the message stands on its own.`,
+      });
+    }
+
+    // Work out the next schedule before contacting Gmail. A failed count must
+    // hold the email, not send it and then lose the row needed to prevent a
+    // retry from sending the same follow-up again.
+    const priorRow = await queryOne<{ n: number }>(
+      `select count(*)::int as n from communications
+        where org_id = $1 and direction = 'outbound' and channel = 'email'
+          and subcontractor_id = $2
+          and opportunity_id is not distinct from $3
+          and meta->>'kind' = 'followup'`,
+      [orgId, row.subcontractor_id, row.opportunity_id]
+    );
+    if (!priorRow) {
+      failures++;
+      await logAgent({
+        agent: "outreach-followup",
+        action: "followup-count-failed",
+        level: "error",
+        status: "error",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message:
+          "The prior follow-up count was unavailable, so nothing was sent. The existing 15-minute lease was kept and the count will be checked again before retrying.",
+      });
+      continue;
+    }
+    const sentSoFar = priorRow.n + 1;
+    const nextFollowUpAt =
+      sentSoFar < rules.followup_max
+        ? new Date(Date.now() + rules.followup_hours * 3_600_000).toISOString()
+        : null;
 
     const res = await sendOutreachEmail({
       to: row.email,
       subject,
       html,
+      text: plain,
       trackingId: row.tracking_id ?? undefined,
       orgId,
       // Only claim the thread when we can actually join it. Passing a threadId
@@ -718,36 +1030,16 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       trade: row.trade ?? null,
     });
     if (!res.disabled && !res.error) {
-      /*
-       * Does the rule allow another one after this?
-       *
-       * Follow-ups sent so far, counted from the record rather than tracked in
-       * a column, because the record is what a subcontractor experienced. When
-       * the count is still below the limit the NEW row carries the next marker,
-       * which is how a second and third chase happen at all: the old code
-       * consumed the marker and never wrote another, so "one follow-up" was
-       * structural rather than chosen.
-       */
-      const priorRow = await queryOne<{ n: number }>(
-        `select count(*)::int as n from communications
-          where org_id = $1 and direction = 'outbound' and channel = 'email'
-            and subcontractor_id = $2
-            and opportunity_id is not distinct from $3
-            and meta->>'kind' = 'followup'`,
-        [orgId, row.subcontractor_id, row.opportunity_id]
-      ).catch(() => null);
-      // This send is not on the record yet, so it counts itself.
-      const sentSoFar = (priorRow?.n ?? 0) + 1;
-      const nextFollowUpAt =
-        sentSoFar < rules.followup_max
-          ? new Date(Date.now() + rules.followup_hours * 3_600_000).toISOString()
-          : null;
       await query(
         // gmail_thread_id + rfc822_message_id are carried forward so a SECOND
         // follow-up chains onto this one rather than restarting the thread.
-        `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_message_id, provider, meta, gmail_thread_id, rfc822_message_id, follow_up_at)
-         values ($1,$2,'email','outbound',$3,$4,$5,$6,$7::jsonb,$8,$9,$10)`,
+        `insert into communications
+           (org_id, subcontractor_id, opportunity_id, channel, direction,
+            subject, body, gmail_message_id, provider, meta, gmail_thread_id,
+            rfc822_message_id, follow_up_at, recipient_email, delivery_state)
+         values ($1,$2,$3,'email','outbound',$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,'sent')`,
         [
+          orgId,
           row.subcontractor_id,
           row.opportunity_id,
           subject,
@@ -782,7 +1074,12 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
           // never empty, and threadMessageId() repairs it properly next time.
           res.rfc822MessageId ?? inReplyTo ?? null,
           nextFollowUpAt,
+          row.email,
         ]
+      );
+      await query(
+        `update communications set follow_up_at = null where id = $1 and org_id = $2`,
+        [row.id, orgId]
       );
 
       /*
@@ -815,32 +1112,70 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
         `update opportunity_subs
             set outreach_state = 'followed_up'
           where opportunity_id = $1 and subcontractor_id = $2
+            and removed_at is null
+            and coalesce(trade, '') = coalesce($3::text, '')
             and outreach_state in ('sent', 'draft', 'email_unverified')`,
-        [row.opportunity_id, row.subcontractor_id]
+        [row.opportunity_id, row.subcontractor_id, row.trade]
       );
       await query(`update subcontractors set last_contacted = now() where id = $1`, [
         row.subcontractor_id,
       ]);
       sent++;
-    } else if (res.disabled) {
-      // The pursuit was paused, aborted, passed, or expired between the
-      // due-list and the send. Leave the marker consumed so the next sweep
-      // does not try again. Restoring it is how a closed job keeps emailing.
+    } else if (res.disabled && res.retryable === false) {
+      // An abort, submission, closed record, stale pursuit generation, or
+      // deleted opportunity can never become sendable by waiting. Clear the
+      // lease so a stop that lands during packet assembly cannot be revived by
+      // this worker after the stop transaction already removed its schedule.
+      await query(
+        `update communications set follow_up_at = null
+          where id = $1 and org_id = $2`,
+        [row.id, orgId]
+      );
       await logAgent({
         agent: "outreach-followup",
         action: "send",
-        level: "info",
+        level: "warn",
+        status: "skipped",
         opportunityId: row.opportunity_id,
         subcontractorId: row.subcontractor_id,
-        message: `Follow-up was not sent because this opportunity is no longer active. ${res.error ?? ""}`.trim(),
+        message: `Follow-up was cancelled (${res.error ?? "the pursuit is closed"}). Nothing was sent and it will not be retried.`,
+      });
+    } else if (res.disabled) {
+      held++;
+      // A pause, quota hold, disconnected inbox, or pursuit-state change can
+      // land after this row was claimed. Keep a real schedule on the row. The
+      // due query itself prevents an aborted pursuit from sending, while a
+      // resumed pursuit or reconnected inbox can continue without rebuilding
+      // a missing timer by hand.
+      await query(
+        `update communications
+            set follow_up_at = now() + interval '1 hour'
+          where id = $1 and org_id = $2`,
+        [row.id, orgId]
+      );
+      await logAgent({
+        agent: "outreach-followup",
+        action: "send",
+        level: "warn",
+        status: "skipped",
+        opportunityId: row.opportunity_id,
+        subcontractorId: row.subcontractor_id,
+        message: `Follow-up was held (${res.error ?? "sending is currently paused or unavailable"}). Nothing was sent and its schedule was preserved.`,
       });
     } else if (res.blocked) {
+      failures++;
       // Content was refused; a retry would refuse the same content, so the
       // marker stays consumed and a human is flagged instead.
+      await query(
+        `update communications set follow_up_at = null
+          where id = $1 and org_id = $2`,
+        [row.id, orgId]
+      );
       if (row.opportunity_id) {
         await query(
-          `update opportunities set human_action_required = true where id = $1`,
-          [row.opportunity_id]
+          `update opportunities set human_action_required = true
+            where id = $1 and org_id = $2`,
+          [row.opportunity_id, orgId]
         );
       }
       await logAgent({
@@ -853,14 +1188,17 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
         message: `Held follow-up email, nothing was sent. ${res.error}`,
       });
     } else {
+      failures++;
       // Transport failure (Gmail error or no transport). This branch used to
       // fall through silently AFTER the marker was consumed, which quietly
       // deleted the follow-up: the sub was later marked unresponsive as if
       // they had ignored an email that never went out. Restore the marker so
       // the next sweep retries, and say what happened.
       await query(
-        `update communications set follow_up_at = now() + interval '15 minutes' where id = $1`,
-        [row.id]
+        `update communications
+            set follow_up_at = now() + interval '15 minutes'
+          where id = $1 and org_id = $2`,
+        [row.id, orgId]
       );
       await logAgent({
         agent: "outreach-followup",
@@ -873,7 +1211,7 @@ async function followUpForOrg(orgId: string): Promise<{ sent: number; due: numbe
       });
     }
   }
-  return { sent, due: due.length };
+  return { sent, due: due.length, failures, held };
 }
 
 /**
@@ -902,19 +1240,18 @@ export const outreachRecoverySweep: AgentDefinition = {
     "Re-sends initial outreach that failed or was stored as a draft, once the organization's inbox is connected again.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    /*
-     * Deliberately not caught. An empty list here means no customers; a
-     * failure means we could not find out who they are, and swallowing it
-     * turned a stopped sweep into "0 processed", which is what a quiet night
-     * looks like. Letting it throw hands it to the runner, which logs it at
-     * error status and marks the run failed.
-     */
-    const orgs = await listActiveOrganizations();
+    const fanout = await orgsToSweep("outreach-recovery-sweep");
+    if (fanout.error) {
+      return {
+        ok: false,
+        summary: fanoutNote(fanout) ?? "No accounts were processed.",
+      };
+    }
     const enqueued: AgentResult["enqueued"] = [];
     let recovered = 0;
     let waiting = 0;
 
-    for (const org of orgs) {
+    for (const org of fanout.orgs) {
       await runWithOrg(org.id, async () => {
         const stuck = await query<{
           opportunity_id: string;
@@ -926,11 +1263,14 @@ export const outreachRecoverySweep: AgentDefinition = {
              from opportunity_subs os
              join opportunities o on o.id = os.opportunity_id
             where o.org_id = $1 and o.status = 'open'
+              and coalesce(o.pursuit_state, 'active') = 'active'
+              and o.stage not in ('dismissed', 'submitted', 'won', 'lost')
+              and os.removed_at is null
               and os.outreach_state in ('draft', 'send_failed')
             order by os.created_at asc
             limit 25`,
           [org.id]
-        ).catch(() => []);
+        );
         if (stuck.length === 0) return;
 
         // Only retry when a send can actually succeed now. Retrying into a
@@ -964,15 +1304,19 @@ export const outreachRecoverySweep: AgentDefinition = {
       });
     }
 
+    const paused = fanout.pausedCount
+      ? ` Automation is paused for ${fanout.pausedCount} account${fanout.pausedCount === 1 ? "" : "s"}; their recovery work was left unchanged.`
+      : "";
     return {
-      ok: true,
+      ok: waiting === 0,
       summary:
         recovered > 0
-          ? `Re-queued ${recovered} stuck outreach email(s) now that sending works again.`
+          ? `Re-queued ${recovered} stuck outreach email(s) now that sending works again.${paused}`
           : waiting > 0
-            ? `${waiting} outreach email(s) still waiting for an inbox connection.`
-            : "No stuck outreach emails.",
+            ? `${waiting} outreach email(s) still waiting for an inbox connection.${paused}`
+            : `No stuck outreach emails.${paused}`,
       enqueued,
+      humanActionRequired: waiting > 0,
     };
   },
 };
@@ -1063,7 +1407,10 @@ export const reviewExpirySweep: AgentDefinition = {
             [orgId]
           )
         );
-        heldForOperator += held?.n ?? 0;
+        if (!held) {
+          throw new Error("Review expiry count was unavailable for account " + orgId + ".");
+        }
+        heldForOperator += held.n;
         continue;
       }
 
@@ -1121,6 +1468,7 @@ export const stalledPipelineSweep: AgentDefinition = {
     // Per organization, so no single statement flags or rescues across
     // tenants and every audit-log line lands in the owning tenant's log.
     let rescued = 0;
+    let retryFailures = 0;
     const stalled: { id: string; title: string | null; stage: string; hours: number; orgId: string }[] = [];
     for (const sweepOrgId of await activeOrgIds()) {
     for (const [stage, hours] of Object.entries(STALL_HOURS)) {
@@ -1154,15 +1502,28 @@ export const stalledPipelineSweep: AgentDefinition = {
           // the enqueue fails, that marker is a lie (no retry is running), so
           // roll it back and say so; otherwise the record would skip straight
           // to strike 2, or sit forever, while the log claimed recovery ran.
-          let queued = true;
-          await enqueue(agent, { opportunityId: o.id, trigger: "rescue" }).catch(async (e) => {
-            queued = false;
-            await query(
-              `update opportunities
-                  set risk_flags = array_remove(coalesce(risk_flags,'{}'), $2)
-                where id = $1`,
-              [o.id, retryMarker]
-            ).catch(() => {});
+          let queued = false;
+          try {
+            const queuedId = await runWithOrg(sweepOrgId, () =>
+              enqueue(agent, { opportunityId: o.id, trigger: "rescue" })
+            );
+            if (!queuedId) {
+              throw new Error("the queue refused the job because automation became paused");
+            }
+            queued = true;
+          } catch (e) {
+            retryFailures++;
+            // Required cleanup: without it, the record claims a retry happened
+            // and the next sweep skips directly to escalation. A cleanup
+            // failure throws and makes the whole run visibly fail.
+            await runWithOrg(sweepOrgId, () =>
+              query(
+                `update opportunities
+                    set risk_flags = array_remove(coalesce(risk_flags,'{}'), $2)
+                  where id = $1 and org_id = $3`,
+                [o.id, retryMarker, sweepOrgId]
+              )
+            );
             await runWithOrg(sweepOrgId, () =>
               logAgent({
                 agent: "stalled-pipeline-sweep",
@@ -1173,7 +1534,7 @@ export const stalledPipelineSweep: AgentDefinition = {
                 message: `Could not queue the automatic retry for "${o.title ?? o.id}" (${(e as Error).message}). It stays marked stuck and will be retried on the next sweep.`,
               })
             );
-          });
+          }
           if (!queued) continue;
           rescued++;
           await runWithOrg(sweepOrgId, () =>
@@ -1219,8 +1580,13 @@ export const stalledPipelineSweep: AgentDefinition = {
       );
     }
     return {
-      ok: true,
-      summary: `Auto-retried ${rescued} stuck record(s); flagged ${stalled.length} for review (retry didn't help).`,
+      ok: retryFailures === 0,
+      summary: `Auto-retried ${rescued} stuck record(s); flagged ${stalled.length} for review (retry didn't help).${
+        retryFailures > 0
+          ? ` ${retryFailures} automatic ${retryFailures === 1 ? "retry" : "retries"} could not be queued and will be attempted again.`
+          : ""
+      }`,
+      humanActionRequired: stalled.length > 0 || retryFailures > 0,
     };
   },
 };
@@ -1239,6 +1605,7 @@ export const deadlineMonitor: AgentDefinition = {
     // inside that org.
     const orgs = await activeOrgIds();
     let flagged = 0;
+    let alertFailures = 0;
     for (const orgId of orgs) {
     // Flag once per opportunity: the deadline_soon risk flag excludes it from
     // the next sweep so the operator isn't re-alerted every 6 hours.
@@ -1272,13 +1639,53 @@ export const deadlineMonitor: AgentDefinition = {
           message: msg,
         })
       );
-      // Best-effort SMS to THIS org's configured number; skipped when unset.
-      await runWithOrg(orgId, () => sms.alert(msg)).catch(() => undefined);
+      // SMS is optional when no alert number is configured. Once configured,
+      // a provider or credential-read failure is not optional and must be
+      // visible instead of hiding behind the dashboard flag's success.
+      try {
+        const alert = await runWithOrg(orgId, () => sms.alert(msg));
+        if (alert.error) {
+          alertFailures++;
+          await runWithOrg(orgId, () =>
+            logAgent({
+              agent: "deadline-monitor",
+              action: "deadline-sms-failed",
+              opportunityId: o.id,
+              level: "error",
+              status: "error",
+              message:
+                "The deadline was flagged on the dashboard, but its configured SMS alert was not delivered (" +
+                alert.error +
+                "). Check the Twilio connection and alert number.",
+            })
+          );
+        }
+      } catch (err) {
+        alertFailures++;
+        await runWithOrg(orgId, () =>
+          logAgent({
+            agent: "deadline-monitor",
+            action: "deadline-sms-failed",
+            opportunityId: o.id,
+            level: "error",
+            status: "error",
+            message:
+              "The deadline was flagged on the dashboard, but its SMS alert could not be attempted (" +
+              (err instanceof Error ? err.message : String(err)) +
+              "). Check the Twilio connection and alert number.",
+          })
+        );
+      }
     }
     }
     return {
-      ok: true,
-      summary: `Deadline check: ${flagged} opportunit${flagged === 1 ? "y" : "ies"} due within 48h flagged.`,
+      ok: alertFailures === 0,
+      summary:
+        `Deadline check: ${flagged} opportunit${flagged === 1 ? "y" : "ies"} due within 48h flagged.` +
+        (alertFailures
+          ? ` ${alertFailures} configured SMS alert${alertFailures === 1 ? " was" : "s were"} not delivered.`
+          : ""),
+      humanActionRequired: flagged > 0 || alertFailures > 0,
     };
   },
 };
@@ -1308,7 +1715,7 @@ export const scoringRecoverySweep: AgentDefinition = {
      * error status and marks the run failed.
      */
     const orgs = await listActiveOrganizations();
-    const unscored: { id: string; title: string | null }[] = [];
+    const unscored: { id: string; title: string | null; orgId: string }[] = [];
     for (const org of orgs) {
       const rows = await query<{ id: string; title: string | null }>(
         `select id, title from opportunities
@@ -1320,21 +1727,43 @@ export const scoringRecoverySweep: AgentDefinition = {
           limit 200`,
         [org.id]
       );
-      unscored.push(...rows);
+      unscored.push(...rows.map((row) => ({ ...row, orgId: org.id })));
     }
+    let scoringQueued = 0;
+    let queueFailures = 0;
     for (const o of unscored) {
-      await enqueue(
-        "scoring-engine",
-        { opportunityId: o.id, trigger: "recovery" },
-        { singletonKey: `score:${o.id}`, singletonSeconds: 3600 }
-      ).catch(() => {});
+      try {
+        const queuedId = await runWithOrg(o.orgId, () =>
+          enqueue(
+            "scoring-engine",
+            { opportunityId: o.id, trigger: "recovery" },
+            { singletonKey: `score:${o.id}`, singletonSeconds: 3600 }
+          )
+        );
+        if (!queuedId) {
+          throw new Error("the queue refused the job because automation became paused");
+        }
+        scoringQueued++;
+      } catch (err) {
+        queueFailures++;
+        await runWithOrg(o.orgId, () =>
+          logAgent({
+            agent: "scoring-recovery-sweep",
+            action: "requeue-scoring",
+            opportunityId: o.id,
+            level: "error",
+            status: "error",
+            message: `Could not re-queue scoring for "${o.title ?? o.id}" (${(err as Error).message}). It remains unscored and will be retried on the next sweep.`,
+          })
+        );
+      }
     }
-    if (unscored.length > 0) {
+    if (scoringQueued > 0) {
       await logAgent({
         agent: "scoring-recovery-sweep",
         action: "requeue-scoring",
         level: "info",
-        message: `Re-queued scoring for ${unscored.length} opportunit${unscored.length === 1 ? "y" : "ies"} that were ingested but never scored.`,
+        message: `Re-queued scoring for ${scoringQueued} opportunit${scoringQueued === 1 ? "y" : "ies"} that were ingested but never scored.`,
         reasoning:
           "Their original scoring job was lost or failed out of retries. Scoring is idempotent, so re-running is safe.",
       });
@@ -1342,7 +1771,7 @@ export const scoringRecoverySweep: AgentDefinition = {
 
     // The analyst used to run only on auto-pursue. Review records, lost jobs,
     // and Claude outages left scored opportunities with no brief forever.
-    const unbriefed: { id: string }[] = [];
+    const unbriefed: { id: string; orgId: string }[] = [];
     for (const org of orgs) {
       const rows = await query<{ id: string }>(
         `select id from opportunities
@@ -1356,40 +1785,68 @@ export const scoringRecoverySweep: AgentDefinition = {
           limit 200`,
         [org.id]
       );
-      unbriefed.push(...rows);
+      unbriefed.push(...rows.map((row) => ({ ...row, orgId: org.id })));
     }
+    let analysisQueued = 0;
     for (const o of unbriefed) {
-      await enqueue(
-        "solicitation-analyst",
-        { opportunityId: o.id, trigger: "recovery" },
-        { singletonKey: `analyze:${o.id}`, singletonSeconds: 3600 }
-      ).catch(() => {});
+      try {
+        const queuedId = await runWithOrg(o.orgId, () =>
+          enqueue(
+            "solicitation-analyst",
+            { opportunityId: o.id, trigger: "recovery" },
+            { singletonKey: `analyze:${o.id}`, singletonSeconds: 3600 }
+          )
+        );
+        if (!queuedId) {
+          throw new Error("the queue refused the job because automation became paused");
+        }
+        analysisQueued++;
+      } catch (err) {
+        queueFailures++;
+        await runWithOrg(o.orgId, () =>
+          logAgent({
+            agent: "scoring-recovery-sweep",
+            action: "requeue-analysis",
+            opportunityId: o.id,
+            level: "error",
+            status: "error",
+            message: `Could not re-queue analysis for opportunity ${o.id} (${(err as Error).message}). It still has no brief and will be retried on the next sweep.`,
+          })
+        );
+      }
     }
-    if (unbriefed.length > 0) {
+    if (analysisQueued > 0) {
       await logAgent({
         agent: "scoring-recovery-sweep",
         action: "requeue-analysis",
         level: "info",
-        message: `Re-queued the solicitation analyst for ${unbriefed.length} opportunit${unbriefed.length === 1 ? "y" : "ies"} that were scored but never given a brief.`,
+        message: `Re-queued the solicitation analyst for ${analysisQueued} opportunit${analysisQueued === 1 ? "y" : "ies"} that were scored but never given a brief.`,
         reasoning:
           "Review-tier scoring now queues the analyst immediately. This sweep catches rows scored before that, or whose job was lost.",
       });
     }
 
     const parts: string[] = [];
-    if (unscored.length > 0) {
+    if (scoringQueued > 0) {
       parts.push(
-        `Re-queued scoring for ${unscored.length} unscored opportunit${unscored.length === 1 ? "y" : "ies"}`
+        `Re-queued scoring for ${scoringQueued} unscored opportunit${scoringQueued === 1 ? "y" : "ies"}`
       );
     }
-    if (unbriefed.length > 0) {
+    if (analysisQueued > 0) {
       parts.push(
-        `re-queued analysis for ${unbriefed.length} opportunit${unbriefed.length === 1 ? "y" : "ies"} missing a brief`
+        `re-queued analysis for ${analysisQueued} opportunit${analysisQueued === 1 ? "y" : "ies"} missing a brief`
+      );
+    }
+    if (queueFailures > 0) {
+      parts.push(
+        `${queueFailures} recovery job${queueFailures === 1 ? "" : "s"} could not be queued and remain incomplete`
       );
     }
     return {
-      ok: true,
+      ok: queueFailures === 0,
       summary: parts.length > 0 ? `${parts.join("; ")}.` : "Nothing to recover.",
+      data: { scoringQueued, analysisQueued, queueFailures },
+      humanActionRequired: queueFailures > 0,
     };
   },
 };
@@ -1583,16 +2040,18 @@ async function purgeOpportunitiesWithBlobs(
     }
 
     // 2. Snapshot document storage paths for those IDs before cascade removes them.
-    const pathRows = await client.query<{ storage_path: string }>(
-      `select distinct d.storage_path
+    const pathRows = await client.query<{
+      opportunity_id: string;
+      storage_path: string;
+      storage_backend: string | null;
+    }>(
+      `select distinct d.opportunity_id, d.storage_path, d.storage_backend
          from documents d
         where d.org_id = $2
           and d.opportunity_id = any($1)
           and d.storage_path is not null`,
       [candidateIds, orgId]
     );
-    const candidatePaths = pathRows.rows.map((r) => r.storage_path);
-
     // 3. Delete with the full predicate re-evaluated at this statement's
     //    snapshot so any concurrent bid/quote insertion prevents deletion of
     //    that row. No id-filter needed: the FOR UPDATE lock in step 1 prevents
@@ -1605,10 +2064,15 @@ async function purgeOpportunitiesWithBlobs(
       args
     );
     const deleted = delRows.rowCount ?? 0;
+    const deletedIds = new Set(delRows.rows.map((row) => row.id));
+    const candidates = pathRows.rows.filter((row) => deletedIds.has(row.opportunity_id));
+    const candidatePaths = [...new Set(candidates.map((row) => row.storage_path))];
 
-    // 3. Delete orphaned blobs — only those with no remaining document reference.
-    //    Cascade already removed our doc rows; paths still referenced by other
-    //    documents belong to surviving records and must not be touched.
+    // 4. Delete physical objects, but only when no surviving record in any
+    //    storage-owning table references the path. Cascade already removed the
+    //    deleted opportunities' document rows. The check is platform-wide on
+    //    purpose: a historical shared path must survive for its remaining
+    //    owner, even if that owner belongs to another organization.
     //
     //    The reference check is deliberately NOT scoped to this org, and must
     //    stay that way: blob paths are content-addressed and shared, so an org
@@ -1617,26 +2081,46 @@ async function purgeOpportunitiesWithBlobs(
     let blobsDeleted = 0;
     let bytesFreed = 0;
     if (candidatePaths.length > 0) {
+      const orphanRows = await client.query<{ path: string }>(
+        `select candidate.path
+           from unnest($1::text[]) as candidate(path)
+          where not exists (select 1 from documents d where d.storage_path = candidate.path)
+            and not exists (
+              select 1 from subcontractor_documents d where d.storage_path = candidate.path
+            )
+            and not exists (
+              select 1 from compliance_item_documents d where d.storage_path = candidate.path
+            )
+            and not exists (
+              select 1 from feedback_reports d where d.storage_path = candidate.path
+            )`,
+        [candidatePaths]
+      );
+      const orphanPaths = orphanRows.rows.map((row) => row.path);
+
       const bytesRow = await client.query<{ total: string }>(
         `select coalesce(sum(octet_length(bytes)), 0)::text as total
            from file_blobs
-          where path = any($1)
-            and not exists (
-              select 1 from documents d2 where d2.storage_path = file_blobs.path
-            )`,
-        [candidatePaths]
+          where path = any($1)`,
+        [orphanPaths]
       );
       bytesFreed = parseInt(bytesRow.rows[0]?.total ?? "0", 10);
 
-      const blobDel = await client.query(
-        `delete from file_blobs
-          where path = any($1)
-            and not exists (
-              select 1 from documents d2 where d2.storage_path = file_blobs.path
-            )`,
-        [candidatePaths]
-      );
-      blobsDeleted = blobDel.rowCount ?? 0;
+      for (const path of orphanPaths) {
+        const recorded = candidates.filter((row) => row.storage_path === path);
+        const backends = new Set(recorded.map((row) => row.storage_backend).filter(Boolean));
+        const one = backends.size === 1 ? [...backends][0] : null;
+        const backend: StorageBackend | undefined =
+          one === "supabase" || one === "db" || one === "local" ? one : undefined;
+
+        // DB bytes are removed on this transaction's connection below, so a
+        // rollback restores them. External objects are removed before commit;
+        // a provider error rolls the metadata deletion back for a retry.
+        await storage.removeExternal(path, backend);
+      }
+
+      await client.query(`delete from file_blobs where path = any($1)`, [orphanPaths]);
+      blobsDeleted = orphanPaths.length;
     }
 
     return { deleted, blobsDeleted, bytesFreed };
@@ -1664,7 +2148,6 @@ export const accountDeletionSweep: AgentDefinition = {
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
     const { accountsDueForPurge, purgeOrganization } = await import("../admin/accounts");
-    const { recordAdminAction } = await import("../admin/audit");
     const due = await accountsDueForPurge();
     if (due.length === 0) {
       return { ok: true, summary: "No account has reached the end of its deletion window." };
@@ -1673,13 +2156,8 @@ export const accountDeletionSweep: AgentDefinition = {
     const failed: string[] = [];
     for (const org of due) {
       try {
-        await purgeOrganization(org.id);
-        // Written after the purge and outside it, so the record of the
-        // deletion cannot be rolled back along with the deletion.
-        await recordAdminAction({
+        await purgeOrganization(org.id, {
           adminEmail: "account-deletion-sweep",
-          action: "account_deleted",
-          orgId: org.id,
           orgName: org.name,
           detail: { via: "scheduled deletion, grace period elapsed" },
         });
@@ -1813,37 +2291,30 @@ export const backlinkOutreachSweep: AgentDefinition = {
   description: "Sends approved backlink outreach, follow-ups, and records replies.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    // Prospects, drafts and the mailbox all belong to one customer, so this
-    // sweep runs once per organization. Platform-wide it sent every tenant's
-    // approved outreach from the founding org's inbox and matched replies
-    // against every tenant's prospects at once.
-    /*
-     * Deliberately not caught. An empty list here means no customers; a
-     * failure means we could not find out who they are, and swallowing it
-     * turned a stopped sweep into "0 processed", which is what a quiet night
-     * looks like. Letting it throw hands it to the runner, which logs it at
-     * error status and marks the run failed.
-     */
-    const orgs = await listActiveOrganizations();
-    let sent = 0;
-    let followUps = 0;
-    let errors = 0;
-    let repliesMatched = 0;
-    for (const org of orgs) {
-      const res = await runWithOrg(org.id, () => backlinkSweepForOrg(org.id));
-      sent += res.sent;
-      followUps += res.followUps;
-      errors += res.errors;
-      repliesMatched += res.repliesMatched;
+    // Site Authority is a platform-only workspace. Its prospects, approvals,
+    // and digest destination belong to the founding organization, so this job
+    // must never fan out into customer mailboxes merely because the generic
+    // organization list contains them.
+    const paused = await runWithOrg(LEGACY_ORG_ID, () => isAutomationPaused());
+    if (paused) {
+      return {
+        ok: true,
+        summary:
+          "Backlink outreach is paused for the platform account. No messages were sent and its schedules were left unchanged.",
+      };
     }
+    const { sent, followUps, errors, repliesMatched } = await runWithOrg(
+      LEGACY_ORG_ID,
+      () => backlinkSweepForOrg(LEGACY_ORG_ID)
+    );
 
     return {
-      ok: true,
+      ok: errors === 0,
       summary: `Backlink outreach: ${sent} sent, ${followUps} follow-ups, ${repliesMatched} replies.${
         errors ? ` ${errors} errors.` : ""
       }`,
       data: { sent, followUps, errors, repliesMatched },
-      humanActionRequired: repliesMatched > 0,
+      humanActionRequired: repliesMatched > 0 || errors > 0,
     };
   },
 };
@@ -1859,10 +2330,12 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
 
   // Reply detection for backlink outreach threads.
   let repliesMatched = 0;
+  let replyPollErrors = 0;
   if (await gmail.isConnected(orgId)) {
     const sinceSec = Math.floor(Date.now() / 1000) - 3600;
     const { replies, disabled, error } = await gmail.fetchReplies(sinceSec, orgId);
     if (error) {
+      replyPollErrors++;
       await logAgent({
         agent: "backlink-outreach-sweep",
         action: "poll-failed",
@@ -1871,6 +2344,16 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
         // logged without it is counted as a healthy run.
         status: "error",
         message: `Could not read the inbox for backlink replies: ${error}`,
+      });
+    } else if (disabled) {
+      replyPollErrors++;
+      await logAgent({
+        agent: "backlink-outreach-sweep",
+        action: "poll-failed",
+        level: "error",
+        status: "error",
+        message:
+          "The Gmail connection became unavailable while checking backlink replies. Reconnect it in Settings, then Integrations, before relying on reply status.",
       });
     }
     if (!disabled && !error) {
@@ -1881,7 +2364,7 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
         // marks another customer's outreach as answered.
         const hit = await queryOne<{ id: string }>(
           `select o.id from backlink_outreach o
-             join backlink_prospects p on p.id = o.prospect_id
+             join backlink_prospects p on p.id = o.prospect_id and p.org_id = o.org_id
             where o.org_id = $3
               and (o.gmail_thread_id = $1 or lower(p.contact_email) = $2)
               and o.sent_at is not null and o.replied_at is null
@@ -1890,14 +2373,22 @@ async function backlinkSweepForOrg(orgId: string): Promise<{
         );
         if (!hit) continue;
         repliesMatched++;
-        await query(`update backlink_outreach set replied_at = now(), updated_at = now() where id = $1`, [
-          hit.id,
-        ]);
+        await query(
+          `update backlink_outreach
+              set replied_at = now(), updated_at = now()
+            where id = $1 and org_id = $2`,
+          [hit.id, orgId]
+        );
       }
     }
   }
 
-  return { sent: send.sent, followUps: followUp.sent, errors: send.errors, repliesMatched };
+  return {
+    sent: send.sent,
+    followUps: followUp.sent,
+    errors: send.errors + followUp.errors + replyPollErrors,
+    repliesMatched,
+  };
 }
 
 /**
@@ -1919,23 +2410,40 @@ export const replyPoll: AgentDefinition = {
     "Detects subcontractor email replies, updates the sub's status, triggers Call Prep, and notifies you about who replied and what changed.",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    // Each tenant has their own inbox. Poll every connected one inside its own
-    // org context: a single shared poll would read one customer's mailbox and
-    // attribute the replies to whoever happened to be the ambient tenant.
-    const orgs = await query<{ org_id: string }>(
-      `select org_id from integration_tokens
-        where provider = 'gmail' and status <> 'revoked'`
-    ).catch(() => []);
-    if (orgs.length === 0) {
-      return { ok: true, summary: "No inbox connected, reply polling skipped." };
+    // Each tenant has their own inbox and their own automation pause switch.
+    // Resolve the fanout first, then do every mailbox check and cursor update
+    // inside that tenant's context. A paused account is not polled and its
+    // cursor is deliberately left in place so replies received during the
+    // pause are collected after automation resumes.
+    const fanout = await orgsToSweep("reply-poll");
+    if (fanout.error) {
+      return {
+        ok: false,
+        summary: fanoutNote(fanout) ?? "No accounts were processed.",
+      };
+    }
+    if (fanout.orgs.length === 0) {
+      return {
+        ok: true,
+        summary: fanoutNote(fanout) ?? "No active accounts were available for reply polling.",
+      };
     }
 
     const results: AgentResult[] = [];
-    for (const { org_id } of orgs) {
+    for (const org of fanout.orgs) {
       // One tenant's failure must not stop the rest from being polled.
       try {
-        results.push(await runWithOrg(org_id, () => pollRepliesForOrg(org_id)));
+        results.push(await runWithOrg(org.id, () => pollRepliesForOrg(org.id)));
       } catch (err) {
+        await runWithOrg(org.id, () =>
+          logAgent({
+            agent: "reply-poll",
+            action: "poll-failed",
+            level: "error",
+            status: "error",
+            message: `Reply processing stopped for this account: ${(err as Error).message}. Its mailbox cursor was not advanced, so the next run will retry the same messages.`,
+          })
+        ).catch(() => undefined);
         results.push({
           ok: false,
           summary: `Reply poll failed for one account: ${(err as Error).message}`,
@@ -1945,11 +2453,14 @@ export const replyPoll: AgentDefinition = {
 
     const enqueued = results.flatMap((r) => r.enqueued ?? []);
     const failed = results.filter((r) => !r.ok).length;
+    const paused = fanout.pausedCount
+      ? ` Automation is paused for ${fanout.pausedCount} account${fanout.pausedCount === 1 ? "" : "s"}; their mailbox cursors were left unchanged.`
+      : "";
     return {
       ok: failed === 0,
-      summary: `Polled ${orgs.length} connected inbox${orgs.length === 1 ? "" : "es"}. ${results
+      summary: `Checked reply polling for ${fanout.orgs.length} account${fanout.orgs.length === 1 ? "" : "s"}. ${results
         .map((r) => r.summary)
-        .join(" ")}`,
+        .join(" ")}${paused}`,
       enqueued,
       humanActionRequired: results.some((r) => r.humanActionRequired),
     };
@@ -1964,10 +2475,90 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     // Read once per sweep: with calling off, a reply is captured and priced
     // exactly as it is today, it just never produces a call card.
     const callsEnabled = await areCallsEnabled();
-    const sinceSec = Math.floor(Date.now() / 1000) - 3600; // last hour
-    const { replies, disabled, error } = await gmail.fetchReplies(sinceSec, orgId);
-    if (disabled) return { ok: true, summary: "Inbox unavailable, skipped." };
+    const pollStartedSec = Math.floor(Date.now() / 1000);
+    const cursor = await queryOne<{
+      after_sec: number | string | null;
+      page_token: string | null;
+      scan_started_sec: number | string | null;
+    }>(
+      `select
+         case when coalesce(data->>'reply_poll_after', '') ~ '^[0-9]+$'
+              then (data->>'reply_poll_after')::bigint else null end as after_sec,
+         nullif(data->>'reply_poll_page_token', '') as page_token,
+         case when coalesce(data->>'reply_poll_scan_started', '') ~ '^[0-9]+$'
+              then (data->>'reply_poll_scan_started')::bigint else null end as scan_started_sec
+       from integration_tokens
+      where provider = 'gmail' and org_id = $1 and status <> 'revoked'`,
+      [orgId]
+    );
+    if (!cursor) {
+      await logAgent({
+        agent: "reply-poll",
+        action: "poll-failed",
+        level: "error",
+        status: "error",
+        message:
+          "The Gmail connection disappeared while reply polling was starting. No mailbox cursor was advanced. Reconnect Gmail in Settings, then Integrations, and retry.",
+      });
+      return {
+        ok: false,
+        summary: "Inbox connection disappeared before reply polling could start.",
+        humanActionRequired: true,
+      };
+    }
+    // New accounts get a bounded historical catch-up. Thereafter this cursor
+    // moves only after every returned message has completed the capture
+    // pipeline. A five-minute overlap tolerates delivery and clock skew;
+    // provider-message idempotency makes that overlap safe.
+    const storedAfter = Number(cursor.after_sec);
+    const sinceSec = Number.isFinite(storedAfter) && storedAfter > 0
+      ? storedAfter
+      : pollStartedSec - 90 * 24 * 3600;
+    const storedScanStarted = Number(cursor.scan_started_sec);
+    const scanStartedSec =
+      cursor.page_token && Number.isFinite(storedScanStarted) && storedScanStarted > 0
+        ? storedScanStarted
+        : pollStartedSec;
+    const {
+      replies,
+      disabled,
+      error,
+      truncated,
+      nextPageToken,
+    } = await gmail.fetchReplies(sinceSec, orgId, {
+      ...(cursor.page_token ? { pageToken: cursor.page_token } : {}),
+    });
+    if (disabled) {
+      await logAgent({
+        agent: "reply-poll",
+        action: "poll-failed",
+        level: "error",
+        status: "error",
+        message:
+          "Gmail became unavailable after the reply poll started. No mailbox cursor was advanced. Reconnect Gmail in Settings, then Integrations, and retry.",
+      });
+      return {
+        ok: false,
+        summary: "Inbox became unavailable during reply polling.",
+        humanActionRequired: true,
+      };
+    }
     if (error) {
+      // Gmail continuation tokens can expire while an account is paused or
+      // disconnected. Discard only that opaque token, never the time cursor,
+      // so the next successful run restarts the same range and idempotently
+      // walks back to the unprocessed page.
+      if (cursor.page_token) {
+        await query(
+          `update integration_tokens
+              set data = coalesce(data, '{}'::jsonb)
+                         - 'reply_poll_page_token'
+                         - 'reply_poll_scan_started',
+                  updated_at = now()
+            where provider = 'gmail' and org_id = $1`,
+          [orgId]
+        );
+      }
       // The poll FAILED. Zero replies from a failed poll must never read as
       // "nobody wrote back": quotes pile up unread in the real inbox while
       // every solicitation waits on them.
@@ -1985,6 +2576,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     const notifyLines: string[] = [];
     let matched = 0;
     let reviewCount = 0;
+    let processingFailures = 0;
     const touchedOpportunities = new Set<string>();
     const opportunityTitles = new Map<string, string>();
     for (const r of replies) {
@@ -2008,11 +2600,12 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         contentType: r.contentType,
         body: r.body || r.snippet,
       })) {
-        await recordBounce({
+        const recorded = await recordBounce({
           orgId,
           threadId: r.threadId,
           report: parseBounce(r.body || r.snippet),
         });
+        if (!recorded) processingFailures++;
         continue;
       }
 
@@ -2050,7 +2643,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
           `select id, company_name from subcontractors
             where org_id = $1 and lower(email) = $2 limit 1`,
           [orgId, fromEmail]
-        ).catch(() => null);
+        );
         /*
          * Into the Needs matching inbox, not into a log line.
          *
@@ -2064,16 +2657,31 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
          * from an address we have never seen is exactly the message most
          * likely to be lost, and it is the one the roster check misses.
          */
+        // Preserve the same attachment reading the automatic path would use.
+        // A person who places an ambiguous "see attached" reply must not lose
+        // the quote merely because the message waited in Needs matching first.
+        const unmatchedDocs = await readReplyAttachments({
+          messageId: r.messageId,
+          attachments: r.attachments ?? [],
+          orgId,
+        });
+        const unmatchedText = combineReplyText(r.body || r.snippet, unmatchedDocs.text);
         const filed = await recordUnmatched({
           orgId,
           fromEmail,
           fromName: r.from,
           subject: r.subject,
-          body: r.body || r.snippet,
+          body: unmatchedText,
           gmailThreadId: r.threadId,
           messageId: r.messageId,
+          rfc822MessageId: r.rfc822MessageId,
+          references: [...r.references, ...(r.inReplyTo ? [r.inReplyTo] : [])],
+          toAddresses: r.to,
+          ccAddresses: r.cc,
+          attachmentNames: (r.attachments ?? []).map((attachment) => attachment.filename),
+          unreadableAttachments: unmatchedDocs.unreadable,
           subcontractorId: known?.id ?? null,
-        }).catch(() => null);
+        });
         if (filed && known) {
           // A log line as well, but only for a known subcontractor and only
           // because this one is worth interrupting somebody about. The message
@@ -2091,14 +2699,6 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         }
         continue;
       }
-      matched++;
-      if (comm.opportunity_id) {
-        touchedOpportunities.add(comm.opportunity_id);
-        if (comm.opportunity_title) {
-          opportunityTitles.set(comm.opportunity_id, comm.opportunity_title);
-        }
-      }
-
       // Many subs attach the quote and write "see attached". Read the
       // documents first so extraction sees the numbers, not just the note.
       const docs = await readReplyAttachments({
@@ -2124,9 +2724,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
           email: fromEmail,
           reason: "Asked to be removed in an email reply.",
           source: "reply",
-        }).catch((err) =>
-          console.error(`[maintenance] suppression write failed: ${(err as Error).message}`)
-        );
+        });
       }
       // Shared capture pipeline: resolves/creates the sub, records the reply,
       // marks responsive, and auto-saves the quote only under the safety rules
@@ -2150,6 +2748,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         ccAddresses: r.cc,
         sentAt: r.date,
         rfc822MessageId: r.rfc822MessageId,
+        references: [...r.references, ...(r.inReplyTo ? [r.inReplyTo] : [])],
         attachmentNames: (r.attachments ?? []).map((a) => a.filename),
         unreadableAttachments: docs.unreadable,
       });
@@ -2157,11 +2756,12 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // wrote nothing; record the delivery failure here instead, exactly as
       // the earlier branch would have.
       if (result.bounce) {
-        await recordBounce({
+        const recorded = await recordBounce({
           orgId,
           threadId: r.threadId,
           report: parseBounce(r.body || r.snippet),
         });
+        if (!recorded) processingFailures++;
         continue;
       }
       // Already captured (e.g. by the Resend inbound webhook or a previous
@@ -2174,9 +2774,18 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         decision,
         quoteSaved,
         quoteSkippedExisting,
+        quoteRefusal,
+        trade: resolvedTrade,
         declined,
         thankYouSent,
       } = result;
+      matched++;
+      if (comm.opportunity_id) {
+        touchedOpportunities.add(comm.opportunity_id);
+        if (comm.opportunity_title) {
+          opportunityTitles.set(comm.opportunity_id, comm.opportunity_title);
+        }
+      }
       const mentionedPrice = extracted.quoteAmount ?? extractMentionedPrice(replyText);
 
       // The same verdict capture acted on, not a second opinion formed after
@@ -2184,6 +2793,8 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // said "nothing was changed automatically" while capture had already
       // saved a quote on a reading it did not trust.
       const gaps = blockingGaps(extracted, decision.outcome);
+      const quoteNeedsReview =
+        decision.outcome === "quoted" && !quoteSaved && !quoteSkippedExisting && !!quoteRefusal;
       if (subId) {
         // History is written either way. A reply we did not act on is exactly
         // the one a human most needs to be able to read back.
@@ -2191,27 +2802,29 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
           orgId,
           subcontractorId: subId,
           opportunityId: comm.opportunity_id ?? null,
-          trade: comm.trade ?? null,
+          trade: resolvedTrade,
           extracted,
           originalMessage: replyText,
           gmailMessageId: r.messageId,
           gmailThreadId: r.threadId,
-          needsReview: decision.needsReview || gaps.length > 0,
+          needsReview: decision.needsReview || gaps.length > 0 || quoteNeedsReview,
           reviewReason:
             decision.reviewReason ??
             (gaps.length > 0
               ? `Still needed before this can move forward: ${gaps.join(", ")}.`
+              : quoteNeedsReview
+                ? `The reply contained a price, but it could not be filed safely (${quoteRefusal?.replace(/_/g, " ")}). Confirm the trade and amount before marking it quoted.`
               : null),
         });
-        if (decision.needsReview || gaps.length > 0) reviewCount++;
+        if (decision.needsReview || gaps.length > 0 || quoteNeedsReview) reviewCount++;
         // Only a confident, self-consistent reading changes the record. An
         // "unavailable" or "not a fit" mark lands on this solicitation alone,
         // so the sub is still offered the next job.
-        if (decision.act && comm.opportunity_id) {
+        if (decision.act && !quoteNeedsReview && comm.opportunity_id) {
           const applied = await applyOutcomeToSolicitation({
             opportunityId: comm.opportunity_id,
             subcontractorId: subId,
-            trade: comm.trade ?? null,
+            trade: resolvedTrade,
             outcome: decision.outcome,
           });
           /*
@@ -2230,14 +2843,15 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
               `update subcontractor_reply_events
                   set needs_review = true, review_reason = $3
                 where opportunity_id = $1 and subcontractor_id = $2
-                  and reviewed_at is null`,
+                  and org_id = $4 and reviewed_at is null`,
               [
                 comm.opportunity_id,
                 subId,
                 `They are on this bid for ${applied.candidateTrades.join(", ")} and their reply did not say which. ` +
                   "Nothing was changed. Pick the trade this answer is about.",
+                orgId,
               ]
-            ).catch(() => {});
+            );
             await logAgent({
               agent: "reply-poll",
               action: "reply-trade-ambiguous",
@@ -2289,14 +2903,21 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         const clarify = await requestClarification({
           opportunityId: comm.opportunity_id,
           subcontractorId: subId,
-          toEmail: comm.sub_email ?? fromEmail,
+          // Reply to the person who actually wrote, not a contact address that
+          // may have changed on the subcontractor record since outreach.
+          toEmail: fromEmail,
           companyName: companyName ?? null,
           opportunityTitle: comm.opportunity_title,
-          trade: comm.trade ?? null,
+          trade: resolvedTrade,
           gaps,
           outcome: decision.outcome,
           threadId: r.threadId,
-          inReplyToMessageId: r.messageId,
+          inReplyToMessageId: r.rfc822MessageId,
+          references: [
+            ...r.references,
+            ...(r.inReplyTo ? [r.inReplyTo] : []),
+          ],
+          originalSubject: r.subject,
           orgId,
         });
         clarified = clarify.sent;
@@ -2308,6 +2929,16 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
             subcontractorId: subId,
             level: "info",
             message: `Asked ${companyName ?? fromEmail} for ${gaps.map(describeGap).join(", ")} before this can move forward.`,
+          });
+        } else if (clarify.reason && clarify.reason !== "already asked") {
+          await logAgent({
+            agent: "reply-poll",
+            action: "clarification-not-sent",
+            opportunityId: comm.opportunity_id,
+            subcontractorId: subId,
+            level: "error",
+            status: "error",
+            message: `The reply was incomplete, but the clarification was not sent: ${clarify.reason}. Open the conversation and ask for ${gaps.map(describeGap).join(", ")}.`,
           });
         }
       }
@@ -2377,8 +3008,8 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
     // solicitations they touched are now fully priced. Done per opportunity
     // rather than per reply so two replies in the same batch cannot race.
     for (const opportunityId of touchedOpportunities) {
-      const res = await advanceIfQuotesComplete(opportunityId).catch(() => null);
-      if (res?.advanced && res.enqueue) {
+      const res = await advanceIfQuotesComplete(opportunityId);
+      if (res.advanced && res.enqueue) {
         enqueued.push(res.enqueue);
         notifyLines.push(
           `<li>All trades are now priced on &ldquo;${opportunityTitles.get(opportunityId) ?? "a solicitation"}&rdquo;. Moved to Bid Building automatically.</li>`
@@ -2387,8 +3018,8 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       }
       // Not complete. If that is because everyone said no, escalate: source
       // more subs once, and close with the reasoning when that too is spent.
-      const exhaustion = await closeIfSubsExhausted(opportunityId).catch(() => null);
-      if (exhaustion?.action === "resourced" && exhaustion.enqueue) {
+      const exhaustion = await closeIfSubsExhausted(opportunityId);
+      if (exhaustion.action === "resourced" && exhaustion.enqueue) {
         enqueued.push(exhaustion.enqueue);
         notifyLines.push(
           `<li>Every sub approached for &ldquo;${opportunityTitles.get(opportunityId) ?? "a solicitation"}&rdquo; has declined. Searching for more candidates automatically.</li>`
@@ -2400,34 +3031,129 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       }
     }
 
-    // One notification email per poll (not per reply), best-effort: silently
-    // skipped when the platform inbox isn't connected; Today + the log still
-    // surface it either way. Gated to the founding org, because digestTo is a
+    /*
+     * Commit the mailbox cursor only after every reply and its downstream
+     * solicitation work completed. A capped run stores Gmail's continuation
+     * token and the original scan time. When that walk finishes, advancing to
+     * the original scan time instead of the current clock ensures messages
+     * that arrived while a large backlog was being drained are picked up by
+     * the next run.
+     */
+    if (truncated) {
+      if (!nextPageToken) {
+        await logAgent({
+          agent: "reply-poll",
+          action: "poll-truncated",
+          level: "error",
+          status: "error",
+          message:
+            "Gmail reported more replies but did not return a continuation token. Captured messages were kept, the mailbox cursor was not advanced, and the next run will retry safely.",
+        });
+        return {
+          ok: false,
+          summary: `${matched} matched, but Gmail could not continue a truncated mailbox scan.`,
+          enqueued,
+          humanActionRequired: true,
+        };
+      }
+      await query(
+        `update integration_tokens
+            set data = coalesce(data, '{}'::jsonb)
+                       || jsonb_build_object(
+                            'reply_poll_after', $2::bigint,
+                            'reply_poll_page_token', $3::text,
+                            'reply_poll_scan_started', $4::bigint
+                          ),
+                updated_at = now()
+          where provider = 'gmail' and org_id = $1 and status <> 'revoked'`,
+        [orgId, sinceSec, nextPageToken, scanStartedSec]
+      );
+      await logAgent({
+        agent: "reply-poll",
+        action: "poll-backlog",
+        level: "warn",
+        status: "skipped",
+        message: `Processed the current Gmail reply batch and saved a continuation point. ${matched} matched in this batch; more mailbox history will be processed on the next run.`,
+      });
+    } else {
+      await query(
+        `update integration_tokens
+            set data = (coalesce(data, '{}'::jsonb)
+                        - 'reply_poll_page_token'
+                        - 'reply_poll_scan_started')
+                       || jsonb_build_object('reply_poll_after', $2::bigint),
+                updated_at = now()
+          where provider = 'gmail' and org_id = $1 and status <> 'revoked'`,
+        [orgId, Math.max(1, scanStartedSec - 300)]
+      );
+    }
+
+    // One notification email per poll (not per reply). Today still holds the
+    // primary task, but a configured notification that fails is recorded and
+    // makes the run incomplete rather than disappearing behind `ok: true`.
+    // Gated to the founding org, because digestTo is a
     // single platform address (DIGEST_EMAIL_TO): sending it for every tenant
     // put every customer's subcontractor names, opportunity titles, and quote
     // amounts in the founding org's inbox. Each tenant still sees its replies
     // on Today and in its own Automation Log.
-    if (
-      orgId === LEGACY_ORG_ID &&
-      notifyLines.length > 0 &&
-      config.systemMail.digestTo &&
-      (await systemMail.enabled())
-    ) {
-      await systemMail
-        .send({
-          to: config.systemMail.digestTo,
-          subject: `BROST CO: ${notifyLines.length} subcontractor repl${notifyLines.length === 1 ? "y" : "ies"} received`,
-          html: `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424"><p>Replies just came in. Each sub is marked responsive and has a call card on Today:</p><ul>${notifyLines.join("")}</ul><p>Open Today to start the calls.</p><div style="width:48px;height:2px;background:#B28F5D;margin-top:16px"></div></div>`,
-          text: `Replies just came in. Each sub is marked responsive and has a call card on Today. Open Today to start the calls.`,
-        })
-        .catch(() => undefined);
+    if (orgId === LEGACY_ORG_ID && notifyLines.length > 0 && config.systemMail.digestTo) {
+      let deliverable = false;
+      let readinessError: string | null = null;
+      try {
+        deliverable = await systemMail.deliverable();
+      } catch (err) {
+        readinessError = (err as Error).message;
+      }
+      if (!deliverable) {
+        processingFailures++;
+        await logAgent({
+          agent: "reply-poll",
+          action: "reply-notification-failed",
+          level: "error",
+          status: "error",
+          message:
+            `Subcontractor replies were captured, but the configured operator notification could not be sent because platform mail is unavailable${
+              readinessError ? ` (${readinessError})` : ""
+            }. The replies remain on Today. Reconnect the platform Gmail inbox, then review them there.`,
+        });
+      } else {
+        let notification: Awaited<ReturnType<typeof systemMail.send>>;
+        try {
+          notification = await systemMail.send({
+            to: config.systemMail.digestTo,
+            subject: `BROST CO: ${notifyLines.length} subcontractor repl${notifyLines.length === 1 ? "y" : "ies"} received`,
+            html: `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424"><p>Replies just came in. Each sub is marked responsive and has a call card on Today:</p><ul>${notifyLines.join("")}</ul><p>Open Today to start the calls.</p><div style="width:48px;height:2px;background:#B28F5D;margin-top:16px"></div></div>`,
+            text: `Replies just came in. Each sub is marked responsive and has a call card on Today. Open Today to start the calls.`,
+          });
+        } catch (err) {
+          notification = {
+            error: `platform mail threw before confirming delivery: ${(err as Error).message}`,
+          };
+        }
+        if (notification.disabled || notification.error || !notification.messageId) {
+          processingFailures++;
+          await logAgent({
+            agent: "reply-poll",
+            action: "reply-notification-failed",
+            level: "error",
+            status: "error",
+            message:
+              `Subcontractor replies were captured, but the configured operator notification was not delivered (${notification.error ?? "the mail provider did not confirm a message"}). ` +
+              "The replies remain on Today. Check the platform Gmail connection and review them there.",
+          });
+        }
+      }
     }
 
     return {
-      ok: true,
-      summary: `${matched} matched.`,
+      ok: processingFailures === 0,
+      summary: `${matched} matched${truncated ? "; mailbox backlog will continue next run" : ""}${
+        processingFailures > 0
+          ? `; ${processingFailures} reply-processing or notification failure${processingFailures === 1 ? " needs" : "s need"} attention`
+          : ""
+      }.`,
       enqueued,
-      humanActionRequired: reviewCount > 0,
+      humanActionRequired: reviewCount > 0 || processingFailures > 0,
     };
 }
 
@@ -2524,8 +3250,8 @@ export const unresponsiveSweep: AgentDefinition = {
     const enqueued: AgentResult["enqueued"] = [];
     const touched = new Set(rows.map((r) => r.opportunity_id));
     for (const opportunityId of touched) {
-      const exhaustion = await closeIfSubsExhausted(opportunityId).catch(() => null);
-      if (exhaustion?.action === "resourced" && exhaustion.enqueue) {
+      const exhaustion = await closeIfSubsExhausted(opportunityId);
+      if (exhaustion.action === "resourced" && exhaustion.enqueue) {
         enqueued.push(exhaustion.enqueue);
       }
     }

@@ -63,7 +63,19 @@ export async function POST(req: Request) {
   // it once the window has closed. Without this, any subscriber could POST
   // plan=founding and move themselves onto a promotional price indefinitely.
   if (target === "founding" && org.plan_key !== "founding") {
-    const promo = await getFoundingPromo({ startIfMissing: false });
+    const promo = await getFoundingPromo({ startIfMissing: false }).catch((error) => {
+      console.error("[billing] founding promotion eligibility could not be read:", error);
+      return null;
+    });
+    if (!promo) {
+      return NextResponse.json(
+        {
+          error:
+            "Promotion eligibility could not be verified, so no billing change was made. Try again after the account connection recovers.",
+        },
+        { status: 503 }
+      );
+    }
     if (!promo.active) {
       return NextResponse.json(
         { error: "The founding rate is no longer available." },

@@ -12,6 +12,7 @@ import { agentSchedules } from "@/lib/agent-cadence";
 import { describeCron } from "@/lib/domain/cron-describe";
 import { knowledgeFacts } from "@/lib/knowledge-facts";
 import { shortDate } from "@/lib/format";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 import {
   PHASES,
   WORKFLOW_STEPS,
@@ -100,19 +101,35 @@ export default async function KnowledgeCenterPage({
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const q = (one(searchParams?.q) ?? "").trim();
   const full = one(searchParams?.full) === "1";
+  const loadWarnings: string[] = [];
+  let profileLoadFailed = false;
+  let inboxLoadFailed = false;
 
   const [profile, rules, facts, inbox] = await Promise.all([
-    getActiveProfile().catch(() => null),
+    getActiveProfile().catch(() => {
+      profileLoadFailed = true;
+      loadWarnings.push(
+        "The company profile could not be loaded, so profile setup status is unknown."
+      );
+      return null;
+    }),
     getAutomationRules(),
     knowledgeFacts(),
     gmail
       .connection()
-      .catch(() => ({ connected: false, email: null, status: "none", lastError: null })),
+      .catch(() => {
+        inboxLoadFailed = true;
+        loadWarnings.push(
+          "The Gmail connection could not be checked, so inbox setup status is unknown."
+        );
+        return { connected: false, email: null, status: "none", lastError: null };
+      }),
   ]);
 
   // The same checklist Today shows, from the same helper. Two answers to "is
   // setup finished" is one more than the number that can be right.
   const setup = await accountSetup(profile?.profile_json ?? null, ctx.user);
+  loadWarnings.push(...facts.warnings, ...setup.warnings);
 
   /*
    * The cadence every scheduled step shows comes from here, which is the same
@@ -137,8 +154,13 @@ export default async function KnowledgeCenterPage({
     profile: {
       recent: null,
       lastAt: facts.evidence.profile?.lastAt ?? null,
-      override:
-        profileOutstanding.length === 0
+      override: profileLoadFailed
+        ? {
+            word: "Not recorded",
+            tone: "unknown",
+            detail: "Profile setup could not be read. Reload before changing profile fields based on this status.",
+          }
+        : profileOutstanding.length === 0
           ? {
               word: "Set up",
               tone: "good",
@@ -159,7 +181,13 @@ export default async function KnowledgeCenterPage({
     inbox: {
       recent: null,
       lastAt: null,
-      override: inbox.connected
+      override: inboxLoadFailed
+        ? {
+            word: "Not recorded",
+            tone: "unknown",
+            detail: "Inbox setup could not be read. Reload before reconnecting or sending outreach.",
+          }
+        : inbox.connected
         ? {
             word: "Set up",
             tone: "good",
@@ -225,6 +253,7 @@ export default async function KnowledgeCenterPage({
           </Link>
         }
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <div className="mx-auto max-w-3xl space-y-8">
           {/* 1. Search, before anything else on the page. */}
@@ -349,11 +378,30 @@ export default async function KnowledgeCenterPage({
           )}
 
           {/* 2. Where to start, for the role actually reading it. */}
-          <QuickStart
-            role={ctx.user.orgRole}
-            setupItems={setup.items}
-            facts={facts.quickStart}
-          />
+          {facts.quickStartAvailable && setup.warnings.length === 0 ? (
+            <QuickStart
+              role={ctx.user.orgRole}
+              setupItems={setup.items}
+              facts={facts.quickStart}
+            />
+          ) : (
+            <section aria-labelledby="kb-quickstart" className="space-y-3">
+              <div className="border-b-2 border-accent/80 pb-2">
+                <p className="eyebrow">Start here</p>
+                <h2
+                  id="kb-quickstart"
+                  className="mt-0.5 font-display text-2xl font-semibold text-foreground"
+                >
+                  Quick-start progress unavailable
+                </h2>
+              </div>
+              <p role="alert" className="rounded-md border border-review/50 bg-review/10 px-4 py-3 text-sm leading-relaxed text-foreground">
+                The records that prove which setup and first-run steps are complete could not
+                all be checked. Nothing is being marked unfinished or complete from fallback
+                data. Reload before acting on this checklist.
+              </p>
+            </section>
+          )}
 
           {/* 3. The workflow map. */}
           <section aria-labelledby="kb-map" className="space-y-8">

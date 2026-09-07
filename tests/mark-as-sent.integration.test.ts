@@ -14,8 +14,8 @@
  * constraint, and a constraint that is not there looks identical from
  * application code to one that is.
  */
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
-import { randomUUID } from "node:crypto";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll, vi } from "vitest";
+import { createHash, randomUUID } from "node:crypto";
 import type { SessionUser } from "../lib/auth";
 
 const LIVE = !!process.env.DATABASE_URL && !!process.env.ALLOW_TESTS_AGAINST_DATABASE_URL;
@@ -34,11 +34,12 @@ d("marking a package as sent", () => {
 
   const org = randomUUID();
   const otherOrg = randomUUID();
-  const opp = randomUUID();
+  let opp = "";
   const otherOpp = randomUUID();
   let bidId = "";
   let receiptId = "";
   let foreignReceiptId = "";
+  let bidPath = "";
 
   const good = {
     method: "portal",
@@ -72,20 +73,11 @@ d("marking a package as sent", () => {
         [id, name]
       );
     }
-    for (const [id, o] of [[opp, org], [otherOpp, otherOrg]] as const) {
-      await query(
-        `insert into opportunities (id, org_id, title, source, stage)
-         values ($1,$2,'Send probe','test','submission') on conflict (id) do nothing`,
-        [id, o]
-      );
-    }
-    const r = await queryOne<{ id: string }>(
-      `insert into documents (org_id, opportunity_id, kind, name, storage_path, disposition, extraction_state)
-       values ($1,$2,'receipt','portal-receipt.png','r/1.png','delivered','not_applicable')
-       returning id`,
-      [org, opp]
+    await query(
+      `insert into opportunities (id, org_id, title, source, stage)
+       values ($1,$2,'Foreign send probe','test','bid_building') on conflict (id) do nothing`,
+      [otherOpp, otherOrg]
     );
-    receiptId = r!.id;
     const f = await queryOne<{ id: string }>(
       `insert into documents (org_id, opportunity_id, kind, name, storage_path, disposition, extraction_state)
        values ($1,$2,'receipt','their-receipt.png','r/2.png','delivered','not_applicable')
@@ -97,21 +89,86 @@ d("marking a package as sent", () => {
   });
 
   beforeEach(async () => {
-    await query(`delete from bid_submission_events where org_id = $1`, [org]);
-    await query(`delete from bids where opportunity_id = $1`, [opp]);
+    signIn(org);
+    opp = randomUUID();
+    bidPath = `orgs/${org}/bids/${opp}/build-1/bid.pdf`;
+    const bidBytes = Buffer.from("%PDF-1.4\nsubmission fixture\n%%EOF\n");
+    const contentHash = createHash("sha256").update(bidBytes).digest("hex");
+    await query(
+      `insert into opportunities (id, org_id, title, source, stage, status, pursuit_state)
+       values ($1,$2,'Send probe','test','bid_building','open','active')`,
+      [opp, org]
+    );
+    await query(
+      `insert into file_blobs (path, mime, bytes, org_id)
+       values ($1,'application/pdf',$2,$3)`,
+      [bidPath, bidBytes, org]
+    );
+    await query(
+      `insert into documents
+         (org_id, opportunity_id, kind, name, storage_path, storage_backend, mime,
+          content_hash, disposition, extraction_state)
+       values ($1,$2,'bid_pdf','bid.pdf',$3,'db','application/pdf',$4,
+               'delivered','not_applicable')`,
+      [org, opp, bidPath, contentHash]
+    );
+    const r = await queryOne<{ id: string }>(
+      `insert into documents
+         (org_id, opportunity_id, kind, name, storage_path, disposition, extraction_state)
+       values ($1,$2,'submission_proof','portal-receipt.png',$3,'delivered','not_applicable')
+       returning id`,
+      [org, opp, `receipts/${opp}.png`]
+    );
+    receiptId = r!.id;
     const b = await queryOne<{ id: string }>(
-      `insert into bids (org_id, opportunity_id, submission_state, requirements_fingerprint)
-       values ($1,$2,'approved','fingerprint-v1') returning id`,
-      [org, opp]
+      `insert into bids
+         (org_id, opportunity_id, submission_state, requirements_fingerprint,
+          package_ready, package_manifest, documents_json)
+       values ($1,$2,'approved','fingerprint-v1',true,$3,$4) returning id`,
+      [
+        org,
+        opp,
+        JSON.stringify([
+          {
+            order: 1,
+            filename: "01_bid.pdf",
+            requirement_id: "bid-offer",
+            title: "Priced offer",
+            category: "pricing",
+            source: "generated",
+            document_kind: "bid_pdf",
+            document_path: bidPath,
+            status: "satisfied",
+          },
+        ]),
+        JSON.stringify([
+          {
+            name: "bid.pdf",
+            kind: "bid_pdf",
+            storage_path: bidPath,
+            storage_backend: "db",
+            content_hash: contentHash,
+          },
+        ]),
+      ]
     );
     bidId = b!.id;
   });
 
+  afterEach(async () => {
+    await query(`delete from opportunities where id = $1 and org_id = $2`, [opp, org]).catch(
+      () => {}
+    );
+    await query(`delete from file_blobs where path = $1 and org_id = $2`, [bidPath, org]).catch(
+      () => {}
+    );
+  });
+
   afterAll(async () => {
     await query(`delete from bid_submission_events where org_id = any($1::uuid[])`, [[org, otherOrg]]).catch(() => {});
-    await query(`delete from bids where opportunity_id = any($1::uuid[])`, [[opp, otherOpp]]).catch(() => {});
+    await query(`delete from bids where opportunity_id = $1`, [otherOpp]).catch(() => {});
     await query(`delete from documents where org_id = any($1::uuid[])`, [[org, otherOrg]]).catch(() => {});
-    await query(`delete from opportunities where id = any($1::uuid[])`, [[opp, otherOpp]]).catch(() => {});
+    await query(`delete from opportunities where id = $1`, [otherOpp]).catch(() => {});
     await query(`delete from organizations where id = any($1::uuid[])`, [[org, otherOrg]]).catch(() => {});
     const { closePool } = await import("../lib/db");
     await closePool().catch(() => {});
@@ -137,8 +194,14 @@ d("marking a package as sent", () => {
     expect(row?.submitted_at).toBeInstanceOf(Date);
     // Which version went. Without it a package rebuilt after an amendment is
     // indistinguishable from the one that was uploaded.
-    expect(row?.submitted_package_hash).toBe("fingerprint-v1");
+    expect(row?.submitted_package_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(row?.submitted_package_hash).not.toBe("fingerprint-v1");
     expect(row?.submitted_by).toBe("op@probe.invalid");
+    const opportunity = await queryOne<{ stage: string }>(
+      `select stage from opportunities where id=$1 and org_id=$2`,
+      [opp, org]
+    );
+    expect(opportunity?.stage).toBe("submitted");
   });
 
   it.each([
@@ -179,7 +242,57 @@ d("marking a package as sent", () => {
     // different bid is not evidence about this one.
     const res = await call({ ...good, proofDocumentId: foreignReceiptId });
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toContain("not a document on this opportunity");
+    expect((await res.json()).error).toContain("not a stored submission-proof upload");
+  });
+
+  it("refuses an ordinary package document masquerading as the receipt", async () => {
+    const packaged = await queryOne<{ id: string }>(
+      `select id from documents where opportunity_id=$1 and org_id=$2 and kind='bid_pdf'`,
+      [opp, org]
+    );
+    const res = await call({ ...good, proofDocumentId: packaged!.id });
+    expect(res.status).toBe(400);
+    expect((await state())?.submission_state).toBe("approved");
+  });
+
+  it("refuses a connector claim that has no connector request and response", async () => {
+    const res = await call({ ...good, method: "connector", proofDocumentId: receiptId });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain("provider request and response");
+    expect((await state())?.submission_state).toBe("approved");
+  });
+
+  it("refuses a future delivery time and an invalid timezone", async () => {
+    const future = await call({
+      ...good,
+      sentAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      proofDocumentId: receiptId,
+    });
+    expect(future.status).toBe(400);
+    expect((await future.json()).error).toContain("in the future");
+
+    const invalidZone = await call({
+      ...good,
+      timezone: "Central-ish",
+      proofDocumentId: receiptId,
+    });
+    expect(invalidZone.status).toBe(400);
+    expect((await invalidZone.json()).error).toContain("valid timezone");
+    expect((await state())?.submission_state).toBe("approved");
+  });
+
+  it("refuses an ambiguous time or meaningless attestation", async () => {
+    const ambiguous = await call({
+      ...good,
+      sentAt: "2026-08-26T19:02:00",
+      proofDocumentId: receiptId,
+    });
+    expect(ambiguous.status).toBe(400);
+    expect((await ambiguous.json()).error).toContain("UTC offset");
+
+    const meaningless = await call({ ...good, attestation: "done", proofDocumentId: receiptId });
+    expect(meaningless.status).toBe(400);
+    expect((await meaningless.json()).error).toContain("describe what you sent");
   });
 
   it("refuses to skip approval", async () => {

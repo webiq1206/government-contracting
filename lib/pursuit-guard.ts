@@ -25,11 +25,16 @@ import {
   type PursuitVerdict,
 } from "./domain/pursuit-state";
 import { closedRecordReason, recordIsClosed } from "./domain/closed-work";
+import { expectedPursuitVersion } from "./pursuit-job-context";
 
 export interface PursuitStatus extends PursuitVerdict {
   state: PursuitState;
+  /** Monotonic generation used to fence work queued before an abort/restart. */
+  version: number | null;
   /** False when the opportunity could not be read at all. */
   known: boolean;
+  /** Whether a caller should preserve scheduled work and try this check later. */
+  retryable: boolean;
 }
 
 /**
@@ -41,13 +46,21 @@ export interface PursuitStatus extends PursuitVerdict {
  */
 export async function pursuitStatus(opportunityId: string): Promise<PursuitStatus> {
   if (!opportunityId) {
-    return { state: "aborted", mayAct: false, known: false, reason: "No opportunity was named." };
+    return {
+      state: "aborted",
+      version: null,
+      mayAct: false,
+      known: false,
+      retryable: false,
+      reason: "No opportunity was named.",
+    };
   }
   let row: {
     pursuit_state: string;
     pursuit_reason: string | null;
     status: string | null;
     stage: string | null;
+    pursuit_version: number | null;
   } | null;
   try {
     row = await queryOne<{
@@ -55,8 +68,10 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
       pursuit_reason: string | null;
       status: string | null;
       stage: string | null;
+      pursuit_version: number | null;
     }>(
-      `select pursuit_state, pursuit_reason, status, stage from opportunities where id = $1`,
+      `select pursuit_state, pursuit_reason, status, stage, pursuit_version
+         from opportunities where id = $1`,
       [opportunityId]
     );
   } catch {
@@ -66,20 +81,47 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
      */
     return {
       state: "aborted",
+      version: null,
       mayAct: false,
       known: false,
+      retryable: true,
       reason: "Could not read whether this pursuit is still active, so nothing was sent.",
     };
   }
   if (!row) {
     return {
       state: "aborted",
+      version: null,
       mayAct: false,
       known: false,
+      retryable: false,
       reason: "The opportunity no longer exists.",
     };
   }
   const state = parsePursuitState(row.pursuit_state);
+  const version = Number(row.pursuit_version);
+  if (!Number.isInteger(version) || version < 1) {
+    return {
+      state,
+      version: null,
+      known: true,
+      mayAct: false,
+      retryable: true,
+      reason: "The pursuit version could not be verified, so this job was stopped.",
+    };
+  }
+  const expected = expectedPursuitVersion(opportunityId);
+  if (expected != null && expected !== version) {
+    return {
+      state,
+      version,
+      known: true,
+      mayAct: false,
+      retryable: false,
+      reason:
+        "This job belongs to an earlier version of the pursuit. It was stopped so an abort and restart cannot revive stale work.",
+    };
+  }
   if (
     recordIsClosed({
       status: row.status,
@@ -89,13 +131,21 @@ export async function pursuitStatus(opportunityId: string): Promise<PursuitStatu
   ) {
     return {
       state,
+      version,
       known: true,
       mayAct: false,
+      retryable: false,
       reason: closedRecordReason({ status: row.status, stage: row.stage }),
     };
   }
   const verdict = pursuitVerdict({ state, reason: row.pursuit_reason });
-  return { state, known: true, ...verdict };
+  return {
+    state,
+    version,
+    known: true,
+    retryable: verdict.mayAct || state === "paused",
+    ...verdict,
+  };
 }
 
 /**

@@ -85,7 +85,7 @@ export async function adminBillingRows(): Promise<AdminBillingRow[]> {
           when 'past_due' then 0 when 'unpaid' then 0 when 'incomplete' then 1
           when 'trialing' then 2 when 'active' then 3 else 4 end,
         o.created_at desc`
-  ).catch(() => []);
+  );
 }
 
 export function summarise(rows: AdminBillingRow[]): AdminBillingSummary {
@@ -139,9 +139,12 @@ export async function webhookPulse(): Promise<{
        (select count(*)::int from organizations
          where subscription_status in ('active','past_due','trialing','unpaid','incomplete')
        ) as billable`
-  ).catch(() => null);
+  );
+  if (!row) {
+    throw new Error("Billing webhook health could not be measured because the database returned no result.");
+  }
   return {
-    lastEventAt: row?.last_event_at instanceof Date ? row.last_event_at.toISOString() : null,
-    billableAccounts: Number(row?.billable ?? 0),
+    lastEventAt: row.last_event_at instanceof Date ? row.last_event_at.toISOString() : null,
+    billableAccounts: Number(row.billable),
   };
 }

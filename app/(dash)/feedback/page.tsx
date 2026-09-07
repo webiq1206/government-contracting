@@ -6,6 +6,7 @@ import { FeedbackForm } from "@/components/feedback-form";
 import { feedbackFor } from "@/lib/feedback";
 import { categoryLabel } from "@/lib/domain/feedback";
 import { shortDate } from "@/lib/format";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,13 @@ export default async function FeedbackPage() {
     );
   }
 
-  const previous = await feedbackFor(ctx.orgId, 10).catch(() => []);
+  const loadWarnings: string[] = [];
+  const previous = await feedbackFor(ctx.orgId, 10).catch(() => {
+    loadWarnings.push(
+      "Previous feedback could not be loaded, so the history below may be incomplete."
+    );
+    return [];
+  });
 
   return (
     <>
@@ -56,6 +63,7 @@ export default async function FeedbackPage() {
             : undefined
         }
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         <div className="max-w-2xl">
           <p className="text-sm leading-relaxed text-muted-foreground">

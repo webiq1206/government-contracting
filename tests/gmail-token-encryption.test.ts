@@ -29,4 +29,11 @@ describe("gmail token encryption helpers", () => {
     const { decryptSecret } = await import("../lib/integration-settings");
     expect(decryptSecret("plain-old-token")).toBeNull();
   });
+
+  it("reports damaged encrypted credentials instead of treating them as missing", async () => {
+    const { decryptSecret } = await import("../lib/integration-settings");
+    expect(() => decryptSecret("v1:garbage:garbage:garbage")).toThrow(
+      /could not be decrypted/i
+    );
+  });
 });

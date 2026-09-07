@@ -5,6 +5,7 @@ import { getAutomationRules } from "@/lib/app-settings";
 import { AutomationRulesForm } from "@/components/automation-rules-form";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/domain/roles";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,15 @@ export const dynamic = "force-dynamic";
  * understanding your own account, so the page is not hidden.
  */
 export default async function RulesPage() {
+  const loadWarnings: string[] = [];
   const [rules, user] = await Promise.all([
     getAutomationRules(),
-    currentUser().catch(() => null),
+    currentUser().catch(() => {
+      loadWarnings.push(
+        "Your role could not be confirmed, so automation rules are read-only."
+      );
+      return null;
+    }),
   ]);
   const editable = can(user?.orgRole, "manage_rules");
   return (
@@ -34,6 +41,7 @@ export default async function RulesPage() {
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
         status={editable ? "Changes apply everywhere the moment you save" : "Read-only for your role"}
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
         <ReadOnlyBanner role={user?.orgRole} capability="manage_rules" what="the automation rules" />
         <AutomationRulesForm initial={rules} readOnly={!editable} />

@@ -113,7 +113,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     text: existing.textBody ?? "",
     quiet: existing.quiet,
     urgentCount: existing.urgentCount,
-    providerMessageId: result.messageId ?? null,
+    providerMessageId: result.rfc822MessageId ?? result.messageId ?? null,
   });
 
   await logAgent({

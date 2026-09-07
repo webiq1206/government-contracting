@@ -25,6 +25,8 @@ import {
 } from "@/lib/domain/recap/day-window";
 import { buildRecapFor } from "@/lib/recap/build";
 import { getRecapSettings, getUserRecapPreference } from "@/lib/recap/settings";
+import { ShellDataWarning } from "@/components/shell-data-warning";
+import { DEFAULT_RECAP_SETTINGS } from "@/lib/domain/recap/types";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +49,20 @@ export default async function RecapPage({
 }: {
   searchParams?: { date?: string; peek?: string };
 }) {
-  const user = await currentUser().catch(() => null);
+  const user = await currentUser();
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/today");
 
   const orgId = user.organizationId;
-  const pref = await getUserRecapPreference(user.id).catch(() => null);
+  const loadWarnings: string[] = [];
+  let preferenceLoadFailed = false;
+  const pref = await getUserRecapPreference(user.id).catch(() => {
+    preferenceLoadFailed = true;
+    loadWarnings.push(
+      "Your recap time zone could not be loaded, so dates are shown in the default time zone."
+    );
+    return null;
+  });
   const timezone = safeTimeZone(pref?.timezone ?? null);
 
   const today = localDateOf(new Date(), timezone);
@@ -69,10 +79,20 @@ export default async function RecapPage({
   const first = await queryOne<{ d: string | null }>(
     `select min(created_at)::date::text as d from opportunities where org_id = $1`,
     [orgId]
-  ).catch(() => null);
+  ).catch(() => {
+    loadWarnings.push(
+      "The account start date could not be loaded, so the date picker is limited to the last 30 days."
+    );
+    return null;
+  });
   const earliest = first?.d ?? addLocalDays(today, -30);
 
-  const settings = await getRecapSettings(orgId);
+  const settings = await getRecapSettings(orgId).catch(() => {
+    loadWarnings.push(
+      "The recap schedule could not be loaded. This preview uses defaults and does not confirm what will be emailed."
+    );
+    return { ...DEFAULT_RECAP_SETTINGS };
+  });
   const { recap } = await buildRecapFor({
     orgId,
     localDate,
@@ -131,6 +151,8 @@ export default async function RecapPage({
         }
       />
 
+      <ShellDataWarning items={loadWarnings} />
+
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="scroll-thin min-w-0 flex-1 space-y-4 overflow-y-auto p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -141,7 +163,9 @@ export default async function RecapPage({
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               Counted in {timezone}
-              {pref?.timezoneIsDefault
+              {preferenceLoadFailed
+                ? ", the default because your saved time zone could not be checked."
+                : pref?.timezoneIsDefault !== false
                 ? ", the default. Set your own on your account page so the day matches yours."
                 : ", your own time zone."}
             </p>

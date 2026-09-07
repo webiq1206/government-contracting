@@ -18,9 +18,9 @@
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
-import { config } from "../config";
 import { ahrefs, type RefDomain, type BrokenBacklink } from "../integrations/ahrefs";
 import { findContact } from "../integrations/contact-finder";
+import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import {
   qualifyProspect,
   domainNicheRelevance,
@@ -60,18 +60,26 @@ export const backlinkScout: AgentDefinition = {
   cron: "0 7 * * *",
   worksWithoutClaude: true,
   async handler(): Promise<AgentResult> {
-    if (!config.ahrefs.enabled) {
-      await logAgent({
-        agent: "backlink-scout",
-        action: "skip",
-        status: "skipped",
-        message: "AHREFS_API_KEY not set; Site Authority scan skipped.",
-      });
-      return { ok: false, summary: "Ahrefs not configured, scan skipped." };
-    }
+    // Site Authority is a platform-owner workflow. Scheduled jobs carry no
+    // tenant context, while a manual run carries the platform owner's account
+    // context. Store both in the founding platform organization so a customer
+    // can never read, update, or deduplicate against this data.
+    const orgId = LEGACY_ORG_ID;
+    return runWithOrg(orgId, async () => {
+      const ahrefsConfig = await ahrefs.configuration(orgId);
+      if (!ahrefsConfig.enabled) {
+        await logAgent({
+          agent: "backlink-scout",
+          action: "skip",
+          status: "skipped",
+          message:
+            "No Ahrefs API key is saved for the platform account or configured in its environment; Site Authority scan skipped.",
+        });
+        return { ok: false, summary: "Ahrefs not configured, scan skipped." };
+      }
 
     const profile = await getProfileJson();
-    const target = config.ahrefs.target;
+    const target = ahrefsConfig.target;
     const terms = nicheTerms(profile);
     const runStart = new Date();
 
@@ -79,9 +87,10 @@ export const backlinkScout: AgentDefinition = {
     const snap = await ahrefs.authoritySnapshot(target);
     if (snap) {
       await query(
-        `insert into authority_snapshots (domain_rating, referring_domains, backlinks_total)
-         values ($1,$2,$3)`,
-        [snap.domain_rating, snap.referring_domains, snap.backlinks_total]
+        `insert into authority_snapshots
+           (org_id, domain_rating, referring_domains, backlinks_total)
+         values ($1,$2,$3,$4)`,
+        [orgId, snap.domain_rating, snap.referring_domains, snap.backlinks_total]
       );
     }
 
@@ -95,24 +104,26 @@ export const backlinkScout: AgentDefinition = {
       ownDomains.add(domain);
       const sourceUrl = `https://${domain}`;
       const existing = await queryOne<{ id: string }>(
-        `select id from backlinks where source_url = $1 and coalesce(target_url,'') = $2`,
-        [sourceUrl, target]
+        `select id from backlinks
+          where org_id = $1 and source_url = $2 and coalesce(target_url,'') = $3`,
+        [orgId, sourceUrl, target]
       );
       if (existing) {
         await query(
           `update backlinks set last_seen_at = now(), lost_at = null, domain_rating = $2,
-             link_type = $3 where id = $1`,
-          [existing.id, rd.domain_rating, linkTypeOf(rd)]
+             link_type = $3 where id = $1 and org_id = $4`,
+          [existing.id, rd.domain_rating, linkTypeOf(rd), orgId]
         );
       } else {
-        newBacklinks++;
-        await query(
+        const inserted = await query<{ id: string }>(
           `insert into backlinks
-             (source_domain, source_url, target_url, domain_rating, link_type, raw_json)
-           values ($1,$2,$3,$4,$5,$6)
-           on conflict (source_url, target_url) do update set last_seen_at = now(), lost_at = null`,
-          [domain, sourceUrl, target, rd.domain_rating, linkTypeOf(rd), JSON.stringify(rd)]
+             (org_id, source_domain, source_url, target_url, domain_rating, link_type, raw_json)
+           values ($1,$2,$3,$4,$5,$6,$7)
+           on conflict do nothing
+           returning id`,
+          [orgId, domain, sourceUrl, target, rd.domain_rating, linkTypeOf(rd), JSON.stringify(rd)]
         );
+        if (inserted.length > 0) newBacklinks++;
       }
     }
     // Anything not refreshed this run (and not already marked lost) has dropped.
@@ -120,9 +131,10 @@ export const backlinkScout: AgentDefinition = {
     if (own.items.length > 0) {
       const lost = await query<{ id: string }>(
         `update backlinks set lost_at = now()
-          where coalesce(target_url,'') = $1 and lost_at is null and last_seen_at < $2
+          where org_id = $1 and coalesce(target_url,'') = $2
+            and lost_at is null and last_seen_at < $3
           returning id`,
-        [target, runStart.toISOString()]
+        [orgId, target, runStart.toISOString()]
       );
       lostBacklinks = lost.length;
     }
@@ -134,11 +146,17 @@ export const backlinkScout: AgentDefinition = {
       .slice(0, MAX_COMPETITORS);
     for (const c of competitors) {
       await query(
-        `insert into backlink_competitors (domain, source, domain_rating, last_scanned_at)
-         values ($1,'ahrefs_auto',$2, now())
-         on conflict (domain) do update set domain_rating = excluded.domain_rating,
-           last_scanned_at = now()`,
-        [c.competitor_domain, c.domain_rating]
+        `insert into backlink_competitors
+           (org_id, domain, source, domain_rating, last_scanned_at)
+         values ($1,$2,'ahrefs_auto',$3, now())
+         on conflict do nothing`,
+        [orgId, c.competitor_domain, c.domain_rating]
+      );
+      await query(
+        `update backlink_competitors
+            set domain_rating = $3, last_scanned_at = now()
+          where org_id = $1 and domain = $2`,
+        [orgId, c.competitor_domain, c.domain_rating]
       );
     }
 
@@ -148,8 +166,8 @@ export const backlinkScout: AgentDefinition = {
     let rejected = 0;
     for (const c of competitors) {
       const compRow = await queryOne<{ id: string }>(
-        `select id from backlink_competitors where domain = $1`,
-        [c.competitor_domain]
+        `select id from backlink_competitors where org_id = $1 and domain = $2`,
+        [orgId, c.competitor_domain]
       );
       const rds = await ahrefs.referringDomains(c.competitor_domain!, {
         limit: REFDOMAINS_PER_COMPETITOR,
@@ -180,21 +198,37 @@ export const backlinkScout: AgentDefinition = {
         qualified++;
         await query(
           `insert into backlink_prospects
-             (domain, opportunity_type, domain_rating, relevance, traffic, spam_score,
+             (org_id, domain, opportunity_type, domain_rating, relevance, traffic, spam_score,
               indexed, link_type, priority_score, tier, qualification_json,
               discovered_via, competitor_id, status)
-           values ($1,'competitor_gap',$2,$3,$4,$5,true,$6,$7,$8,$9,$10,$11,'qualified')
-           on conflict (domain, opportunity_type) do update set
-             domain_rating = excluded.domain_rating,
-             relevance = excluded.relevance,
-             traffic = excluded.traffic,
-             spam_score = excluded.spam_score,
-             link_type = excluded.link_type,
-             priority_score = excluded.priority_score,
-             tier = excluded.tier,
-             qualification_json = excluded.qualification_json,
-             updated_at = now()`,
+           values ($1,$2,'competitor_gap',$3,$4,$5,$6,true,$7,$8,$9,$10,$11,$12,'qualified')
+           on conflict do nothing`,
           [
+            orgId,
+            domain,
+            rd.domain_rating,
+            relevance,
+            rd.traffic_domain,
+            rd.is_spam ? 80 : 0,
+            linkType,
+            q.score,
+            q.tier,
+            JSON.stringify({ reasons: q.reasons, metrics: rd }),
+            `competitor:${c.competitor_domain}`,
+            compRow?.id ?? null,
+          ]
+        );
+        await query(
+          `update backlink_prospects
+              set domain_rating = $3, relevance = $4, traffic = $5,
+                  spam_score = $6, link_type = $7, priority_score = $8,
+                  tier = $9, qualification_json = $10,
+                  discovered_via = $11, competitor_id = $12,
+                  status = 'qualified', updated_at = now()
+            where org_id = $1 and domain = $2
+              and opportunity_type = 'competitor_gap'`,
+          [
+            orgId,
             domain,
             rd.domain_rating,
             relevance,
@@ -215,8 +249,8 @@ export const backlinkScout: AgentDefinition = {
     let brokenQualified = 0;
     for (const c of competitors.slice(0, BROKEN_COMPETITORS)) {
       const compRow = await queryOne<{ id: string }>(
-        `select id from backlink_competitors where domain = $1`,
-        [c.competitor_domain]
+        `select id from backlink_competitors where org_id = $1 and domain = $2`,
+        [orgId, c.competitor_domain]
       );
       const broken = await ahrefs.brokenBacklinks(c.competitor_domain!, {
         limit: BROKEN_PER_COMPETITOR,
@@ -245,23 +279,13 @@ export const backlinkScout: AgentDefinition = {
         qualified++;
         await query(
           `insert into backlink_prospects
-             (domain, url, opportunity_type, domain_rating, relevance, traffic, spam_score,
+             (org_id, domain, url, opportunity_type, domain_rating, relevance, traffic, spam_score,
               indexed, link_type, priority_score, tier, qualification_json,
               contact_json, discovered_via, competitor_id, status)
-           values ($1,$2,'broken_link',$3,$4,$5,$6,true,$7,$8,$9,$10,$11,$12,$13,'qualified')
-           on conflict (domain, opportunity_type) do update set
-             url = excluded.url,
-             domain_rating = excluded.domain_rating,
-             relevance = excluded.relevance,
-             traffic = excluded.traffic,
-             spam_score = excluded.spam_score,
-             link_type = excluded.link_type,
-             priority_score = excluded.priority_score,
-             tier = excluded.tier,
-             qualification_json = excluded.qualification_json,
-             contact_json = excluded.contact_json,
-             updated_at = now()`,
+           values ($1,$2,$3,'broken_link',$4,$5,$6,$7,true,$8,$9,$10,$11,$12,$13,$14,'qualified')
+           on conflict do nothing`,
           [
+            orgId,
             domain,
             bl.url_from,
             bl.domain_rating_source,
@@ -277,49 +301,171 @@ export const backlinkScout: AgentDefinition = {
             compRow?.id ?? null,
           ]
         );
+        await query(
+          `update backlink_prospects
+              set url = $3, domain_rating = $4, relevance = $5,
+                  traffic = $6, spam_score = $7, link_type = $8,
+                  priority_score = $9, tier = $10,
+                  qualification_json = $11, contact_json = $12,
+                  discovered_via = $13, competitor_id = $14,
+                  status = 'qualified', updated_at = now()
+            where org_id = $1 and domain = $2
+              and opportunity_type = 'broken_link'`,
+          [
+            orgId,
+            domain,
+            bl.url_from,
+            bl.domain_rating_source,
+            relevance,
+            bl.traffic_domain,
+            bl.is_spam ? 80 : 0,
+            linkType,
+            q.score,
+            q.tier,
+            JSON.stringify({
+              reasons: q.reasons,
+              dead_url: bl.url_to,
+              anchor: bl.anchor,
+              page_title: bl.title,
+            }),
+            JSON.stringify({ dead_url: bl.url_to, source_page: bl.url_from }),
+            `broken:${c.competitor_domain}`,
+            compRow?.id ?? null,
+          ]
+        );
       }
     }
 
     // --- 6) Free contact discovery for the highest-priority prospects. ---
     // Crawl each prospect's own site for a published contact email (no paid API).
     let contactsFound = 0;
+    let contactFailures = 0;
+    const failedContactDomains: string[] = [];
     const needContact = await query<{ id: string; domain: string; contact_json: unknown }>(
       `select id, domain, contact_json from backlink_prospects
-        where tier is not null and tier <> 'reject'
+        where org_id = $2 and tier is not null and tier <> 'reject'
           and contact_email is null and status = 'qualified'
         order by priority_score desc nulls last
         limit $1`,
-      [CONTACT_LOOKUPS_PER_RUN]
+      [CONTACT_LOOKUPS_PER_RUN, orgId]
     );
     for (const row of needContact) {
-      const result = await findContact(row.domain).catch(() => null);
-      if (result?.email) {
+      let result: Awaited<ReturnType<typeof findContact>> | null = null;
+      try {
+        result = await findContact(row.domain);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "unknown crawl error";
+        contactFailures++;
+        failedContactDomains.push(row.domain);
+        const existing = (row.contact_json && typeof row.contact_json === "object" ? row.contact_json : {}) as Record<string, unknown>;
+        await query(
+          `update backlink_prospects
+              set contact_json = $2, updated_at = now()
+            where id = $1 and org_id = $3`,
+          [
+            row.id,
+            JSON.stringify({
+              ...existing,
+              contact_discovery_status: "failed",
+              contact_discovery_error: reason.slice(0, 300),
+            }),
+            orgId,
+          ]
+        );
+        continue;
+      }
+
+      // The crawler only increments checkedPages after it receives readable
+      // HTML. Zero pages therefore means it could not inspect the site, not
+      // that the site has no contact route.
+      if (result.checkedPages === 0) {
+        contactFailures++;
+        failedContactDomains.push(row.domain);
+        const existing = (row.contact_json && typeof row.contact_json === "object" ? row.contact_json : {}) as Record<string, unknown>;
+        await query(
+          `update backlink_prospects
+              set contact_json = $2, updated_at = now()
+            where id = $1 and org_id = $3`,
+          [
+            row.id,
+            JSON.stringify({
+              ...existing,
+              contact_discovery_status: "failed",
+              contact_discovery_error:
+                "No public page could be read. Check site access and retry contact discovery.",
+            }),
+            orgId,
+          ]
+        );
+        continue;
+      }
+
+      if (result.email) {
         contactsFound++;
         const existing = (row.contact_json && typeof row.contact_json === "object" ? row.contact_json : {}) as Record<string, unknown>;
         await query(
           `update backlink_prospects
               set contact_email = $2, contact_json = $3, updated_at = now()
-            where id = $1`,
+            where id = $1 and org_id = $4`,
           [
             row.id,
             result.email,
-            JSON.stringify({ ...existing, emails: result.emails, contact_form: result.contactForm }),
+            JSON.stringify({
+              ...existing,
+              emails: result.emails,
+              contact_form: result.contactForm,
+              contact_discovery_status: "completed",
+              contact_discovery_error: null,
+              checked_pages: result.checkedPages,
+            }),
+            orgId,
           ]
         );
-      } else if (result?.contactForm) {
+      } else if (result.contactForm) {
         const existing = (row.contact_json && typeof row.contact_json === "object" ? row.contact_json : {}) as Record<string, unknown>;
         await query(
-          `update backlink_prospects set contact_json = $2, updated_at = now() where id = $1`,
-          [row.id, JSON.stringify({ ...existing, contact_form: result.contactForm })]
+          `update backlink_prospects set contact_json = $2, updated_at = now()
+            where id = $1 and org_id = $3`,
+          [
+            row.id,
+            JSON.stringify({
+              ...existing,
+              contact_form: result.contactForm,
+              contact_discovery_status: "completed",
+              contact_discovery_error: null,
+              checked_pages: result.checkedPages,
+            }),
+            orgId,
+          ]
+        );
+      } else {
+        const existing = (row.contact_json && typeof row.contact_json === "object" ? row.contact_json : {}) as Record<string, unknown>;
+        await query(
+          `update backlink_prospects set contact_json = $2, updated_at = now()
+            where id = $1 and org_id = $3`,
+          [
+            row.id,
+            JSON.stringify({
+              ...existing,
+              contact_discovery_status: "completed_no_contact",
+              contact_discovery_error: null,
+              checked_pages: result.checkedPages,
+            }),
+            orgId,
+          ]
         );
       }
     }
 
-    const summary = `DR ${snap?.domain_rating ?? "?"}; ${competitors.length} competitors; ${qualified} prospects qualified (${brokenQualified} broken-link, ${rejected} rejected); ${contactsFound} contacts found; ${newBacklinks} new / ${lostBacklinks} lost backlinks.`;
+    const contactFailureSummary = contactFailures > 0
+      ? ` ${contactFailures} contact crawl${contactFailures === 1 ? "" : "s"} failed and need retry.`
+      : "";
+    const summary = `DR ${snap?.domain_rating ?? "?"}; ${competitors.length} competitors; ${qualified} prospects qualified (${brokenQualified} broken-link, ${rejected} rejected); ${contactsFound} contacts found; ${newBacklinks} new / ${lostBacklinks} lost backlinks.${contactFailureSummary}`;
     await logAgent({
       agent: "backlink-scout",
       action: "scan",
-      level: lostBacklinks > 0 ? "warn" : "info",
+      level: contactFailures > 0 ? "error" : lostBacklinks > 0 ? "warn" : "info",
+      status: contactFailures > 0 ? "error" : "ok",
       message: summary,
       reasoning: `Snapshot + ${own.items.length} own refdomains + ${competitors.length} competitors x ${REFDOMAINS_PER_COMPETITOR} refdomains (+ broken-link mining), qualified via quality-first scoring.`,
       output: {
@@ -330,6 +476,8 @@ export const backlinkScout: AgentDefinition = {
         qualified,
         brokenQualified,
         contactsFound,
+        contactFailures,
+        failedContactDomains,
         rejected,
         newBacklinks,
         lostBacklinks,
@@ -337,7 +485,7 @@ export const backlinkScout: AgentDefinition = {
     });
 
     return {
-      ok: true,
+      ok: contactFailures === 0,
       summary,
       data: {
         domainRating: snap?.domain_rating ?? null,
@@ -346,9 +494,12 @@ export const backlinkScout: AgentDefinition = {
         rejected,
         newBacklinks,
         lostBacklinks,
+        contactFailures,
+        failedContactDomains,
       },
       // Lost backlinks are worth a human glance; discovery itself needs no action.
-      humanActionRequired: lostBacklinks > 0,
+      humanActionRequired: lostBacklinks > 0 || contactFailures > 0,
     };
+    });
   },
 };

@@ -33,9 +33,8 @@ export async function retrieveRelevantContent(opts: {
      * The organization is resolved once and named in the SQL. Agents now run
      * inside their job's context, so this reads the caller's own library.
      */
-    const { tryResolveTenantOrgId } = await import("../tenant");
-    const { LEGACY_ORG_ID } = await import("../tenant-context");
-    const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+    const { resolveTenantOrgId } = await import("../tenant");
+    const orgId = await resolveTenantOrgId();
     const items = await query<ContentLibraryItem>(
       `select * from content_library
         where org_id = $2 and is_active = true and category = any($1)

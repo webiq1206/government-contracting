@@ -78,6 +78,22 @@ describe("resolveOutreachSender", () => {
     });
   });
 
+  it("does not fall back to the authorized address when a configured alias is invalid", async () => {
+    const m = await withRows(async () => [
+      {
+        email: "owner@acme.com",
+        send_as: "not-an-address",
+        display_name: "Acme Builders",
+        status: "connected",
+        org_name: "Acme",
+      },
+    ]);
+
+    const s = await m.resolveOutreachSender(ORG);
+
+    expect(s).toMatchObject({ from: "", replyTo: "", connected: false });
+  });
+
   it("falls back to the org name when no display name is set", async () => {
     const m = await withRows(async () => [
       {

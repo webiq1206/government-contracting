@@ -15,14 +15,19 @@ import { query, queryOne } from "../db";
 
 export type SuppressionSource = "reply" | "operator" | "bounce";
 
+function addressOf(value: string): string {
+  const trimmed = value.trim();
+  return (trimmed.match(/<([^>]+)>/)?.[1] ?? trimmed).trim().toLowerCase();
+}
+
 /** True when this organization is forbidden from emailing this address. */
 export async function isSuppressed(orgId: string, email: string): Promise<boolean> {
-  const addr = email.trim().toLowerCase();
+  const addr = addressOf(email);
   if (!addr) return false;
   const row = await queryOne<{ id: string }>(
     `select id from email_suppressions where org_id = $1 and lower(email) = $2`,
     [orgId, addr]
-  ).catch(() => null);
+  );
   return Boolean(row);
 }
 
@@ -39,7 +44,7 @@ export async function suppressEmail(input: {
   reason?: string;
   source?: SuppressionSource;
 }): Promise<void> {
-  const addr = input.email.trim().toLowerCase();
+  const addr = addressOf(input.email);
   if (!addr) return;
   await query(
     `insert into email_suppressions (org_id, email, reason, source)
@@ -53,7 +58,7 @@ export async function suppressEmail(input: {
 export async function unsuppressEmail(orgId: string, email: string): Promise<void> {
   await query(`delete from email_suppressions where org_id=$1 and lower(email)=$2`, [
     orgId,
-    email.trim().toLowerCase(),
+    addressOf(email),
   ]);
 }
 

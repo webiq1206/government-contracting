@@ -47,6 +47,7 @@ export function GuideWizard() {
     []
   );
   const panelRef = useRef<HTMLDivElement>(null);
+  const returnFocusTo = useRef<HTMLElement | null>(null);
   const fingerprintRef = useRef<string | null>(null);
   const keepStepRef = useRef(false);
   const pendingStepRef = useRef<string | null>(null);
@@ -238,11 +239,33 @@ export function GuideWizard() {
   }, [open]);
 
   useEffect(() => {
-    if (open) {
-      const t = window.setTimeout(() => panelRef.current?.focus(), 40);
-      return () => window.clearTimeout(t);
-    }
+    if (!open) return;
+    returnFocusTo.current = document.activeElement as HTMLElement | null;
+    const t = window.setTimeout(() => panelRef.current?.focus(), 40);
+    return () => {
+      window.clearTimeout(t);
+      returnFocusTo.current?.focus?.();
+    };
   }, [open]);
+
+  const trapDialogFocus = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== "Tab") return;
+    const focusable = Array.from(
+      panelRef.current?.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+      ) ?? []
+    ).filter((item) => item.getClientRects().length > 0);
+    if (focusable.length === 0) return;
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, []);
 
   async function afterAction() {
     trackClientEvent("guide_action_complete", {
@@ -360,7 +383,8 @@ export function GuideWizard() {
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-xl border border-border/55 bg-background shadow-2xl outline-none dark:border-white/10 md:inset-y-0 md:bottom-auto md:left-auto md:right-0 md:h-full md:max-h-none md:w-full md:max-w-md md:rounded-none md:border-l md:border-t-0 md:border-b-0"
+            onKeyDown={trapDialogFocus}
+            className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col rounded-t-xl border border-foreground/50 bg-background shadow-2xl outline-none dark:border-white/35 md:inset-y-0 md:bottom-auto md:left-auto md:right-0 md:h-full md:max-h-none md:w-full md:max-w-md md:rounded-none md:border-l md:border-t-0 md:border-b-0"
           >
             <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3 md:px-5">
               <div className="min-w-0">
@@ -400,7 +424,7 @@ export function GuideWizard() {
                   key={key}
                   type="button"
                   onClick={() => setMode(key as Mode)}
-                  className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-medium ${
+                  className={`min-h-11 shrink-0 rounded-md px-3 py-1.5 text-xs font-medium ${
                     mode === key
                       ? "bg-foreground text-background"
                       : "bg-surface text-muted-foreground hover:bg-muted"
@@ -413,12 +437,40 @@ export function GuideWizard() {
 
             <div className="scroll-thin flex-1 overflow-y-auto px-4 py-4 md:px-5">
               {loading && !guide && (
-                <p className="text-sm text-slate-500">Reading your account and this page…</p>
+                <p className="text-sm text-slate-500" role="status" aria-live="polite">
+                  Reading your account and this page…
+                </p>
               )}
-              {error && <p className="text-sm text-risk">{error}</p>}
+              {error && (
+                <div className="status-strip status-strip--risk" role="alert">
+                  <p className="text-sm font-medium">Guidance did not load</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{error}</p>
+                  <button
+                    type="button"
+                    className="btn-ghost mt-3 text-xs"
+                    onClick={() => void load()}
+                  >
+                    Try again
+                  </button>
+                </div>
+              )}
 
               {guide && mode === "guide" && (
                 <>
+                {Boolean(guide.dataWarnings?.length) && (
+                  <div className="status-strip status-strip--risk mb-3" role="alert">
+                    <p className="text-sm font-medium">Some guidance is not verified</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                      {guide.dataWarnings?.map((warning) => (
+                        <li key={warning}>{warning}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Reload before acting on a setup or completion claim that depends on these
+                      facts.
+                    </p>
+                  </div>
+                )}
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
@@ -511,6 +563,7 @@ export function GuideWizard() {
                       className="input flex-1"
                       value={askInput}
                       onChange={(e) => setAskInput(e.target.value)}
+                      aria-label="Ask about this page"
                       placeholder="Ask a question…"
                       disabled={askBusy}
                     />
@@ -631,7 +684,7 @@ export function GuideWizard() {
                         key={t.key}
                         className="rounded-md border border-border bg-surface px-3 py-2"
                       >
-                        <summary className="cursor-pointer text-sm font-medium text-foreground">
+                        <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-foreground">
                           {t.label}
                         </summary>
                         <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{t.tip}</p>
@@ -814,7 +867,7 @@ function GuideBody({
 
       <button
         type="button"
-        className="text-xs text-slate-500 underline-offset-2 hover:underline"
+        className="inline-flex min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline lg:min-h-0"
         onClick={() => void onDone()}
       >
         Refresh guidance

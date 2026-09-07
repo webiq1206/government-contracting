@@ -30,6 +30,14 @@ export interface DocPointer {
   /** Expiry, seconds since epoch. */
   e: number;
   /**
+   * Opportunity that authorized a stored or upstream file link.
+   *
+   * The delivery route checks that this opportunity still exists before it
+   * serves anything. Account deletion removes the opportunity, immediately
+   * revoking links that have time left on their signature.
+   */
+  o?: string;
+  /**
    * For a package: the documents it lists.
    *
    * Carried in the token rather than looked up at open time, so the page shows
@@ -53,8 +61,11 @@ export function isAllowedUpstream(url: string): boolean {
   try {
     const u = new URL(url);
     if (u.protocol !== "https:") return false;
-    return ALLOWED_UPSTREAM_HOSTS.some(
-      (h) => u.hostname === h || u.hostname.endsWith(`.${h}`)
+    return (
+      ALLOWED_UPSTREAM_HOSTS.some(
+        (h) => u.hostname === h || u.hostname.endsWith(`.${h}`)
+      ) ||
+      /^(?:[^.]+\.)?s3(?:[.-][a-z0-9-]+)?\.amazonaws\.com$/i.test(u.hostname)
     );
   } catch {
     return false;
@@ -62,11 +73,12 @@ export function isAllowedUpstream(url: string): boolean {
 }
 
 function secret(): string {
-  return (
-    process.env.AUTH_SECRET ||
-    process.env.SESSION_SECRET ||
-    "dev-insecure-secret-change-me"
-  );
+  const value = process.env.AUTH_SECRET || process.env.SESSION_SECRET;
+  if (value) return value;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET must be set before document links can be issued.");
+  }
+  return "dev-insecure-secret-change-me";
 }
 
 function b64url(buf: Buffer): string {
@@ -82,6 +94,9 @@ function sign(payload: string): string {
 
 /** Build the opaque token for a pointer. */
 export function encodeDocToken(p: DocPointer): string {
+  if ((p.k === "s" || p.k === "u") && (typeof p.o !== "string" || !p.o)) {
+    throw new Error("Document links must be scoped to an opportunity.");
+  }
   const payload = b64url(Buffer.from(JSON.stringify(p), "utf8"));
   return `${payload}.${sign(payload)}`;
 }
@@ -91,17 +106,30 @@ export function decodeDocToken(
   token: string,
   nowSec = Math.floor(Date.now() / 1000)
 ): DocPointer | null {
-  const [payload, sig] = String(token ?? "").split(".");
+  const parts = String(token ?? "").split(".");
+  if (parts.length !== 2) return null;
+  const [payload, sig] = parts;
   if (!payload || !sig) return null;
-  const expected = sign(payload);
+  let expected: string;
+  try {
+    expected = sign(payload);
+  } catch {
+    return null;
+  }
   // Constant-time compare; lengths must match first or timingSafeEqual throws.
   if (sig.length !== expected.length) return null;
-  if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  } catch {
+    return null;
+  }
   try {
     const p = JSON.parse(unb64url(payload).toString("utf8")) as DocPointer;
     if (p.k !== "s" && p.k !== "u" && p.k !== "p") return null;
     if (typeof p.v !== "string" || !p.v) return null;
+    if (typeof p.n !== "string" || !p.n) return null;
     if (typeof p.e !== "number" || p.e <= nowSec) return null;
+    if ((p.k === "s" || p.k === "u") && (typeof p.o !== "string" || !p.o)) return null;
     if (p.k === "u" && !isAllowedUpstream(p.v)) return null;
     if (p.k === "p") {
       if (!Array.isArray(p.d) || p.d.length === 0) return null;
@@ -110,6 +138,7 @@ export function decodeDocToken(
       for (const entry of p.d) {
         if (entry?.k !== "s" && entry?.k !== "u") return null;
         if (typeof entry.v !== "string" || !entry.v) return null;
+        if (typeof entry.n !== "string" || !entry.n) return null;
         if (entry.k === "u" && !isAllowedUpstream(entry.v)) return null;
       }
     }
@@ -123,7 +152,10 @@ export function decodeDocToken(
  * The public URL for a document. Absolute, because it goes in an email.
  * APP_URL should be the site's public origin.
  */
-export function publicDocUrl(p: Omit<DocPointer, "e">, ttlSeconds = 30 * 24 * 3600): string {
+export function publicDocUrl(
+  p: Omit<DocPointer, "e" | "d"> & { k: "s" | "u"; o: string },
+  ttlSeconds = 30 * 24 * 3600
+): string {
   const base = (process.env.APP_URL || "https://brostco.com").replace(/\/+$/, "");
   const token = encodeDocToken({ ...p, e: Math.floor(Date.now() / 1000) + ttlSeconds });
   return `${base}/d/${token}`;

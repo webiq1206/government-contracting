@@ -68,7 +68,7 @@ async function loadDocuments(orgId: string): Promise<Row[]> {
       where d.org_id = $1 and d.status <> 'rejected'
       order by d.expires_at asc nulls last`,
     [orgId]
-  ).catch(() => []);
+  );
 }
 
 function fmt(iso: string | null): string {
@@ -95,6 +95,7 @@ export const complianceSweep: AgentDefinition = {
     let lapsed = 0;
     let expiring = 0;
     let unrecorded = 0;
+    let digestFailures = 0;
     let humanAction = false;
     /*
      * Organizations whose sweep threw.
@@ -116,6 +117,7 @@ export const complianceSweep: AgentDefinition = {
       lapsed += r.lapsed;
       expiring += r.expiring;
       unrecorded += r.unrecorded;
+      digestFailures += r.digestFailed ? 1 : 0;
       humanAction = humanAction || r.humanAction;
     }
 
@@ -132,6 +134,11 @@ export const complianceSweep: AgentDefinition = {
     if (failedOrgs.length > 0) {
       parts.push(`${failedOrgs.length} account(s) were not swept at all: ${failedOrgs.join("; ")}`);
     }
+    if (digestFailures > 0) {
+      parts.push(
+        `${digestFailures} compliance digest could not be sent. The compliance findings remain available on the dashboard and in the automation log.`
+      );
+    }
 
     return {
       /*
@@ -143,9 +150,10 @@ export const complianceSweep: AgentDefinition = {
        * is written at status 'error', which is what `automation-status` reads.
        * Flagging it here as well would count one failure twice.
        */
-      ok: failedOrgs.length === 0 && fanout.error == null,
+      ok: failedOrgs.length === 0 && fanout.error == null && digestFailures === 0,
       summary: parts.join(" ").slice(0, 800),
-      humanActionRequired: humanAction || unrecorded > 0 || fanout.error != null,
+      humanActionRequired:
+        humanAction || unrecorded > 0 || digestFailures > 0 || fanout.error != null,
     };
   },
 };
@@ -156,11 +164,19 @@ async function sweepOrg(orgId: string): Promise<{
   expiring: number;
   /** Documents whose new status could not be written. */
   unrecorded: number;
+  digestFailed: boolean;
   humanAction: boolean;
 }> {
     const docs = await loadDocuments(orgId);
     if (docs.length === 0) {
-      return { checked: 0, lapsed: 0, expiring: 0, unrecorded: 0, humanAction: false };
+      return {
+        checked: 0,
+        lapsed: 0,
+        expiring: 0,
+        unrecorded: 0,
+        digestFailed: false,
+        humanAction: false,
+      };
     }
 
     const now = new Date();
@@ -271,12 +287,8 @@ async function sweepOrg(orgId: string): Promise<{
 
     // One digest per run rather than one email per document, so a bad week
     // does not bury the operator.
-    if (
-      orgId === LEGACY_ORG_ID &&
-      bySub.size > 0 &&
-      config.systemMail.digestTo &&
-      (await systemMail.enabled())
-    ) {
+    let digestError: string | null = null;
+    if (orgId === LEGACY_ORG_ID && bySub.size > 0 && config.systemMail.digestTo) {
       // Subs who are actually on a job first. A digest read on a phone at
       // 06:30 gets skimmed, so the item that can stop work has to be at the
       // top rather than alphabetically wherever it fell.
@@ -288,26 +300,52 @@ async function sweepOrg(orgId: string): Promise<{
           `${e.working ? "[ON A LIVE CONTRACT] " : ""}${e.expired ? "LAPSED" : "Expiring"}: ${e.name} - ${e.items.join("; ")}`
       );
       const working = entries.filter((e) => e.working && e.expired).length;
-      await systemMail
-        .send({
-          to: config.systemMail.digestTo,
-          subject: working
-            ? `Subcontractor insurance: ${working} uninsured on live contracts`
-            : `Subcontractor insurance: ${justExpired.length} lapsed, ${expiringSoon.length} expiring`,
-          text: [
-            "Insurance and tax documents that need attention:",
-            "",
-            ...lines,
-            "",
-            "Anyone listed as LAPSED is blocked from receiving work until a current certificate is on file.",
-            working
-              ? "Anyone marked ON A LIVE CONTRACT is already working. Stop their work until a current certificate is in hand."
-              : "",
-          ]
-            .filter((l) => l !== "")
-            .join("\n"),
-        })
-        .catch(() => undefined);
+      try {
+        const ready = await systemMail.deliverable();
+        if (!ready) {
+          digestError =
+            "The platform mail connection or verified sender identity is not ready. Check platform Gmail settings and retry the sweep.";
+        } else {
+          const delivery = await systemMail.send({
+            to: config.systemMail.digestTo,
+            subject: working
+              ? `Subcontractor insurance: ${working} uninsured on live contracts`
+              : `Subcontractor insurance: ${justExpired.length} lapsed, ${expiringSoon.length} expiring`,
+            text: [
+              "Insurance and tax documents that need attention:",
+              "",
+              ...lines,
+              "",
+              "Anyone listed as LAPSED is blocked from receiving work until a current certificate is on file.",
+              working
+                ? "Anyone marked ON A LIVE CONTRACT is already working. Stop their work until a current certificate is in hand."
+                : "",
+            ]
+              .filter((l) => l !== "")
+              .join("\n"),
+          });
+          if (delivery.disabled || delivery.error) {
+            digestError =
+              delivery.error ??
+              "The platform inbox refused the compliance digest. Check platform Gmail settings and retry the sweep.";
+          }
+        }
+      } catch (err) {
+        digestError = `The platform sender identity could not be checked: ${(err as Error).message}`;
+      }
+
+      if (digestError) {
+        await logAgent({
+          agent: "compliance-sweep",
+          action: "compliance-digest-unsent",
+          level: "error",
+          status: "error",
+          message: `Compliance findings were recorded, but the digest was not sent: ${digestError}`.slice(
+            0,
+            500
+          ),
+        });
+      }
     }
 
     const workingAndLapsing = [...bySub.values()].filter((e) => e.working).length;
@@ -319,6 +357,7 @@ async function sweepOrg(orgId: string): Promise<{
       lapsed: justExpired.length,
       expiring: expiringSoon.length,
       unrecorded: writeFailed.length,
+      digestFailed: digestError != null,
       // A sweep that could not write is a person-shaped problem too: what is
       // on screen no longer matches what the dates say.
       humanAction:

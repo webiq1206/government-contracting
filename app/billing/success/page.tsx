@@ -4,6 +4,7 @@ import { currentUser } from "@/lib/auth";
 import { getOrganization } from "@/lib/organizations";
 import { hasAccess } from "@/lib/billing/entitlements";
 import { trackEvent } from "@/lib/analytics";
+import { SessionLoadFailure } from "@/components/session-load-failure";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,15 @@ export default async function BillingSuccessPage({
 }: {
   searchParams?: { session_id?: string };
 }) {
-  const user = await currentUser().catch(() => null);
+  const auth = await currentUser().then(
+    (user) => ({ ok: true as const, user }),
+    (error) => {
+      console.error("[billing-success] session or organization could not be loaded:", error);
+      return { ok: false as const, user: null };
+    }
+  );
+  if (!auth.ok) return <SessionLoadFailure />;
+  const user = auth.user;
   if (!user) redirect("/login");
   if (user.organizationId) {
     const org = await getOrganization(user.organizationId);

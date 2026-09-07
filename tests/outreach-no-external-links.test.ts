@@ -15,9 +15,26 @@ beforeAll(() => {
  */
 describe("outreach emails never leak external links", () => {
   it("renders document links on our own domain only", () => {
+    const opportunityId = "991f1e31-4c12-4a3c-80af-0fb8c8c67784";
     const links = [
-      { name: "SOW.pdf", url: publicDocUrl({ k: "u", v: "https://sam.gov/api/sow.pdf", n: "SOW.pdf" }) },
-      { name: "Plans.pdf", url: publicDocUrl({ k: "s", v: "bids/1/plans.pdf", n: "Plans.pdf" }) },
+      {
+        name: "SOW.pdf",
+        url: publicDocUrl({
+          k: "u",
+          v: "https://sam.gov/api/sow.pdf",
+          n: "SOW.pdf",
+          o: opportunityId,
+        }),
+      },
+      {
+        name: "Plans.pdf",
+        url: publicDocUrl({
+          k: "s",
+          v: "bids/1/plans.pdf",
+          n: "Plans.pdf",
+          o: opportunityId,
+        }),
+      },
     ];
     const out = buildOutreachDetailsBlock({
       title: "Grounds maintenance",
@@ -38,7 +55,12 @@ describe("outreach emails never leak external links", () => {
   it("uses a link path that requires no account", () => {
     // /d/<token> is the only document path used in outreach. The
     // authenticated path (/api/files) must never appear in a sub email.
-    const url = publicDocUrl({ k: "s", v: "bids/1/a.pdf", n: "a.pdf" });
+    const url = publicDocUrl({
+      k: "s",
+      v: "bids/1/a.pdf",
+      n: "a.pdf",
+      o: "991f1e31-4c12-4a3c-80af-0fb8c8c67784",
+    });
     expect(url).toContain("/d/");
     expect(url).not.toContain("/api/files");
   });

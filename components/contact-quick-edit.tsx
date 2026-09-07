@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -41,6 +41,9 @@ export function ContactQuickEdit({
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLSpanElement>(null);
+  const titleId = useId();
   const [form, setForm] = useState({
     email: email ?? "",
     phone: phone ?? "",
@@ -69,10 +72,11 @@ export function ContactQuickEdit({
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
-        setError(data.error ?? "Save failed.");
+        setError(data.error ?? "Contact changes were not saved. Check the fields and try again.");
         return;
       }
       setOpen(false);
+      triggerRef.current?.focus();
       onSaved?.({
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
@@ -80,8 +84,10 @@ export function ContactQuickEdit({
         owner_name: form.owner_name.trim() || null,
       });
       router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
+    } catch {
+      setError(
+        "Could not reach the server. Contact changes were not saved. Check your connection and try again."
+      );
     } finally {
       setSaving(false);
     }
@@ -93,12 +99,13 @@ export function ContactQuickEdit({
       onClick={(e) => e.stopPropagation()}
     >
       <button
+        ref={triggerRef}
         type="button"
         aria-label={`Edit contact info for ${companyName}`}
         aria-expanded={open}
         aria-haspopup="dialog"
         title="Edit contact info"
-        className="inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-500 hover:bg-surface hover:text-accent md:h-7 md:w-7"
+        className="tap inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-surface hover:text-accent lg:h-7 lg:w-7"
         onClick={(e) => {
           e.stopPropagation();
           if (!open) {
@@ -126,12 +133,15 @@ export function ContactQuickEdit({
               e.stopPropagation();
               setOpen(false);
               setError(null);
+              triggerRef.current?.focus();
             }}
           />
           <span
+            ref={panelRef}
             role="dialog"
-            aria-label={`Edit contact: ${companyName}`}
-            className="fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 block max-h-[70vh] overflow-y-auto rounded-lg border border-border/55 bg-surface p-4 text-left text-foreground shadow-lg dark:border-white/10 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-6 sm:max-h-none sm:w-72 sm:p-3"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            className="fixed inset-x-4 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 block max-h-[70vh] overflow-y-auto rounded-lg border border-foreground/50 bg-surface p-4 text-left text-foreground shadow-lg dark:border-white/35 lg:absolute lg:inset-x-auto lg:bottom-auto lg:right-0 lg:top-6 lg:max-h-none lg:w-72 lg:p-3"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               // Escape closes this popover only — don't let it bubble to the
@@ -140,10 +150,28 @@ export function ContactQuickEdit({
                 e.stopPropagation();
                 setOpen(false);
                 setError(null);
+                triggerRef.current?.focus();
+                return;
+              }
+              if (e.key === "Tab") {
+                const focusable = Array.from(
+                  panelRef.current?.querySelectorAll<HTMLElement>(
+                    "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+                  ) ?? []
+                ).filter((item) => item.getClientRects().length > 0);
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (first && last && e.shiftKey && document.activeElement === first) {
+                  e.preventDefault();
+                  last.focus();
+                } else if (first && last && !e.shiftKey && document.activeElement === last) {
+                  e.preventDefault();
+                  first.focus();
+                }
               }
             }}
           >
-            <span className="mb-2 block text-xs font-semibold text-slate-900">
+            <span id={titleId} className="mb-2 block text-xs font-semibold text-slate-900">
               Edit contact: {companyName}
             </span>
             <span className="block space-y-2">
@@ -166,13 +194,18 @@ export function ContactQuickEdit({
                 onClick={() => {
                   setOpen(false);
                   setError(null);
+                  triggerRef.current?.focus();
                 }}
                 disabled={saving}
               >
                 Cancel
               </button>
             </span>
-            {error && <span className="mt-2 block text-xs text-risk">{error}</span>}
+            {error && (
+              <span className="mt-2 block text-xs text-risk" role="alert">
+                {error}
+              </span>
+            )}
           </span>
         </>
       )}

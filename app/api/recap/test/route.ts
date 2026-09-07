@@ -79,11 +79,23 @@ export async function POST(req: Request) {
     );
   }
 
-  if (!(await systemMail.deliverable())) {
+  let mailReady = false;
+  try {
+    mailReady = await systemMail.deliverable();
+  } catch {
     return NextResponse.json(
       {
         error:
-          "Nothing can be sent right now: the platform inbox is not connected, so the morning recap would not go out either. That is worth fixing before testing this.",
+          "Nothing was sent because the platform sender identity could not be checked. Check the platform Gmail connection and sender address, then try again.",
+      },
+      { status: 503 }
+    );
+  }
+  if (!mailReady) {
+    return NextResponse.json(
+      {
+        error:
+          "Nothing can be sent right now: the platform Gmail connection or verified sender identity is not ready, so the morning recap would not go out either. Check platform Gmail settings before testing this.",
       },
       { status: 503 }
     );
@@ -154,7 +166,7 @@ export async function POST(req: Request) {
         text: rendered.text,
         quiet: recap.quiet,
         urgentCount: recap.urgentCount,
-        providerMessageId: result.messageId ?? null,
+        providerMessageId: result.rfc822MessageId ?? result.messageId ?? null,
       });
     }
   }

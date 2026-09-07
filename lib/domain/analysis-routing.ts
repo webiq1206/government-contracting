@@ -26,6 +26,7 @@ export type AnalysisRouteReason =
   | "already_advanced"
   | "prime_only"
   | "incomplete"
+  | "rescore"
   | "advance";
 
 export interface AnalysisRoute {
@@ -109,5 +110,25 @@ export function routeAfterAnalysis(input: {
     humanAction: input.humanActionRequired,
     enqueueSubFinder: true,
     reason: "advance",
+  };
+}
+
+/**
+ * Document-first scoring never lets the analyst start sourcing itself. A new
+ * opportunity returns to scoring; an amendment on work already in progress
+ * keeps that lifecycle position while the score is refreshed.
+ */
+export function routeToRescore(input: {
+  stage: string;
+  status?: string | null;
+  humanActionRequired: boolean;
+}): AnalysisRoute & { preserveLifecycle: boolean } {
+  const preserveLifecycle = input.status === "archived" || PAST_ANALYSIS.has(input.stage);
+  return {
+    stage: preserveLifecycle ? input.stage : "scoring",
+    humanAction: preserveLifecycle ? input.humanActionRequired : false,
+    enqueueSubFinder: false,
+    reason: "rescore",
+    preserveLifecycle,
   };
 }

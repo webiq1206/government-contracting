@@ -44,6 +44,15 @@ describe("referencesHeader", () => {
     expect(referencesHeader({})).toBe("");
     expect(referencesHeader({ references: [] })).toBe("");
   });
+
+  it("keeps only bounded RFC Message-IDs from an untrusted header chain", () => {
+    expect(
+      referencesHeader({
+        references: ["noise <first@example.test>\r\nBcc: thief@example.test"],
+        inReplyTo: "<second@example.test>\r\nX-Injected: yes",
+      })
+    ).toBe("<first@example.test> <second@example.test>");
+  });
 });
 
 describe("buildGmailRawMessage threading headers", () => {
@@ -104,5 +113,22 @@ describe("buildGmailRawMessage threading headers", () => {
     expect(msg).toContain("In-Reply-To: <second@mail.gmail.com>");
     expect(msg).toContain("References: <first@mail.gmail.com> <second@mail.gmail.com>");
     expect(msg).toContain("drawings.pdf");
+  });
+
+  it("cannot turn stored subject or threading data into extra MIME headers", () => {
+    const msg = decode(
+      buildGmailRawMessage(
+        {
+          ...base,
+          subject: "Quote reply\r\nBcc: thief@example.test",
+          inReplyTo: "<parent@example.test>\r\nX-Injected: yes",
+        },
+        "info@brostco.com"
+      )
+    );
+    expect(msg).toContain("Subject: Quote reply Bcc: thief@example.test");
+    expect(msg).toContain("In-Reply-To: <parent@example.test>");
+    expect(msg).not.toContain("\r\nBcc: thief@example.test");
+    expect(msg).not.toContain("\r\nX-Injected: yes");
   });
 });

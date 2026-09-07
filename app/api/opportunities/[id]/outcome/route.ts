@@ -1,164 +1,289 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
-import { query, queryOne, transaction } from "@/lib/db";
+import { queryOne, transaction } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
-import type { Opportunity } from "@/lib/types";
+import { stopOpportunityAutomation } from "@/lib/close-opportunity-work";
+import {
+  outcomeDetailsProblem,
+  outcomeProblem,
+  type OutcomeDetails,
+} from "@/lib/domain/opportunity-lifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/**
- * Record a bid outcome (won / lost / no_award). On win: sets up the contract
- * (milestone/coordination scaffolding, CPARS calendar) per spec step 12. Feeds
- * the Learning Loop and Analytics.
- */
+type Outcome = OutcomeDetails["outcome"];
+
+interface OutcomeRow {
+  id: string;
+  stage: string;
+  status: string;
+  pursuit_state: string | null;
+  bid_id: string;
+  bid_outcome: string | null;
+  submission_state: string;
+}
+
+class OutcomeConflict extends Error {}
+
+/** Record an agency outcome only for a bid whose delivery was already proven. */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext({ capability: "decide" });
+  const ctx = await requireOrgContext({ capability: "manage_contracts" });
   if (ctx instanceof NextResponse) return ctx;
-  const { orgId } = ctx;
-  const body = await req.json().catch(() => ({}));
-  const outcome = body.outcome as "won" | "lost" | "no_award";
+  const { orgId, user } = ctx;
+
+  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const outcome = String(body.outcome ?? "") as Outcome;
   if (!["won", "lost", "no_award"].includes(outcome)) {
-    return NextResponse.json({ error: "outcome must be won|lost|no_award" }, { status: 400 });
+    return NextResponse.json({ error: "Choose Won, Lost, or No award." }, { status: 400 });
   }
 
-  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
-  if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const bid = await queryOne<{ id: string; bid_amount: number | null }>(
-    `select id, bid_amount from bids where opportunity_id=$1 order by created_at desc limit 1`,
-    [params.id]
+  const details: OutcomeDetails = {
+    outcome,
+    awardAmount: money(body.award_amount),
+    contractNumber: text(body.contract_number),
+    startDate: text(body.start_date),
+    endDate: text(body.end_date),
+    lossReason: text(body.loss_reason),
+  };
+  const detailProblem = outcomeDetailsProblem(details);
+  if (detailProblem) return NextResponse.json({ error: detailProblem }, { status: 400 });
+
+  const initial = await queryOne<OutcomeRow>(
+    `select o.id, o.stage, o.status, o.pursuit_state,
+            b.id as bid_id, b.outcome as bid_outcome, b.submission_state
+       from opportunities o
+       join bids b on b.opportunity_id=o.id and b.org_id=o.org_id
+      where o.id=$1 and o.org_id=$2
+      order by b.created_at desc limit 1`,
+    [params.id, orgId]
   );
+  if (!initial) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const awardAmount = body.award_amount != null ? Number(body.award_amount) : null;
-  if (awardAmount != null && (!Number.isFinite(awardAmount) || awardAmount <= 0)) {
-    return NextResponse.json(
-      { error: "Award amount must be a positive dollar figure." },
-      { status: 400 }
-    );
+  if (sameRecordedOutcome(initial, outcome)) {
+    return NextResponse.json({ ok: true, outcome, alreadyRecorded: true });
   }
-  if (awardAmount != null && awardAmount > 100_000_000) {
-    return NextResponse.json(
-      { error: "Award amount is over $100M. Double-check the figure (dollars, not cents)." },
-      { status: 400 }
-    );
-  }
-  const lossReason = body.loss_reason ?? null;
+  const firstProblem = outcomeProblem(
+    {
+      stage: initial.stage,
+      status: initial.status,
+      pursuitState: initial.pursuit_state,
+      submissionState: initial.submission_state,
+    },
+    outcome
+  );
+  if (firstProblem) return NextResponse.json({ error: firstProblem }, { status: 409 });
 
-  if (outcome === "won") {
-    if (!bid) {
-      return NextResponse.json(
-        {
-          error:
-            "No bid exists for this opportunity yet. Build and submit a bid first so the win is tied to a bid record (analytics and the Learning Loop depend on it).",
-        },
-        { status: 400 }
+  let newContractId: string | null = null;
+  let alreadyRecorded = false;
+  try {
+    await transaction(async (client) => {
+      const locked = await client.query<OutcomeRow>(
+        `select o.id, o.stage, o.status, o.pursuit_state,
+                b.id as bid_id, b.outcome as bid_outcome, b.submission_state
+           from opportunities o
+           join bids b on b.opportunity_id=o.id and b.org_id=o.org_id
+          where o.id=$1 and o.org_id=$2
+          order by b.created_at desc limit 1
+          for update of o, b`,
+        [params.id, orgId]
       );
-    }
-    const contractNumber = body.contract_number ?? opp.solicitation_number ?? null;
-    // Default the award amount to what we bid when the operator marks a win
-    // without entering one, so the contract, active-revenue KPI, and non-SS cap
-    // math have a real figure instead of a blank.
-    const effectiveAward = awardAmount ?? bid.bid_amount ?? null;
-    // CPARS due 7 days after contract close (spec). Default close = +180d if unknown.
-    const endDate = body.end_date ?? null;
-    // Atomic: mark the bid won, close the opportunity, and create the contract in
-    // one transaction so a partial failure can't leave a "won" bid with no
-    // contract row (or an opportunity closed with no contract).
-    // Idempotent: the opportunity move is the claim. A double click or a
-    // retried request must not mint a second contract for the same win, which
-    // would double-count active revenue and the non-SS subcontracting cap.
-    // The stage guard inside the UPDATE makes the whole win exactly-once:
-    // only the transaction that actually flips the stage creates the contract.
-    let newContractId: string | null = null;
-    const claimed = await transaction(async (c) => {
-      const moved = await c.query<{ id: string }>(
-        `update opportunities set stage='won', status='closed'
-          where id=$1 and stage <> 'won' returning id`,
-        [params.id]
-      );
-      if (moved.rows.length === 0) return false; // already recorded as won
-      if (bid) {
-        await c.query(`update bids set outcome=$2, award_amount=$3, loss_reason=$4 where id=$1`, [
-          bid.id,
-          outcome,
-          effectiveAward,
-          lossReason,
-        ]);
+      const current = locked.rows[0];
+      if (!current) throw new OutcomeConflict("The opportunity no longer exists.");
+      if (sameRecordedOutcome(current, outcome)) {
+        alreadyRecorded = true;
+        return;
       }
-      const created = await c.query<{ id: string }>(
-        `insert into contracts
-           (bid_id, opportunity_id, contract_number, award_amount, start_date, end_date,
-            cpars_due_at, cpars_status, status)
-         values ($1,$2,$3,$4,$5,$6,$7,'pending','active')
-         returning id`,
+
+      const currentProblem = outcomeProblem(
+        {
+          stage: current.stage,
+          status: current.status,
+          pursuitState: current.pursuit_state,
+          submissionState: current.submission_state,
+        },
+        outcome
+      );
+      if (currentProblem) throw new OutcomeConflict(currentProblem);
+
+      const bidChanged = await client.query<{ id: string }>(
+        `update bids
+            set outcome=$3, award_amount=$4, loss_reason=$5, updated_at=now()
+          where id=$1 and org_id=$2
+            and coalesce(outcome, 'pending')='pending'
+            and submission_state=$6
+          returning id`,
         [
-          bid?.id ?? null,
-          params.id,
-          contractNumber,
-          effectiveAward,
-          body.start_date ?? null,
-          endDate,
-          endDate ? new Date(new Date(endDate).getTime() + 7 * 86_400_000).toISOString() : null,
+          current.bid_id,
+          orgId,
+          outcome,
+          outcome === "won" ? details.awardAmount : null,
+          outcome === "won" ? null : details.lossReason,
+          current.submission_state,
         ]
       );
-      newContractId = created.rows[0]?.id ?? null;
-      return true;
-    });
-    if (!claimed) {
-      // Already won on a prior request; report success without side effects.
-      return NextResponse.json({ ok: true, outcome, alreadyRecorded: true });
-    }
+      if (bidChanged.rows.length === 0) {
+        throw new OutcomeConflict(
+          "The bid changed before the outcome was recorded. Refresh it and check the current result."
+        );
+      }
 
-    /*
-     * The obligations the award creates, written down.
-     *
-     * Outside the transaction on purpose: the win is the thing that must not
-     * be lost, and a failure to seed the milestones should leave a recorded
-     * contract with an empty checklist rather than roll back an award that
-     * actually happened. The seeder is idempotent, so a repair run fills in
-     * whatever a failure here missed.
-     */
-    if (newContractId) {
-      const { seedContractStartup } = await import("@/lib/contract-record");
-      await seedContractStartup({ orgId, contractId: newContractId }).catch((e: unknown) => {
-        console.warn("[outcome] could not seed contract startup:", e);
-        return null;
-      });
+      const finalStage = outcome === "won" ? "won" : "lost";
+      const opportunityChanged = await client.query<{ id: string }>(
+        `update opportunities
+            set stage=$3, status='closed', human_action_required=false
+          where id=$1 and org_id=$2 and stage='submitted' and status='open'
+          returning id`,
+        [params.id, orgId, finalStage]
+      );
+      if (opportunityChanged.rows.length === 0) {
+        throw new OutcomeConflict(
+          "The opportunity changed before the outcome was recorded. Refresh it and check the current result."
+        );
+      }
+
+      if (outcome === "won") {
+        const created = await client.query<{ id: string }>(
+          `insert into contracts
+             (org_id, bid_id, opportunity_id, contract_number, award_amount,
+              start_date, end_date, cpars_due_at, cpars_status, status)
+           values ($1,$2,$3,$4,$5,$6::date,$7::date,$7::date + 7,'pending','active')
+           returning id`,
+          [
+            orgId,
+            current.bid_id,
+            params.id,
+            details.contractNumber!.trim(),
+            details.awardAmount,
+            details.startDate,
+            details.endDate,
+          ]
+        );
+        newContractId = created.rows[0]?.id ?? null;
+        if (!newContractId) throw new OutcomeConflict("The contract record could not be created.");
+      }
+    });
+  } catch (error) {
+    if (error instanceof OutcomeConflict) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     await logAgent({
       agent: "operator",
-      action: "award-won",
+      action: "award-outcome-failed",
       opportunityId: params.id,
-      bidId: bid?.id ?? null,
-      level: "success",
-      message: `WON. Contract created. CPARS calendar set.`,
-    });
-    await enqueue("analytics-engine", {});
-    // The paperwork gate moves from bidding to working the moment this is a
-    // real contract: from here on, a sub without current insurance starting
-    // work is the prime's exposure, not just a stalled outreach.
-    await enqueue("sub-onboarding", { opportunityId: params.id });
-  } else {
-    if (bid) {
-      await query(`update bids set outcome=$2, award_amount=$3, loss_reason=$4 where id=$1`, [
-        bid.id,
-        outcome,
-        awardAmount,
-        lossReason,
-      ]);
-    }
-    await query(`update opportunities set stage='lost', status='closed' where id=$1`, [params.id]);
-    await logAgent({
-      agent: "operator",
-      action: `award-${outcome}`,
-      opportunityId: params.id,
-      bidId: bid?.id ?? null,
-      level: "info",
-      message: `${outcome.toUpperCase()}${lossReason ? `: ${lossReason}` : ""}. Archived for Learning Loop.`,
-    });
-    await enqueue("learning-loop", {});
+      bidId: initial.bid_id,
+      level: "error",
+      status: "error",
+      message: `The outcome transaction was rolled back: ${(error as Error).message}`,
+    }).catch(() => {});
+    return NextResponse.json(
+      {
+        error:
+          "The agency outcome could not be saved. No outcome or contract was recorded. Refresh the opportunity and try again after the database connection recovers.",
+      },
+      { status: 503 }
+    );
   }
 
-  return NextResponse.json({ ok: true, outcome });
+  if (alreadyRecorded) {
+    return NextResponse.json({ ok: true, outcome, alreadyRecorded: true });
+  }
+
+  const warnings: string[] = [];
+  await stopOpportunityAutomation(orgId, [params.id], outcome === "won" ? "won" : "lost").catch(
+    async (error: unknown) => {
+      const warning =
+        "The outcome was recorded, but scheduled bid follow-ups could not be cleared. Pause automation and contact support.";
+      warnings.push(warning);
+      await logAgent({
+        agent: "operator",
+        action: "outcome-cleanup-failed",
+        opportunityId: params.id,
+        level: "error",
+        status: "error",
+        message: `${warning} ${(error as Error).message}`,
+      }).catch(() => {});
+    }
+  );
+
+  if (newContractId) {
+    const { seedContractStartup } = await import("@/lib/contract-record");
+    await seedContractStartup({ orgId, contractId: newContractId }).catch(
+      async (error: unknown) => {
+        const warning =
+          "The win and contract were recorded, but the startup checklist could not be created. Open the contract and add the missing milestones.";
+        warnings.push(warning);
+        await logAgent({
+          agent: "operator",
+          action: "contract-startup-failed",
+          opportunityId: params.id,
+          level: "error",
+          status: "error",
+          message: `${warning} ${(error as Error).message}`,
+        }).catch(() => {});
+      }
+    );
+  }
+
+  const jobs =
+    outcome === "won"
+      ? ([
+          ["analytics-engine", {}],
+          ["sub-onboarding", { opportunityId: params.id }],
+        ] as const)
+      : ([
+          ["learning-loop", {}],
+          ["analytics-engine", {}],
+        ] as const);
+  for (const [agent, payload] of jobs) {
+    const queued = await enqueue(agent, payload, {
+      orgId,
+      ...(agent === "sub-onboarding"
+        ? {
+            allowClosedOpportunity: true,
+            singletonKey: `won-sub-onboarding:${params.id}`,
+            singletonSeconds: 24 * 60 * 60,
+          }
+        : {}),
+    }).catch(() => null);
+    if (!queued) {
+      warnings.push(
+        `${agent.replace(/-/g, " ")} was not queued. The outcome is safe, but automation may be paused and should be resumed.`
+      );
+    }
+  }
+
+  await logAgent({
+    agent: "operator",
+    action: `award-${outcome}`,
+    opportunityId: params.id,
+    bidId: initial.bid_id,
+    level: outcome === "won" ? "success" : "info",
+    message:
+      outcome === "won"
+        ? `WON. ${user.email} recorded contract ${details.contractNumber}, ${details.startDate} through ${details.endDate}.`
+        : `${outcome === "lost" ? "LOST" : "NO AWARD"}: ${details.lossReason}`,
+  }).catch(() => {
+    warnings.push(
+      "The outcome was recorded, but its activity log entry could not be written. The bid and contract records are still intact."
+    );
+  });
+
+  return NextResponse.json({ ok: true, outcome, contractId: newContractId, warnings });
+}
+
+function sameRecordedOutcome(row: OutcomeRow, outcome: Outcome): boolean {
+  const expectedStage = outcome === "won" ? "won" : "lost";
+  return row.status === "closed" && row.stage === expectedStage && row.bid_outcome === outcome;
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function money(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const parsed = Number(String(value).replace(/[$,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
 }

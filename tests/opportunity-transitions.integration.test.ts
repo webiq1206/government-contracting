@@ -107,13 +107,13 @@ d("opportunity transitions (integration)", () => {
     expect(pursuit?.status).toBe("archived");
 
     const moved = await makeOpp(mine.id);
-    await t.moveOpportunity(mine.id, moved, "outreach", "op@x.invalid", "scoring");
+    await t.moveOpportunity(mine.id, moved, "analysis", "op@x.invalid", "scoring");
     const b = await queryOne<{ review_warned_at: Date | null; stage: string }>(
       `select review_warned_at, stage from opportunities where id=$1`,
       [moved]
     );
     expect(b?.review_warned_at).toBeNull();
-    expect(b?.stage).toBe("outreach");
+    expect(b?.stage).toBe("analysis");
   });
 
   it("flags for a person exactly when the target stage has no agent", async () => {

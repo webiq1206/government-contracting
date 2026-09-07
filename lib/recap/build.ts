@@ -44,6 +44,30 @@ export interface BuiltRecap {
   facts: RecapFacts;
 }
 
+export type RecapAgeHistoryOperation = "read" | "record";
+
+/**
+ * The recap cannot safely call an unknown age zero.
+ *
+ * Zero means "new this morning" in the recap contract. A database failure is
+ * not evidence that an item is new, so callers get a distinct error and can
+ * stop before rendering or sending a misleading recap.
+ */
+export class RecapAgeHistoryUnavailableError extends Error {
+  readonly operation: RecapAgeHistoryOperation;
+
+  constructor(operation: RecapAgeHistoryOperation, cause: unknown) {
+    super(
+      operation === "record"
+        ? "Urgent-item history could not be saved, so this recap was stopped before sending. Retry after database access is restored; no email was handed to the provider."
+        : "Urgent-item history could not be loaded, so this recap was stopped instead of showing older items as new. Retry after database access is restored."
+    );
+    this.name = "RecapAgeHistoryUnavailableError";
+    this.operation = operation;
+    (this as Error & { cause?: unknown }).cause = cause;
+  }
+}
+
 export async function buildRecapFor(input: BuildInput): Promise<BuiltRecap> {
   const now = input.now ?? new Date();
   const timezone = safeTimeZone(input.timezone);
@@ -82,10 +106,18 @@ export async function buildRecapFor(input: BuildInput): Promise<BuiltRecap> {
   const problemKeys = facts.problems.map((p) => p.key);
   const allKeys = [...keys, ...problemKeys];
 
-  const ages =
-    input.recordAges === true
-      ? await recordUrgentItems(input.orgId, allKeys, input.localDate).catch(() => ({}))
-      : await urgentAges(input.orgId, allKeys, input.localDate).catch(() => ({}));
+  let ages: Record<string, number>;
+  try {
+    ages =
+      input.recordAges === true
+        ? await recordUrgentItems(input.orgId, allKeys, input.localDate)
+        : await urgentAges(input.orgId, allKeys, input.localDate);
+  } catch (cause) {
+    throw new RecapAgeHistoryUnavailableError(
+      input.recordAges === true ? "record" : "read",
+      cause
+    );
+  }
 
   const recap = buildRecap(facts, input.settings, {
     scope: "org",

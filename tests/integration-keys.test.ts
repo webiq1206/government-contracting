@@ -66,13 +66,24 @@ describe("integration credentials are per organization", () => {
     expect(fallback).toMatch(/process\.env\[key\]/);
   });
 
+  it("does not turn credential, grant, quota, or metering failures into missing keys", () => {
+    const src = read("lib/integration-keys.ts");
+    expect(src).not.toMatch(/queryOne[\s\S]{0,500}\.catch\(\(\) => null\)/);
+    expect(src).not.toMatch(/platform_key_usage[\s\S]{0,400}\.catch\(/);
+    expect(src).not.toMatch(/platform_key_grants[\s\S]{0,400}\.catch\(/);
+  });
+
   /**
    * Every credential a customer is billed for, one case each. The platform's
    * key must never be the one that runs their search, their AI call, their
    * lookup, or sends from their phone number.
    */
   it.each([
-    ["lib/integrations/sam.ts", /config\.sam\.apiKey/, /orgApiKey\("SAM_API_KEY"\)/],
+    [
+      "lib/integrations/sam.ts",
+      /config\.sam\.apiKey/,
+      /orgApiKey\("SAM_API_KEY",\s*org\)/,
+    ],
     ["lib/integrations/googleMaps.ts", /config\.googleMaps\.apiKey/, /orgApiKey\("GOOGLE_MAPS_API_KEY"\)/],
     ["lib/integrations/hunter.ts", /config\.hunter\.apiKey/, /orgApiKey\("HUNTER_API_KEY"\)/],
     ["lib/integrations/twilio.ts", /config\.twilio\.(accountSid|authToken|fromNumber)/, /orgApiKey\("TWILIO_ACCOUNT_SID"\)/],

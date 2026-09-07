@@ -26,13 +26,21 @@ vi.mock("../lib/ai/claude", async (orig) => ({
 }));
 
 /** Jobs the recovery enqueued, so the test can see what it asked for. */
-const ENQUEUED: { name: string; payload: Record<string, unknown> }[] = [];
+const ENQUEUED: {
+  name: string;
+  payload: Record<string, unknown>;
+  opts?: Record<string, unknown>;
+}[] = [];
 let QUEUE_ACCEPTS = true;
 vi.mock("../lib/queue", async (orig) => ({
   ...(await orig<typeof import("../lib/queue")>()),
-  enqueue: async (name: string, payload: Record<string, unknown>) => {
+  enqueue: async (
+    name: string,
+    payload: Record<string, unknown>,
+    opts?: Record<string, unknown>
+  ) => {
     if (!QUEUE_ACCEPTS) return null;
-    ENQUEUED.push({ name, payload });
+    ENQUEUED.push({ name, payload, opts });
     return `job-${ENQUEUED.length}`;
   },
 }));
@@ -141,6 +149,7 @@ d("run recovery check", () => {
     expect(result.test.passed).toBe(true);
     expect(result.requeued).toBe(2);
     expect(ENQUEUED.map((e) => e.name).sort()).toEqual(["scoring-engine", "solicitation-analyst"]);
+    expect(ENQUEUED.every((e) => typeof e.opts?.recoveryRequeueId === "string")).toBe(true);
     expect(result.state).toBe("backlog_draining");
   });
 
@@ -157,6 +166,8 @@ d("run recovery check", () => {
 
     expect(first.requeued).toBe(1);
     expect(second.requeued).toBe(0);
+    expect(second.state).toBe("backlog_draining");
+    expect(second.remaining).toBe(1);
     expect(ENQUEUED).toHaveLength(0);
     const rows = await query(`select id from incident_requeues where incident_id = $1`, [inc.id]);
     expect(rows).toHaveLength(1);
@@ -293,6 +304,21 @@ d("run recovery check", () => {
     expect(result.requeued).toBe(1);
   });
 
+  it("does not let another organization's success supersede tenant-wide work", async () => {
+    await seedFailure({ orgId: org, agent: "analytics-engine" });
+    await seedFailure({
+      orgId: otherOrg,
+      agent: "analytics-engine",
+      status: "ok",
+      error: undefined,
+      at: new Date(),
+    });
+    const inc = await openIncident();
+    const result = await runRecoveryCheck(inc.id, org, "op@probe.invalid");
+    expect(result.requeued).toBe(1);
+    expect(result.plan).not.toContain("a later run already did this work");
+  });
+
   it("stays open when the test passes but the backlog has not drained", async () => {
     /*
      * The scenario worth the most: provider test passes but backlog remains.
@@ -319,11 +345,6 @@ d("run recovery check", () => {
       [inc.id]
     );
 
-    const stillOpen = await reconcileDraining((await store.incidentById(inc.id, org))!);
-    expect(stillOpen.state).toBe("backlog_draining");
-
-    // Now a job actually completes.
-    await seedFailure({ status: "ok", error: undefined, at: new Date() });
     const closed = await reconcileDraining((await store.incidentById(inc.id, org))!);
     expect(closed.state).toBe("recovered");
     expect(closed.recoveredAt).toBeInstanceOf(Date);
@@ -339,10 +360,30 @@ d("run recovery check", () => {
     const inc = await openIncident();
     const result = await runRecoveryCheck(inc.id, org, "op@probe.invalid");
     expect(result.requeued).toBe(0);
+    expect(result.state).toBe("recovery_failed");
+    expect(result.remaining).toBe(1);
     const rows = await query<{ outcome: string }>(
       `select outcome from incident_requeues where incident_id = $1`,
       [inc.id]
     );
     expect(rows[0]?.outcome).toBe("failed");
+  });
+
+  it("can safely retry a claim that the queue previously refused", async () => {
+    await seedFailure();
+    const inc = await openIncident();
+    QUEUE_ACCEPTS = false;
+    const first = await runRecoveryCheck(inc.id, org, "op@probe.invalid");
+    expect(first.state).toBe("recovery_failed");
+
+    QUEUE_ACCEPTS = true;
+    const second = await runRecoveryCheck(inc.id, org, "op@probe.invalid");
+    expect(second.requeued).toBe(1);
+    expect(second.state).toBe("backlog_draining");
+    const rows = await query<{ outcome: string }>(
+      `select outcome from incident_requeues where incident_id = $1`,
+      [inc.id]
+    );
+    expect(rows).toEqual([{ outcome: "queued" }]);
   });
 });

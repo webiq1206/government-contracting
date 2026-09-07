@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { storage } from "@/lib/integrations/storage";
 import {
+  type DocPointer,
   decodeDocToken,
   encodeDocToken,
   isAllowedUpstream,
 } from "@/lib/domain/doc-link";
 import { normalizeAttachmentMeta } from "@/lib/domain/attachment-meta";
+import { queryOne } from "@/lib/db";
+import { orgIdForStorageKey } from "@/lib/domain/file-ownership";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +32,28 @@ export async function GET(
     // Plain, friendly text: the reader is a contractor, not an operator.
     return new NextResponse(
       "This document link has expired or is not valid. Please reply to the email you received and we will send a fresh copy.",
-      { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      {
+        status: 404,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "private, no-store, max-age=0",
+        },
+      }
+    );
+  }
+
+  try {
+    if (!(await pointerIsActive(p))) return unavailableResponse();
+  } catch {
+    return new NextResponse(
+      "We could not verify this document link right now. Please try again in a few minutes or reply to the email you received.",
+      {
+        status: 503,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "private, no-store, max-age=0",
+        },
+      }
     );
   }
 
@@ -46,7 +70,7 @@ export async function GET(
     const rows = (p.d ?? [])
       .map((entry) => {
         const m = normalizeAttachmentMeta({ filename: entry.n });
-        const href = `/d/${encodeDocTokenForEntry(entry, p.e)}`;
+        const href = `/d/${encodeDocTokenForEntry(entry, p.e, p.v)}`;
         return `<li><a href="${href}">${escapeHtml(m.filename)}</a></li>`;
       })
       .join("");
@@ -67,7 +91,7 @@ export async function GET(
       status: 200,
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "private, max-age=3600",
+        "Cache-Control": "private, no-store, max-age=0",
         "X-Robots-Tag": "noindex, nofollow",
       },
     });
@@ -78,7 +102,7 @@ export async function GET(
     "Content-Type": meta.mime || "application/octet-stream",
     // inline so PDFs open in the browser rather than forcing a download.
     "Content-Disposition": `inline; filename="${meta.filename.replace(/"/g, "")}"`,
-    "Cache-Control": "private, max-age=3600",
+    "Cache-Control": "private, no-store, max-age=0",
     "X-Robots-Tag": "noindex, nofollow",
   });
 
@@ -93,14 +117,23 @@ export async function GET(
     if (!isAllowedUpstream(p.v)) {
       return new NextResponse("This document is no longer available.", {
         status: 404,
-        headers: { "Content-Type": "text/plain; charset=utf-8" },
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "private, no-store, max-age=0",
+        },
       });
     }
-    const upstream = await fetch(p.v, { redirect: "follow" });
+    const upstream = await fetchAllowedUpstream(p.v);
     if (!upstream.ok || !upstream.body) {
       return new NextResponse(
         "We could not load this document right now. Please reply to our email and we will send it directly.",
-        { status: 502, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+        {
+          status: 502,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "private, no-store, max-age=0",
+          },
+        }
       );
     }
     const upstreamType = upstream.headers.get("content-type");
@@ -109,9 +142,30 @@ export async function GET(
   } catch {
     return new NextResponse(
       "We could not load this document right now. Please reply to our email and we will send it directly.",
-      { status: 502, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      {
+        status: 502,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "private, no-store, max-age=0",
+        },
+      }
     );
   }
+}
+
+async function fetchAllowedUpstream(initialUrl: string): Promise<Response> {
+  let current = initialUrl;
+  for (let redirects = 0; redirects <= 5; redirects++) {
+    if (!isAllowedUpstream(current)) {
+      throw new Error("The upstream document redirected to a host that is not allowed.");
+    }
+    const response = await fetch(current, { redirect: "manual" });
+    if (response.status < 300 || response.status >= 400) return response;
+    const location = response.headers.get("location");
+    if (!location) return response;
+    current = new URL(location, current).toString();
+  }
+  throw new Error("The upstream document redirected too many times.");
 }
 
 function escapeHtml(text: string): string {
@@ -122,6 +176,43 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function unavailableResponse(): NextResponse {
+  return new NextResponse(
+    "This document is no longer available. Please reply to the email you received if you still need a copy.",
+    {
+      status: 404,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "private, no-store, max-age=0",
+      },
+    }
+  );
+}
+
+async function pointerIsActive(pointer: DocPointer): Promise<boolean> {
+  const opportunityId = pointer.k === "p" ? pointer.v : pointer.o;
+  if (
+    !opportunityId ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      opportunityId
+    )
+  ) {
+    return false;
+  }
+
+  const opportunity = await queryOne<{ org_id: string | null }>(
+    `select org_id from opportunities where id = $1`,
+    [opportunityId]
+  );
+  if (!opportunity?.org_id) return false;
+
+  if (pointer.k === "s") {
+    const fileOwner = await orgIdForStorageKey(pointer.v, { failOnError: true });
+    return fileOwner === opportunity.org_id;
+  }
+  return true;
+}
+
 /**
  * A per-file token for one entry of a package.
  *
@@ -130,7 +221,8 @@ function escapeHtml(text: string): string {
  */
 function encodeDocTokenForEntry(
   entry: { k: "s" | "u"; v: string; n: string },
-  expiry: number
+  expiry: number,
+  opportunityId: string
 ): string {
-  return encodeDocToken({ k: entry.k, v: entry.v, n: entry.n, e: expiry });
+  return encodeDocToken({ k: entry.k, v: entry.v, n: entry.n, e: expiry, o: opportunityId });
 }

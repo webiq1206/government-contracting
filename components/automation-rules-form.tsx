@@ -58,6 +58,12 @@ export function AutomationRulesForm({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Invalidate the previous form's impact immediately. Keeping it visible
+    // through the debounce window lets a fast click save different values
+    // under a stale, possibly non-destructive preview.
+    if (dirty) setImpacts(null);
+    setError(null);
+    const controller = new AbortController();
     const t = setTimeout(async () => {
       setPreviewing(true);
       try {
@@ -65,36 +71,75 @@ export function AutomationRulesForm({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...form, preview_only: true }),
+          signal: controller.signal,
         });
-        if (res.ok) {
-          const data = (await res.json()) as {
-            preview: Preview;
-            impacts: RuleImpact[] | null;
-            confirm: boolean;
-          };
+        const data = (await res.json().catch(() => ({}))) as {
+          preview?: Preview;
+          impacts?: RuleImpact[] | null;
+          confirm?: boolean;
+          error?: string;
+        };
+        if (!res.ok) {
+          setImpacts(null);
+          setError(
+            data.error ??
+              `The live impact could not be checked (HTTP ${res.status}). Nothing was saved. Reload and try again.`
+          );
+          return;
+        }
+        if (data.preview) {
           setPreview(data.preview);
           setImpacts(data.impacts ?? null);
           setConfirm(Boolean(data.confirm));
+        } else {
+          setImpacts(null);
+          setError(
+            "The server did not return live impact counts. Nothing was saved. Reload and try again."
+          );
         }
+      } catch {
+        if (controller.signal.aborted) return;
+        setImpacts(null);
+        setError(
+          "The live impact could not be checked because the server could not be reached. Nothing was saved. Check your connection and try again."
+        );
       } finally {
         setPreviewing(false);
       }
     }, 400);
-    return () => clearTimeout(t);
-  }, [form]);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [form, dirty]);
 
-  async function save() {
+  async function save(confirmImpacts = false) {
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/automation/rules", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, confirm_impacts: confirmImpacts }),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        rules?: AutomationRules;
+        preview?: Preview;
+        impacts?: RuleImpact[];
+        confirm?: boolean;
+        error?: string;
+      };
       if (!res.ok) {
         setError(data.error ?? "Save failed");
+        if (Array.isArray(data.impacts)) setImpacts(data.impacts);
+        if (data.confirm === true) setConfirm(true);
+        return;
+      }
+      if (data.ok !== true || !data.rules || !data.preview) {
+        setError(
+          "The server did not confirm the saved rules and refreshed preview. Refresh this page before trying again so you do not overwrite an uncertain state."
+        );
         return;
       }
       setForm(data.rules);
@@ -105,6 +150,10 @@ export function AutomationRulesForm({
       setConfirm(false);
       setSavedAt(new Date().toLocaleTimeString());
       router.refresh();
+    } catch {
+      setError(
+        "The save could not be confirmed because the server could not be reached. Refresh this page before trying again."
+      );
     } finally {
       setSaving(false);
     }
@@ -227,7 +276,7 @@ export function AutomationRulesForm({
         <button
           type="button"
           className="btn-primary"
-          onClick={() => (confirm ? setAsking(true) : void save())}
+          onClick={() => (confirm ? setAsking(true) : void save(false))}
           disabled={saving || blocking || (dirty && impacts === null)}
         >
           {saving ? "Saving…" : "Save rules"}
@@ -268,7 +317,7 @@ export function AutomationRulesForm({
       busy={saving}
       onConfirm={() => {
         setAsking(false);
-        void save();
+        void save(true);
       }}
       onCancel={() => setAsking(false)}
     />

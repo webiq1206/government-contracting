@@ -33,7 +33,10 @@ export function InvitationForm() {
   const [percentMonths, setPercentMonths] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [result, setResult] = useState<{
+    tone: "success" | "warning" | "error";
+    text: string;
+  } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -56,17 +59,25 @@ export function InvitationForm() {
       const data = (await res.json().catch(() => ({}))) as {
         message?: string;
         error?: string;
+        mailSent?: boolean;
       };
       if (!res.ok) {
-        setResult({ ok: false, text: data.error ?? "That did not work." });
+        setResult({ tone: "error", text: data.error ?? "That did not work." });
         return;
       }
-      setResult({ ok: true, text: data.message ?? "Invitation sent." });
+      setResult({
+        tone: data.mailSent ? "success" : "warning",
+        text:
+          data.message ??
+          (data.mailSent
+            ? "Invitation sent."
+            : "The invitation was saved, but its email was not sent. Fix platform mail and retry it from the invitation list."),
+      });
       setEmail("");
       setNote("");
       router.refresh();
     } catch {
-      setResult({ ok: false, text: "Could not reach the server." });
+      setResult({ tone: "error", text: "Could not reach the server." });
     } finally {
       setBusy(false);
     }
@@ -106,10 +117,13 @@ export function InvitationForm() {
 
       {result && (
         <p
+          role={result.tone === "success" ? "status" : "alert"}
           className={`rounded-md border px-4 py-3 text-sm ${
-            result.ok
+            result.tone === "success"
               ? "border-pursue/40 bg-pursue/5 text-pursue"
-              : "border-risk/40 bg-risk/5 text-risk"
+              : result.tone === "warning"
+                ? "border-review/40 bg-review/5 text-review"
+                : "border-risk/40 bg-risk/5 text-risk"
           }`}
         >
           {result.text}
@@ -261,4 +275,3 @@ export function InvitationForm() {
     </div>
   );
 }
-

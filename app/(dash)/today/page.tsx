@@ -40,6 +40,8 @@ import type { AutomationRules } from "@/lib/domain/intake";
 import { currency, shortDate, timeAgo } from "@/lib/format";
 import { withGuideQuery } from "@/lib/guide-links";
 import { isPlatformAdmin } from "@/lib/platform-admin";
+import { currentUser } from "@/lib/auth";
+import { DEFAULT_TIMEZONE, getUserRecapPreference } from "@/lib/recap/settings";
 import { TodayBulkCalls } from "@/components/today-bulk-calls";
 import { TodayBulkTriage } from "@/components/today-bulk-triage";
 import { ReplyReviewList } from "@/components/reply-review-list";
@@ -443,7 +445,23 @@ export default async function TodayPage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const rules = await getAutomationRules();
+  const now = new Date();
+  const [rules, viewer] = await Promise.all([
+    getAutomationRules(),
+    currentUser(),
+  ]);
+  const loadWarnings: string[] = [];
+  let timezone = DEFAULT_TIMEZONE;
+  if (viewer) {
+    try {
+      timezone = (await getUserRecapPreference(viewer.id))?.timezone ?? DEFAULT_TIMEZONE;
+    } catch (error) {
+      console.error("[today] recap timezone failed to load:", error);
+      loadWarnings.push(
+        `Your saved time zone could not be loaded. Dates below use ${DEFAULT_TIMEZONE} until you reload, so day boundaries may differ from your account.`
+      );
+    }
+  }
   const [data, profile, automation, digest, queueItems, pulse, health, done, inbox, samConfigured] = await Promise.all([
     actionCenter({ urgentDays: rules.urgent_days }),
     getActiveProfile(),
@@ -458,17 +476,34 @@ export default async function TodayPage({
      */
     workQueue().catch((e) => {
       console.error("[today] work queue failed to load:", e);
+      loadWarnings.push(
+        "Your work queue could not be read, so task counts and the clear state may be incomplete. Reload this page; if it continues, open Automation Health."
+      );
       return [];
     }),
-    readPipelinePulse().catch(() => []),
-    automationHealth().catch(() => null),
+    readPipelinePulse().catch((e) => {
+      console.error("[today] pipeline pulse failed to load:", e);
+      loadWarnings.push(
+        "Pipeline alerts could not be checked. Reload this page before relying on the status shown below."
+      );
+      return [];
+    }),
+    automationHealth().catch(() => {
+      loadWarnings.push(
+        "Automation health could not be verified. Open Automation Health before relying on scheduled work."
+      );
+      return null;
+    }),
     /*
      * Not tolerant of a silent failure either, but a broken count is worth
      * less than a broken queue: a zero here reads as "nothing done yet",
      * which is a real state, so it is logged and the page still renders.
      */
-    completedToday().catch((e) => {
+    completedToday({ timezone, now }).catch((e) => {
       console.error("[today] completed-today count failed:", e);
+      loadWarnings.push(
+        "Completed-today totals could not be read. Your work is still saved, but the displayed totals are temporarily incomplete."
+      );
       return {
         calls: 0,
         quotes: 0,
@@ -480,13 +515,20 @@ export default async function TodayPage({
         total: 0,
       };
     }),
-    gmail.connection().catch(() => ({
-      connected: false,
-      email: null,
-      status: "none",
-      lastError: null,
-    })),
-    orgHasKey("SAM_API_KEY").catch(() => false),
+    gmail.connection().catch((e) => {
+      console.error("[today] inbox status failed to load:", e);
+      loadWarnings.push(
+        "Inbox status could not be checked. Do not reconnect it based on this screen; reload or open Integrations first."
+      );
+      return { connected: false, email: null, status: "none", lastError: null };
+    }),
+    orgHasKey("SAM_API_KEY").catch((e) => {
+      console.error("[today] SAM key status failed to load:", e);
+      loadWarnings.push(
+        "SAM.gov connection status could not be checked. Reload or verify it under Integrations before changing setup."
+      );
+      return false;
+    }),
   ]);
 
   /*
@@ -513,8 +555,6 @@ export default async function TodayPage({
    * no meaning without it, and read once here rather than twice: the setup
    * checklist below wants the same person.
    */
-  const { currentUser } = await import("@/lib/auth");
-  const viewer = await currentUser().catch(() => null);
   /*
    * Everybody a row could be handed to. Read once for the page rather than
    * per row: the queue renders up to five, the sections below it many more,
@@ -522,7 +562,13 @@ export default async function TodayPage({
    * one morning.
    */
   const { assignableMembers } = await import("@/lib/ownership");
-  const members = await assignableMembers().catch(() => []);
+  const members = await assignableMembers().catch((e) => {
+    console.error("[today] assignable members failed to load:", e);
+    loadWarnings.push(
+      "Team assignments could not be loaded. Existing owners are unchanged; reload before reassigning work."
+    );
+    return [];
+  });
   const queueKind: WorkKind | null = parseKindFilter(searchParams?.kind);
   /*
    * The headline, the Live queue card, and these three counters are the same
@@ -530,7 +576,7 @@ export default async function TodayPage({
    * on the "Waiting on others" filter and are not actions.
    */
   const actionable = needsYou(queueItems);
-  const counts = queueCounts(actionable);
+  const counts = queueCounts(actionable, now, timezone);
   const kindCounts = countByKind(actionable);
   /*
    * The one filter served from somewhere else.
@@ -543,20 +589,25 @@ export default async function TodayPage({
    */
   const showingCompleted = isCompletedFilter(queueBucket);
   const completedItems = showingCompleted
-    ? await completedTodayItems().catch((e) => {
+    ? await completedTodayItems(50, { timezone, now }).catch((e) => {
         console.error("[today] completed-today list failed:", e);
         return null;
       })
     : [];
   const shownQueue = showingCompleted
     ? []
-    : filterWorkItems(queueBucket === "waiting_on_others" ? queueItems : actionable, {
-        bucket: queueBucket,
-        kind: queueKind,
-        q: queueQ,
-        owner: queueOwner,
-        viewerId: viewer?.id,
-      });
+    : filterWorkItems(
+        queueBucket === "waiting_on_others" ? queueItems : actionable,
+        {
+          bucket: queueBucket,
+          kind: queueKind,
+          q: queueQ,
+          owner: queueOwner,
+          viewerId: viewer?.id,
+        },
+        now,
+        timezone
+      );
   const queueFiltered = queueBucket !== "all" || queueKind != null || queueQ !== "";
 
   function targetValue(item: WorkItem): string {
@@ -691,6 +742,7 @@ export default async function TodayPage({
   // live here, so the Guide Me panel and its badge answer this the same way
   // rather than from the deployment's own environment.
   const setup = await accountSetup(profile?.profile_json ?? null, viewer);
+  loadWarnings.push(...setup.warnings);
 
   const urgentIds = new Set(data.urgent.map((o) => o.id));
   const bidWork = data.bidWork.filter((o) => !urgentIds.has(o.id));
@@ -718,7 +770,7 @@ export default async function TodayPage({
             ? "calls"
             : "other";
 
-  const clear = totalActions === 0 && setup.complete;
+  const clear = totalActions === 0 && setup.complete && loadWarnings.length === 0;
 
   return (
     <div className="flex page-shell bg-background text-foreground">
@@ -737,6 +789,20 @@ export default async function TodayPage({
             not going to move until it is fixed.
           */}
           {health && <AutomationBlockerBanner health={health} />}
+
+          {loadWarnings.length > 0 && (
+            <section role="alert" className="mb-4 rounded-md border border-review/50 bg-review/10 p-4">
+              <h2 className="font-display text-base font-semibold text-foreground">
+                Some dashboard information could not be verified
+              </h2>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-foreground">
+                {loadWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+              </ul>
+              <Link href="/agents" className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">
+                Open Automation Health
+              </Link>
+            </section>
+          )}
 
           <TodayGreeting
             clear={clear}
@@ -841,7 +907,7 @@ export default async function TodayPage({
                     clearHref="/today#queue"
                   />
                   {showingCompleted ? (
-                    <CompletedList items={completedItems} />
+                    <CompletedList items={completedItems} timezone={timezone} />
                   ) : shownQueue.length > 0 ? (
                     <WorkQueue
                       items={shownQueue}
@@ -1281,7 +1347,7 @@ export default async function TodayPage({
                 * ahead, but a day with nothing recorded and a day with
                 * everything recorded should not look the same either.
                 */}
-              <CompletedTodayPanel done={done} />
+              <CompletedTodayPanel done={done} timezone={timezone} />
 
               <SystemStatusPanel
                 items={[

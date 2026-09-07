@@ -45,7 +45,7 @@ export async function loadGuideBundle(
 ): Promise<GuideBundle> {
   const pageKey = pageKeyFromPath(pathname);
 
-  await hydrateIntegrationEnv().catch(() => undefined);
+  await hydrateIntegrationEnv();
 
   // Every raw count below is this organization's own. The guide reads them
   // back as "what needs you", so unscoped they described the whole platform's
@@ -54,15 +54,11 @@ export async function loadGuideBundle(
 
   const [profile, automation, callsEnabled, actionsRaw, experienceRow, pulseRow, badge] =
     await Promise.all([
-    getActiveProfile().catch(() => null),
-    getAutomationState().catch(() => ({
-      paused: false,
-      changed_at: null,
-      changed_by: null,
-    })),
+    getActiveProfile(),
+    getAutomationState(),
     // Calling off means the guide must stop routing people to the Call Queue.
-    areCallsEnabled().catch(() => true),
-    actionCenter().catch(() => null),
+    areCallsEnabled(),
+    actionCenter(),
     orgId
       ? queryOne<{ submitted: number; open: number }>(
           // Decides whether the operator is new to the product, so it has to
@@ -74,7 +70,7 @@ export async function loadGuideBundle(
              (select count(*)::int from opportunities
                where org_id = $1 and status = 'open') as open`,
           [orgId]
-        ).catch(() => null)
+        )
       : Promise.resolve(null),
     orgId
       ? queryOne<Record<string, unknown>>(
@@ -99,9 +95,9 @@ export async function loadGuideBundle(
              (select count(*) from backlink_outreach
                where org_id = $1 and approval_status='pending')::int as backlinks`,
           [orgId]
-        ).catch(() => null)
+        )
       : Promise.resolve(null),
-    queueCounts().catch(() => ({ review: 0, callQueue: 0, today: 0 })),
+    queueCounts(),
   ]);
 
   // Through accountSetup, so this panel and the Today page beside it cannot
@@ -149,7 +145,7 @@ export async function loadGuideBundle(
 
   const oppId = opportunityIdFromPath(pathname);
   if (pageKey === "opportunity" && oppId) {
-    const detail = await opportunityDetail(oppId).catch(() => null);
+    const detail = await opportunityDetail(oppId);
     if (detail) {
       const { opp, quotes, subs } = detail;
       const bid = detail.bid as Bid | null;
@@ -263,7 +259,7 @@ export async function loadGuideBundle(
 
   const sid = subIdFromPath(pathname);
   if (pageKey === "sub" && sid) {
-    const detail = await subDetail(sid).catch(() => null);
+    const detail = await subDetail(sid);
     if (detail) {
       const { sub: row, pairings } = detail;
       const openPairings = pairings.filter((p) => p.status === "open");
@@ -323,7 +319,7 @@ export async function loadGuideBundle(
         order by os.trade nulls last, s.company_name
         limit 100`,
       [quoteOppId, orgId]
-    ).catch(() => []);
+    );
     opportunitySubs = rows;
   }
 
@@ -338,6 +334,7 @@ export async function loadGuideBundle(
   guide.recentChanges = await recentChanges({
     opportunityId: opportunity?.id ?? null,
   }).catch(() => null);
+  guide.dataWarnings = setup.warnings;
 
   const adapters = buildGuideAdapters({
     guide,

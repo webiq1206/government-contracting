@@ -10,7 +10,9 @@
 import { query, queryOne, transaction } from "../db";
 import { accessLevel, type AccessLevel } from "../billing/entitlements";
 import { TRIAL_DAYS } from "../billing/catalog";
-import { recordAdminAction } from "./audit";
+import { recordRequiredAdminAction } from "./audit";
+import { storage, type StorageBackend } from "../integrations/storage";
+import { isPlatformAdmin } from "../platform-admin";
 
 export interface AdminAccountRow {
   id: string;
@@ -124,7 +126,7 @@ function withAccess<T extends Omit<AdminAccountRow, "access">>(row: T): T & { ac
 export async function adminAccountRows(): Promise<AdminAccountRow[]> {
   const rows = await query<Omit<AdminAccountRow, "access">>(
     `${ACCOUNT_SELECT} order by o.created_at desc`
-  ).catch(() => []);
+  );
 
   const rank = (r: AdminAccountRow) =>
     r.suspended_at ? 0 : r.access === "none" ? 1 : r.access === "trial" ? 2 : 3;
@@ -138,7 +140,15 @@ export async function adminAccount(orgId: string): Promise<AdminAccountRow | nul
   const row = await queryOne<Omit<AdminAccountRow, "access">>(
     `${ACCOUNT_SELECT} where o.id = $1`,
     [orgId]
-  ).catch(() => null);
+  );
+  return row ? withAccess(row) : null;
+}
+
+async function adminAccountForDestructiveAction(orgId: string): Promise<AdminAccountRow | null> {
+  const row = await queryOne<Omit<AdminAccountRow, "access">>(
+    `${ACCOUNT_SELECT} where o.id = $1`,
+    [orgId]
+  );
   return row ? withAccess(row) : null;
 }
 
@@ -164,7 +174,7 @@ export async function adminAccountMembers(orgId: string): Promise<AdminAccountMe
       where m.org_id = $1
       order by case m.role when 'owner' then 0 else 1 end, u.email`,
     [orgId]
-  ).catch(() => []);
+  );
 }
 
 /* -------------------------------------------------------------------------
@@ -175,6 +185,14 @@ export async function adminAccountMembers(orgId: string): Promise<AdminAccountMe
  * ---------------------------------------------------------------------- */
 
 export type AdminActionResult = { ok: true; message: string } | { ok: false; error: string };
+
+function rolledBackAdminMutation(label: string, err: unknown): AdminActionResult {
+  console.error(`[admin-accounts] ${label} was rolled back`, err);
+  return {
+    ok: false,
+    error: `${label} was not completed because the change and its required audit record could not be saved together. Nothing changed; try again.`,
+  };
+}
 
 /**
  * Is this one of our own organizations?
@@ -199,7 +217,7 @@ async function isOwnAccount(orgId: string): Promise<boolean> {
        from organization_members m join users u on u.id = m.user_id
       where m.org_id = $1 and m.role = 'owner'`,
     [orgId]
-  ).catch(() => []);
+  );
   return owners.some((m) => isPlatformAdmin(m.email));
 }
 
@@ -207,7 +225,7 @@ async function orgNameOf(orgId: string): Promise<string | null> {
   const row = await queryOne<{ name: string }>(
     `select name from organizations where id = $1`,
     [orgId]
-  ).catch(() => null);
+  );
   return row?.name ?? null;
 }
 
@@ -217,6 +235,8 @@ export async function setBillingExempt(input: {
   exempt: boolean;
   reason: string;
   adminEmail: string;
+  /** Converting to free also retires any discount promised for checkout. */
+  clearPendingConcession?: boolean;
 }): Promise<AdminActionResult> {
   const name = await orgNameOf(input.orgId);
   if (!name) return { ok: false, error: "That account no longer exists." };
@@ -232,24 +252,51 @@ export async function setBillingExempt(input: {
     };
   }
 
-  await query(
-    `update organizations
-        set billing_exempt = $2,
-            billing_exempt_reason = case when $2 then $3 else null end,
-            billing_exempt_granted_by = case when $2 then $4 else null end,
-            billing_exempt_granted_at = case when $2 then now() else null end,
-            updated_at = now()
-      where id = $1`,
-    [input.orgId, input.exempt, input.reason.trim() || null, input.adminEmail]
-  );
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: input.exempt ? "billing_exempt_granted" : "billing_exempt_revoked",
-    orgId: input.orgId,
-    orgName: name,
-    detail: { reason: input.reason.trim() || null },
-  });
+  try {
+    await transaction(async (client) => {
+      const updated = await client.query(
+        `update organizations
+            set billing_exempt = $2,
+                billing_exempt_reason = case when $2 then $3 else null end,
+                billing_exempt_granted_by = case when $2 then $4 else null end,
+                billing_exempt_granted_at = case when $2 then now() else null end,
+                updated_at = now()
+          where id = $1
+          returning id`,
+        [input.orgId, input.exempt, input.reason.trim() || null, input.adminEmail]
+      );
+      if (updated.rows.length === 0) throw new Error("Account disappeared before update.");
+      if (input.clearPendingConcession) {
+        await client.query(
+          `update organizations
+              set pending_concession_code = null,
+                  pending_coupon_id = null,
+                  pending_concession_label = null,
+                  pending_concession_reason = null,
+                  pending_concession_by = null,
+                  pending_concession_at = null,
+                  updated_at = now()
+            where id = $1`,
+          [input.orgId]
+        );
+      }
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: input.exempt ? "billing_exempt_granted" : "billing_exempt_revoked",
+          orgId: input.orgId,
+          orgName: name,
+          detail: {
+            reason: input.reason.trim() || null,
+            cleared_pending_concession: input.clearPendingConcession === true,
+          },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    return rolledBackAdminMutation("The billing exemption", err);
+  }
 
   return {
     ok: true,
@@ -278,24 +325,34 @@ export async function extendTrial(input: {
   const name = await orgNameOf(input.orgId);
   if (!name) return { ok: false, error: "That account no longer exists." };
 
-  const row = await queryOne<{ trial_ends_at: string }>(
-    `update organizations
-        set trial_ends_at = greatest(coalesce(trial_ends_at, now()), now())
-                            + make_interval(days => $2::int),
-            subscription_status = 'trial',
-            updated_at = now()
-      where id = $1
-      returning trial_ends_at::text as trial_ends_at`,
-    [input.orgId, days]
-  );
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "trial_extended",
-    orgId: input.orgId,
-    orgName: name,
-    detail: { days, new_trial_ends_at: row?.trial_ends_at ?? null },
-  });
+  try {
+    await transaction(async (client) => {
+      const updated = await client.query<{ trial_ends_at: string }>(
+        `update organizations
+            set trial_ends_at = greatest(coalesce(trial_ends_at, now()), now())
+                                + make_interval(days => $2::int),
+                subscription_status = 'trial',
+                updated_at = now()
+          where id = $1
+          returning trial_ends_at::text as trial_ends_at`,
+        [input.orgId, days]
+      );
+      const row = updated.rows[0];
+      if (!row) throw new Error("Account disappeared before update.");
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "trial_extended",
+          orgId: input.orgId,
+          orgName: name,
+          detail: { days, new_trial_ends_at: row.trial_ends_at },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    return rolledBackAdminMutation("The trial extension", err);
+  }
 
   return { ok: true, message: `${name}'s trial now runs ${days} more day${days === 1 ? "" : "s"}.` };
 }
@@ -308,22 +365,32 @@ export async function restartTrial(input: {
   const name = await orgNameOf(input.orgId);
   if (!name) return { ok: false, error: "That account no longer exists." };
 
-  await query(
-    `update organizations
-        set trial_ends_at = now() + make_interval(days => $2::int),
-            subscription_status = 'trial',
-            updated_at = now()
-      where id = $1`,
-    [input.orgId, TRIAL_DAYS]
-  );
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "trial_restarted",
-    orgId: input.orgId,
-    orgName: name,
-    detail: { days: TRIAL_DAYS },
-  });
+  try {
+    await transaction(async (client) => {
+      const updated = await client.query(
+        `update organizations
+            set trial_ends_at = now() + make_interval(days => $2::int),
+                subscription_status = 'trial',
+                updated_at = now()
+          where id = $1
+          returning id`,
+        [input.orgId, TRIAL_DAYS]
+      );
+      if (updated.rows.length === 0) throw new Error("Account disappeared before update.");
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "trial_restarted",
+          orgId: input.orgId,
+          orgName: name,
+          detail: { days: TRIAL_DAYS },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    return rolledBackAdminMutation("The trial restart", err);
+  }
 
   return { ok: true, message: `${name} has a fresh ${TRIAL_DAYS}-day trial.` };
 }
@@ -367,22 +434,38 @@ export async function cancelSubscription(input: {
     }
   }
 
-  await query(
-    `update organizations
-        set subscription_status = 'canceled',
-            cancel_at_period_end = false,
-            updated_at = now()
-      where id = $1`,
-    [input.orgId]
-  );
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "subscription_canceled",
-    orgId: input.orgId,
-    orgName: org.name,
-    detail: { stripe: stripeNote },
-  });
+  try {
+    await transaction(async (client) => {
+      const updated = await client.query(
+        `update organizations
+            set subscription_status = 'canceled',
+                cancel_at_period_end = false,
+                updated_at = now()
+          where id = $1
+          returning id`,
+        [input.orgId]
+      );
+      if (updated.rows.length === 0) throw new Error("Account disappeared before update.");
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "subscription_canceled",
+          orgId: input.orgId,
+          orgName: org.name,
+          detail: { stripe: stripeNote },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    console.error("[admin-accounts] local cancellation record was rolled back", err);
+    return {
+      ok: false,
+      error: org.stripe_subscription_id
+        ? "Stripe cancelled the subscription, but the local account state and required audit record could not be saved. The customer will not be charged; reconcile this account before retrying another billing action."
+        : "The subscription cancellation was not completed because the account state and required audit record could not be saved together. Nothing changed; try again.",
+    };
+  }
 
   return { ok: true, message: `${org.name}'s subscription is cancelled. ${stripeNote}` };
 }
@@ -412,33 +495,47 @@ export async function setSuspended(input: {
     };
   }
 
-  await query(
-    `update organizations
-        set suspended_at = case when $2 then now() else null end,
-            suspended_reason = case when $2 then $3 else null end,
-            suspended_by = case when $2 then $4 else null end,
-            updated_at = now()
-      where id = $1`,
-    [input.orgId, input.suspended, input.reason.trim() || null, input.adminEmail]
-  );
+  try {
+    await transaction(async (client) => {
+      const updated = await client.query(
+        `update organizations
+            set suspended_at = case when $2 then now() else null end,
+                suspended_reason = case when $2 then $3 else null end,
+                suspended_by = case when $2 then $4 else null end,
+                updated_at = now()
+          where id = $1
+          returning id`,
+        [input.orgId, input.suspended, input.reason.trim() || null, input.adminEmail]
+      );
+      if (updated.rows.length === 0) throw new Error("Account disappeared before update.");
 
-  if (input.suspended) {
-    // Sign them out. Leaving live sessions running would mean a suspended
-    // account keeps working until each tab happens to reload.
-    await query(
-      `delete from sessions
-        where user_id in (select user_id from organization_members where org_id = $1)`,
-      [input.orgId]
-    ).catch(() => {});
+      if (input.suspended) {
+        // Suspension and session revocation are one state change. If either
+        // fails, neither is committed, so a successful response never leaves a
+        // supposedly suspended account operating through an old session.
+        await client.query(
+          `delete from sessions
+            where user_id in (select user_id from organization_members where org_id = $1)`,
+          [input.orgId]
+        );
+      }
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: input.suspended ? "account_suspended" : "account_reactivated",
+          orgId: input.orgId,
+          orgName: name,
+          detail: { reason: input.reason.trim() || null },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    return rolledBackAdminMutation(
+      input.suspended ? "The account suspension" : "The account reactivation",
+      err
+    );
   }
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: input.suspended ? "account_suspended" : "account_reactivated",
-    orgId: input.orgId,
-    orgName: name,
-    detail: { reason: input.reason.trim() || null },
-  });
 
   return {
     ok: true,
@@ -466,22 +563,155 @@ export async function setSuspended(input: {
  * quietly leaving nine organizations behind per run, and the admin accounts
  * page had accumulated a hundred and ninety-eight of them.
  */
-export async function purgeOrganization(orgId: string): Promise<void> {
+export async function purgeOrganization(
+  orgId: string,
+  requiredAudit?: {
+    adminEmail: string;
+    orgName: string;
+    detail: Record<string, unknown>;
+  }
+): Promise<void> {
   await transaction(async (tx) => {
-    // File bytes first, while the documents that name them still exist. Legacy
-    // blobs were written with a null org_id, so path-join to this org's
-    // document rows catches them; the org_id match catches everything written
-    // since. Both run before the generic loop deletes documents below.
-    await tx.query(
-      `delete from file_blobs b
-        where b.org_id = $1
-           or b.path in (
-                select storage_path from documents where org_id = $1 and storage_path is not null
-                union
-                select storage_path from subcontractor_documents where org_id = $1 and storage_path is not null
-              )`,
+    /*
+     * Lock the organization before discovering files. Inserts carrying this
+     * org as a foreign key cannot race the snapshot and leave a newly-created
+     * object behind after the account row is removed.
+     */
+    const locked = await tx.query<{ id: string }>(
+      `select id from organizations where id = $1 for update`,
       [orgId]
-    ).catch(() => {});
+    );
+    if (locked.rows.length === 0) {
+      if (requiredAudit) throw new Error("Account disappeared before deletion.");
+      return;
+    }
+
+    const members = await tx.query<{ id: string; email: string }>(
+      `select u.id, u.email
+         from organization_members m
+         join users u on u.id = m.user_id
+        where m.org_id = $1`,
+      [orgId]
+    );
+
+    /*
+     * Capture physical objects while their ownership rows still exist. A null
+     * backend means the table predates that metadata, so all configured
+     * external locations are checked. DB bytes are deleted on this transaction
+     * so a metadata rollback also restores them.
+     */
+    const objects = await tx.query<{ path: string; backend: string | null }>(
+      `select distinct path, backend
+         from (
+           select d.storage_path as path, d.storage_backend as backend
+             from documents d
+             left join opportunities o on o.id = d.opportunity_id
+            where coalesce(d.org_id, o.org_id) = $1 and d.storage_path is not null
+           union all
+           select d.storage_path as path, null::text as backend
+             from subcontractor_documents d
+             left join subcontractors s on s.id = d.subcontractor_id
+            where coalesce(d.org_id, s.org_id) = $1 and d.storage_path is not null
+           union all
+           select storage_path as path, null::text as backend
+             from compliance_item_documents
+            where org_id = $1 and storage_path is not null
+           union all
+           select storage_path as path, null::text as backend
+             from feedback_reports
+            where org_id = $1 and storage_path is not null
+           union all
+           select path, 'db'::text as backend
+             from file_blobs
+            where org_id = $1
+         ) owned_objects
+        where path is not null`,
+      [orgId]
+    );
+
+    const byPath = new Map<string, Set<StorageBackend | "unknown">>();
+    for (const object of objects.rows) {
+      const backend: StorageBackend | "unknown" =
+        object.backend === "supabase" || object.backend === "db" || object.backend === "local"
+          ? object.backend
+          : "unknown";
+      const backends = byPath.get(object.path) ?? new Set<StorageBackend | "unknown">();
+      backends.add(backend);
+      byPath.set(object.path, backends);
+    }
+
+    for (const [objectPath, backends] of byPath) {
+      /*
+       * Historical flat paths can be referenced by more than one tenant. In
+       * that state the bytes belong to the surviving reference too, so purge
+       * removes only this account's metadata and transfers a target-owned DB
+       * blob to one of the surviving owners.
+       */
+      const otherOwners = await tx.query<{ org_id: string | null }>(
+        `select distinct owner.org_id
+           from (
+             select coalesce(d.org_id, o.org_id) as org_id
+               from documents d
+               left join opportunities o on o.id = d.opportunity_id
+              where d.storage_path = $2
+             union all
+             select coalesce(d.org_id, s.org_id) as org_id
+               from subcontractor_documents d
+               left join subcontractors s on s.id = d.subcontractor_id
+              where d.storage_path = $2
+             union all
+             select org_id from compliance_item_documents where storage_path = $2
+             union all
+             select org_id from feedback_reports where storage_path = $2
+             union all
+             select org_id from file_blobs where path = $2
+           ) owner
+          where owner.org_id is null or owner.org_id <> $1
+          order by owner.org_id nulls last`,
+        [orgId, objectPath]
+      );
+      if (otherOwners.rows.length > 0) {
+        await tx.query(
+          `update file_blobs set org_id = $3 where path = $2 and org_id = $1`,
+          [orgId, objectPath, otherOwners.rows[0].org_id]
+        );
+        continue;
+      }
+
+      try {
+        if (backends.has("unknown")) {
+          await storage.removeExternal(objectPath);
+        } else {
+          for (const backend of backends) {
+            if (backend === "supabase" || backend === "local") {
+              await storage.removeExternal(objectPath, backend);
+            }
+          }
+        }
+      } catch (err) {
+        throw new Error(
+          `Could not remove stored file ${objectPath}. ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+      await tx.query(
+        `delete from file_blobs
+          where path = $2 and (org_id = $1 or org_id is null)`,
+        [orgId, objectPath]
+      );
+    }
+
+    // These historical child tables did not always carry org_id. Clear them
+    // before the generic pass so they cannot strand their parent items.
+    await tx.query(
+      `delete from compliance_item_events
+        where item_id in (select id from compliance_items where org_id = $1)`,
+      [orgId]
+    );
+    await tx.query(
+      `delete from compliance_item_documents
+        where item_id in (select id from compliance_items where org_id = $1)`,
+      [orgId]
+    );
 
     const tables = await tx.query<{ table_name: string }>(
       `select c.table_name
@@ -523,21 +753,40 @@ export async function purgeOrganization(orgId: string): Promise<void> {
       throw new Error(`Gave up clearing ${remaining.join(", ")}.`);
     }
 
-    // Child rows that do not carry org_id still block the organization
-    // delete. Clear them by walking the items they belong to.
-    await tx.query(
-      `delete from compliance_item_events
-        where item_id in (select id from compliance_items where org_id = $1)`,
-      [orgId]
-    ).catch(() => {});
-    await tx.query(
-      `delete from compliance_item_documents
-        where item_id in (select id from compliance_items where org_id = $1)`,
-      [orgId]
-    ).catch(() => {});
-    await tx.query(`delete from compliance_items where org_id = $1`, [orgId]).catch(() => {});
-
     await tx.query(`delete from organizations where id = $1`, [orgId]);
+
+    /*
+     * A person may belong to several organizations, so only identities left
+     * with no membership are removed. Deleting the user cascades through
+     * sessions, password reset tokens and login aliases. Platform operators
+     * are retained even if a temporary support membership was their only one.
+     */
+    const orphanedMemberIds = members.rows
+      .filter((member) => !isPlatformAdmin(member.email))
+      .map((member) => member.id);
+    if (orphanedMemberIds.length > 0) {
+      await tx.query(
+        `delete from users u
+          where u.id = any($1::uuid[])
+            and not exists (
+              select 1 from organization_members m where m.user_id = u.id
+            )`,
+        [orphanedMemberIds]
+      );
+    }
+
+    if (requiredAudit) {
+      await recordRequiredAdminAction(
+        {
+          adminEmail: requiredAudit.adminEmail,
+          action: "account_deleted",
+          orgId,
+          orgName: requiredAudit.orgName,
+          detail: requiredAudit.detail,
+        },
+        tx
+      );
+    }
   });
 }
 
@@ -562,14 +811,27 @@ export async function scheduleAccountDeletion(input: {
   reason: string;
   adminEmail: string;
 }): Promise<AdminActionResult> {
-  const org = await adminAccount(input.orgId);
+  let org: AdminAccountRow | null;
+  let ownAccount: boolean;
+  try {
+    [org, ownAccount] = await Promise.all([
+      adminAccountForDestructiveAction(input.orgId),
+      isOwnAccount(input.orgId),
+    ]);
+  } catch {
+    return {
+      ok: false,
+      error:
+        "Account ownership could not be verified, so deletion was not scheduled. Try again when the database is available.",
+    };
+  }
   if (!org) return { ok: false, error: "That account no longer exists." };
 
   const { deletionBlockedReason, purgeDueAt, DELETION_GRACE_DAYS } = await import(
     "../domain/account-deletion"
   );
   const blocked = deletionBlockedReason({
-    isOwnAccount: await isOwnAccount(input.orgId),
+    isOwnAccount: ownAccount,
     alreadyScheduled: Boolean(org.deletion_scheduled_at),
   });
   if (blocked) return { ok: false, error: blocked };
@@ -584,30 +846,40 @@ export async function scheduleAccountDeletion(input: {
   }
 
   const dueAt = purgeDueAt();
-  await query(
-    `update organizations
-        set deletion_scheduled_at = $2,
-            deletion_requested_at = now(),
-            deletion_requested_by = $3,
-            deletion_reason = nullif($4, ''),
-            suspended_at = coalesce(suspended_at, now()),
-            suspended_reason = coalesce(suspended_reason, 'Scheduled for deletion'),
-            updated_at = now()
-      where id = $1`,
-    [input.orgId, dueAt.toISOString(), input.adminEmail, input.reason.trim()]
-  );
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "account_deletion_scheduled",
-    orgId: input.orgId,
-    orgName: org.name,
-    detail: {
-      due_at: dueAt.toISOString(),
-      grace_days: DELETION_GRACE_DAYS,
-      reason: input.reason.trim() || null,
-    },
-  });
+  try {
+    await transaction(async (client) => {
+      const updated = await client.query(
+        `update organizations
+            set deletion_scheduled_at = $2,
+                deletion_requested_at = now(),
+                deletion_requested_by = $3,
+                deletion_reason = nullif($4, ''),
+                suspended_at = coalesce(suspended_at, now()),
+                suspended_reason = coalesce(suspended_reason, 'Scheduled for deletion'),
+                updated_at = now()
+          where id = $1
+          returning id`,
+        [input.orgId, dueAt.toISOString(), input.adminEmail, input.reason.trim()]
+      );
+      if (updated.rows.length === 0) throw new Error("Account disappeared before update.");
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "account_deletion_scheduled",
+          orgId: input.orgId,
+          orgName: org.name,
+          detail: {
+            due_at: dueAt.toISOString(),
+            grace_days: DELETION_GRACE_DAYS,
+            reason: input.reason.trim() || null,
+          },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    return rolledBackAdminMutation("The account deletion schedule", err);
+  }
 
   return {
     ok: true,
@@ -627,34 +899,53 @@ export async function cancelAccountDeletion(input: {
   orgId: string;
   adminEmail: string;
 }): Promise<AdminActionResult> {
-  const org = await adminAccount(input.orgId);
+  let org: AdminAccountRow | null;
+  try {
+    org = await adminAccountForDestructiveAction(input.orgId);
+  } catch {
+    return {
+      ok: false,
+      error:
+        "The deletion schedule could not be checked, so nothing was changed. Try again when the database is available.",
+    };
+  }
   if (!org) return { ok: false, error: "That account no longer exists." };
   if (!org.deletion_scheduled_at) {
     return { ok: false, error: "No deletion is scheduled for this account." };
   }
 
-  await query(
-    `update organizations
-        set deletion_scheduled_at = null,
-            deletion_requested_at = null,
-            deletion_requested_by = null,
-            deletion_reason = null,
-            suspended_at = case when suspended_reason = 'Scheduled for deletion'
-                                then null else suspended_at end,
-            suspended_reason = case when suspended_reason = 'Scheduled for deletion'
-                                    then null else suspended_reason end,
-            updated_at = now()
-      where id = $1`,
-    [input.orgId]
-  );
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "account_deletion_cancelled",
-    orgId: input.orgId,
-    orgName: org.name,
-    detail: { was_due_at: org.deletion_scheduled_at },
-  });
+  try {
+    await transaction(async (client) => {
+      const updated = await client.query(
+        `update organizations
+            set deletion_scheduled_at = null,
+                deletion_requested_at = null,
+                deletion_requested_by = null,
+                deletion_reason = null,
+                suspended_at = case when suspended_reason = 'Scheduled for deletion'
+                                    then null else suspended_at end,
+                suspended_reason = case when suspended_reason = 'Scheduled for deletion'
+                                        then null else suspended_reason end,
+                updated_at = now()
+          where id = $1
+          returning id`,
+        [input.orgId]
+      );
+      if (updated.rows.length === 0) throw new Error("Account disappeared before update.");
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "account_deletion_cancelled",
+          orgId: input.orgId,
+          orgName: org.name,
+          detail: { was_due_at: org.deletion_scheduled_at },
+        },
+        client
+      );
+    });
+  } catch (err) {
+    return rolledBackAdminMutation("The deletion cancellation", err);
+  }
 
   return { ok: true, message: `${org.name} is no longer scheduled for deletion.` };
 }
@@ -666,7 +957,7 @@ export async function accountsDueForPurge(): Promise<{ id: string; name: string 
       where deletion_scheduled_at is not null and deletion_scheduled_at <= now()
       order by deletion_scheduled_at asc
       limit 25`
-  ).catch(() => []);
+  );
 }
 
 /**
@@ -684,24 +975,39 @@ export async function setClassification(input: {
   if (!["customer", "internal", "test"].includes(input.classification)) {
     return { ok: false, error: "Classification must be customer, internal or test." };
   }
-  const rows = await query<{ name: string }>(
-    `update organizations set classification = $2, updated_at = now()
-      where id = $1 returning name`,
-    [input.orgId, input.classification]
-  ).catch(() => []);
-  if (rows.length === 0) return { ok: false, error: "No such account." };
-  await recordAdminAction({
-    orgId: input.orgId,
-    adminEmail: input.adminEmail,
-    action: "set_classification",
-    detail: { classification: input.classification },
-  });
+  let name: string;
+  try {
+    const result = await transaction(async (client) => {
+      const updated = await client.query<{ name: string }>(
+        `update organizations set classification = $2, updated_at = now()
+          where id = $1 returning name`,
+        [input.orgId, input.classification]
+      );
+      const row = updated.rows[0];
+      if (!row) return null;
+      await recordRequiredAdminAction(
+        {
+          orgId: input.orgId,
+          orgName: row.name,
+          adminEmail: input.adminEmail,
+          action: "set_classification",
+          detail: { classification: input.classification },
+        },
+        client
+      );
+      return row.name;
+    });
+    if (!result) return { ok: false, error: "No such account." };
+    name = result;
+  } catch (err) {
+    return rolledBackAdminMutation("The account classification", err);
+  }
   return {
     ok: true,
     message:
       input.classification === "customer"
-        ? `${rows[0].name} counts as a customer again.`
-        : `${rows[0].name} is marked ${input.classification} and no longer counts in the customer totals.`,
+        ? `${name} counts as a customer again.`
+        : `${name} is marked ${input.classification} and no longer counts in the customer totals.`,
   };
 }
 
@@ -710,10 +1016,23 @@ export async function deleteAccount(input: {
   confirmName: string;
   adminEmail: string;
 }): Promise<AdminActionResult> {
-  const org = await adminAccount(input.orgId);
+  let org: AdminAccountRow | null;
+  let ownAccount: boolean;
+  try {
+    [org, ownAccount] = await Promise.all([
+      adminAccountForDestructiveAction(input.orgId),
+      isOwnAccount(input.orgId),
+    ]);
+  } catch {
+    return {
+      ok: false,
+      error:
+        "Account ownership could not be verified, so nothing was deleted. Try again when the database is available.",
+    };
+  }
   if (!org) return { ok: false, error: "That account no longer exists." };
 
-  if (await isOwnAccount(input.orgId)) {
+  if (ownAccount) {
     return {
       ok: false,
       error: `${org.name} is our own account and cannot be deleted from here.`,
@@ -730,23 +1049,20 @@ export async function deleteAccount(input: {
   }
 
   try {
-    await purgeOrganization(input.orgId);
+    await purgeOrganization(input.orgId, {
+      adminEmail: input.adminEmail,
+      orgName: org.name,
+      detail: { owner_email: org.owner_email, member_count: org.member_count },
+    });
   } catch (err) {
     return {
       ok: false,
-      error: `Nothing was deleted. ${err instanceof Error ? err.message : String(err)}`,
+      error:
+        `Account deletion did not complete. Some physical files may already have been removed, ` +
+        `but the account records were not committed as deleted. Retry the deletion. ` +
+        `${err instanceof Error ? err.message : String(err)}`,
     };
   }
-
-  // Written after the fact and outside the transaction, so the record of the
-  // deletion cannot be rolled back along with it.
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "account_deleted",
-    orgId: input.orgId,
-    orgName: org.name,
-    detail: { owner_email: org.owner_email, member_count: org.member_count },
-  });
 
   return { ok: true, message: `${org.name} and all of its data are gone.` };
 }
@@ -770,39 +1086,60 @@ export async function setMemberRole(input: {
     return { ok: false, error: `Role must be one of: ${allowed.join(", ")}.` };
   }
 
-  const current = await queryOne<{ role: string; email: string }>(
-    `select m.role, u.email from organization_members m
-       join users u on u.id = m.user_id
-      where m.org_id = $1 and m.user_id = $2`,
-    [input.orgId, input.userId]
-  ).catch(() => null);
-  if (!current) return { ok: false, error: "That person is not on this account." };
+  try {
+    return await transaction(async (client): Promise<AdminActionResult> => {
+      // Serializes owner changes for this account. Without this lock, two
+      // concurrent demotions can both count two owners and leave none.
+      const org = await client.query<{ name: string }>(
+        `select name from organizations where id = $1 for update`,
+        [input.orgId]
+      );
+      if (!org.rows[0]) return { ok: false, error: "That account no longer exists." };
 
-  if (current.role === "owner" && input.role !== "owner") {
-    const owners = await queryOne<{ n: string }>(
-      `select count(*) as n from organization_members where org_id = $1 and role = 'owner'`,
-      [input.orgId]
-    );
-    if (Number(owners?.n ?? 0) <= 1) {
-      return {
-        ok: false,
-        error:
-          "That is the only owner. Make somebody else the owner first, or this account has nobody who can administer it.",
-      };
-    }
+      const found = await client.query<{ role: string; email: string }>(
+        `select m.role, u.email from organization_members m
+           join users u on u.id = m.user_id
+          where m.org_id = $1 and m.user_id = $2`,
+        [input.orgId, input.userId]
+      );
+      const current = found.rows[0];
+      if (!current) return { ok: false, error: "That person is not on this account." };
+
+      if (current.role === "owner" && input.role !== "owner") {
+        const counted = await client.query<{ n: string }>(
+          `select count(*) as n from organization_members where org_id = $1 and role = 'owner'`,
+          [input.orgId]
+        );
+        if (Number(counted.rows[0]?.n ?? 0) <= 1) {
+          return {
+            ok: false,
+            error:
+              "That is the only owner. Make somebody else the owner first, or this account has nobody who can administer it.",
+          };
+        }
+      }
+
+      const updated = await client.query(
+        `update organization_members set role = $3 where org_id = $1 and user_id = $2`,
+        [input.orgId, input.userId, input.role]
+      );
+      if (updated.rowCount !== 1) throw new Error("Membership disappeared before update.");
+      await recordRequiredAdminAction(
+        {
+          orgId: input.orgId,
+          orgName: org.rows[0].name,
+          userId: input.userId,
+          adminEmail: input.adminEmail,
+          action: "member_role_changed",
+          detail: { email: current.email, from: current.role, to: input.role },
+        },
+        client
+      );
+      return { ok: true, message: `${current.email} is now ${input.role}.` };
+    });
+  } catch (err) {
+    return rolledBackAdminMutation("The member role change", err);
   }
-
-  await query(
-    `update organization_members set role = $3 where org_id = $1 and user_id = $2`,
-    [input.orgId, input.userId, input.role]
-  );
-  await recordAdminAction({
-    orgId: input.orgId,
-    adminEmail: input.adminEmail,
-    action: "member_role_changed",
-    detail: { email: current.email, from: current.role, to: input.role },
-  });
-  return { ok: true, message: `${current.email} is now ${input.role}.` };
 }
 
 /**
@@ -818,36 +1155,55 @@ export async function transferOwnership(input: {
   toUserId: string;
   adminEmail: string;
 }): Promise<AdminActionResult> {
-  const target = await queryOne<{ email: string; role: string }>(
-    `select u.email, m.role from organization_members m
-       join users u on u.id = m.user_id
-      where m.org_id = $1 and m.user_id = $2`,
-    [input.orgId, input.toUserId]
-  ).catch(() => null);
-  if (!target) return { ok: false, error: "That person is not on this account." };
-  if (target.role === "owner") return { ok: false, error: `${target.email} already owns this account.` };
+  try {
+    return await transaction(async (client): Promise<AdminActionResult> => {
+      const org = await client.query<{ name: string }>(
+        `select name from organizations where id = $1 for update`,
+        [input.orgId]
+      );
+      if (!org.rows[0]) return { ok: false, error: "That account no longer exists." };
 
-  await transaction(async (client) => {
-    // The outgoing owner keeps admin: handing an account over is not the
-    // same as being removed from it, and the difference matters to whoever
-    // built the company the account belongs to.
-    await client.query(
-      `update organization_members set role = 'admin' where org_id = $1 and role = 'owner'`,
-      [input.orgId]
-    );
-    await client.query(
-      `update organization_members set role = 'owner' where org_id = $1 and user_id = $2`,
-      [input.orgId, input.toUserId]
-    );
-  });
-  await recordAdminAction({
-    orgId: input.orgId,
-    adminEmail: input.adminEmail,
-    action: "ownership_transferred",
-    detail: { to: target.email },
-  });
-  return {
-    ok: true,
-    message: `${target.email} now owns this account. The previous owner keeps admin.`,
-  };
+      const found = await client.query<{ email: string; role: string }>(
+        `select u.email, m.role from organization_members m
+           join users u on u.id = m.user_id
+          where m.org_id = $1 and m.user_id = $2`,
+        [input.orgId, input.toUserId]
+      );
+      const target = found.rows[0];
+      if (!target) return { ok: false, error: "That person is not on this account." };
+      if (target.role === "owner") {
+        return { ok: false, error: `${target.email} already owns this account.` };
+      }
+
+      // The outgoing owner keeps admin: handing an account over is not the
+      // same as being removed from it, and the difference matters to whoever
+      // built the company the account belongs to.
+      await client.query(
+        `update organization_members set role = 'admin' where org_id = $1 and role = 'owner'`,
+        [input.orgId]
+      );
+      const promoted = await client.query(
+        `update organization_members set role = 'owner' where org_id = $1 and user_id = $2`,
+        [input.orgId, input.toUserId]
+      );
+      if (promoted.rowCount !== 1) throw new Error("Target membership disappeared before update.");
+      await recordRequiredAdminAction(
+        {
+          orgId: input.orgId,
+          orgName: org.rows[0].name,
+          userId: input.toUserId,
+          adminEmail: input.adminEmail,
+          action: "ownership_transferred",
+          detail: { to: target.email },
+        },
+        client
+      );
+      return {
+        ok: true,
+        message: `${target.email} now owns this account. The previous owner keeps admin.`,
+      };
+    });
+  } catch (err) {
+    return rolledBackAdminMutation("The ownership transfer", err);
+  }
 }

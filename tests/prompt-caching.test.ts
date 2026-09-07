@@ -9,6 +9,9 @@
  * symptom is a larger bill.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { runWithOrg } from "../lib/tenant-context";
+
+const TEST_ORG = "00000000-0000-4000-8000-000000000099";
 
 const PROFILE_LONG = "BROSTCO profile. ".repeat(700); // ~11,900 chars, ~3k tokens
 const PROFILE_SHORT = "Tiny profile.";
@@ -36,7 +39,7 @@ vi.mock("../lib/integration-keys", () => ({
 
 async function callComplete(prompt: string, opts: Record<string, unknown> = {}) {
   const { complete } = await import("../lib/ai/claude");
-  await complete(prompt, opts as never);
+  await runWithOrg(TEST_ORG, () => complete(prompt, opts as never));
   return create.mock.calls.at(-1)?.[0] as unknown as {
     system: { type: string; text: string; cache_control?: { type: string } }[];
     messages: { content: unknown }[];
@@ -142,7 +145,7 @@ describe("usage reporting", () => {
      * being able to see rather than assume.
      */
     const { complete } = await import("../lib/ai/claude");
-    const res = await complete("hello");
+    const res = await runWithOrg(TEST_ORG, () => complete("hello"));
     expect(res.usage.cache_read_input_tokens).toBe(2048);
   });
 });

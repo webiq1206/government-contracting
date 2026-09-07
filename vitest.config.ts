@@ -12,6 +12,9 @@ export default defineConfig({
     // the sentence rather than on the props that feed it.
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     globals: true,
+    setupFiles: process.env.BROSTCO_TEST_OFFLINE === "1"
+      ? ["tests/helpers/offline-database-tests.ts"]
+      : [],
   },
   resolve: {
     alias: {

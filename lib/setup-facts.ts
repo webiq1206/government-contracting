@@ -28,7 +28,7 @@ import { listSettings } from "./integration-settings";
 import { getAutomationRules, rulesReviewed } from "./app-settings";
 import { daysLeft } from "./domain/account-status";
 import { query } from "./db";
-import { tryResolveTenantOrgId } from "./tenant";
+import { resolveTenantOrgId } from "./tenant";
 
 /** The entitlement fields the trial check needs, and nothing else. */
 export interface SetupUser {
@@ -45,26 +45,55 @@ const PROOF_KEYS = {
   googleMaps: "GOOGLE_MAPS_API_KEY",
 } as const;
 
+/**
+ * The checklist plus the live facts that could not be verified while building
+ * it. Callers keep rendering the conservative checklist, but must place these
+ * warnings beside it so a failed read cannot masquerade as unfinished setup.
+ */
+export interface AccountSetupResult extends SetupChecklist {
+  warnings: string[];
+}
+
 export async function accountSetup(
   profile: SetupInputs["profile"],
   user: SetupUser | null | undefined,
   /** The organization's name, for the step that is finished by definition. */
   orgName?: string | null
-): Promise<SetupChecklist> {
-  await hydrateIntegrationEnv().catch(() => undefined);
-  // Per-organization over per-deployment: the customer's own saved keys win
-  // over whatever this deployment happens to have in its environment.
-  const env = integrationStatus();
+): Promise<AccountSetupResult> {
+  const warnings: string[] = [];
+  await hydrateIntegrationEnv().catch(() => {
+    warnings.push(
+      "Connected-service configuration could not be prepared, so setup integration status is not authoritative."
+    );
+  });
+  // Credential readiness is strictly per organization. Deployment status is
+  // used only to answer whether the Google OAuth connect button can exist.
+  const platform = integrationStatus();
   const [orgKeys, inbox] = await Promise.all([
-    orgIntegrationStatus().catch(() => ({})),
+    orgIntegrationStatus().catch(() => {
+      warnings.push(
+        "SAM.gov, Anthropic, and Google Maps connection status could not be verified. Do not add or replace keys based only on this checklist."
+      );
+      return null;
+    }),
     // integrationStatus().gmail is whether the PLATFORM holds Google OAuth
     // credentials, which is true for every customer on the deployment at once.
     // Read as "the inbox step is done" it marked a brand-new account complete
     // while no mailbox was connected and no outreach could send. The step is
     // about this organization's own grant, so ask for that.
-    gmail.connection().catch(() => ({ connected: false })),
+    gmail.connection().catch(() => {
+      warnings.push(
+        "The connected inbox could not be verified. Reload or open Integrations before reconnecting it."
+      );
+      return null;
+    }),
   ]);
-  const integrations = { ...env, ...orgKeys, gmail: inbox.connected };
+  const integrations = {
+    sam: orgKeys?.sam ?? false,
+    claude: orgKeys?.claude ?? false,
+    googleMaps: orgKeys?.googleMaps ?? false,
+    gmail: inbox?.connected ?? false,
+  };
 
   /*
    * What each credential has actually done.
@@ -73,16 +102,29 @@ export async function accountSetup(
    * key typed into a form proves that somebody typed a key. Whether it works
    * is a separate fact, and the integration record already holds it: the last
    * time it did real work, the last time somebody tested it, and the last
-   * error. A step that cannot read its record falls back to the old meaning
-   * rather than accusing a working account of being untested.
+   * error. When that evidence cannot be read, the step stays unproven and the
+   * page receives an explicit warning rather than a confident tick.
    */
-  const stored = await listSettings().catch(() => []);
-  const byKey = new Map(stored.map((r) => [r.env_key, r]));
+  const stored = await listSettings().catch(() => {
+    warnings.push(
+      "Credential test history could not be loaded, so saved keys are not marked as proven on this checklist."
+    );
+    return null;
+  });
+  const byKey = new Map((stored ?? []).map((r) => [r.env_key, r]));
   const proof: SetupInputs["proof"] = {};
   for (const [step, envKey] of Object.entries(PROOF_KEYS)) {
     const row = byKey.get(envKey);
     const configured = integrations[step as keyof typeof PROOF_KEYS];
     if (!configured) continue;
+    // A failed history read must not turn `configured` into proof that the
+    // credential works. An empty proof object makes the pure checklist say it
+    // is saved but untested, while the visible warning explains why no test
+    // record could be read.
+    if (stored == null) {
+      proof[step as keyof typeof PROOF_KEYS] = { configured: true };
+      continue;
+    }
     // A key that lives in the deployment environment rather than in this
     // organization's settings has no record to read, so it keeps the old
     // meaning: present counts.
@@ -98,14 +140,29 @@ export async function accountSetup(
   /*
    * The rest of the workflow, which the checklist used to stop short of.
    *
-   * Each of these is loaded defensively and left undefined on failure, so a
-   * database hiccup drops a step from the list rather than reporting an empty
-   * pipeline or a locked account that is neither.
+   * Each is loaded independently. A failed read produces a conservative value
+   * plus a warning, so the rest of the checklist remains useful without
+   * reporting an empty pipeline or reviewed rules that were never verified.
    */
   const [rulesRow, rules, counts] = await Promise.all([
-    rulesReviewed().catch(() => false),
-    getAutomationRules().catch(() => null),
-    firstRunCounts().catch(() => undefined),
+    rulesReviewed().catch(() => {
+      warnings.push(
+        "Whether the automation rules were reviewed could not be checked. The checklist does not treat them as reviewed."
+      );
+      return false;
+    }),
+    getAutomationRules().catch(() => {
+      warnings.push(
+        "Automation contact limits could not be loaded, so the checklist cannot describe the limits currently in force."
+      );
+      return null;
+    }),
+    firstRunCounts().catch(() => {
+      warnings.push(
+        "First-run pipeline totals could not be counted, so setup progress does not claim that the pipeline is empty."
+      );
+      return undefined;
+    }),
   ]);
 
   const level = user ? accessLevel(entitlementOf(user)) : null;
@@ -114,14 +171,14 @@ export async function accountSetup(
   // "Required" on day one is false, and a checklist that overstates urgency
   // stops being read.
   const onTrial = user ? accessLevel(entitlementOf(user)) === "trial" : false;
-  return computeSetupChecklist({
+  const checklist = computeSetupChecklist({
     orgName: orgName ?? null,
     profile: profile ?? null,
     integrations,
     proof,
     // Without OAuth credentials on the deployment there is no button to press,
     // so the step is impossible rather than outstanding and says so.
-    gmailOffered: env.gmail,
+    gmailOffered: platform.gmail,
     onTrial,
     rules: {
       reviewed: rulesRow,
@@ -138,20 +195,20 @@ export async function accountSetup(
       : undefined,
     firstRun: counts,
   });
+  return { ...checklist, warnings };
 }
 
 /**
  * What has been through the pipeline on this account.
  *
- * Scoped to the tenant, and returns undefined rather than zeros when it
- * cannot resolve one: "nobody counted" and "nothing happened" are different
- * sentences, and the checklist prints them differently.
+ * Scoped to the tenant. Resolution and query failures propagate to the caller,
+ * which records an availability warning and passes undefined into the pure
+ * checklist: "nobody counted" and "nothing happened" are different sentences.
  */
 async function firstRunCounts(): Promise<
   { opportunities: number; scored: number; outreachSent: number } | undefined
 > {
-  const orgId = await tryResolveTenantOrgId().catch(() => null);
-  if (!orgId) return undefined;
+  const orgId = await resolveTenantOrgId();
   const rows = await query<{ opportunities: string; scored: string; outreach: string }>(
     `select
        (select count(*) from opportunities o where o.org_id = $1) as opportunities,

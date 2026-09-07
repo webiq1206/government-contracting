@@ -20,14 +20,25 @@ d("account deletion (integration)", () => {
   let runWithOrg: typeof import("../lib/tenant-context").runWithOrg;
   let storage: typeof import("../lib/integrations/storage").storage;
 
-  const org = { id: "" };
+  const org = { id: "", ownerId: "" };
 
   async function counts() {
     const opp = await queryOne<{ n: number }>(`select count(*)::int as n from opportunities where org_id=$1`, [org.id]);
     const sub = await queryOne<{ n: number }>(`select count(*)::int as n from subcontractors where org_id=$1`, [org.id]);
     const doc = await queryOne<{ n: number }>(`select count(*)::int as n from documents where org_id=$1`, [org.id]);
     const blobOrg = await queryOne<{ n: number }>(`select count(*)::int as n from file_blobs where org_id=$1`, [org.id]);
-    return { opp: opp?.n ?? 0, sub: sub?.n ?? 0, doc: doc?.n ?? 0, blobOrg: blobOrg?.n ?? 0 };
+    const user = await queryOne<{ n: number }>(`select count(*)::int as n from users where id=$1`, [org.ownerId]);
+    const session = await queryOne<{ n: number }>(`select count(*)::int as n from sessions where user_id=$1`, [org.ownerId]);
+    const alias = await queryOne<{ n: number }>(`select count(*)::int as n from user_email_aliases where user_id=$1`, [org.ownerId]);
+    return {
+      opp: opp?.n ?? 0,
+      sub: sub?.n ?? 0,
+      doc: doc?.n ?? 0,
+      blobOrg: blobOrg?.n ?? 0,
+      user: user?.n ?? 0,
+      session: session?.n ?? 0,
+      alias: alias?.n ?? 0,
+    };
   }
 
   beforeAll(async () => {
@@ -46,7 +57,16 @@ d("account deletion (integration)", () => {
       `insert into users (email, password_hash, name, role) values ($1,'x','Owner','member') returning id`,
       [`owner-${randomUUID().slice(0,8)}@example.invalid`]
     );
+    org.ownerId = u!.id;
     await query(`insert into organization_members (org_id, user_id, role) values ($1,$2,'owner')`, [org.id, u!.id]);
+    await query(`insert into sessions (id, user_id, expires_at) values ($1,$2,now() + interval '1 hour')`, [
+      `delete-test-${randomUUID()}`,
+      u!.id,
+    ]);
+    await query(`insert into user_email_aliases (user_id, email) values ($1,$2)`, [
+      u!.id,
+      `alias-${randomUUID().slice(0, 8)}@example.invalid`,
+    ]);
 
     const op = await queryOne<{ id: string }>(
       `insert into opportunities (org_id, source, title, stage, status) values ($1,'test','Doomed job','outreach','open') returning id`,
@@ -59,11 +79,13 @@ d("account deletion (integration)", () => {
     // A stored document + its bytes, uploaded inside the org context so the
     // blob is stamped with org_id (the fix).
     const key = `opportunities/${op!.id}/secret.pdf`;
-    await runWithOrg(org.id, () => storage.upload(key, Buffer.from("SECRET BYTES"), "application/pdf"));
+    const uploaded = await runWithOrg(org.id, () =>
+      storage.upload(key, Buffer.from("SECRET BYTES"), "application/pdf")
+    );
     await query(
       `insert into documents (org_id, opportunity_id, kind, name, storage_path, storage_backend, mime)
-       values ($1,$2,'solicitation','secret.pdf',$3,'db','application/pdf')`,
-      [org.id, op!.id, key]
+       values ($1,$2,'solicitation','secret.pdf',$3,$4,'application/pdf')`,
+      [org.id, op!.id, uploaded.path, uploaded.backend]
     );
     // clean up the possible local-file copy is unnecessary; db backend used here.
   });
@@ -82,12 +104,23 @@ d("account deletion (integration)", () => {
     expect(c.sub).toBe(1);
     expect(c.doc).toBe(1);
     expect(c.blobOrg).toBe(1); // the fix: the blob carries org_id
+    expect(c.user).toBe(1);
+    expect(c.session).toBe(1);
+    expect(c.alias).toBe(1);
   });
 
   it("purge removes every row AND the file bytes, leaving nothing", async () => {
     await accounts.purgeOrganization(org.id);
     const c = await counts();
-    expect(c).toEqual({ opp: 0, sub: 0, doc: 0, blobOrg: 0 });
+    expect(c).toEqual({
+      opp: 0,
+      sub: 0,
+      doc: 0,
+      blobOrg: 0,
+      user: 0,
+      session: 0,
+      alias: 0,
+    });
     // The organization row itself is gone.
     const orgRow = await queryOne<{ id: string }>(`select id from organizations where id=$1`, [org.id]);
     expect(orgRow).toBeNull();

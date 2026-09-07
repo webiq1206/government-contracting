@@ -19,6 +19,7 @@ import { findWebsiteBysearch } from "../integrations/website-finder";
 import { sam } from "../integrations/sam";
 import { hasContactPathway, isEmailable } from "../domain/sub-contactability";
 import { areCallsEnabled } from "../app-settings";
+import { currentOrgId } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Subcontractor } from "../types";
 
@@ -62,17 +63,55 @@ export const subVerify: AgentDefinition = {
     if (!opportunityId || !subcontractorId)
       return { ok: false, summary: "missing opportunityId or subcontractorId in payload" };
 
-    const sub = await queryOne<Subcontractor & { website?: string | null; google_place_id?: string | null }>(
-      `select * from subcontractors where id = $1`,
-      [subcontractorId]
+    const orgId = currentOrgId();
+    if (!orgId) {
+      await logAgent({
+        agent: "sub-verify",
+        action: "tenant-context-refused",
+        level: "error",
+        status: "error",
+        message:
+          "Verification stopped because the job has no organization context. No record or external provider was accessed.",
+      });
+      return {
+        ok: false,
+        summary:
+          "Verification stopped because the job has no organization context. Repair the queued job, then retry.",
+        humanActionRequired: true,
+      };
+    }
+
+    const owner = await queryOne<{ org_id: string | null; location_state: string | null }>(
+      `select org_id, location_state from opportunities where id=$1 and org_id=$2`,
+      [opportunityId, orgId]
     );
-    if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found` };
+    const sub = await queryOne<Subcontractor & { website?: string | null; google_place_id?: string | null }>(
+      `select * from subcontractors where id = $1 and org_id = $2`,
+      [subcontractorId, orgId]
+    );
+    if (!owner || !sub) {
+      await logAgent({
+        agent: "sub-verify",
+        action: "tenant-ownership-refused",
+        level: "error",
+        status: "error",
+        message:
+          "Verification stopped because the opportunity or subcontractor is not visible in the job organization. No external lookup was made.",
+      });
+      return {
+        ok: false,
+        summary:
+          "Verification stopped because a required record is missing from this organization. Repair the queued record references, then retry.",
+        humanActionRequired: true,
+      };
+    }
 
     const profile = await getProfileJson();
     const std = profile?.sub_standards;
 
     const notes: string[] = [];
     const verification: Record<string, unknown> = {};
+    const unresolvedFailures: string[] = [];
 
     // --- Geography gate, before any enrichment spends an API call ---
     // A firm recorded in a different state than the work cannot mobilize for
@@ -80,11 +119,7 @@ export const subVerify: AgentDefinition = {
     // window. Pairings created before Sub Finder verified addresses can still
     // carry wrong-area firms; this is where they stop. Unknown sub state
     // passes through: absence of data is not evidence of distance.
-    const oppState = await queryOne<{ location_state: string | null }>(
-      `select location_state from opportunities where id = $1`,
-      [opportunityId]
-    );
-    const workState = (oppState?.location_state ?? "").trim().toUpperCase();
+    const workState = (owner.location_state ?? "").trim().toUpperCase();
     const subState = (sub.state ?? "").trim().toUpperCase();
     if (workState && subState && workState !== subState) {
       await query(
@@ -93,11 +128,12 @@ export const subVerify: AgentDefinition = {
                 outreach_state = 'not_a_fit',
                 verification_json = coalesce(verification_json, '{}'::jsonb)
                   || jsonb_build_object('geography', $3::text)
-          where opportunity_id = $1 and subcontractor_id = $2`,
+          where opportunity_id = $1 and subcontractor_id = $2 and org_id = $4`,
         [
           opportunityId,
           subcontractorId,
           `Firm is in ${subState}; the work is in ${workState}.`,
+          orgId,
         ]
       );
       await logAgent({
@@ -126,8 +162,11 @@ export const subVerify: AgentDefinition = {
       if (details) {
         if (!website && details.website) website = details.website;
         if (!phone && details.phone) phone = details.phone;
-      } else if (!website) {
-        notes.push("Google Maps disabled or Place Details empty; no website on file.");
+      } else {
+        const message =
+          "Google Maps Place Details was unavailable or empty, so missing website or phone data remains unverified.";
+        notes.push(message);
+        unresolvedFailures.push(message);
       }
     }
 
@@ -142,7 +181,10 @@ export const subVerify: AgentDefinition = {
       if (website) {
         notes.push(`Website discovered via web search: ${website}.`);
       } else {
-        notes.push("Web-search website lookup found no confident match.");
+        const message =
+          "Web-search website lookup was inconclusive. No website was recorded, and this must not be treated as proof that no website exists.";
+        notes.push(message);
+        unresolvedFailures.push(message);
       }
     }
 
@@ -163,6 +205,7 @@ export const subVerify: AgentDefinition = {
           // Unknown, not negative: a failed lookup must never be recorded as
           // "no contact email exists".
           notes.push(`Hunter lookup failed (${ds.error}); email discovery is unknown, not exhausted.`);
+          unresolvedFailures.push(`Hunter domain search failed: ${ds.error}`);
           await logAgent({
             agent: "sub-verify",
             action: "hunter-error",
@@ -180,6 +223,7 @@ export const subVerify: AgentDefinition = {
             const v = await hunter.verifyEmail(best.value);
             if (v.error) {
               notes.push(`Hunter could not verify ${best.value} (${v.error}); left unverified.`);
+              unresolvedFailures.push(`Hunter could not verify ${best.value}: ${v.error}`);
             }
             emailVerified = v.status === "valid";
             verification.email_confidence = best.confidence;
@@ -191,10 +235,28 @@ export const subVerify: AgentDefinition = {
         const fe = await hunter.findEmail({ company: sub.company_name, domain: "" });
         if (fe.disabled) {
           notes.push("Hunter disabled, skipping Hunter email discovery.");
+        } else if (fe.error) {
+          const message = `Hunter company search failed (${fe.error}); email discovery is unknown, not exhausted.`;
+          notes.push(message);
+          unresolvedFailures.push(message);
+          await logAgent({
+            agent: "sub-verify",
+            action: "hunter-error",
+            level: "error",
+            status: "error",
+            opportunityId,
+            subcontractorId,
+            message: `${message} Test the Hunter key in Settings, then Integrations, and retry verification.`,
+          });
         } else if (fe.email) {
           email = fe.email;
           emailSource = "hunter";
           const v = await hunter.verifyEmail(fe.email);
+          if (v.error) {
+            const message = `Hunter could not verify ${fe.email} (${v.error}); left unverified.`;
+            notes.push(message);
+            unresolvedFailures.push(message);
+          }
           emailVerified = v.status === "valid";
           verification.email_status = v.status ?? null;
         }
@@ -203,7 +265,24 @@ export const subVerify: AgentDefinition = {
 
     // Key-free fallback: the sub's own site usually publishes a contact email.
     if (!email && website) {
-      const scraped = await scrapeWebsiteEmail(website).catch(() => null);
+      let scraped: Awaited<ReturnType<typeof scrapeWebsiteEmail>> = null;
+      try {
+        scraped = await scrapeWebsiteEmail(website);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "unknown website crawl error";
+        const message = `Website email crawl failed (${reason}); email discovery remains incomplete.`;
+        notes.push(message);
+        unresolvedFailures.push(message);
+        await logAgent({
+          agent: "sub-verify",
+          action: "website-email-error",
+          level: "error",
+          status: "error",
+          opportunityId,
+          subcontractorId,
+          message: `${message} Check website access and retry verification.`,
+        });
+      }
       if (scraped) {
         email = scraped.email;
         emailSource = "website_scrape";
@@ -233,6 +312,11 @@ export const subVerify: AgentDefinition = {
           );
         }
         verification.email_own_domain = scraped.ownDomain;
+      } else if (!unresolvedFailures.some((failure) => failure.startsWith("Website email crawl failed"))) {
+        const message =
+          "The website crawl returned no usable email. This is inconclusive because inaccessible pages and pages with no published email currently produce the same result.";
+        notes.push(message);
+        unresolvedFailures.push(message);
       }
     }
 
@@ -241,14 +325,16 @@ export const subVerify: AgentDefinition = {
       ? emailVerified
         ? "verified"
         : "unverified"
-      : website
-        ? "no_email_found"
-        : "no_website";
+      : unresolvedFailures.length > 0
+        ? "discovery_incomplete"
+        : website
+          ? "no_email_found"
+          : "no_website";
     if (!email) {
       notes.push(
         website
-          ? "No contact email found via Hunter or website scrape."
-          : "No website on file, email discovery impossible."
+          ? "No contact email was confirmed. Automated discovery is incomplete and needs review or retry."
+          : "No website was confirmed, so email discovery is incomplete and needs review or retry."
       );
     }
 
@@ -266,14 +352,22 @@ export const subVerify: AgentDefinition = {
     // debarment false negative. (Column is NOT NULL default false, so the
     // stored value alone can't distinguish "checked clear" from "never checked".)
     let samConfirmed = false;
-    const excl = await sam.isExcluded(sub.company_name);
+    const excl = await sam.isExcluded(sub.company_name, orgId);
     if (excl.disabled) {
-      notes.push("SAM exclusions check disabled.");
-      samConfirmed = true; // operator explicitly runs without SAM checks
+      if (excl.disabledReason === "quota_exhausted") {
+        notes.push(
+          "SAM exclusions check could not run because today's account call budget is exhausted. Outreach is held until a later verification confirms the result."
+        );
+        unresolvedFailures.push("SAM exclusions check could not run because the account call budget is exhausted.");
+      } else {
+        notes.push("SAM exclusions check disabled because no account API key is connected.");
+        samConfirmed = true; // operator explicitly runs without SAM checks
+      }
     } else if (excl.error) {
       notes.push(
         "SAM exclusions check errored, status unverified. Outreach held until the next verify run confirms."
       );
+      unresolvedFailures.push("SAM exclusions check failed, so exclusion status is unverified.");
     } else {
       samExcluded = excl.excluded;
       samConfirmed = true;
@@ -307,7 +401,7 @@ export const subVerify: AgentDefinition = {
              sam_excluded=$6, reviews_summary=$7, bbb_summary=$8,
              website=coalesce($9, website), contact_status=$10, email_source=$11,
              contact_checked_at=now()
-       where id=$1`,
+       where id=$1 and org_id=$12`,
       [
         subcontractorId,
         email,
@@ -320,6 +414,7 @@ export const subVerify: AgentDefinition = {
         website,
         contactStatus,
         emailSource,
+        orgId,
       ]
     );
 
@@ -334,13 +429,22 @@ export const subVerify: AgentDefinition = {
     verification.contact_status = contactStatus;
     verification.phone = phone;
     verification.website = website;
+    verification.unresolved_failures = unresolvedFailures;
+    const incomplete = unresolvedFailures.length > 0;
 
     await query(
       `update opportunity_subs
-         set verified=true, verification_json=$3
+         set verified=$6, verification_json=$3
        where opportunity_id=$1 and subcontractor_id=$2
-         and coalesce(trade,'') = coalesce($4,'')`,
-      [opportunityId, subcontractorId, JSON.stringify(verification), trade ?? null]
+         and coalesce(trade,'') = coalesce($4,'') and org_id=$5`,
+      [
+        opportunityId,
+        subcontractorId,
+        JSON.stringify(verification),
+        trade ?? null,
+        orgId,
+        !incomplete,
+      ]
     );
 
     // --- Standards gate + contact pathway + route ---
@@ -354,7 +458,7 @@ export const subVerify: AgentDefinition = {
       sub.google_rating >= minRating;
     const contactOk = hasContactPathway({ email, phone, website });
     const standardsOk = !samExcluded && samConfirmed && ratingOk;
-    const passes = standardsOk && contactOk;
+    const passes = standardsOk && contactOk && !incomplete;
 
     const enqueued: AgentResult["enqueued"] = [];
     let route = "held";
@@ -385,8 +489,8 @@ export const subVerify: AgentDefinition = {
         `update opportunity_subs
             set outreach_state = 'no_email'
           where opportunity_id = $1 and subcontractor_id = $2
-            and coalesce(trade,'') = coalesce($3,'')`,
-        [opportunityId, subcontractorId, trade ?? null]
+            and coalesce(trade,'') = coalesce($3,'') and org_id = $4`,
+        [opportunityId, subcontractorId, trade ?? null, orgId]
       );
     } else if (standardsOk && !contactOk) {
       route = "held (no email, phone, or website)";
@@ -394,15 +498,22 @@ export const subVerify: AgentDefinition = {
         `update opportunity_subs
             set outreach_state = 'no_email'
           where opportunity_id = $1 and subcontractor_id = $2
-            and coalesce(trade,'') = coalesce($3,'')`,
-        [opportunityId, subcontractorId, trade ?? null]
+            and coalesce(trade,'') = coalesce($3,'') and org_id = $4`,
+        [opportunityId, subcontractorId, trade ?? null, orgId]
       );
       await query(
-        `update opportunities set human_action_required = true where id = $1`,
-        [opportunityId]
+        `update opportunities set human_action_required = true where id = $1 and org_id = $2`,
+        [opportunityId, orgId]
       );
     } else {
-      route = "held (failed standards)";
+      route = incomplete ? "held (verification incomplete)" : "held (failed standards)";
+    }
+
+    if (incomplete) {
+      await query(
+        `update opportunities set human_action_required = true where id = $1 and org_id = $2`,
+        [opportunityId, orgId]
+      );
     }
 
     const summary = `Verified ${sub.company_name}: email ${
@@ -410,8 +521,10 @@ export const subVerify: AgentDefinition = {
     }, phone ${phone ? "on file" : "missing"}, SAM ${samExcluded ? "EXCLUDED" : samConfirmed ? "clear" : "UNVERIFIED"}, license ${licenseStatus} → ${route}.`;
 
     return {
-      ok: true,
-      summary,
+      ok: !incomplete,
+      summary: incomplete
+        ? `${summary} Verification is incomplete: ${unresolvedFailures.join(" ")}`
+        : summary,
       reasoning: `Standards gate: sam_excluded=${samExcluded}, rating_ok=${ratingOk}, contact_ok=${contactOk}. Notes: ${
         notes.join(" ") || "none"
       }`,
@@ -428,9 +541,10 @@ export const subVerify: AgentDefinition = {
         passes,
         contactOk,
         route,
+        unresolvedFailures,
       },
       enqueued,
-      humanActionRequired: standardsOk && !contactOk,
+      humanActionRequired: incomplete || (standardsOk && !contactOk),
     };
   },
 };

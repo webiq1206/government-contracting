@@ -264,6 +264,12 @@ export interface PageGuide {
   opportunityId?: string;
   subId?: string;
   automationPaused: boolean;
+  /**
+   * Facts that could not be verified while this otherwise useful guide was
+   * built. An empty workload and an unreadable workload must never share the
+   * same "nothing required" presentation.
+   */
+  dataWarnings?: string[];
 }
 
 const PAGE_TERM_KEYS: Partial<Record<GuidePageKey, string[]>> = {

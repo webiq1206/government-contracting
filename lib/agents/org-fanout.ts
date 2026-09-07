@@ -22,7 +22,8 @@
  * each have to remember.
  */
 import { listActiveOrganizations, type Organization } from "../organizations";
-import { LEGACY_ORG_ID } from "../tenant-context";
+import { currentOrgId, LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
+import { isAutomationPaused } from "../app-settings";
 import { logAgent } from "../logger";
 
 export interface OrgFanout {
@@ -36,6 +37,8 @@ export interface OrgFanout {
    * like before its first customer.
    */
   soloFallback: boolean;
+  /** Accounts deliberately excluded because their own master switch is paused. */
+  pausedCount: number;
 }
 
 /**
@@ -47,6 +50,20 @@ export interface OrgFanout {
  * and running somebody's automation against the wrong tenant.
  */
 export async function orgsToSweep(agent: string): Promise<OrgFanout> {
+  // A manual or record-triggered run already has an owning organization from
+  // the runner. In that case this is not a platform sweep: pressing Run now
+  // in one account must never trigger work for every other customer.
+  const scopedOrg = currentOrgId();
+  if (scopedOrg) {
+    const paused = await isAutomationPaused();
+    return {
+      orgs: paused ? [] : ([{ id: scopedOrg }] as Organization[]),
+      error: null,
+      soloFallback: false,
+      pausedCount: paused ? 1 : 0,
+    };
+  }
+
   let orgs: Organization[];
   try {
     orgs = await listActiveOrganizations();
@@ -64,17 +81,27 @@ export async function orgsToSweep(agent: string): Promise<OrgFanout> {
           500
         ),
     });
-    return { orgs: [], error, soloFallback: false };
+    return { orgs: [], error, soloFallback: false, pausedCount: 0 };
   }
 
+  let soloFallback = false;
   if (orgs.length === 0) {
-    return {
-      orgs: [{ id: LEGACY_ORG_ID } as Organization],
-      error: null,
-      soloFallback: true,
-    };
+    orgs = [{ id: LEGACY_ORG_ID } as Organization];
+    soloFallback = true;
   }
-  return { orgs, error: null, soloFallback: false };
+
+  // A cron sweep has no payload, so the runner cannot resolve one account and
+  // enforce its pause switch before the handler starts. Enforce it while the
+  // fanout still knows exactly which account each iteration belongs to.
+  const runnable: Organization[] = [];
+  let pausedCount = 0;
+  for (const org of orgs) {
+    const paused = await runWithOrg(org.id, () => isAutomationPaused());
+    if (paused) pausedCount++;
+    else runnable.push(org);
+  }
+
+  return { orgs: runnable, error: null, soloFallback, pausedCount };
 }
 
 /**
@@ -84,6 +111,11 @@ export async function orgsToSweep(agent: string): Promise<OrgFanout> {
  * condition, and so the wording is one edit rather than six.
  */
 export function fanoutNote(fanout: OrgFanout): string | null {
-  if (!fanout.error) return null;
-  return `No accounts were processed: the list of accounts could not be read (${fanout.error}).`;
+  if (fanout.error) {
+    return `No accounts were processed: the list of accounts could not be read (${fanout.error}).`;
+  }
+  if (fanout.orgs.length === 0 && fanout.pausedCount > 0) {
+    return `No accounts were processed because automation is paused for ${fanout.pausedCount} account${fanout.pausedCount === 1 ? "" : "s"}.`;
+  }
+  return null;
 }

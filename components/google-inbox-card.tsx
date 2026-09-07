@@ -32,6 +32,127 @@ interface SendAsOption {
   isPrimary: boolean;
 }
 
+type ClientFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+type InboxActionResult =
+  | { ok: true }
+  | {
+      ok: false;
+      message: string;
+    };
+
+function responseError(data: unknown): string | null {
+  if (!data || typeof data !== "object" || !("error" in data)) return null;
+  const error = (data as { error?: unknown }).error;
+  return typeof error === "string" && error.trim() ? error.trim() : null;
+}
+
+/**
+ * Keep request uncertainty out of the card's state transitions. A request can
+ * reach the server and lose its response, so transport or response-format
+ * failures are "unconfirmed", not proof that nothing changed.
+ */
+export async function saveGoogleSenderRequest(
+  address: string | null,
+  request: ClientFetch = fetch
+): Promise<InboxActionResult> {
+  let response: Response;
+  try {
+    response = await request("/api/integrations/gmail/sender", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    });
+  } catch {
+    return {
+      ok: false,
+      message:
+        "The sending-address change could not be confirmed because the server could not be reached. Check your connection, refresh this page, and try again if needed.",
+    };
+  }
+
+  let data: unknown = null;
+  let readable = true;
+  try {
+    data = await response.json();
+  } catch {
+    readable = false;
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      message: `${responseError(data) ?? `That address could not be saved (server returned HTTP ${response.status}).`} Check the address and try again.`,
+    };
+  }
+
+  if (!readable) {
+    return {
+      ok: false,
+      message:
+        "The server returned an unreadable response, so the sending-address change could not be confirmed. Refresh this page before trying again.",
+    };
+  }
+
+  if (!data || typeof data !== "object" || (data as { ok?: unknown }).ok !== true) {
+    return {
+      ok: false,
+      message:
+        "The server did not confirm the sending-address change. Refresh this page before trying again.",
+    };
+  }
+
+  return { ok: true };
+}
+
+export async function disconnectGoogleInboxRequest(
+  request: ClientFetch = fetch
+): Promise<InboxActionResult> {
+  let response: Response;
+  try {
+    response = await request("/api/integrations/gmail/disconnect", { method: "POST" });
+  } catch {
+    return {
+      ok: false,
+      message:
+        "The disconnect could not be confirmed because the server could not be reached. Check your connection and refresh this page before trying again.",
+    };
+  }
+
+  let data: unknown = null;
+  let readable = true;
+  try {
+    data = await response.json();
+  } catch {
+    readable = false;
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      message: `${responseError(data) ?? `Google Inbox could not be disconnected (server returned HTTP ${response.status}).`} Try again.`,
+    };
+  }
+
+  if (!readable) {
+    return {
+      ok: false,
+      message:
+        "The server returned an unreadable response, so the disconnect could not be confirmed. Refresh this page before trying again.",
+    };
+  }
+
+  if (!data || typeof data !== "object" || (data as { ok?: unknown }).ok !== true) {
+    return {
+      ok: false,
+      message:
+        "The server did not confirm the disconnect. Refresh this page before trying again.",
+    };
+  }
+
+  return { ok: true };
+}
+
 export function GoogleInboxCard({
   initial,
   canManage = true,
@@ -47,6 +168,7 @@ export function GoogleInboxCard({
   const [choice, setChoice] = useState(initial.sendAs ?? "");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   const sending = initial.sendAs ?? initial.email;
 
@@ -83,14 +205,9 @@ export function GoogleInboxCard({
     setBusy(true);
     setSaveError(null);
     try {
-      const res = await fetch("/api/integrations/gmail/sender", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: choice || null }),
-      });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        setSaveError(data.error ?? "That address could not be saved.");
+      const result = await saveGoogleSenderRequest(choice || null);
+      if (!result.ok) {
+        setSaveError(result.message);
         return;
       }
       setEditing(false);
@@ -103,13 +220,19 @@ export function GoogleInboxCard({
   // "revoked" means a row exists but the grant is gone, usually because the
   // user removed access from their Google account. Treated as disconnected so
   // the UI asks for a reconnect instead of claiming everything is fine.
+  const unavailable = initial.status === "unavailable";
   const live = initial.connected && initial.status !== "revoked";
 
   async function disconnect() {
     setAsking(false);
     setBusy(true);
+    setDisconnectError(null);
     try {
-      await fetch("/api/integrations/gmail/disconnect", { method: "POST" });
+      const result = await disconnectGoogleInboxRequest();
+      if (!result.ok) {
+        setDisconnectError(result.message);
+        return;
+      }
       router.refresh();
     } finally {
       setBusy(false);
@@ -138,10 +261,14 @@ export function GoogleInboxCard({
         </div>
         <span
           className={`badge shrink-0 ${
-            live ? "bg-pursue/15 text-pursue" : "bg-review/15 text-review"
+            unavailable
+              ? "bg-risk/15 text-risk"
+              : live
+                ? "bg-pursue/15 text-pursue"
+                : "bg-review/15 text-review"
           }`}
         >
-          {live ? "Working" : "Not connected"}
+          {unavailable ? "Status unavailable" : live ? "Working" : "Not connected"}
         </span>
       </div>
 
@@ -161,7 +288,7 @@ export function GoogleInboxCard({
               )}
             </div>
             {canManage && !editing && (
-              <button className="btn-ghost shrink-0 text-xs" onClick={() => void openPicker()}>
+              <button type="button" className="btn-ghost shrink-0 text-xs" onClick={() => void openPicker()}>
                 Change
               </button>
             )}
@@ -205,10 +332,19 @@ export function GoogleInboxCard({
                 the address you choose has to be delivered there. Send yourself a test and
                 reply to it before you rely on it.
               </p>
-              {loadError && <p className="text-xs text-risk">{loadError}</p>}
-              {saveError && <p className="text-xs text-risk">{saveError}</p>}
+              {loadError && (
+                <p role="alert" className="text-xs text-risk">
+                  {loadError}
+                </p>
+              )}
+              {saveError && (
+                <p role="alert" className="text-xs text-risk">
+                  {saveError}
+                </p>
+              )}
               <div className="flex gap-2 pt-1">
                 <button
+                  type="button"
                   className="btn-primary text-xs"
                   disabled={busy || options === null}
                   onClick={() => void saveSender()}
@@ -216,6 +352,7 @@ export function GoogleInboxCard({
                   {busy ? "Saving…" : "Save"}
                 </button>
                 <button
+                  type="button"
                   className="btn-ghost text-xs"
                   disabled={busy}
                   onClick={() => {
@@ -230,6 +367,11 @@ export function GoogleInboxCard({
             </div>
           )}
         </div>
+      ) : unavailable ? (
+        <p className="text-sm text-risk">
+          The saved inbox record could not be checked. No connection claim or reconnect action is
+          shown until that read succeeds.
+        </p>
       ) : (
         <p className="text-sm text-slate-700">
           Nothing to set up. Click the button, sign in with Google, and you are done.
@@ -245,6 +387,11 @@ export function GoogleInboxCard({
       {initial.lastError && initial.status !== "revoked" && (
         <p className="text-xs text-risk">Last error: {initial.lastError}</p>
       )}
+      {disconnectError && (
+        <p role="alert" className="text-sm text-risk">
+          {disconnectError}
+        </p>
+      )}
 
       {!initial.available && (
         <p className="text-sm text-risk">
@@ -253,13 +400,21 @@ export function GoogleInboxCard({
       )}
 
       <div className="mt-auto flex flex-wrap gap-2 border-t border-border pt-3">
-        {initial.available && (
+        {initial.available && !unavailable && (
           <a href="/api/integrations/gmail/connect" className="btn-primary text-xs">
             {live ? "Reconnect Google Inbox" : "Connect Google Inbox"}
           </a>
         )}
         {live && (
-          <button className="btn-ghost text-xs" onClick={() => setAsking(true)} disabled={busy}>
+          <button
+            type="button"
+            className="btn-ghost text-xs"
+            onClick={() => {
+              setDisconnectError(null);
+              setAsking(true);
+            }}
+            disabled={busy}
+          >
             {busy ? "Disconnecting…" : "Disconnect"}
           </button>
         )}

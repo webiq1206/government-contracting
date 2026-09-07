@@ -47,6 +47,8 @@ export type AttachmentFetchStatus =
    * may be counted as a success.
    */
   | "not_read"
+  /** Some text was read, but a source or prompt ceiling left part unread. */
+  | "partial"
   /**
    * A .zip, .rar or .7z: downloaded and stored, contents never opened.
    *
@@ -247,10 +249,13 @@ export function evaluateSolicitationCompleteness(
       o.status === "fetched" ||
       o.status === "unsupported" ||
       o.status === "not_read" ||
+      o.status === "partial" ||
       o.status === "archive"
   ).length;
   const unread = input.attachmentOutcomes.filter((o) => o.status === "no_text");
   const notRead = input.attachmentOutcomes.filter((o) => o.status === "not_read");
+  const partial = input.attachmentOutcomes.filter((o) => o.status === "partial");
+  const unsupported = input.attachmentOutcomes.filter((o) => o.status === "unsupported");
   const archives = input.attachmentOutcomes.filter((o) => o.status === "archive");
   const failed = input.attachmentOutcomes.filter(
     (o) =>
@@ -313,6 +318,36 @@ export function evaluateSolicitationCompleteness(
       critical: true,
     });
     riskFlags.push("documents_not_read");
+  }
+
+  if (partial.length > 0) {
+    missing.push({
+      key: "documents_partly_read",
+      what: "Documents that were only partly read",
+      why: "A page, section, or tail of these files did not reach the analysis, so the brief cannot prove it includes every requirement.",
+      retrievable: "either",
+      resolution: `Partly read: ${partial
+        .map((f) => `${f.name}${f.detail ? ` (${f.detail})` : ""}`)
+        .join("; ")}. Review the unread portion or provide a smaller text-based copy, then re-run analysis.`,
+      action: { label: "Review missing information", href: "#attachments", modal: "review-missing" },
+      critical: true,
+    });
+    riskFlags.push("documents_partly_read");
+  }
+
+  if (unsupported.length > 0) {
+    missing.push({
+      key: "unsupported_documents",
+      what: "Documents in a format Brost Co could not read",
+      why: "The files are stored, but their contents did not reach the analysis. They may contain scope, prices, forms, drawings, or submission rules.",
+      retrievable: "admin",
+      resolution: `Not readable by the analyzer: ${unsupported
+        .map((f) => `${f.name}${f.detail ? ` (${f.detail})` : ""}`)
+        .join("; ")}. Convert each file to a readable PDF or text document, or review and record its requirements manually.`,
+      action: { label: "Upload documents", href: "#attachments", modal: "upload" },
+      critical: true,
+    });
+    riskFlags.push("unsupported_documents");
   }
 
   if (unread.length > 0) {

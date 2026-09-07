@@ -29,12 +29,22 @@ export function CallPanel({
   const router = useRouter();
   const [data, setData] = useState<CallWorkspaceData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    let timedOut = false;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 12_000);
     setData(null);
     setError(null);
-    fetch(`/api/call-cards/${cardId}/workspace`, { cache: "no-store" })
+    fetch(`/api/call-cards/${encodeURIComponent(cardId)}/workspace`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (cancelled) return;
@@ -42,27 +52,50 @@ export function CallPanel({
           setError((body as { error?: string }).error ?? "Could not load this call.");
           return;
         }
+        if (!(body as Partial<CallWorkspaceData>).card) {
+          setError(
+            "The server returned an incomplete call record. No call data was changed. Try again, or return to the queue."
+          );
+          return;
+        }
         setData(body as CallWorkspaceData);
       })
       .catch(() => {
-        if (!cancelled) setError("Could not reach the server.");
-      });
+        if (cancelled) return;
+        setError(
+          timedOut
+            ? "This call took too long to load. It has not been changed. Check your connection and try again."
+            : "Could not reach the server. The call has not been changed. Check your connection and try again."
+        );
+      })
+      .finally(() => window.clearTimeout(timeout));
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
-  }, [cardId]);
+  }, [cardId, attempt]);
 
   if (error) {
     return (
       <div className="flex flex-1 items-center justify-center p-8">
-        <div className="max-w-sm text-center">
-          <p className="text-sm font-medium text-risk">{error}</p>
+        <div className="max-w-sm text-center" role="alert">
+          <p className="text-sm font-medium text-risk">The call workspace did not load</p>
           <p className="mt-1 text-xs text-slate-500">
-            The card may have been completed or skipped since the list loaded.
+            {error}
           </p>
-          <Link href={closeHref} className="btn-ghost mt-3 inline-flex text-sm">
-            Back to the queue
-          </Link>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              className="btn-primary text-sm"
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              Try again
+            </button>
+            <Link href={closeHref} className="btn-ghost inline-flex text-sm">
+              Back to the queue
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -70,7 +103,12 @@ export function CallPanel({
 
   if (!data) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8">
+      <div
+        className="flex flex-1 items-center justify-center p-8"
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
         <p className="text-sm text-slate-500">Loading the call…</p>
       </div>
     );

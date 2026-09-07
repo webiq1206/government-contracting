@@ -37,20 +37,22 @@ export interface CardPreviewData {
 }
 
 const cache = new Map<string, CardPreviewData>();
-const inFlight = new Map<string, Promise<CardPreviewData | null>>();
+const inFlight = new Map<string, Promise<CardPreviewData>>();
 
-function load(id: string): Promise<CardPreviewData | null> {
+function load(id: string): Promise<CardPreviewData> {
   const hit = cache.get(id);
   if (hit) return Promise.resolve(hit);
   const pending = inFlight.get(id);
   if (pending) return pending;
   const p = fetch(`/api/opportunities/${id}/preview`)
-    .then((r) => (r.ok ? (r.json() as Promise<CardPreviewData>) : null))
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`Preview request failed with status ${r.status}.`);
+      return (await r.json()) as CardPreviewData;
+    })
     .then((d) => {
-      if (d) cache.set(id, d);
+      cache.set(id, d);
       return d;
     })
-    .catch(() => null)
     .finally(() => inFlight.delete(id));
   inFlight.set(id, p);
   return p;
@@ -130,6 +132,7 @@ export function CardPreview({
   children: ReactNode;
 }) {
   const [data, setData] = useState<CardPreviewData | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -169,9 +172,18 @@ export function CardPreview({
     timer.current = setTimeout(() => {
       place();
       setOpen(true);
-      void load(opportunityId).then((d) => {
-        if (alive.current && d) setData(d);
-      });
+      setError(null);
+      void load(opportunityId)
+        .then((d) => {
+          if (alive.current) setData(d);
+        })
+        .catch(() => {
+          if (alive.current) {
+            setError(
+              "The preview did not load. Open the opportunity for its current details, or hover again to retry."
+            );
+          }
+        });
     }, OPEN_DELAY_MS);
   }, [opportunityId, place]);
 
@@ -195,7 +207,11 @@ export function CardPreview({
           style={{ top: pos.top, left: pos.left, width: 340 }}
           className="pointer-events-none fixed z-50 rounded-md border border-border/75 bg-surface-raised p-3 shadow-xl dark:border-white/[0.17]"
         >
-          {!data ? (
+          {error ? (
+            <p role="alert" className="text-xs font-medium text-risk">
+              {error}
+            </p>
+          ) : !data ? (
             <p className="text-xs text-muted-foreground">Loading the details…</p>
           ) : (
             <CardPreviewBody data={data} />

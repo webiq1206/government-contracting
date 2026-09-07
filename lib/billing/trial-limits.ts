@@ -62,10 +62,16 @@ export const TRIAL_METRIC_BLOCKED_COPY: Record<TrialMetric, string> = {
 /** SQL that counts one metric for an organization. */
 const COUNT_SQL: Record<TrialMetric, string> = {
   outreach_emails: `select count(*)::int as n from communications
-                     where org_id = $1 and channel = 'email' and direction = 'outbound'`,
+                     where org_id = $1 and channel = 'email' and direction = 'outbound'
+                       and (provider is not null
+                            or gmail_message_id is not null
+                            or rfc822_message_id is not null)`,
   ai_briefs: `select count(*)::int as n from opportunities
                where org_id = $1 and solicitation_analysis is not null`,
-  bid_packages: `select count(*)::int as n from bids where org_id = $1`,
+  bid_packages: `select count(*)::int as n from bids
+                  where org_id = $1
+                    and jsonb_typeof(documents_json) = 'array'
+                    and jsonb_array_length(documents_json) > 0`,
 };
 
 /**
@@ -113,7 +119,11 @@ export interface QuotaState {
  */
 async function countMetric(orgId: string, metric: TrialMetric): Promise<number> {
   const rows = await query<{ n: number }>(COUNT_SQL[metric], [orgId]);
-  return rows[0]?.n ?? 0;
+  const count = rows[0]?.n;
+  if (!Number.isInteger(count) || count < 0) {
+    throw new Error(`The ${metric} count query did not return one valid count.`);
+  }
+  return count;
 }
 
 /**
@@ -166,7 +176,7 @@ export async function quotaState(orgId: string, metric: TrialMetric): Promise<Qu
       exhausted: false,
       unreadable: {
         reference,
-        detail: `This meter could not be read, so the count shown may be out of date. Your ${TRIAL_METRIC_LABEL[metric]} still work.`,
+        detail: `This meter could not be read. Actions that use ${TRIAL_METRIC_LABEL[metric]} are held until the count can be verified.`,
       },
     };
   }
@@ -186,6 +196,24 @@ export interface QuotaDecision {
   state?: QuotaState;
 }
 
+function unavailableDecision(
+  metric: TrialMetric,
+  err: unknown,
+  reason: "account" | "meter"
+): QuotaDecision {
+  const reference = faultReference(metric, err);
+  console.error(
+    `[trial-limits] ${reference} could not verify ${reason} state for ${metric}:`,
+    err
+  );
+  return {
+    allowed: false,
+    message:
+      `Billing and trial usage could not be verified, so this action was held rather than using an unconfirmed allowance. ` +
+      `Try again after the account connection recovers. If it continues, send support reference ${reference}.`,
+  };
+}
+
 /**
  * Whether one metered action may proceed for this organization.
  *
@@ -194,34 +222,52 @@ export interface QuotaDecision {
  * several frames away from any session, and a stale "they're paid" belief is
  * exactly the mistake that would give away the product.
  *
- * Fails OPEN on a database error. A meter that cannot be read should not stop
- * a paying customer's outreach; the blast radius of a brief over-allowance on
- * a trial is a handful of emails, and the blast radius of the opposite is a
- * customer whose work silently stopped.
+ * Fails closed, with an actionable explanation, when account or meter state
+ * cannot be proved. A paid account normally exits before its meter is read,
+ * but a failed account lookup cannot safely be interpreted as paid, trial, or
+ * absent. Holding one retryable action is recoverable; silently spending an
+ * unknown allowance is not.
  */
 export async function checkTrialQuota(
   orgId: string | null | undefined,
   metric: TrialMetric
 ): Promise<QuotaDecision> {
-  if (!orgId) return { allowed: true };
+  if (!orgId) {
+    return unavailableDecision(
+      metric,
+      new Error("No organization id was supplied to the quota gate."),
+      "account"
+    );
+  }
 
-  const rows = await query<{
+  let rows: {
     subscription_status: string;
     trial_ends_at: string | null;
     billing_exempt: boolean;
     suspended_at: string | null;
-  }>(
-    // billing_exempt and suspended_at are selected because accessLevel needs
-    // them. Without the exemption here a comped account would be metered like
-    // a trial, which is exactly the bug the exemption exists to prevent.
-    `select subscription_status,
-            trial_ends_at::text as trial_ends_at,
-            billing_exempt,
-            suspended_at::text as suspended_at
-       from organizations where id = $1`,
-    [orgId]
-  ).catch(() => null);
-  if (!rows || rows.length === 0) return { allowed: true };
+  }[];
+  try {
+    rows = await query(
+      // billing_exempt and suspended_at are selected because accessLevel needs
+      // them. Without the exemption here a comped account would be metered like
+      // a trial, which is exactly the bug the exemption exists to prevent.
+      `select subscription_status,
+              trial_ends_at::text as trial_ends_at,
+              billing_exempt,
+              suspended_at::text as suspended_at
+         from organizations where id = $1`,
+      [orgId]
+    );
+  } catch (err) {
+    return unavailableDecision(metric, err, "account");
+  }
+  if (rows.length === 0) {
+    return unavailableDecision(
+      metric,
+      new Error(`Organization ${orgId} was not found.`),
+      "account"
+    );
+  }
 
   const { accessLevel } = await import("./entitlements");
   const level = accessLevel(rows[0]);
@@ -232,23 +278,34 @@ export async function checkTrialQuota(
   // No access at all is a different refusal, handled by the access gate rather
   // than by a quota message. Say so plainly instead of blaming a meter.
   if (level === "none") {
+    const status = rows[0].subscription_status;
+    const message = rows[0].suspended_at
+      ? "This account is suspended, so metered work is paused. Ask a platform administrator to restore access."
+      : status === "trial" || status === "trial_expired"
+        ? "Your free trial has ended. Choose a plan to start this back up; nothing you set up has been lost."
+        : status === "unpaid" || status === "past_due"
+          ? "This account does not currently have access because payment is unresolved. Update the payment method in Billing, then retry this action."
+          : status === "canceled"
+            ? "This subscription is canceled. Restart it in Billing, then retry this action; nothing you set up has been lost."
+            : status === "incomplete" || status === "incomplete_expired"
+              ? "Subscription setup was not completed. Finish checkout in Billing, then retry this action."
+              : "This account does not currently have access. Open Billing to review the account status before retrying this action.";
     return {
       allowed: false,
-      message:
-        "Your free trial has ended. Choose a plan to start this back up; nothing you set up has been lost.",
+      message,
     };
   }
 
   const state = await quotaState(orgId, metric);
-  /*
-   * An unreadable meter allows the action, on the same reasoning as the
-   * database error above: the cost of over-allowing a trial is a handful of
-   * emails, and the cost of the opposite is a customer whose work stopped for
-   * a reason nobody can see. What has changed is that it is no longer silent.
-   * `quotaState` has already written the reference to the server log, the
-   * state carries it, and every screen that shows this meter says so.
-   */
-  if (state.unreadable) return { allowed: true, state };
+  if (state.unreadable) {
+    return {
+      allowed: false,
+      state,
+      message:
+        `Your ${TRIAL_METRIC_LABEL[metric]} usage could not be counted, so this action was held rather than using an unconfirmed allowance. ` +
+        `Try again after the account connection recovers. If it continues, send support reference ${state.unreadable.reference}.`,
+    };
+  }
   if (state.exhausted) {
     return { allowed: false, message: TRIAL_METRIC_BLOCKED_COPY[metric], state };
   }

@@ -111,7 +111,7 @@ export function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-6"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 lg:items-center lg:p-6"
       // A click on the backdrop cancels, which is what people expect and what
       // Escape does. It never confirms.
       onMouseDown={(e) => {
@@ -125,9 +125,7 @@ export function ConfirmDialog({
         aria-labelledby={titleId}
         aria-describedby={body ? bodyId : undefined}
         onKeyDown={trap}
-        className="w-full max-w-lg rounded-t-lg border border-border bg-surface p-5 shadow-lg sm:rounded-lg"
-        // Above the home indicator on a phone, where this sheet sits.
-        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+        className="mobile-tab-clearance max-h-[calc(100dvh-4rem-env(safe-area-inset-bottom))] w-full max-w-lg overflow-y-auto rounded-t-lg border border-border bg-surface p-5 shadow-lg lg:max-h-[calc(100dvh-3rem)] lg:rounded-lg"
       >
         <h2 id={titleId} className="font-display text-xl font-normal text-foreground">
           {title}

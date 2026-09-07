@@ -48,7 +48,7 @@ export async function accountUsage(orgId: string): Promise<AccountUsage> {
          where d.org_id = $1) as storage_bytes,
        (select max(created_at)::text from opportunities where org_id = $1) as last_record_at`,
     [orgId]
-  ).catch(() => null);
+  );
 
   const n = (v: string | null | undefined): number | null => {
     if (v == null) return null;
@@ -98,7 +98,7 @@ export interface AccountIntegration {
  * fact that a value exists, and what happened the last time it was used.
  */
 export async function accountIntegrations(orgId: string): Promise<AccountIntegration[]> {
-  const stored = await listSettings(orgId).catch(() => []);
+  const stored = await listSettings(orgId);
   const byKey = new Map(stored.map((s) => [s.env_key, s]));
 
   // Customer-facing integrations only. The platform's own (Ahrefs, storage)
@@ -151,5 +151,5 @@ export async function accountSessions(
       order by s.created_at desc
       limit $2`,
     [orgId, limit]
-  ).catch(() => []);
+  );
 }

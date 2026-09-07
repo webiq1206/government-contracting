@@ -15,8 +15,10 @@ import {
   type ProspectRow,
   type OutreachActivityRow,
 } from "@/lib/data";
-import { integrationStatus } from "@/lib/config";
 import { hydrateIntegrationEnv } from "@/lib/integration-settings";
+import { ahrefs } from "@/lib/integrations/ahrefs";
+import { gmail } from "@/lib/integrations/gmail";
+import { LEGACY_ORG_ID, runWithOrg } from "@/lib/tenant-context";
 import { PAGE_HELP } from "@/lib/help-content";
 import { shortDate } from "@/lib/format";
 import {
@@ -27,6 +29,7 @@ import {
 } from "@/components/workspace/workspace-shell";
 import { QueueRail, type QueueEntry } from "@/components/workspace/queue-rail";
 import { KeyHint, QueueKeys } from "@/components/workspace/workspace-keys";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 import {
   advanceTarget,
   queueHrefBuilder,
@@ -82,19 +85,38 @@ export default async function AuthorityPage({
   // It was reachable by every signed-in customer, showing them our Ahrefs
   // data and a feature that means nothing to a contractor. 404 for everyone
   // else, matching how /admin/billing hides itself.
-  const user = await currentUser().catch(() => null);
+  // A successful non-admin stays hidden behind 404. A failed identity read is
+  // an outage and must reach the dashboard error boundary instead.
+  const user = await currentUser();
   if (!isPlatformAdmin(user?.email)) notFound();
 
   await hydrateIntegrationEnv();
-  const status = integrationStatus();
-  const connected = status.ahrefs;
-  const [overview, prospects, pending, activity, changes] = await Promise.all([
-    authorityOverview(),
-    backlinkProspects(150),
-    outreachQueue("pending"),
-    outreachActivity(50),
-    backlinkChanges(),
+  // Resolve the exact platform-owner setting the worker uses. A key saved in
+  // this admin UI must not produce a green card while the worker checks only
+  // the deployment environment and skips every run.
+  let ahrefsStatusUnavailable = false;
+  let gmailStatusUnavailable = false;
+  const [connected, gmailReady] = await Promise.all([
+    ahrefs.enabled(LEGACY_ORG_ID).catch(() => {
+      ahrefsStatusUnavailable = true;
+      return false;
+    }),
+    gmail.canAuthenticate(LEGACY_ORG_ID).catch(() => {
+      gmailStatusUnavailable = true;
+      return false;
+    }),
   ]);
+  const [overview, prospects, pending, activity, changes] = await runWithOrg(
+    LEGACY_ORG_ID,
+    () =>
+      Promise.all([
+        authorityOverview(),
+        backlinkProspects(150),
+        outreachQueue("pending"),
+        outreachActivity(50),
+        backlinkChanges(),
+      ])
+  );
 
   const dr = overview.latest?.domain_rating ?? null;
   const startDr = overview.first?.domain_rating ?? null;
@@ -331,10 +353,11 @@ export default async function AuthorityPage({
                     connected inbox, so approving never puts mail on the wire by
                     itself.
                   </p>
-                  {!status.gmail && (
+                  {!gmailReady && (
                     <p className="mt-2 text-xs text-review">
-                      No inbox is connected, so approved drafts will queue rather than
-                      go out.
+                      {gmailStatusUnavailable
+                        ? "The sending inbox could not be verified, so approved drafts will stay queued until its status can be checked."
+                        : "No working inbox is connected, so approved drafts will queue rather than go out."}
                     </p>
                   )}
                 </ContextSection>
@@ -352,7 +375,9 @@ export default async function AuthorityPage({
         title="Site Authority"
         help={PAGE_HELP["authority"]}
         status={
-          connected
+          ahrefsStatusUnavailable
+            ? "Ahrefs status unavailable"
+            : connected
             ? dr != null
               ? `DR ${dr} · ${pending.length} draft${pending.length === 1 ? "" : "s"} awaiting approval`
               : `${prospects.length} prospect${prospects.length === 1 ? "" : "s"} qualified`
@@ -371,8 +396,18 @@ export default async function AuthorityPage({
         }
       />
 
+      <ShellDataWarning
+        items={
+          ahrefsStatusUnavailable
+            ? [
+                "The saved Ahrefs configuration could not be read, so Site Authority readiness is unknown. No scan is available until the connection recovers. Reload this page before changing the credential.",
+              ]
+            : []
+        }
+      />
+
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
-        {!connected && (
+        {!connected && !ahrefsStatusUnavailable && (
           <div className="callout-panel">
             <p className="text-sm font-medium text-foreground">Connect Ahrefs to turn this on.</p>
             <p className="mt-1 text-sm text-slate-600">
@@ -452,14 +487,16 @@ export default async function AuthorityPage({
         {activity.length > 0 && (
           <section>
             <h2 className="label mb-2">In outreach</h2>
-            {!status.gmail && activity.some((a) => !a.sent_at) && (
+            {!gmailReady && activity.some((a) => !a.sent_at) && (
               <div className="callout-panel mb-2 text-sm text-slate-600">
-                Some outreach is approved but not sent yet because Gmail isn&rsquo;t connected. Connect
-                it on the{" "}
+                {gmailStatusUnavailable
+                  ? "Some outreach is approved but not sent because the sending inbox could not be verified. Reload before changing the connection on "
+                  : "Some outreach is approved but not sent yet because no working Gmail inbox is connected. Connect it on "}
+                the{" "}
                 <a href="/settings/integrations" className="text-accent hover:underline">
                   Integrations
                 </a>{" "}
-                page and it sends automatically.
+                page. It sends only after the inbox is verified.
               </div>
             )}
             <div className="card divide-y divide-border p-0">

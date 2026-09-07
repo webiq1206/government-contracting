@@ -34,6 +34,7 @@ const TOUCHED = [
   "DATABASE_URL",
   "USE_REPLIT_DEV_DB",
   "ALLOW_REAL_EMAIL_FROM_DEV",
+  "SYSTEM_MAIL_FROM",
   "PGHOST",
   "PGPORT",
   "PGUSER",
@@ -56,6 +57,7 @@ beforeEach(() => {
   process.env.PGDATABASE = "heliumdb";
   delete process.env.USE_REPLIT_DEV_DB;
   delete process.env.ALLOW_REAL_EMAIL_FROM_DEV;
+  delete process.env.SYSTEM_MAIL_FROM;
   delete process.env.REPLIT_DEPLOYMENT;
   // The deployment warning fires once per process; clear it so each case sees
   // the same starting state.
@@ -229,6 +231,11 @@ describe("outbound email from a development process", () => {
    */
   it("blocks platform system mail on the same rule", async () => {
     process.env.USE_REPLIT_DEV_DB = "true";
+    // System mail now requires a verified sender identity before it reaches
+    // the Gmail primitive. Give this transport-safety test an explicit
+    // platform identity so an unavailable database cannot make it stop at
+    // that independent fail-closed check first.
+    process.env.SYSTEM_MAIL_FROM = "BROST CO <info@brostco.com>";
 
     const result = await systemMail.send({
       to: "owner@example.com",

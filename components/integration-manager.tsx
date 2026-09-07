@@ -77,6 +77,85 @@ const BADGE_TONE: Record<"red" | "amber" | "green" | "slate", string> = {
   slate: "bg-slate-200 text-slate-600",
 };
 
+type ClientFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+type RemoveKeyResult =
+  | { ok: true; integrations: IntegrationRow[] }
+  | { ok: false; message: string };
+
+function responseError(data: unknown): string | null {
+  if (!data || typeof data !== "object" || !("error" in data)) return null;
+  const error = (data as { error?: unknown }).error;
+  return typeof error === "string" && error.trim() ? error.trim() : null;
+}
+
+/**
+ * A removal is applied to local state only after the API explicitly confirms
+ * it and returns the replacement list. An interrupted response is ambiguous:
+ * the server may have received it, so the safe next step is to refresh before
+ * repeating the destructive action.
+ */
+export async function removeIntegrationKeyRequest(
+  env: string,
+  request: ClientFetch = fetch
+): Promise<RemoveKeyResult> {
+  let response: Response;
+  try {
+    response = await request("/api/integrations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remove: [env] }),
+    });
+  } catch {
+    return {
+      ok: false,
+      message:
+        "The removal could not be confirmed because the server could not be reached. The current value remains shown; refresh this page before trying again.",
+    };
+  }
+
+  let data: unknown = null;
+  let readable = true;
+  try {
+    data = await response.json();
+  } catch {
+    readable = false;
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      message: `${responseError(data) ?? `The saved value could not be removed (server returned HTTP ${response.status}).`} The current value remains shown; try again.`,
+    };
+  }
+
+  if (!readable) {
+    return {
+      ok: false,
+      message:
+        "The server returned an unreadable response, so the removal could not be confirmed. The current value remains shown; refresh this page before trying again.",
+    };
+  }
+
+  if (
+    !data ||
+    typeof data !== "object" ||
+    (data as { ok?: unknown }).ok !== true ||
+    !Array.isArray((data as { integrations?: unknown }).integrations)
+  ) {
+    return {
+      ok: false,
+      message:
+        "The server did not return updated integration status, so the removal could not be confirmed. The current value remains shown; refresh this page before trying again.",
+    };
+  }
+
+  return {
+    ok: true,
+    integrations: (data as { integrations: IntegrationRow[] }).integrations,
+  };
+}
+
 export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   const router = useRouter();
   const [items, setItems] = useState<IntegrationRow[]>(initial);
@@ -162,17 +241,17 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
     setRemoving(null);
     setBusy(`remove:${def.id}`);
     try {
-      const res = await fetch("/api/integrations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ remove: [env] }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setItems(data.integrations);
-        setResults((r) => ({ ...r, [def.id]: { ok: true, message: "Removed." } }));
-        router.refresh();
+      const result = await removeIntegrationKeyRequest(env);
+      if (!result.ok) {
+        setResults((r) => ({
+          ...r,
+          [def.id]: { ok: false, message: result.message },
+        }));
+        return;
       }
+      setItems(result.integrations);
+      setResults((r) => ({ ...r, [def.id]: { ok: true, message: "Removed." } }));
+      router.refresh();
     } finally {
       setBusy(null);
     }
@@ -333,7 +412,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                 </div>
               ) : (
               <div key={f.env}>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   {/* Tied to the field. A secret typed into a box a screen
                       reader announces as blank is the worst place to leave
                       this undone. */}
@@ -341,14 +420,15 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                     {f.label}
                   </label>
                   {f.source !== "none" && (
-                    <span className="flex items-center gap-2 text-xs text-slate-500">
-                      <span className="num">{f.masked}</span>
+                    <span className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
+                      <span className="num break-all">{f.masked}</span>
                       <span className="badge bg-muted text-muted-foreground">
                         {f.source === "ui" ? "saved here" : "from environment"}
                       </span>
                       {f.source === "ui" && (
                         <button
-                          className="text-risk hover:underline"
+                          type="button"
+                          className="inline-flex min-h-11 items-center text-risk hover:underline lg:min-h-0"
                           onClick={() => setRemoving({ def, env: f.env })}
                           disabled={busy != null}
                         >
@@ -408,16 +488,20 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
               ))}
 
             {result && (
-              <p className={`text-sm ${result.ok ? "text-pursue" : "text-risk"}`}>
+              <p
+                role={result.ok ? "status" : "alert"}
+                className={`text-sm ${result.ok ? "text-pursue" : "text-risk"}`}
+              >
                 {result.message}
               </p>
             )}
 
-            <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-3">
+            <div className="mt-auto flex flex-col items-stretch gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-slate-500">{def.where}</p>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex flex-wrap gap-2 sm:shrink-0 sm:justify-end">
                 {def.testable && (
                   <button
+                    type="button"
                     className="btn-ghost text-xs"
                     onClick={() => test(def)}
                     disabled={busy != null}
@@ -427,6 +511,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                 )}
                 {visibleFields.length > 0 && (
                   <button
+                    type="button"
                     className="btn-primary text-xs"
                     onClick={() => save(def)}
                     disabled={busy != null}

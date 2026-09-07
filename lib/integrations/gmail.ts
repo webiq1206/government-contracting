@@ -16,6 +16,9 @@ import { queryOne, query } from "../db";
 import { tryResolveTenantOrgId } from "../tenant";
 import { LEGACY_ORG_ID } from "../tenant-context";
 import { encryptSecret, decryptSecret } from "../integration-settings";
+import { describeSendFailure } from "./gmail-send-failure";
+
+export { describeSendFailure } from "./gmail-send-failure";
 
 /**
  * Gmail OAuth grants are the platform's single most sensitive stored secret:
@@ -131,7 +134,7 @@ export async function exchangeCode(
   const prior = await queryOne<{ email: string | null; send_as: string | null }>(
     `select email, send_as from integration_tokens where provider = 'gmail' and org_id = $1`,
     [orgId]
-  ).catch(() => null);
+  );
   const keepSendAs = Boolean(
     !prior?.email || email.toLowerCase() === prior.email.toLowerCase()
   );
@@ -173,12 +176,7 @@ async function getRefreshToken(orgId: string): Promise<string | null> {
   const row = await queryOne<{ data: { refresh_token?: string } }>(
     `select data from integration_tokens where provider = 'gmail' and org_id = $1`,
     [orgId]
-  ).catch((err) => {
-    // A DB blip here reads as "inbox not connected" downstream; leave a trace
-    // so a run of held drafts is attributable to the outage, not the user.
-    console.error(`[gmail] token read failed for org ${orgId}: ${(err as Error).message}`);
-    return null;
-  });
+  );
   const stored = readRefreshToken(row?.data);
   if (stored) return stored;
   // Headless escape hatch, founding tenant only. Handing this env token to any
@@ -204,7 +202,11 @@ async function markConnectionError(orgId: string, message: string): Promise<void
         set status = $2, last_error = $3, updated_at = now()
       where provider = 'gmail' and org_id = $1`,
     [orgId, revoked ? "revoked" : "error", message.slice(0, 500)]
-  ).catch(() => {});
+  ).catch((error) => {
+    console.error(
+      `[gmail] could not persist the connection failure for org ${orgId}: ${(error as Error).message}`
+    );
+  });
 }
 
 /**
@@ -319,9 +321,18 @@ export function referencesHeader(params: {
   inReplyTo?: string;
 }): string {
   const chain = [...(params.references ?? []), ...(params.inReplyTo ? [params.inReplyTo] : [])]
-    .map((r) => r.trim())
-    .filter(Boolean);
+    .flatMap((value) => value.match(/<[^<>\s\r\n]+>/g) ?? []);
   return [...new Set(chain)].join(" ");
+}
+
+/** One unfolded header value. Newlines can never create another MIME header. */
+function safeHeaderValue(value: string): string {
+  return value.replace(/[\r\n]+/g, " ").trim();
+}
+
+/** The first syntactically bounded Internet Message-ID in an input value. */
+function messageIdHeader(value: string | undefined): string | null {
+  return value?.match(/<[^<>\s\r\n]+>/)?.[0] ?? null;
 }
 
 /** Build a raw RFC 2822 message (base64url) with tracking baked in. */
@@ -356,16 +367,25 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
   ];
 
   const attachments = params.attachments ?? [];
+  const inReplyTo = messageIdHeader(params.inReplyTo);
+  const references = referencesHeader({
+    references: params.references,
+    inReplyTo: inReplyTo ?? undefined,
+  });
+  const safeFrom = safeHeaderValue(from);
+  const safeTo = safeHeaderValue(params.to);
+  const safeReplyTo = params.replyTo ? safeHeaderValue(params.replyTo) : "";
+  const safeSubject = safeHeaderValue(params.subject);
   let headers: string[];
   let body: string[];
   if (attachments.length === 0) {
     headers = [
-      `From: ${from}`,
-      `To: ${params.to}`,
-      params.replyTo ? `Reply-To: ${params.replyTo}` : "",
-      params.inReplyTo ? `In-Reply-To: ${params.inReplyTo}` : "",
-      referencesHeader(params) ? `References: ${referencesHeader(params)}` : "",
-      `Subject: ${params.subject}`,
+      `From: ${safeFrom}`,
+      `To: ${safeTo}`,
+      safeReplyTo ? `Reply-To: ${safeReplyTo}` : "",
+      inReplyTo ? `In-Reply-To: ${inReplyTo}` : "",
+      references ? `References: ${references}` : "",
+      `Subject: ${safeSubject}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/alternative; boundary="${boundary}"`,
     ].filter(Boolean);
@@ -374,12 +394,12 @@ export function buildGmailRawMessage(params: SendEmailParams, from: string): str
     // multipart/mixed wrapping the alternative part + one part per attachment.
     const mixed = "brostco_mx_" + Math.random().toString(36).slice(2);
     headers = [
-      `From: ${from}`,
-      `To: ${params.to}`,
-      params.replyTo ? `Reply-To: ${params.replyTo}` : "",
-      params.inReplyTo ? `In-Reply-To: ${params.inReplyTo}` : "",
-      referencesHeader(params) ? `References: ${referencesHeader(params)}` : "",
-      `Subject: ${params.subject}`,
+      `From: ${safeFrom}`,
+      `To: ${safeTo}`,
+      safeReplyTo ? `Reply-To: ${safeReplyTo}` : "",
+      inReplyTo ? `In-Reply-To: ${inReplyTo}` : "",
+      references ? `References: ${references}` : "",
+      `Subject: ${safeSubject}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/mixed; boundary="${mixed}"`,
     ].filter(Boolean);
@@ -529,24 +549,6 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-/**
- * What a failed send means, in the operator's terms.
- *
- * One refusal deserves its own sentence: Gmail rejecting the From header. It
- * means the chosen sending address is no longer one this mailbox may use,
- * usually because the alias was removed or unverified in Gmail, and Google's
- * own wording ("Invalid From header") sends whoever reads it looking for a
- * bug in the email rather than at the setting that caused it.
- */
-export function describeSendFailure(message: string, from: string): string {
-  const fromRefused = /invalid from|from header|does not match|not.*allowed to send|delegation denied/i.test(
-    message
-  );
-  if (!fromRefused) return message;
-  const address = from.match(/<([^>]+)>/)?.[1] ?? from;
-  return `Google refused to send as ${address}. Check that it is still listed as a verified address in Gmail under Settings, Accounts, Send mail as, or choose a different sending address in Settings, Integrations. (Google said: ${message})`;
-}
-
 export const gmail = {
   configured: () => config.gmail.configured,
 
@@ -611,7 +613,7 @@ export const gmail = {
       `select email, status, last_error, send_as, data from integration_tokens
         where provider = 'gmail' and org_id = $1`,
       [org]
-    ).catch(() => null);
+    );
     if (!row || !readRefreshToken(row.data)) {
       return { connected: false, email: null, status: "none", lastError: null, sendAs: null };
     }
@@ -762,11 +764,16 @@ export const gmail = {
       };
     }
 
+    const org = await resolveOrg(params.orgId);
     const { isAutomationStopped, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
-    if (await isAutomationStopped()) {
+    const stopped = org
+      ? await import("../tenant-context").then(({ runWithOrg }) =>
+          runWithOrg(org, () => isAutomationStopped())
+        )
+      : await isAutomationStopped();
+    if (stopped) {
       return { disabled: true, error: AUTOMATION_PAUSED_ERROR };
     }
-    const org = await resolveOrg(params.orgId);
     const client = await gmailClient(org ?? undefined);
     if (!client) return { disabled: true };
     // params.from overrides GMAIL_SENDER so the outreach transport can lock
@@ -837,8 +844,7 @@ export const gmail = {
   },
 
   /**
-   * Recover the RFC822 Message-ID and reference chain of OUR newest message in
-   * a thread.
+   * Recover the RFC822 Message-ID and reference chain from a thread.
    *
    * This is the repair for every conversation whose Message-ID was never
    * captured at send time -- a grant issued before gmail.readonly was
@@ -848,12 +854,14 @@ export const gmail = {
    * follow-up groups correctly in OUR mailbox and looks fine to us, while the
    * subcontractor receives an unconnected email every time.
    *
-   * Returns nulls rather than throwing. A follow-up that cannot recover the
-   * chain is still worth sending; it just cannot thread perfectly.
+   * Automated follow-ups prefer our newest message. A manual conversation
+   * reply asks for the newest message from either side. Returns nulls rather
+   * than throwing so the caller can hold or fall back with a visible reason.
    */
   async threadMessageId(
     threadId: string,
-    orgId?: string
+    orgId?: string,
+    opts: { preferLatestSent?: boolean } = {}
   ): Promise<{ rfc822MessageId: string | null; references: string[] }> {
     const empty = { rfc822MessageId: null, references: [] as string[] };
     if (!threadId) return empty;
@@ -879,10 +887,13 @@ export const gmail = {
         if (id && (m.labelIds ?? []).includes("SENT")) latestOurs = id;
       }
       return {
-        // Prefer our own most recent message: a follow-up answers what WE last
-        // said, and threading under the subcontractor's reply instead would
-        // read as a reply to them that we never actually wrote.
-        rfc822MessageId: latestOurs ?? chain[chain.length - 1] ?? null,
+        // An automated follow-up answers our last request, while a person
+        // replying from the conversation view answers the newest message from
+        // either side. The caller knows which operation it is performing.
+        rfc822MessageId:
+          opts.preferLatestSent === false
+            ? chain[chain.length - 1] ?? null
+            : latestOurs ?? chain[chain.length - 1] ?? null,
         references: [...new Set(chain)],
       };
     } catch (err) {
@@ -927,7 +938,8 @@ export const gmail = {
    */
   async fetchReplies(
     sinceEpochSec: number,
-    orgId?: string
+    orgId?: string,
+    options: { pageToken?: string } = {}
   ): Promise<{
     disabled?: boolean;
     /**
@@ -943,6 +955,8 @@ export const gmail = {
      * up the remainder from the same cursor.
      */
     truncated?: boolean;
+    /** Continue the same bounded mailbox walk on the next scheduled run. */
+    nextPageToken?: string;
     replies: GmailInboundMessage[];
   }> {
     const client = await gmailClient(orgId);
@@ -977,7 +991,7 @@ export const gmail = {
        * worker in this loop forever -- and when the ceiling IS hit, say so,
        * because a silent truncation here is indistinguishable from silence.
        */
-      let pageToken: string | undefined;
+      let pageToken: string | undefined = options.pageToken;
       let truncated = false;
       do {
         const list = await client.users.messages.list({
@@ -1036,7 +1050,9 @@ export const gmail = {
       // Reported separately from `error`: the caller must still PROCESS the
       // messages it did get. Folding this into `error` would have skipped
       // them, turning a partial read into a total loss.
-      return truncated ? { replies, truncated: true } : { replies };
+      return truncated
+        ? { replies, truncated: true, nextPageToken: pageToken }
+        : { replies };
     } catch (err) {
       const message = (err as { message?: string }).message ?? "Gmail poll failed";
       // Record the failure on the connection the same way a failed SEND does,

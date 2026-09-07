@@ -262,3 +262,17 @@ describe("what 'open opportunities affected' is allowed to count", () => {
     expect(src).not.toContain("stage not in ('submitted','won','lost')");
   });
 });
+
+describe("automation health evidence", () => {
+  it("does not report defaults when its status reads fail", () => {
+    const src = readFileSync("lib/automation-status.ts", "utf8");
+    const health = src.slice(
+      src.indexOf("export async function automationHealth"),
+      src.indexOf("export async function queueBacklogDepth")
+    );
+    expect(health).not.toContain(".catch(() => false)");
+    expect(health).not.toContain(".catch(() => true)");
+    expect(health).not.toContain(".catch(() => 0)");
+    expect(health).not.toContain(".catch(() => []");
+  });
+});

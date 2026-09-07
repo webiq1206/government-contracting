@@ -1,8 +1,8 @@
 #!/bin/bash
-# Best-effort post-merge setup. Deliberately NOT `set -e`: a pull must never
-# leave the environment in a failed state. Dependency install is required, but
-# migrations are best-effort here because the worker applies any pending
-# migrations at boot (lib/migrate.ts) regardless.
+# Best-effort post-merge dependency setup. Deliberately NOT `set -e`: a pull
+# must never leave the editor in a failed state. Schema changes are excluded
+# on purpose. Production migrations require the owner-only release credential
+# and must never run from a developer hook or a web/worker process.
 
 npm install --legacy-peer-deps || echo "[post-merge] npm install reported an issue; continuing."
-npm run db:migrate || echo "[post-merge] db:migrate skipped/failed; the worker applies migrations at boot."
+echo "[post-merge] dependencies checked. Run the owner-only migration release step before deploying this revision."

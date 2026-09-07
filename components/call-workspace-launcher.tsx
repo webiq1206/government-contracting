@@ -10,6 +10,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CallWorkspace, type CallWorkspaceData } from "./call-workspace";
+import { ConfirmDialog } from "./confirm-dialog";
 
 export function CallWorkspaceLauncher({
   cardId,
@@ -30,6 +31,7 @@ export function CallWorkspaceLauncher({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const autoOpened = useRef(false);
+  const activeRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (autoOpen && !autoOpened.current) {
@@ -39,23 +41,57 @@ export function CallWorkspaceLauncher({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpen]);
 
+  useEffect(
+    () => () => {
+      activeRequest.current?.abort();
+    },
+    []
+  );
+
   async function launch() {
     setOpen(true);
     if (data) return; // already loaded
+    activeRequest.current?.abort();
+    const controller = new AbortController();
+    activeRequest.current = controller;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 12_000);
     setLoading(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/call-cards/${cardId}/workspace`, {
+      const res = await fetch(`/api/call-cards/${encodeURIComponent(cardId)}/workspace`, {
         cache: "no-store",
+        signal: controller.signal,
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Failed to load call card");
-      setData(body);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "The server could not load this call.");
+      if (!body.card) throw new Error("The server returned an incomplete call record.");
+      setData(body as CallWorkspaceData);
     } catch (e) {
-      setErr((e as Error).message);
+      if (controller.signal.aborted && !timedOut) return;
+      setErr(
+        timedOut
+          ? "This call took too long to load. It has not been changed. Check your connection and try again."
+          : `${(e as Error).message} The call has not been changed. Try again, or close this window.`
+      );
     } finally {
-      setLoading(false);
+      window.clearTimeout(timeout);
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        setLoading(false);
+      }
     }
+  }
+
+  function close() {
+    activeRequest.current?.abort();
+    activeRequest.current = null;
+    setLoading(false);
+    setOpen(false);
+    setErr(null);
   }
 
   return (
@@ -85,40 +121,29 @@ export function CallWorkspaceLauncher({
         <>
           {loading && (
             <div
-              onClick={() => setOpen(false)}
+              onClick={close}
               className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
             >
-              <div className="rounded-md border border-border/55 bg-surface px-5 py-4 text-sm text-foreground shadow-2xl dark:border-white/10">
+              <div
+                className="mobile-tab-clearance rounded-md border border-border/55 bg-surface px-5 py-4 text-sm text-foreground shadow-2xl dark:border-white/10"
+                role="status"
+                aria-live="polite"
+                aria-busy="true"
+              >
                 Loading call workspace…
               </div>
             </div>
           )}
-          {err && (
-            <div
-              onClick={() => {
-                setOpen(false);
-                setErr(null);
-              }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-            >
-              <div className="max-w-md rounded-md border border-risk/40 bg-surface p-5 text-foreground shadow-2xl">
-                <p className="text-sm font-medium text-risk">
-                  Couldn&rsquo;t load the call workspace.
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">{err}</p>
-                <button
-                  onClick={() => {
-                    setOpen(false);
-                    setErr(null);
-                  }}
-                  className="btn-ghost mt-3"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          )}
-          {data && <CallWorkspace data={data} onClose={() => setOpen(false)} />}
+          <ConfirmDialog
+            open={Boolean(err)}
+            title="The call workspace did not load"
+            body={<p role="alert">{err}</p>}
+            confirmLabel="Try again"
+            cancelLabel="Close"
+            onConfirm={() => void launch()}
+            onCancel={close}
+          />
+          {data && <CallWorkspace data={data} onClose={close} />}
         </>
       )}
     </>

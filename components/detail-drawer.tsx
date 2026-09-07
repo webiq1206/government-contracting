@@ -136,7 +136,7 @@ export function DetailDrawer({
         {children}
       </div>
       {footer && (
-        <div className="shrink-0 border-t border-border/55 bg-background px-4 py-3 dark:border-white/10">
+        <div className="drawer-footer shrink-0 border-t border-border/55 bg-background px-4 pt-3 dark:border-white/10">
           {footer}
         </div>
       )}

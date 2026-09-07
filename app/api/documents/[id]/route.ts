@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requireOrgContext, notFoundResponse } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
-import { LEGACY_ORG_ID } from "@/lib/tenant-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,17 +19,16 @@ interface DocRow {
  *
  * Same 404 for missing and for somebody else's: distinguishing them would
  * confirm that a document id exists and belongs to another account. The
- * founding organization's legacy rows predate `org_id`, so a null org is
- * theirs and nobody else's.
+ * Rows without an owner are deliberately unavailable. Assigning one to the
+ * founding tenant at read time would make missing ownership an access rule.
  */
 async function ownedDocument(id: string, orgId: string): Promise<DocRow | null> {
-  const doc = await queryOne<DocRow>(
-    `select id, org_id, opportunity_id, name, disposition from documents where id = $1`,
-    [id]
+  return queryOne<DocRow>(
+    `select id, org_id, opportunity_id, name, disposition
+       from documents
+      where id = $1 and org_id = $2`,
+    [id, orgId]
   );
-  if (!doc) return null;
-  const owned = doc.org_id === orgId || (doc.org_id === null && orgId === LEGACY_ORG_ID);
-  return owned ? doc : null;
 }
 
 /**
@@ -75,8 +73,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       );
     }
     await query(
-      `update documents set reviewed_by=$2, reviewed_at=now(), review_note=$3 where id=$1`,
-      [doc.id, actor, note]
+      `update documents set reviewed_by=$3, reviewed_at=now(), review_note=$4
+        where id=$1 and org_id=$2`,
+      [doc.id, ctx.orgId, actor, note]
     );
     await logAgent({
       agent: "operator",
@@ -101,7 +100,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     // a request body, and confirming that an id exists elsewhere is the same
     // leak as confirming it on the document itself.
     if (!newer || newer.opportunity_id !== doc.opportunity_id) return notFoundResponse();
-    await query(`update documents set superseded_by=$2 where id=$1`, [doc.id, newer.id]);
+    await query(`update documents set superseded_by=$3 where id=$1 and org_id=$2`, [
+      doc.id,
+      ctx.orgId,
+      newer.id,
+    ]);
     await logAgent({
       agent: "operator",
       action: "document_superseded",
@@ -123,9 +126,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       );
     }
     await query(
-      `update documents set disposition='excluded', excluded_reason=$2, excluded_by=$3, excluded_at=now()
-        where id=$1`,
-      [doc.id, reason, actor]
+      `update documents set disposition='excluded', excluded_reason=$3, excluded_by=$4, excluded_at=now()
+        where id=$1 and org_id=$2`,
+      [doc.id, ctx.orgId, reason, actor]
     );
     await logAgent({
       agent: "operator",

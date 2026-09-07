@@ -1,11 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { resolveManualMove, MANUAL_MOVE_TARGETS } from "@/lib/domain/stage-move";
+import {
+  resolveManualMove,
+  MANUAL_MOVE_TARGETS,
+  MANUAL_STAGE_TRANSITIONS,
+} from "@/lib/domain/stage-move";
 
 describe("manual stage moves", () => {
-  it("allows every pipeline stage between scoring and submitted", () => {
-    for (const t of MANUAL_MOVE_TARGETS) {
-      expect(resolveManualMove("monitoring", t, true).ok).toBe(true);
+  it("allows every declared adjacent edge in the lifecycle graph", () => {
+    for (const [from, targets] of Object.entries(MANUAL_STAGE_TRANSITIONS)) {
+      for (const to of targets) {
+        expect(resolveManualMove(from, to, true), `${from} to ${to}`).toEqual({
+          ok: true,
+          stage: to,
+        });
+      }
     }
+  });
+
+  it("refuses a move that skips required workflow steps", () => {
+    const r = resolveManualMove("monitoring", "bid_building", true);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/one workflow step at a time/i);
   });
 
   it("refuses monitoring with a reason that names the alternative", () => {
@@ -14,11 +29,18 @@ describe("manual stage moves", () => {
     expect(r.error).toMatch(/Scoring/);
   });
 
-  it("refuses terminal stages toward their own flows", () => {
-    for (const t of ["won", "lost", "dismissed"]) {
-      const r = resolveManualMove("submitted", t, true);
+  it("never lets a manual move claim submission", () => {
+    const r = resolveManualMove("bid_building", "submitted", true);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/delivery evidence/i);
+    expect(MANUAL_MOVE_TARGETS).not.toContain("submitted");
+  });
+
+  it("refuses backward moves from submitted and final stages", () => {
+    for (const from of ["submitted", "won", "lost", "dismissed"]) {
+      const r = resolveManualMove(from, "analysis", true);
       expect(r.ok).toBe(false);
-      expect(r.error).toMatch(/own actions/);
+      expect(r.error).toMatch(/submitted|closed/i);
     }
   });
 

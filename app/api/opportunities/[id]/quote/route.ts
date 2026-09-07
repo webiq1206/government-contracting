@@ -6,6 +6,7 @@ import { getProfileJson } from "@/lib/ai/companyProfile";
 import { bidForTargetMargin, isOutOfRange, type CompStats } from "@/lib/domain/pricing";
 import { benchmarkFor } from "@/lib/domain/comp-reliability";
 import { logAgent } from "@/lib/logger";
+import { opportunityMutationProblem, QUOTE_EDIT_STAGES } from "@/lib/domain/opportunity-lifecycle";
 import type { Opportunity } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -33,6 +34,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const currentBid = await queryOne<{ submission_state: string }>(
+    `select submission_state from bids where opportunity_id=$1 and org_id=$2
+      order by created_at desc limit 1`,
+    [params.id, orgId]
+  );
+  const lifecycleProblem = opportunityMutationProblem(
+    {
+      stage: opp.stage,
+      status: opp.status,
+      pursuitState: opp.pursuit_state,
+      submissionState: currentBid?.submission_state ?? null,
+    },
+    "quote"
+  );
+  if (lifecycleProblem) {
+    return NextResponse.json({ error: lifecycleProblem }, { status: 409 });
+  }
   const profile = await getProfileJson();
 
   /**
@@ -95,8 +113,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     if (amount > 10_000_000) {
       warnings.push(`${q.trade ?? "Quote"} is over $10M. Double-check the figure.`);
     }
-    subTotal += amount;
-    saved++;
     let outOfRange = false;
     let comparison: Record<string, unknown> | null = null;
     if (benchmark != null) {
@@ -114,7 +130,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       const owned = await queryOne<{ id: string }>(
         `select id from subcontractors where id = $1 and org_id = $2`,
         [subcontractorId, orgId]
-      ).catch(() => null);
+      );
       if (!owned) {
         warnings.push(
           `${q.trade ?? "A quote"} named a subcontractor that is not on your roster; it was saved without one. Pick the sub on the quote form.`
@@ -128,16 +144,30 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       subcontractorId != null
         ? await queryOne<{ id: string }>(
             `select id from quotes
-              where opportunity_id=$1 and subcontractor_id=$2 and coalesce(trade,'')=coalesce($3,'')
+              where opportunity_id=$1 and subcontractor_id=$2
+                and coalesce(trade,'')=coalesce($3,'') and org_id=$4
               order by created_at desc limit 1`,
-            [params.id, subcontractorId, q.trade ?? null]
+            [params.id, subcontractorId, q.trade ?? null, orgId]
           )
         : null;
+    let persisted: { id: string }[];
     if (existing) {
-      await query(
-        `update quotes
+      persisted = await query<{ id: string }>(
+        `update quotes q
             set quote_amount=$2, payment_terms=$3, notes=$4, is_out_of_range=$5, comparison_json=$6
-          where id=$1`,
+          where q.id=$1 and q.org_id=$7
+            and exists (
+              select 1 from opportunities o
+               where o.id=q.opportunity_id and o.org_id=q.org_id and o.status='open'
+                 and o.stage=any($8::text[])
+                 and coalesce(o.pursuit_state, 'active')='active'
+            )
+            and not exists (
+              select 1 from bids b
+               where b.opportunity_id=q.opportunity_id and b.org_id=q.org_id
+                 and b.submission_state <> 'package_ready'
+            )
+          returning q.id`,
         [
           existing.id,
           amount,
@@ -145,13 +175,30 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           q.notes ?? null,
           outOfRange,
           comparison ? JSON.stringify(comparison) : null,
+          orgId,
+          QUOTE_EDIT_STAGES,
         ]
       );
     } else {
-      await query(
-        `insert into quotes (opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes, is_out_of_range, comparison_json)
-         values ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      persisted = await query<{ id: string }>(
+        `insert into quotes
+           (org_id, opportunity_id, subcontractor_id, trade, quote_amount,
+            payment_terms, notes, is_out_of_range, comparison_json)
+         select $1,$2,$3,$4,$5,$6,$7,$8,$9
+          where exists (
+            select 1 from opportunities o
+             where o.id=$2 and o.org_id=$1 and o.status='open'
+               and o.stage=any($10::text[])
+               and coalesce(o.pursuit_state, 'active')='active'
+          )
+            and not exists (
+              select 1 from bids b
+               where b.opportunity_id=$2 and b.org_id=$1
+                 and b.submission_state <> 'package_ready'
+            )
+         returning id`,
         [
+          orgId,
           params.id,
           subcontractorId,
           q.trade ?? null,
@@ -160,9 +207,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           q.notes ?? null,
           outOfRange,
           comparison ? JSON.stringify(comparison) : null,
+          QUOTE_EDIT_STAGES,
         ]
       );
     }
+    if (persisted.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "The opportunity or package changed while quotes were being saved. Refresh it before entering any more pricing.",
+          partial: saved > 0,
+          saved,
+        },
+        { status: 409 }
+      );
+    }
+    subTotal += amount;
+    saved++;
   }
 
   if (saved === 0) {
@@ -172,10 +233,41 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     );
   }
 
-  await query(`update opportunities set stage='quote_entry', human_action_required=false where id=$1`, [
-    params.id,
-  ]);
-  await enqueue("bid-builder", { opportunityId: params.id });
+  // Any previous package verdict was computed from the old price. Clear it
+  // before the rebuild is queued so a delayed worker can never leave a stale
+  // package looking ready in the meantime.
+  await query(
+    `update bids set package_ready=false, audit_status='pending', updated_at=now()
+      where opportunity_id=$1 and org_id=$2 and submission_state='package_ready'`,
+    [params.id, orgId]
+  );
+  const moved = await query<{ id: string }>(
+    `update opportunities set stage='quote_entry', human_action_required=false
+      where id=$1 and org_id=$2 and stage=any($3::text[]) and status='open'
+        and coalesce(pursuit_state, 'active')='active'
+      returning id`,
+    [params.id, orgId, QUOTE_EDIT_STAGES]
+  );
+  if (moved.length === 0) {
+    return NextResponse.json(
+      {
+        error:
+          "The quote was saved, but the opportunity changed before its package could be rebuilt. Refresh the record before doing anything else.",
+        partial: true,
+      },
+      { status: 409 }
+    );
+  }
+  const buildJobId = await enqueue("bid-builder", { opportunityId: params.id }).catch(() => null);
+  if (!buildJobId) {
+    await query(`update opportunities set human_action_required=true where id=$1 and org_id=$2`, [
+      params.id,
+      orgId,
+    ]);
+    warnings.push(
+      "The quote was saved, but the bid rebuild could not be queued. Automation may be paused. Resume it, then run Bid Builder from this opportunity."
+    );
+  }
   await logAgent({
     agent: "operator",
     action: "quote-entry",
@@ -184,5 +276,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     message: `Operator ${auth.email} entered ${saved} quote(s), total $${subTotal.toLocaleString()}. Triggered Bid Builder.`,
   });
 
-  return NextResponse.json({ ok: true, subTotal, saved, rejected, warnings });
+  return NextResponse.json({
+    ok: true,
+    subTotal,
+    saved,
+    rejected,
+    warnings,
+    rebuildQueued: Boolean(buildJobId),
+  });
 }

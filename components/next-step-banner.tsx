@@ -76,24 +76,9 @@ export function NextStepBanner(props: StepInput & { opportunityId: string }) {
           </>
         )}
         {step.decision === "outcome" && (
-          <>
-            <ActionButton
-              endpoint={`/api/opportunities/${opportunityId}/outcome`}
-              body={{ outcome: "won" }}
-              className="btn-success text-xs"
-              confirm="Mark as WON and create the contract?"
-            >
-              Mark won
-            </ActionButton>
-            <ActionButton
-              endpoint={`/api/opportunities/${opportunityId}/outcome`}
-              body={{ outcome: "lost" }}
-              className="btn-danger text-xs"
-              confirm="Mark this bid as lost?"
-            >
-              Mark lost
-            </ActionButton>
-          </>
+          <a href="#outcome" className="btn-primary min-h-11 text-xs">
+            Record agency outcome
+          </a>
         )}
         {hasLink && step.href && (
           <Link href={step.href} className={linkClass}>

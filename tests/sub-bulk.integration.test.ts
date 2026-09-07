@@ -130,6 +130,25 @@ d("bulk roster changes (integration)", () => {
       expect(await bulk.tagsOf(mine.id, ids.bare)).toEqual(["Preferred HVAC"]);
     });
 
+    it("rolls a tag removal back when its audit batch cannot be recorded", async () => {
+      const id = await makeSub("atomicAudit");
+      await bulk.bulkTag({ orgId: mine.id, actorId: null, ids: [id], tag: "Keep Me" });
+
+      await expect(
+        bulk.bulkTag({
+          orgId: mine.id,
+          // The delete itself does not use actorId. The invalid UUID reaches
+          // the ledger insert, proving its failure rolls the delete back.
+          actorId: "not-a-uuid",
+          ids: [id],
+          tag: "Keep Me",
+          remove: true,
+        })
+      ).rejects.toThrow();
+
+      expect(await bulk.tagsOf(mine.id, id)).toEqual(["Keep Me"]);
+    });
+
     it("undoes exactly the rows it changed, not the rows it was given", async () => {
       // Pre-tag one of them, so the batch changes one row out of two.
       await bulk.bulkTag({ orgId: mine.id, actorId: null, ids: [ids.checkable], tag: "Shortlist" });

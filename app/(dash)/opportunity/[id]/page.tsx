@@ -4,7 +4,7 @@ import { opportunityDetail } from "@/lib/data";
 import { ScoreBadge, TierBadge } from "@/components/badges";
 import { PAGE_HELP } from "@/lib/help-content";
 import { HelpPopover } from "@/components/help-popover";
-import { ActionButton } from "@/components/action-button";
+import { OutcomeForm } from "@/components/outcome-form";
 import { QuoteEntryForm } from "@/components/quote-entry-form";
 import { PricingWorkspace } from "@/components/pricing-workspace";
 import { BidBrief } from "@/components/bid-brief";
@@ -72,6 +72,7 @@ import { stageLabel } from "@/lib/domain/journey";
 import { currency, timeAgo, shortDate } from "@/lib/format";
 import { flagLabel } from "@/lib/flag-labels";
 import { EstimatedValue } from "@/components/estimated-value";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 import { noticeBriefFromOpportunity } from "@/lib/domain/notice-brief";
 import type { Bid, ScoreBreakdown, SolicitationAnalysis } from "@/lib/types";
 
@@ -85,27 +86,38 @@ const PAST_PERF_LABEL: Record<string, string> = {
   prime_only: "Prime-only (blocked)",
 };
 
+async function optionalRead<T>(promise: Promise<T>) {
+  try {
+    return { value: await promise, failed: false as const };
+  } catch {
+    return { value: null, failed: true as const };
+  }
+}
+
 /**
  * Opportunity Detail: editorial hero + tabs matching the product mock, with
  * every operational panel preserved under Brief / Requirements / Coverage /
  * Pricing / Files / More.
  */
 export default async function OpportunityPage({ params }: { params: { id: string } }) {
-  const [detail, automation, rules, viewer, oppOwner, teamMembers] = await Promise.all([
+  const [detail, automation, rules, viewer, ownerRead, membersRead] = await Promise.all([
     opportunityDetail(params.id),
     getAutomationState(),
     getAutomationRules(),
     currentUser(),
-    /*
-     * Whose bid this is, and who it could be.
-     * Both tolerate failure: an owner picker that cannot load is a field
-     * that says Unassigned, where a throw here would be a record page that
-     * will not open because of a dropdown.
-     */
-    ownerOf("opportunity", params.id).catch(() => null),
-    assignableMembers().catch(() => []),
+    optionalRead(ownerOf("opportunity", params.id)),
+    optionalRead(assignableMembers()),
   ]);
   if (!detail) notFound();
+  const oppOwner = ownerRead.value;
+  const teamMembers = membersRead.value ?? [];
+  const pageWarnings: string[] = [];
+  const ownerDataFailed = ownerRead.failed || membersRead.failed;
+  if (ownerDataFailed) {
+    pageWarnings.push(
+      "The current owner or assignment choices could not be loaded. Reassignment is disabled."
+    );
+  }
   const { opp, quotes, subs, documents, logs, competitors, subComms, pendingCalls } = detail;
   const hoursSinceUpdate = opp.updated_at
     ? (Date.now() - new Date(opp.updated_at).getTime()) / 3_600_000
@@ -117,32 +129,29 @@ export default async function OpportunityPage({ params }: { params: { id: string
   const pricing = (opp.raw_json as { pricing_summary?: Record<string, unknown> } | null)
     ?.pricing_summary;
 
-  /*
-   * Where each submission requirement has got to.
-   *
-   * Built from the same input the card builds its list from, through one
-   * shared function, so the ids match. Built here rather than inside the card
-   * because the card is rendered in places with no database behind them, and
-   * because a per-requirement lookup from inside the list would be forty
-   * queries to draw one page.
-   *
-   * Tolerates failure the way the owner lookups above do: a checklist that
-   * cannot read its own tracking is a checklist that shows the requirements
-   * and no states, which is the version that existed until now. It is not a
-   * reason the record page should refuse to open.
-   */
+  /* Where each submission requirement has got to, captured separately so the
+     rest of the record can remain readable while an unavailable checklist is
+     labelled unknown and its controls stay disabled. */
   const oppBrief = analysis ? buildOpportunityBrief(briefInputFrom(analysis)) : null;
   const briefRequirements = oppBrief?.requirements ?? [];
-  const tracking = analysis
-    ? await requirementViews(
-        params.id,
-        briefRequirements.map((r) => ({
-          id: r.id,
-          needsSignature: r.needsSignature,
-          producedByPlatform: r.owner === "platform",
-        }))
-      ).catch(() => null)
-    : null;
+  const trackingRead = analysis
+    ? await optionalRead(
+        requirementViews(
+          params.id,
+          briefRequirements.map((r) => ({
+            id: r.id,
+            needsSignature: r.needsSignature,
+            producedByPlatform: r.owner === "platform",
+          }))
+        )
+      )
+    : { value: null, failed: false as const };
+  const tracking = trackingRead.value;
+  if (trackingRead.failed) {
+    pageWarnings.push(
+      "Requirement progress could not be loaded. Checklist changes are disabled."
+    );
+  }
   const subOptions = subs.map((s) => ({
     subcontractor_id: s.subcontractor_id,
     company_name: s.company_name,
@@ -157,12 +166,24 @@ export default async function OpportunityPage({ params }: { params: { id: string
    * one answer during rendering and another after hydration, and would put the
    * arithmetic in two places. So the sheet, the scenarios and the formula are
    * worked out on the server and passed down as data.
-   */
+  */
   const pricingOrgId = await actingOrgId();
-  const profileForPricing = await getProfileJson().catch(() => null);
-  const pricingRows = pricingOrgId
-    ? await pricingRowsWithQuotes(params.id, pricingOrgId).catch(() => [])
-    : [];
+  const pricingProfileRead = await optionalRead(getProfileJson());
+  const profileForPricing = pricingProfileRead.value;
+  const pricingRowsRead = pricingOrgId
+    ? await optionalRead(pricingRowsWithQuotes(params.id, pricingOrgId))
+    : { value: [], failed: false as const };
+  const pricingRows = pricingRowsRead.value ?? [];
+  if (pricingProfileRead.failed) {
+    pageWarnings.push(
+      "Saved margin targets and pricing scenarios could not be loaded."
+    );
+  }
+  if (pricingRowsRead.failed) {
+    pageWarnings.push(
+      "Trade pricing could not be loaded. Pricing row changes are disabled."
+    );
+  }
   const requiredTradesForPricing = (analysis?.required_trades ?? [])
     .map((t) => String(t).trim())
     .filter(Boolean);
@@ -214,13 +235,22 @@ export default async function OpportunityPage({ params }: { params: { id: string
    * rather than a spinner, and so the recommendation is computed once on the
    * server against one clock.
    */
-  const [liveCheck, lastCheck, lastFullCheckAt] = pricingOrgId
+  const verificationReads = pricingOrgId
     ? await Promise.all([
-        liveVerification(params.id, pricingOrgId).catch(() => null),
-        lastVerification(params.id, pricingOrgId).catch(() => null),
-        lastFullVerificationAt(params.id, pricingOrgId).catch(() => null),
+        optionalRead(liveVerification(params.id, pricingOrgId)),
+        optionalRead(lastVerification(params.id, pricingOrgId)),
+        optionalRead(lastFullVerificationAt(params.id, pricingOrgId)),
       ])
-    : [null, null, null];
+    : null;
+  const liveCheck = verificationReads?.[0].value ?? null;
+  const lastCheck = verificationReads?.[1].value ?? null;
+  const lastFullCheckAt = verificationReads?.[2].value ?? null;
+  const verificationLoadFailed = Boolean(verificationReads?.some((read) => read.failed));
+  if (verificationLoadFailed) {
+    pageWarnings.push(
+      "Source verification status could not be loaded. Reverify actions are disabled."
+    );
+  }
   /*
    * What aborting would stop, read before the button is offered.
    *
@@ -228,7 +258,13 @@ export default async function OpportunityPage({ params }: { params: { id: string
    * confirmation is against numbers that were true when the operator started
    * reading rather than numbers that arrive after they have decided.
    */
-  const abortImpact = await pursuitImpact(params.id).catch(() => null);
+  const pursuitImpactRead = await optionalRead(pursuitImpact(params.id));
+  const abortImpact = pursuitImpactRead.value;
+  if (pursuitImpactRead.failed) {
+    pageWarnings.push(
+      "Pursuit impact could not be loaded. Pause, abort, and restart are disabled."
+    );
+  }
   const pursuit = parsePursuitState(
     (opp as unknown as { pursuit_state?: string }).pursuit_state
   );
@@ -285,6 +321,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
       disposition: d.disposition,
       extractionState: d.extractionState,
       excludedReason: d.excludedReason,
+      supersededBy: d.supersededBy,
     }))
   );
   /*
@@ -537,6 +574,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
 
   return (
     <div className="flex page-shell bg-background">
+      <ShellDataWarning items={pageWarnings} />
       {/* Thin utility bar stays pinned; hero scrolls with content. */}
       <div className="flex shrink-0 flex-col gap-2 border-b border-border px-4 py-2 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -633,14 +671,21 @@ export default async function OpportunityPage({ params }: { params: { id: string
                   and not who was writing it.
                 */}
                 <div className="min-w-[10rem]">
-                  <OwnerPicker
-                    kind="opportunity"
-                    recordId={opp.id}
-                    owner={oppOwner}
-                    members={teamMembers}
-                    viewerId={viewer?.id}
-                    canAssign={can(viewer?.orgRole, "decide")}
-                  />
+                  {ownerDataFailed ? (
+                    <div role="alert">
+                      <p className="label mb-1">Owner</p>
+                      <p className="text-xs text-risk">Assignment unavailable. Reload to retry.</p>
+                    </div>
+                  ) : (
+                    <OwnerPicker
+                      kind="opportunity"
+                      recordId={opp.id}
+                      owner={oppOwner}
+                      members={teamMembers}
+                      viewerId={viewer?.id}
+                      canAssign={can(viewer?.orgRole, "decide")}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -660,6 +705,12 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 canControl={can(viewer?.orgRole, "outreach")}
               />
             </div>
+          )}
+          {pursuitImpactRead.failed && (
+            <p role="alert" className="mt-5 rounded-md bg-risk/10 px-3 py-2 text-sm text-risk">
+              Pursuit controls are unavailable because their impact could not be checked. Reload
+              before changing this pursuit.
+            </p>
           )}
         </header>
         <OpportunityWorkspace
@@ -984,16 +1035,23 @@ export default async function OpportunityPage({ params }: { params: { id: string
               {/* The trade-by-trade sheet. Placed above the quote form because
                   it is where the money actually is: the form enters one
                   number, this says whether the bid has a cost at all. */}
-              <PricingWorkspace
-                opportunityId={opp.id}
-                sheet={sheet}
-                scenarios={pricingScenarios}
-                subs={subOptions}
-                formula={pricingFormula}
-                canPrice={can(viewer?.orgRole, "price")}
-                lastCalculatedAt={lastPricedAt}
-                targetMarginPct={targetMarginPct}
-              />
+              {pricingRowsRead.failed ? (
+                <div role="alert" className="card border-risk/50 bg-risk/5 text-sm text-risk">
+                  Trade pricing is unavailable, so no pricing totals or row actions are shown.
+                  Reload this page before changing pricing.
+                </div>
+              ) : (
+                <PricingWorkspace
+                  opportunityId={opp.id}
+                  sheet={sheet}
+                  scenarios={pricingScenarios}
+                  subs={subOptions}
+                  formula={pricingFormula}
+                  canPrice={can(viewer?.orgRole, "price")}
+                  lastCalculatedAt={lastPricedAt}
+                  targetMarginPct={targetMarginPct}
+                />
+              )}
 
               {showQuotePanel && (
                 <div
@@ -1175,14 +1233,21 @@ export default async function OpportunityPage({ params }: { params: { id: string
                 The question "is anything on this screen still true" belongs
                 next to the documents that answer it.
               */}
-              <ReverifyPanel
-                opportunityId={opp.id}
-                last={lastCheck}
-                live={liveCheck}
-                recommendation={checkRecommendation}
-                canRun={can(viewer?.orgRole, "decide")}
-                canAccept={can(viewer?.orgRole, "decide")}
-              />
+              {verificationLoadFailed ? (
+                <div role="alert" className="card border-risk/50 bg-risk/5 text-sm text-risk">
+                  Verification history is unavailable. No source check can be started or accepted
+                  until this page reloads successfully.
+                </div>
+              ) : (
+                <ReverifyPanel
+                  opportunityId={opp.id}
+                  last={lastCheck}
+                  live={liveCheck}
+                  recommendation={checkRecommendation}
+                  canRun={can(viewer?.orgRole, "decide")}
+                  canAccept={can(viewer?.orgRole, "decide")}
+                />
+              )}
               <DocumentInventoryPanel
                 documents={inventory}
                 coverage={documentCoverage}
@@ -1225,7 +1290,11 @@ export default async function OpportunityPage({ params }: { params: { id: string
                        * path, not a filename somebody typed.
                        */
                       proofOptions={briefDocsSource
-                        .filter((d) => String(d.kind) !== "solicitation" && d.storage_path)
+                        .filter(
+                          (d) =>
+                            ["submission_proof", "operator_upload"].includes(String(d.kind)) &&
+                            d.storage_path
+                        )
                         .map((d) => ({ id: String(d.id), name: String(d.name) }))}
                       submissionMethod={
                         analysis?.submission_method &&
@@ -1245,7 +1314,7 @@ export default async function OpportunityPage({ params }: { params: { id: string
                     />
                   </div>
                   {bid.submitted_at && (
-                    <div className="card space-y-2">
+                    <div id="outcome" className="card scroll-mt-editorial space-y-3">
                       <h2 className="font-display text-lg font-semibold leading-tight text-foreground sm:text-xl">
                         Outcome
                       </h2>
@@ -1253,28 +1322,28 @@ export default async function OpportunityPage({ params }: { params: { id: string
                         Submitted {timeAgo(bid.submitted_at)}
                       </p>
                       {(!bid.outcome || bid.outcome === "pending") && (
-                        <div className="flex gap-2">
-                          <ActionButton
-                            endpoint={`/api/opportunities/${opp.id}/outcome`}
-                            body={{ outcome: "won" }}
-                            className="btn-success"
-                            confirm="Mark as WON and create contract?"
-                          >
-                            Won
-                          </ActionButton>
-                          <ActionButton
-                            endpoint={`/api/opportunities/${opp.id}/outcome`}
-                            body={{ outcome: "lost" }}
-                            className="btn-danger"
-                          >
-                            Lost
-                          </ActionButton>
-                        </div>
+                        <OutcomeForm
+                          opportunityId={opp.id}
+                          canManage={can(viewer?.orgRole, "manage_contracts")}
+                          bidAmount={bid.bid_amount}
+                          solicitationNumber={opp.solicitation_number}
+                        />
                       )}
                       {bid.outcome && bid.outcome !== "pending" && (
-                        <p className="text-sm font-medium text-slate-700">
-                          Outcome: {bid.outcome}
-                        </p>
+                        <div className="space-y-1 text-sm text-slate-700">
+                          <p className="font-medium text-foreground">
+                            Outcome: {bid.outcome === "no_award" ? "No award" : bid.outcome}
+                          </p>
+                          {bid.award_amount != null && (
+                            <p>Award amount: {currency(Number(bid.award_amount))}</p>
+                          )}
+                          {bid.loss_reason && <p>Reason: {bid.loss_reason}</p>}
+                          {bid.outcome === "won" && (
+                            <Link href="/contracts" className="inline-flex min-h-11 items-center text-pursue underline underline-offset-2">
+                              Open contract record
+                            </Link>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}

@@ -21,12 +21,7 @@ import { resolveOutreachSender } from "../domain/sender-identity";
 import { pursuitStatus } from "../pursuit-guard";
 import { tryResolveTenantOrgId } from "../tenant";
 
-/**
- * Last-resort identity, used only when tenant lookup is impossible (a script
- * with no org context). Real per-tenant identity comes from the connected
- * inbox via resolveOutreachSender(); these constants exist so a send can never
- * end up with a blank From header.
- */
+/** Canonical platform identity retained for display and legacy correlation. */
 export const OUTREACH_SENDER = "BROSTCO <info@brostco.com>";
 export const OUTREACH_EMAIL = "info@brostco.com";
 
@@ -85,6 +80,8 @@ export interface OutreachSendResult {
   provider: OutreachProvider | null;
   /** True when no inbox is connected. */
   disabled?: boolean;
+  /** False when retrying this pursuit later would still be invalid. */
+  retryable?: boolean;
   /**
    * True when the email was refused by the pre-send safety check because the
    * rendered copy would have looked broken to the recipient. Distinct from
@@ -140,7 +137,12 @@ export async function sendOutreachEmail(
   if (params.opportunityId) {
     const pursuit = await pursuitStatus(params.opportunityId);
     if (!pursuit.mayAct) {
-      return { provider: null, disabled: true, error: pursuit.reason ?? "This pursuit is stopped." };
+      return {
+        provider: null,
+        disabled: true,
+        retryable: pursuit.retryable,
+        error: pursuit.reason ?? "This pursuit is stopped.",
+      };
     }
   }
 
@@ -160,6 +162,33 @@ export async function sendOutreachEmail(
     };
   }
 
+  // Nothing leaves the building while an admin is signed in as this customer.
+  // This check deliberately precedes tenant suppression and relationship
+  // reads. A support session is categorically prohibited from sending, so it
+  // should receive that explanation even during a database outage, and no
+  // lower-level lookup should run for an operation that can never proceed.
+  const { currentImpersonator } = await import("../impersonation");
+  let impersonator: string | null;
+  try {
+    impersonator = await currentImpersonator();
+  } catch {
+    return {
+      provider: null,
+      blocked: true,
+      retryable: true,
+      error:
+        "Support-session status could not be verified, so nothing was sent. Retry after account access recovers.",
+    };
+  }
+  if (impersonator) {
+    return {
+      provider: null,
+      blocked: true,
+      error:
+        "Blocked: this is a support session. Outreach is not sent while an administrator is signed in as this account.",
+    };
+  }
+
   /**
    * Do-not-contact, at the one place every send passes through.
    *
@@ -171,10 +200,95 @@ export async function sendOutreachEmail(
    * as a courtesy. Checked here rather than at the seven call sites, because
    * the one that gets forgotten is the one that does the damage.
    */
-  const suppressionOrg = params.orgId ?? (await tryResolveTenantOrgId().catch(() => null));
+  // A genuinely absent request context may resolve to null for platform mail.
+  // A failed tenant lookup throws and stops the send. Treating that outage as
+  // "no tenant" would bypass tenant suppression checks for the exact moment
+  // the database could not prove whether the recipient opted out.
+  const suppressionOrg = params.orgId ?? (await tryResolveTenantOrgId());
+  if (!suppressionOrg) {
+    return {
+      provider: null,
+      blocked: true,
+      error:
+        "The account that owns this outreach could not be established, so nothing was sent. Reload the account and retry.",
+    };
+  }
+
+  // Check the account pause before any lower-level lookup. Besides avoiding
+  // unnecessary work, this preserves the exact reason the email was held and
+  // lets scheduled callers keep their follow-up time for when automation is
+  // resumed.
+  const { isAutomationStopped, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
+  const automationStopped = suppressionOrg
+    ? await import("../tenant-context").then(({ runWithOrg }) =>
+        runWithOrg(suppressionOrg, () => isAutomationStopped())
+      )
+    : await isAutomationStopped();
+  if (automationStopped) {
+    return { provider: null, disabled: true, error: AUTOMATION_PAUSED_ERROR };
+  }
+
+  /*
+   * Removing an opportunity/subcontractor pairing cancels the automation that
+   * was queued from it. Re-check at the provider boundary because a worker or
+   * an operator can spend long enough composing a message for the pairing to
+   * be removed after its first read. Missing context is left alone for system
+   * mail, but a message carrying both record ids must prove the relationship
+   * is still active. Failure to read the relationship fails closed.
+   */
+  if (params.opportunityId && params.subcontractorId) {
+    if (!suppressionOrg) {
+      return {
+        provider: null,
+        blocked: true,
+        error:
+          "The account that owns this subcontractor relationship could not be established, so nothing was sent.",
+      };
+    }
+    try {
+      const { queryOne } = await import("../db");
+      const active = await queryOne<{ id: string }>(
+        `select os.id
+           from opportunity_subs os
+           join opportunities o on o.id = os.opportunity_id
+          where os.opportunity_id = $1 and os.subcontractor_id = $2
+            and o.org_id = $3 and os.removed_at is null
+            and coalesce(os.trade, '') = coalesce($4::text, '')
+          limit 1`,
+        [params.opportunityId, params.subcontractorId, suppressionOrg, params.trade ?? null]
+      );
+      if (!active) {
+        return {
+          provider: null,
+          blocked: true,
+          error:
+            "This subcontractor is no longer active for that opportunity and trade, so nothing was sent.",
+        };
+      }
+    } catch {
+      return {
+        provider: null,
+        blocked: true,
+        error:
+          "The subcontractor's active assignment could not be verified, so nothing was sent.",
+      };
+    }
+  }
+
   if (suppressionOrg && params.to) {
     const { isSuppressed } = await import("../domain/email-suppression");
-    if (await isSuppressed(suppressionOrg, params.to)) {
+    let suppressed: boolean;
+    try {
+      suppressed = await isSuppressed(suppressionOrg, params.to);
+    } catch {
+      return {
+        provider: null,
+        blocked: true,
+        error:
+          "The do-not-contact list could not be checked, so nothing was sent. Try again after the database connection recovers.",
+      };
+    }
+    if (suppressed) {
       return {
         provider: null,
         blocked: true,
@@ -230,33 +344,7 @@ export async function sendOutreachEmail(
   // the Gmail transport itself, not here, so that system mail and backlink
   // outreach inherit it too.
 
-  // Nothing leaves the building while an admin is signed in as this customer.
-  // A support session exists to see what the customer sees; a message sent
-  // from it lands in a real subcontractor's inbox, over the customer's name,
-  // and cannot be recalled. The check sits here, at the one choke point every
-  // sending path already funnels through, so a future agent or route inherits
-  // it instead of having to remember it.
-  //
-  // Background sends are unaffected: the worker has no session, so this reads
-  // as "nobody is impersonating", which is the right answer for the
-  // customer's own scheduled automation.
-  const { currentImpersonator } = await import("../impersonation");
-  const impersonator = await currentImpersonator();
-  if (impersonator) {
-    return {
-      provider: null,
-      blocked: true,
-      error:
-        "Blocked: this is a support session. Outreach is not sent while an administrator is signed in as this account.",
-    };
-  }
-
-  const { isAutomationStopped, AUTOMATION_PAUSED_ERROR } = await import("../app-settings");
-  if (await isAutomationStopped()) {
-    return { provider: null, disabled: true, error: AUTOMATION_PAUSED_ERROR };
-  }
-
-  const orgId = params.orgId ?? (await tryResolveTenantOrgId());
+  const orgId = suppressionOrg;
 
   // The trial's outreach meter. Every path that emails a subcontractor goes
   // through this function, which is why the check lives here rather than in
@@ -270,7 +358,18 @@ export async function sendOutreachEmail(
     return { provider: null, disabled: true, error: quota.message };
   }
 
-  if (!(await gmail.isConnected(orgId ?? undefined))) {
+  let connected = false;
+  try {
+    connected = await gmail.isConnected(orgId);
+  } catch {
+    return {
+      provider: null,
+      disabled: true,
+      error:
+        "The Gmail connection could not be checked because its settings could not be read. Nothing was sent. Reload integration status and retry.",
+    };
+  }
+  if (!connected) {
     return {
       provider: null,
       disabled: true,
@@ -279,28 +378,39 @@ export async function sendOutreachEmail(
     };
   }
 
-  // Identity comes from the connected mailbox. If that row is unreadable while
-  // the connection is live, fall back to the platform address rather than
-  // sending with a blank From.
-  const sender = orgId
-    ? await resolveOutreachSender(orgId)
-    : { from: OUTREACH_SENDER, replyTo: OUTREACH_EMAIL, connected: true };
-  const { LEGACY_ORG_ID } = await import("../tenant-context");
-  if (sender.unknown && orgId !== LEGACY_ORG_ID) {
-    // The identity lookup failed for a NON-founding tenant. gmail.isConnected
-    // passed a moment ago, so the send could go out, but only under the
-    // platform's From header, and the sub's reply would then land where this
-    // tenant's poller never looks. A held email is recoverable; one sent as
-    // somebody else is not. The founding org is exempt: the platform address
-    // IS its identity, so the fallback below is correct there.
+  // Identity comes from this exact tenant's connected mailbox. No tenant,
+  // including the founding account, may borrow a platform constant here. A
+  // missing identity is recoverable; an email sent under the wrong From and
+  // Reply-To is not. Platform system mail has its own explicitly configured
+  // override in system-mail.ts and does not pass through this outreach sink.
+  let sender: Awaited<ReturnType<typeof resolveOutreachSender>>;
+  try {
+    sender = await resolveOutreachSender(orgId);
+  } catch {
     return {
       provider: null,
+      disabled: true,
       error:
-        "Could not resolve this account's sender identity (temporary database error). The email was held rather than sent from the wrong address; it will be retried.",
+        "This account's sender identity could not be checked because its settings could not be read. Nothing was sent. Reload integration status and retry.",
     };
   }
-  const from = sender.connected && sender.from ? sender.from : OUTREACH_SENDER;
-  const replyTo = sender.connected && sender.replyTo ? sender.replyTo : OUTREACH_EMAIL;
+  if (sender.unknown) {
+    return {
+      provider: null,
+      disabled: true,
+      error:
+        "This account's sender identity could not be checked because its settings could not be read. Nothing was sent. Reload integration status and retry.",
+    };
+  }
+  if (!sender.connected || !sender.from || !sender.replyTo) {
+    return {
+      provider: null,
+      disabled: true,
+      error:
+        "No verified sender identity is available for this account. Nothing was sent. Reconnect Gmail or choose a verified sending address, then retry.",
+    };
+  }
+  const { from, replyTo } = sender;
 
   const attachments = (params.attachments ?? [])
     .filter((a) => a.content?.length)
@@ -313,23 +423,37 @@ export async function sendOutreachEmail(
       return { filename: meta.filename, content: a.content, mime: meta.mime };
     });
 
-  const res = await gmail.send({
-    to: params.to,
-    subject: params.subject,
-    html: params.html,
-    text: params.text,
-    trackingId: params.trackingId,
-    from,
-    replyTo,
-    attachments,
-    threadId: params.threadId,
-    inReplyTo: params.inReplyTo,
-    references: params.references,
-    orgId: orgId ?? undefined,
-  });
+  let res: Awaited<ReturnType<typeof gmail.send>>;
+  try {
+    res = await gmail.send({
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+      text: params.text,
+      trackingId: params.trackingId,
+      from,
+      replyTo,
+      attachments,
+      threadId: params.threadId,
+      inReplyTo: params.inReplyTo,
+      references: params.references,
+      orgId,
+    });
+  } catch (err) {
+    console.error("[email-transport] Gmail send did not return a result:", err);
+    return {
+      provider: null,
+      error:
+        "Gmail delivery could not be confirmed. Check the Gmail Sent folder before retrying to avoid a duplicate.",
+    };
+  }
 
   if (res.disabled) {
-    return { provider: null, disabled: true, error: "Gmail became unavailable." };
+    return {
+      provider: null,
+      disabled: true,
+      error: res.error ?? "Gmail became unavailable.",
+    };
   }
   return {
     provider: "gmail",

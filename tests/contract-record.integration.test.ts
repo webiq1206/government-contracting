@@ -203,6 +203,41 @@ d("contract record (integration)", () => {
       expect(rec?.money.currentValueCents).toBe($(445_000));
     });
 
+    it("refuses to supersede a modification from another contract or account", async () => {
+      const foreign = await store.saveModification({
+        orgId: theirs.id,
+        contractId: theirContractId,
+        modNumber: "THEIRS-P00001",
+        kind: "value",
+        summary: "Their unrelated value change",
+        valueDeltaCents: $(5_000),
+        sourceNote: "Their contracting officer",
+        actorId: null,
+      });
+      expect(foreign.ok).toBe(true);
+      if (!foreign.ok || !foreign.id) return;
+
+      const before = await store.contractRecord(mine.id, contractId);
+      const res = await store.saveModification({
+        orgId: mine.id,
+        contractId,
+        modNumber: "P-CROSS-TENANT",
+        kind: "value",
+        summary: "Must not be recorded",
+        valueDeltaCents: $(1_000),
+        sourceNote: "Forged request",
+        supersedes: foreign.id,
+        actorId: null,
+      });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.error).toMatch(/not on this contract/);
+
+      const after = await store.contractRecord(mine.id, contractId);
+      expect(after?.modifications.some((m) => m.mod_number === "P-CROSS-TENANT")).toBe(false);
+      expect(after?.money.currentValueCents).toBe(before?.money.currentValueCents);
+    });
+
     it("moves the end date with a schedule change rather than in two places", async () => {
       await store.saveModification({
         orgId: mine.id, contractId, modNumber: "P00004", kind: "schedule",
@@ -319,6 +354,28 @@ d("contract record (integration)", () => {
       const rec = await store.contractRecord(theirs.id, theirContractId);
       expect(rec?.coordination).toHaveLength(0);
     });
+
+    it("refuses to associate coordination with another account's subcontractor", async () => {
+      const foreignSub = await queryOne<{ id: string }>(
+        `insert into subcontractors (org_id, company_name, email)
+         values ($1,'Foreign Mechanical','foreign@example.test') returning id`,
+        [theirs.id]
+      );
+      const before = (await store.contractRecord(mine.id, contractId))!.coordination.length;
+      const res = await store.logCoordination({
+        orgId: mine.id,
+        contractId,
+        channel: "call",
+        withWhom: "Foreign Mechanical",
+        summary: "Must not be attached to this contract",
+        subcontractorId: foreignSub!.id,
+        actorId: null,
+      });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.error).toMatch(/not on this account/);
+      expect((await store.contractRecord(mine.id, contractId))!.coordination).toHaveLength(before);
+    });
   });
 
   describe("a contract nobody won here", () => {
@@ -347,6 +404,28 @@ d("contract record (integration)", () => {
         startDate: "2026-12-31", endDate: "2026-01-01",
       });
       expect(res.ok).toBe(false);
+    });
+
+    it("refuses to attach a manual contract to another account's opportunity", async () => {
+      const foreign = await queryOne<{ opportunity_id: string }>(
+        `select opportunity_id from contracts where id = $1 and org_id = $2`,
+        [theirContractId, theirs.id]
+      );
+      const res = await store.createContract({
+        orgId: mine.id,
+        actorId: null,
+        contractNumber: "CROSS-TENANT-OPP",
+        opportunityId: foreign!.opportunity_id,
+      });
+      expect(res.ok).toBe(false);
+      if (res.ok) return;
+      expect(res.error).toMatch(/not in this account/);
+      expect(
+        await queryOne(
+          `select id from contracts where org_id = $1 and contract_number = 'CROSS-TENANT-OPP'`,
+          [mine.id]
+        )
+      ).toBeNull();
     });
   });
 
@@ -430,10 +509,9 @@ const hasDb2 = Boolean(process.env.DATABASE_URL);
     expect(after).toBe(before);
   });
 
-  it("creates nothing for a contract in another organization", async () => {
-    const res = await store.seedContractStartup({
-      orgId: randomUUID(), contractId,
-    });
-    expect(res).toEqual({ milestones: 0, compliance: 0 });
+  it("fails loudly for a contract in another organization", async () => {
+    await expect(
+      store.seedContractStartup({ orgId: randomUUID(), contractId })
+    ).rejects.toThrow(/not in this account/);
   });
 });

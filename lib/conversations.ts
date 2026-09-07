@@ -134,9 +134,10 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
         where m.direction = 'outbound'
         order by m.thread_key, m.created_at desc
      ),
-     /* The newest inbound one, for threading a reply back into Gmail. */
+     /* The newest inbound one, for threading a reply in the recipient's client. */
      newest_in as (
-       select distinct on (m.thread_key) m.thread_key, m.gmail_message_id
+       select distinct on (m.thread_key)
+              m.thread_key, m.rfc822_message_id, m.recipient_email
          from msg m
         where m.direction = 'inbound'
         order by m.thread_key, m.created_at desc
@@ -150,7 +151,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
      )
      select a.thread_key,
             coalesce(nw.subcontractor_id::text, a.any_sub_id) as subcontractor_id,
-            s.company_name, s.email as sub_email,
+            s.company_name, coalesce(ni.recipient_email, s.email) as sub_email,
             coalesce(nw.opportunity_id::text, a.any_opp_id) as opportunity_id,
             o.title as opportunity_title,
             nw.meta->>'trade' as trade,
@@ -168,7 +169,7 @@ export async function conversationList(opts: { q?: string } = {}): Promise<Conve
             no2.replied_at::text as last_outbound_replied_at,
             a.follow_up_at::text as follow_up_at,
             cf.resolved_at::text as resolved_at,
-            ni.gmail_message_id as reply_to_message_id
+            ni.rfc822_message_id as reply_to_message_id
        from agg a
        join newest nw on nw.thread_key = a.thread_key
        left join newest_out no2 on no2.thread_key = a.thread_key
@@ -244,6 +245,7 @@ interface MessageRowDb {
   created_at: string;
   recipient_email: string | null;
   gmail_message_id: string | null;
+  rfc822_message_id: string | null;
   delivery_state: string | null;
   delivery_detail: string | null;
   opened_at: string | null;
@@ -265,7 +267,7 @@ export async function conversationMessages(threadKey: string): Promise<CentreMes
   const orgId = await currentOrg();
   const rows = await query<MessageRowDb>(
     `select c.id, c.direction, c.subject, c.body, c.created_at::text as created_at,
-            c.recipient_email, c.gmail_message_id,
+            c.recipient_email, c.gmail_message_id, c.rfc822_message_id,
             c.delivery_state, c.delivery_detail,
             c.opened_at::text as opened_at, c.clicked_at::text as clicked_at,
             c.replied_at::text as replied_at, c.follow_up_at::text as follow_up_at,
@@ -286,6 +288,7 @@ export async function conversationMessages(threadKey: string): Promise<CentreMes
       created_at: r.created_at,
       recipient_email: r.recipient_email,
       gmail_message_id: r.gmail_message_id,
+      rfc822_message_id: r.rfc822_message_id,
       delivery_state: r.delivery_state,
       delivery_detail: r.delivery_detail,
       opened_at: r.opened_at,
@@ -303,7 +306,7 @@ export async function deliverabilityMessages(days = 90): Promise<CentreMessage[]
   const orgId = await currentOrg();
   const rows = await query<MessageRowDb>(
     `select c.id, c.direction, c.subject, c.body, c.created_at::text as created_at,
-            c.recipient_email, c.gmail_message_id,
+            c.recipient_email, c.gmail_message_id, c.rfc822_message_id,
             c.delivery_state, c.delivery_detail,
             c.opened_at::text as opened_at, c.clicked_at::text as clicked_at,
             c.replied_at::text as replied_at, c.follow_up_at::text as follow_up_at,
@@ -322,6 +325,7 @@ export async function deliverabilityMessages(days = 90): Promise<CentreMessage[]
       created_at: r.created_at,
       recipient_email: r.recipient_email,
       gmail_message_id: r.gmail_message_id,
+      rfc822_message_id: r.rfc822_message_id,
       delivery_state: r.delivery_state,
       delivery_detail: r.delivery_detail,
       opened_at: r.opened_at,

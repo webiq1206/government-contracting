@@ -34,7 +34,7 @@ import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
 import { orgsToSweep, fanoutNote } from "./org-fanout";
 import { addLocalDays, recapDue, safeTimeZone } from "../domain/recap/day-window";
 import { renderRecapEmail } from "../domain/recap/email";
-import { buildRecapFor } from "../recap/build";
+import { buildRecapFor, RecapAgeHistoryUnavailableError } from "../recap/build";
 import { claimDelivery, markAttempting, markFailed, markSent, markSkipped } from "../recap/delivery";
 import { platformRecapRecipients, recapRecipients } from "../recap/recipients";
 import { buildPlatformRecap, gatherPlatformFacts } from "../recap/platform";
@@ -83,12 +83,21 @@ export const dailyRecap: AgentDefinition = {
     const bounces = await sweepRecapBounces().catch((err) => ({
       scanned: 0,
       matched: 0,
+      unmatched: 0,
+      failed: 1,
+      truncated: false,
       error: (err as Error).message,
     }));
-    if (bounces.error) {
-      notes.push(`Could not check for bounced recaps (${bounces.error}).`);
-    } else if (bounces.matched > 0) {
+    if (bounces.matched > 0) {
       notes.push(`${bounces.matched} recap(s) came back undelivered and are marked in the history.`);
+    }
+    if (bounces.unmatched > 0) {
+      notes.push(
+        `${bounces.unmatched} permanent delivery report(s) could not be tied safely to one recap. Review the platform inbox and recap delivery history; no tenant was guessed.`
+      );
+    }
+    if (bounces.error) {
+      notes.push(`Bounce reconciliation was incomplete (${bounces.error}).`);
     }
 
     /*
@@ -98,18 +107,40 @@ export const dailyRecap: AgentDefinition = {
      * claiming delivery rows against a mailbox that cannot send would burn
      * every recipient's slot for the day on failures.
      */
-    if (!(await systemMail.enabled())) {
+    let mailReady = false;
+    try {
+      mailReady = await systemMail.deliverable();
+    } catch (err) {
+      await logAgent({
+        agent: "daily-recap",
+        action: "recap-sender-check-failed",
+        level: "error",
+        status: "error",
+        message: `No morning recaps went out because the platform sender identity could not be checked: ${(err as Error).message}. Check the platform Gmail connection and sender address, then retry the run.`.slice(
+          0,
+          500
+        ),
+      });
+      return {
+        ok: false,
+        summary:
+          "The platform sender identity could not be checked, so no recaps were sent.",
+        humanActionRequired: true,
+      };
+    }
+    if (!mailReady) {
       await logAgent({
         agent: "daily-recap",
         action: "recap-unsent",
         level: "warn",
         status: "error",
         message:
-          "No morning recaps went out: the platform inbox is not connected, so nothing could be delivered. Reconnect it in the platform integration settings and the next run will catch up any recipient still inside their window.",
+          "No morning recaps went out: the platform Gmail connection or verified sender identity is not ready. Check it in platform integration settings, then retry while recipients are still inside their delivery window.",
       });
       return {
         ok: false,
-        summary: "Platform inbox is not connected, so no recaps were sent.",
+        summary:
+          "The platform Gmail connection or verified sender identity is not ready, so no recaps were sent.",
         humanActionRequired: true,
       };
     }
@@ -123,23 +154,27 @@ export const dailyRecap: AgentDefinition = {
     for (const org of fanout.orgs) {
       if (budget <= 0) break;
 
-      const spent = await runWithOrg(org.id, () =>
-        sendForOrg(org.id, now, budget, tally)
-      ).catch(async (err) => {
-        /*
-         * One account's failure must not end the run. The next account's
-         * owner has no stake in this one's broken data, and a throw here would
-         * mean the first bad row silences everybody after it in the list.
-         */
-        await logAgent({
-          agent: "daily-recap",
-          action: "recap-org-failed",
-          level: "error",
-          status: "error",
-          message: `Recap run failed for one account: ${(err as Error).message}`.slice(0, 500),
-        });
-        tally.failed += 1;
-        return 0;
+      const spent = await runWithOrg(org.id, async () => {
+        try {
+          return await sendForOrg(org.id, now, budget, tally);
+        } catch (err) {
+          /*
+           * One account's failure must not end the run. The next account's
+           * owner has no stake in this one's broken data, and a throw here would
+           * mean the first bad row silences everybody after it in the list.
+           * Keep this catch inside runWithOrg so the durable failure log stays
+           * attached to the account whose recap failed.
+           */
+          await logAgent({
+            agent: "daily-recap",
+            action: "recap-org-failed",
+            level: "error",
+            status: "error",
+            message: `Recap run failed for one account: ${(err as Error).message}`.slice(0, 500),
+          });
+          tally.failed += 1;
+          return 0;
+        }
       });
 
       budget -= spent;
@@ -178,13 +213,25 @@ export const dailyRecap: AgentDefinition = {
       tally.skipped > 0 ? `${tally.skipped} quiet day(s) skipped` : null,
       tally.failed > 0 ? `${tally.failed} failed` : null,
       tally.deferred > 0 ? `${tally.deferred} already handled` : null,
+      bounces.error || bounces.unmatched > 0 ? "bounce reconciliation incomplete" : null,
+      fanout.error ? "account list unavailable" : null,
     ].filter(Boolean);
 
+    const operationalFailure =
+      bounces.error != null || bounces.unmatched > 0 || bounces.truncated || fanout.error != null;
+
     return {
-      ok: tally.failed === 0,
+      ok: tally.failed === 0 && !operationalFailure,
       summary: `Daily recap: ${parts.join(", ")}.`,
       ...(notes.length > 0 ? { reasoning: notes.join(" ") } : {}),
-      data: { ...tally, bouncesMatched: bounces.matched },
+      data: {
+        ...tally,
+        bouncesMatched: bounces.matched,
+        bouncesUnmatched: bounces.unmatched,
+        bouncesFailed: bounces.failed,
+        bounceScanTruncated: bounces.truncated,
+      },
+      humanActionRequired: operationalFailure || tally.failed > 0,
     };
   },
 };
@@ -302,7 +349,7 @@ async function sendPlatformRecap(now: Date, budget: number, tally: RunTally): Pr
         text: rendered.text,
         quiet: recap.quiet,
         urgentCount: recap.urgentCount,
-        providerMessageId: result.messageId ?? null,
+        providerMessageId: result.rfc822MessageId ?? result.messageId ?? null,
       });
       tally.sent += 1;
       if (decision.late) tally.late += 1;
@@ -373,14 +420,33 @@ async function sendForOrg(
     const key = `${summarised}|${timezone}`;
     let build = built.get(key);
     if (!build) {
-      build = await buildRecapFor({
-        orgId,
-        localDate: summarised,
-        timezone,
-        settings,
-        now,
-        recordAges: true,
-      });
+      try {
+        build = await buildRecapFor({
+          orgId,
+          localDate: summarised,
+          timezone,
+          settings,
+          now,
+          recordAges: true,
+        });
+      } catch (error) {
+        const detail =
+          error instanceof RecapAgeHistoryUnavailableError
+            ? error.message
+            : `The recap could not be built before sending: ${
+                error instanceof Error ? error.message : String(error)
+              }`;
+        try {
+          await markFailed(claim.delivery.id, detail);
+        } catch (historyError) {
+          throw new Error(
+            `${detail} The failed delivery also could not be recorded: ${
+              historyError instanceof Error ? historyError.message : String(historyError)
+            }`
+          );
+        }
+        throw error;
+      }
       built.set(key, build);
     }
     const { recap } = build;
@@ -445,7 +511,7 @@ async function sendForOrg(
         text: rendered.text,
         quiet: recap.quiet,
         urgentCount: recap.urgentCount,
-        providerMessageId: result.messageId ?? null,
+        providerMessageId: result.rfc822MessageId ?? result.messageId ?? null,
       });
       tally.sent += 1;
       if (decision.late) tally.late += 1;

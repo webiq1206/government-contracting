@@ -17,7 +17,10 @@ import { resolveOutreachSender } from "../domain/sender-identity";
 export interface SystemMailResult {
   disabled?: boolean;
   error?: string;
+  /** Gmail's API id, useful only for later Gmail API calls. */
   messageId?: string;
+  /** Internet Message-ID used by delivery status notifications and threading. */
+  rfc822MessageId?: string;
 }
 
 /** Minimal HTML wrapper so plain-text system mail is still readable. */
@@ -42,21 +45,63 @@ function asHtml(text: string): string {
  *
  * SYSTEM_MAIL_FROM still wins where it is set, so an operator can split the
  * two deliberately. Otherwise the chosen sending address for the platform's
- * own inbox is used, and if that cannot be read the header is omitted and
- * Gmail falls back to the authorized account rather than the send failing.
+ * own inbox is required. Omitting it would let Gmail silently substitute the
+ * authorized account, which may be a different identity from the one users
+ * trust and from the mailbox where the platform expects replies.
  */
-async function systemMailFrom(): Promise<string | null> {
-  if (config.systemMail.from) return config.systemMail.from;
-  const sender = await resolveOutreachSender(LEGACY_ORG_ID).catch(() => null);
-  return sender?.connected && sender.from ? sender.from : null;
+type SystemMailFromResult =
+  | { ok: true; from: string }
+  | { ok: false; unavailable: boolean; error: string };
+
+async function systemMailFrom(): Promise<SystemMailFromResult> {
+  if (config.systemMail.from) return { ok: true, from: config.systemMail.from };
+
+  let sender: Awaited<ReturnType<typeof resolveOutreachSender>>;
+  try {
+    sender = await resolveOutreachSender(LEGACY_ORG_ID);
+  } catch {
+    return {
+      ok: false,
+      unavailable: true,
+      error:
+        "The platform sender identity could not be checked because its settings could not be read. No email was sent. Check the platform Gmail connection and retry.",
+    };
+  }
+  if (sender.unknown) {
+    return {
+      ok: false,
+      unavailable: true,
+      error:
+        "The platform sender identity could not be checked because its settings could not be read. No email was sent. Check the platform Gmail connection and retry.",
+    };
+  }
+  if (!sender.connected || !sender.from) {
+    return {
+      ok: false,
+      unavailable: false,
+      error:
+        "No verified platform sender identity is available. No email was sent. Reconnect the platform Gmail inbox or configure SYSTEM_MAIL_FROM, then retry.",
+    };
+  }
+  return { ok: true, from: sender.from };
 }
 
 export const systemMail = {
   /**
-   * True when platform mail can actually be delivered. Callers check this
+   * True when platform mail can actually be delivered now. Callers check this
    * before composing an expensive digest.
+   *
+   * A saved refresh token is only configuration, not readiness. Google can
+   * revoke that token without removing our database row, so isConnected()
+   * alone made every notification screen and scheduled sender report green
+   * while every real send was guaranteed to fail.
    */
   async enabled(): Promise<boolean> {
+    return this.deliverable();
+  },
+
+  /** Whether an inbox credential is stored, without claiming it still works. */
+  async configured(): Promise<boolean> {
     return gmail.isConnected(LEGACY_ORG_ID);
   },
 
@@ -78,7 +123,14 @@ export const systemMail = {
    * identical for every address and every instance.
    */
   async deliverable(): Promise<boolean> {
-    return gmail.canAuthenticate(LEGACY_ORG_ID).catch(() => false);
+    // Database and tenant-resolution failures propagate. Callers with a UI
+    // can then label readiness unknown; background jobs fail visibly instead
+    // of recording a clean "mail disabled" skip for an unreadable setting.
+    // Google rejecting the actual grant remains a definite false from Gmail.
+    if (!(await gmail.canAuthenticate(LEGACY_ORG_ID))) return false;
+    const sender = await systemMailFrom();
+    if (!sender.ok && sender.unavailable) throw new Error(sender.error);
+    return sender.ok;
   },
 
   async send(params: {
@@ -91,16 +143,26 @@ export const systemMail = {
     if (!to.trim()) return { disabled: true, error: "No recipient." };
 
     const from = await systemMailFrom();
-    const res = await gmail.send({
-      to,
-      subject: params.subject,
-      html: params.html ?? asHtml(params.text),
-      text: params.text,
-      // The platform's own inbox, explicitly. Falling back to ambient tenant
-      // context here would send a password reset from a customer's mailbox.
-      orgId: LEGACY_ORG_ID,
-      ...(from ? { from } : {}),
-    });
+    if (!from.ok) return { disabled: true, error: from.error };
+    let res: Awaited<ReturnType<typeof gmail.send>>;
+    try {
+      res = await gmail.send({
+        to,
+        subject: params.subject,
+        html: params.html ?? asHtml(params.text),
+        text: params.text,
+        // The platform's own inbox, explicitly. Falling back to ambient tenant
+        // context here would send a password reset from a customer's mailbox.
+        orgId: LEGACY_ORG_ID,
+        from: from.from,
+      });
+    } catch (err) {
+      console.error("[system-mail] Gmail send did not return a result:", err);
+      return {
+        error:
+          "The platform mail connection could not be checked, so no delivery was confirmed. Check the platform Gmail connection and Sent folder before retrying.",
+      };
+    }
 
     if (res.disabled) {
       // Surface the transport's own reason when it gave one. "Not connected"
@@ -109,7 +171,11 @@ export const systemMail = {
       // never the problem.
       return { disabled: true, error: res.error ?? "Platform inbox is not connected." };
     }
-    return { error: res.error, messageId: res.messageId };
+    return {
+      error: res.error,
+      messageId: res.messageId,
+      rfc822MessageId: res.rfc822MessageId,
+    };
   },
 
   /** Digest helper: subject plus prebuilt HTML, with a plain-text fallback. */

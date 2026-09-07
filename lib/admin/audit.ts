@@ -11,6 +11,7 @@
  * Append-only by convention. There is no update or delete path in the
  * application.
  */
+import type { PoolClient } from "pg";
 import { query } from "../db";
 
 export type AdminAction =
@@ -43,6 +44,7 @@ export type AdminAction =
   | "free_months_granted"
   | "discount_removed"
   | "invitation_created"
+  | "invitation_email_unsent"
   | "invitation_resent"
   | "invitation_revoked"
   | "invitation_accepted"
@@ -52,7 +54,9 @@ export type AdminAction =
   // Lending a platform credential spends our money under someone else's
   // account, so who did it and why is part of the record, not a note.
   | "platform_key_granted"
-  | "platform_key_revoked";
+  | "platform_key_revoked"
+  | "platform_automation_paused"
+  | "platform_automation_resumed";
 
 export interface AdminAuditEntry {
   id: string;
@@ -65,30 +69,53 @@ export interface AdminAuditEntry {
   created_at: string;
 }
 
-export async function recordAdminAction(input: {
+type AdminActionInput = {
   adminEmail: string;
   action: AdminAction;
   orgId?: string | null;
   orgName?: string | null;
   userId?: string | null;
   detail?: Record<string, unknown>;
-}): Promise<void> {
-  // Never allowed to fail the action it describes: an admin unsuspending a
-  // locked-out customer should not be stopped by an audit write. Logged loudly
-  // instead, because a silent gap in this table is worth noticing.
-  await query(
-    `insert into admin_audit_log
+};
+
+function auditStatement(input: AdminActionInput) {
+  return {
+    text: `insert into admin_audit_log
        (admin_email, action, target_org_id, target_org_name, target_user_id, detail)
      values ($1, $2, $3, $4, $5, $6)`,
-    [
+    values: [
       input.adminEmail,
       input.action,
       input.orgId ?? null,
       input.orgName ?? null,
       input.userId ?? null,
       input.detail ? JSON.stringify(input.detail) : null,
-    ]
-  ).catch((err) => console.error("[admin-audit] failed to record", input.action, err));
+    ],
+  };
+}
+
+/**
+ * Write the audit row inside a security-sensitive transaction.
+ *
+ * This deliberately throws so the privileged action rolls back when its
+ * durable witness cannot be recorded.
+ */
+export async function recordRequiredAdminAction(
+  input: AdminActionInput,
+  client: PoolClient
+): Promise<void> {
+  const statement = auditStatement(input);
+  await client.query(statement.text, statement.values);
+}
+
+export async function recordAdminAction(input: AdminActionInput): Promise<void> {
+  // Never allowed to fail the action it describes: an admin unsuspending a
+  // locked-out customer should not be stopped by an audit write. Logged loudly
+  // instead, because a silent gap in this table is worth noticing.
+  const statement = auditStatement(input);
+  await query(statement.text, statement.values).catch((err) =>
+    console.error("[admin-audit] failed to record", input.action, err)
+  );
 }
 
 export async function recentAdminActions(
@@ -116,7 +143,7 @@ export async function recentAdminActions(
       limit $1`,
     // Over-fetch so filtering does not leave a short page.
     [opts?.includeTestAccounts ? limit : limit * 4]
-  ).catch(() => []);
+  );
 
   if (opts?.includeTestAccounts) return rows;
 
@@ -156,5 +183,5 @@ export async function adminActionsForOrg(
       order by created_at desc
       limit $2`,
     [orgId, limit]
-  ).catch(() => []);
+  );
 }

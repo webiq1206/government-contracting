@@ -67,6 +67,18 @@ describe("what a batch says it did", () => {
     // queued sends somebody looking for results that are not coming.
     expect(text).toContain("automation is paused");
   });
+
+  it("distinguishes an unavailable queue from a deliberate automation pause", () => {
+    const text = describeOutcome({
+      kind: "verify",
+      changed: 0,
+      skipped: [{ id: "a", reason: "queue_failed" }],
+      batchId: "batch-a",
+    });
+    expect(text).toContain("work queue could not be reached");
+    expect(text).toContain("try again");
+    expect(text).not.toContain("automation is paused");
+  });
 });
 
 describe("tags", () => {

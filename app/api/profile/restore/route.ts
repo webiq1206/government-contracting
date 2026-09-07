@@ -32,12 +32,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Choose a version to restore." }, { status: 400 });
   }
 
-  const json = await profileVersionJson(versionId).catch(() => null);
+  const json = await profileVersionJson(versionId);
   // One 404 for "no such version" and "another organization's version": the
   // difference would confirm that an id exists and belongs to somebody else.
   if (!json) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const current = await getActiveProfile().catch(() => null);
+  const current = await getActiveProfile();
   const changes = diffProfiles(current?.profile_json ?? null, json);
   if (changes.length === 0) {
     /*

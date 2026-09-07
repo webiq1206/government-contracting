@@ -35,11 +35,7 @@ export function requireContextOrgId(): string {
 export async function actingOrgId(): Promise<string | null> {
   const fromAls = currentOrgId();
   if (fromAls) return fromAls;
-  try {
-    const { currentUser } = await import("./auth");
-    const user = await currentUser().catch(() => null);
-    return user?.organizationId ?? null;
-  } catch {
-    return null;
-  }
+  const { currentUser } = await import("./auth");
+  const user = await currentUser();
+  return user?.organizationId ?? null;
 }

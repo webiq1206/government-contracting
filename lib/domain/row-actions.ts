@@ -25,7 +25,11 @@
  */
 
 import { can, type Capability } from "./roles";
-import { MANUAL_MOVE_TARGETS, type ManualMoveTarget } from "./stage-move";
+import {
+  MANUAL_MOVE_TARGETS,
+  MANUAL_STAGE_TRANSITIONS,
+  type ManualMoveTarget,
+} from "./stage-move";
 
 /** Who is looking, in the only terms this module needs. */
 export interface ActionViewer {
@@ -153,12 +157,17 @@ const MOVE_LABEL: Record<ManualMoveTarget, string> = {
   call_queue: "Call queue",
   quote_entry: "Quotes",
   bid_building: "Bid building",
-  submitted: "Submitted",
 };
 
 export const MOVE_TARGETS: { stage: string; label: string }[] = MANUAL_MOVE_TARGETS.map(
   (stage) => ({ stage, label: MOVE_LABEL[stage] })
 );
+
+/** Only the adjacent stages the server accepts from this exact record state. */
+export function moveTargetsFrom(stage: string): { stage: string; label: string }[] {
+  const accepted = new Set(MANUAL_STAGE_TRANSITIONS[stage] ?? []);
+  return MOVE_TARGETS.filter((target) => accepted.has(target.stage as ManualMoveTarget));
+}
 
 function stageIndex(stage: string): number {
   const at = (STAGE_ORDER as readonly string[]).indexOf(stage);
@@ -251,6 +260,7 @@ export function opportunityRowActions(
 
   const decide = allowed(viewer, "decide");
   const endpoint = `/api/opportunities/${o.id}/action`;
+  const stageMoves = moveTargetsFrom(o.stage);
 
   if (closed) {
     /*
@@ -293,16 +303,18 @@ export function opportunityRowActions(
 
   if (decide) {
     out.push(...snoozeActions("opportunity", o.id, o.snoozedUntil));
-    out.push({
-      key: "move_stage",
-      label: "Move to a stage",
-      hint: "For when the record is behind where the work actually is.",
-      run: {
-        via: "widget",
-        widget: { name: "move_stage", opportunityId: o.id, stage: o.stage },
-      },
-    });
-    if (stageIndex(o.stage) > 1) {
+    if (stageMoves.length > 0) {
+      out.push({
+        key: "move_stage",
+        label: "Move to a stage",
+        hint: "For when the record is one step ahead or behind the work.",
+        run: {
+          via: "widget",
+          widget: { name: "move_stage", opportunityId: o.id, stage: o.stage },
+        },
+      });
+    }
+    if (stageMoves.some((target) => stageIndex(target.stage) < stageIndex(o.stage))) {
       out.push({
         key: "send_back",
         label: "Send back a stage",

@@ -14,6 +14,20 @@ const BASE = {
   title: "Rooftop Unit Replacement",
   solicitationNumber: "W912DR-26-R-0042",
   description: "Replace 12 rooftop units across Buildings 3 and 4.",
+  agency: "USACE",
+  subAgency: "Baltimore District",
+  naicsCode: "238220",
+  pscCode: "J041",
+  setAsideType: "Small Business",
+  valueEstimated: 250000,
+  deadline: "2026-09-10T17:00:00Z",
+  postedAt: "2026-08-01T00:00:00Z",
+  locationState: "MD",
+  locationText: "Baltimore",
+  contact: { name: "Taylor Doe", email: "taylor@example.gov" },
+  attachments: [
+    { name: "attachment", url: "https://api.sam.gov/file?id=sow&api_key=old" },
+  ],
   documents: [
     { name: "Statement of Work.pdf", storagePath: "doc-1:s/sow.pdf:v1", updatedAt: "2026-08-01" },
     { name: "Drawings.pdf", storagePath: "doc-2:s/dwg.pdf:v1", updatedAt: "2026-08-01" },
@@ -78,6 +92,54 @@ describe("analysisInputHash", () => {
 
   it("distinguishes no documents from one document", () => {
     expect(analysisInputHash({ ...BASE, documents: [] })).not.toBe(analysisInputHash(BASE));
+  });
+
+  it("changes for every notice field used by analysis and scoring", () => {
+    const changes = [
+      { agency: "NAVFAC" },
+      { subAgency: "Norfolk District" },
+      { naicsCode: "561210" },
+      { pscCode: "Z2AA" },
+      { setAsideType: "8(a)" },
+      { valueEstimated: 300000 },
+      { deadline: "2026-09-11T17:00:00Z" },
+      { postedAt: "2026-08-02T00:00:00Z" },
+      { locationState: "VA" },
+      { locationText: "Norfolk" },
+      { contact: { name: "Jordan Doe", email: "jordan@example.gov" } },
+    ];
+    for (const change of changes) {
+      expect(analysisInputHash({ ...BASE, ...change })).not.toBe(analysisInputHash(BASE));
+    }
+  });
+
+  it("normalizes equivalent date representations", () => {
+    expect(
+      analysisInputHash({
+        ...BASE,
+        deadline: "2026-09-10T13:00:00-04:00",
+        postedAt: new Date("2026-08-01T00:00:00.000Z"),
+      })
+    ).toBe(analysisInputHash(BASE));
+  });
+
+  it("changes when an attachment is added but ignores credential rotation", () => {
+    const added = {
+      ...BASE,
+      attachments: [
+        ...BASE.attachments,
+        { name: "attachment", url: "https://api.sam.gov/file?id=amendment&api_key=fresh" },
+      ],
+    };
+    expect(analysisInputHash(added)).not.toBe(analysisInputHash(BASE));
+    expect(
+      analysisInputHash({
+        ...BASE,
+        attachments: [
+          { name: "attachment", url: "https://api.sam.gov/file?api_key=new&id=sow" },
+        ],
+      })
+    ).toBe(analysisInputHash(BASE));
   });
 });
 
