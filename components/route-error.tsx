@@ -13,8 +13,8 @@ import Link from "next/link";
  * honest version does not pretend to a diagnosis. It says what it does know,
  * which is more than the old screen said:
  *
- *   - the page failed to render, not the data behind it
- *   - nothing has been changed or lost
+ *   - the page failed to render
+ *   - a preceding action may have completed, so check before repeating it
  *   - the digest, which is the one string that lets support find the trace
  *   - where the system-wide answer lives, if it is not just this page
  *
@@ -46,9 +46,9 @@ export function RouteError({
           This page did not load
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          The page failed while it was being built. Nothing has been changed or
-          lost, and the work behind it is untouched. Trying again is usually
-          enough.
+          We could not display this page. Try loading it again. If you had just
+          saved or sent something, check its status before repeating the action
+          to avoid a duplicate.
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-2">
           <button type="button" onClick={() => reset()} className="btn-primary">

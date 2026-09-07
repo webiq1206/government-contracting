@@ -303,7 +303,7 @@ export default async function IntegrationsPage({
                 <IntegrationManager
                   initial={initial.filter((i) => CORE_IDS.has(i.id))}
                 />
-                <div className="card flex items-center justify-between gap-3">
+                {showPlatformOnly && <div className="card flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-foreground">Job queue backend</p>
                     <p className="mt-0.5 text-xs text-slate-600">
@@ -315,12 +315,11 @@ export default async function IntegrationsPage({
                   <span className="badge bg-accent/10 font-mono text-accent">
                     {status.queue}
                   </span>
-                </div>
+                </div>}
                 <p className="text-xs text-slate-500">
                   Values saved here are encrypted before they reach the database, shown only as a
-                  masked preview, and take effect immediately (the background worker refreshes within
-                  5 minutes). Environment variables still work as a fallback; a value saved on this
-                  page takes priority over its environment variable.
+                  masked preview, and become available to background work after its next settings
+                  refresh. Check Automation Health to confirm that work resumes successfully.
                 </p>
               </div>
             ),

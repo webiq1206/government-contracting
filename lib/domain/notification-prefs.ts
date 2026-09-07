@@ -64,7 +64,7 @@ export const CATEGORIES: CategoryDef[] = [
       "A payment that failed, a card that needs confirming, a trial about to end, a subscription cancelled or restored.",
     canDisable: false,
     whyMandatory:
-      "Silence here costs access. A declined card that nobody sees becomes an account locked mid-bid, with a deadline that does not move.",
+      "Missed payment alerts can interrupt access while a bid deadline is approaching.",
     inAppAt: { label: "Billing", href: "/settings/billing" },
   },
   {
@@ -74,7 +74,7 @@ export const CATEGORIES: CategoryDef[] = [
       "The AI account running out of credit, a mailbox disconnecting, a sweep failing repeatedly.",
     canDisable: false,
     whyMandatory:
-      "A stopped pipeline looks exactly like a quiet week from the inside. This is the only signal that distinguishes them before deadlines pass.",
+      "Check these alerts promptly so a stopped workflow does not delay a bid or follow-up.",
     inAppAt: { label: "Automation Health", href: "/agents" },
   },
   {
@@ -200,7 +200,7 @@ function statementFor(
     case "in_app_only":
     default:
       return def.inAppAt
-        ? `No email. This appears in ${def.inAppAt.label} and nowhere else, so it is only seen by somebody who opens the page.`
+        ? `No separate email alert. Check ${def.inAppAt.label} for the current status and next steps.`
         : "No email is sent for this.";
   }
 }
@@ -217,7 +217,7 @@ export function deliverySummary(statuses: CategoryStatus[]): string {
   const emailed = statuses.filter((s) => s.reachesAccount);
   const silent = statuses.filter((s) => s.route === "in_app_only" && s.inAppAt);
   if (emailed.length === 0) {
-    return "This account receives no email from the platform at all. Everything below is visible only to somebody who opens the page it lives on.";
+    return "None of the alert categories below is emailed directly to this account. Use the linked pages to check what needs attention. Your daily recap has separate settings.";
   }
   if (silent.length === 0) {
     return `Emailed to ${emailed[0].statement.replace(/^Emailed to /, "").replace(/\.$/, "")}.`;
@@ -225,5 +225,5 @@ export function deliverySummary(statuses: CategoryStatus[]): string {
   return `Only critical account alerts are emailed to this account. ${silent.length} other kinds of alert, including ${silent
     .slice(0, 3)
     .map((s) => s.label.toLowerCase())
-    .join(", ")}, appear in the product and are never sent anywhere, so nobody is told about them unless they look.`;
+    .join(", ")}, need to be checked in the product. Daily recap delivery is configured separately.`;
 }

@@ -512,11 +512,16 @@ export default async function WorkbenchPage({
           <EmptyState
             tone="success"
             title="Nothing is waiting on a person"
-            description="The automation keeps running: notices are polled and scored, outreach goes out, and replies are read. Anything it will not decide on its own lands here."
+            description="No pending tasks were found. Check Automation Health to confirm that discovery, outreach, and reply collection are running. New decisions and tasks will appear here."
             action={
-              <Link href="/pipeline" className="btn-ghost text-sm">
-                Open Opportunities
-              </Link>
+              <>
+                <Link href="/pipeline" className="btn-ghost text-sm">
+                  Open Opportunities
+                </Link>
+                <Link href="/agents" className="btn-ghost text-sm">
+                  Check Automation Health
+                </Link>
+              </>
             }
           />
         </div>

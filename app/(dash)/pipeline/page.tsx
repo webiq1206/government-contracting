@@ -889,7 +889,7 @@ function PipelineCard({
           <ScoreBadge score={o.score} />
         </div>
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-600">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
         <EstimatedValue value={o.value_estimated} source={o.value_estimated_source} />
         <DeadlineBadge deadline={o.deadline} rules={rules} />
       </div>

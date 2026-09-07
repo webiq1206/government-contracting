@@ -44,7 +44,9 @@ function load(id: string): Promise<CardPreviewData> {
   if (hit) return Promise.resolve(hit);
   const pending = inFlight.get(id);
   if (pending) return pending;
-  const p = fetch(`/api/opportunities/${id}/preview`)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const p = fetch(`/api/opportunities/${id}/preview`, { signal: controller.signal })
     .then(async (r) => {
       if (!r.ok) throw new Error(`Preview request failed with status ${r.status}.`);
       return (await r.json()) as CardPreviewData;
@@ -53,7 +55,7 @@ function load(id: string): Promise<CardPreviewData> {
       cache.set(id, d);
       return d;
     })
-    .finally(() => inFlight.delete(id));
+    .finally(() => { clearTimeout(timeout); inFlight.delete(id); });
   inFlight.set(id, p);
   return p;
 }
@@ -197,7 +199,12 @@ export function CardPreview({
       ref={hostRef}
       onMouseEnter={show}
       onMouseLeave={hide}
-      onFocusCapture={show}
+      onPointerDownCapture={hide}
+      onFocusCapture={(event) => {
+        if (event.target.closest("button, [role='menuitem']")) hide();
+        else show();
+      }}
+      onKeyDownCapture={(event) => { if (event.key === "Escape") hide(); }}
       onBlurCapture={hide}
     >
       {children}

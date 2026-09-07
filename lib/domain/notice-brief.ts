@@ -59,7 +59,7 @@ export function buildNoticeBrief(input: {
   locationText?: string | null;
   locationState?: string | null;
   valueEstimated?: number | null;
-  deadline?: string | null;
+  deadline?: string | Date | null;
   setAside?: string | null;
   score?: number | null;
   scoreSummary?: string | null;
@@ -71,6 +71,11 @@ export function buildNoticeBrief(input: {
     .filter(Boolean)
     .join(" ");
   const overview = desc ? firstSentences(desc, 2) : fromTitle || "This notice has not been summarized yet.";
+  // node-postgres returns timestamptz as Date, even when a row interface says
+  // string. Keep the analysis contract serializable before any brief renderer.
+  const deadline = input.deadline instanceof Date
+    ? (Number.isFinite(input.deadline.getTime()) ? input.deadline.toISOString() : null)
+    : typeof input.deadline === "string" ? input.deadline.trim() || null : null;
 
   return {
     brief_source: "notice",
@@ -79,7 +84,7 @@ export function buildNoticeBrief(input: {
     scope_plain_language: desc ? scopeLines(desc) : "The notice does not include a work description.",
     location,
     estimated_value: input.valueEstimated != null ? currency(input.valueEstimated) : NA,
-    due_date: input.deadline ?? NA,
+    due_date: deadline ?? NA,
     qualifications: {},
     prebid_meeting: null,
     site_visit: null,
@@ -90,7 +95,7 @@ export function buildNoticeBrief(input: {
     submission_requirements: [],
     evaluation_criteria: [],
     required_forms: [],
-    key_dates: input.deadline ? [{ label: "Response deadline", date: input.deadline }] : [],
+    key_dates: deadline ? [{ label: "Response deadline", date: deadline }] : [],
     contacts: [],
     qa_addenda: [],
     special_requirements: [],

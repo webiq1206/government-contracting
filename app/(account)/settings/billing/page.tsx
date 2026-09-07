@@ -417,7 +417,7 @@ export default async function BillingSettingsPage({
               </p>
             </div>
             <p className="text-sm leading-relaxed text-slate-600">
-              Finding, scoring, and analysing opportunities runs without limit during the
+              Finding and scoring opportunities are unmetered during the
               trial. These three are metered so the trial cannot run up a bill on your
               behalf:
             </p>

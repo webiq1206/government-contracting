@@ -18,12 +18,12 @@ corrected.
 
 Production readiness still cannot be certified. Publication was approved, and
 draft PR #112 now passes both CI jobs. The verified application candidate is
-remote commit `a86c31a46b8d1d48c9734c1ca81e7777c213e24f`: 4,272 unit/source tests
+remote commit `45a805369bc81e83526c8c2aa55f79b26c743220`: 4,274 unit/source tests
 passed, and all 738 selected native PostgreSQL tests passed with no skips.
 TypeScript and the production build passed. All 110 migrations applied and
 schema verification passed on the fresh disposable PostgreSQL 16 database.
 
-The full authenticated rendered visual review remains incomplete. Fourteen
+The full authenticated rendered visual review remains incomplete. Seventy-nine
 real PNGs from the isolated synthetic preview were downloaded and independently
 inspected. The managed browser has not reached the production login page.
 Migrations 102
@@ -366,17 +366,17 @@ copy were corrected locally. The third native run verified those corrections.
 
 ### Current verified candidate
 
-[CI run 34165039085](https://github.com/webiq1206/government-contracting/actions/runs/34165039085)
+[CI run 34166706395](https://github.com/webiq1206/government-contracting/actions/runs/34166706395)
 completed both jobs successfully at remote commit
-`a86c31a46b8d1d48c9734c1ca81e7777c213e24f`.
+`45a805369bc81e83526c8c2aa55f79b26c743220`.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Unit and source checks | PASS | 4,272 passed in 399 files. The unit-only environment skipped 726 cases, with the separate native gate covering database workflows. |
+| Unit and source checks | PASS | 4,274 passed in 399 files. The unit-only environment skipped 726 cases, with the separate native gate covering database workflows. |
 | Native PostgreSQL workflows and tenant checks | PASS | 738 tests in 91 files; no failures or skips; the explicit no-skip gate passed. |
 | Fresh migrations, schema verification and seed | PASS | All 110 migrations applied to disposable PostgreSQL 16. |
 | TypeScript and production build | PASS | Both CI steps passed; 64 static pages generated. Local build also passed. |
-| Rendered full-page, role and viewport matrix | INCOMPLETE | 14 actual synthetic preview PNGs independently inspected at four widths; remaining routes, full-page states, roles and exact-candidate retesting outstanding. |
+| Rendered full-page, role and viewport matrix | INCOMPLETE | 79 actual synthetic preview PNGs independently inspected; remaining routes, scroll states, roles and exact-candidate retesting outstanding. |
 | Actual production owner session and aliases | NOT VERIFIED | The production-only read-only assertions are explicitly separated from disposable CI. |
 | Restored production data and exact restricted runtime role | NOT VERIFIED | Fresh-database success does not prove upgrade compatibility or active production RLS. |
 | Live provider round trips | NOT VERIFIED | No production email, SMS, call, payment or bid submission was triggered. |
@@ -410,7 +410,7 @@ Opportunities, Subs, Settings, All accounts, empty-tenant, denied-admin, and
 missing-record views at 390, 820, 1440, and 1920 pixel widths. It reported no
 horizontal overflow on those views. Workers and live providers were disabled.
 
-Direct HTTPS export links resolved the screenshot transfer problem. Fourteen
+Direct HTTPS export links resolved the screenshot transfer problem. Seventy-nine
 original PNGs were downloaded, checked for valid PNG signatures, hashed, and
 independently visually inspected. A preserved evidence archive contains the
 captures, their source commit and hashes, and review notes. This establishes
@@ -445,8 +445,40 @@ local environment. The two added autosave cases protect late failure after
 invalidation and late success after a newer edit. TypeScript and ESLint passed.
 The final saved-view mutation refinement also makes deletion failures visible,
 bounds stalled requests, and blocks duplicate submissions. This follow-up
-requires a new CI run and exact-candidate rendered retesting before release;
-the earlier green native results above remain evidence for commit `a86c31a`.
+passed both CI jobs at `45a8053`, including all 738 native cases, but still
+requires exact-candidate rendered retesting before release.
+
+### Wider viewport review and second local correction batch
+
+All 79 original PNGs at `032238c` have now been independently inspected. The
+additional views include opportunity and subcontractor details and tabs,
+Workbench, Review, Call Queue, Communications, Contracts, Compliance,
+Automation Health, account settings, platform account details and audit log,
+navigation, row menus, quick-look drawers, and empty or missing-record states.
+These are viewport screenshots. The internal scrolling containers still need
+overlapping captures through their full depth. Some captures labeled populated
+by the remote runner actually show empty lists; they do not prove populated
+contract, compliance, communication or call workflows.
+
+| Observed issue | Local correction | Evidence |
+| --- | --- | --- |
+| Opportunity detail crashes when PostgreSQL supplies a native Date | Normalize the brief deadline and safely render valid native dates or unknown values | Three regression tests fail before the fix and pass afterward |
+| Review-card labels collide in the narrow desktop rail | Two-column fact layout and explicit unknown/unscheduled labels | Initial Review PNGs; rendered retest pending |
+| Trial billing declares automation Running from plan status alone | State plan permission and trial limits separately from actual operational health | Billing PNGs; existing account-status tests pass |
+| Phone Quotes tab hides its empty-state guidance inside a collapsed panel | Open the quotes section by default | Quotes tab PNG; rendered retest pending |
+| Hover preview overlaps the row menu | Close on action interaction/Escape and bound the preview request | Row-menu PNG; rendered retest pending |
+| Empty Workbench claims live automation despite missing setup | Describe the empty queue and link to actual Automation Health | Empty Workbench PNG; rendered retest pending |
+| Narrow board card pushes the deadline badge outside its edge | Wrap the value/deadline row | Desktop quick-look PNG; rendered retest pending |
+| Contract empty-state actions touch with no separation | Wrapping action row with a visible gap | Empty Contracts PNG; rendered retest pending |
+| Notification delivery statements conflict with separate daily recaps and owner routing | Scope statements to listed categories, label owner delivery, expose recipient lookup failures and link recap settings | Notifications PNGs and updated delivery tests |
+| Ordinary integration setup exposes deployment queue instructions | Restrict the technical queue panel to platform administrators | Integration page source; ordinary-owner rendered retest pending |
+| Sign-in email description incorrectly claims reply routing | Explain account identity and separate outreach mailbox setup | Account settings PNG and routing source |
+| General page error claims all prior work is unchanged | Explain uncertain preceding action status and duplicate avoidance | Opportunity crash screen; source correction |
+
+Second-batch local verification: 4,277 tests passed in 400 files; 726 database
+and production cases remain skipped locally. TypeScript, ESLint and diff
+integrity passed. The new candidate requires its own native CI and rendered
+retest. No screenshot in this archive proves the new candidate's final appearance.
 
 Local source inspection confirmed a countdown hydration defect and navigation
 paths with no pending feedback. Local fixes add stable first-render countdown
@@ -461,7 +493,7 @@ made locally, as requested by the user.
 
 | Requirement area | Current evidence | Release status |
 | --- | --- | --- |
-| Pages, navigation, forms, filters, menus, CTAs | Complete source inventory, static coverage tests, production build and 14 actual preview PNGs | Partial rendered review; full interaction matrix incomplete |
+| Pages, navigation, forms, filters, menus, CTAs | Complete source inventory, static coverage tests, production build and 79 actual preview PNGs | Partial rendered review; full interaction matrix incomplete |
 | Clear errors and recovery | Failure injection tests and explicit UI/API state fixes | Live provider faults unverified |
 | Attention, deadlines, priorities, next steps | Dashboard, queue, state, and copy tests | Representative production data unverified |
 | Loading, empty, success, warning, error, offline, partial | Source review and targeted component tests | Rendered and network-interruption matrix blocked |
@@ -471,13 +503,14 @@ made locally, as requested by the user.
 | Reply-to-tenant and thread integrity | Idempotency, matching, threading, review, sender, and isolation contracts | Real Gmail inbox round trip skipped |
 | Skip, pause, retry, reverify, cancel, abort | State-machine and failure-injection tests | Real interrupted worker processes unverified |
 | Roles, permissions, tenant boundaries | Route inventory, guards, source scans, unit attack cases and native two-tenant/RLS tests | Disposable tenant tests passed; production runtime RLS remains staged |
-| Responsive mobile-app experience | 14 actual preview PNGs at 390, 820, 1440 and 1920 widths, source and responsive tests | Local visual fixes require exact-candidate captures; remaining device/role/state matrix incomplete |
+| Responsive mobile-app experience | 79 actual preview PNGs, with initial overview captures at 390, 820, 1440 and 1920 widths, source and responsive tests | Local visual fixes require exact-candidate captures; remaining device/role/state matrix incomplete |
 
 ## Remaining release blockers
 
-1. **Authenticated rendered review:** obtain a functioning managed browser,
-   authenticate through the secure browser-authentication interface, and run
-   the complete role and viewport matrix.
+1. **Authenticated rendered review:** complete the exact-candidate role,
+   interaction and viewport matrix using real exported browser captures with
+   full internal scroll coverage. The managed production-admin session remains
+   unavailable and must use the secure browser-authentication interface.
 2. **Production-data migration rehearsal:** the fresh database gate now passes.
    Restore a current production snapshot, run migrations 102 through 110,
    rerun the database workflows, and execute the
@@ -528,7 +561,8 @@ made locally, as requested by the user.
 
 - Application changes are committed and published on
   `audit/production-readiness-2026-09-07` in draft PR #112. The exact candidate
-  `a86c31a` passes both CI jobs. The PR has not been merged.
+  `45a8053` passes both CI jobs. The subsequent correction batch is locally
+  verified and awaits exact-candidate CI. The PR has not been merged.
 - Nothing was deployed or pushed to production.
 - No production database was mutated.
 - No live email, SMS, call, outreach, payment, or bid submission was sent.

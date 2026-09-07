@@ -284,7 +284,7 @@ export default async function ContractsPage({
               title="No contracts yet"
               description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
               action={
-                <div className="space-y-3">
+                <div className="flex flex-wrap justify-center gap-2">
                   <Link href="/pipeline" className="btn-ghost text-sm">
                     Open opportunities
                   </Link>

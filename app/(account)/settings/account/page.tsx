@@ -119,9 +119,8 @@ export default async function AccountSettingsPage() {
                 <dt className="label">Email address</dt>
                 <dd className="num mt-0.5 break-all text-foreground">{user.email}</dd>
                 <dd className="mt-0.5 leading-relaxed text-muted-foreground">
-                  This is how you sign in, and the address subcontractor replies are matched
-                  back to, so it is not editable here. Ask an account owner if it has to
-                  change.
+                  This is your sign-in address. It cannot be changed here. Your connected
+                  outreach mailbox is managed separately in Integrations.
                 </dd>
               </div>
               <div>

@@ -715,7 +715,7 @@ export default async function SubDetailPage({
           }
           quotes={
             <div className="space-y-6 px-5 py-6">
-              <Collapsible title="Quotes" meta={quotes.length}>
+              <Collapsible title="Quotes" meta={quotes.length} defaultOpen>
                 {quotes.length === 0 ? (
                   <p className="text-sm text-slate-500">No quotes on file.</p>
                 ) : (

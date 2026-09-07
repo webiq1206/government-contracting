@@ -133,7 +133,7 @@ export default async function ReviewPage({
               ? "Nothing waiting"
               : `${opps.length} to decide${urgent > 0 ? ` · ${urgent} dismissed within a day` : ""}`
           }
-          explanation="Borderline scores. Read the case, then pursue or pass. Anything nobody decides is dismissed on its own timer."
+          explanation="Read each opportunity, then pursue or pass. If an automatic dismissal is scheduled, its deadline appears on the card."
         />
       </div>
 
