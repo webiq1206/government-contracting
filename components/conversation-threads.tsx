@@ -19,7 +19,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { replyTarget } from "@/lib/domain/conversation-thread";
-import { createDraftAutosave } from "@/lib/client/draft-autosave";
+import { createDraftAutosave, type DraftSaveState } from "@/lib/client/draft-autosave";
+import { UnsavedGuard } from "@/components/unsaved-guard";
 import type {
   Conversation,
   ConversationMessage,
@@ -115,19 +116,32 @@ export function ConversationThreads({
   const [busy, setBusy] = useState<string | null>(null);
   const [drafting, setDrafting] = useState<string | null>(null);
   const [result, setResult] = useState<Record<string, { ok: boolean; text: string }>>({});
+  const [saveStates, setSaveStates] = useState<Record<string, DraftSaveState>>({});
 
   // Persistence of operator edits. The ordering, debounce and drop rules live
   // in the autosave module so they can be tested on their own; all that is
   // left here is the transport and the page lifecycle.
   const autosave = useRef(
     createDraftAutosave({
+      onState: (id, state) => setSaveStates((states) => ({ ...states, [id]: state })),
       send: async ({ communicationId, body, rev, keepalive }) => {
-        await fetch("/api/conversations/draft", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ communicationId, body, rev }),
-          keepalive,
-        });
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 20_000);
+        try {
+          const response = await fetch("/api/conversations/draft", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ communicationId, body, rev }),
+            keepalive,
+            signal: controller.signal,
+          });
+          const data = await response.json().catch(() => null);
+          if (!response.ok || data?.ok !== true || data?.stale === true) {
+            throw new Error("This draft edit could not be saved. Keep a copy before reloading.");
+          }
+        } finally {
+          window.clearTimeout(timeout);
+        }
       },
     })
   ).current;
@@ -262,6 +276,15 @@ export function ConversationThreads({
 
   return (
     <div className="space-y-3">
+      <UnsavedGuard
+        when={conversations.some((conversation) => {
+          const id = replyTargetId(conversation);
+          const state = id ? saveStates[id] : undefined;
+          return state === "error" || state === "pending" || state === "saving" ||
+            (Boolean(drafts[conversation.key]?.trim()) && (!id || !hasDraft[id]));
+        })}
+        message="Your reply has unsaved changes. Keep a copy or retry saving before leaving. Leave without saving?"
+      />
       {conversations.map((c) => {
         const expanded = openKey === c.key;
         const res = result[c.key];
@@ -370,6 +393,20 @@ export function ConversationThreads({
                           queueSave(inboundId, value);
                         }}
                       />
+                      {inboundId && saveStates[inboundId] === "error" ? (
+                        <p role="alert" className="mt-1 text-sm text-risk">
+                          Your changes could not be saved. Keep this page open or copy your reply before reloading.{" "}
+                          <button type="button" className="inline-flex min-h-11 items-center font-medium underline" onClick={() => autosave.flush(false)}>
+                            Retry saving
+                          </button>
+                        </p>
+                      ) : inboundId && saveStates[inboundId] && saveStates[inboundId] !== "idle" ? (
+                        <p role="status" className="mt-1 text-xs text-muted-foreground">
+                          {saveStates[inboundId] === "saved" ? "Changes saved." : "Saving changes…"}
+                        </p>
+                      ) : !written && (drafts[c.key] ?? "").trim() ? (
+                        <p className="mt-1 text-xs text-muted-foreground">This reply stays on this page until you send it. Keep a copy before leaving.</p>
+                      ) : null}
                       {written && (
                         <p className="mt-1 text-xs text-slate-500">
                           Suggested by Brost Co from what they wrote and what we have on

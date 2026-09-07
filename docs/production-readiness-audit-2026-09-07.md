@@ -16,13 +16,18 @@ are clean, and a clean production build succeeds. Major tenant, lifecycle,
 delivery, automation, audit, billing, storage, and user-interface defects were
 corrected.
 
-Production readiness still cannot be certified. The managed cloud browser has
-not reached the BrostCo login page, so the authenticated rendered visual review
-remains incomplete. Publication was subsequently approved, and draft PR #112
-now runs native PostgreSQL CI. Its first database run applied all 110 migrations
-and passed schema verification, then reported 690 passing tests, 34 failures,
-and 15 skips. Corrections from that run are awaiting a native retest. Migrations
-102 through 110 have not been exercised against a restored production snapshot,
+Production readiness still cannot be certified. Publication was approved, and
+draft PR #112 now passes both CI jobs. The verified application candidate is
+remote commit `a86c31a46b8d1d48c9734c1ca81e7777c213e24f`: 4,272 unit/source tests
+passed, and all 738 selected native PostgreSQL tests passed with no skips.
+TypeScript and the production build passed. All 110 migrations applied and
+schema verification passed on the fresh disposable PostgreSQL 16 database.
+
+The full authenticated rendered visual review remains incomplete. Fourteen
+real PNGs from the isolated synthetic preview were downloaded and independently
+inspected. The managed browser has not reached the production login page.
+Migrations 102
+through 110 have not been exercised against a restored production snapshot,
 the new row-level-security policies are deliberately staged rather than
 enforced for the current table-owner runtime, and live third-party integrations
 were not invoked.
@@ -40,7 +45,7 @@ The generated interface inventory contains:
 | Pages | 66 |
 | API routes | 127 |
 | Layouts | 6 |
-| Shared components | 185 |
+| Shared components | 187 |
 | Domain modules | 176 |
 
 The review traced authentication, account setup, customer and platform-admin
@@ -357,7 +362,24 @@ The second native run at remote commit `4467c3e735f8d672b4b260603d82459e22368cc5
 reported 737 passes, one failure, and no skips across the 91 selected files.
 The remaining failure identified a suppressed activity-log explanation for an
 ambiguous trade quote. That explanation and the incorrect "no longer active"
-copy were corrected locally and await the next native run.
+copy were corrected locally. The third native run verified those corrections.
+
+### Current verified candidate
+
+[CI run 34165039085](https://github.com/webiq1206/government-contracting/actions/runs/34165039085)
+completed both jobs successfully at remote commit
+`a86c31a46b8d1d48c9734c1ca81e7777c213e24f`.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Unit and source checks | PASS | 4,272 passed in 399 files. The unit-only environment skipped 726 cases, with the separate native gate covering database workflows. |
+| Native PostgreSQL workflows and tenant checks | PASS | 738 tests in 91 files; no failures or skips; the explicit no-skip gate passed. |
+| Fresh migrations, schema verification and seed | PASS | All 110 migrations applied to disposable PostgreSQL 16. |
+| TypeScript and production build | PASS | Both CI steps passed; 64 static pages generated. Local build also passed. |
+| Rendered full-page, role and viewport matrix | INCOMPLETE | 14 actual synthetic preview PNGs independently inspected at four widths; remaining routes, full-page states, roles and exact-candidate retesting outstanding. |
+| Actual production owner session and aliases | NOT VERIFIED | The production-only read-only assertions are explicitly separated from disposable CI. |
+| Restored production data and exact restricted runtime role | NOT VERIFIED | Fresh-database success does not prove upgrade compatibility or active production RLS. |
+| Live provider round trips | NOT VERIFIED | No production email, SMS, call, payment or bid submission was triggered. |
 
 The follow-up changes correct an ambiguous bid-rebuild SQL column, preserve
 durable abandonment records for deleted or malformed jobs, retain safe tenant
@@ -379,7 +401,7 @@ that all code and design implementation be performed locally. No further Replit
 implementation work will be requested. Code fixes and verification proceed on
 the audit branch, with merge held until the remaining gates are complete.
 
-## First reported rendered preview observations
+## Initial rendered preview evidence and local corrections
 
 Replit subsequently reported an unchanged, detached copy of remote commit
 `032238c79320d136c65438357baabd8f42302a50` running against a separate disposable
@@ -388,12 +410,43 @@ Opportunities, Subs, Settings, All accounts, empty-tenant, denied-admin, and
 missing-record views at 390, 820, 1440, and 1920 pixel widths. It reported no
 horizontal overflow on those views. Workers and live providers were disabled.
 
-The connector returned text only. Actual screenshot attachments or accessible
-download links have not reached this workspace, so these observations are
-hosting-agent reports, not an independently completed visual audit. They cover
-only part of the page, role and state matrix and do not cover the user's actual
-production admin session. Subsequent evidence-retrieval calls timed out or
-reported that the hosting agent was still busy.
+Direct HTTPS export links resolved the screenshot transfer problem. Fourteen
+original PNGs were downloaded, checked for valid PNG signatures, hashed, and
+independently visually inspected. A preserved evidence archive contains the
+captures, their source commit and hashes, and review notes. This establishes
+partial rendered evidence, not full workflow coverage or the user's actual
+production admin session. The captures precede the subsequent local fixes.
+
+| Observed issue | Local correction | Retest status |
+| --- | --- | --- |
+| Today warnings and setup push pending work below the first screen | Compact expandable diagnostics, visible recovery links, setup after the queue and collapsed when work is waiting | Exact-candidate rendered retest pending |
+| Mobile Opportunities title/help overlap and description is squeezed by view controls | Full-width mobile heading row, separate actions and nonshrinking help control | Exact-candidate rendered retest pending |
+| Mobile Bids label disagrees with the Opportunities destination | Consistent visible Opportunities label | Exact-candidate rendered retest pending |
+| Subcontractor filter grid dominates the laptop viewport | Common filters inline, all filters in the accessible sheet at every width, active filter chips retained | Exact-candidate rendered retest pending |
+| Empty pipeline reads platform credentials as tenant setup and instructs users to edit deployment secrets | Explain discovery prerequisites and link to the account's actual setup checklist | Exact-candidate rendered retest pending |
+| Missing and forbidden pages claim definite nonexistence | Explain unavailability and recovery without revealing protected record existence | Exact-candidate rendered retest pending |
+
+Follow-up source tracing also corrected silent saved-view fetch failures and
+silent reply-draft autosave failures. Saved views now time out, explain failures
+and offer retry. Failed draft edits remain queued for retry, show an explicit
+unsaved state and protect navigation. HTTP errors and stale or incomplete save
+acknowledgements cannot claim success. Revision and epoch guards prevent old
+responses from marking a newer edit saved or resurrecting a sent/replaced draft.
+Manually typed replies that do not have a stored generated draft clearly state
+that their text is held on the page and receive the same navigation protection.
+
+AI status copy no longer infers that every request failed or that a quiet half
+hour proves recovery. Missing AI setup no longer claims SAM discovery is
+working, and the Today all-clear state excludes known automation problems.
+
+Local verification for this visual follow-up: 4,274 unit/source tests passed
+in 399 files, with 726 database/production cases skipped in the credential-free
+local environment. The two added autosave cases protect late failure after
+invalidation and late success after a newer edit. TypeScript and ESLint passed.
+The final saved-view mutation refinement also makes deletion failures visible,
+bounds stalled requests, and blocks duplicate submissions. This follow-up
+requires a new CI run and exact-candidate rendered retesting before release;
+the earlier green native results above remain evidence for commit `a86c31a`.
 
 Local source inspection confirmed a countdown hydration defect and navigation
 paths with no pending feedback. Local fixes add stable first-render countdown
@@ -408,25 +461,26 @@ made locally, as requested by the user.
 
 | Requirement area | Current evidence | Release status |
 | --- | --- | --- |
-| Pages, navigation, forms, filters, menus, CTAs | Complete source inventory, static coverage tests, production build | Rendered interaction blocked |
+| Pages, navigation, forms, filters, menus, CTAs | Complete source inventory, static coverage tests, production build and 14 actual preview PNGs | Partial rendered review; full interaction matrix incomplete |
 | Clear errors and recovery | Failure injection tests and explicit UI/API state fixes | Live provider faults unverified |
 | Attention, deadlines, priorities, next steps | Dashboard, queue, state, and copy tests | Representative production data unverified |
 | Loading, empty, success, warning, error, offline, partial | Source review and targeted component tests | Rendered and network-interruption matrix blocked |
-| Cross-page data synchronization | Domain and route tests | Database integration skipped |
+| Cross-page data synchronization | Domain, route and native PostgreSQL tests | Fresh database passed; production data rehearsal outstanding |
 | SAM discovery through scoring | Mocked normalization, routing, failure, completeness, and tenant tests | Live SAM and real attachments unverified |
-| Subcontractor discovery through bid collection | Agent, outreach, attachment, follow-up, reply, suppression, and lifecycle tests | Live providers and database round trip unverified |
+| Subcontractor discovery through bid collection | Native agent, outreach, attachment, follow-up, reply, suppression, and lifecycle tests | Database round trips passed; live providers unverified |
 | Reply-to-tenant and thread integrity | Idempotency, matching, threading, review, sender, and isolation contracts | Real Gmail inbox round trip skipped |
 | Skip, pause, retry, reverify, cancel, abort | State-machine and failure-injection tests | Real interrupted worker processes unverified |
-| Roles, permissions, tenant boundaries | Route inventory, guards, source scans, and unit attack cases | Two-tenant PostgreSQL attack suite skipped; staged RLS not active |
-| Responsive mobile-app experience | Static review and responsive source tests | Real screenshots and device interaction blocked |
+| Roles, permissions, tenant boundaries | Route inventory, guards, source scans, unit attack cases and native two-tenant/RLS tests | Disposable tenant tests passed; production runtime RLS remains staged |
+| Responsive mobile-app experience | 14 actual preview PNGs at 390, 820, 1440 and 1920 widths, source and responsive tests | Local visual fixes require exact-candidate captures; remaining device/role/state matrix incomplete |
 
 ## Remaining release blockers
 
 1. **Authenticated rendered review:** obtain a functioning managed browser,
    authenticate through the secure browser-authentication interface, and run
    the complete role and viewport matrix.
-2. **Disposable database validation:** restore a current production snapshot,
-   run migrations 102 through 110, run all 724 skipped tests, and execute the
+2. **Production-data migration rehearsal:** the fresh database gate now passes.
+   Restore a current production snapshot, run migrations 102 through 110,
+   rerun the database workflows, and execute the
    tenant-isolation verifier using the exact proposed runtime role.
 3. **Active database isolation:** complete the restricted runtime-role work in
    `docs/rls-enforcement-plan.md`. Migration 107 enables policies, but the
@@ -472,8 +526,9 @@ made locally, as requested by the user.
 
 ## Change and safety status
 
-- Changes are on `audit/production-readiness-2026-09-07`, with the initial
-  checkpoint published in draft PR #112 and native-test corrections in progress.
+- Application changes are committed and published on
+  `audit/production-readiness-2026-09-07` in draft PR #112. The exact candidate
+  `a86c31a` passes both CI jobs. The PR has not been merged.
 - Nothing was deployed or pushed to production.
 - No production database was mutated.
 - No live email, SMS, call, outreach, payment, or bid submission was sent.

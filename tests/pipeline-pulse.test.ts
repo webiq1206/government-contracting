@@ -35,7 +35,8 @@ describe("the movement leg", () => {
     const f = evaluatePulse(input({ workerLastRunAt: hoursAgo(5) }));
     expect(f).toHaveLength(1);
     expect(f[0]).toMatchObject({ key: "worker_down", severity: "down" });
-    expect(f[0].detail).toContain("Reserved VM");
+    expect(f[0].detail).toContain("Open Automation Health");
+    expect(f[0].detail).not.toContain("Reserved VM");
   });
 
   it("calls out a worker that never ran while work is waiting", () => {
@@ -165,7 +166,7 @@ describe("the worker's own check-in", () => {
     );
     expect(f).toHaveLength(1);
     expect(f[0]).toMatchObject({ key: "worker_starting", severity: "down" });
-    expect(f[0].detail).toContain("queue");
+    expect(f[0].detail).toContain("blocked step");
     // The deployment advice belongs to a dead worker; this one is alive.
     expect(f[0].detail).not.toContain("Reserved VM");
   });
@@ -209,11 +210,12 @@ describe("the gates that silence the whole engine", () => {
     expect(f[0].detail).toMatch(/resumes everything/i);
   });
 
-  it("explains a missing AI key as found-but-not-acted-on", () => {
+  it("explains missing AI setup without claiming discovery is working", () => {
     const f = evaluatePulse(input({ claudeConfigured: false }));
     const claude = f.find((x) => x.key === "claude_off");
     expect(claude?.severity).toBe("down");
-    expect(claude?.detail).toMatch(/ANTHROPIC_API_KEY/);
+    expect(claude?.detail).toContain("Open Integrations");
+    expect(claude?.detail).not.toMatch(/ANTHROPIC_API_KEY|still pulls|still being found/);
     // Not a hard return: it does not suppress other independent legs.
     const withWorker = evaluatePulse(input({ claudeConfigured: false, workerLastRunAt: hoursAgo(9) }));
     expect(withWorker.some((x) => x.key === "claude_off")).toBe(true);
@@ -231,7 +233,7 @@ describe("the gates that silence the whole engine", () => {
     );
     const ai = f.find((x) => x.key === "claude_failing");
     expect(ai?.severity).toBe("down");
-    expect(ai?.title).toMatch(/125 jobs have failed/);
+    expect(ai?.title).toMatch(/125 AI jobs have failed/);
     expect(ai?.detail).toMatch(/credit balance is too low/);
   });
 

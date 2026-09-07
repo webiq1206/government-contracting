@@ -770,7 +770,7 @@ export default async function TodayPage({
             ? "calls"
             : "other";
 
-  const clear = totalActions === 0 && setup.complete && loadWarnings.length === 0;
+  const clear = totalActions === 0 && setup.complete && loadWarnings.length === 0 && pulse.length === 0 && !automation.paused && !health?.interrupt;
 
   return (
     <div className="flex page-shell bg-background text-foreground">
@@ -814,13 +814,7 @@ export default async function TodayPage({
             <div className="min-w-0 flex-1 space-y-6 lg:space-y-10">
               <AutomationPausedBanner state={automation} />
 
-              {!automation.paused && <PipelinePulse findings={pulse} />}
-
-              {!setup.complete && (
-                <div className="rounded-md border border-border/55 bg-surface p-4 dark:border-white/10">
-                  <SetupChecklist checklist={setup} />
-                </div>
-              )}
+              {!automation.paused && <PipelinePulse findings={pulse} compact />}
 
               {data.awardCompliance.length > 0 && (
                 <Section
@@ -930,6 +924,20 @@ export default async function TodayPage({
                     />
                   )}
                 </div>
+              )}
+
+              {!setup.complete && (
+                totalActions > 0 ? (
+                  <details className="rounded-md border border-border/55 bg-surface p-4 dark:border-white/10">
+                    <summary className="min-h-11 cursor-pointer text-sm font-semibold">
+                      Finish setup: {setup.done} of {setup.total} steps done
+                      <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                        {setup.requiredRemaining} required steps remaining. Open to review connections and company details.
+                      </span>
+                    </summary>
+                    <div className="mt-3"><SetupChecklist checklist={setup} /></div>
+                  </details>
+                ) : <SetupChecklist checklist={setup} />
               )}
 
               {clear && (

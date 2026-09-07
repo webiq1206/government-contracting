@@ -97,14 +97,15 @@ describe("the pipeline pulse banner", () => {
     activeOrgCount: 1,
   };
 
-  it("reports a live outage as down and in the present tense", () => {
+  it("reports recent failures without claiming every request failed", () => {
     const out = evaluatePulse({
       ...base,
       claudeFailures: { count: 490, reason: "Credit balance is too low.", lastAt: ago(2) },
     });
     const f = out.find((x) => x.key === "claude_failing");
     expect(f?.severity).toBe("down");
-    expect(f?.title).toContain("is refusing every request");
+    expect(f?.title).toContain("490 AI jobs have failed recently");
+    expect(f?.title).not.toContain("every request");
   });
 
   it("downgrades to a warning once failures have stopped", () => {
@@ -114,9 +115,9 @@ describe("the pipeline pulse banner", () => {
     });
     const f = out.find((x) => x.key === "claude_failing");
     expect(f?.severity).toBe("warn");
-    expect(f?.title).toContain("was refusing");
+    expect(f?.title).toContain("last six hours");
     expect(f?.title).not.toContain("is refusing");
-    expect(f?.detail).toContain("looks fixed");
+    expect(f?.detail).toContain("does not confirm recovery");
   });
 
   it("says what happens to the work the outage cost, rather than leaving it unsaid", () => {
@@ -139,8 +140,8 @@ describe("the pipeline pulse banner", () => {
     });
     const f = out.find((x) => x.key === "claude_failing");
     expect(f?.detail).toContain("picked back up automatically");
-    expect(f?.detail).toContain("15 minutes");
-    expect(f?.detail).toContain("over the next few hours");
+    expect(f?.detail).toContain("Once it is working and automation is running");
+    expect(f?.detail).toContain("retry schedule");
     expect(f?.detail).not.toContain("not retried");
   });
 

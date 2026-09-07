@@ -40,8 +40,7 @@ export function SetupChecklist({ checklist }: { checklist: Checklist }) {
       </div>
 
       <p className="mt-3 text-sm text-slate-600">
-        Complete these and the platform runs on its own: finding, scoring, and
-        working opportunities with only a few minutes from you each day.
+        Connect the required services and complete your company details to start finding and preparing opportunities.
       </p>
 
       {/* The specific trap: a connected SAM key with no NAICS codes looks

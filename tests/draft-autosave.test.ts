@@ -242,15 +242,54 @@ describe("dropping an edit that no longer applies", () => {
 });
 
 describe("when saving fails", () => {
-  it("swallows the error rather than throwing at the operator", async () => {
+  it("reports the failure and retains the edit for retry without wedging the queue", async () => {
+    const onState = vi.fn();
     const send = vi.fn(async () => {
       throw new Error("offline");
     });
-    const autosave = createDraftAutosave({ send, delayMs: 10 });
+    const autosave = createDraftAutosave({ send, delayMs: 10, onState });
     autosave.edit("m1", "text");
     vi.advanceTimersByTime(10);
-    // The text is still in the box in front of them; an alert would be noise.
     await expect(autosave.settled()).resolves.toBeUndefined();
+    expect(onState).toHaveBeenLastCalledWith("m1", "error");
+    send.mockResolvedValueOnce(undefined);
+    autosave.flush(false);
+    await autosave.settled();
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1]).toEqual(send.mock.calls[0]);
+    expect(onState).toHaveBeenLastCalledWith("m1", "saved");
+  });
+
+  it("does not restore a failed edit after its draft was sent or rewritten", async () => {
+    let fail!: (error: Error) => void;
+    const onState = vi.fn();
+    const send = vi.fn(() => new Promise<void>((_, reject) => { fail = reject; }));
+    const autosave = createDraftAutosave({ send, delayMs: 10, onState });
+    autosave.edit("m1", "already sent");
+    vi.advanceTimersByTime(10);
+    await Promise.resolve();
+    autosave.invalidate("m1");
+    fail(new Error("offline"));
+    await autosave.settled();
+    autosave.flush(false);
+    await autosave.settled();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(onState).toHaveBeenLastCalledWith("m1", "idle");
+  });
+
+  it("does not let an old success clear a newer unsaved edit", async () => {
+    let release!: () => void;
+    const onState = vi.fn();
+    const send = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+    const autosave = createDraftAutosave({ send, delayMs: 10, onState });
+    autosave.edit("m1", "first");
+    vi.advanceTimersByTime(10);
+    await Promise.resolve();
+    autosave.edit("m1", "second");
+    release();
+    await autosave.settled();
+    expect(onState).toHaveBeenLastCalledWith("m1", "pending");
+    autosave.invalidate("m1");
   });
 
   it("keeps saving after a failure instead of wedging the queue", async () => {

@@ -56,7 +56,7 @@ export function HelpPopover({
   }, [open]);
 
   return (
-    <div className="relative inline-block" ref={ref}>
+    <div className="relative inline-block shrink-0" ref={ref}>
       <button
         ref={triggerRef}
         type="button"

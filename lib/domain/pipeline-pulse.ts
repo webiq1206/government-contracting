@@ -176,11 +176,11 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
     findings.push({
       key: "claude_off",
       severity: "down",
-      title: "The AI key is missing, so deals are found but never acted on.",
+      title: "Scoring and drafting need an AI connection.",
       detail:
-        "Discovery still pulls opportunities from SAM.gov, but without an Anthropic API key nothing gets scored, analysed, or drafted, so opportunities pile up and no email is ever written. Set ANTHROPIC_API_KEY in the deployment and restart.",
+        "Your account has no AI connection for scoring opportunities, preparing briefs, or drafting outreach. Open Integrations to connect it or see who can complete setup.",
       href: "/settings/integrations",
-      cta: "Add the AI key",
+      cta: "Review AI connection",
     });
     // Not a hard return: the worker/SAM legs below still report, because they
     // are independent failures worth seeing at the same time.
@@ -200,13 +200,10 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
         ? {
             key: "claude_failing",
             severity: "warn",
-            title: `The AI was refusing requests, and ${n} job${n === 1 ? " has" : "s have"} failed today.`,
+            title: `${n} AI job${n === 1 ? " failed" : "s failed"} in the last six hours.`,
             detail:
-              "Nothing has failed in the last half hour, so whatever was wrong looks fixed. That count covers " +
-              "the last six hours and falls on its own as those failures age out; there is nothing to clear by hand. " +
-              "The work those jobs were doing is picked back up automatically: unscored opportunities are re-queued " +
-              "within 15 minutes, and every other stalled stage is re-run once it passes its own threshold, so the " +
-              "backlog drains over the next few hours rather than at once. " +
+              "No new failures were recorded in the last half hour. A quiet period alone does not confirm recovery. " +
+              "Open Integrations to check the connection. Once it is working and automation is running, eligible unfinished work is picked back up automatically, according to its retry schedule. " +
               `Last failure said: ${input.claudeFailures.reason ?? "the service refused the request."}`,
             href: "/settings/integrations",
             cta: "Open Integrations",
@@ -214,11 +211,10 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
         : {
             key: "claude_failing",
             severity: "down",
-            title: `The AI is refusing every request, so ${n} job${n === 1 ? " has" : "s have"} failed.`,
+            title: `${n} AI job${n === 1 ? " has" : "s have"} failed recently.`,
             detail:
               `${input.claudeFailures.reason ?? "Anthropic refused the request."} ` +
-              "Deals are still being found, but until this is fixed nothing gets scored, analysed, or drafted, " +
-              "so opportunities pile up unworked.",
+              "Scoring, analysis, or drafting may be delayed. Open Integrations to check the connection and recovery steps.",
             href: "/settings/integrations",
             cta: "Open Integrations",
           }
@@ -255,11 +251,11 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
         ? "The automation engine has lost its connection to the job queue."
         : "The automation engine is stuck starting up.",
       detail: degraded
-        ? "The engine is running and checking in, but the job queue is not answering it, so no work is being picked up. It keeps trying to reconnect. If this does not clear within a few minutes, restart the deployment."
+        ? "Scheduled work cannot start because its queue is unavailable. Reconnection is automatic. Open Automation Health to check progress and recovery steps."
         : `The engine is alive and checking in, but it has not finished starting${
             bootAge != null ? ` after ${ago(bootAge)}` : ""
-          }. It is waiting on the "${input.workerPhase}" step, so nothing is being found, emailed, or followed up yet. ` +
-          "It keeps retrying on its own. If this does not clear within a few minutes, restart the deployment.",
+          }. Scheduled discovery, email, and follow-ups cannot start yet. ` +
+          "Startup retries automatically. Open Automation Health to see the blocked step and recovery options.",
       href: "/agents",
       cta: "Open Automation Health",
     });
@@ -276,12 +272,12 @@ export function evaluatePulse(input: PulseInput): PulseFinding[] {
     findings.push({
       key: "worker_down",
       severity: "down",
-      title: "The automation engine is not running.",
+      title: "Automated work has stopped checking in.",
       detail:
         input.workerLastRunAt == null
-          ? "No automated work has ever run, though opportunities are waiting. Nothing will be found, scored, emailed, or followed up until the background worker is running." +
+          ? "No completed work or recent check-in is recorded while opportunities are waiting. Discovery, scoring, and follow-ups may be blocked. Open Automation Health to check and restore the service." +
             lastSeen
-          : `Nothing has run for ${Math.floor(workerAge!)} hour(s). New deals are not being found and no emails are going out. On Replit this means the app is not deployed as an always-on process: use a Reserved VM deployment (an Autoscale deployment sleeps between visits, which stops all background work).` +
+          : `No automated work has started for ${Math.floor(workerAge!)} hour(s), and no recent check-in is available. Discovery and follow-ups may be delayed. Open Automation Health to check and restore the service.` +
             lastSeen,
       href: "/agents",
       cta: "Open Automation Health",

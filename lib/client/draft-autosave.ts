@@ -54,10 +54,13 @@ export interface DraftAutosave {
   settled(): Promise<void>;
 }
 
+export type DraftSaveState = "pending" | "saving" | "saved" | "error" | "idle";
+
 export function createDraftAutosave(opts: {
   send: AutosaveSend;
   /** Quiet period after the last keystroke. */
   delayMs?: number;
+  onState?: (communicationId: string, state: DraftSaveState) => void;
 }): DraftAutosave {
   const delay = opts.delayMs ?? 900;
   const timers: Record<string, ReturnType<typeof setTimeout>> = {};
@@ -67,19 +70,27 @@ export function createDraftAutosave(opts: {
   /** Text typed but not yet written, with the revision it was assigned. */
   const pending: Record<string, { body: string; rev: number }> = {};
 
-  function write(id: string, body: string, rev: number, keepalive: boolean) {
-    // A failed autosave is not worth interrupting anyone over: the text is
-    // still in the box in front of them.
-    return opts
-      .send({ communicationId: id, body, rev, keepalive })
-      .catch(() => {});
+  async function write(id: string, body: string, rev: number, keepalive: boolean, epoch: number) {
+    const current = () => (epochs[id] ?? 0) === epoch && revs[id] === rev;
+    if (current()) opts.onState?.(id, "saving");
+    try {
+      await opts.send({ communicationId: id, body, rev, keepalive });
+      if (current()) opts.onState?.(id, "saved");
+    } catch {
+      // Retain the latest failed edit for Retry or a later flush. A stale
+      // failure must never resurrect a sent, rewritten, or newer draft.
+      if (current()) {
+        pending[id] = { body, rev };
+        opts.onState?.(id, "error");
+      }
+    }
   }
 
   function enqueue(id: string, body: string, rev: number, epoch: number) {
     const prior = chains[id] ?? Promise.resolve();
     chains[id] = prior.then(async () => {
       if ((epochs[id] ?? 0) !== epoch) return;
-      await write(id, body, rev, false);
+      await write(id, body, rev, false, epoch);
     });
   }
 
@@ -98,6 +109,7 @@ export function createDraftAutosave(opts: {
       // Recorded before the timer so that leaving mid-debounce still has
       // something to send.
       pending[id] = { body, rev };
+      opts.onState?.(id, "pending");
       const epoch = epochs[id] ?? 0;
       timers[id] = setTimeout(() => {
         // A flush may already have taken this text.
@@ -111,6 +123,7 @@ export function createDraftAutosave(opts: {
       clearTimeout(timers[id]);
       delete pending[id];
       epochs[id] = (epochs[id] ?? 0) + 1;
+      opts.onState?.(id, "idle");
       // The revision counter is deliberately not reset. It only ever goes up,
       // here and on the server, which is what makes a write that was already
       // on the wire when this happened lose rather than win.
@@ -124,7 +137,7 @@ export function createDraftAutosave(opts: {
           // No time to queue behind an in-flight write, and no need: this
           // carries a higher revision, so the server will not let the older
           // one replace it whichever order they arrive in.
-          void write(id, entry.body, entry.rev, true);
+          void write(id, entry.body, entry.rev, true, epochs[id] ?? 0);
         } else {
           enqueue(id, entry.body, entry.rev, epochs[id] ?? 0);
         }

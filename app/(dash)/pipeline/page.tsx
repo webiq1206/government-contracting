@@ -35,8 +35,6 @@ import { opportunityRowActions } from "@/lib/domain/row-actions";
 import { DraggableCard, StageDropColumn } from "@/components/pipeline-dnd";
 import { stageMode } from "@/lib/stage-meta";
 import { PAGE_HELP } from "@/lib/help-content";
-import { integrationStatus } from "@/lib/config";
-import { hydrateIntegrationEnv } from "@/lib/integration-settings";
 import { DeadlineBadge } from "@/components/deadline-badge";
 import { EstimatedValue } from "@/components/estimated-value";
 import { getAutomationRules } from "@/lib/app-settings";
@@ -964,49 +962,27 @@ function PipelineCard({
  * concrete "what to do next" tied to which integrations are missing.
  */
 async function PipelineOnboarding() {
-  await hydrateIntegrationEnv();
   // Read from the registry rather than typed into the sentence below, which
   // is how this paragraph came to promise a two-hourly poll for months after
   // the schedule moved to three.
   const cadence = agentCadence("opportunity-monitor");
-  const st = integrationStatus();
-  const missing: string[] = [];
-  if (!st.sam) missing.push("SAM.gov (opportunity ingestion)");
-  if (!st.claude) missing.push("Anthropic (scoring + bid briefs)");
-  if (!st.googleMaps) missing.push("Google Maps (subcontractor discovery)");
-  if (!st.gmail) {
-    missing.push("Google Inbox (sending outreach and reading replies)");
-  }
-
   return (
-    <div className="mx-6 mt-4 rounded-md border border-accent/40 bg-accent-soft p-5">
+    <div className="mx-4 mt-4 rounded-md border border-accent/40 bg-accent-soft p-5 sm:mx-6">
       <p className="eyebrow mb-1 text-accent-strong">Get started</p>
       <h2 className="font-display text-xl font-semibold text-foreground">
-        No opportunities yet. That is expected on a fresh setup.
+        Start finding opportunities
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">
-        Opportunities flow in from the Opportunity Monitor (SAM.gov,{" "}
-        {cadence ? cadence.toLowerCase() : "on a schedule"}) and are
-        scored, briefed, and routed through the 11 stages you see here automatically. Add the
-        integration keys below in your deployment secrets, then the pipeline will start filling
-        itself.
+        No opportunities are in this account yet. Connect SAM.gov and add your industry codes in Company settings.
+        When setup is ready and automation is running, searches run {cadence ? cadence.toLowerCase() : "on a schedule"}.
+        Your setup checklist shows the next step for this account.
       </p>
-      {missing.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm">
-          {missing.map((m) => (
-            <li key={m} className="flex items-start gap-2 text-slate-700">
-              <span className="mt-0.5 text-accent">•</span>
-              <span>{m}</span>
-            </li>
-          ))}
-        </ul>
-      )}
       <div className="mt-5 flex flex-wrap gap-2">
-        <Link href="/settings/integrations" className="btn-primary">
-          Review integrations
+        <Link href="/today" className="btn-primary">
+          Review account setup
         </Link>
-        <Link href="/settings/profile" className="btn-ghost">
-          Adjust automation settings
+        <Link href="/agents" className="btn-ghost">
+          Check automation
         </Link>
       </div>
     </div>

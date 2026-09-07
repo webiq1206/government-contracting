@@ -46,7 +46,6 @@ const TABS: {
 
 /** Visible text where the full label will not fit five across. */
 const SHORT_LABEL: Record<string, string> = {
-  "/pipeline": "Bids",
   "/subs": "Subs",
 };
 
@@ -95,7 +94,7 @@ export function MobileTabBar({
             key={tab.href}
             href={tab.href}
             aria-current={active ? "page" : undefined}
-            className={`relative flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2.5 text-[11px] ${
+            className={`relative flex min-h-14 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-0.5 py-2.5 text-[10px] sm:text-[11px] ${
               active ? "font-semibold text-gold-text" : "text-muted-foreground"
             }`}
           >
