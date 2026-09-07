@@ -11,6 +11,7 @@ async function load() {
   vi.doMock("@/lib/db", () => ({ query, queryOne }));
   vi.doMock("@/lib/queue", () => ({ enqueue: vi.fn(async () => null) }));
   vi.doMock("@/lib/logger", () => ({ logAgent: vi.fn(async () => undefined) }));
+  vi.doMock("@/lib/auth", () => ({ currentUser: vi.fn(async () => null) }));
   return import("@/lib/reply-capture");
 }
 
@@ -18,6 +19,7 @@ afterEach(() => {
   vi.doUnmock("@/lib/db");
   vi.doUnmock("@/lib/queue");
   vi.doUnmock("@/lib/logger");
+  vi.doUnmock("@/lib/auth");
   vi.resetModules();
 });
 
@@ -75,6 +77,7 @@ describe("reply capture ownership and weak matching", () => {
       /select distinct trade/.test(sql) ? [{ trade: "Electrical" }] : []
     );
     queryOne.mockImplementation(async (sql: string) => {
+      if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
       if (/select id, subcontractor_id from communications/.test(sql)) return null;
       if (/insert into communications/.test(sql)) return null;
       return null;
@@ -123,6 +126,7 @@ describe("reply capture ownership and weak matching", () => {
       /select distinct trade/.test(sql) ? [{ trade: "Electrical" }] : []
     );
     queryOne.mockImplementation(async (sql: string) => {
+      if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
       if (/select id, subcontractor_id from communications/.test(sql)) return null;
       if (/insert into communications/.test(sql)) return { id: "in-1" };
       return null;
@@ -160,6 +164,7 @@ describe("reply capture ownership and weak matching", () => {
       /select distinct trade/.test(sql) ? [] : []
     );
     queryOne.mockImplementation(async (sql: string) => {
+      if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
       if (/select id, subcontractor_id from communications/.test(sql)) return null;
       if (/insert into communications/.test(sql)) return { id: "in-removed" };
       return null;
@@ -193,6 +198,7 @@ describe("reply capture ownership and weak matching", () => {
         : []
     );
     queryOne.mockImplementation(async (sql: string) => {
+      if (/select o.id from opportunities/.test(sql)) return { id: "opp-1" };
       if (/select id, subcontractor_id from communications/.test(sql)) return null;
       if (/insert into communications/.test(sql)) return { id: "in-hvac" };
       return null;

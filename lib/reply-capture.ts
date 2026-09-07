@@ -20,6 +20,7 @@
  * cannot be left to the caller to remember.
  */
 import { query, queryOne } from "./db";
+import { actingOrgId, runWithOrg } from "./tenant-context";
 import {
   extractReplyFromReply,
   type ExtractedReply,
@@ -335,6 +336,38 @@ export async function matchInboundReply(opts: {
 }
 
 export async function captureReply(input: CaptureReplyInput): Promise<CaptureReplyResult> {
+  if (!input.comm) throw new Error("Choose the conversation this reply belongs to before capturing it.");
+  const actorOrg = await actingOrgId();
+  if (actorOrg && actorOrg !== input.orgId) {
+    throw new Error("Reply capture was refused because the account does not own this conversation.");
+  }
+  const owner = await queryOne<{ id: string }>(
+    `select o.id from opportunities o
+      where o.id=$1 and o.org_id=$2
+        and ($3::uuid is null or exists (
+          select 1 from subcontractors s where s.id=$3 and s.org_id=o.org_id
+        ))
+        and (exists (
+          select 1 from communications c
+           where c.id::text=$4 and c.org_id=o.org_id and c.opportunity_id=o.id
+             and c.subcontractor_id is not distinct from $3::uuid
+             and c.direction='outbound'
+        ) or ($5::boolean and exists (
+          select 1 from unmatched_inbound u
+           where ('unmatched:' || u.id::text)=$4 and u.org_id=o.org_id
+             and u.state='needs_matching' and u.matched_by like 'matching:%'
+        )))`,
+    [input.comm.opportunity_id, input.orgId, input.comm.subcontractor_id,
+      input.comm.id, input.attributionConfirmed === true]
+  );
+  if (!owner) {
+    throw new Error("Reply capture was refused because the opportunity and contact do not belong to this account.");
+  }
+  // Extraction, closeout, queueing and logs share the already-proven owner.
+  return runWithOrg(input.orgId, () => captureReplyInOrg(input));
+}
+
+async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReplyResult> {
   const { orgId, comm, strongMatch, fromEmail, replyText } = input;
   const extract = input.extract ?? extractReplyFromReply;
   const closeOut = input.closeOut ?? closeOutDeclinedSub;
@@ -522,9 +555,12 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     }
 
     if (subId) {
-      await query(`update communications set subcontractor_id=$2 where id=$1`, [
+      await query(`update communications set subcontractor_id=$2
+                    where id::text=$1 and org_id=$3 and opportunity_id=$4`, [
         comm.id,
         subId,
+        orgId,
+        comm.opportunity_id,
       ]);
       // The message has just established the missing relationship. Use a
       // not-exists insert because the historical unique constraint treats a
@@ -657,7 +693,9 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       thankYouSent: false,
     };
   }
-  await query(`update communications set replied_at = now() where id = $1`, [comm.id]);
+  await query(`update communications set replied_at = now()
+                where id::text=$1 and org_id=$2 and opportunity_id=$3`,
+    [comm.id, orgId, comm.opportunity_id]);
 
   // Closing a sub out ends their involvement in this solicitation and emails
   // them a thank-you, which cannot be recalled. It needs an understood reply,

@@ -734,7 +734,7 @@ export const bidBuilder: AgentDefinition = {
            from eligible
           where bids.id=$1 and bids.org_id=$17 and bids.opportunity_id=eligible.id
             and bids.submission_state='package_ready'
-          returning id`,
+          returning bids.id`,
         [
           existing.id,
           subQuoteTotal,

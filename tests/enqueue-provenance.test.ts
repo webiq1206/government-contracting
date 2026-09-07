@@ -232,6 +232,7 @@ d("what the manual run endpoint accepts (integration)", () => {
 
   beforeEach(() => {
     sent.length = 0;
+    PURSUIT_MAY_ACT = true;
   });
 
   it("runs an agent on the caller's own record", async () => {

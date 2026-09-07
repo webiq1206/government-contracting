@@ -84,7 +84,7 @@ async function payloadOrgId(
   const missing = records.filter(isPermanentlyGone);
   let conflict = false;
 
-  for (const { key, orgId } of records) {
+  for (const { orgId } of records) {
     if (!orgId) continue;
     if (!resolved) {
       resolved = orgId;
@@ -97,17 +97,23 @@ async function payloadOrgId(
        * permanent so the queue does not retry the same mixed payload.
        */
       conflict = true;
-      await logAgent({
+    }
+  }
+
+  if (conflict) {
+    // A mixed-tenant reference cannot be inserted into either tenant's log.
+    // Record the refusal under a database-proven owner without disclosing or
+    // linking the other tenant's records. Never use the payload's org claim.
+    const owner = records.find((record) => record.orgId)?.orgId;
+    if (owner) {
+      await runWithOrg(owner, () => logAgent({
         agent: agentName,
         action: "payload-org-mismatch",
         level: "error",
         status: "error",
-        opportunityId: (payload.opportunityId as string) ?? null,
-        subcontractorId: (payload.subcontractorId as string) ?? null,
         message:
-          `Job payload names records from two organizations (${resolved} and ${orgId} via ${key}). ` +
-          `Abandoned rather than run under either one. Something upstream paired one organization's record with another's.`,
-      });
+          "Job payload names records from two organizations. Abandoned rather than run under either one. Review the upstream job that paired these records; nothing was run.",
+      }));
     }
   }
 
@@ -384,7 +390,9 @@ export async function runAgent(
    */
   const pursuitId = typeof payload.opportunityId === "string" ? payload.opportunityId : "";
   let guardedPursuitVersion: number | null = null;
-  if (pursuitId) {
+  // Missing or malformed records must reach the durable abandonment path.
+  // They have no pursuit version, which is not evidence of an abort/restart.
+  if (pursuitId && missing.length === 0) {
     const pursuit = await pursuitStatus(pursuitId);
     const mayRunAfterClose =
       def.name === "sub-onboarding" && payload[CLOSED_OPPORTUNITY_JOB_KEY] === true;

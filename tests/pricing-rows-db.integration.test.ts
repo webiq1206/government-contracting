@@ -56,14 +56,14 @@ d("trade pricing rows in the database", () => {
     }
 
     const opp = await queryOne<{ id: string }>(
-      `insert into opportunities (org_id, source, title, solicitation_number)
-       values ($1,'sam','Pricing probe',$2) returning id`,
+      `insert into opportunities (org_id, source, title, solicitation_number, stage)
+       values ($1,'sam','Pricing probe',$2,'quote_entry') returning id`,
       [org, `probe-${randomUUID()}`]
     );
     oppId = opp!.id;
     const other = await queryOne<{ id: string }>(
-      `insert into opportunities (org_id, source, title, solicitation_number)
-       values ($1,'sam','Neighbour probe',$2) returning id`,
+      `insert into opportunities (org_id, source, title, solicitation_number, stage)
+       values ($1,'sam','Neighbour probe',$2,'quote_entry') returning id`,
       [otherOrg, `probe-${randomUUID()}`]
     );
     otherOppId = other!.id;
@@ -274,8 +274,8 @@ d("folding the older quote screen into one pricing model", () => {
       [org]
     );
     const opp = await queryOne<{ id: string }>(
-      `insert into opportunities (org_id, source, title, solicitation_number)
-       values ($1,'sam','Quote fold',$2) returning id`,
+      `insert into opportunities (org_id, source, title, solicitation_number, stage)
+       values ($1,'sam','Quote fold',$2,'quote_entry') returning id`,
       [org, `probe-${randomUUID()}`]
     );
     oppId = opp!.id;

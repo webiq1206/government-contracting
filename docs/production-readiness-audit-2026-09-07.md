@@ -16,11 +16,13 @@ are clean, and a clean production build succeeds. Major tenant, lifecycle,
 delivery, automation, audit, billing, storage, and user-interface defects were
 corrected.
 
-Production readiness still cannot be certified. The authenticated rendered
-visual review never reached the BrostCo login page because the managed cloud
-browser failed at its control-protocol layer. In addition, 724 database-backed
-tests could not run without an isolated PostgreSQL target, migrations 102
-through 110 have not been exercised against a restored production snapshot,
+Production readiness still cannot be certified. The managed cloud browser has
+not reached the BrostCo login page, so the authenticated rendered visual review
+remains incomplete. Publication was subsequently approved, and draft PR #112
+now runs native PostgreSQL CI. Its first database run applied all 110 migrations
+and passed schema verification, then reported 690 passing tests, 34 failures,
+and 15 skips. Corrections from that run are awaiting a native retest. Migrations
+102 through 110 have not been exercised against a restored production snapshot,
 the new row-level-security policies are deliberately staged rather than
 enforced for the current table-owner runtime, and live third-party integrations
 were not invoked.
@@ -54,7 +56,10 @@ all 42 changed shared user-interface components, and the shared CSS. The full
 route inventory and source-level coverage tests guard every current operator
 route. This is not a substitute for rendered inspection.
 
-## Final validation results
+## Earlier checkpoint validation results
+
+These are the results before public branch approval. The native CI findings
+and follow-up status below supersede the database and publication blockers.
 
 | Check | Result | Notes |
 | --- | --- | --- |
@@ -332,9 +337,41 @@ files. The attempted push of `audit/production-readiness-2026-09-07` was blocked
 by automatic approval review because the target GitHub repository is public
 and explicit permission to publish this unpublished source and security
 payload was not established. No alternate publication path was attempted.
-No remote branch or draft PR was created. Explicit approval for that public
+At that checkpoint no remote branch or draft PR was created. Explicit approval for that public
 branch publication is required before transferring the exact fixes through
 GitHub into CI and the isolated Replit worktree.
+
+## Approved publication and native database follow-up
+
+The user subsequently approved public publication. The exact checkpoint tree
+was published in [draft PR #112](https://github.com/webiq1206/government-contracting/pull/112),
+with remote commit `032238c79320d136c65438357baabd8f42302a50`. The CI typecheck,
+unit tests and production build completed successfully.
+
+The first native PostgreSQL 16 run applied all 110 migrations and passed schema
+verification and seeding. Across 91 selected files, 690 tests passed, 34 failed,
+and 15 were skipped. The restricted-role RLS and tenant database guard suites
+passed. This is partial evidence, not a passing release gate.
+
+The follow-up changes correct an ambiguous bid-rebuild SQL column, preserve
+durable abandonment records for deleted or malformed jobs, retain safe tenant
+context throughout outreach and reply dependencies, validate reply parent
+ownership before extraction, scope outbound reply updates, and retain screenshot
+uploads under the feedback account. Mixed-tenant job refusals are logged without
+foreign record links or identifiers. Test fixtures were also corrected to use
+editable pricing stages, current rebuilt packages, valid confidence labels,
+immutable account ownership, explicit trade context, and strong decline
+correlation. They do not weaken the production safeguards.
+
+The three production-owner data assertions were separated into an explicit,
+opt-in production read-only test file. Disposable CI cannot prove the actual
+owner's account history. Those assertions remain a separate outstanding gate
+and now fail if the expected account is missing instead of silently returning.
+
+An isolated Replit test-environment request was started before the user asked
+that all code and design implementation be performed locally. No further Replit
+implementation work will be requested. Code fixes and verification proceed on
+the audit branch, with merge held until the remaining gates are complete.
 
 ## Requirement-by-requirement evidence
 
@@ -404,11 +441,12 @@ GitHub into CI and the isolated Replit worktree.
 
 ## Change and safety status
 
-- Changes are local on `audit/production-readiness-2026-09-07`.
+- Changes are on `audit/production-readiness-2026-09-07`, with the initial
+  checkpoint published in draft PR #112 and native-test corrections in progress.
 - Nothing was deployed or pushed to production.
 - No production database was mutated.
 - No live email, SMS, call, outreach, payment, or bid submission was sent.
 - No browser credential was accessed.
 - The audit implementation, tests, migrations, and CI setup are checkpointed
   in local commit `0c0d59a`; this report records subsequent validation and
-  publication-block details.
+  publication approval, native CI findings, and follow-up details.

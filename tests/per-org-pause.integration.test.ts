@@ -37,6 +37,7 @@ d("per-organization automation pause", () => {
   const orgB = randomUUID();
   const oppA = randomUUID();
   const oppB = randomUUID();
+  const legacyOpp = randomUUID();
   const LEGACY = "00000000-0000-4000-8000-000000000001";
 
   /** Ran, as opposed to skipped. The agent sets this when its body executes. */
@@ -77,6 +78,7 @@ d("per-organization automation pause", () => {
     for (const [id, org, title] of [
       [oppA, orgA, "Pause A opportunity"],
       [oppB, orgB, "Pause B opportunity"],
+      [legacyOpp, LEGACY, "Founding account pause opportunity"],
     ] as const) {
       await query(
         `insert into opportunities (id, org_id, title, source, status, stage)
@@ -97,7 +99,7 @@ d("per-organization automation pause", () => {
   afterAll(async () => {
     await query(`delete from job_runs where agent = 'pause-probe'`).catch(() => {});
     await query(`delete from agent_logs where agent = 'pause-probe'`).catch(() => {});
-    await query(`delete from opportunities where id = any($1::uuid[])`, [[oppA, oppB]]).catch(() => {});
+    await query(`delete from opportunities where id = any($1::uuid[])`, [[oppA, oppB, legacyOpp]]).catch(() => {});
     await query(`delete from organizations where id = any($1::uuid[])`, [[orgA, orgB]]).catch(() => {});
     const { closePool } = await import("../lib/db");
     await closePool().catch(() => {});
@@ -137,12 +139,9 @@ d("per-organization automation pause", () => {
 
   it("still honours the founding organization's switch for its own work", async () => {
     await setPaused("automation", true);
-    // Hand oppA to the founding organization for the length of this case, so
-    // the job really is the founding org's own work rather than a stand-in.
-    await query(`update opportunities set org_id = $1 where id = $2`, [LEGACY, oppA]);
-    await runAgent(probe, "queue", { opportunityId: oppA });
+    // Ownership is immutable. Seed a separate record in the founding account.
+    await runAgent(probe, "queue", { opportunityId: legacyOpp });
     expect(ran).toBe(false);
-    await query(`update opportunities set org_id = $1 where id = $2`, [orgA, oppA]);
   });
 
   it("keeps a real platform kill switch that stops everyone", async () => {

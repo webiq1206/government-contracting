@@ -110,7 +110,7 @@ d("reply review rollback boundary", () => {
               quoteExpiresOn: null,
               availability: null,
               leadTimeDays: null,
-              confidence: "confirmed",
+              confidence: "firm",
               missing: [],
               notes: [],
             },

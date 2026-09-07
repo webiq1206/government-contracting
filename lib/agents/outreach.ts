@@ -13,6 +13,7 @@
  * since a sent email is the whole of the work at this step.
  */
 import { randomUUID } from "node:crypto";
+import { runWithOrg } from "../tenant-context";
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
@@ -89,6 +90,9 @@ export const outreach: AgentDefinition = {
       };
     }
 
+    // All dependent settings, credentials, storage and activity records must
+    // use the owner just verified, including direct workflow invocations.
+    return runWithOrg(orgId, async () => {
     const sub = await queryOne<Subcontractor>(
       `select * from subcontractors where id = $1 and org_id = $2`,
       [subcontractorId, orgId]
@@ -823,5 +827,6 @@ export const outreach: AgentDefinition = {
       humanActionRequired: humanAction,
       enqueued,
     };
+    });
   },
 };

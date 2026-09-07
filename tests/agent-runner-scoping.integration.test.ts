@@ -43,7 +43,7 @@ d("agent runner tenant context (integration)", () => {
         seen.push({
           orgId: currentOrgId(),
           // The nine agents reach their tenant through exactly this call.
-          profileName: (await getProfileJson())?.legal_name ?? null,
+          profileName: currentOrgId() ? (await getProfileJson())?.legal_name ?? null : null,
         });
         return { ok: true as const, summary: "probe" };
       },
@@ -155,13 +155,16 @@ d("agent runner tenant context (integration)", () => {
     expect(seen.length).toBe(0);
     expect(result.ok).toBe(false);
     expect(result.permanent).toBe(true);
-    const mismatch = await query<{ message: string | null }>(
-      `select message from agent_logs
+    const mismatch = await query<{ message: string | null; org_id: string; opportunity_id: string | null; subcontractor_id: string | null }>(
+      `select message, org_id, opportunity_id, subcontractor_id from agent_logs
         where agent = $1 and action = 'payload-org-mismatch'`,
       [PROBE]
     );
     expect(mismatch.length).toBe(1);
-    expect(mismatch[0].message).toContain(orgB.id);
+    expect(mismatch[0].org_id).toBe(orgA.id);
+    expect(mismatch[0].message).not.toContain(orgB.id);
+    expect(mismatch[0].opportunity_id).toBeNull();
+    expect(mismatch[0].subcontractor_id).toBeNull();
     expect(mismatch[0].message).toMatch(/Abandoned rather than run/i);
   });
 

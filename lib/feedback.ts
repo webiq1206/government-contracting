@@ -1,4 +1,5 @@
 import { query, queryOne } from "@/lib/db";
+import { actingOrgId, runWithOrg } from "@/lib/tenant-context";
 import {
   isFeedbackCategory,
   messageProblem,
@@ -51,6 +52,10 @@ export interface FeedbackInput {
 }
 
 export async function submitFeedback(input: FeedbackInput): Promise<FeedbackOutcome> {
+  const actorOrg = await actingOrgId();
+  if (actorOrg && actorOrg !== input.orgId) {
+    return { ok: false, error: "This report belongs to a different account. Refresh and try again." };
+  }
   if (!isFeedbackCategory(input.category)) {
     return { ok: false, error: "Pick what kind of problem this is." };
   }
@@ -95,7 +100,7 @@ export async function submitFeedback(input: FeedbackInput): Promise<FeedbackOutc
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "screenshot.png";
       const key = `feedback/${input.orgId}/${Date.now()}-${safeName}`;
       const bytes = Buffer.from(await file.arrayBuffer());
-      const up = await storage.upload(key, bytes, mime).catch((e: unknown) => {
+      const up = await runWithOrg(input.orgId, () => storage.upload(key, bytes, mime)).catch((e: unknown) => {
         console.warn("[feedback] screenshot upload failed:", e);
         return null;
       });
