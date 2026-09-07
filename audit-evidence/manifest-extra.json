@@ -1,0 +1,30 @@
+[
+  {
+    "file": "pipeline-quicklook-drawer-1440.png",
+    "route": "/pipeline?peek=<opportunity-id>",
+    "role": "owner (populated tenant)",
+    "viewport": "1440px",
+    "state": "quick-look drawer open"
+  },
+  {
+    "file": "pipeline-quicklook-drawer-390.png",
+    "route": "/pipeline?peek=<opportunity-id>",
+    "role": "owner (populated tenant)",
+    "viewport": "390px",
+    "state": "quick-look drawer open"
+  },
+  {
+    "file": "pipeline-row-menu-open-1440.png",
+    "route": "/pipeline",
+    "role": "owner (populated tenant)",
+    "viewport": "1440px",
+    "state": "row action menu open"
+  },
+  {
+    "file": "sidebar-section-open-1440.png",
+    "route": "/today",
+    "role": "owner (populated tenant)",
+    "viewport": "1440px",
+    "state": "sidebar Relationships group expanded"
+  }
+]

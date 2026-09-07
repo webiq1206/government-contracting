@@ -1,0 +1,576 @@
+{
+  "sha": "032238c79320d136c65438357baabd8f42302a50",
+  "captured": [
+    {
+      "file": "opportunity-detail-390.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"This page did not load\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "opportunity-detail-1440.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"This page did not load\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "opportunity-requirements-390.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b/requirements",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"What it takes to bid\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "opportunity-requirements-1440.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b/requirements",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"What it takes to bid\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"QA Electrical Pros LLC\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"QA Electrical Pros LLC\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-overview-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-capability-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Capability",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-opportunities-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Opportunities",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-communications-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Communications",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-quotes-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Quotes",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-compliance-and-documents-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Compliance and documents",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-notes-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Notes",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-activity-390.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-overview-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Overview",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-capability-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Capability",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-opportunities-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Opportunities",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-communications-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Communications",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-quotes-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Quotes",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-compliance-and-documents-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Compliance and documents",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-notes-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Notes",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "subcontractor-detail-tab-activity-1440.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Activity",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "workbench-390.png",
+      "route": "/workbench",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Workbench\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "workbench-1440.png",
+      "route": "/workbench",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "empty",
+      "note": "h1=\"Workbench\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "review-390.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Review\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "review-1440.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "empty",
+      "note": "h1=\"Review\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "call-queue-390.png",
+      "route": "/call-queue",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Call Queue\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "call-queue-1440.png",
+      "route": "/call-queue",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Call Queue\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "communications-390.png",
+      "route": "/communications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Communications\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "communications-1440.png",
+      "route": "/communications",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Communications\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "contracts-390.png",
+      "route": "/contracts",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Contracts\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "contracts-1440.png",
+      "route": "/contracts",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Contracts\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "compliance-390.png",
+      "route": "/compliance",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Compliance Board\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "compliance-1440.png",
+      "route": "/compliance",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Compliance Board\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "automation-health-390.png",
+      "route": "/automation",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "redirected to /agents",
+      "note": "h1=\"Automation Health\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "automation-health-1440.png",
+      "route": "/automation",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "redirected to /agents",
+      "note": "h1=\"Automation Health\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-rules-390.png",
+      "route": "/settings/rules",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Automation Rules\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-rules-1440.png",
+      "route": "/settings/rules",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Automation Rules\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-integrations-390.png",
+      "route": "/settings/integrations",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Integrations\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-integrations-1440.png",
+      "route": "/settings/integrations",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Integrations\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-billing-390.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Billing\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-billing-1440.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Billing\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-notifications-390.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "empty",
+      "note": "h1=\"Notifications\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-notifications-1440.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "empty",
+      "note": "h1=\"Notifications\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-account-390.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Your account\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "settings-account-1440.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Your account\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "more-390.png",
+      "route": "/more",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"More\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "more-1440.png",
+      "route": "/more",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"More\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "admin-account-detail-390.png",
+      "route": "/admin/accounts/03098722-a301-4865-b0f9-7727cf3dc931",
+      "role": "platform admin",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Audit Fixture Co 1\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "admin-account-detail-1440.png",
+      "route": "/admin/accounts/03098722-a301-4865-b0f9-7727cf3dc931",
+      "role": "platform admin",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Audit Fixture Co 1\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "admin-audit-log-390.png",
+      "route": "/admin/audit",
+      "role": "platform admin",
+      "viewport": "390px",
+      "state": "populated",
+      "note": "h1=\"Admin audit log\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "admin-audit-log-1440.png",
+      "route": "/admin/audit",
+      "role": "platform admin",
+      "viewport": "1440px",
+      "state": "populated",
+      "note": "h1=\"Admin audit log\" rows=0 http=200",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "mobile-nav-open-390.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "mobile navigation menu open",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "error-missing-subcontractor-1440.png",
+      "route": "/subs/<nonexistent-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "error: record does not exist",
+      "note": "",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "empty-workbench-1440.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "empty tenant",
+      "note": "h1=\"Workbench\" rows=0",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "empty-review-1440.png",
+      "route": "/review",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "empty tenant",
+      "note": "h1=\"Review\" rows=0",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "empty-call-queue-1440.png",
+      "route": "/call-queue",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "empty tenant",
+      "note": "h1=\"Call Queue\" rows=0",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "empty-communications-1440.png",
+      "route": "/communications",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "empty tenant",
+      "note": "h1=\"Communications\" rows=0",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "empty-contracts-1440.png",
+      "route": "/contracts",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "empty tenant",
+      "note": "h1=\"Contracts\" rows=0",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "empty-compliance-1440.png",
+      "route": "/compliance",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "empty tenant",
+      "note": "h1=\"Compliance Board\" rows=0",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    },
+    {
+      "file": "empty-automation-1440.png",
+      "route": "/automation",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "empty tenant",
+      "note": "h1=\"Automation Health\" rows=0",
+      "sha": "032238c79320d136c65438357baabd8f42302a50"
+    }
+  ],
+  "failures": [
+    {
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": 390,
+      "error": "no role=tab controls found"
+    },
+    {
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": 1440,
+      "error": "no role=tab controls found"
+    },
+    {
+      "route": "/pipeline quick look",
+      "error": "TimeoutError: locator.click: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByText('Quick look').first()\u001b[22m\n\u001b[2m    - locator resolved to <a href=\"/pipeline?peek=b8d4e7f8-ab28-4919-a320-"
+    },
+    {
+      "route": "/pipeline row menu",
+      "error": "TimeoutError: locator.click: Timeout 10000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button:has-text(\"…\"), button[aria-haspopup=\"menu\"], button[aria-label*=\"more\" i]').first()\u001b[22m\n\u001b[2m    - "
+    }
+  ]
+}
