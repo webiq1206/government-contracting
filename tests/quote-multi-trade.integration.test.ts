@@ -228,4 +228,69 @@ d("a price from a subcontractor on several trades", () => {
     );
     expect(lowVoltage).toHaveLength(0);
   });
+
+  it.each([
+    { name: "sender-only correlation", strongMatch: false, sender: subEmail, confidence: 0.95, removed: false },
+    { name: "a different sender", strongMatch: true, sender: "unknown@example.test", confidence: 0.95, removed: false },
+    { name: "an uncertain extraction", strongMatch: true, sender: subEmail, confidence: 0.2, removed: false },
+    { name: "a removed trade", strongMatch: true, sender: subEmail, confidence: 0.95, removed: true },
+  ])("does not change scope coverage for $name", async ({ strongMatch, sender, confidence, removed }) => {
+    await query(
+      `update opportunity_subs set quote_full_scope=true,
+         removed_at=case when trade='Electrical' and $3::boolean then now() else null end
+        where opportunity_id=$1 and subcontractor_id=$2`,
+      [oppId, subId, removed],
+    );
+    try {
+      const result = await cap.captureReply({
+        orgId: org,
+        comm: { id: commId, subcontractor_id: subId, opportunity_id: oppId,
+          company_name: "Multi Trade LLC", sub_email: subEmail,
+          opportunity_title: "Two trade job", trade: "Electrical" },
+        strongMatch,
+        fromEmail: sender,
+        replyText: "We can price only part of the electrical work.",
+        messageId: `partial-held-${randomUUID()}`,
+        extract: async () => ({ ...extracted, coversFullScope: false, confidence }),
+      });
+      expect(result.decision.act).toBe(false);
+      expect(result.quoteSaved).toBe(false);
+      const scopes = await query<{ trade: string; quote_full_scope: boolean }>(
+        `select trade, quote_full_scope from opportunity_subs
+          where opportunity_id=$1 and subcontractor_id=$2`, [oppId, subId],
+      );
+      expect(scopes).toHaveLength(2);
+      expect(scopes.every(row => row.quote_full_scope === true)).toBe(true);
+    } finally {
+      await query(`update opportunity_subs set removed_at=null
+        where opportunity_id=$1 and subcontractor_id=$2`, [oppId, subId]);
+    }
+  });
+
+  it("records trusted partial scope only on the reply's active trade", async () => {
+    await query(`update opportunity_subs set quote_full_scope=true
+      where opportunity_id=$1 and subcontractor_id=$2`, [oppId, subId]);
+    const result = await cap.captureReply({
+      orgId: org,
+      comm: { id: commId, subcontractor_id: subId, opportunity_id: oppId,
+        company_name: "Multi Trade LLC", sub_email: subEmail,
+        opportunity_title: "Two trade job", trade: "Electrical" },
+      strongMatch: true,
+      fromEmail: subEmail,
+      replyText: "We can price only part of the electrical work.",
+      messageId: `partial-trusted-${randomUUID()}`,
+      extract: async () => ({ ...extracted, coversFullScope: false }),
+    });
+    expect(result.decision.act).toBe(true);
+    expect(result.quoteSaved).toBe(false);
+    expect(result.quoteRefusal).toBe("partial_scope");
+    const scopes = await query<{ trade: string; quote_full_scope: boolean }>(
+      `select trade, quote_full_scope from opportunity_subs
+        where opportunity_id=$1 and subcontractor_id=$2 order by trade`, [oppId, subId],
+    );
+    expect(scopes).toEqual([
+      { trade: "Electrical", quote_full_scope: false },
+      { trade: "Low voltage", quote_full_scope: true },
+    ]);
+  });
 });

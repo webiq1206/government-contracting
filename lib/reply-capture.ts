@@ -888,12 +888,17 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
    * one of the six things the reliability score is made of. Recorded even
    * though no quote was saved: the refusal is the finding.
    */
-  if (subId && !proposal.ok && proposal.refusal === "partial_scope") {
+  if (
+    subId && linkedPair && osRow && decision.act && strongMatch && senderVerified &&
+    !proposal.ok && proposal.refusal === "partial_scope"
+  ) {
     await query(
       `update opportunity_subs
           set quote_full_scope = false
-        where opportunity_id = $1 and subcontractor_id = $2`,
-      [comm.opportunity_id, subId]
+        where opportunity_id = $1 and subcontractor_id = $2
+          and org_id = $3 and removed_at is null
+          and coalesce(trade, '') = coalesce($4::text, '')`,
+      [comm.opportunity_id, subId, orgId, osRow.trade]
     );
   }
 

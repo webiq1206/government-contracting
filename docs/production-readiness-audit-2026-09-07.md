@@ -480,6 +480,16 @@ and production cases remain skipped locally. TypeScript, ESLint and diff
 integrity passed. The new candidate requires its own native CI and rendered
 retest. No screenshot in this archive proves the new candidate's final appearance.
 
+Further reply tracing found that partial-scope extraction bypassed the trust
+gate and updated every trade belonging to the opportunity/subcontractor pair.
+The update now requires an actionable reading, strong correlation, verified
+sender, and an active resolved pairing; its SQL names the tenant and exact
+trade and excludes removed pairings. Five native regression cases cover
+sender-only matching, a different sender, low confidence, a removed trade,
+and a trusted partial quote that must leave the other trade unchanged. These
+new cases await the next native CI run. This correction does not resolve the
+separate multi-step capture/retry and provider reconciliation gaps.
+
 Local source inspection confirmed a countdown hydration defect and navigation
 paths with no pending feedback. Local fixes add stable first-render countdown
 and greeting text, visible pending navigation feedback, settings/admin loading
