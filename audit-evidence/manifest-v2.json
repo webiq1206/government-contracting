@@ -1,0 +1,2470 @@
+{
+  "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57",
+  "captured": [
+    {
+      "file": "v2-opportunity-detail-390-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane0-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=416px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=832px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1248px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane1-s5.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1664px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane1-s6.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=2080px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane1-s7.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=2496px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-390-pane1-s8.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=2538px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane0-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=416px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=832px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1248px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane1-s5.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1664px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane1-s6.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=2080px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane1-s7.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=2496px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-390-pane1-s8.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=2538px of 2538px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane0-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1821px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=416px of 1821px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=832px of 1821px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1248px of 1821px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane1-s5.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1664px of 1821px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-390-pane1-s6.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1821px of 1821px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-390-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Subs and outreach",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-390-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-390-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-390-pane0-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-390-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1095px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-390-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=416px of 1095px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-390-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=832px of 1095px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-390-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1095px of 1095px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane0-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 2176px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=416px of 2176px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=832px of 2176px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1248px of 2176px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane1-s5.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1664px of 2176px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane1-s6.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=2080px of 2176px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-390-pane1-s7.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=2176px of 2176px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane0-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1715px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=416px of 1715px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=832px of 1715px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1248px of 1715px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane1-s5.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1664px of 1715px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-390-pane1-s6.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1715px of 1715px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-390-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Submission",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-390-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Submission (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-390-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Submission (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-390-pane0-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Submission (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-390-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Submission (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1141px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-390-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Submission (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=416px of 1141px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-390-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Submission (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=832px of 1141px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-390-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Submission (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1141px of 1141px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-pane0-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1271px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=416px of 1271px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=832px of 1271px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1248px of 1271px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-390-pane1-s5.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Activity (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1271px of 1271px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-p1.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-pane0-s1.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-pane0-s2.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-pane0-s3.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-pane1-s1.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1703px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-pane1-s2.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=508px of 1703px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-pane1-s3.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1016px of 1703px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-pane1-s4.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1524px of 1703px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-390-pane1-s5.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1703px of 1703px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-390-p1.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-390-pane0-s1.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-390-pane0-s2.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-390-pane0-s3.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-390-p1.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-390-pane0-s1.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-390-pane0-s2.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-390-pane0-s3.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-390-p1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-390-pane0-s1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-390-pane0-s2.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-390-pane0-s3.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=537px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-p1.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-pane0-s1.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-pane0-s2.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-pane0-s3.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=546px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-pane0-s4.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=813px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-pane1-s1.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 799px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-pane1-s2.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=367px of 799px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-pane1-s3.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=734px of 799px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-390-pane1-s4.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=799px of 799px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-p1.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane0-s1.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane0-s2.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane0-s3.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=546px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane0-s4.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=813px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane1-s1.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 1665px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane1-s2.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=367px of 1665px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane1-s3.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=734px of 1665px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane1-s4.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1102px of 1665px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane1-s5.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1469px of 1665px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-390-pane1-s6.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1665px of 1665px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-p1.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane0-s1.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane0-s2.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane0-s3.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=546px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane0-s4.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=813px of 813px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane1-s1.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 3800px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane1-s2.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=367px of 3800px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane1-s3.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=734px of 3800px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane1-s4.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1102px of 3800px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane1-s5.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1469px of 3800px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane1-s6.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1836px of 3800px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane1-s7.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=2203px of 3800px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-390-pane1-s8.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=2570px of 3800px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-sub-quotes-tab-390-p1.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Quotes (populated)",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-sub-quotes-tab-390-pane0-s1.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Quotes (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-sub-quotes-tab-390-pane0-s2.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Quotes (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-sub-quotes-tab-390-pane0-s3.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "tab: Quotes (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=537px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-390-p1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "All filters dialog open",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-390-pane0-s1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-390-pane0-s2.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-390-pane0-s3.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=537px of 537px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-390-pane1-s1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 1028px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-390-pane1-s2.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=546px of 1028px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-390-pane1-s3.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1028px of 1028px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-row-menu-390-p1.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "row action menu open",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-390-p1.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "quick-look drawer open",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-390-pane0-s1.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-390-pane0-s2.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-390-pane0-s3.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=445px of 445px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-390-pane1-s1.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.drawer-scroll\")",
+      "scroll": "pane top=0px of 59px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-390-pane1-s2.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.drawer-scroll\")",
+      "scroll": "pane top=59px of 59px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-error-missing-opportunity-390-p1.png",
+      "route": "/opportunity/<nonexistent-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "missing record (http 200)",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-error-missing-subcontractor-390-p1.png",
+      "route": "/subs/<nonexistent-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "390px",
+      "state": "missing record (http 200)",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-1440-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-1440-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-1440-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-1440-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-1440-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=627px of 1369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-1440-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1254px of 1369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-detail-1440-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1369px of 1369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-1440-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Overview",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-1440-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Overview (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-1440-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Overview (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-1440-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-1440-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=627px of 1369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-1440-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1254px of 1369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-overview-1440-pane1-s4.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Overview (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1369px of 1369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-1440-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Requirements",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-1440-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-1440-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-1440-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 976px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-1440-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=627px of 976px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-requirements-1440-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Requirements (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=976px of 976px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-1440-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Subs and outreach",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-1440-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-1440-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-1440-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 485px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-subs-and-outreach-1440-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Subs and outreach (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=485px of 485px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-1440-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Pricing",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-1440-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-1440-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-1440-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1065px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-1440-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=627px of 1065px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-pricing-1440-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Pricing (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1065px of 1065px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-1440-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Documents",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-1440-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Documents (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-1440-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Documents (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-1440-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1067px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-1440-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=627px of 1067px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-documents-1440-pane1-s3.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Documents (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1067px of 1067px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-1440-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Submission",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-1440-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Submission (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-1440-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Submission (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-1440-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Submission (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 488px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-submission-1440-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Submission (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=488px of 488px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-1440-p1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Activity",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-1440-pane0-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Activity (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-1440-pane0-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Activity (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-1440-pane1-s1.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Activity (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 583px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunity-tab-activity-1440-pane1-s2.png",
+      "route": "/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Activity (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=583px of 583px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-1440-p1.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-1440-pane0-s1.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-1440-pane0-s2.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-1440-pane1-s1.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=0px of 1020px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-1440-pane1-s2.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=678px of 1020px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-today-1440-pane1-s3.png",
+      "route": "/today",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-w-0\")",
+      "scroll": "pane top=1020px of 1020px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-1440-p1.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "empty",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-1440-pane0-s1.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "empty (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-1440-pane0-s2.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "empty (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-1440-p1.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-1440-pane0-s1.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-1440-pane0-s2.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-1440-pane1-s1.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-h-0\")",
+      "scroll": "pane top=0px of 155px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-review-1440-pane1-s2.png",
+      "route": "/review",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.min-h-0\")",
+      "scroll": "pane top=155px of 155px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-1440-p1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-1440-pane0-s1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 193px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-1440-pane0-s2.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=193px of 193px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-1440-p1.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-1440-pane0-s1.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 397px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-1440-pane0-s2.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=394px of 397px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-1440-pane1-s1.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 418px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-billing-1440-pane1-s2.png",
+      "route": "/settings/billing",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=418px of 418px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-1440-p1.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-1440-pane0-s1.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 397px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-1440-pane0-s2.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=394px of 397px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-1440-pane1-s1.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 897px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-1440-pane1-s2.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=530px of 897px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-notifications-1440-pane1-s3.png",
+      "route": "/settings/notifications",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=897px of 897px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-p1.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-pane0-s1.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 397px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-pane0-s2.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=394px of 397px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-pane1-s1.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 2369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-pane1-s2.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=530px of 2369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-pane1-s3.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1059px of 2369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-pane1-s4.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=1589px of 2369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-pane1-s5.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=2118px of 2369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-settings-account-1440-pane1-s6.png",
+      "route": "/settings/account",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=2369px of 2369px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-sub-quotes-tab-1440-p1.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Quotes (populated)",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-sub-quotes-tab-1440-pane0-s1.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Quotes (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 193px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-sub-quotes-tab-1440-pane0-s2.png",
+      "route": "/subs/24692bfd-c653-4b56-b5c5-0442932ac8b0",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "tab: Quotes (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=193px of 193px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-1440-p1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "All filters dialog open",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-1440-pane0-s1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 193px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-1440-pane0-s2.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=193px of 193px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-1440-pane1-s1.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 942px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-1440-pane1-s2.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=538px of 942px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-subs-all-filters-dialog-1440-pane1-s3.png",
+      "route": "/subs",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "All filters dialog open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=942px of 942px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-opportunities-row-menu-1440-p1.png",
+      "route": "/pipeline",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "row action menu open",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-1440-p1.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "quick-look drawer open",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-1440-pane0-s1.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-1440-pane0-s2.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-1440-pane1-s1.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.drawer-scroll\")",
+      "scroll": "pane top=0px of 49px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-quicklook-drawer-1440-pane1-s2.png",
+      "route": "/pipeline?peek=<opportunity-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "quick-look drawer open (inner pane \"scroll-thin.drawer-scroll\")",
+      "scroll": "pane top=49px of 49px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-error-missing-opportunity-1440-p1.png",
+      "route": "/opportunity/<nonexistent-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "missing record (http 200)",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-error-missing-subcontractor-1440-p1.png",
+      "route": "/subs/<nonexistent-id>",
+      "role": "owner (populated tenant)",
+      "viewport": "1440px",
+      "state": "missing record (http 200)",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-390-p1.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-390-pane0-s1.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 345px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-390-pane0-s2.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 345px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-390-pane0-s3.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=345px of 345px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-390-pane1-s1.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 73px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-390-pane1-s2.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=73px of 73px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-contracts-390-p1.png",
+      "route": "/contracts",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-contracts-390-pane0-s1.png",
+      "route": "/contracts",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 437px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-contracts-390-pane0-s2.png",
+      "route": "/contracts",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=273px of 437px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-contracts-390-pane0-s3.png",
+      "route": "/contracts",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=437px of 437px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-forbidden-admin-390-p1.png",
+      "route": "/admin",
+      "role": "owner (empty tenant)",
+      "viewport": "390px",
+      "state": "not permitted for this role (http 200)",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-1440-p1.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-1440-pane0-s1.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 57px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-workbench-1440-pane0-s2.png",
+      "route": "/workbench",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=57px of 57px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-contracts-1440-p1.png",
+      "route": "/contracts",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "populated",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-contracts-1440-pane0-s1.png",
+      "route": "/contracts",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=0px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-empty-contracts-1440-pane0-s2.png",
+      "route": "/contracts",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "populated (inner pane \"scroll-thin.flex-1\")",
+      "scroll": "pane top=125px of 125px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    },
+    {
+      "file": "v2-forbidden-admin-1440-p1.png",
+      "route": "/admin",
+      "role": "owner (empty tenant)",
+      "viewport": "1440px",
+      "state": "not permitted for this role (http 200)",
+      "scroll": "page y=0px of 0px",
+      "sha": "1a05f5eff7c3de7783b69d8b1e0a262910147f57"
+    }
+  ],
+  "failures": [],
+  "problems": [
+    {
+      "kind": "console",
+      "route": "/today",
+      "text": "Failed to fetch RSC payload for http://127.0.0.1:3100/opportunity/b8d4e7f8-ab28-4919-a320-9bb64e0ef11b#activity. Falling back to browser navigation. TypeError: Failed to fetch\n    at fetchServerResponse (webpack-internal"
+    }
+  ]
+}
