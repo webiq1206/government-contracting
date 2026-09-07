@@ -21,6 +21,7 @@ import { readFileSync } from "node:fs";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/today",
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
 const { MobileTabBar } = await import("../components/mobile-tab-bar");

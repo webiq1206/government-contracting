@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { requestSignIn } from "@/lib/client/sign-in";
 
 export function LoginForm() {
   const router = useRouter();
@@ -10,22 +11,21 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setLoading(true);
     setError("");
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    if (res.ok) {
+    const result = await requestSignIn(email, password);
+    if (result.ok) {
       router.push("/today");
       router.refresh();
     } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Invalid credentials");
+      setError(result.error);
+      submitting.current = false;
       setLoading(false);
     }
   }
@@ -76,8 +76,8 @@ export function LoginForm() {
           required
         />
       </div>
-      {error && <p className="text-sm text-risk">{error}</p>}
-      <button type="submit" className="btn-primary w-full" disabled={loading}>
+      {error && <p role="alert" className="text-sm text-risk">{error}</p>}
+      <button type="submit" className="btn-primary w-full" disabled={loading} aria-busy={loading}>
         {loading ? "Signing in..." : "Sign in"}
       </button>
       <p className="text-center text-xs text-muted-foreground">

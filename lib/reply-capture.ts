@@ -601,7 +601,9 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
   let decision = readingDecision;
   if (!linkedPair) {
     decision = holdForReview(
-      "This subcontractor is no longer active on that opportunity, so the reply was saved but no workflow status was changed."
+      pairTrades.length > 1
+        ? "This subcontractor covers multiple trades here. Confirm which trade this reply answers before applying it."
+        : "This subcontractor is no longer active on that opportunity, so the reply was saved but no workflow status was changed."
     );
   } else if (!strongMatch && input.attributionConfirmed !== true) {
     decision = holdForReview(
@@ -895,7 +897,9 @@ async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReply
     );
   }
 
-  if (autoSaveOk && !proposal.ok && !quoteSaved) {
+  // A missing trade already turns decision.act off. Requiring autoSaveOk
+  // here suppressed the very refusal that needed an operator's attention.
+  if (extracted.isQuote && !proposal.ok && !quoteSaved) {
     await logAgent({
       agent: "reply-capture",
       action: "quote-not-filed",

@@ -30,7 +30,8 @@ export function TodayGreeting({
    */
   setupRemaining?: number;
 }) {
-  const [parts, setParts] = useState(() => partsFor(new Date()));
+  // A visitor's date and timezone are available only after mounting.
+  const [parts, setParts] = useState({ greeting: "Welcome back", date: "TODAY" });
 
   useEffect(() => {
     setParts(partsFor(new Date()));

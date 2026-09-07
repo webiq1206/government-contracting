@@ -353,6 +353,12 @@ verification and seeding. Across 91 selected files, 690 tests passed, 34 failed,
 and 15 were skipped. The restricted-role RLS and tenant database guard suites
 passed. This is partial evidence, not a passing release gate.
 
+The second native run at remote commit `4467c3e735f8d672b4b260603d82459e22368cc5`
+reported 737 passes, one failure, and no skips across the 91 selected files.
+The remaining failure identified a suppressed activity-log explanation for an
+ambiguous trade quote. That explanation and the incorrect "no longer active"
+copy were corrected locally and await the next native run.
+
 The follow-up changes correct an ambiguous bid-rebuild SQL column, preserve
 durable abandonment records for deleted or malformed jobs, retain safe tenant
 context throughout outreach and reply dependencies, validate reply parent
@@ -372,6 +378,31 @@ An isolated Replit test-environment request was started before the user asked
 that all code and design implementation be performed locally. No further Replit
 implementation work will be requested. Code fixes and verification proceed on
 the audit branch, with merge held until the remaining gates are complete.
+
+## First reported rendered preview observations
+
+Replit subsequently reported an unchanged, detached copy of remote commit
+`032238c79320d136c65438357baabd8f42302a50` running against a separate disposable
+database. It reported 21 synthetic-account captures covering selected Today,
+Opportunities, Subs, Settings, All accounts, empty-tenant, denied-admin, and
+missing-record views at 390, 820, 1440, and 1920 pixel widths. It reported no
+horizontal overflow on those views. Workers and live providers were disabled.
+
+The connector returned text only. Actual screenshot attachments or accessible
+download links have not reached this workspace, so these observations are
+hosting-agent reports, not an independently completed visual audit. They cover
+only part of the page, role and state matrix and do not cover the user's actual
+production admin session. Subsequent evidence-retrieval calls timed out or
+reported that the hosting agent was still busy.
+
+Local source inspection confirmed a countdown hydration defect and navigation
+paths with no pending feedback. Local fixes add stable first-render countdown
+and greeting text, visible pending navigation feedback, settings/admin loading
+boundaries, and filter progress. A separate login failure was also corrected:
+a rejected or stalled network request could leave Sign in disabled forever.
+Sign-in now times out, explains network or server failure, preserves retry,
+and requires an explicit successful response. All implementation changes are
+made locally, as requested by the user.
 
 ## Requirement-by-requirement evidence
 

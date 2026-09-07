@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { PendingLink as Link } from "@/components/pending-link";
 
 /**
  * The left-hand pane: what there is to work through, and where you are in it.

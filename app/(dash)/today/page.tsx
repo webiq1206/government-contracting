@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingLink as Link } from "@/components/pending-link";
 import { actionCenter, dailyDigest, type ActionOppRow } from "@/lib/data";
 import { readPipelinePulse } from "@/lib/pipeline-pulse";
 import { PipelinePulse } from "@/components/pipeline-pulse";

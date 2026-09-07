@@ -16,7 +16,7 @@ interface Remaining {
 
 function computeRemaining(endsAtIso: string): Remaining | null {
   const diff = new Date(endsAtIso).getTime() - Date.now();
-  if (diff <= 0) return null;
+  if (!Number.isFinite(diff) || diff <= 0) return null;
   const totalSeconds = Math.floor(diff / 1000);
   return {
     days: Math.floor(totalSeconds / 86400),
@@ -57,9 +57,10 @@ function CountdownUnit({
 
 export function PromoCountdown({ endsAtIso, variant = "light" }: PromoCountdownProps) {
   const dark = variant === "dark";
-  const [remaining, setRemaining] = useState<Remaining | null>(() =>
-    computeRemaining(endsAtIso)
-  );
+  // Server rendering and the first browser render must use identical text.
+  // Start the clock after mounting instead of comparing two different clocks.
+  const [remaining, setRemaining] = useState<Remaining | null | undefined>(undefined);
+  const deadlineValid = Number.isFinite(Date.parse(endsAtIso));
 
   useEffect(() => {
     const tick = () => setRemaining(computeRemaining(endsAtIso));
@@ -68,7 +69,7 @@ export function PromoCountdown({ endsAtIso, variant = "light" }: PromoCountdownP
     return () => window.clearInterval(id);
   }, [endsAtIso]);
 
-  if (!remaining) {
+  if (remaining === null || !deadlineValid) {
     return (
       <div
         className={`px-4 py-3 text-center ${
@@ -80,25 +81,27 @@ export function PromoCountdown({ endsAtIso, variant = "light" }: PromoCountdownP
         aria-live="polite"
       >
         <p className={`text-sm font-medium ${dark ? "text-white/90" : "text-muted-foreground"}`}>
-          Offer ended
+          {deadlineValid ? "Offer ended" : "Offer deadline unavailable"}
         </p>
         <p className={`mt-0.5 text-xs ${dark ? "text-white/75" : "text-muted-foreground"}`}>
-          Founding rate is no longer available. Standard pricing applies.
+          {deadlineValid
+            ? "Founding rate is no longer available. Standard pricing applies."
+            : "See plan details for current pricing."}
         </p>
       </div>
     );
   }
 
   return (
-    <div role="timer" aria-live="polite" aria-label="Founding offer time remaining">
+    <div role="timer" aria-live="off" aria-label="Founding offer time remaining" aria-busy={remaining === undefined}>
       <p className={`label mb-3 text-center ${dark ? "text-white/80" : ""}`}>
         Founding rate closes in
       </p>
       <div className="flex justify-center gap-3 sm:gap-4">
-        <CountdownUnit value={pad(remaining.days)} label="Days" dark={dark} />
-        <CountdownUnit value={pad(remaining.hours)} label="Hours" dark={dark} />
-        <CountdownUnit value={pad(remaining.minutes)} label="Mins" dark={dark} />
-        <CountdownUnit value={pad(remaining.seconds)} label="Secs" dark={dark} />
+        <CountdownUnit value={remaining ? pad(remaining.days) : "…"} label="Days" dark={dark} />
+        <CountdownUnit value={remaining ? pad(remaining.hours) : "…"} label="Hours" dark={dark} />
+        <CountdownUnit value={remaining ? pad(remaining.minutes) : "…"} label="Mins" dark={dark} />
+        <CountdownUnit value={remaining ? pad(remaining.seconds) : "…"} label="Secs" dark={dark} />
       </div>
     </div>
   );

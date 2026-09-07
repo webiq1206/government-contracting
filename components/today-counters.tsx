@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingLink as Link } from "@/components/pending-link";
 import type { QueueCounts, QueueFilter } from "@/lib/domain/work-queue";
 import { QUEUE_FILTER_LABEL } from "@/lib/domain/work-queue";
 import type { CompletedItem, CompletedToday } from "@/lib/data";
