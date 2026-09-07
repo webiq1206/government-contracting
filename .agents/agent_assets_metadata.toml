@@ -1,0 +1,212 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "X0XOELk51IcG1z82hoGLv"
+uri = "file://audit-evidence/audit-evidence.zip"
+type = "unspecified"
+title = "All audit screenshots (zip)"
+description = "Every capture below in one download: 14 PNGs from the isolated audit copy at commit 032238c."
+logical_id = "9098f01b-93ab-443f-b363-9b2549555877"
+content_hash = "sha256:038d156a65fc11d3a9a6eca1007f6e1f405e2c3c7c115bea1a6890e632eb93ae"
+size = 1463241
+mtime_ms = 1788818102698
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/9098f01b-93ab-443f-b363-9b2549555877/f5ba261b-3e98-424f-b2ab-762702394602"
+storage_version_token = "1788818226767059"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "jJ5fMFwLPzcGKdNZ-qTP_"
+uri = "file://audit-evidence/populated-today-phone.png"
+type = "image"
+title = "Populated Today — 390x844"
+description = "Owner of the populated synthetic tenant, phone width. Bottom nav reachable, no horizontal overflow."
+logical_id = "b2ab76ac-9698-4512-a50c-e8040bf6f6f0"
+content_hash = "sha256:b07eaed840d1c5d7dfca4dfa3aa56bcec4ad1709c5178996d5e41fa2a89b1634"
+size = 70770
+mtime_ms = 1788818035226
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/b2ab76ac-9698-4512-a50c-e8040bf6f6f0/70d95b4c-6018-4f97-91ab-68dd8b4fc0de"
+storage_version_token = "1788818227536136"
+content_type = "image/png"
+
+[[outputs]]
+id = "5y2hYl-Bju3kvB8cuPMH7"
+uri = "file://audit-evidence/populated-today-tablet.png"
+type = "image"
+title = "Populated Today — 820x1180"
+description = "Same screen at tablet width."
+logical_id = "8376f801-8bc0-4240-8555-ca7a95487df7"
+content_hash = "sha256:365346ccc80e7c01638c3a73eda626a44ffac8fb559fa83ec574a61e43882ebe"
+size = 145556
+mtime_ms = 1788818038782
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/8376f801-8bc0-4240-8555-ca7a95487df7/459e2b0b-6506-4779-b05f-d0810f3f5f00"
+storage_version_token = "1788818228412378"
+content_type = "image/png"
+
+[[outputs]]
+id = "-Xqi7t_3uU80L5LgEa5_x"
+uri = "file://audit-evidence/populated-today-laptop.png"
+type = "image"
+title = "Populated Today — 1440x900"
+description = "Sidebar, queue and Pipeline Health panel at laptop width."
+logical_id = "d5fbf5e9-3942-4896-b0f1-945260550266"
+content_hash = "sha256:0b9446860dae5c0740824ac7d9e8fb9a47b7d2793f07c0ce0d574e244f374106"
+size = 167451
+mtime_ms = 1788818042502
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/d5fbf5e9-3942-4896-b0f1-945260550266/26408ea4-a7bd-44f0-a927-6df15aabaa79"
+storage_version_token = "1788818229222475"
+content_type = "image/png"
+
+[[outputs]]
+id = "MLkw-isOnzo0An31EiKjz"
+uri = "file://audit-evidence/populated-today-desktop.png"
+type = "image"
+title = "Populated Today — 1920x1080"
+description = "Full desktop workspace."
+logical_id = "5eafacad-4ddb-42f6-983e-64685284bfb8"
+content_hash = "sha256:44d4fd1ec9e0512a20c143a6ddf1671d55259b9f9e6c211f68daacf566c891d3"
+size = 211926
+mtime_ms = 1788818045590
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/5eafacad-4ddb-42f6-983e-64685284bfb8/4e3e9c8a-9b96-4ad1-87bf-12111726c0ed"
+storage_version_token = "1788818230244567"
+content_type = "image/png"
+
+[[outputs]]
+id = "SqWxst6CeVdNin8lS34V1"
+uri = "file://audit-evidence/populated-pipeline-phone.png"
+type = "image"
+title = "Populated Opportunities — 390x844"
+description = "Pipeline board at phone width with one real fixture opportunity."
+logical_id = "860b50b1-bc13-4ed6-b4f9-9ae3c8760945"
+content_hash = "sha256:408b6d3d904b9b2c9ef32ecf7b4e6171bca88410fac7e7ae944319cab4a58e9f"
+size = 40732
+mtime_ms = 1788818049794
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/860b50b1-bc13-4ed6-b4f9-9ae3c8760945/4dbf40bf-244b-4e1e-bab0-2dd55edf0d90"
+storage_version_token = "1788818230943503"
+content_type = "image/png"
+
+[[outputs]]
+id = "q4ceVIzIYpj6rHIrpWL8D"
+uri = "file://audit-evidence/populated-pipeline-laptop.png"
+type = "image"
+title = "Populated Opportunities — 1440x900"
+description = "Four-lane board; three lanes show explicit empty copy."
+logical_id = "d285fb02-4ec8-4258-a9e2-e939d9d36639"
+content_hash = "sha256:dd31bea02db53ff91ea98be88011b4cdf0eae417f4aaf19d3f0a3653ddce0198"
+size = 142763
+mtime_ms = 1788818052710
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/d285fb02-4ec8-4258-a9e2-e939d9d36639/de7ba3e6-425d-423d-b2c3-bdcfc7a25dd1"
+storage_version_token = "1788818231706473"
+content_type = "image/png"
+
+[[outputs]]
+id = "um_Vqh6gEZhmLZr285e2Z"
+uri = "file://audit-evidence/populated-subs-laptop.png"
+type = "image"
+title = "Populated Subs — 1440x900"
+description = "Subcontractor roster with one fixture record."
+logical_id = "ac8936e3-ecb3-41d3-a997-3b4414d0b04a"
+content_hash = "sha256:1f7f09f3e7f9f0a0b566d3a4fdc033fc0a64d9d7f5daca3aa7af91ac9e1585bf"
+size = 120156
+mtime_ms = 1788818058938
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/ac8936e3-ecb3-41d3-a997-3b4414d0b04a/f31ce66a-8bdc-4c84-85bd-4c1e9f8b7309"
+storage_version_token = "1788818232546649"
+content_type = "image/png"
+
+[[outputs]]
+id = "il0y8M8CUhPIYnzHMJifm"
+uri = "file://audit-evidence/partial-settings-laptop.png"
+type = "image"
+title = "Partial state: Settings — 1440x900"
+description = "Company profile at 47% completeness with SAM.gov not connected."
+logical_id = "3e86e355-629f-464f-8704-af5c9618e7d5"
+content_hash = "sha256:a615096a89ae81164c3bb48d007618738edcd9d1da7ea30a7f1fb23fd1b36d3a"
+size = 151545
+mtime_ms = 1788818064546
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/3e86e355-629f-464f-8704-af5c9618e7d5/f4d611b6-294e-4672-9146-f78166ec3fc5"
+storage_version_token = "1788818233409445"
+content_type = "image/png"
+
+[[outputs]]
+id = "vTf82yAhtUmdFdJnU-O-6"
+uri = "file://audit-evidence/error-missing-record-laptop.png"
+type = "image"
+title = "Error state: missing record — 1440x900"
+description = "404 for an opportunity id that does not exist."
+logical_id = "972c04be-8abc-4f6c-9076-3b397aa7250c"
+content_hash = "sha256:7dad478ee847d31d3a5faf5400a80848484f4fada8a4cb61c5f611eb6eb3c736"
+size = 25060
+mtime_ms = 1788818069182
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/972c04be-8abc-4f6c-9076-3b397aa7250c/9f558dff-4723-4453-bd1f-1f724a21be00"
+storage_version_token = "1788818234111863"
+content_type = "image/png"
+
+[[outputs]]
+id = "HU0AXUYI_7K3HO2azVqgg"
+uri = "file://audit-evidence/error-admin-forbidden-laptop.png"
+type = "image"
+title = "Error state: admin as non-admin — 1440x900"
+description = "Second tenant hitting /admin: generic 404, no hint the area exists."
+logical_id = "1aa79bef-daf1-4d18-a293-723ad6d77974"
+content_hash = "sha256:7dad478ee847d31d3a5faf5400a80848484f4fada8a4cb61c5f611eb6eb3c736"
+size = 25060
+mtime_ms = 1788818086994
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/1aa79bef-daf1-4d18-a293-723ad6d77974/3176f3e9-e270-4c02-b605-67568ad27bbd"
+storage_version_token = "1788818234771337"
+content_type = "image/png"
+
+[[outputs]]
+id = "KDts4X1rgwGoa6aWq-Jjt"
+uri = "file://audit-evidence/admin-accounts-phone.png"
+type = "image"
+title = "Admin All accounts — 390x844"
+description = "Platform admin view at phone width."
+logical_id = "aeec571e-f371-48aa-b113-9c76704f35d6"
+content_hash = "sha256:ced13ed3ed18d82cebdf93dfbb521f5c313d0a6203666e05e782c5283cff0361"
+size = 43412
+mtime_ms = 1788818073362
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/aeec571e-f371-48aa-b113-9c76704f35d6/d437d8aa-ad8c-4653-89b7-f8590d4e8a2e"
+storage_version_token = "1788818235470586"
+content_type = "image/png"
+
+[[outputs]]
+id = "VG0m7CK8TWKtjwSNjAQ7W"
+uri = "file://audit-evidence/admin-accounts-laptop.png"
+type = "image"
+title = "Admin All accounts — 1440x900"
+description = "Platform admin account table; only the three synthetic organizations."
+logical_id = "e9da32e2-9d6c-4392-a668-04f865f75136"
+content_hash = "sha256:2ef756846d27fa38c71da3a4290cdfbb100d218e7f64593e352ea5cd29c7f639"
+size = 133606
+mtime_ms = 1788818076746
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/e9da32e2-9d6c-4392-a668-04f865f75136/fb6de1cb-856b-4579-986e-3593d0647f8e"
+storage_version_token = "1788818236249722"
+content_type = "image/png"
+
+[[outputs]]
+id = "dR1nY6ruDPwC2G6s8WNnu"
+uri = "file://audit-evidence/empty-today-laptop.png"
+type = "image"
+title = "Empty tenant Today — 1440x900"
+description = "Fresh tenant: onboarding guidance rather than a blank pane."
+logical_id = "b5a3fc61-6947-4e38-a999-a6ef14211317"
+content_hash = "sha256:25abb0430fd5da9d2e57f898e90f975e66db6337b8166c354d30939ee2507366"
+size = 181091
+mtime_ms = 1788818081158
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/b5a3fc61-6947-4e38-a999-a6ef14211317/5959f6a6-26a3-4486-9f7e-f8f3f9188374"
+storage_version_token = "1788818237018930"
+content_type = "image/png"
+
+[[outputs]]
+id = "SUtUTsETUPcB7k9nQcgtB"
+uri = "file://audit-evidence/empty-pipeline-phone.png"
+type = "image"
+title = "Empty tenant Opportunities — 390x844"
+description = "Fresh-setup empty state with next-step actions."
+logical_id = "a0a9ff41-002f-4a19-af28-9df441674f94"
+content_hash = "sha256:92fc71971cea17c59e71715bf035d7fb6a845fc4a104432d7b69efe57a090331"
+size = 69990
+mtime_ms = 1788818084150
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:2fcd16f4-edbe-4d58-b3aa-0988df8c05d5/a0a9ff41-002f-4a19-af28-9df441674f94/30648e6e-04d2-43a5-987f-9339cc67c2da"
+storage_version_token = "1788818237803781"
+content_type = "image/png"
