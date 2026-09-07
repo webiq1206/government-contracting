@@ -508,6 +508,13 @@ locally. TypeScript and ESLint pass. Native validation for these additions is
 pending. Whole-message capture finalization and external provider outboxes
 remain separate release gates.
 
+Native run `34168321312` at `9b9aabf` passed all 746 assertions, including the
+new partial-scope, transaction rollback, duplicate-race and paused-work cases.
+The job failed during the new fixture's teardown because organization deletion
+requires deleting dependent records first. The cleanup now removes its own
+pricing, quotes, pairing, opportunity and subcontractor before the organization;
+the complete gate must rerun successfully before it is marked passed.
+
 Local source inspection confirmed a countdown hydration defect and navigation
 paths with no pending feedback. Local fixes add stable first-render countdown
 and greeting text, visible pending navigation feedback, settings/admin loading

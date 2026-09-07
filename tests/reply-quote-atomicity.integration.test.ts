@@ -36,6 +36,11 @@ d("automatic reply quote transaction", () => {
   afterAll(async () => {
     await query(`drop trigger if exists ${probe} on opportunity_subs`);
     await query(`drop function if exists ${probe}()`);
+    await query(`delete from trade_pricing_rows where org_id=$1`, [org]);
+    await query(`delete from quotes where org_id=$1`, [org]);
+    await query(`delete from opportunity_subs where opportunity_id=$1`, [opp]);
+    await query(`delete from opportunities where id=$1`, [opp]);
+    await query(`delete from subcontractors where id=$1`, [sub]);
     await query(`delete from organizations where id=$1`, [org]);
     await (await import("@/lib/db")).closePool();
   });
