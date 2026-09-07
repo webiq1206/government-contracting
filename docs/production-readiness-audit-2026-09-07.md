@@ -18,8 +18,8 @@ corrected.
 
 Production readiness still cannot be certified. Publication was approved, and
 draft PR #112 now passes both CI jobs. The verified application candidate is
-remote commit `45a805369bc81e83526c8c2aa55f79b26c743220`: 4,274 unit/source tests
-passed, and all 738 selected native PostgreSQL tests passed with no skips.
+remote commit `b5e3f78f931c7731670be822d67855972e31e61a`: 4,280 unit/source tests
+passed, and all 746 selected native PostgreSQL tests passed with no skips.
 TypeScript and the production build passed. All 110 migrations applied and
 schema verification passed on the fresh disposable PostgreSQL 16 database.
 
@@ -366,14 +366,14 @@ copy were corrected locally. The third native run verified those corrections.
 
 ### Current verified candidate
 
-[CI run 34166706395](https://github.com/webiq1206/government-contracting/actions/runs/34166706395)
+[CI run 34168539052](https://github.com/webiq1206/government-contracting/actions/runs/34168539052)
 completed both jobs successfully at remote commit
-`45a805369bc81e83526c8c2aa55f79b26c743220`.
+`b5e3f78f931c7731670be822d67855972e31e61a`.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Unit and source checks | PASS | 4,274 passed in 399 files. The unit-only environment skipped 726 cases, with the separate native gate covering database workflows. |
-| Native PostgreSQL workflows and tenant checks | PASS | 738 tests in 91 files; no failures or skips; the explicit no-skip gate passed. |
+| Unit and source checks | PASS | 4,280 passed in 400 files. The unit-only environment skipped 734 cases, with the separate native gate covering database workflows. |
+| Native PostgreSQL workflows and tenant checks | PASS | 746 tests in 92 files; no failures or skips; the explicit no-skip gate passed. |
 | Fresh migrations, schema verification and seed | PASS | All 110 migrations applied to disposable PostgreSQL 16. |
 | TypeScript and production build | PASS | Both CI steps passed; 64 static pages generated. Local build also passed. |
 | Rendered full-page, role and viewport matrix | INCOMPLETE | 79 actual synthetic preview PNGs independently inspected; remaining routes, scroll states, roles and exact-candidate retesting outstanding. |
@@ -515,6 +515,25 @@ requires deleting dependent records first. The cleanup now removes its own
 pricing, quotes, pairing, opportunity and subcontractor before the organization;
 the complete gate must rerun successfully before it is marked passed.
 
+The complete rerun `34168539052` at `b5e3f78` passed both jobs: all 746 native
+tests in 92 files, all 4,280 unit/source tests in 400 files, TypeScript and the
+production build. Fixture cleanup and the explicit no-skip database gate also
+passed. The visual surfaces are unchanged from candidate `1a05f5e`, which is
+the requested exact preview capture target.
+
+The second preview capture request is still processing. It requests actual
+internal-container scroll steps, opportunity tabs after the date fix, updated
+mobile hierarchy, filters, menu conflicts, quotes, billing and notification
+states. No new image has been received or independently inspected yet. The
+comparison of Replit's separate main commit `9ab0d386` against baseline
+`dbbf629` is also still outstanding; it must be reviewed before any pull that
+could replace preexisting Replit work.
+
+A later managed-browser check could list tabs, but the production login tab
+showed a 502 page with an HTTP/2 protocol error. One reload timed out and reset
+the browser session. This does not establish a production application outage
+or a bot-detection block. No sign-in form or production admin session was reached.
+
 Local source inspection confirmed a countdown hydration defect and navigation
 paths with no pending feedback. Local fixes add stable first-render countdown
 and greeting text, visible pending navigation feedback, settings/admin loading
@@ -596,8 +615,8 @@ made locally, as requested by the user.
 
 - Application changes are committed and published on
   `audit/production-readiness-2026-09-07` in draft PR #112. The exact candidate
-  `45a8053` passes both CI jobs. The subsequent correction batch is locally
-  verified and awaits exact-candidate CI. The PR has not been merged.
+  `b5e3f78` passes both CI jobs. All application changes through the reply
+  transaction and recovery work are verified by that run. The PR has not been merged.
 - Nothing was deployed or pushed to production.
 - No production database was mutated.
 - No live email, SMS, call, outreach, payment, or bid submission was sent.
