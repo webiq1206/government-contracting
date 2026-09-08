@@ -40,7 +40,7 @@ function stateTone(state: MessageState): string {
   if (state === "bounced" || state === "blocked" || state === "failed") {
     return "bg-risk/15 text-risk";
   }
-  if (state === "delayed") return "bg-review/15 text-review";
+  if (state === "delayed" || state === "draft") return "bg-review/15 text-review";
   if (state === "replied" || state === "clicked" || state === "opened") {
     return "bg-pursue/15 text-pursue";
   }

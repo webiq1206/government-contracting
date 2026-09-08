@@ -711,8 +711,10 @@ export const outreach: AgentDefinition = {
         rfc822MessageId,
         // A draft or a failed send is NOT "sent". Recording it as sent is what
         // let an outreach that never left the building look identical on
-        // screen to one that did.
-        sent ? "sent" : "failed",
+        // screen to one that did. And a draft is not a failure either: an
+        // approach held back because the firm has no verified address, or
+        // because Gmail is paused, is waiting on a person, not broken.
+        sent ? "sent" : outreachState === "send_failed" ? "failed" : "draft",
       ]
     );
 
