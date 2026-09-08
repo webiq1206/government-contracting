@@ -35,9 +35,18 @@ export async function GET(_req: Request, { params }: { params: { docId: string }
    */
   let bytes: Buffer;
   try {
-    bytes = await storage.download(doc.storage_path);
-  } catch {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    bytes = await storage.download(doc.storage_path, doc.storage_backend ?? undefined);
+  } catch (error) {
+    console.error("[compliance] filed document could not be read:", error);
+    return NextResponse.json(
+      {
+        error:
+          "This file is on the compliance record, but its stored content could not be read. " +
+          "Check storage and try again.",
+        retryable: true,
+      },
+      { status: 503 }
+    );
   }
 
   return new Response(new Uint8Array(bytes), {
@@ -63,7 +72,17 @@ export async function DELETE(_req: Request, { params }: { params: { docId: strin
   const ctx = await requireOrgContext({ capability: "manage_compliance" });
   if (ctx instanceof NextResponse) return ctx;
 
-  const result = await removeDocument(ctx.orgId, params.docId, ctx.user.id);
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: 404 });
+  const result = await removeDocument(
+    ctx.orgId,
+    params.docId,
+    ctx.user.id,
+    ctx.user.email
+  );
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error, retryable: result.retryable ?? false },
+      { status: result.status }
+    );
+  }
   return NextResponse.json({ ok: true });
 }

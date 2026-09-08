@@ -26,10 +26,10 @@ export default function NotFound() {
         404
       </p>
       <h1 className="font-display text-2xl font-normal text-foreground">
-        That page or record does not exist
+        That page or record is unavailable
       </h1>
       <p className="max-w-sm text-sm text-muted-foreground">
-        The link may be old, or the record may have been deleted. Nothing was changed.
+        The link may be old, the record may have been deleted, or your account may not have access. Check the link or ask your account owner for help.
       </p>
       <Link href="/pipeline" className="btn-primary">
         Back to Opportunities

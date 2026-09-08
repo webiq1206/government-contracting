@@ -45,7 +45,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const org = await queryOne<{ id: string; name: string }>(
     `select id, name from organizations where id = $1`,
     [params.id]
-  ).catch(() => null);
+  );
   if (!org) return NextResponse.json({ error: "No such account." }, { status: 404 });
 
   const out: Record<string, unknown> = {
@@ -54,6 +54,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     note:
       "Business records only. Sessions, credentials and payment-processor internals are never part of an export. Each table is bounded; a table at its bound says so in _truncated.",
   };
+  const incompleteTables: string[] = [];
 
   for (const { table, limit } of EXPORT_TABLES) {
     // Table names come from the constant above, never from the request.
@@ -64,6 +65,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     if (rows == null) {
       // Named, not skipped: a table that failed to read must not look empty.
       out[table] = { _error: "This table could not be read. The export is incomplete." };
+      incompleteTables.push(table);
       continue;
     }
     const truncated = rows.length > limit;
@@ -80,11 +82,25 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     orgId: org.id,
     adminEmail: auth.email,
     action: "account_exported",
-    detail: { tables: EXPORT_TABLES.length },
+    detail: {
+      tables: EXPORT_TABLES.length,
+      complete: incompleteTables.length === 0,
+      incomplete_tables: incompleteTables,
+    },
   });
+
+  out.export_status = incompleteTables.length
+    ? {
+        complete: false,
+        failed_tables: incompleteTables,
+        action:
+          "Retry this export. If the same tables fail again, give this list to support before using the file as a complete account record.",
+      }
+    : { complete: true };
 
   const safeName = org.name.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 60) || "account";
   return new NextResponse(JSON.stringify(out, null, 2), {
+    status: incompleteTables.length ? 206 : 200,
     headers: {
       "content-type": "application/json",
       "content-disposition": `attachment; filename="${safeName}-export.json"`,

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingLink as Link } from "@/components/pending-link";
 import type { WorkItem } from "@/lib/domain/work-queue";
 import { summarizeQueue } from "@/lib/domain/work-queue";
 import { DeadlineBadge } from "@/components/deadline-badge";

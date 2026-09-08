@@ -9,6 +9,7 @@
  * platform's own mail uses the same address as its outreach.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describeSendFailure } from "../lib/integrations/gmail-send-failure";
 
 const ORG = "11111111-2222-4333-8444-555555555555";
 
@@ -124,8 +125,7 @@ describe("the addresses offered to the operator", () => {
 });
 
 describe("what an operator is told when Google refuses the From address", () => {
-  it("names the address and where to fix it, instead of Google's wording", async () => {
-    const { describeSendFailure } = await import("../lib/integrations/gmail");
+  it("names the address and where to fix it, instead of Google's wording", () => {
     const said = describeSendFailure(
       "Invalid From header",
       "BROST CO <hello@brostco.com>"
@@ -134,8 +134,7 @@ describe("what an operator is told when Google refuses the From address", () => 
     expect(said).toMatch(/Send mail as/i);
   });
 
-  it("leaves an unrelated failure alone, so it is not misdiagnosed as a sender problem", async () => {
-    const { describeSendFailure } = await import("../lib/integrations/gmail");
+  it("leaves an unrelated failure alone, so it is not misdiagnosed as a sender problem", () => {
     expect(describeSendFailure("Rate Limit Exceeded", "BROST CO <hello@brostco.com>")).toBe(
       "Rate Limit Exceeded"
     );

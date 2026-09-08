@@ -5,7 +5,8 @@ import {
   hashPassword,
   setSessionCookie,
 } from "@/lib/auth";
-import { query, queryOne } from "@/lib/db";
+import { transaction } from "@/lib/db";
+import { LEGACY_ORG_ID } from "@/lib/tenant-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,15 +35,40 @@ export async function POST(req: Request) {
     );
   }
 
-  const user = await queryOne<{ id: string; email: string }>(
-    `insert into users (email, password_hash, name, role) values ($1, $2, $3, 'operator')
-     on conflict (email) do nothing
-     returning id, email`,
-    [email, hashPassword(password), name]
-  );
+  const passwordHash = hashPassword(password);
+  const user = await transaction(async (client) => {
+    // Only one deployment process may decide that the installation is empty.
+    // The transaction-level advisory lock is released automatically at commit
+    // or rollback, including when two first-run requests arrive together.
+    await client.query(`select pg_advisory_xact_lock(hashtext('brostco-auth-bootstrap'))`);
+
+    const existing = await client.query<{ exists: boolean }>(
+      `select exists(select 1 from users) as exists`
+    );
+    if (existing.rows[0]?.exists) return null;
+
+    const inserted = await client.query<{ id: string; email: string }>(
+      `insert into users (email, password_hash, name, role)
+       values ($1, $2, $3, 'operator')
+       returning id, email`,
+      [email, passwordHash, name]
+    );
+    const created = inserted.rows[0];
+    if (!created) throw new Error("Initial account could not be created.");
+
+    // Authentication and membership are one atomic setup operation. A user
+    // without this row would sign in successfully and then have no tenant.
+    await client.query(
+      `insert into organization_members (org_id, user_id, role)
+       values ($1, $2, 'owner')`,
+      [LEGACY_ORG_ID, created.id]
+    );
+    return created;
+  });
   if (!user) {
-    // A concurrent bootstrap already claimed the address.
-    return NextResponse.json({ error: "This email is already registered." }, { status: 409 });
+    // A concurrent bootstrap completed while this request waited for the
+    // lock. Do not reveal which address claimed the installation.
+    return NextResponse.json({ error: "Setup already complete." }, { status: 409 });
   }
 
   // Log the operator in immediately.

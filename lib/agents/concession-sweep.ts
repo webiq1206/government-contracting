@@ -58,50 +58,44 @@ async function loadOrg(orgId: string): Promise<OrgSnapshot | null> {
             pending_coupon_id
        from organizations where id = $1`,
     [orgId]
-  ).catch(() => null);
+  );
 }
 
 /** What Stripe currently says about one subscription and its latest invoice. */
-async function readStripeState(subscriptionId: string): Promise<StripeDiscountState | null> {
+async function readStripeState(subscriptionId: string): Promise<StripeDiscountState> {
   const stripe = getStripe();
-  if (!stripe) return null;
-  try {
-    const sub = await stripe.subscriptions.retrieve(subscriptionId);
-    const discounts = (sub as unknown as { discounts?: unknown[] }).discounts ?? [];
-    const first = discounts[0] as
-      | { coupon?: { id?: string; percent_off?: number | null } }
-      | undefined;
-
-    // The invoice is the point of the exercise: a coupon attached to the
-    // wrong thing still shows up on the subscription.
-    let invoiceDiscountCents: number | null = null;
-    try {
-      const invoices = await stripe.invoices.list({
-        subscription: subscriptionId,
-        limit: 1,
-      });
-      const inv = invoices.data[0] as
-        | { total_discount_amounts?: { amount: number }[] }
-        | undefined;
-      if (inv) {
-        invoiceDiscountCents = (inv.total_discount_amounts ?? []).reduce(
-          (n, d) => n + (d.amount ?? 0),
-          0
-        );
-      }
-    } catch {
-      // No invoice yet, or the list call failed. Absence is not a failure.
-      invoiceDiscountCents = null;
-    }
-
-    return {
-      subscriptionCouponId: first?.coupon?.id ?? null,
-      subscriptionPercentOff: first?.coupon?.percent_off ?? null,
-      invoiceDiscountCents,
-    };
-  } catch {
-    return null;
+  if (!stripe) {
+    throw new Error("Stripe is not configured, so granted discounts cannot be verified.");
   }
+  const sub = await stripe.subscriptions.retrieve(subscriptionId);
+  const discounts = (sub as unknown as { discounts?: unknown[] }).discounts ?? [];
+  const first = discounts[0] as
+    | { coupon?: { id?: string; percent_off?: number | null } }
+    | undefined;
+
+  // The invoice is the point of the exercise: a coupon attached to the wrong
+  // thing still shows up on the subscription. An empty list is a truthful
+  // absence; a rejected list call throws and fails the verification pass.
+  let invoiceDiscountCents: number | null = null;
+  const invoices = await stripe.invoices.list({
+    subscription: subscriptionId,
+    limit: 1,
+  });
+  const inv = invoices.data[0] as
+    | { total_discount_amounts?: { amount: number }[] }
+    | undefined;
+  if (inv) {
+    invoiceDiscountCents = (inv.total_discount_amounts ?? []).reduce(
+      (n, d) => n + (d.amount ?? 0),
+      0
+    );
+  }
+
+  return {
+    subscriptionCouponId: first?.coupon?.id ?? null,
+    subscriptionPercentOff: first?.coupon?.percent_off ?? null,
+    invoiceDiscountCents,
+  };
 }
 
 /*
@@ -123,6 +117,8 @@ export const concessionSweep: AgentDefinition = {
     let nudged = 0;
     let repaired = 0;
     let flagged = 0;
+    let passFailures = 0;
+    let operationFailures = 0;
 
     // -----------------------------------------------------------------------
     // 1. Nudge invitations whose link is about to expire.
@@ -150,8 +146,13 @@ export const concessionSweep: AgentDefinition = {
             : `Could not remind ${inv.email} before their invitation expires: ${res.error}`,
         });
         if (res.ok) nudged++;
+        else {
+          flagged++;
+          operationFailures++;
+        }
       }
     } catch (err) {
+      passFailures++;
       await logAgent({
         agent: AGENT,
         action: "nudge-pass-failed",
@@ -211,6 +212,7 @@ export const concessionSweep: AgentDefinition = {
           });
           if (!applied.ok) {
             flagged++;
+            operationFailures++;
             await logAgent({
               agent: AGENT,
               action: "terms-repair-failed",
@@ -232,9 +234,13 @@ export const concessionSweep: AgentDefinition = {
             : `Could not apply the agreed terms for ${inv.email}: ${res.error}`,
         });
         if (res.ok) repaired++;
-        else flagged++;
+        else {
+          flagged++;
+          operationFailures++;
+        }
       }
     } catch (err) {
+      passFailures++;
       await logAgent({
         agent: AGENT,
         action: "repair-pass-failed",
@@ -261,9 +267,6 @@ export const concessionSweep: AgentDefinition = {
 
       for (const org of withTerms) {
         const state = await readStripeState(org.stripe_subscription_id!);
-        // Stripe unreachable or unconfigured: say nothing rather than report
-        // every discounted account as broken.
-        if (!state) continue;
 
         const verdict = discountVerdict(org, state);
         if (verdict.ok) continue;
@@ -276,6 +279,7 @@ export const concessionSweep: AgentDefinition = {
         });
       }
     } catch (err) {
+      passFailures++;
       await logAgent({
         agent: AGENT,
         action: "discount-pass-failed",
@@ -291,9 +295,14 @@ export const concessionSweep: AgentDefinition = {
       `${flagged} needing attention`,
     ];
     return {
-      ok: true,
-      summary: `Concession sweep: ${parts.join(", ")}.`,
-      data: { nudged, repaired, flagged },
+      ok: passFailures === 0 && operationFailures === 0,
+      summary: `Concession sweep: ${parts.join(", ")}.${
+        passFailures > 0
+          ? ` ${passFailures} verification pass${passFailures === 1 ? " failed" : "es failed"}.`
+          : ""
+      }`,
+      data: { nudged, repaired, flagged, passFailures, operationFailures },
+      humanActionRequired: flagged > 0 || passFailures > 0 || operationFailures > 0,
     };
   },
 };

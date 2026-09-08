@@ -17,5 +17,16 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const pathname = url.searchParams.get("path") || "/today";
 
-  return NextResponse.json(await loadGuideBundle(auth, pathname));
+  try {
+    return NextResponse.json(await loadGuideBundle(auth, pathname));
+  } catch (error) {
+    console.error("[guide] live guidance failed", error);
+    return NextResponse.json(
+      {
+        error:
+          "Live guidance could not verify your account and workflow state. No zero counts or completion claims are being shown. Check your connection, reload the page, and try again.",
+      },
+      { status: 503 }
+    );
+  }
 }

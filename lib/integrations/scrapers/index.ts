@@ -28,6 +28,14 @@ export interface ScrapedOpportunity {
   raw?: Record<string, unknown>;
 }
 
+export interface ScraperRunResult {
+  opportunities: ScrapedOpportunity[];
+  /** Enabled portal scrapers that could not complete. */
+  failures: number;
+  /** Whether state/local scraping was configured for this run. */
+  enabled: boolean;
+}
+
 export interface StateScraper {
   state: string; // "TX"
   name: string;
@@ -99,8 +107,10 @@ function makeContext(browser: import("playwright").Browser): ScraperContext {
  */
 export async function runEnabledScrapers(
   naics: string[]
-): Promise<ScrapedOpportunity[]> {
-  if (!config.worker.enableScrapers) return [];
+): Promise<ScraperRunResult> {
+  if (!config.worker.enableScrapers) {
+    return { opportunities: [], failures: 0, enabled: false };
+  }
   const browser = await getBrowser();
   if (!browser) {
     await logAgent({
@@ -110,10 +120,11 @@ export async function runEnabledScrapers(
       status: "skipped",
       message: "ENABLE_SCRAPERS=true but Playwright/Chromium unavailable.",
     });
-    return [];
+    return { opportunities: [], failures: 1, enabled: true };
   }
   const ctx = makeContext(browser);
   const all: ScrapedOpportunity[] = [];
+  let failures = 0;
   for (const scraper of SCRAPERS) {
     try {
       const found = await scraper.run(ctx, naics);
@@ -126,6 +137,7 @@ export async function runEnabledScrapers(
       });
     } catch (err) {
       // Isolation: one broken scraper does not block the others.
+      failures++;
       await logAgent({
         agent: "opportunity-monitor",
         action: `scrape:${scraper.state}`,
@@ -135,7 +147,7 @@ export async function runEnabledScrapers(
       });
     }
   }
-  return all;
+  return { opportunities: all, failures, enabled: true };
 }
 
 export async function closeScraperBrowser(): Promise<void> {

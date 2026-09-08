@@ -8,7 +8,7 @@ import { cronMatches, isValidCron } from "../lib/cron";
 import { enqueue } from "../lib/queue";
 import { scheduledAgents } from "../lib/agents/registry";
 import { config } from "../lib/config";
-import { getAutomationState } from "../lib/app-settings";
+import { getPlatformAutomationState } from "../lib/app-settings";
 
 let timer: NodeJS.Timeout | null = null;
 
@@ -34,10 +34,11 @@ export function startScheduler(): () => void {
   let wasPaused = false;
 
   async function tick() {
-    // Operator-controlled pause switch (Agents page). While paused no new
-    // scheduled runs start. The master pause also gates enqueue/runAgent/sends;
-    // process because only the cron enqueue is gated here.
-    const { paused } = await getAutomationState();
+    // Only the platform kill switch can stop a platform-wide scheduler. Each
+    // job resolves its owning organization and checks that account's switch in
+    // enqueue and again in the runner. Reading an account-scoped setting here,
+    // before there is an account context, used the founding tenant's switch.
+    const { paused } = await getPlatformAutomationState();
     if (paused !== wasPaused) {
       console.log(`[scheduler] automation ${paused ? "PAUSED" : "RESUMED"} by operator`);
       wasPaused = paused;

@@ -23,10 +23,10 @@
  * is a write to an existing row and the loser of the race changes nothing.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { query, queryOne } from "../db";
+import { query, queryOne, transaction } from "../db";
 import { config } from "../config";
 import { systemMail } from "../integrations/system-mail";
-import { recordAdminAction } from "./audit";
+import { recordAdminAction, recordRequiredAdminAction } from "./audit";
 import { reserveConcessionCode } from "./concessions";
 import {
   createConcessionCode,
@@ -108,7 +108,7 @@ export async function listInvitations(limit = 100): Promise<InvitationRow[]> {
   return query<InvitationRow>(
     `${INVITATION_SELECT} order by created_at desc limit $1`,
     [limit]
-  ).catch(() => []);
+  );
 }
 
 /* -------------------------------------------------------------------------
@@ -132,7 +132,7 @@ export async function createInvitation(input: {
   note?: string | null;
   adminEmail: string;
   adminUserId?: string | null;
-}): Promise<AdminActionResult & { invitationId?: string }> {
+}): Promise<AdminActionResult & { invitationId?: string; mailSent?: boolean }> {
   const email = input.email.toLowerCase().trim();
   if (!email.includes("@") || email.length < 5) {
     return { ok: false, error: "Enter a valid email address." };
@@ -152,7 +152,7 @@ export async function createInvitation(input: {
     `select id from account_invitations
       where lower(email) = $1 and accepted_at is null and revoked_at is null`,
     [email]
-  ).catch(() => null);
+  );
   if (outstanding) {
     return {
       ok: false,
@@ -184,44 +184,70 @@ export async function createInvitation(input: {
   const token = randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + INVITATION_DAYS * 24 * 60 * 60 * 1000);
 
-  const row = await queryOne<{ id: string }>(
-    `insert into account_invitations
-       (email, invited_by_email, invited_by_user_id, plan_key, billing_interval,
-        concession_kind, concession_percent, concession_months,
-        concession_code, stripe_coupon_id,
-        token_hash, expires_at, note)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-     returning id`,
-    [
-      email,
-      input.adminEmail,
-      input.adminUserId ?? null,
-      input.plan,
-      input.interval,
-      input.concession.kind,
-      input.concession.percent ?? null,
-      input.concession.months ?? null,
-      code,
-      couponId,
-      hashToken(token),
-      expires.toISOString(),
-      input.note?.trim() || null,
-    ]
-  );
-  if (!row) return { ok: false, error: "Could not save the invitation." };
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "invitation_created",
-    detail: {
-      email,
-      plan: input.plan,
-      interval: input.interval,
-      terms: describeConcession(input.concession),
-      code,
-      expires_at: expires.toISOString(),
-    },
-  });
+  let row: { id: string };
+  try {
+    row = await transaction(async (client) => {
+      const inserted = await client.query<{ id: string }>(
+        `insert into account_invitations
+           (email, invited_by_email, invited_by_user_id, plan_key, billing_interval,
+            concession_kind, concession_percent, concession_months,
+            concession_code, stripe_coupon_id,
+            token_hash, expires_at, note)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         returning id`,
+        [
+          email,
+          input.adminEmail,
+          input.adminUserId ?? null,
+          input.plan,
+          input.interval,
+          input.concession.kind,
+          input.concession.percent ?? null,
+          input.concession.months ?? null,
+          code,
+          couponId,
+          hashToken(token),
+          expires.toISOString(),
+          input.note?.trim() || null,
+        ]
+      );
+      const created = inserted.rows[0];
+      if (!created) throw new Error("Invitation insert returned no row.");
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "invitation_created",
+          detail: {
+            invitation_id: created.id,
+            email,
+            plan: input.plan,
+            interval: input.interval,
+            terms: describeConcession(input.concession),
+            code,
+            expires_at: expires.toISOString(),
+          },
+        },
+        client
+      );
+      return created;
+    });
+  } catch (err) {
+    console.error("[invitations] create and audit were rolled back", err);
+    let cleanupFailed = false;
+    if (couponId) {
+      const cleanup = await deleteConcessionCoupon(couponId);
+      cleanupFailed = !cleanup.ok;
+      if (!cleanup.ok) console.error("[invitations] orphan coupon cleanup failed", cleanup.error);
+    }
+    return {
+      ok: false,
+      error:
+        "The invitation was not saved because it and its required audit record could not be stored together. " +
+        (cleanupFailed
+          ? "Its unused Stripe coupon may still exist; remove it in Stripe before trying again."
+          : "Nothing was issued; try again."),
+    };
+  }
 
   const mail = await sendInvitationEmail({
     to: email,
@@ -234,9 +260,23 @@ export async function createInvitation(input: {
     expiresAt: expires,
   });
 
+  if (!mail.sent) {
+    await recordAdminAction({
+      adminEmail: input.adminEmail,
+      action: "invitation_email_unsent",
+      orgId: null,
+      detail: {
+        invitation_id: row.id,
+        email,
+        error: mail.error ?? "Platform mail refused the invitation.",
+      },
+    });
+  }
+
   return {
     ok: true,
     invitationId: row.id,
+    mailSent: mail.sent,
     message: mail.sent
       ? `Invited ${email}. The link expires ${expires.toDateString()}.`
       : `Invitation saved for ${email}, but the email could not be sent (${mail.error}). Re-send once platform mail is connected.`,
@@ -265,13 +305,40 @@ export async function revokeInvitation(input: {
   // on an invitation that has just been accepted and then turn off the
   // promotion code belonging to a real customer who has not checked out yet,
   // quietly taking away the discount they were promised.
-  const won = await queryOne<{ id: string }>(
-    `update account_invitations
-        set revoked_at = now(), revoked_by = $2
-      where id = $1 and accepted_at is null and revoked_at is null
-      returning id`,
-    [input.id, input.adminEmail]
-  );
+  let won: { id: string } | null;
+  try {
+    won = await transaction(async (client) => {
+      const updated = await client.query<{ id: string }>(
+        `update account_invitations
+            set revoked_at = now(), revoked_by = $2
+          where id = $1 and accepted_at is null and revoked_at is null
+          returning id`,
+        [input.id, input.adminEmail]
+      );
+      const revoked = updated.rows[0] ?? null;
+      if (!revoked) return null;
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "invitation_revoked",
+          detail: {
+            invitation_id: row.id,
+            email: row.email,
+            code: row.concession_code,
+          },
+        },
+        client
+      );
+      return revoked;
+    });
+  } catch (err) {
+    console.error("[invitations] revocation and audit were rolled back", err);
+    return {
+      ok: false,
+      error:
+        "The invitation was not withdrawn because the revocation and its required audit record could not be saved together. The existing link still works; try again.",
+    };
+  }
   if (!won) {
     return {
       ok: false,
@@ -288,21 +355,17 @@ export async function revokeInvitation(input: {
   if (row.stripe_coupon_id) {
     const gone = await deleteConcessionCoupon(row.stripe_coupon_id);
     if (!gone.ok) {
-      // Not worth failing the withdrawal over. Nobody can redeem a coupon;
-      // only we can attach one, and the invitation it belonged to is dead.
       console.error(
         "[invitations] coupon left behind at Stripe",
         row.concession_code,
         gone.error
       );
+      return {
+        ok: false,
+        error: `The invitation to ${row.email} is withdrawn and its link no longer works, but Stripe could not remove the unused coupon (${gone.error}). Remove coupon ${row.concession_code ?? row.stripe_coupon_id} in Stripe; do not re-revoke the invitation.`,
+      };
     }
   }
-
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "invitation_revoked",
-    detail: { email: row.email, code: row.concession_code },
-  });
   return { ok: true, message: `The invitation to ${row.email} has been withdrawn.` };
 }
 
@@ -332,14 +395,42 @@ export async function resendInvitation(input: {
   // Conditional for the same reason as revoke. Re-sending an invitation that
   // was accepted between the read above and this write would hand out a
   // working link to an account that already exists.
-  const won = await queryOne<{ id: string }>(
-    `update account_invitations
-        set token_hash = $2, expires_at = $3,
-            sent_count = sent_count + 1, last_sent_at = now()
-      where id = $1 and accepted_at is null and revoked_at is null
-      returning id`,
-    [input.id, hashToken(token), expires.toISOString()]
-  );
+  let won: { id: string } | null;
+  try {
+    won = await transaction(async (client) => {
+      const updated = await client.query<{ id: string }>(
+        `update account_invitations
+            set token_hash = $2, expires_at = $3,
+                sent_count = sent_count + 1, last_sent_at = now()
+          where id = $1 and accepted_at is null and revoked_at is null
+          returning id`,
+        [input.id, hashToken(token), expires.toISOString()]
+      );
+      const resent = updated.rows[0] ?? null;
+      if (!resent) return null;
+      await recordRequiredAdminAction(
+        {
+          adminEmail: input.adminEmail,
+          action: "invitation_resent",
+          detail: {
+            invitation_id: row.id,
+            email: row.email,
+            sent_count: row.sent_count + 1,
+            delivery_pending: true,
+          },
+        },
+        client
+      );
+      return resent;
+    });
+  } catch (err) {
+    console.error("[invitations] resend token and audit were rolled back", err);
+    return {
+      ok: false,
+      error:
+        "A new invitation link was not created because it and its required audit record could not be saved together. The previous link is still active; try again.",
+    };
+  }
   if (!won) {
     return {
       ok: false,
@@ -362,15 +453,12 @@ export async function resendInvitation(input: {
     expiresAt: expires,
   });
 
-  await recordAdminAction({
-    adminEmail: input.adminEmail,
-    action: "invitation_resent",
-    detail: { email: row.email, sent_count: row.sent_count + 1, delivered: mail.sent },
-  });
-
   return mail.sent
     ? { ok: true, message: `Sent again to ${row.email}. The new link expires ${expires.toDateString()}.` }
-    : { ok: false, error: `Could not send the email: ${mail.error}` };
+    : {
+        ok: false,
+        error: `A new link was saved and the previous link no longer works, but the email could not be sent: ${mail.error}. Fix platform mail, then press Re-send again.`,
+      };
 }
 
 /**
@@ -424,18 +512,25 @@ export async function repairInvitedTerms(input: {
     months: row.concession_months,
   });
 
-  await applyInvitedTermsAtomically(row, row.accepted_org_id, terms);
-  await recordAdminAction({
-    adminEmail: input.actorEmail,
-    action: "invitation_terms_repaired",
-    orgId: row.accepted_org_id,
-    detail: {
-      invitation_id: row.id,
-      email: row.email,
-      terms,
-      invited_by: row.invited_by_email,
-    },
-  }).catch(() => undefined);
+  try {
+    await applyInvitedTermsAtomically(row, row.accepted_org_id, terms, {
+      adminEmail: input.actorEmail,
+      action: "invitation_terms_repaired",
+      detail: {
+        invitation_id: row.id,
+        email: row.email,
+        terms,
+        invited_by: row.invited_by_email,
+      },
+    });
+  } catch (err) {
+    console.error("[invitations] terms repair and audit were rolled back", err);
+    return {
+      ok: false,
+      error:
+        "The invited terms were not applied because the repair and its required audit record could not be saved together. Nothing changed; try again.",
+    };
+  }
 
   return {
     ok: true,
@@ -455,7 +550,7 @@ export async function invitedTermsForOrg(
       order by accepted_at desc
       limit 1`,
     [orgId]
-  ).catch(() => null);
+  );
   if (!row) return null;
   if (row.plan_key !== "founding" && row.plan_key !== "standard") return null;
   return {
@@ -504,18 +599,37 @@ async function sendInvitationEmail(input: {
     "If you were not expecting this, you can ignore it and nothing will happen.",
   ].join("\n");
 
-  if (!(await systemMail.enabled())) {
+  let mailReady = false;
+  try {
+    mailReady = await systemMail.enabled();
+  } catch {
+    return {
+      sent: false,
+      error:
+        "the platform sender identity could not be checked. Check the platform Gmail connection, then re-send this invitation",
+    };
+  }
+  if (!mailReady) {
     // Same posture as password reset: print the link in development so the
     // flow can be walked end to end, and stay quiet in production rather than
     // writing a working invitation link into the logs.
     if (!config.isProd) console.info(`[invitation] ${input.to}: ${url}`);
-    return { sent: false, error: "platform inbox is not connected" };
+    return {
+      sent: false,
+      error:
+        "the platform Gmail connection or verified sender identity is not ready. Check platform Gmail settings, then re-send this invitation",
+    };
   }
   const res = await systemMail
     .send({ to: input.to, subject: `${input.inviterEmail} invited you to Brost Co`, text })
     .catch((err: unknown) => ({ error: (err as Error).message }) as { error: string });
 
-  if ("error" in res && res.error) return { sent: false, error: res.error };
+  if (("disabled" in res && res.disabled) || res.error) {
+    return {
+      sent: false,
+      error: res.error ?? "the platform inbox refused the message",
+    };
+  }
   return { sent: true };
 }
 
@@ -540,7 +654,7 @@ export async function invitationForToken(token: string): Promise<InvitationOffer
   const row = await queryOne<InvitationRow>(
     `${INVITATION_SELECT} where token_hash = $1`,
     [hashToken(token)]
-  ).catch(() => null);
+  );
   if (!row || invitationState(row) !== "outstanding") return null;
   return {
     id: row.id,
@@ -592,7 +706,7 @@ export async function redeemInvitation(input: {
   const row = await queryOne<InvitationRow>(
     `${INVITATION_SELECT} where token_hash = $1`,
     [hashToken(input.token)]
-  ).catch(() => null);
+  );
   if (!row) return { error: "This invitation link is not valid." };
 
   const state = invitationState(row);
@@ -630,16 +744,42 @@ export async function redeemInvitation(input: {
     // Put the link back. Whatever went wrong (a race with a self-signup on the
     // same address, a database hiccup) is recoverable by trying again, and
     // burning the invitation would make it permanently not.
-    await query(`update account_invitations set accepted_at = null where id = $1`, [row.id]).catch(
-      () => {}
-    );
+    try {
+      await query(`update account_invitations set accepted_at = null where id = $1`, [row.id]);
+    } catch (releaseErr) {
+      console.error("[invitations] account creation failed and claim could not be released", {
+        invitationId: row.id,
+        creationError: created.error,
+        releaseError: releaseErr,
+      });
+      return {
+        error: `The account could not be created (${created.error}), and the invitation link could not be restored. Do not keep retrying this link; ask the person who invited you to issue a new invitation.`,
+      };
+    }
     return { error: created.error };
   }
 
-  await query(
-    `update account_invitations set accepted_user_id = $2, accepted_org_id = $3 where id = $1`,
-    [row.id, created.user.id, created.orgId]
-  );
+  try {
+    const linked = await query<{ id: string }>(
+      `update account_invitations
+          set accepted_user_id = $2, accepted_org_id = $3
+        where id = $1
+        returning id`,
+      [row.id, created.user.id, created.orgId]
+    );
+    if (linked.length !== 1) throw new Error("Invitation disappeared after account creation.");
+  } catch (linkErr) {
+    console.error("[invitations] account created but invitation linkage failed", {
+      invitationId: row.id,
+      orgId: created.orgId,
+      userId: created.user.id,
+      error: linkErr,
+    });
+    return {
+      error:
+        "Your account was created, but the invitation terms could not be linked to it. Do not submit this form again. Sign in with the email and password you just chose, then contact support so the promised terms can be applied before checkout.",
+    };
+  }
 
   const terms = describeConcession({
     kind: row.concession_kind,
@@ -711,12 +851,16 @@ export async function redeemInvitation(input: {
 async function applyInvitedTermsAtomically(
   row: InvitationRow,
   orgId: string,
-  terms: string
+  terms: string,
+  requiredAudit?: {
+    adminEmail: string;
+    action: "invitation_terms_repaired";
+    detail: Record<string, unknown>;
+  }
 ): Promise<void> {
-  const { transaction } = await import("../db");
   await transaction(async (client) => {
     if (row.concession_kind === "free_account") {
-      await client.query(
+      const updated = await client.query(
         `update organizations
             set billing_exempt = true,
                 billing_exempt_reason = $2,
@@ -734,8 +878,9 @@ async function applyInvitedTermsAtomically(
           row.billing_interval,
         ]
       );
+      if (updated.rowCount !== 1) throw new Error("Accepted account no longer exists.");
     } else {
-      await client.query(
+      const updated = await client.query(
         `update organizations
             set plan_key = $2,
                 billing_interval = $3,
@@ -758,14 +903,31 @@ async function applyInvitedTermsAtomically(
           row.invited_by_email,
         ]
       );
+      if (updated.rowCount !== 1) throw new Error("Accepted account no longer exists.");
     }
 
     // Same transaction as the terms above. This stamp is what checkout binding
     // reads; a stamp without terms, or terms without a stamp, is the state
     // that lets a private promotion code meet a plan nobody agreed to.
-    await client.query(
-      `update account_invitations set terms_applied_at = now() where id = $1`,
+    const stamped = await client.query(
+      `update account_invitations
+          set terms_applied_at = now()
+        where id = $1 and terms_applied_at is null`,
       [row.id]
     );
+    if (stamped.rowCount !== 1) {
+      throw new Error("Invitation terms were already applied or the invitation disappeared.");
+    }
+    if (requiredAudit) {
+      await recordRequiredAdminAction(
+        {
+          adminEmail: requiredAudit.adminEmail,
+          action: requiredAudit.action,
+          orgId,
+          detail: requiredAudit.detail,
+        },
+        client
+      );
+    }
   });
 }

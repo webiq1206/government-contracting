@@ -30,16 +30,31 @@ export async function GET() {
   }
 
   const settings = await getRecapSettings(orgId);
+  const unavailable: string[] = [];
   const [members, recipients, history] = await Promise.all([
-    orgMembersForRecap(orgId).catch(() => []),
-    recapRecipients(orgId, settings).catch(() => []),
-    deliveryHistory({ orgId, scope: "org", limit: 30, includeTests: true }).catch(() => []),
+    orgMembersForRecap(orgId).catch(() => {
+      unavailable.push("members");
+      return [];
+    }),
+    recapRecipients(orgId, settings).catch(() => {
+      unavailable.push("recipients");
+      return [];
+    }),
+    deliveryHistory({ orgId, scope: "org", limit: 30, includeTests: true }).catch(() => {
+      unavailable.push("history");
+      return [];
+    }),
   ]);
 
   const receiving = new Set(recipients.map((r) => r.userId));
 
   return NextResponse.json({
     settings,
+    unavailable,
+    warning:
+      unavailable.length > 0
+        ? `Some recap data could not be loaded: ${unavailable.join(", ")}. Empty arrays for those sections do not mean there are no records.`
+        : null,
     members: members.map((m) => ({
       userId: m.userId,
       email: m.email,
@@ -83,7 +98,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Partial<RecapSettings>;
   const before = await getRecapSettings(orgId);
   const saved = await setRecapSettings(orgId, normalizeRecapSettings(body), auth.email);
-  const recipients = await recapRecipients(orgId, saved).catch(() => []);
+  const recipients = await recapRecipients(orgId, saved).catch(() => null);
 
   /*
    * Logged as a change with both halves, because "who stopped receiving this"
@@ -106,12 +121,21 @@ export async function POST(req: Request) {
     level: "info",
     message: `Daily recap settings changed by ${auth.email}${
       changes.length > 0 ? `: ${changes.join(", ")}` : ""
-    }. ${recipients.length} recipient(s) now eligible.`.slice(0, 500),
+    }. ${
+      recipients
+        ? `${recipients.length} recipient(s) now eligible.`
+        : "The recipient count could not be verified after saving."
+    }`.slice(0, 500),
   });
 
   return NextResponse.json({
     settings: saved,
-    recipients: recipients.map((r) => ({
+    recipientsAvailable: recipients != null,
+    warning:
+      recipients == null
+        ? "The settings were saved, but the recipient list could not be refreshed. Reload before relying on its count."
+        : null,
+    recipients: (recipients ?? []).map((r) => ({
       userId: r.userId,
       email: r.email,
       name: r.name,

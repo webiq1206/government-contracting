@@ -328,29 +328,78 @@ export async function markSkipped(id: string, reason: string): Promise<void> {
   );
 }
 
-export async function markBounced(id: string, detail: string): Promise<void> {
-  await query(
+/**
+ * Mark one still-sent delivery bounced.
+ *
+ * The boolean is part of the truth contract: a resolved query that updated no
+ * row is not a recorded bounce (for example, another worker changed it after
+ * the lookup). Callers must not count it as one.
+ */
+export async function markBounced(id: string, detail: string): Promise<boolean> {
+  const rows = await query<{ id: string }>(
     `update recap_deliveries
         set status = 'bounced', error = $2, updated_at = now()
-      where id = $1`,
+      where id = $1 and status = 'sent'
+      returning id`,
     [id, detail.slice(0, 2000)]
   );
+  return rows.length === 1;
 }
 
 /** The most recent send to this address, for matching a bounce back to it. */
 export async function recentDeliveryTo(
   email: string,
-  withinHours = 72
+  withinHours = 72,
+  originalMessageId?: string | null
 ): Promise<RecapDelivery | null> {
-  const row = await queryOne<Record<string, unknown>>(
+  const messageId = originalMessageId?.trim() || null;
+  if (messageId) {
+    const exact = await query<Record<string, unknown>>(
+      `select ${COLUMNS} from recap_deliveries
+        where lower(recipient_email) = lower($1)
+          and provider_message_id = $2
+          and status in ('sent', 'bounced')
+          and sent_at > now() - ($3 || ' hours')::interval
+        order by sent_at desc limit 20`,
+      [email, messageId, String(withinHours)]
+    );
+    /*
+     * A usable Message-ID is authoritative. If it does not match, falling
+     * back to "the newest mail to this address" can mark a different tenant's
+     * recap, so the safe answer is unmatched. The same ambiguity guard also
+     * protects against a provider/import defect that duplicated a Message-ID
+     * across tenant rows.
+     */
+    if (exact.length === 0) return null;
+    return unambiguousRecentDelivery(exact.map(toDelivery));
+  }
+
+  /*
+   * A person can receive recaps for more than one organization, and platform
+   * admins can receive both an account recap and the platform recap. A DSN
+   * without the original Message-ID cannot identify which one bounced. In
+   * that case do not mark an arbitrary tenant's row: leave it sent and show
+   * the unmatched bounce in the sweep result instead.
+   */
+  const rows = await query<Record<string, unknown>>(
     `select ${COLUMNS} from recap_deliveries
       where lower(recipient_email) = lower($1)
-        and status = 'sent'
+        and status in ('sent', 'bounced')
         and sent_at > now() - ($2 || ' hours')::interval
-      order by sent_at desc limit 1`,
+      order by sent_at desc limit 20`,
     [email, String(withinHours)]
   );
-  return row ? toDelivery(row) : null;
+  if (rows.length === 0) return null;
+  return unambiguousRecentDelivery(rows.map(toDelivery));
+}
+
+/** Pick the newest row only when every candidate belongs to one tenant/scope. */
+export function unambiguousRecentDelivery(
+  deliveries: RecapDelivery[]
+): RecapDelivery | null {
+  if (deliveries.length === 0) return null;
+  const owners = new Set(deliveries.map((d) => `${d.orgId ?? "platform"}:${d.scope}`));
+  return owners.size === 1 ? deliveries[0] : null;
 }
 
 export interface HistoryFilter {

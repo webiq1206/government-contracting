@@ -47,9 +47,10 @@ export interface InvoiceInput {
 /**
  * Record one invoice.
  *
- * Never throws. A webhook that could not file a receipt must still finish
- * updating the subscription state, because the alternative is Stripe retrying
- * the event and the account's access staying wrong in the meantime.
+ * Throws when the durable invoice ledger cannot be written. The webhook then
+ * releases its event claim and returns 500, so Stripe retries instead of a
+ * receipt or failed charge disappearing permanently while the request says it
+ * succeeded.
  */
 export async function recordInvoice(input: InvoiceInput): Promise<void> {
   await query(
@@ -92,9 +93,7 @@ export async function recordInvoice(input: InvoiceInput): Promise<void> {
       input.paidAt ?? null,
       input.failureReason ?? null,
     ]
-  ).catch((e: unknown) => {
-    console.warn("[billing] could not record an invoice:", e);
-  });
+  );
 }
 
 /** The account's invoices, newest first. Scoped to one org, always. */
@@ -111,23 +110,31 @@ export async function invoicesFor(orgId: string, limit = 12): Promise<InvoiceRec
       order by issued_at desc nulls last, created_at desc
       limit $2`,
     [orgId, limit]
-  ).catch(() => []);
+  );
 }
 
-/** Save the card Stripe last reported for an account. Never throws. */
+/**
+ * Save the card Stripe last reported for an account.
+ *
+ * Throws when the summary was not durably attached to the organization. The
+ * webhook records that failure in the tenant audit log; swallowing it here
+ * made Billing quietly show "no payment method" after Stripe had supplied one.
+ */
 export async function recordPaymentMethod(
   orgId: string,
   card: { brand?: string | null; last4?: string | null; expMonth?: number | null; expYear?: number | null } | null
 ): Promise<void> {
   if (!card || !card.last4) return;
-  await query(
+  const rows = await query<{ id: string }>(
     `update organizations
         set card_brand = $2, card_last4 = $3,
             card_exp_month = $4, card_exp_year = $5,
             card_recorded_at = now(), updated_at = now()
-      where id = $1`,
+      where id = $1
+      returning id`,
     [orgId, card.brand ?? null, card.last4, card.expMonth ?? null, card.expYear ?? null]
-  ).catch((e: unknown) => {
-    console.warn("[billing] could not record a payment method:", e);
-  });
+  );
+  if (rows.length !== 1) {
+    throw new Error("The payment method could not be attached because the account no longer exists.");
+  }
 }

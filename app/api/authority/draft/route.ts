@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireOrgContext } from "@/lib/org-guard";
+import { requirePlatformAdmin } from "@/lib/platform-admin";
+import { LEGACY_ORG_ID, runWithOrg } from "@/lib/tenant-context";
 import { queryOne } from "@/lib/db";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { complete, ClaudeNotConfiguredError } from "@/lib/ai/claude";
 import { logAgent } from "@/lib/logger";
-import { config } from "@/lib/config";
+import { ahrefs } from "@/lib/integrations/ahrefs";
 import { outreachTemplate } from "@/lib/domain/backlink";
 
 export const runtime = "nodejs";
@@ -18,10 +19,11 @@ export const dynamic = "force-dynamic";
  * configured; otherwise a safe white-hat template is used.
  */
 export async function POST(req: Request) {
-  const ctx = await requireOrgContext();
-  if (ctx instanceof NextResponse) return ctx;
-  const { orgId } = ctx;
-  const body = (await req.json().catch(() => ({}))) as { prospectId?: string };
+  const admin = await requirePlatformAdmin();
+  if (admin instanceof NextResponse) return admin;
+  const orgId = LEGACY_ORG_ID;
+  return runWithOrg(orgId, async () => {
+    const body = (await req.json().catch(() => ({}))) as { prospectId?: string };
   if (!body.prospectId) {
     return NextResponse.json({ error: "prospectId is required." }, { status: 400 });
   }
@@ -58,13 +60,14 @@ export async function POST(req: Request) {
   const valueProp = trades
     ? `We're a ${profile?.small_business ? "small-business " : ""}government contractor specializing in ${trades}.`
     : "We're a government contractor.";
+  const authorityTarget = await ahrefs.target(orgId);
 
   let draft = outreachTemplate({
     domain: prospect.domain,
     opportunityType: prospect.opportunity_type,
     senderName: profile?.owner_name || "The team",
     companyName,
-    companyUrl: `https://${config.ahrefs.target}`,
+    companyUrl: `https://${authorityTarget}`,
     valueProp,
   });
 
@@ -113,5 +116,6 @@ export async function POST(req: Request) {
      values ($4,$1,'email',$2,$3,'pending') returning id`,
     [prospect.id, draft.subject, draft.body, orgId]
   );
-  return NextResponse.json({ ok: true, id: row?.id, subject: draft.subject, body: draft.body });
+    return NextResponse.json({ ok: true, id: row?.id, subject: draft.subject, body: draft.body });
+  });
 }

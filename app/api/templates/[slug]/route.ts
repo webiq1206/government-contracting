@@ -117,6 +117,7 @@ export async function POST(
     subject: `[TEST] ${renderedSubject}`,
     html: renderedBodyHtml,
     text: renderedBodyPlain + details.plain,
+    orgId,
   });
 
   if (result.disabled) {

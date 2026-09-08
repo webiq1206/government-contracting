@@ -188,6 +188,8 @@ export interface InventoryRow {
   disposition: Disposition;
   extractionState: ExtractionState;
   excludedReason: string | null;
+  /** Historical copy replaced by a current row. */
+  supersededBy?: string | null;
 }
 
 export interface InventoryCoverage {
@@ -213,19 +215,22 @@ export interface InventoryCoverage {
 }
 
 export function inventoryCoverage(rows: readonly InventoryRow[]): InventoryCoverage {
-  const count = (fn: (r: InventoryRow) => boolean) => rows.filter(fn).length;
-  const read = count((r) => extractionIsComplete(r.extractionState) && r.disposition !== "excluded");
-  const partial = count((r) => r.extractionState === "partial");
-  const notRead = count((r) => r.extractionState === "not_read");
-  const unreadable = count((r) => r.extractionState === "unreadable");
-  const excluded = count((r) => r.disposition === "excluded");
-  const blocked = count((r) => r.disposition === "blocked");
+  const count = (set: readonly InventoryRow[], fn: (r: InventoryRow) => boolean) =>
+    set.filter(fn).length;
+  const active = rows.filter((r) => !r.supersededBy && r.disposition !== "excluded");
+  const read = count(active, (r) => extractionIsComplete(r.extractionState));
+  const partial = count(active, (r) => r.extractionState === "partial");
+  const notRead = count(active, (r) => r.extractionState === "not_read");
+  const unreadable = count(active, (r) => r.extractionState === "unreadable");
+  const excluded = count(rows, (r) => r.disposition === "excluded" || Boolean(r.supersededBy));
+  const blocked = count(active, (r) => r.disposition === "blocked");
   /*
    * An exclusion with no reason does not count as accounted for. It is
    * indistinguishable from a file that was quietly lost, which is the exact
    * failure this inventory exists to make impossible.
    */
   const unreasonedExclusions = count(
+    rows,
     (r) => r.disposition === "excluded" && !r.excludedReason?.trim()
   );
   const complete =
@@ -235,7 +240,7 @@ export function inventoryCoverage(rows: readonly InventoryRow[]): InventoryCover
     unreadable === 0 &&
     blocked === 0 &&
     unreasonedExclusions === 0 &&
-    count((r) => r.extractionState === "pending") === 0;
+    count(active, (r) => r.extractionState === "pending") === 0;
 
   const problems: string[] = [];
   if (blocked > 0) problems.push(`${blocked} could not be collected`);
@@ -243,7 +248,7 @@ export function inventoryCoverage(rows: readonly InventoryRow[]): InventoryCover
   if (unreadable > 0) problems.push(`${unreadable} unreadable`);
   if (partial > 0) problems.push(`${partial} only partly read`);
   if (unreasonedExclusions > 0) problems.push(`${unreasonedExclusions} excluded with no reason given`);
-  const pending = count((r) => r.extractionState === "pending");
+  const pending = count(active, (r) => r.extractionState === "pending");
   if (pending > 0) problems.push(`${pending} not processed yet`);
 
   const summary =

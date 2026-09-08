@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   holdBriefWithoutAdvancing,
   routeAfterAnalysis,
+  routeToRescore,
   shouldContinuePursueAfterExistingBrief,
 } from "@/lib/domain/analysis-routing";
 
@@ -83,5 +84,37 @@ describe("analysis routing", () => {
         status: "open",
       })
     ).toBe(false);
+  });
+
+  it("returns a newly analyzed opportunity to scoring without starting sourcing", () => {
+    expect(
+      routeToRescore({
+        stage: "analysis",
+        status: "open",
+        humanActionRequired: false,
+      })
+    ).toEqual({
+      stage: "scoring",
+      humanAction: false,
+      enqueueSubFinder: false,
+      reason: "rescore",
+      preserveLifecycle: false,
+    });
+  });
+
+  it("preserves work already in progress while refreshing its score", () => {
+    expect(
+      routeToRescore({
+        stage: "outreach",
+        status: "open",
+        humanActionRequired: true,
+      })
+    ).toEqual({
+      stage: "outreach",
+      humanAction: true,
+      enqueueSubFinder: false,
+      reason: "rescore",
+      preserveLifecycle: true,
+    });
   });
 });

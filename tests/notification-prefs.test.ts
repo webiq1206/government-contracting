@@ -45,7 +45,8 @@ describe("categoryStatuses", () => {
     const s = byKey(facts(), "critical_account");
     expect(s.canDisable).toBe(false);
     // "You cannot turn this off" is an instruction. This has to be a reason.
-    expect(s.whyMandatory).toContain("locked mid-bid");
+    expect(s.whyMandatory).toContain("interrupt access");
+    expect(s.whyMandatory).toContain("bid deadline");
   });
 
   it("tells an ordinary account that compliance reminders are not emailed to it", () => {
@@ -55,7 +56,7 @@ describe("categoryStatuses", () => {
     const s = byKey(facts({ isOperationsOrg: false }), "compliance");
     expect(s.route).toBe("in_app_only");
     expect(s.reachesAccount).toBe(false);
-    expect(s.statement).toContain("only seen by somebody who opens the page");
+    expect(s.statement).toContain("No separate email alert. Check Compliance");
   });
 
   it("says where the operations digest actually goes", () => {
@@ -114,11 +115,13 @@ describe("deliverySummary", () => {
   it("names the risk rather than describing the mechanism", () => {
     const s = deliverySummary(categoryStatuses(facts()));
     expect(s).toContain("Only critical account alerts are emailed");
-    expect(s).toContain("unless they look");
+    expect(s).toContain("need to be checked in the product");
+    expect(s).toContain("Daily recap delivery is configured separately");
   });
 
   it("says plainly when an account gets no email at all", () => {
     const s = deliverySummary(categoryStatuses(facts({ mailEnabled: false })));
-    expect(s).toContain("no email from the platform at all");
+    expect(s).toContain("None of the alert categories below is emailed directly");
+    expect(s).toContain("daily recap has separate settings");
   });
 });

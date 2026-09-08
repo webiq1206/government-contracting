@@ -139,7 +139,7 @@ interface Finding {
  * page this size and the sweep already takes minutes.
  */
 const PROBE = `(() => {
-  const out = { contrast: [], targets: [], headings: [], labels: [], images: [], overflow: false, focusRing: null };
+  const out = { contrast: [], targets: [], covered: [], headings: [], labels: [], images: [], overflow: false, focusRing: null };
 
   const parse = (c) => {
     const m = c.match(/rgba?\\(([^)]+)\\)/);
@@ -286,7 +286,7 @@ const PROBE = `(() => {
     }
     return el.getBoundingClientRect();
   };
-  for (const el of [...document.querySelectorAll("a[href], button, input, select, textarea, [role=button]")]) {
+  for (const el of [...document.querySelectorAll("a[href], button, input, select, textarea, summary, [role=button]")]) {
     if (!visible(el)) continue;
     const r = hitBox(el);
     // Inline links inside a paragraph are exempt: WCAG 2.5.8 excepts targets
@@ -302,6 +302,27 @@ const PROBE = `(() => {
         w: Math.round(r.width), h: Math.round(r.height),
       });
     }
+  }
+
+  // A correctly sized control still fails if fixed chrome intercepts its tap.
+  // Check the centre of every visible control and name the element painted on
+  // top when it does not belong to the control or its label.
+  for (const el of [...document.querySelectorAll("a[href], button, input, select, textarea, summary, [role=button]")]) {
+    if (!visible(el)) continue;
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) continue;
+    const top = document.elementsFromPoint(x, y).find((candidate) => {
+      const style = getComputedStyle(candidate);
+      return style.pointerEvents !== "none" && style.visibility !== "hidden";
+    });
+    if (!top || top === el || el.contains(top) || top.contains(el)) continue;
+    out.covered.push({
+      tag: el.tagName.toLowerCase(),
+      text: (el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 34),
+      by: (top.getAttribute("aria-label") || top.textContent || top.tagName).trim().slice(0, 34),
+    });
   }
 
   // --- heading order ---
@@ -534,8 +555,10 @@ async function measure(
       detail: `${c.got}:1 needs ${c.need}:1 -- ${c.size}px ${c.color} on ${c.bg} -- "${c.text}"`,
     });
   }
-  // Only mobile has a touch requirement; a mouse pointer is precise.
-  if (width === "mobile") {
+  // Phones and tablets are touch contexts. The viewport labels are explicit
+  // (`phone-small`, `tablet-portrait`, and so on), so comparing with the old
+  // label `mobile` silently skipped every target in the sweep.
+  if (width.startsWith("phone-") || width.startsWith("tablet-")) {
     for (const t of r.targets) {
       local.push({
         route,
@@ -544,6 +567,14 @@ async function measure(
         detail: `${t.w}x${t.h} <${t.tag}> "${t.text}"`,
       });
     }
+  }
+  for (const item of r.covered) {
+    local.push({
+      route,
+      width,
+      rule: "covered-control",
+      detail: `<${item.tag}> "${item.text}" is covered by "${item.by}"`,
+    });
   }
   const h1s = r.headings.filter((h: any) => h.level === 1);
   if (h1s.length === 0) {
@@ -641,10 +672,11 @@ async function main() {
    */
   for (const vp of WIDTHS) {
     for (const theme of THEMES) {
+      const touchViewport = vp.name.startsWith("phone-") || vp.name.startsWith("tablet-");
       const ctx = await browser.newContext({
         viewport: { width: vp.width, height: vp.height },
-        isMobile: vp.name === "mobile",
-        hasTouch: vp.name === "mobile",
+        isMobile: touchViewport,
+        hasTouch: touchViewport,
         colorScheme: theme,
       });
       const page = await ctx.newPage();

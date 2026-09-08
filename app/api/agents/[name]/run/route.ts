@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireUser, requireCapability } from "@/lib/api-auth";
+import { requireCapability } from "@/lib/api-auth";
 import { AUTOMATION_PAUSED_ERROR, isAutomationStopped } from "@/lib/app-settings";
 import { enqueue } from "@/lib/queue";
 import { getAgent } from "@/lib/agents/registry";
 import { lookupPayloadRecords } from "@/lib/agents/payload-records";
+import { manualRunMissing, manualRunRequirement } from "@/lib/domain/agent-manual-run";
+import { isPlatformAdmin } from "@/lib/platform-admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +21,11 @@ export async function POST(req: Request, { params }: { params: { name: string } 
 
   const def = getAgent(params.name);
   if (!def) return NextResponse.json({ error: `Unknown agent "${params.name}"` }, { status: 404 });
+  if (def.name === "backlink-scout" && !isPlatformAdmin(auth.email)) {
+    // Site Authority operates on BrostCo's own marketing domain. Keep both the
+    // page and its generic run endpoint invisible to customer accounts.
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   const body = await req.json().catch(() => ({}));
   const given: Record<string, unknown> =
@@ -39,6 +46,14 @@ export async function POST(req: Request, { params }: { params: { name: string } 
    */
   const { orgId: _notFromTheCaller, ...payload } = given;
 
+  const missingContext = manualRunMissing(manualRunRequirement(def.name), payload);
+  if (missingContext) {
+    return NextResponse.json(
+      { error: missingContext, opportunityUrl: "/pipeline" },
+      { status: 400 }
+    );
+  }
+
   const records = await lookupPayloadRecords(payload);
   const notTheirs = records.find((r) => r.state !== "found" || r.orgId !== auth.organizationId);
   if (notTheirs) {
@@ -53,5 +68,14 @@ export async function POST(req: Request, { params }: { params: { name: string } 
   // force: a person pressing "run" on an agent means run it, including the
   // idempotency-guarded ones that would otherwise report "already done".
   const id = await enqueue(def.name, { ...payload, trigger: "manual", force: true });
+  if (!id) {
+    return NextResponse.json(
+      {
+        error:
+          "The run was not queued because automation or this pursuit stopped before the request completed. Refresh to see the current state, then resume or restart it before retrying.",
+      },
+      { status: 409 }
+    );
+  }
   return NextResponse.json({ ok: true, jobId: id, agent: def.name });
 }

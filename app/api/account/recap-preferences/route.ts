@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { isValidTimeZone } from "@/lib/domain/recap/day-window";
 import { getUserRecapPreference, setUserRecapOptOut, setUserTimeZone } from "@/lib/recap/settings";
+import { impersonationRefusal } from "@/lib/impersonation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,8 @@ export async function GET() {
 export async function POST(req: Request) {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
+  const supportRefusal = impersonationRefusal(auth);
+  if (supportRefusal) return supportRefusal;
 
   const body = (await req.json().catch(() => ({}))) as {
     timezone?: unknown;

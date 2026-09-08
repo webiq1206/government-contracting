@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DetailDrawer, DrawerFact, DrawerSection } from "@/components/detail-drawer";
 import { ActionButton } from "@/components/action-button";
 import type { AgentRunDetail } from "@/lib/data";
+import { manualRunMissing, manualRunRequirement } from "@/lib/domain/agent-manual-run";
 
 /**
  * One automation run, in full, without leaving the log.
@@ -44,6 +45,12 @@ export function AgentRunPeek({
         : "bg-muted text-muted-foreground";
 
   const links: { label: string; href: string }[] = [];
+  const rerunBody = {
+    ...(run.opportunity_id ? { opportunityId: run.opportunity_id } : {}),
+    ...(run.subcontractor_id ? { subcontractorId: run.subcontractor_id } : {}),
+    ...(run.bid_id ? { bidId: run.bid_id } : {}),
+  };
+  const rerunUnavailable = manualRunMissing(manualRunRequirement(run.agent), rerunBody);
   if (run.opportunity_id) {
     links.push({
       label: run.opportunity_title ?? "The solicitation it ran on",
@@ -73,9 +80,10 @@ export function AgentRunPeek({
       nav={nav}
       footer={
         <div className="flex flex-wrap items-center gap-2">
-          {canRun ? (
+          {canRun && !rerunUnavailable ? (
             <ActionButton
               endpoint={`/api/agents/${encodeURIComponent(run.agent)}/run`}
+              body={rerunBody}
               className="btn-ghost text-xs"
               successText="Queued. The log updates when it finishes."
             >
@@ -83,7 +91,9 @@ export function AgentRunPeek({
             </ActionButton>
           ) : (
             <span className="text-xs text-muted-foreground">
-              Running an agent needs a role that can change things.
+              {canRun
+                ? rerunUnavailable
+                : "Running an agent needs a role that can change things."}
             </span>
           )}
           {nav?.nextHref && (

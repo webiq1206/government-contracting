@@ -104,23 +104,56 @@ export function normalizeSamNotice(o: SamOpportunity) {
 async function ingestOne(
   n: ReturnType<typeof normalizeSamNotice>,
   orgId: string
-): Promise<{ inserted: boolean; id?: string; isSourcesSought: boolean }> {
+): Promise<{
+  inserted: boolean;
+  refreshed: boolean;
+  materialChanged: boolean;
+  materialFingerprint?: string;
+  id?: string;
+  isSourcesSought: boolean;
+}> {
   const res = await ingestOpportunity({ orgId, ...n });
   return {
     inserted: res.inserted,
+    refreshed: res.refreshed,
+    materialChanged: res.materialChanged,
+    materialFingerprint: res.materialFingerprint,
     id: res.id ?? undefined,
     isSourcesSought: res.isSourcesSought,
   };
 }
 
+export function amendmentAnalysisJob(input: {
+  id?: string;
+  materialChanged: boolean;
+  materialFingerprint?: string;
+}): NonNullable<AgentResult["enqueued"]>[number] | null {
+  if (!input.id || !input.materialChanged) return null;
+  const version = (input.materialFingerprint ?? "changed").slice(0, 24);
+  return {
+    agent: "solicitation-analyst",
+    payload: {
+      opportunityId: input.id,
+      force: "always",
+      rescoreAfterAnalysis: true,
+    },
+    opts: {
+      singletonKey: `analyze-refresh:${input.id}:${version}`,
+      singletonSeconds: 3600,
+    },
+  };
+}
+
 async function monitorForOrg(orgId: string): Promise<{
   ingested: number;
+  refreshed: number;
   sourcesSought: number;
   ingestErrors: number;
   skippedDisabled: boolean;
   enqueued: AgentResult["enqueued"];
   naics: string[];
   scanned: number;
+  scraperFailures: number;
   /** Short description of a SAM request failure, when one happened. */
   samProblem: string | null;
 }> {
@@ -129,6 +162,7 @@ async function monitorForOrg(orgId: string): Promise<{
     const naics = profile?.naics_codes ?? [];
     const enqueued: AgentResult["enqueued"] = [];
     let ingested = 0;
+    let refreshed = 0;
     let sourcesSought = 0;
     let ingestErrors = 0;
     let skippedDisabled = false;
@@ -174,7 +208,7 @@ async function monitorForOrg(orgId: string): Promise<{
             naics: code,
             limit: 100,
             offset: page * 100,
-          });
+          }, orgId);
           samRequests++;
           if (res.disabled) {
             samDisabled = true;
@@ -251,7 +285,25 @@ async function monitorForOrg(orgId: string): Promise<{
         // ended up sitting in Scoring forever.
         try {
           const res = await ingestOne(normalizeSamNotice(o), orgId);
-          if (!res.inserted || !res.id) continue;
+          if (!res.inserted || !res.id) {
+            const job = amendmentAnalysisJob(res);
+            if (job) {
+              const queued = await enqueue(job.agent, job.payload, job.opts);
+              if (queued) refreshed++;
+              else {
+                await logAgent({
+                  agent: "opportunity-monitor",
+                  action: "amendment-analysis-not-queued",
+                  opportunityId: res.id,
+                  level: "warn",
+                  status: "skipped",
+                  message:
+                    "SAM refreshed material solicitation data, but re-analysis was not queued because automation is paused or this pursuit is stopped. Restart automation or the pursuit, then re-run Solicitation Analyst before relying on the current brief.",
+                });
+              }
+            }
+            continue;
+          }
           ingested++;
           if (res.isSourcesSought) {
             sourcesSought++;
@@ -264,66 +316,101 @@ async function monitorForOrg(orgId: string): Promise<{
           // runner to flush at the end: a later failure can no longer strand
           // the records ingested before it. Singleton per opp so a re-run
           // within the window can't double-score.
-          await enqueue(
+          const scoringJob = await enqueue(
             "scoring-engine",
             { opportunityId: res.id },
             { singletonKey: `score:${res.id}`, singletonSeconds: 3600 }
-          ).catch((e) =>
-            console.error("[opportunity-monitor] enqueue scoring failed:", (e as Error).message)
           );
+          if (!scoringJob) {
+            ingestErrors++;
+            await logAgent({
+              agent: "opportunity-monitor",
+              action: "scoring-not-queued",
+              opportunityId: res.id,
+              level: "warn",
+              status: "skipped",
+              message:
+                "The notice was saved, but scoring was not queued because automation is paused or the pursuit is stopped. Resume it, then run Scoring Engine before relying on the opportunity's fit status.",
+            });
+          }
         } catch (err) {
           ingestErrors++;
           await logAgent({
             agent: "opportunity-monitor",
             action: "ingest-skip",
             level: "warn",
-            message: `Skipped one malformed notice (${o.noticeId ?? "no id"}): ${(err as Error).message}`,
+            status: "error",
+            message: `Could not finish processing one SAM notice (${o.noticeId ?? "no id"}): ${(err as Error).message}. The notice may have been saved before this failure, so check its activity before retrying downstream work.`,
           });
         }
       }
     }
 
     // --- State / local portals (Playwright scrapers; opt-in) ---
-    const scraped = await runEnabledScrapers(naics).catch(() => []);
-    for (const s of scraped) {
-      const scraperValue = resolveEstimatedValue({
-        listedAmount: s.value_estimated ?? null, // scrapers that already parsed a value pass it directly
-        title: s.title,
-        description: s.description,
-      });
-      const res = await ingestOpportunity({
-        orgId,
-        source: s.source,
-        source_id: s.source_id,
-        title: s.title,
-        description: s.description ?? null,
-        naics_code: s.naics_code ?? null,
-        set_aside_type: s.set_aside_type ?? null,
-        value_estimated: scraperValue?.amount ?? null,
-        value_estimated_source: scraperValue?.source ?? null,
-        deadline: s.deadline ?? null,
-        location_state: s.location_state ?? null,
-        agency: s.agency ?? null,
-        raw_json: s.raw ?? {},
-        attachments_json: [],
-      });
-      if (!res.inserted || !res.id) continue;
-      ingested++;
-      enqueued.push({
-        agent: "scoring-engine",
-        payload: { opportunityId: res.id },
-        opts: { singletonKey: `score:${res.id}`, singletonSeconds: 3600 },
-      });
+    const scraperRun = await runEnabledScrapers(naics);
+    for (const s of scraperRun.opportunities) {
+      try {
+        const scraperValue = resolveEstimatedValue({
+          listedAmount: s.value_estimated ?? null,
+          title: s.title,
+          description: s.description,
+        });
+        const res = await ingestOpportunity({
+          orgId,
+          source: s.source,
+          source_id: s.source_id,
+          title: s.title,
+          description: s.description ?? null,
+          naics_code: s.naics_code ?? null,
+          set_aside_type: s.set_aside_type ?? null,
+          value_estimated: scraperValue?.amount ?? null,
+          value_estimated_source: scraperValue?.source ?? null,
+          deadline: s.deadline ?? null,
+          location_state: s.location_state ?? null,
+          agency: s.agency ?? null,
+          raw_json: s.raw ?? {},
+          attachments_json: [],
+        });
+        if (!res.inserted || !res.id) {
+          const job = amendmentAnalysisJob({
+            id: res.id ?? undefined,
+            materialChanged: res.materialChanged,
+            materialFingerprint: res.materialFingerprint,
+          });
+          if (job) {
+            enqueued.push(job);
+            refreshed++;
+          }
+          continue;
+        }
+        ingested++;
+        enqueued.push({
+          agent: "scoring-engine",
+          payload: { opportunityId: res.id },
+          opts: { singletonKey: `score:${res.id}`, singletonSeconds: 3600 },
+        });
+      } catch (err) {
+        ingestErrors++;
+        await logAgent({
+          agent: "opportunity-monitor",
+          action: "local-ingest-skip",
+          level: "error",
+          status: "error",
+          message: `Could not finish processing ${s.source} notice ${s.source_id}: ${(err as Error).message}. Other portal notices continue.`,
+        });
+      }
     }
 
     return {
       ingested,
+      refreshed,
       sourcesSought,
       ingestErrors,
       skippedDisabled,
       enqueued,
       naics,
       scanned: search.items?.length ?? 0,
+      scraperFailures: scraperRun.failures,
       samProblem: samError
         ? `SAM request(s) failed${samError.status ? ` (HTTP ${samError.status})` : ""}`
         : null,
@@ -346,6 +433,7 @@ export const opportunityMonitor: AgentDefinition = {
     const orgs = fanout.orgs;
 
     let ingested = 0;
+    let refreshed = 0;
     let sourcesSought = 0;
     let ingestErrors = 0;
     let skippedDisabled = false;
@@ -353,6 +441,7 @@ export const opportunityMonitor: AgentDefinition = {
     const naicsAll = new Set<string>();
 
     let orgErrors = 0;
+    let scraperFailures = 0;
     const samProblems: string[] = [];
     for (const org of orgs) {
       // Fault-isolate each org the way each notice is isolated inside one:
@@ -361,8 +450,10 @@ export const opportunityMonitor: AgentDefinition = {
       try {
         const result = await monitorForOrg(org.id);
         ingested += result.ingested;
+        refreshed += result.refreshed;
         sourcesSought += result.sourcesSought;
         ingestErrors += result.ingestErrors;
+        scraperFailures += result.scraperFailures;
         skippedDisabled = skippedDisabled || result.skippedDisabled;
         enqueued.push(...(result.enqueued ?? []));
         for (const n of result.naics) naicsAll.add(n);
@@ -386,16 +477,38 @@ export const opportunityMonitor: AgentDefinition = {
       ? `Ingestion partial (no SAM key connected). ${ingested} new from other sources across ${orgs.length} org(s).`
       : `Ingested ${ingested} new opportunities across ${orgs.length} org(s) (${sourcesSought} sources-sought), triggered scoring.${
           ingestErrors > 0 ? ` Skipped ${ingestErrors} malformed notice(s).` : ""
-        }${orgErrors > 0 ? ` ${orgErrors} org(s) failed and will retry next run.` : ""}${
+        }${refreshed > 0 ? ` Queued re-analysis for ${refreshed} materially refreshed solicitation(s).` : ""}${orgErrors > 0 ? ` ${orgErrors} org(s) failed and will retry next run.` : ""}${scraperFailures > 0 ? ` ${scraperFailures} state or local portal scraper(s) failed; successful portals were still ingested.` : ""}${
           samProblems.length > 0 ? ` SAM PROBLEM: ${samProblems[0]}, see the poll-sam log entry.` : ""
         }`;
     return {
-      // Nothing ingested for anybody is not a quiet run, it is a stopped one.
-      ok: fanout.error == null,
+      // Partial provider, tenant, ingest, and queue failures are not a quiet
+      // successful run. Each remains isolated so good records are kept, while
+      // the run status still tells the dashboard attention is required.
+      ok:
+        fanout.error == null &&
+        orgErrors === 0 &&
+        samProblems.length === 0 &&
+        scraperFailures === 0 &&
+        ingestErrors === 0,
       summary,
       reasoning: `Polled SAM per org for NAICS [${[...naicsAll].join(", ")}]; deduped by org+source_id and open solicitation_number.`,
-      data: { ingested, sourcesSought, orgs: orgs.length },
+      data: {
+        ingested,
+        refreshed,
+        sourcesSought,
+        orgs: orgs.length,
+        orgErrors,
+        scraperFailures,
+        samProblems: samProblems.length,
+        ingestErrors,
+      },
       enqueued,
+      humanActionRequired:
+        fanout.error != null ||
+        orgErrors > 0 ||
+        samProblems.length > 0 ||
+        scraperFailures > 0 ||
+        ingestErrors > 0,
     };
   },
 };

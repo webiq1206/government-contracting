@@ -14,7 +14,7 @@
  * to look in.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   groupResults,
@@ -28,9 +28,13 @@ import {
 const RECENT_KEY = "brostco.search.recent";
 const RECENT_MAX = 5;
 
-function readRecent(): string[] {
+function scopedKey(key: string, storageScope: string): string {
+  return `${key}.${storageScope}`;
+}
+
+function readRecent(storageScope: string): string[] {
   try {
-    const raw = window.localStorage.getItem(RECENT_KEY);
+    const raw = window.localStorage.getItem(scopedKey(RECENT_KEY, storageScope));
     const parsed: unknown = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
   } catch {
@@ -49,9 +53,9 @@ function readRecent(): string[] {
  * somebody wants at nine in the morning: back to the opportunity they left
  * half-priced last night, without remembering what it was called.
  *
- * Stored in this browser only. It never reaches the server, so it cannot
- * cross between accounts, and a shared machine keeps whatever that browser
- * did rather than whatever the account did.
+ * Stored in this browser only and keyed by organization. A shared machine can
+ * remember each account's shortcuts without showing one tenant's record names
+ * after somebody signs in to another tenant.
  */
 const RECENT_RECORD_KEY = "brostco.search.records";
 const RECENT_RECORD_MAX = 5;
@@ -62,9 +66,9 @@ export interface RecentRecord {
   href: string;
 }
 
-function readRecentRecords(): RecentRecord[] {
+function readRecentRecords(storageScope: string): RecentRecord[] {
   try {
-    const raw = window.localStorage.getItem(RECENT_RECORD_KEY);
+    const raw = window.localStorage.getItem(scopedKey(RECENT_RECORD_KEY, storageScope));
     const parsed: unknown = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(
@@ -79,39 +83,52 @@ function readRecentRecords(): RecentRecord[] {
   }
 }
 
-function rememberRecord(r: Result) {
+function rememberRecord(r: Result, storageScope: string) {
   try {
     const next = [
       { kind: r.kind, title: r.title, href: r.href },
-      ...readRecentRecords().filter((x) => x.href !== r.href),
+      ...readRecentRecords(storageScope).filter((x) => x.href !== r.href),
     ].slice(0, RECENT_RECORD_MAX);
-    window.localStorage.setItem(RECENT_RECORD_KEY, JSON.stringify(next));
+    window.localStorage.setItem(
+      scopedKey(RECENT_RECORD_KEY, storageScope),
+      JSON.stringify(next)
+    );
   } catch {
     /* see readRecent */
   }
 }
 
-function rememberSearch(q: string) {
+function rememberSearch(q: string, storageScope: string) {
   const trimmed = q.trim();
   if (trimmed.length < 2) return;
   try {
-    const next = [trimmed, ...readRecent().filter((r) => r !== trimmed)].slice(0, RECENT_MAX);
-    window.localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    const next = [
+      trimmed,
+      ...readRecent(storageScope).filter((r) => r !== trimmed),
+    ].slice(0, RECENT_MAX);
+    window.localStorage.setItem(scopedKey(RECENT_KEY, storageScope), JSON.stringify(next));
   } catch {
     /* see readRecent */
   }
 }
 
-export function CommandPalette() {
+export function CommandPalette({ storageScope }: { storageScope: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Result[]>([]);
   const [active, setActive] = useState(0);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [recent, setRecent] = useState<string[]>([]);
   const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const requestRef = useRef(0);
+  const titleId = useId();
+  const resultsId = useId();
   const groups = useMemo(() => groupResults(results), [results]);
   /*
    * One flat index across the groups, so the arrow keys still walk every row
@@ -139,51 +156,112 @@ export function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    if (open) {
-      setQ("");
-      setResults([]);
-      setActive(0);
-      setRecent(readRecent());
-      setRecentRecords(readRecentRecords());
-      setTimeout(() => inputRef.current?.focus(), 30);
-    }
-  }, [open]);
+    if (!open) return;
+    openerRef.current = document.activeElement as HTMLElement | null;
+    setQ("");
+    setResults([]);
+    setActive(0);
+    setSearchError(null);
+    setRecent(readRecent(storageScope));
+    setRecentRecords(readRecentRecords(storageScope));
+    const timer = window.setTimeout(() => inputRef.current?.focus(), 30);
+    return () => {
+      window.clearTimeout(timer);
+      openerRef.current?.focus?.();
+    };
+  }, [open, storageScope]);
 
   // Debounced search.
   useEffect(() => {
     if (!open) return;
     if (q.trim().length < 2) {
+      requestRef.current += 1;
       setResults([]);
+      setSearching(false);
+      setSearchError(null);
       return;
     }
+    const request = requestRef.current + 1;
+    requestRef.current = request;
+    const controller = new AbortController();
     setSearching(true);
+    setSearchError(null);
+    setResults([]);
+    setActive(0);
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q.trim())}`, {
           cache: "no-store",
+          signal: controller.signal,
         });
-        if (res.ok) {
-          const data = (await res.json()) as { results: Result[] };
-          setResults(data.results);
-          setActive(0);
+        const data = (await res.json().catch(() => ({}))) as {
+          results?: Result[];
+          error?: string;
+        };
+        if (request !== requestRef.current) return;
+        if (!res.ok) {
+          setResults([]);
+          setSearchError(
+            data.error ??
+              "Search could not load. Your records are unchanged. Check the connection and try again."
+          );
+          return;
         }
+        setResults(Array.isArray(data.results) ? data.results : []);
+        setActive(0);
+      } catch {
+        if (controller.signal.aborted || request !== requestRef.current) return;
+        setResults([]);
+        setSearchError(
+          "Search could not reach the server. Your records are unchanged. Check the connection and try again."
+        );
       } finally {
-        setSearching(false);
+        if (request === requestRef.current) setSearching(false);
       }
     }, 250);
-    return () => clearTimeout(t);
-  }, [q, open]);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [q, open, searchAttempt]);
 
   const go = useCallback(
     (r: Result, query: string) => {
-      rememberSearch(query);
+      rememberSearch(query, storageScope);
       // What they opened, as well as what they typed. Next time the box is
       // empty, this is what it offers.
-      rememberRecord(r);
+      rememberRecord(r, storageScope);
       setOpen(false);
       router.push(r.href);
     },
-    [router]
+    [router, storageScope]
+  );
+
+  const onDialogKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        ) ?? []
+      ).filter((item) => item.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    []
   );
 
   if (!open) return null;
@@ -191,37 +269,61 @@ export function CommandPalette() {
   return (
     <div
       className="fixed inset-0 z-[90] flex items-start justify-center bg-black/55 p-4 pt-[12vh]"
-      onClick={() => setOpen(false)}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) setOpen(false);
+      }}
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg overflow-hidden rounded-md border border-border/55 bg-surface text-foreground shadow-2xl dark:border-white/10"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onKeyDown={onDialogKeyDown}
+        className="w-full max-w-lg overflow-hidden rounded-md border border-foreground/50 bg-surface text-foreground shadow-2xl dark:border-white/35"
       >
-        <input
-          ref={inputRef}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
-            else if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setActive((a) => Math.min(a + 1, flat.length - 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setActive((a) => Math.max(a - 1, 0));
-            } else if (e.key === "Enter") {
-              if (flat[active]) go(flat[active], q);
-              else if (q.trim().length >= 2) {
-                // Nothing highlighted, so Enter means "show me everything".
-                rememberSearch(q);
-                setOpen(false);
-                router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+        <h2 id={titleId} className="sr-only">
+          Search everything
+        </h2>
+        <div className="flex border-b border-foreground/50 dark:border-white/35">
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setActive((a) => Math.min(a + 1, Math.max(0, flat.length - 1)));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setActive((a) => Math.max(a - 1, 0));
+              } else if (e.key === "Enter") {
+                if (flat[active]) go(flat[active], q);
+                else if (q.trim().length >= 2 && !searchError) {
+                  // Nothing highlighted, so Enter means "show me everything".
+                  rememberSearch(q, storageScope);
+                  setOpen(false);
+                  router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+                }
               }
-            }
-          }}
-          placeholder="Search opportunities, subs, contracts, messages, documents…"
-          className="w-full border-b border-border bg-background px-4 py-3.5 text-sm text-foreground outline-none placeholder:text-slate-500"
-        />
+            }}
+            aria-label="Search opportunities, subcontractors, contracts, messages, and documents"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-expanded="true"
+            aria-controls={resultsId}
+            aria-activedescendant={flat[active] ? `${resultsId}-option-${active}` : undefined}
+            placeholder="Search opportunities, subs, contracts, messages, documents…"
+            className="min-h-11 min-w-0 flex-1 bg-background px-4 py-3.5 text-sm text-foreground outline-none placeholder:text-slate-500"
+          />
+          <button
+            type="button"
+            className="tap min-h-11 min-w-11 border-l border-foreground/50 px-3 text-sm text-muted-foreground hover:text-foreground dark:border-white/35"
+            aria-label="Close search"
+            onClick={() => setOpen(false)}
+          >
+            <span aria-hidden>x</span>
+          </button>
+        </div>
         {/* A result count, and where to see the rest. */}
         {flat.length > 0 && (
           <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-1.5 text-xs text-slate-500">
@@ -231,9 +333,9 @@ export function CommandPalette() {
             </span>
             <button
               type="button"
-              className="font-medium text-accent hover:underline"
+              className="inline-flex min-h-11 items-center font-medium text-accent hover:underline"
               onClick={() => {
-                rememberSearch(q);
+                rememberSearch(q, storageScope);
                 setOpen(false);
                 router.push(`/search?q=${encodeURIComponent(q.trim())}`);
               }}
@@ -242,7 +344,13 @@ export function CommandPalette() {
             </button>
           </div>
         )}
-        <div className="scroll-thin max-h-[50vh] overflow-y-auto">
+        <div
+          id={resultsId}
+          role={flat.length > 0 ? "listbox" : undefined}
+          aria-label={flat.length > 0 ? "Search results" : undefined}
+          aria-busy={searching}
+          className="scroll-thin max-h-[50vh] overflow-y-auto"
+        >
           {/*
             * The loading state. It was computed and never rendered, so a slow
             * search showed an empty box: indistinguishable from no matches,
@@ -253,7 +361,20 @@ export function CommandPalette() {
               Searching…
             </p>
           )}
-          {q.trim().length >= 2 && !searching && flat.length === 0 && (
+          {searchError && !searching && (
+            <div className="px-4 py-5 text-sm" role="alert">
+              <p className="font-medium text-risk">Search did not load</p>
+              <p className="mt-1 text-xs text-muted-foreground">{searchError}</p>
+              <button
+                type="button"
+                className="btn-ghost mt-3 text-xs"
+                onClick={() => setSearchAttempt((value) => value + 1)}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+          {q.trim().length >= 2 && !searching && !searchError && flat.length === 0 && (
             <div className="px-4 py-5 text-sm text-slate-600">
               <p className="text-slate-900">Nothing matches &ldquo;{q.trim()}&rdquo;.</p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500">
@@ -273,7 +394,7 @@ export function CommandPalette() {
                       <li key={r.href}>
                         <button
                           type="button"
-                          className="tap flex w-full items-center justify-between gap-3 rounded-md border border-border/55 px-3 py-2 text-left hover:border-accent/50"
+                          className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md border border-foreground/50 px-3 py-2 text-left hover:border-accent/50 dark:border-white/35"
                           onClick={() => {
                             setOpen(false);
                             router.push(r.href);
@@ -302,7 +423,7 @@ export function CommandPalette() {
                       <button
                         key={r}
                         type="button"
-                        className="rounded-full border border-border bg-surface px-3 py-1 text-xs text-slate-600 hover:border-accent/50"
+                        className="inline-flex min-h-11 items-center rounded-full border border-foreground/50 bg-surface px-3 py-1 text-xs text-slate-600 hover:border-accent/50 dark:border-white/35"
                         onClick={() => setQ(r)}
                       >
                         {r}
@@ -321,7 +442,7 @@ export function CommandPalette() {
             </div>
           )}
           {groups.map((group) => (
-            <div key={group.kind}>
+            <div key={group.kind} role="group" aria-label={group.label}>
               <p className="sticky top-0 bg-surface px-4 pb-1 pt-2.5 text-[0.65rem] uppercase tracking-[0.12em] text-muted-foreground">
                 {group.label}
                 <span className="num ml-1.5">{group.results.length}</span>
@@ -331,9 +452,13 @@ export function CommandPalette() {
                 return (
                   <button
                     key={`${r.kind}-${r.href}-${i}`}
+                    id={`${resultsId}-option-${i}`}
+                    type="button"
+                    role="option"
+                    aria-selected={i === active}
                     onClick={() => go(r, q)}
                     onMouseEnter={() => setActive(i)}
-                    className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left ${
+                    className={`flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2.5 text-left ${
                       i === active ? "bg-gold/10" : ""
                     }`}
                   >

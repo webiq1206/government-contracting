@@ -23,7 +23,7 @@
  * deduplication and relevance live.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CallCardRow } from "@/lib/data";
 import { currency, shortDate } from "@/lib/format";
@@ -166,6 +166,9 @@ export function CallWorkspace({
   const router = useRouter();
   const { push } = useToast();
   const { communications, quotes } = data;
+  const inline = variant === "inline";
+  const panelRef = useRef<HTMLElement>(null);
+  const returnFocusTo = useRef<HTMLElement | null>(null);
   const [card, setCard] = useState<CallCardRow>(data.card);
   const [answers, setAnswers] = useState(() => initialAnswers(card));
   const [wrap, setWrap] = useState<WrapUp>(() => initialWrapUp(card));
@@ -217,6 +220,53 @@ export function CallWorkspace({
   const [completed, setCompleted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [noAnswerBusy, setNoAnswerBusy] = useState(false);
+
+  useEffect(() => {
+    if (inline) return;
+    returnFocusTo.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current
+        ?.querySelector<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        )
+        ?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      returnFocusTo.current?.focus?.();
+    };
+  }, [inline]);
+
+  const trapDialogFocus = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (inline) return;
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        ) ?? []
+      ).filter((item) => item.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [inline, onClose]
+  );
 
   /*
    * The call timer.
@@ -554,10 +604,11 @@ export function CallWorkspace({
    * separate component would be two copies of a twenty-field form, and the
    * copy that gets fixed is never the one somebody is using.
    */
-  const inline = variant === "inline";
   const body = (
       <aside
+        ref={panelRef}
         onClick={inline ? undefined : (e) => e.stopPropagation()}
+        onKeyDown={trapDialogFocus}
         className={
           inline
             ? "scroll-thin flex h-full w-full flex-col overflow-y-auto bg-background"
@@ -585,6 +636,7 @@ export function CallWorkspace({
               </p>
             </div>
             <button
+              type="button"
               onClick={onClose}
               aria-label="Close"
               /* The way out of a full-screen workspace on a phone, and it was
@@ -1049,12 +1101,13 @@ export function CallWorkspace({
           )}
         </div>
 
-        <footer className="sticky bottom-0 z-10 border-t border-border bg-background/95 px-4 py-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-5">
+        <footer className="sticky bottom-0 z-10 border-t border-border bg-background/95 px-4 py-2.5 pb-3 backdrop-blur sm:px-5 lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {completed && nextCall ? (
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-pursue">✓ Saved. All records updated.</p>
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() => {
                     router.refresh();
                     onClose();
@@ -1064,6 +1117,7 @@ export function CallWorkspace({
                   Done for now
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     onClose();
                     router.push(`/call-queue?open=${nextCall.id}`);
@@ -1101,7 +1155,7 @@ export function CallWorkspace({
                   <option value="skipped">Chose not to call</option>
                 </select>
               </label>
-              <button onClick={onClose} className="btn-ghost" disabled={saving}>
+              <button type="button" onClick={onClose} className="btn-ghost" disabled={saving}>
                 Cancel
               </button>
               <SaveStatus
@@ -1119,6 +1173,7 @@ export function CallWorkspace({
                   printing one red line and leaving the notes in a tab.
                 */}
                 <button
+                  type="button"
                   onClick={draft.saveNow}
                   className="btn-ghost"
                   disabled={saving || draft.state === "saving"}
@@ -1133,6 +1188,7 @@ export function CallWorkspace({
                   leaves the next person exactly where this call started.
                 */}
                 <button
+                  type="button"
                   onClick={() => save(true)}
                   className="btn-primary"
                   disabled={saving || !outcomeReady.ok}
@@ -1155,7 +1211,7 @@ export function CallWorkspace({
   if (inline) return body;
   return (
     <div
-      className="fixed inset-0 z-[80] flex justify-end bg-black/40"
+      className="fixed inset-x-0 top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-[80] flex justify-end bg-black/40 lg:bottom-0"
       onClick={onClose}
       role="presentation"
     >

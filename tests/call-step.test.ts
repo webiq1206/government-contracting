@@ -143,13 +143,26 @@ describe("deriveStep with calling off", () => {
 
 const query = vi.fn();
 const logAgent = vi.fn(async () => undefined);
+const transaction = vi.fn(
+  async (
+    fn: (client: {
+      query: (...args: unknown[]) => Promise<{ rows: unknown[]; rowCount: number }>;
+    }) => Promise<unknown>
+  ) =>
+    fn({
+      query: async (...args: unknown[]) => {
+        const rows = (await query(...args)) as unknown[];
+        return { rows, rowCount: rows.length };
+      },
+    })
+);
 
 // One mock each: `@/lib/db` and the modules' own `../db` resolve to the same
 // file, so mocking it once covers both import styles.
 vi.mock("@/lib/db", () => ({
   query: (...args: unknown[]) => query(...args),
   queryOne: vi.fn(),
-  transaction: vi.fn(),
+  transaction: (...args: Parameters<typeof transaction>) => transaction(...args),
 }));
 vi.mock("@/lib/logger", () => ({
   logAgent: (...args: unknown[]) => logAgent(...args),

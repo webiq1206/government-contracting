@@ -37,6 +37,7 @@ export function TimeZoneForm({
   optedOut,
   sendAt,
   recapEnabled,
+  recapStatusKnown = true,
   choices,
 }: {
   initial: string;
@@ -44,6 +45,8 @@ export function TimeZoneForm({
   optedOut: boolean;
   sendAt: string;
   recapEnabled: boolean;
+  /** False when the account-wide schedule read failed. */
+  recapStatusKnown?: boolean;
   choices: { value: string; label: string }[];
 }) {
   const router = useRouter();
@@ -130,9 +133,11 @@ export function TimeZoneForm({
           }}
         />
         <span>
-          Email me the daily recap at {sendAt}
+          Email me the daily recap{recapStatusKnown ? ` at ${sendAt}` : ""}
           <span className="block text-xs text-muted-foreground">
-            {recapEnabled
+            {!recapStatusKnown
+              ? "The account-wide recap schedule could not be checked. Your personal choice is still editable and will be remembered once the schedule is available again."
+              : recapEnabled
               ? "Yesterday in one email: what needs you, what broke, what moved. The same information is always on the Daily Recap page."
               : "This account has the recap turned off for everyone, so nothing is being sent at the moment. Your choice here is remembered for when it is turned back on."}
           </span>

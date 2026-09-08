@@ -34,9 +34,9 @@ import {
   entitlementOf,
   type AccessLevel,
 } from "./billing/entitlements";
-import { resolveTenantOrgId } from "./tenant";
 import { can, permissionMessage, roleLabel, type Capability } from "./domain/roles";
 import type { SessionUser } from "./auth";
+import { impersonationRefusal } from "./impersonation";
 
 export interface OrgContext {
   user: SessionUser;
@@ -69,6 +69,16 @@ export async function requireOrgContext(
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
 
+  // The organization on the authenticated session is the tenant boundary.
+  // Never infer one for a real account without a membership: doing so assigned
+  // an orphaned session to the founding organization and gave it that tenant's
+  // API surface. The env operator is preserved because attachOrg explicitly
+  // resolves it to the legacy organization before it reaches this guard.
+  if (!auth.organizationId) {
+    return NextResponse.json({ error: "No organization on this account." }, { status: 403 });
+  }
+  const orgId = auth.organizationId;
+
   // Date-aware, exemption-aware and suspension-aware: one answer, from
   // entitlements.ts, for every gate in the application.
   const level = accessLevel(entitlementOf(auth));
@@ -83,14 +93,9 @@ export async function requireOrgContext(
     );
   }
 
-  let orgId: string;
-  try {
-    // Legacy fallback stays on: the founding single-tenant install predates
-    // organization_members rows, and locking it out of its own API the day
-    // multi-tenancy shipped would be a self-inflicted outage.
-    orgId = await resolveTenantOrgId({ allowLegacyFallback: true });
-  } catch {
-    return NextResponse.json({ error: "No organization on this account." }, { status: 403 });
+  if (opts.capability) {
+    const supportRefusal = impersonationRefusal(auth);
+    if (supportRefusal) return supportRefusal;
   }
 
   if (opts.capability && !can(auth.orgRole, opts.capability)) {

@@ -81,8 +81,16 @@ In the Replit **Shell**:
 
 ```bash
 npm install          # if not already done by the importer
-npm run db:setup     # runs migrations + seeds the Company Profile, weights, templates, operator
+MIGRATION_DATABASE_URL='<owner connection>' npm run db:migrate
+npm run db:seed      # new installation only; never run this during an upgrade
 ```
+
+If this database was created before migration checksums were recorded, the
+first upgraded run stops and lists every legacy ledger row. Compare that
+database's schema with the listed migration files, then run the migration job
+once with `ALLOW_MIGRATION_CHECKSUM_BASELINE=1`. Do not leave that flag on later
+release jobs. A checksum mismatch after baselining means an applied migration
+file was edited and must be restored; put the correction in a new migration.
 
 ## 5. Run
 
@@ -99,8 +107,9 @@ Postgres-backed queue (pg-boss), **no Redis needed**.
 
 For 24/7 operation, use **Replit Deployments**. The included `.replit`
 `[deployment]` block builds with `npm run build` (the build never touches the
-database) and runs `npm run start`. Pending migrations are applied by the
-worker at boot (`lib/migrate.ts`), even on instances with `RUN_WORKER=false`.
+database) and runs `npm run start`. Apply pending migrations once through the
+owner-only release step in section 4 before starting either service. Web and
+worker processes only verify the schema at runtime; they never apply migrations.
 If you prefer to run web and worker as two separate services (web-facing +
 background), set `RUN_WORKER=false` on the web service and run
 `npm run worker` on the second.
@@ -147,7 +156,7 @@ Migration `0002_rls.sql` enables Postgres RLS on every application table and
 revokes the `anon` / `authenticated` grants. The app connects via the direct
 `DATABASE_URL` role (table owner), which bypasses RLS, so it is unaffected, but
 Supabase's auto-generated PostgREST API and the public JS client can read/write
-**nothing**. This runs automatically as part of `npm run db:setup` / `db:migrate`.
+**nothing**. This runs as part of the owner-only `npm run db:migrate` release job.
 If you later want to expose a table to the browser, add explicit `create policy`
 statements in a new migration.
 
@@ -188,7 +197,9 @@ The Integrations settings page shows exactly which keys are wired up.
 
 ## Troubleshooting
 
-- **`DATABASE_URL is not set`**, add the secret; re-run `npm run db:setup`.
+- **`DATABASE_URL is not set`**, add the restricted runtime secret.
+- **`MIGRATION_DATABASE_URL is required`**, run migrations from the release job
+  with its owner-only secret, then start the runtime services again.
 - **Login fails**, ensure `OPERATOR_EMAIL` + `OPERATOR_PASSWORD_HASH` are set
   (hash generated with `npm run agent -- hash-password`), or seed a user.
 - **Agents log "skipped: ANTHROPIC_API_KEY not set"**, add the Claude key.

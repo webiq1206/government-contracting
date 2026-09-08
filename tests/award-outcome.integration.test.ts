@@ -52,13 +52,18 @@ d("award outcome (integration)", () => {
     } as SessionUser;
     const op = await queryOne<{ id: string }>(
       `insert into opportunities (org_id, source, title, stage, status, solicitation_number)
-       values ($1,'test','Award job','bid_building','open','SOL-AW-1') returning id`,
+       values ($1,'test','Award job','submitted','open','SOL-AW-1') returning id`,
       [org.id]
     );
     opp.id = op!.id;
     await query(
-      `insert into bids (org_id, opportunity_id, bid_amount) values ($1,$2,125000)`,
-      [org.id, opp.id]
+      `insert into bids
+         (org_id, opportunity_id, bid_amount, submission_state, submitted_at,
+          submission_method, submission_destination, sent_timezone,
+          submitted_by, submitted_package_hash, outcome)
+       values ($1,$2,125000,'sent',now(),'portal','SAM.gov','America/Chicago',
+               'op@x.invalid',$3,'pending')`,
+      [org.id, opp.id, "a".repeat(64)]
     );
   });
 
@@ -73,7 +78,16 @@ d("award outcome (integration)", () => {
   });
 
   it("recording a win creates exactly one contract and closes the opportunity", async () => {
-    const res = await POST(req({ outcome: "won" }), { params: { id: opp.id } });
+    const res = await POST(
+      req({
+        outcome: "won",
+        award_amount: 125000,
+        contract_number: "SOL-AW-1-AWARD",
+        start_date: "2026-10-01",
+        end_date: "2027-09-30",
+      }),
+      { params: { id: opp.id } }
+    );
     expect(res.status).toBe(200);
     expect(await contractCount()).toBe(1);
     const row = await queryOne<{ stage: string; status: string }>(
@@ -83,7 +97,16 @@ d("award outcome (integration)", () => {
   });
 
   it("recording the same win again does NOT create a second contract", async () => {
-    const res = await POST(req({ outcome: "won" }), { params: { id: opp.id } });
+    const res = await POST(
+      req({
+        outcome: "won",
+        award_amount: 125000,
+        contract_number: "SOL-AW-1-AWARD",
+        start_date: "2026-10-01",
+        end_date: "2027-09-30",
+      }),
+      { params: { id: opp.id } }
+    );
     expect(res.status).toBe(200);
     expect(await contractCount()).toBe(1); // still one, not two
   });

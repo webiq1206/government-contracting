@@ -110,6 +110,33 @@ describe("requirementsFingerprint", () => {
     ).not.toBe(a);
     expect(requirementsFingerprint(base, [{ label: "Amendment 0001" }])).not.toBe(a);
   });
+
+  it.each([
+    ["category", { category: "pricing" }],
+    ["format", { format: "PDF, 12 pages maximum" }],
+    ["signature rule", { signature_required: true }],
+    ["satisfier", { satisfied_by: "operator_signature" }],
+    ["instructions", { instructions: "Initial blocks 17a and 30a." }],
+  ])("changes when the %s changes", (_label, changed) => {
+    const a = requirementsFingerprint(base);
+    expect(requirementsFingerprint([{ ...base[0], ...changed }, base[1]])).not.toBe(a);
+  });
+
+  it("changes when amendment substance or date changes", () => {
+    const a = requirementsFingerprint(base, [
+      { label: "Amendment 0001", summary: "Questions answered", date: "2026-09-01" },
+    ]);
+    expect(
+      requirementsFingerprint(base, [
+        { label: "Amendment 0001", summary: "Deadline extended", date: "2026-09-01" },
+      ])
+    ).not.toBe(a);
+    expect(
+      requirementsFingerprint(base, [
+        { label: "Amendment 0001", summary: "Questions answered", date: "2026-09-02" },
+      ])
+    ).not.toBe(a);
+  });
 });
 
 describe("validatePackage drift", () => {

@@ -151,25 +151,18 @@ export function clearClaudeClients(): void {
 
 /** Stamp the Integrations card with the org that actually made the call. */
 function recordClaudeUse(outcome: { ok: boolean; error?: string }): void {
-  void Promise.all([
-    import("../tenant"),
-    import("../tenant-context"),
-    import("../integration-settings"),
-  ]).then(([{ tryResolveTenantOrgId }, { LEGACY_ORG_ID }, settings]) =>
-    tryResolveTenantOrgId().then((org) =>
-      settings.recordIntegrationUse("ANTHROPIC_API_KEY", {
-        ...outcome,
-        orgId: org ?? LEGACY_ORG_ID,
-      })
-    )
-  );
+  void Promise.all([import("../tenant"), import("../integration-settings")])
+    .then(async ([{ resolveTenantOrgId }, settings]) => {
+      const orgId = await resolveTenantOrgId();
+      await settings.recordIntegrationUse("ANTHROPIC_API_KEY", { ...outcome, orgId });
+    })
+    .catch(() => undefined);
 }
 
 async function client(): Promise<Anthropic> {
   const { orgApiKey } = await import("../integration-keys");
-  const { tryResolveTenantOrgId } = await import("../tenant");
-  const { LEGACY_ORG_ID } = await import("../tenant-context");
-  const org = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const { resolveTenantOrgId } = await import("../tenant");
+  const org = await resolveTenantOrgId();
   const apiKey = await orgApiKey("ANTHROPIC_API_KEY", org);
   if (!apiKey) throw new ClaudeNotConfiguredError();
   const existing = _clients.get(org);

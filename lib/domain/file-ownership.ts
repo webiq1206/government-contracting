@@ -29,30 +29,39 @@ import { queryOne } from "../db";
  * path, so a traversal or a guessed key that was never stored resolves to
  * null and the caller denies it.
  */
-export async function orgIdForStorageKey(key: string): Promise<string | null> {
+export async function orgIdForStorageKey(
+  key: string,
+  opts?: { failOnError?: boolean }
+): Promise<string | null> {
   if (!key) return null;
-  const doc = await queryOne<{ org_id: string | null }>(
-    `select org_id from documents where storage_path = $1 limit 1`,
-    [key]
-  ).catch(() => null);
+  const lookup = <T extends { org_id: string | null }>(sql: string): Promise<T | null> => {
+    const result = queryOne<T>(sql, [key]);
+    return opts?.failOnError ? result : result.catch(() => null);
+  };
+  const doc = await lookup<{ org_id: string | null }>(
+    `select coalesce(d.org_id, o.org_id) as org_id
+       from documents d
+       left join opportunities o on o.id = d.opportunity_id
+      where d.storage_path = $1 limit 1`
+  );
   if (doc?.org_id) return doc.org_id;
 
-  const subDoc = await queryOne<{ org_id: string | null }>(
-    `select org_id from subcontractor_documents where storage_path = $1 limit 1`,
-    [key]
-  ).catch(() => null);
+  const subDoc = await lookup<{ org_id: string | null }>(
+    `select coalesce(d.org_id, s.org_id) as org_id
+       from subcontractor_documents d
+       left join subcontractors s on s.id = d.subcontractor_id
+      where d.storage_path = $1 limit 1`
+  );
   if (subDoc?.org_id) return subDoc.org_id;
 
-  const complianceDoc = await queryOne<{ org_id: string | null }>(
-    `select org_id from compliance_item_documents where storage_path = $1 limit 1`,
-    [key]
-  ).catch(() => null);
+  const complianceDoc = await lookup<{ org_id: string | null }>(
+    `select org_id from compliance_item_documents where storage_path = $1 limit 1`
+  );
   if (complianceDoc?.org_id) return complianceDoc.org_id;
 
-  const feedbackShot = await queryOne<{ org_id: string | null }>(
-    `select org_id from feedback_reports where storage_path = $1 limit 1`,
-    [key]
-  ).catch(() => null);
+  const feedbackShot = await lookup<{ org_id: string | null }>(
+    `select org_id from feedback_reports where storage_path = $1 limit 1`
+  );
   return feedbackShot?.org_id ?? null;
 }
 

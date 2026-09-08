@@ -89,8 +89,8 @@ d("reply capture stays inside one organization (integration)", () => {
 
     // Org A's outreach, with no tracking token and no thread: the weak path.
     const commA = await queryOne<{ id: string }>(
-      `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, provider)
-       values ($1,$2,$3,'email','outbound','A outreach','body','resend') returning id`,
+      `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, provider, meta)
+       values ($1,$2,$3,'email','outbound','A outreach','body','resend','{"trade":"electrical"}'::jsonb) returning id`,
       [orgA.id, orgA.sub, orgA.opp]
     );
     orgA.comm = commA!.id;
@@ -98,8 +98,8 @@ d("reply capture stays inside one organization (integration)", () => {
     // Org B's outreach to the same firm, sent LATER. The unscoped match orders
     // by recency, so this is the row it would have picked.
     const commB = await queryOne<{ id: string }>(
-      `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, provider, created_at)
-       values ($1,$2,$3,'email','outbound','B outreach','body','resend', now() + interval '1 minute') returning id`,
+      `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, provider, created_at, meta)
+       values ($1,$2,$3,'email','outbound','B outreach','body','resend', now() + interval '1 minute','{"trade":"electrical"}'::jsonb) returning id`,
       [orgB.id, orgB.sub, orgB.opp]
     );
     orgB.comm = commB!.id;
@@ -216,5 +216,35 @@ d("reply capture stays inside one organization (integration)", () => {
       [orgA.opp, orgB.bOnlySub]
     );
     expect(pairedToB.length).toBe(0);
+  });
+
+  it("rejects cross-account capture before extracting or changing any record", async () => {
+    const { comm } = await cap.matchInboundReply({ orgId: orgA.id, fromEmail: SHARED_EMAIL });
+    let extracted = false;
+    await expect(cap.captureReply({
+      orgId: orgB.id,
+      comm: comm!,
+      strongMatch: true,
+      fromEmail: SHARED_EMAIL,
+      replyText: "Quoting $55,555.",
+      extract: async () => { extracted = true; return fakeExtract(); },
+    })).rejects.toThrow(/do not belong to this account/);
+    expect(extracted).toBe(false);
+  });
+
+  it("refuses a foreign outbound identifier even when the other references are local", async () => {
+    const { comm } = await cap.matchInboundReply({ orgId: orgA.id, fromEmail: SHARED_EMAIL });
+    await expect(cap.captureReply({
+      orgId: orgA.id,
+      comm: { ...comm!, id: orgB.comm },
+      strongMatch: true,
+      fromEmail: SHARED_EMAIL,
+      replyText: "Quoting $55,555.",
+      extract: fakeExtract,
+    })).rejects.toThrow(/do not belong to this account/);
+    const foreign = await queryOne<{ replied_at: string | null }>(
+      `select replied_at from communications where id=$1`, [orgB.comm]
+    );
+    expect(foreign?.replied_at).toBeNull();
   });
 });

@@ -32,24 +32,38 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const bid = await queryOne<Pick<Bid, "package_manifest">>(
-    `select package_manifest from bids where opportunity_id=$1 order by created_at desc limit 1`,
-    [params.id]
+  const bid = await queryOne<Pick<Bid, "package_manifest" | "documents_json">>(
+    `select package_manifest, documents_json
+       from bids where opportunity_id=$1 and org_id=$2 order by created_at desc limit 1`,
+    [params.id, orgId]
   );
   const manifest: PackageItem[] = bid?.package_manifest ?? [];
   if (manifest.length === 0) {
     return NextResponse.json({ error: "No package assembled yet." }, { status: 400 });
   }
 
-  // Load the current storage path for each generated document kind.
+  // The bid row is the immutable package version. Current document rows can
+  // move when a later draft is generated, so they are only a fallback for old
+  // bids created before documents_json was populated.
   const docs = await queryOne<{ rows: DocRow[] }>(
     `select coalesce(json_agg(json_build_object(
         'kind', kind, 'storage_path', storage_path, 'storage_backend', storage_backend)), '[]') as rows
-       from documents where opportunity_id=$1`,
-    [params.id]
+       from documents where opportunity_id=$1 and org_id=$2`,
+    [params.id, orgId]
   );
   const byKind = new Map<string, DocRow>();
-  for (const d of docs?.rows ?? []) if (d.kind) byKind.set(d.kind, d);
+  for (const d of bid?.documents_json ?? []) {
+    if (d.kind) {
+      byKind.set(d.kind, {
+        kind: d.kind,
+        storage_path: d.storage_path,
+        storage_backend: d.storage_backend ?? null,
+      });
+    }
+  }
+  for (const d of docs?.rows ?? []) {
+    if (d.kind && !byKind.has(d.kind)) byKind.set(d.kind, d);
+  }
 
   const entries: ZipEntry[] = [];
   const toProvide: string[] = [];
@@ -88,7 +102,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       if (doc.storage_path) {
         try {
           const backend =
-            doc.storage_backend === "supabase" || doc.storage_backend === "local"
+            doc.storage_backend === "supabase" ||
+            doc.storage_backend === "local" ||
+            doc.storage_backend === "db"
               ? doc.storage_backend
               : undefined;
           const buf = await storage.download(doc.storage_path, backend);
@@ -111,6 +127,17 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     }
   }
 
+  if (missingGenerated.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "This package is incomplete because one or more files could not be read from storage. Re-run Bid Builder and review the new package before downloading it.",
+        missing: missingGenerated,
+      },
+      { status: 409 }
+    );
+  }
+
   /**
    * The compliance checklist rides along, clearly marked, and is NOT part of
    * the offer.
@@ -128,7 +155,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   if (checklist?.storage_path) {
     try {
       const backend =
-        checklist.storage_backend === "supabase" || checklist.storage_backend === "local"
+        checklist.storage_backend === "supabase" ||
+        checklist.storage_backend === "local" ||
+        checklist.storage_backend === "db"
           ? checklist.storage_backend
           : undefined;
       entries.push({

@@ -55,6 +55,7 @@ import {
 import type { Owner } from "@/lib/domain/ownership";
 import { currentUser } from "@/lib/auth";
 import { can } from "@/lib/domain/roles";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -359,13 +360,24 @@ export default async function CompliancePage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
+  const loadWarnings: string[] = [];
   const [rows, subRows, teamMembers, viewer] = (await Promise.all([
     complianceBoard(),
     subcontractorComplianceRows(),
     // Tolerant: a picker that cannot load its list is a read-only owner
     // field, where a throw is a Compliance page that will not open.
-    assignableMembers().catch(() => []),
-    currentUser().catch(() => null),
+    assignableMembers().catch(() => {
+      loadWarnings.push(
+        "Assignable team members could not be loaded, so assignment controls are unavailable."
+      );
+      return [];
+    }),
+    currentUser().catch(() => {
+      loadWarnings.push(
+        "Your role could not be confirmed, so compliance editing is disabled."
+      );
+      return null;
+    }),
   ])) as [Row[], Row[], Owner[], Awaited<ReturnType<typeof currentUser>>];
 
   const stateFilter = parseState(searchParams?.state);
@@ -385,6 +397,7 @@ export default async function CompliancePage({
           status="Not set up yet"
           explanation="Renewals, registrations, and contract deadlines in one place. Brost Co watches dates; renewing is your job."
         />
+        <ShellDataWarning items={loadWarnings} />
         <div className="scroll-thin flex-1 space-y-4 overflow-y-auto p-5">
           <EmptyState
             title="Compliance Monitor has not run yet"
@@ -410,10 +423,17 @@ export default async function CompliancePage({
    * One query for every card's files rather than one per card. Loaded after
    * the split so the cap gauges, which have no documents, do not go looking.
    */
+  let documentsUnavailable = false;
   const documentsByItem = await documentsFor(
     await currentOrg(),
     deadlineRows.map((r) => str(r.id)).filter(Boolean)
-  ).catch(() => new Map<string, ComplianceDocument[]>());
+  ).catch(() => {
+    documentsUnavailable = true;
+    loadWarnings.push(
+      "Compliance documents could not be loaded. Document status and document actions are unavailable until the page reloads."
+    );
+    return new Map<string, ComplianceDocument[]>();
+  });
 
   const cardById = new Map<string, ComplianceCardData>(
     deadlineRows.map((r) => [
@@ -421,6 +441,37 @@ export default async function CompliancePage({
       buildCard(r, viewDocs(documentsByItem.get(str(r.id)) ?? [])),
     ])
   );
+
+  /*
+   * An empty document map is otherwise indistinguishable from every tracked
+   * item genuinely having no attachment. Do not render that projection or
+   * leave upload/verification controls active: it would invite duplicate work
+   * and label known documents missing during a database outage.
+   */
+  if (documentsUnavailable) {
+    return (
+      <div className="flex page-shell">
+        <PageFrame
+          help={PAGE_HELP["compliance"]}
+          title="Compliance Board"
+          status="Document status unavailable"
+          explanation="Renewals, registrations, and contract deadlines in one place. Brost Co watches dates; renewing is your job."
+        />
+        <ShellDataWarning items={loadWarnings} />
+        <div className="scroll-thin flex-1 overflow-y-auto p-5">
+          <EmptyState
+            title="Compliance documents could not be checked"
+            description="No item is being called complete or missing, and upload and review actions are disabled. Reload before relying on document status or attaching a replacement."
+            action={
+              <Link href="/compliance" className="btn-primary text-sm">
+                Reload compliance
+              </Link>
+            }
+          />
+        </div>
+      </div>
+    );
+  }
 
   /*
    * The working mode.
@@ -506,6 +557,7 @@ export default async function CompliancePage({
             explanation="The same items as the board, one at a time, with the certificate upload and the renewal date on the same screen."
           />
         </div>
+        <ShellDataWarning items={loadWarnings} />
         <ComplianceWorkspace
           entries={entries}
           cards={cardById}
@@ -724,6 +776,7 @@ export default async function CompliancePage({
       >
         <Legend />
       </PageFrame>
+      <ShellDataWarning items={loadWarnings} />
 
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {/* How this board works: automatic tracking vs your job. */}

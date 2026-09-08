@@ -2,7 +2,7 @@
  * Password reset via single-use tokens, emailed through the platform inbox.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { query, queryOne } from "./db";
+import { query, transaction } from "./db";
 import { hashPassword } from "./auth";
 import { config } from "./config";
 import { systemMail } from "./integrations/system-mail";
@@ -133,26 +133,44 @@ export async function resetPasswordWithToken(input: {
     return { error: "Password must be at least 10 characters." };
   }
   const tokenHash = hashToken(input.token);
-  const row = await queryOne<{ id: string; user_id: string }>(
-    `select id, user_id from password_reset_tokens
-      where token_hash = $1 and used_at is null and expires_at > now()`,
-    [tokenHash]
-  );
-  if (!row) return { error: "This reset link is invalid or has expired." };
-
   const password_hash = hashPassword(input.password);
-  await query(`update users set password_hash = $2 where id = $1`, [
-    row.user_id,
-    password_hash,
-  ]);
-  await query(`update password_reset_tokens set used_at = now() where id = $1`, [
-    row.id,
-  ]);
-  // Invalidate all sessions for this user.
-  await query(`delete from sessions where user_id = $1`, [row.user_id]);
+  const changed = await transaction(async (client) => {
+    // Lock the credential before checking it. Two requests carrying the same
+    // token cannot both pass this point and change the password twice.
+    const row = (
+      await client.query<{ id: string; user_id: string }>(
+        `select id, user_id from password_reset_tokens
+          where token_hash = $1 and used_at is null and expires_at > now()
+          for update`,
+        [tokenHash]
+      )
+    ).rows[0];
+    if (!row) return null;
+
+    await client.query(`update users set password_hash = $2 where id = $1`, [
+      row.user_id,
+      password_hash,
+    ]);
+    const consumed = await client.query<{ id: string }>(
+      `update password_reset_tokens
+          set used_at = now()
+        where id = $1 and used_at is null
+        returning id`,
+      [row.id]
+    );
+    if (consumed.rowCount !== 1) {
+      throw new Error("The password reset token changed while it was being used.");
+    }
+    // Password rotation and invalidating every old session are one security
+    // state change. A failure in either rolls the whole reset back.
+    await client.query(`delete from sessions where user_id = $1`, [row.user_id]);
+    return { userId: row.user_id };
+  });
+  if (!changed) return { error: "This reset link is invalid or has expired." };
+
   await trackEvent({
     event: "password_reset_completed",
-    userId: row.user_id,
+    userId: changed.userId,
     path: "/reset-password",
   });
   return { ok: true };

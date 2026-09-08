@@ -16,8 +16,7 @@
  * what actually happened rather than what is configured.
  */
 import { queryOne } from "./db";
-import { tryResolveTenantOrgId } from "./tenant";
-import { LEGACY_ORG_ID } from "./tenant-context";
+import { resolveTenantOrgId } from "./tenant";
 import { AI_UNAVAILABLE_PREFIX } from "./ai/claude";
 
 export interface ServiceTrouble {
@@ -95,7 +94,7 @@ async function lastAgentSuccess(
   orgId?: string
 ): Promise<Date | null> {
   if (agents.length === 0) return null;
-  const org = orgId ?? (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const org = orgId ?? (await resolveTenantOrgId());
   const row = await queryOne<{ at: Date | null }>(
     `select max(created_at) as at
        from agent_logs
@@ -103,7 +102,7 @@ async function lastAgentSuccess(
         and level in ('success', 'info')
         and agent = any($2::text[])`,
     [org, agents]
-  ).catch(() => null);
+  );
   return row?.at ?? null;
 }
 
@@ -120,7 +119,7 @@ export async function lastPricingSuccess(orgId?: string): Promise<Date | null> {
 }
 
 export async function recentAiTrouble(orgId?: string): Promise<ServiceTrouble> {
-  const org = orgId ?? (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const org = orgId ?? (await resolveTenantOrgId());
   const row = await queryOne<{ n: number; message: string | null; last_at: Date | null }>(
     `select count(*)::int as n,
             (array_agg(message order by created_at desc))[1] as message,
@@ -130,12 +129,15 @@ export async function recentAiTrouble(orgId?: string): Promise<ServiceTrouble> {
         and message like $2
         and created_at > now() - interval '${WINDOW}'`,
     [org, `%${AI_UNAVAILABLE_PREFIX}%`]
-  ).catch(() => null);
-  const count = row?.n ?? 0;
+  );
+  if (!row) {
+    throw new Error("Recent AI integration health could not be measured.");
+  }
+  const count = row.n;
   return {
     count,
-    reason: count > 0 ? stripMarker(row?.message ?? null) : null,
-    lastAt: count > 0 ? row?.last_at ?? null : null,
+    reason: count > 0 ? stripMarker(row.message) : null,
+    lastAt: count > 0 ? row.last_at : null,
   };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   SUBMISSION_METHOD_LABEL,
@@ -8,6 +8,7 @@ import {
   type SubmissionMethod,
 } from "@/lib/domain/submission-state";
 import type { ProofOption } from "@/components/mark-as-sent";
+import { useToast } from "@/components/toaster";
 
 /**
  * Recording a send, on a phone.
@@ -49,6 +50,7 @@ export function SentConfirmationFlow({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const { push } = useToast();
   const [step, setStep] = useState<Step>("how");
   const [method, setMethod] = useState<SubmissionMethod>("portal");
   const [destination, setDestination] = useState("");
@@ -65,14 +67,54 @@ export function SentConfirmationFlow({
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const returnFocusTo = useRef<HTMLElement | null>(null);
+  const titleId = useId();
   // The flow covers the page, so the page must not scroll behind it.
   useEffect(() => {
+    returnFocusTo.current = document.activeElement as HTMLElement | null;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current
+        ?.querySelector<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        )
+        ?.focus();
+    });
     return () => {
+      window.cancelAnimationFrame(frame);
       document.body.style.overflow = previous;
+      returnFocusTo.current?.focus?.();
     };
   }, []);
+
+  const trap = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        ) ?? []
+      ).filter((item) => item.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [busy, onClose]
+  );
 
   const index = STEPS.indexOf(step);
 
@@ -151,6 +193,15 @@ export function SentConfirmationFlow({
         setError(data.error ?? "That could not be recorded.");
         return;
       }
+      const warnings = Array.isArray(data.warnings)
+        ? data.warnings.filter((warning: unknown): warning is string => typeof warning === "string")
+        : [];
+      push({
+        message:
+          warnings.length > 0
+            ? `Delivery recorded. Attention is still needed: ${warnings.join(" ")}`
+            : "Delivery recorded with its receipt and exact package version.",
+      });
       router.refresh();
       onClose();
     } catch {
@@ -164,17 +215,19 @@ export function SentConfirmationFlow({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-background"
+      ref={panelRef}
+      className="fixed inset-x-0 top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-50 flex flex-col bg-background lg:bottom-0"
       role="dialog"
       aria-modal="true"
-      aria-label="Record how you sent the package"
+      aria-labelledby={titleId}
+      onKeyDown={trap}
     >
       {/* Header sits below the notch. */}
       <div
         className="flex items-center justify-between border-b border-border px-4 py-3"
         style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}
       >
-        <button type="button" className="text-sm underline underline-offset-2" onClick={onClose}>
+        <button type="button" className="inline-flex min-h-11 items-center text-sm underline underline-offset-2" onClick={onClose}>
           Cancel
         </button>
         <p className="text-xs text-muted-foreground">
@@ -191,7 +244,9 @@ export function SentConfirmationFlow({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-5">
-        <h2 className="font-display text-2xl font-normal text-foreground">{STEP_TITLE[step]}</h2>
+        <h2 id={titleId} className="font-display text-2xl font-normal text-foreground">
+          {STEP_TITLE[step]}
+        </h2>
 
         {step === "how" && (
           <div className="mt-4 space-y-4">
@@ -318,10 +373,7 @@ export function SentConfirmationFlow({
         gesture bar on every recent iPhone, where a tap either does nothing or
         dismisses the browser.
       */}
-      <div
-        className="border-t border-border bg-background px-4 pt-3"
-        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
-      >
+      <div className="border-t border-border bg-background px-4 pb-3 pt-3 lg:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         {problem && <p className="mb-2 text-xs text-muted-foreground">{problem}</p>}
         <div className="flex gap-3">
           {index > 0 && (

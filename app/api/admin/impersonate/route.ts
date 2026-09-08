@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { queryOne } from "@/lib/db";
+import { transaction } from "@/lib/db";
 import {
   SESSION_COOKIE,
   createImpersonationSession,
@@ -10,7 +10,7 @@ import {
   IMPERSONATION_TTL_MINUTES,
 } from "@/lib/auth";
 import { requirePlatformAdmin, isPlatformAdmin } from "@/lib/platform-admin";
-import { recordAdminAction } from "@/lib/admin/audit";
+import { recordRequiredAdminAction } from "@/lib/admin/audit";
 import { adminAccount } from "@/lib/admin/accounts";
 
 export const runtime = "nodejs";
@@ -53,24 +53,32 @@ export async function POST(req: Request) {
   }
 
   const adminToken = cookies().get(SESSION_COOKIE)?.value ?? null;
-  const token = await createImpersonationSession({
-    targetUserId: org.owner_user_id,
-    adminUserId: auth.id,
-    adminEmail: auth.email,
-    // An env-operator token is self-signed rather than a session row, so there
-    // is nothing to restore afterwards; storing it would create a dangling id.
-    adminSessionId: adminToken && !adminToken.startsWith("env-operator.") ? adminToken : null,
+  const token = await transaction(async (client) => {
+    const supportToken = await createImpersonationSession(
+      {
+        targetUserId: org.owner_user_id!,
+        adminUserId: auth.id,
+        adminEmail: auth.email,
+        // An env-operator token is self-signed rather than a session row, so there
+        // is nothing to restore afterwards; storing it would create a dangling id.
+        adminSessionId: adminToken && !adminToken.startsWith("env-operator.") ? adminToken : null,
+      },
+      client
+    );
+    await recordRequiredAdminAction(
+      {
+        adminEmail: auth.email,
+        action: "impersonation_started",
+        orgId: org.id,
+        orgName: org.name,
+        userId: org.owner_user_id,
+        detail: { owner_email: org.owner_email, minutes: IMPERSONATION_TTL_MINUTES },
+      },
+      client
+    );
+    return supportToken;
   });
   await setSessionCookie(token);
-
-  await recordAdminAction({
-    adminEmail: auth.email,
-    action: "impersonation_started",
-    orgId: org.id,
-    orgName: org.name,
-    userId: org.owner_user_id,
-    detail: { owner_email: org.owner_email, minutes: IMPERSONATION_TTL_MINUTES },
-  });
 
   return NextResponse.json({ ok: true, redirect: "/today" });
 }
@@ -86,26 +94,25 @@ export async function POST(req: Request) {
 export async function DELETE() {
   const token = cookies().get(SESSION_COOKIE)?.value;
 
-  const marker = token
-    ? await queryOne<{
-        impersonator_email: string | null;
-        user_id: string;
-      }>(
-        `select impersonator_email, user_id from sessions
-          where id = $1 and impersonator_email is not null`,
-        [token]
-      ).catch(() => null)
-    : null;
+  const ended =
+    token && !token.startsWith("env-operator.")
+      ? await transaction(async (client) => {
+          const result = await endImpersonation(token, client);
+          if (result) {
+            await recordRequiredAdminAction(
+              {
+                adminEmail: result.impersonatorEmail,
+                action: "impersonation_ended",
+                userId: result.userId,
+              },
+              client
+            );
+          }
+          return result;
+        })
+      : null;
 
-  const restored = await endImpersonation(token);
-
-  if (marker?.impersonator_email) {
-    await recordAdminAction({
-      adminEmail: marker.impersonator_email,
-      action: "impersonation_ended",
-      userId: marker.user_id,
-    });
-  }
+  const restored = ended?.restoredToken ?? null;
 
   if (restored) {
     await setSessionCookie(restored);

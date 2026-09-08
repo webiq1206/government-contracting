@@ -5,6 +5,7 @@ import { storage } from "@/lib/integrations/storage";
 import { logAgent } from "@/lib/logger";
 import { attachToRequirement } from "@/lib/bid-package-state";
 import { RESERVED_KINDS } from "@/lib/domain/package";
+import { createHash } from "node:crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,34 +95,83 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       ? String(form.get("requirement_id")).trim().slice(0, 120)
       : "";
 
+  if (requirementId) {
+    const packageState = await queryOne<{ submission_state: string }>(
+      `select submission_state from bids
+        where opportunity_id=$1 and org_id=$2
+        order by created_at desc limit 1`,
+      [params.id, orgId]
+    );
+    if (packageState && packageState.submission_state !== "package_ready") {
+      return NextResponse.json(
+        {
+          error:
+            packageState.submission_state === "approved"
+              ? "This package is approved to send. Reopen it as a controlled revision before replacing a requirement file."
+              : "This package has submission history and its requirement files are locked.",
+        },
+        { status: 409 }
+      );
+    }
+  }
+
   const buf = Buffer.from(await file.arrayBuffer());
+  const contentHash = createHash("sha256").update(buf).digest("hex");
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80) || "upload.bin";
   const key = `opportunities/${params.id}/operator/${Date.now()}-${safeName}`;
   const up = await storage.upload(key, buf, mime);
 
   const row = await queryOne<{ id: string }>(
-    `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime, requirement_id)
-     values ($1,$2,$3,$4,$5,$6,$7)
+    `insert into documents
+       (opportunity_id, kind, name, storage_path, storage_backend, mime, requirement_id,
+        content_hash, byte_size, disposition, extraction_state)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,'delivered','not_applicable')
      returning id`,
-    [params.id, kind, label, up.path, up.backend, mime, requirementId || null]
+    [
+      params.id,
+      kind,
+      label,
+      up.path,
+      up.backend,
+      mime,
+      requirementId || null,
+      contentHash,
+      buf.length,
+    ]
   );
 
+  let packageWarning: string | null = null;
   if (requirementId) {
     const attached = await attachToRequirement({
       opportunityId: params.id,
       orgId,
       requirementId,
-      doc: { name: label, path: up.path, mime },
+      doc: { name: label, path: up.path, mime, content_hash: contentHash },
       bytes: buf,
     });
     if (!attached.ok || attached.error) {
       // The file is stored either way; say plainly that it did not land on a
       // requirement rather than let the operator believe the item is closed.
       return NextResponse.json(
-        { ok: true, id: row?.id, path: up.path, name: label, requirement_error: attached.error },
-        { status: 200 }
+        attached.conflict
+          ? {
+              error: attached.error,
+              fileSaved: true,
+              id: row?.id,
+              path: up.path,
+              name: label,
+            }
+          : {
+              ok: true,
+              id: row?.id,
+              path: up.path,
+              name: label,
+              requirement_error: attached.error,
+            },
+        { status: attached.conflict ? 409 : 200 }
       );
     }
+    packageWarning = attached.warning ?? null;
   }
 
   await logAgent({
@@ -138,5 +188,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     path: up.path,
     name: label,
     requirement_id: requirementId || undefined,
+    warning: packageWarning,
   });
 }

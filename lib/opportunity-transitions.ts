@@ -1,7 +1,9 @@
-import { query } from "@/lib/db";
+import { query, transaction } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
 import { stopOpportunityAutomation } from "@/lib/close-opportunity-work";
+import { EDITABLE_OPPORTUNITY_STAGES } from "@/lib/domain/opportunity-lifecycle";
+import { MANUAL_STAGE_TRANSITIONS } from "@/lib/domain/stage-move";
 
 /**
  * The three stage changes an operator can make, in one place.
@@ -52,6 +54,8 @@ export async function pursueOpportunity(
             -- carry a warning issued about a decision somebody already made.
             review_warned_at=null
       where id=$1 and org_id=$2
+        and stage='scoring' and status='open' and tier='review'
+        and coalesce(pursuit_state, 'active')='active'
       returning id`,
     [id, orgId]
   );
@@ -82,24 +86,32 @@ export async function passOpportunity(
   reason: string,
   actorEmail: string
 ): Promise<boolean> {
-  const rows = await query<{ id: string }>(
-    `update opportunities
-        set tier='dismiss', stage='dismissed', status='archived',
-            human_action_required=false, review_expires_at=null, review_warned_at=null,
-            pursuit_state='aborted',
-            pursuit_reason='passed',
-            pursuit_changed_at=now(),
-            pursuit_changed_by=$4,
-            notes = case
-              when coalesce(notes, '') = '' then $3
-              else notes || E'\n' || $3
-            end
-      where id=$1 and org_id=$2
-      returning id`,
-    [id, orgId, `Passed: ${reason}`, actorEmail]
-  );
-  if (rows.length === 0) return false;
-  await stopOpportunityAutomation(orgId, [id], "passed");
+  const changed = await transaction(async (client) => {
+    const rows = await client.query<{ id: string }>(
+      `update opportunities
+          set tier='dismiss', stage='dismissed', status='archived',
+              human_action_required=false, review_expires_at=null, review_warned_at=null,
+              pursuit_state='aborted',
+              pursuit_reason='passed',
+              pursuit_changed_at=now(),
+              pursuit_changed_by=$4,
+              pursuit_version=pursuit_version + 1,
+              notes = case
+                when coalesce(notes, '') = '' then $3
+                else notes || E'\n' || $3
+              end
+        where id=$1 and org_id=$2
+          and status='open'
+          and stage = any($5::text[])
+          and coalesce(pursuit_state, 'active')='active'
+        returning id`,
+      [id, orgId, `Passed: ${reason}`, actorEmail, EDITABLE_OPPORTUNITY_STAGES]
+    );
+    if (rows.rows.length === 0) return false;
+    await stopOpportunityAutomation(orgId, [id], "passed", client);
+    return true;
+  });
+  if (!changed) return false;
   await logAgent({
     agent: "operator",
     action: "dismiss",
@@ -125,14 +137,21 @@ export async function moveOpportunity(
   actorEmail: string,
   fromStage: string
 ): Promise<{ ok: boolean; requeued: string[] }> {
+  const allowed = (MANUAL_STAGE_TRANSITIONS[fromStage] ?? []) as readonly string[];
+  if (!allowed.includes(stage)) {
+    return { ok: false, requeued: [] };
+  }
   const agents = STAGE_AGENTS[stage] ?? [];
   const rows = await query<{ id: string }>(
     `update opportunities
         set stage=$3, status='open', human_action_required=$4,
             review_expires_at=null, review_warned_at=null
-      where id=$1 and org_id=$2
+      where id=$1 and org_id=$2 and stage=$5
+        and status='open'
+        and coalesce(pursuit_state, 'active')='active'
+        and $3 = any($6::text[])
       returning id`,
-    [id, orgId, stage, agents.length === 0]
+    [id, orgId, stage, agents.length === 0, fromStage, EDITABLE_OPPORTUNITY_STAGES]
   );
   if (rows.length === 0) return { ok: false, requeued: [] };
   for (const agent of agents) await enqueue(agent, { opportunityId: id });

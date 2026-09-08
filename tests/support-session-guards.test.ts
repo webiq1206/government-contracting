@@ -16,9 +16,13 @@ import { execSync } from "node:child_process";
 const ADMIN_EMAIL = "admin@example.com";
 
 let sessionUser: Record<string, unknown> | null = null;
+let sessionReadError: Error | null = null;
 
 vi.mock("../lib/auth", () => ({
-  currentUser: vi.fn(async () => sessionUser),
+  currentUser: vi.fn(async () => {
+    if (sessionReadError) throw sessionReadError;
+    return sessionUser;
+  }),
 }));
 
 vi.mock("../lib/integrations/gmail", () => ({
@@ -32,9 +36,16 @@ vi.mock("../lib/app-settings", () => ({
   AUTOMATION_PAUSED_ERROR: "Automation is fully paused.",
 }));
 
+vi.mock("../lib/domain/email-suppression", () => ({
+  isSuppressed: vi.fn(async () => false),
+}));
+
 import { isPlatformAdmin, requirePlatformAdmin } from "../lib/platform-admin";
 import { impersonationRefusal, currentImpersonator } from "../lib/impersonation";
 import { sendOutreachEmail } from "../lib/integrations/email-transport";
+import { gmail } from "../lib/integrations/gmail";
+import { requireCapability } from "../lib/api-auth";
+import { requireOrgContext } from "../lib/org-guard";
 
 function ordinarySession(email: string) {
   return {
@@ -59,6 +70,7 @@ const ORIGINAL_OPERATOR = process.env.OPERATOR_EMAIL;
 beforeEach(() => {
   vi.clearAllMocks();
   sessionUser = null;
+  sessionReadError = null;
   process.env.PLATFORM_ADMIN_EMAILS = ADMIN_EMAIL;
   delete process.env.OPERATOR_EMAIL;
 });
@@ -126,6 +138,40 @@ describe("a support session cannot reach the admin area", () => {
 
   it("does not get in the way of an ordinary session", () => {
     expect(impersonationRefusal({ impersonatedBy: null })).toBeNull();
+  });
+});
+
+describe("a support session is read-only", () => {
+  it("is refused by both shared mutation guard paths", async () => {
+    sessionUser = { ...ordinarySession("customer@example.com"), impersonatedBy: ADMIN_EMAIL };
+
+    const direct = await requireCapability("decide");
+    expect(direct).toBeInstanceOf(Response);
+    expect((direct as Response).status).toBe(403);
+
+    const scoped = await requireOrgContext({ capability: "decide" });
+    expect(scoped).toBeInstanceOf(Response);
+    expect((scoped as Response).status).toBe(403);
+  });
+
+  it("keeps read-only tenant access available", async () => {
+    sessionUser = { ...ordinarySession("customer@example.com"), impersonatedBy: ADMIN_EMAIL };
+    const scoped = await requireOrgContext({ requireBilling: false });
+    expect(scoped).not.toBeInstanceOf(Response);
+  });
+
+  it("guards every personal account mutation", () => {
+    const routes = [
+      "app/api/account/name/route.ts",
+      "app/api/account/password/route.ts",
+      "app/api/account/sessions/route.ts",
+      "app/api/account/recap-preferences/route.ts",
+    ];
+    for (const route of routes) {
+      expect(readFileSync(resolve(__dirname, "..", route), "utf8"), route).toContain(
+        "impersonationRefusal"
+      );
+    }
   });
 });
 
@@ -209,12 +255,27 @@ describe("no subcontractor hears from a support session", () => {
   /**
    * The background worker has no session at all. That has to read as "nobody
    * is impersonating" rather than as an error, or scheduled outreach would
-   * stop the moment this check was added.
+   * stop the moment this check was added. A worker still has to carry its
+   * tenant explicitly: no session and no org is correctly refused because
+   * the transport cannot prove whose suppression and sender settings apply.
    */
   it("reads as nobody impersonating when there is no session to read", async () => {
     sessionUser = null;
     expect(await currentImpersonator()).toBeNull();
-    const result = await sendOutreachEmail(PARAMS);
+    const result = await sendOutreachEmail({ ...PARAMS, orgId: "org-1" });
     expect(result.blocked).not.toBe(true);
+    expect(result.error ?? "").not.toMatch(/support session/i);
+  });
+
+  it("holds outreach when support-session status cannot be verified", async () => {
+    sessionReadError = new Error("session database unavailable");
+
+    await expect(currentImpersonator()).rejects.toThrow("session database unavailable");
+    const result = await sendOutreachEmail({ ...PARAMS, orgId: "org-1" });
+
+    expect(result.blocked).toBe(true);
+    expect(result.retryable).toBe(true);
+    expect(result.error).toMatch(/support-session status could not be verified/i);
+    expect(gmail.send).not.toHaveBeenCalled();
   });
 });

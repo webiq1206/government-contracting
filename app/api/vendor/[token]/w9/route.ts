@@ -4,6 +4,7 @@ import { loadPortalSubject, recordSignedW9 } from "@/lib/sub-compliance-store";
 import { validateW9, EMPTY_W9, type W9FormData } from "@/lib/domain/w9";
 import { guardRejectedToken, guardWrite } from "@/lib/vendor-throttle";
 import { logAgent } from "@/lib/logger";
+import { runWithOrg } from "@/lib/tenant-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,8 +45,23 @@ export async function POST(req: Request, { params }: { params: { token: string }
   const throttled = guardWrite(req, pointer.s, "sign");
   if (throttled) return throttled;
 
-  const sub = await loadPortalSubject(pointer.s);
+  let sub: Awaited<ReturnType<typeof loadPortalSubject>>;
+  try {
+    sub = await loadPortalSubject(pointer.s);
+  } catch (error) {
+    console.error("[vendor-w9] signer could not be checked:", error);
+    return NextResponse.json(
+      {
+        error:
+          "We could not check this paperwork link. Nothing was signed or saved. Try again in a few minutes.",
+      },
+      { status: 503, headers: { "Retry-After": "5" } }
+    );
+  }
   if (!sub) {
+    return NextResponse.json({ error: "This link is no longer valid." }, { status: 404 });
+  }
+  if (!sub.org_id) {
     return NextResponse.json({ error: "This link is no longer valid." }, { status: 404 });
   }
 
@@ -93,31 +109,33 @@ export async function POST(req: Request, { params }: { params: { token: string }
     null;
   const userAgent = req.headers.get("user-agent");
 
-  try {
-    const result = await recordSignedW9(sub, form, { ip, userAgent });
-    return NextResponse.json({
-      ok: true,
-      id: result.id,
-      message:
-        "Your W-9 is signed and on file. Brost Co will check it over, and you do not need to do anything else with it.",
-    });
-  } catch (err) {
-    await logAgent({
-      agent: "compliance",
-      action: "w9-sign-failed",
-      subcontractorId: sub.id,
-      level: "error",
-      status: "error",
-      message: `A W-9 signature from ${sub.company_name} could not be saved: ${(err as Error).message}`,
-    });
-    // The signer cannot fix this and should not be asked to retype a TIN into
-    // a form that just failed. Point them at a human.
-    return NextResponse.json(
-      {
-        error:
-          "We could not save that, and it is our end rather than yours. Reply to the email you received and we will sort it out.",
-      },
-      { status: 500 }
-    );
-  }
+  return runWithOrg(sub.org_id, async () => {
+    try {
+      const result = await recordSignedW9(sub, form, { ip, userAgent });
+      return NextResponse.json({
+        ok: true,
+        id: result.id,
+        message:
+          "Your W-9 is signed and on file. Brost Co will check it over, and you do not need to do anything else with it.",
+      });
+    } catch (err) {
+      await logAgent({
+        agent: "compliance",
+        action: "w9-sign-failed",
+        subcontractorId: sub.id,
+        level: "error",
+        status: "error",
+        message: `A W-9 signature from ${sub.company_name} could not be saved: ${(err as Error).message}`,
+      });
+      // The signer cannot fix this and should not be asked to retype a TIN into
+      // a form that just failed. Point them at a human.
+      return NextResponse.json(
+        {
+          error:
+            "We could not save that, and it is our end rather than yours. Reply to the email you received and we will sort it out.",
+        },
+        { status: 500 }
+      );
+    }
+  });
 }

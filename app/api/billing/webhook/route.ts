@@ -7,7 +7,8 @@ import { clearPendingConcession, updateOrganizationBilling } from "@/lib/organiz
 import { trackEvent } from "@/lib/analytics";
 import {
   claimEvent,
-  releaseEvent,
+  completeEvent,
+  markEventFailed,
   isNewerThanApplied,
   markApplied,
 } from "@/lib/billing/events";
@@ -33,7 +34,7 @@ async function orgIdForCustomer(customerId: string | null): Promise<string | nul
   const row = await queryOne<{ id: string }>(
     `select id from organizations where stripe_customer_id = $1`,
     [customerId]
-  ).catch(() => null);
+  );
   return row?.id ?? null;
 }
 
@@ -89,15 +90,37 @@ async function fileInvoice(orgId: string, inv: Stripe.Invoice, failureReason: st
  * Record the card behind a subscription, when Stripe names one.
  *
  * One retrieve call, on subscription events only, which happen a handful of
- * times in an account's life. Failure is swallowed: knowing the last four
- * digits is a convenience, and losing the subscription update over it would
- * be a real outage in exchange for a cosmetic one.
+ * times in an account's life. A failure does not block subscription state or
+ * customer notices, but it is written to the tenant audit trail: a missing
+ * card summary must not look like Stripe simply supplied no payment method.
+ *
+ * This runs before lifecycle state changes. If even the audit write fails,
+ * the webhook can safely retry without replaying a notification that already
+ * went out.
  */
+async function recordCardCaptureFailure(
+  orgId: string,
+  stage: "read" | "save",
+  error: unknown
+): Promise<void> {
+  const detail = error instanceof Error ? error.message : String(error);
+  const message =
+    stage === "read"
+      ? `Stripe's payment method could not be read: ${detail}. Subscription state continued, but Billing cannot confirm which card will be charged. Check the Stripe customer and update the payment method if this repeats.`
+      : `Stripe supplied a payment method, but its card summary could not be saved: ${detail}. Subscription state continued, but Billing may show stale card details. Check the Stripe customer and update the payment method if this repeats.`;
+  await query(
+    `insert into agent_logs (org_id, agent, action, level, status, message)
+     values ($1, 'billing-webhook', 'payment-method-capture-failed', 'error', 'error', $2)`,
+    [orgId, message.slice(0, 1000)]
+  );
+}
+
 async function captureCard(
   stripe: NonNullable<ReturnType<typeof getStripe>>,
   orgId: string,
   sub: Stripe.Subscription
 ) {
+  let card: Stripe.PaymentMethod.Card | null | undefined;
   try {
     const pmId =
       asId((sub as unknown as { default_payment_method?: unknown }).default_payment_method) ??
@@ -118,16 +141,22 @@ async function captureCard(
       if (!defaultPm) return;
       pm = await stripe.paymentMethods.retrieve(defaultPm);
     }
-    const card = pm?.card;
+    card = pm?.card;
     if (!card) return;
+  } catch (error) {
+    await recordCardCaptureFailure(orgId, "read", error);
+    return;
+  }
+
+  try {
     await recordPaymentMethod(orgId, {
       brand: card.brand ?? null,
       last4: card.last4 ?? null,
       expMonth: card.exp_month ?? null,
       expYear: card.exp_year ?? null,
     });
-  } catch (e) {
-    console.warn("[stripe-webhook] could not read the payment method:", e);
+  } catch (error) {
+    await recordCardCaptureFailure(orgId, "save", error);
   }
 }
 
@@ -228,15 +257,27 @@ export async function POST(req: Request) {
     createdAtSec: event.created,
   });
   if (!claim.fresh) {
+    if (claim.state === "processing") {
+      return NextResponse.json(
+        { error: "This event is still being processed. Retry it shortly." },
+        { status: 503 }
+      );
+    }
     return NextResponse.json({ received: true, duplicate: true });
   }
 
   try {
     await handleEvent(stripe, event);
+    await completeEvent(event.id);
   } catch (err) {
-    // Release the claim so Stripe's retry genuinely reprocesses this. Leaving
-    // it would make the failure permanent while looking like a success.
-    await releaseEvent(event.id);
+    // A failed claim is retryable immediately. If this diagnostic write also
+    // fails during a database outage, the processing lease expires and the
+    // event can still be reclaimed rather than remaining a false duplicate.
+    await markEventFailed(event.id, err instanceof Error ? err.message : String(err)).catch(
+      (recordError) => {
+        console.error("[stripe-webhook] could not record handler failure:", recordError);
+      }
+    );
     console.error("[stripe-webhook]", event.type, err);
     return NextResponse.json({ error: "handler failed" }, { status: 500 });
   }
@@ -267,6 +308,10 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       const plan: PlanKey =
         s.plan !== "none" ? s.plan : ((session.metadata?.plan_key as PlanKey) ?? "standard");
 
+      // Capture before changing lifecycle state. If its own durable warning
+      // cannot be written, Stripe retries without duplicating a notice.
+      await captureCard(stripe, orgId, sub);
+
       await updateOrganizationBilling(orgId, {
         stripe_customer_id: customerId,
         stripe_subscription_id: subId,
@@ -292,7 +337,6 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       // Stripe is the record from here.
       await clearPendingConcession(orgId);
       await markApplied(orgId, event.created);
-      await captureCard(stripe, orgId, sub);
       await trackEvent({
         event: "subscription_completed",
         orgId,
@@ -301,6 +345,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       if (s.status === "trialing") {
         await notifyTrialStarted({
           orgId,
+          eventId: event.id,
           planName: plan === "none" ? "Brost Co" : PLANS[plan].name,
           amountCents: s.amountCents,
           interval: s.interval,
@@ -319,7 +364,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
         (await queryOne<{ id: string }>(
           `select id from organizations where stripe_subscription_id = $1`,
           [sub.id]
-        ).catch(() => null))?.id ||
+        ))?.id ||
         (await orgIdForCustomer(asId(sub.customer)));
       if (!orgId) break;
 
@@ -341,6 +386,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
 
       const s = readSubscription(sub);
       const deleted = event.type === "customer.subscription.deleted";
+      if (!deleted) await captureCard(stripe, orgId, sub);
       // A grandfathered subscriber keeps their plan identity through every
       // renewal; only an explicit plan change moves them, and that arrives as
       // a different price id on a non-locked account.
@@ -369,14 +415,23 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       if (!org?.price_locked) patch.stripe_price_id = s.priceId;
       await updateOrganizationBilling(orgId, patch);
       await markApplied(orgId, event.created);
-      if (!deleted) await captureCard(stripe, orgId, sub);
 
       if (deleted) {
-        await notifyCanceled({ orgId, endsAt: s.periodEnd, immediate: true });
+        await notifyCanceled({
+          orgId,
+          eventId: event.id,
+          endsAt: s.periodEnd,
+          immediate: true,
+        });
       } else if (s.cancelAtPeriodEnd && !org?.cancel_at_period_end) {
-        await notifyCanceled({ orgId, endsAt: s.periodEnd, immediate: false });
+        await notifyCanceled({
+          orgId,
+          eventId: event.id,
+          endsAt: s.periodEnd,
+          immediate: false,
+        });
       } else if (!s.cancelAtPeriodEnd && org?.cancel_at_period_end) {
-        await notifyReactivated({ orgId, periodEnd: s.periodEnd });
+        await notifyReactivated({ orgId, eventId: event.id, periodEnd: s.periodEnd });
       }
       break;
     }
@@ -389,6 +444,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       const s = readSubscription(sub);
       await notifyTrialEnding({
         orgId,
+        eventId: event.id,
         amountCents: s.amountCents,
         interval: s.interval,
         trialEndsAt: s.trialEnd,
@@ -424,6 +480,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       if (event.type === "invoice.paid") {
         await notifyPaymentSucceeded({
           orgId,
+          eventId: event.id,
           amountCents: inv.amount_paid ?? null,
           invoiceUrl: inv.hosted_invoice_url ?? null,
           periodEnd: iso((inv as { period_end?: number }).period_end),
@@ -467,6 +524,7 @@ async function handleEvent(stripe: NonNullable<ReturnType<typeof getStripe>>, ev
       await fileInvoice(orgId, inv, reason);
       await notifyPaymentFailed({
         orgId,
+        eventId: event.id,
         amountCents: inv.amount_due ?? null,
         reason,
         nextAttemptAt,

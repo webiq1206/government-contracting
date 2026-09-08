@@ -67,9 +67,9 @@ export interface AutoDeclineDecisionInput {
 }
 
 /**
- * Auto-decline only when the sender owns the mailbox and AI confirmed a decline
- * / can't-fulfill intent. Strong thread correlation is not required (unlike
- * quote auto-save); regex-only extraction never returns a decline intent.
+ * Confirms the sender and decline intent. The caller must additionally require
+ * strong conversation correlation before closing a solicitation or sending a
+ * thank-you: a sender address alone identifies a firm, not which bid they mean.
  *
  * Same division as above: this is ownership, not comprehension. Closing a sub
  * out also emails them, so the caller pairs it with decideReply.

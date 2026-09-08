@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { ActionButton } from "@/components/action-button";
 import { OwnerPicker } from "@/components/owner-picker";
@@ -10,7 +10,7 @@ import { SkipCallControl } from "@/components/skip-call-control";
 import { StopOutreach } from "@/components/stop-outreach";
 import type { PursuitState } from "@/lib/domain/pursuit-state";
 import {
-  MOVE_TARGETS,
+  moveTargetsFrom,
   splitRowActions,
   type RowAction,
   type RowWidget,
@@ -61,6 +61,7 @@ export function RowActions({
   const [menuOpen, setMenuOpen] = useState(false);
   const [widget, setWidget] = useState<RowWidget | null>(null);
   const wrap = useRef<HTMLSpanElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
 
   // Reassign needs the org's people. A surface that did not load them gets no
   // owner action rather than a picker with nobody in it.
@@ -74,8 +75,35 @@ export function RowActions({
 
   useEffect(() => {
     if (!menuOpen) return;
+    const visibleItems = () =>
+      Array.from(wrap.current?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? []).filter(
+        (item) => item.getClientRects().length > 0
+      );
+    const frame = window.requestAnimationFrame(() => visibleItems()[0]?.focus());
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        menuTrigger.current?.focus();
+        return;
+      }
+      if (e.key === "Tab") {
+        setMenuOpen(false);
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      const items = visibleItems();
+      if (items.length === 0) return;
+      e.preventDefault();
+      const current = Math.max(0, items.indexOf(document.activeElement as HTMLElement));
+      const next =
+        e.key === "Home"
+          ? 0
+          : e.key === "End"
+            ? items.length - 1
+            : e.key === "ArrowDown"
+              ? (current + 1) % items.length
+              : (current - 1 + items.length) % items.length;
+      items[next]?.focus();
     }
     function onDown(e: MouseEvent) {
       if (!wrap.current?.contains(e.target as Node)) setMenuOpen(false);
@@ -83,6 +111,7 @@ export function RowActions({
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDown);
     return () => {
+      window.cancelAnimationFrame(frame);
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onDown);
     };
@@ -110,13 +139,14 @@ export function RowActions({
       {secondary.length > 0 && (
         <>
           <button
+            ref={menuTrigger}
             type="button"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             aria-label={recordLabel ? `More actions for ${recordLabel}` : "More actions"}
             onClick={() => setMenuOpen((v) => !v)}
             className={`btn-ghost inline-flex items-center justify-center ${
-              compact ? "min-h-8 px-2 text-xs" : "min-h-11 px-2.5 text-sm lg:min-h-9"
+              compact ? "min-h-11 px-2 text-xs lg:min-h-8" : "min-h-11 px-2.5 text-sm lg:min-h-9"
             }`}
           >
             <span aria-hidden>⋯</span>
@@ -129,7 +159,7 @@ export function RowActions({
                 near the fold opens off the screen, and on the last row of a
                 long list it opens under the tab bar.
               */}
-              <div className="fixed inset-0 z-50 flex items-end bg-black/40 sm:hidden">
+              <div className="fixed inset-0 z-50 flex items-end bg-black/40 lg:hidden">
                 <button
                   type="button"
                   aria-label="Close menu"
@@ -139,7 +169,7 @@ export function RowActions({
                 <div
                   role="menu"
                   aria-label={recordLabel ? `Actions for ${recordLabel}` : "Actions"}
-                  className="relative max-h-[80vh] w-full overflow-y-auto rounded-t-xl border-t border-border bg-surface p-2 pb-[env(safe-area-inset-bottom)]"
+                  className="mobile-tab-clearance relative max-h-[80vh] w-full overflow-y-auto rounded-t-xl border-t border-border bg-surface p-2"
                 >
                   {recordLabel && (
                     <p className="px-3 pb-2 pt-1 text-xs text-muted-foreground">{recordLabel}</p>
@@ -154,7 +184,7 @@ export function RowActions({
               <div
                 role="menu"
                 aria-label={recordLabel ? `Actions for ${recordLabel}` : "Actions"}
-                className="absolute right-0 top-full z-40 mt-1 hidden w-64 rounded-md border border-border bg-surface p-1 shadow-lg sm:block"
+                className="absolute right-0 top-full z-40 mt-1 hidden w-64 rounded-md border border-border bg-surface p-1 shadow-lg lg:block"
               >
                 {secondary.map((a) => (
                   <MenuItem key={a.key} action={a} {...itemProps} />
@@ -191,7 +221,7 @@ function PrimaryAction({
   onWidget: (w: RowWidget) => void;
   compact: boolean;
 }) {
-  const size = compact ? "min-h-8 text-xs" : "min-h-11 text-xs lg:min-h-9 lg:text-sm";
+  const size = compact ? "min-h-11 text-xs lg:min-h-8" : "min-h-11 text-xs lg:min-h-9 lg:text-sm";
   const tone = action.danger ? "btn-danger" : "btn-primary";
   const className = `${tone} ${size}`;
 
@@ -232,7 +262,7 @@ function PrimaryAction({
 // ---------------------------------------------------------------------------
 
 const ITEM =
-  "flex w-full flex-col items-start gap-0.5 rounded px-3 py-2.5 text-left hover:bg-muted focus-visible:bg-muted";
+  "flex min-h-11 w-full flex-col items-start justify-center gap-0.5 rounded px-3 py-2.5 text-left hover:bg-muted focus-visible:bg-muted lg:min-h-0";
 
 function MenuItem({
   action,
@@ -425,18 +455,59 @@ function WidgetSheet({
   viewerId?: string;
   onClose: () => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const returnFocusTo = useRef<HTMLElement | null>(null);
+  const titleId = useId();
+
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    returnFocusTo.current = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const frame = window.requestAnimationFrame(() => {
+      panelRef.current
+        ?.querySelector<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        )
+        ?.focus();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      returnFocusTo.current?.focus?.();
+    };
+  }, []);
+
+  const trap = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+        ) ?? []
+      ).filter((item) => item.getClientRects().length > 0);
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    },
+    [onClose]
+  );
 
   if (widget.name === "pass") return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 lg:items-center lg:p-4">
       <button
         type="button"
         aria-label="Close"
@@ -444,13 +515,16 @@ function WidgetSheet({
         onClick={onClose}
       />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={SHEET_TITLE[widget.name]}
-        className="relative max-h-[85vh] w-full overflow-y-auto rounded-t-xl border border-border bg-surface p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-md sm:rounded-xl"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={trap}
+        className="mobile-tab-clearance relative max-h-[85vh] w-full overflow-y-auto rounded-t-xl border border-border bg-surface p-4 lg:max-w-md lg:rounded-xl"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
-          <h2 className="text-sm font-semibold text-foreground">
+          <h2 id={titleId} className="text-sm font-semibold text-foreground">
             {SHEET_TITLE[widget.name]}
           </h2>
           <button type="button" className="btn-ghost text-xs" onClick={onClose}>
@@ -464,7 +538,7 @@ function WidgetSheet({
               Use this when the record is behind where the work actually is. Nothing is
               deleted, and the stage can be changed again.
             </p>
-            {MOVE_TARGETS.filter((t) => t.stage !== widget.stage).map((t) => (
+            {moveTargetsFrom(widget.stage).map((t) => (
               <ActionButton
                 key={t.stage}
                 endpoint={`/api/opportunities/${widget.opportunityId}/action`}

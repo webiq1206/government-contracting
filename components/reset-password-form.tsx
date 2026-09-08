@@ -20,18 +20,28 @@ export function ResetPasswordForm({ token }: { token: string }) {
       setPending(false);
       return;
     }
-    const res = await fetch("/api/auth/reset-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, password }),
-    });
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      setError(data.error || "Could not reset password.");
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(
+          data.error ||
+            "Your password was not changed. Check your connection and try again, or request a new reset link."
+        );
+        setPending(false);
+        return;
+      }
+      router.push("/login?reset=1");
+    } catch {
+      setError(
+        "The server could not be reached, so your password was not changed. Check your connection and try again."
+      );
       setPending(false);
-      return;
     }
-    router.push("/login?reset=1");
   }
 
   return (
@@ -64,7 +74,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
           autoComplete="new-password"
         />
       </div>
-      {error && <p className="text-sm text-risk">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-risk">
+          {error}
+        </p>
+      )}
       <button type="submit" className="btn-primary w-full" disabled={pending}>
         {pending ? "Saving..." : "Update password"}
       </button>

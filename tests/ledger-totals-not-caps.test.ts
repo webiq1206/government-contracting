@@ -145,7 +145,7 @@ describe("what Today prints", () => {
     // needsYou() first, then the count. Counting the raw queue would put every
     // in-flight quote request into the headline as an action.
     expect(TODAY).toMatch(/needsYou\(queueItems\)/);
-    expect(TODAY).toMatch(/queueCounts\(actionable\)/);
+    expect(TODAY).toMatch(/queueCounts\(actionable,\s*now,\s*timezone\)/);
     expect(TODAY).toMatch(/totalActions\s*=\s*counts\.total/);
   });
 

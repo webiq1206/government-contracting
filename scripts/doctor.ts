@@ -285,7 +285,7 @@ async function main() {
       check(
         "WARN",
         `${pending.length} migration(s) are not applied`,
-        `Next pending: ${pending[0]}. The worker applies these at boot, right after the database check — so if the worker is stuck or looping at that point above, this is very likely the file it is dying on. Applying it by hand (\`npm run db:migrate\`) will show the actual error.`
+        `Next pending: ${pending[0]}. Runtime services do not apply migrations. Pause writes and run the owner-only migration release job; if it fails, that job's log will name the exact migration error.`
       );
     }
   } catch {

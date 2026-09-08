@@ -3,11 +3,20 @@ import { currentUser, hasAnyOperator } from "@/lib/auth";
 import { LoginForm } from "@/components/login-form";
 import { ThemeWordmark } from "@/components/theme-wordmark";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SessionLoadFailure } from "@/components/session-load-failure";
 
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
-  const user = await currentUser().catch(() => null);
+  const auth = await currentUser().then(
+    (user) => ({ ok: true as const, user }),
+    (error) => {
+      console.error("[login] existing session could not be checked:", error);
+      return { ok: false as const, user: null };
+    }
+  );
+  if (!auth.ok) return <SessionLoadFailure />;
+  const user = auth.user;
   if (user) redirect("/today");
   // Fresh deployment with no operator yet: send them straight to first-run setup
   // rather than a login form that can't succeed.

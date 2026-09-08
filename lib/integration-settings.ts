@@ -24,12 +24,8 @@ import { clearIntegrationKeyCache } from "./integration-keys";
  * searched on one account's credential.
  */
 async function settingsOrg(): Promise<string> {
-  try {
-    const { tryResolveTenantOrgId } = await import("./tenant");
-    return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  } catch {
-    return LEGACY_ORG_ID;
-  }
+  const { resolveTenantOrgId } = await import("./tenant");
+  return resolveTenantOrgId();
 }
 
 export const ALLOWED_ENV_KEYS = [
@@ -85,18 +81,26 @@ export function encryptSecret(plain: string): string {
 }
 
 export function decryptSecret(stored: string): string | null {
+  const [version, ivB64, tagB64, encB64] = stored.split(":");
+  // Plaintext rows from before encryption are identified by their missing
+  // version marker. Callers that deliberately support that legacy format can
+  // handle it explicitly; it must never be mistaken for valid ciphertext.
+  if (version !== "v1") return null;
   try {
-    const [v, ivB64, tagB64, encB64] = stored.split(":");
-    if (v !== "v1") return null;
     const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(ivB64, "base64"));
     decipher.setAuthTag(Buffer.from(tagB64, "base64"));
     return Buffer.concat([
       decipher.update(Buffer.from(encB64, "base64")),
       decipher.final(),
     ]).toString("utf8");
-  } catch {
-    // Wrong AUTH_SECRET or corrupted row: treat as unset rather than crash.
-    return null;
+  } catch (error) {
+    // A saved credential that cannot be decrypted is not the same as a key
+    // the user never supplied. Propagate a safe explanation so automation
+    // stops and the integration screen can say that operator repair is needed.
+    throw new Error(
+      "A saved integration credential could not be decrypted. The encryption secret may have changed or the stored value is damaged. Restore the correct AUTH_SECRET, then reconnect or replace this credential.",
+      { cause: error }
+    );
   }
 }
 

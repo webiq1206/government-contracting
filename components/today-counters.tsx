@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PendingLink as Link } from "@/components/pending-link";
 import type { QueueCounts, QueueFilter } from "@/lib/domain/work-queue";
 import { QUEUE_FILTER_LABEL } from "@/lib/domain/work-queue";
 import type { CompletedItem, CompletedToday } from "@/lib/data";
@@ -108,7 +108,7 @@ export function TodayCounters({
  * to act on, and the brief asks for finished work to be de-emphasised without
  * being hidden.
  */
-export function CompletedList({ items }: { items: CompletedItem[] | null }) {
+export function CompletedList({ items, timezone }: { items: CompletedItem[] | null; timezone: string }) {
   if (items == null) {
     /*
      * The read failed. Not an empty list: "nothing finished today" and "we
@@ -156,6 +156,7 @@ export function CompletedList({ items }: { items: CompletedItem[] | null }) {
                 {new Date(item.at).toLocaleTimeString(undefined, {
                   hour: "numeric",
                   minute: "2-digit",
+                  timeZone: timezone,
                 })}
               </time>
             </Link>
@@ -166,7 +167,7 @@ export function CompletedList({ items }: { items: CompletedItem[] | null }) {
   );
 }
 
-export function CompletedTodayPanel({ done }: { done: CompletedToday }) {
+export function CompletedTodayPanel({ done, timezone }: { done: CompletedToday; timezone: string }) {
   const parts = [
     done.found > 0 && `${done.found} bid${done.found === 1 ? "" : "s"} found`,
     done.emailsSent > 0 && `${done.emailsSent} email${done.emailsSent === 1 ? "" : "s"} sent`,
@@ -191,8 +192,7 @@ export function CompletedTodayPanel({ done }: { done: CompletedToday }) {
         <p className="mt-1 text-sm text-slate-600">{parts.join(" · ")}.</p>
       )}
       <p className="mt-1 text-xs text-slate-500">
-        Counted from the day boundary on the server, so an operator several
-        timezones away will see it roll over at a different local hour.
+        Counted in your account timezone: {timezone}.
       </p>
     </section>
   );

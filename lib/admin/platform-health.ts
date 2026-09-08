@@ -34,7 +34,7 @@ export async function agentRunFacts(): Promise<AgentRunFacts[]> {
       where created_at >= now() - ($1 || ' hours')::interval
       group by agent`,
     [String(WINDOW_HOURS)]
-  ).catch(() => []);
+  );
   return rows.map((r) => ({
     agent: r.agent,
     runs: Number(r.runs) || 0,
@@ -69,7 +69,7 @@ export async function recentFailures(): Promise<{ rows: FailureRow[]; truncated:
       order by created_at desc
       limit $2`,
     [String(WINDOW_HOURS), FAILURE_SAMPLE_LIMIT]
-  ).catch(() => []);
+  );
   return {
     rows: rows.map((r) => ({
       agent: r.agent,
@@ -112,12 +112,15 @@ export async function platformImpact(): Promise<{
          where direction = 'outbound' and channel = 'email'
            and delivery_state in ('bounced','failed','deferred')
            and created_at >= now() - interval '24 hours') as undelivered`
-  ).catch(() => null);
+  );
+  if (!row) {
+    throw new Error("Platform impact could not be measured because the database returned no result.");
+  }
   return {
-    orgsAffected: Number(row?.orgs_affected ?? 0),
-    unscored: Number(row?.unscored ?? 0),
-    awaitingOutreach: Number(row?.awaiting_outreach ?? 0),
-    undeliveredEmail: Number(row?.undelivered ?? 0),
+    orgsAffected: Number(row.orgs_affected),
+    unscored: Number(row.unscored),
+    awaitingOutreach: Number(row.awaiting_outreach),
+    undeliveredEmail: Number(row.undelivered),
   };
 }
 

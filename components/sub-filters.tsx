@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useState, useTransition } from "react";
+import { PendingLink as Link } from "@/components/pending-link";
 import { useRouter } from "next/navigation";
 
 interface SubFiltersProps {
@@ -14,19 +14,21 @@ interface SubFiltersProps {
 /** Client-side filter bar for the Sub Database. Pushes query params via the router. */
 export function SubFilters({ trade, state, minReliability, q }: SubFiltersProps) {
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
   const [qVal, setQVal] = useState(q ?? "");
   const [tradeVal, setTradeVal] = useState(trade ?? "");
   const [stateVal, setStateVal] = useState(state ?? "");
   const [minRel, setMinRel] = useState(minReliability ?? "");
 
   function apply() {
+    if (pending) return;
     const params = new URLSearchParams();
     if (qVal.trim()) params.set("q", qVal.trim());
     if (tradeVal.trim()) params.set("trade", tradeVal.trim());
     if (stateVal.trim()) params.set("state", stateVal.trim().toUpperCase());
     if (minRel.trim()) params.set("minReliability", minRel.trim());
     const qs = params.toString();
-    router.push(qs ? `/subs?${qs}` : "/subs");
+    startTransition(() => router.push(qs ? `/subs?${qs}` : "/subs"));
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -97,8 +99,8 @@ export function SubFilters({ trade, state, minReliability, q }: SubFiltersProps)
         />
       </div>
       <div className="flex w-full items-center gap-2 sm:w-auto">
-        <button className="btn-primary flex-1 sm:flex-none" onClick={apply}>
-          Apply
+        <button className="btn-primary flex-1 sm:flex-none" onClick={apply} disabled={pending} aria-busy={pending}>
+          {pending ? "Applying filters…" : "Apply"}
         </button>
         <Link href="/subs" className="btn-ghost flex-1 sm:flex-none">
           Clear

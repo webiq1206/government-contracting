@@ -71,7 +71,7 @@ export async function extractPdfText(
 export async function extractPdfPages(
   data: Uint8Array | Buffer,
   maxChars = 400_000
-): Promise<{ pages: string[]; total: number }> {
+): Promise<{ pages: string[]; total: number; truncated: boolean }> {
   try {
     ensurePromiseWithResolvers();
     const { extractText, getDocumentProxy } = await import("unpdf");
@@ -81,22 +81,30 @@ export async function extractPdfPages(
     const raw = Array.isArray(text) ? text : [String(text ?? "")];
     const pages: string[] = [];
     let used = 0;
+    let truncated = false;
     for (const page of raw) {
       if (used >= maxChars) {
         // Out of budget. Every remaining page is present and empty rather
         // than absent, so page numbers stay true and the caller can see how
         // much of the document it is holding.
         pages.push("");
+        if (normalize(page ?? "").length > 0) truncated = true;
         continue;
       }
-      const cleaned = normalize(page ?? "").slice(0, Math.max(0, maxChars - used));
+      const normalized = normalize(page ?? "");
+      const cleaned = normalized.slice(0, Math.max(0, maxChars - used));
+      if (cleaned.length < normalized.length) truncated = true;
       used += cleaned.length;
       pages.push(cleaned);
     }
-    return { pages, total: totalPages };
+    if (pages.length < totalPages) {
+      truncated = true;
+      while (pages.length < totalPages) pages.push("");
+    }
+    return { pages, total: totalPages, truncated };
   } catch (err) {
     console.warn("[pdf] page extraction failed:", (err as Error).message);
-    return { pages: [], total: 0 };
+    return { pages: [], total: 0, truncated: false };
   }
 }
 

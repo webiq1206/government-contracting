@@ -114,7 +114,7 @@ export async function loadWorkbenchDetail(
           and e.reviewed_at is null
           and (e.org_id = $2 or (e.org_id is null and o.org_id = $2))`,
       [id, orgId]
-    ).catch(() => null);
+    );
     if (!row) {
       return { pane: "gone", why: "This reply has already been read by somebody." };
     }
@@ -170,7 +170,7 @@ export async function loadWorkbenchDetail(
          ) last_out on true
         where os.id = $1 and o.org_id = $2`,
       [id, orgId]
-    ).catch(() => null);
+    );
     if (!row) return { pane: "gone", why: "That outreach is no longer waiting on anybody." };
     return {
       pane: "waiting",
@@ -192,7 +192,7 @@ export async function loadWorkbenchDetail(
 
   const oppId = item.opportunityId ?? item.record?.id ?? null;
   if (!oppId) return { pane: "gone", why: "This task is no longer attached to a solicitation." };
-  const detail = await opportunityDetail(oppId).catch(() => null);
+  const detail = await opportunityDetail(oppId);
   if (!detail) return { pane: "gone", why: "That solicitation is no longer on this account." };
 
   const documents = detail.documents as Record<string, unknown>[];
@@ -276,6 +276,6 @@ export async function hasAnyOpenWork(orgId: string): Promise<boolean> {
   const row = await queryOne<{ n: number }>(
     `select count(*)::int as n from opportunities where org_id = $1 and status = 'open'`,
     [orgId]
-  ).catch(() => null);
+  );
   return (row?.n ?? 0) > 0;
 }

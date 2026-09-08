@@ -8,6 +8,7 @@ import {
   SUBMISSION_METHODS,
   type SubmissionMethod,
 } from "@/lib/domain/submission-state";
+import { useToast } from "@/components/toaster";
 
 export interface ProofOption {
   id: string;
@@ -41,6 +42,7 @@ export function MarkAsSent({
   onUploadHref: string;
 }) {
   const router = useRouter();
+  const { push } = useToast();
   const [method, setMethod] = useState<SubmissionMethod>("portal");
   const [destination, setDestination] = useState("");
   const [sentAt, setSentAt] = useState(() => new Date().toISOString().slice(0, 16));
@@ -74,11 +76,21 @@ export function MarkAsSent({
           attestation,
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        warnings?: string[];
+      };
       if (!res.ok) {
         setError(body.error ?? "That could not be recorded.");
         return;
       }
+      const warnings = body.warnings?.filter(Boolean) ?? [];
+      push({
+        message:
+          warnings.length > 0
+            ? `Delivery recorded. Attention is still needed: ${warnings.join(" ")}`
+            : "Delivery recorded with its receipt and exact package version.",
+      });
       router.refresh();
     } catch {
       setError("Could not reach the server.");
@@ -90,7 +102,7 @@ export function MarkAsSent({
   return (
     <>
       {/*
-        On a phone, one question at a time.
+        One question at a time on every screen.
         The grid below is eight fields and a proof selector that refuses to
         submit until a document already exists on the bid, which on a phone
         meant leaving this screen for the Files tab and starting again. The
@@ -104,7 +116,7 @@ export function MarkAsSent({
           onClose={() => setGuided(false)}
         />
       )}
-      <div className="border-t border-border pt-3 lg:hidden">
+      <div className="border-t border-border pt-3">
         <p className="text-sm font-medium text-foreground">Record how you sent it</p>
         <p className="mt-1 text-xs text-muted-foreground">
           Four short steps, and you can photograph the confirmation as you go.
@@ -114,7 +126,7 @@ export function MarkAsSent({
         </button>
       </div>
       <form
-      className="hidden space-y-3 border-t border-border pt-3 lg:block"
+      className="hidden space-y-3 border-t border-border pt-3"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();

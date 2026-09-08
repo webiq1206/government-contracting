@@ -31,15 +31,15 @@ describe("restartMayProceed", () => {
     if (!r.ok) expect(r.error).toMatch(/deadline/i);
   });
 
-  it("lets a submitted bid restart its post-award tracking", () => {
-    expect(
-      restartMayProceed({
-        status: "open",
-        stage: "submitted",
-        deadline: "2026-08-01T23:59:00.000Z",
-        now,
-      })
-    ).toEqual({ ok: true });
+  it("refuses to restart a bid that was already sent", () => {
+    const result = restartMayProceed({
+      status: "open",
+      stage: "submitted",
+      deadline: "2026-08-01T23:59:00.000Z",
+      now,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/already sent/i);
   });
 
   it("refuses won or lost work", () => {

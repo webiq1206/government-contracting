@@ -22,7 +22,7 @@ import { complete, describeClaudeFailure } from "./ai/claude";
 import { config } from "./config";
 import { enqueue } from "./queue";
 import { logAgent } from "./logger";
-import { advance, incidentById, type IncidentRow } from "./incidents";
+import { advance, IllegalTransition, incidentById, type IncidentRow } from "./incidents";
 import {
   describePlan,
   planReplay,
@@ -119,15 +119,18 @@ async function failuresWithContext(
               select 1 from job_runs later
                where later.agent = jr.agent
                  and later.opportunity_id is not distinct from jr.opportunity_id
+                 and later.org_id = jr.org_id
                  and later.status = 'ok'
                  and later.started_at > jr.started_at
             )                                                          as superseded,
             exists (
               select 1 from incident_requeues rq
                where rq.source_run_id = jr.id
+                 and rq.org_id = jr.org_id
+                 and rq.outcome in ('queued','succeeded')
             )                                                          as already_requeued
        from job_runs jr
-       left join opportunities o on o.id = jr.opportunity_id
+       left join opportunities o on o.id = jr.opportunity_id and o.org_id = jr.org_id
       where jr.org_id = $1
         and jr.status = 'error'
         and jr.started_at >= $2
@@ -163,9 +166,62 @@ export interface RecoveryResult {
   requeued: number;
   skipped: number;
   remaining: number;
-  /** Which downstream record proved the work landed, when one has. */
+  /** Which exact replayed job proved that recovery work completed. */
   confirmation: string | null;
   message: string;
+}
+
+interface RequeueCounts {
+  queued: number;
+  succeeded: number;
+  failed: number;
+  total: number;
+}
+
+async function requeueCounts(incidentId: string, orgId: string): Promise<RequeueCounts> {
+  const row = await queryOne<{
+    queued: number;
+    succeeded: number;
+    failed: number;
+    total: number;
+  }>(
+    `select count(*) filter (where outcome = 'queued')::int as queued,
+            count(*) filter (where outcome = 'succeeded')::int as succeeded,
+            count(*) filter (where outcome = 'failed')::int as failed,
+            count(*)::int as total
+       from incident_requeues
+      where incident_id = $1 and org_id = $2`,
+    [incidentId, orgId]
+  );
+  return {
+    queued: row?.queued ?? 0,
+    succeeded: row?.succeeded ?? 0,
+    failed: row?.failed ?? 0,
+    total: row?.total ?? 0,
+  };
+}
+
+async function recordProgress(
+  incident: IncidentRow,
+  counts: RequeueCounts,
+  note?: string
+): Promise<IncidentRow> {
+  await query(
+    `update automation_incidents
+        set requeued_count=$3, completed_count=$4, remaining_count=$5,
+            recovery_note=coalesce($6, recovery_note), updated_at=now()
+      where id=$1 and org_id=$2 and state=$7`,
+    [
+      incident.id,
+      incident.orgId,
+      counts.total,
+      counts.succeeded,
+      counts.queued + counts.failed,
+      note ?? null,
+      incident.state,
+    ]
+  );
+  return (await incidentById(incident.id, incident.orgId)) ?? incident;
 }
 
 /**
@@ -198,7 +254,7 @@ export async function runRecoveryCheck(
       actor,
       detail: test.detail,
       set: { testRanAt: new Date(), testPassed: false, testDetail: test.technical ?? test.detail },
-    }).catch(async () => incidentById(incidentId, orgId));
+    });
     await logAgent({
       agent: "recovery-check",
       action: "provider_test_failed",
@@ -207,7 +263,7 @@ export async function runRecoveryCheck(
     });
     return {
       incidentId,
-      state: failed?.state ?? incident.state,
+      state: failed.state,
       test,
       plan: "Nothing was requeued: the provider is still refusing requests.",
       requeued: 0,
@@ -242,16 +298,32 @@ export async function runRecoveryCheck(
       `insert into incident_requeues
          (incident_id, org_id, source_run_id, agent, opportunity_id, idempotency_key, outcome)
        values ($1,$2,$3,$4,$5,$6,'queued')
-       on conflict (idempotency_key) do nothing
+       on conflict (idempotency_key) do update
+         set outcome='queued', outcome_at=null, queued_at=now()
+         where incident_requeues.outcome='failed'
+           and incident_requeues.org_id=excluded.org_id
+           and incident_requeues.incident_id=excluded.incident_id
        returning id`,
       [incidentId, orgId, failure.id, failure.agent, failure.opportunityId, key]
     );
     if (!claimed) continue;
-    const jobId = await enqueue(
-      failure.agent,
-      failure.opportunityId ? { opportunityId: failure.opportunityId } : {},
-      { orgId, singletonKey: key }
-    );
+    let jobId: string | null = null;
+    try {
+      jobId = await enqueue(
+        failure.agent,
+        failure.opportunityId ? { opportunityId: failure.opportunityId } : {},
+        { orgId, singletonKey: key, recoveryRequeueId: claimed.id }
+      );
+    } catch (error) {
+      await logAgent({
+        agent: "recovery-check",
+        action: "requeue-failed",
+        level: "error",
+        status: "error",
+        opportunityId: failure.opportunityId,
+        message: `Recovery could not queue ${failure.agent}: ${(error as Error).message}`,
+      });
+    }
     if (jobId) {
       requeued++;
     } else {
@@ -259,24 +331,39 @@ export async function runRecoveryCheck(
       // the eligibility check and here. Mark it rather than leaving a row that
       // claims work is queued when none is.
       await query(
-        `update incident_requeues set outcome='failed', outcome_at=now() where idempotency_key=$1`,
-        [key]
+        `update incident_requeues set outcome='failed', outcome_at=now()
+          where idempotency_key=$1 and org_id=$2 and incident_id=$3`,
+        [key, orgId, incidentId]
       );
     }
   }
 
-  const remaining = Math.max(0, plan.eligible.length - requeued);
-  const next = requeued > 0 ? "backlog_requeued" : "recovered";
-  const confirmation = requeued > 0 ? null : await confirmDownstream(orgId, incident);
+  const counts = await requeueCounts(incidentId, orgId);
+  const remaining = counts.queued + counts.failed;
+  const next =
+    counts.queued > 0
+      ? "backlog_requeued"
+      : counts.failed > 0
+        ? "recovery_failed"
+        : "recovered";
+  const confirmation =
+    next !== "recovered"
+      ? null
+      : counts.succeeded > 0
+        ? await confirmDownstream(orgId, incident)
+        : "The provider answered and no failed work remained eligible to replay.";
 
   const moved = await moveThrough(afterTest, next, orgId, actor, test, {
-    requeuedCount: requeued,
+    requeuedCount: counts.total,
+    completedCount: counts.succeeded,
     remainingCount: remaining,
     recoveryOwner: actor,
     recoveryNote:
-      requeued > 0
-        ? `${requeued} job(s) requeued. ${describePlan(plan)}`
-        : (confirmation ?? "Nothing needed requeueing."),
+      counts.failed > 0
+        ? `${counts.failed} recovery job(s) could not be queued or did not complete. Retry the recovery check after correcting the queue or agent failure.`
+        : counts.queued > 0
+          ? `${counts.queued} recovery job(s) are still queued. ${describePlan(plan)}`
+          : (confirmation ?? "Nothing needed requeueing."),
   });
 
   await logAgent({
@@ -296,9 +383,13 @@ export async function runRecoveryCheck(
     remaining,
     confirmation,
     message:
-      requeued > 0
-        ? `The provider is answering and ${requeued} job(s) are back in the queue. ${describePlan(plan)}`
-        : `The provider is answering. ${describePlan(plan)}`,
+      counts.failed > 0
+        ? `The provider is answering, but ${counts.failed} recovery job(s) could not be queued or did not complete. Correct the queue or agent failure, then retry this recovery check.`
+        : counts.queued > 0
+          ? requeued > 0
+            ? `The provider is answering and ${requeued} job(s) are back in the queue. ${describePlan(plan)}`
+            : `The provider is answering. ${counts.queued} previously requeued job(s) are still running; no duplicate work was queued.`
+          : `The provider is answering. ${confirmation ?? describePlan(plan)}`,
   };
 }
 
@@ -348,21 +439,22 @@ async function moveThrough(
           ...(step === to ? set : {}),
         },
       });
-    } catch {
+    } catch (error) {
       // Already past this step, or the step is not on this incident's path.
       // The loop continues rather than failing: the target is what matters,
       // and `advance` refuses anything genuinely illegal.
+      if (!(error instanceof IllegalTransition)) throw error;
     }
   }
   return (await incidentById(incident.id, orgId)) ?? current;
 }
 
 /**
- * Did anything actually happen?
+ * Did an exact replayed job actually complete?
  *
- * The instruction is to confirm a representative downstream record changed
- * correctly, and the reason is that a queue can drain by failing. An agent run
- * that completed is not proof; a record that changed is.
+ * A generic successful job in the same organization proves nothing about this
+ * incident. The worker settles only the queue-owned claim id it received, so
+ * this query cannot close one tenant's incident with another job's success.
  *
  * Returns a sentence naming the record, or null. Null is the honest answer
  * when nothing has landed yet, and the caller must not treat it as a pass.
@@ -371,16 +463,23 @@ export async function confirmDownstream(
   orgId: string,
   incident: IncidentRow
 ): Promise<string | null> {
-  const row = await queryOne<{ agent: string; started_at: Date; opportunity_id: string | null }>(
-    `select agent, started_at, opportunity_id
-       from job_runs
-      where org_id = $1 and status = 'ok' and started_at > $2
-      order by started_at desc
+  const row = await queryOne<{
+    agent: string;
+    outcome_at: Date | null;
+    opportunity_id: string | null;
+  }>(
+    `select agent, outcome_at, opportunity_id
+       from incident_requeues
+      where org_id = $1 and incident_id = $2 and outcome = 'succeeded'
+        and outcome_at is not null
+      order by outcome_at desc
       limit 1`,
-    [orgId, incident.startedAt]
+    [orgId, incident.id]
   );
-  if (!row) return null;
-  const when = row.started_at.toISOString();
+  // A legacy or manually repaired row can claim success without its matching
+  // completion timestamp. That is not enough evidence to close an incident.
+  if (!row?.outcome_at) return null;
+  const when = row.outcome_at.toISOString();
   return row.opportunity_id
     ? `${row.agent} completed against an opportunity at ${when}.`
     : `${row.agent} completed at ${when}.`;
@@ -400,35 +499,53 @@ export async function reconcileDraining(
   if (incident.state !== "backlog_requeued" && incident.state !== "backlog_draining") {
     return incident;
   }
-  const counts = await queryOne<{ queued: number; done: number }>(
-    `select count(*) filter (where outcome = 'queued')::int as queued,
-            count(*) filter (where outcome <> 'queued')::int as done
-       from incident_requeues where incident_id = $1`,
-    [incident.id]
-  );
-  const queued = counts?.queued ?? 0;
-  if (queued > 0) {
-    return advance({
-      incidentId: incident.id,
-      orgId: incident.orgId,
-      to: "backlog_draining",
-      actor,
-      set: { remainingCount: queued, completedCount: counts?.done ?? 0 },
-    }).catch(() => incident);
+  const counts = await requeueCounts(incident.id, incident.orgId);
+  if (counts.queued > 0) {
+    if (incident.state === "backlog_requeued") {
+      return advance({
+        incidentId: incident.id,
+        orgId: incident.orgId,
+        to: "backlog_draining",
+        actor,
+        set: { remainingCount: counts.queued + counts.failed, completedCount: counts.succeeded },
+      });
+    }
+    return recordProgress(incident, counts);
+  }
+  if (counts.failed > 0) {
+    // A queue backend may still be retrying a failed attempt. Keep the
+    // incident open and let a later success settle the same trusted claim;
+    // moving to recovery_failed here would strand that late success outside
+    // the draining reconciler.
+    return recordProgress(
+      incident,
+      counts,
+      `${counts.failed} recovery job(s) failed or could not enter the queue. Retry the recovery check if the queue is no longer retrying it.`
+    );
   }
   /*
    * Nothing left queued. That is necessary and not sufficient: the queue can
-   * drain by failing, so a downstream record has to have changed before this
-   * says recovered.
+   * drain by failing, so this incident's exact requeue claim has to have
+   * succeeded before this says recovered.
    */
   const confirmation = await confirmDownstream(incident.orgId, incident);
   if (!confirmation) return incident;
+  let current = incident;
+  if (current.state === "backlog_requeued") {
+    current = await advance({
+      incidentId: current.id,
+      orgId: current.orgId,
+      to: "backlog_draining",
+      actor,
+      set: { remainingCount: 0, completedCount: counts.succeeded },
+    });
+  }
   return advance({
-    incidentId: incident.id,
-    orgId: incident.orgId,
+    incidentId: current.id,
+    orgId: current.orgId,
     to: "recovered",
     actor,
     detail: confirmation,
-    set: { remainingCount: 0, completedCount: counts?.done ?? 0, recoveryNote: confirmation },
-  }).catch(() => incident);
+    set: { remainingCount: 0, completedCount: counts.succeeded, recoveryNote: confirmation },
+  });
 }

@@ -60,7 +60,7 @@ export interface PdfOcrResult {
   pagesRead: number;
   /** Pages in the document. */
   pagesTotal: number;
-  /** True when the document was longer than the ceiling and was cut short. */
+  /** True when a page limit or failed batch left any page unread. */
   truncated: boolean;
   /** Populated when OCR could not run at all. */
   error?: string;
@@ -113,10 +113,11 @@ export async function ocrPdf(
 
   const parts: string[] = [];
   let failures = 0;
+  let partialBatches = 0;
   for (let i = 0; i < split.batches.length; i++) {
     const firstPage = i * PAGES_PER_BATCH + 1;
     try {
-      const { text } = await complete(
+      const { text, stopReason } = await complete(
         `${TRANSCRIBE_PROMPT}\n\nThese are pages ${firstPage} to ${Math.min(
           firstPage + PAGES_PER_BATCH - 1,
           split.pagesRead
@@ -133,6 +134,15 @@ export async function ocrPdf(
         }
       );
       if (text.trim()) parts.push(text.trim());
+      if (stopReason === "max_tokens") {
+        partialBatches++;
+        parts.push(
+          `--- pages ${firstPage} to ${Math.min(
+            firstPage + PAGES_PER_BATCH - 1,
+            split.pagesRead
+          )}: transcription stopped at the output limit ---`
+        );
+      }
     } catch (err) {
       if (err instanceof ClaudeNotConfiguredError) {
         return {
@@ -164,7 +174,7 @@ export async function ocrPdf(
     text: readable ? text : "",
     pagesRead: readable ? split.pagesRead : 0,
     pagesTotal: split.pagesTotal,
-    truncated: split.pagesRead < split.pagesTotal,
+    truncated: split.pagesRead < split.pagesTotal || failures > 0 || partialBatches > 0,
     error: readable
       ? undefined
       : failures > 0

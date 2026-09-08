@@ -193,8 +193,9 @@ describe("a link naming an item the queue no longer holds", () => {
 
   it("is detected rather than silently swapped", () => {
     expect(src).toContain(
-      "const missing = selectedKey != null && !shown.some((i) => i.key === selectedKey);"
+      "const missing = selectedKey != null && selectedIndex < 0;"
     );
+    expect(src).toContain("selected item chooses its own page");
   });
 
   it("opens nothing, so the fallback is never mistaken for the named item", () => {

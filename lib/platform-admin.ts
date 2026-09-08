@@ -38,7 +38,19 @@ export function isPlatformAdmin(email: string | null | undefined): boolean {
  * an admin area exists is an invitation to go looking for a gap in it.
  */
 export async function requirePlatformAdmin(): Promise<SessionUser | NextResponse> {
-  const user = await currentUser().catch(() => null);
+  let user: SessionUser | null;
+  try {
+    user = await currentUser();
+  } catch (error) {
+    console.error("[platform-admin] session or organization lookup failed:", error);
+    return NextResponse.json(
+      {
+        error:
+          "Administrator access could not be checked right now. Nothing was changed. Try again when the service recovers.",
+      },
+      { status: 503, headers: { "Retry-After": "5" } }
+    );
+  }
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   // A support session is never an admin session, even when the admin who
   // opened it is on the allowlist. This is what stops an impersonated session

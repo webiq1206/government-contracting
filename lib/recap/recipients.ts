@@ -134,7 +134,7 @@ export async function platformRecapRecipients(
        from users
       where lower(email) = any($1::text[])`,
     [wanted]
-  ).catch(() => []);
+  );
 
   const byEmail = new Map(rows.map((r) => [r.email.toLowerCase(), r]));
 

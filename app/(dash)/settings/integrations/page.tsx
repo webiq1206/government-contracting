@@ -18,6 +18,7 @@ import { gmail } from "@/lib/integrations/gmail";
 import { integrationState } from "@/lib/domain/integration-state";
 import { queryOne } from "@/lib/db";
 import { currentOrg } from "@/lib/data";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 const CORE_IDS = new Set(["sam", "claude"]);
 const OUTREACH_IDS = new Set(["gmail", "twilio", "hunter"]);
@@ -37,21 +38,29 @@ export default async function IntegrationsPage({
   searchParams?: { gmail?: string; gmailError?: string; sender?: string };
 }) {
   await hydrateIntegrationEnv();
+  const loadWarnings: string[] = [];
   const [sources, inbox, aiTrouble, gmailUsed, claudeUsed, pricingUsed] = await Promise.all([
     settingSources(),
     gmail
       .connection()
-      .catch(() => ({
-        connected: false,
-        email: null,
-        status: "none",
-        lastError: null,
-        sendAs: null,
-      })),
+      .catch(() => {
+        loadWarnings.push("The Gmail connection could not be checked, so its status is unknown.");
+        return {
+          connected: false,
+          email: null,
+          status: "unavailable" as const,
+          lastError:
+            "Connection status is unavailable because the saved inbox record could not be read. Try again after the database connection recovers.",
+          sendAs: null,
+        };
+      }),
     // "Connected" here has only ever meant "a key is saved". It said so
     // through a day in which Anthropic refused every request for want of
     // credits, which is the one day it mattered.
-    recentAiTrouble().catch(() => ({ count: 0, reason: null, lastAt: null })),
+    recentAiTrouble().catch(() => {
+      loadWarnings.push("Recent AI failures could not be checked.");
+      return { count: 0, reason: null, lastAt: null };
+    }),
     currentOrg()
       .then((org) =>
         queryOne<{ at: string | null }>(
@@ -61,9 +70,18 @@ export default async function IntegrationsPage({
           [org]
         )
       )
-      .catch(() => null),
-    lastAiSuccess().catch(() => null),
-    lastPricingSuccess().catch(() => null),
+      .catch(() => {
+        loadWarnings.push("Recent Gmail delivery activity could not be checked.");
+        return null;
+      }),
+    lastAiSuccess().catch(() => {
+      loadWarnings.push("The most recent successful AI run could not be checked.");
+      return null;
+    }),
+    lastPricingSuccess().catch(() => {
+      loadWarnings.push("The most recent pricing data run could not be checked.");
+      return null;
+    }),
   ]);
   const gmailConnected = inbox.connected;
   // Platform-owned integrations (our Ahrefs, our document storage) are hidden
@@ -71,7 +89,7 @@ export default async function IntegrationsPage({
   // worse than no field at all.
   const { isPlatformAdmin } = await import("@/lib/platform-admin");
   const { currentUser } = await import("@/lib/auth");
-  const viewer = await currentUser().catch(() => null);
+  const viewer = await currentUser();
   const showPlatformOnly = isPlatformAdmin(viewer?.email);
   const status = { ...integrationStatus(), ...(await orgIntegrationStatus()) };
   const gmailParam = searchParams?.gmail;
@@ -88,6 +106,9 @@ export default async function IntegrationsPage({
   let sendAsProblem: string | null = null;
   if (gmailConnected && inbox.sendAs) {
     const verified = await gmail.sendAsAddresses().catch(() => null);
+    if (!verified) {
+      loadWarnings.push("Google could not verify the selected sending address.");
+    }
     if (verified?.ok) {
       const stillThere = verified.options.some(
         (o) => o.address.toLowerCase() === inbox.sendAs!.toLowerCase()
@@ -213,6 +234,8 @@ export default async function IntegrationsPage({
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
 
+      <ShellDataWarning items={loadWarnings} />
+
       {/* Readable at every role; the controls below are gated to the
           roles that can actually change them. */}
       <div className="px-5 pt-4">
@@ -280,7 +303,7 @@ export default async function IntegrationsPage({
                 <IntegrationManager
                   initial={initial.filter((i) => CORE_IDS.has(i.id))}
                 />
-                <div className="card flex items-center justify-between gap-3">
+                {showPlatformOnly && <div className="card flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-foreground">Job queue backend</p>
                     <p className="mt-0.5 text-xs text-slate-600">
@@ -292,12 +315,11 @@ export default async function IntegrationsPage({
                   <span className="badge bg-accent/10 font-mono text-accent">
                     {status.queue}
                   </span>
-                </div>
+                </div>}
                 <p className="text-xs text-slate-500">
                   Values saved here are encrypted before they reach the database, shown only as a
-                  masked preview, and take effect immediately (the background worker refreshes within
-                  5 minutes). Environment variables still work as a fallback; a value saved on this
-                  page takes priority over its environment variable.
+                  masked preview, and become available to background work after its next settings
+                  refresh. Check Automation Health to confirm that work resumes successfully.
                 </p>
               </div>
             ),

@@ -10,7 +10,6 @@ import { query, queryOne } from "./db";
 import { gmail } from "./integrations/gmail";
 import { currentImpersonator } from "./impersonation";
 import { logAgent } from "./logger";
-import { LEGACY_ORG_ID } from "./tenant-context";
 import { resolveOutreachSender } from "./domain/sender-identity";
 
 /**
@@ -21,17 +20,64 @@ import { resolveOutreachSender } from "./domain/sender-identity";
  * company sends. Left unset, Gmail stamps whichever account authorized the
  * connection, which is the exact discrepancy this identity exists to remove.
  *
- * Nothing is returned when the identity cannot be read. That is deliberate:
- * this is a background sweep of already-approved mail, so falling back to the
- * connected account is better than holding it, and the address is visible on
- * the settings page either way.
+ * A failure here is a hard stop. Omitting these headers lets Gmail substitute
+ * whichever account authorized the connection, which can be a different
+ * address from the one the operator reviewed and can strand replies in an
+ * inbox the platform does not monitor.
  */
+type SenderHeadersResult =
+  | { ok: true; headers: { from: string; replyTo: string } }
+  | { ok: false; reason: string };
+
 async function senderHeaders(
   orgId: string
-): Promise<{ from: string; replyTo: string } | Record<string, never>> {
-  const sender = await resolveOutreachSender(orgId).catch(() => null);
-  if (!sender?.connected || !sender.from) return {};
-  return { from: sender.from, replyTo: sender.replyTo };
+): Promise<SenderHeadersResult> {
+  let sender: Awaited<ReturnType<typeof resolveOutreachSender>>;
+  try {
+    sender = await resolveOutreachSender(orgId);
+  } catch {
+    return {
+      ok: false,
+      reason:
+        "The sender identity could not be checked because the account settings could not be read. No email was sent. Check the Gmail connection and retry.",
+    };
+  }
+  if (sender.unknown) {
+    return {
+      ok: false,
+      reason:
+        "The sender identity could not be checked because the account settings could not be read. No email was sent. Check the Gmail connection and retry.",
+    };
+  }
+  if (!sender.connected || !sender.from || !sender.replyTo) {
+    return {
+      ok: false,
+      reason:
+        "No verified sender identity is available. No email was sent. Reconnect Gmail or choose a verified sending address, then retry.",
+    };
+  }
+  return { ok: true, headers: { from: sender.from, replyTo: sender.replyTo } };
+}
+
+async function recordSendFailure(input: {
+  outreachId: string;
+  orgId: string;
+  domain: string;
+  reason: string;
+  action: "outreach-send" | "outreach-followup";
+}): Promise<void> {
+  await query(
+    `update backlink_outreach set send_error = $2, updated_at = now()
+      where id = $1 and org_id = $3`,
+    [input.outreachId, input.reason, input.orgId]
+  );
+  await logAgent({
+    agent: "backlink-scout",
+    action: input.action,
+    level: "error",
+    status: "error",
+    message: `Could not send backlink outreach to ${input.domain}: ${input.reason}`,
+  });
 }
 
 /**
@@ -44,8 +90,8 @@ async function senderHeaders(
  */
 async function resolveOrgId(orgId?: string): Promise<string> {
   if (orgId) return orgId;
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const { resolveTenantOrgId } = await import("./tenant");
+  return resolveTenantOrgId();
 }
 
 export type SendOutcome =
@@ -92,7 +138,8 @@ export async function sendApprovedOutreach(
   }>(
     `select o.id, o.prospect_id, o.subject, o.body, o.approval_status, o.sent_at,
             p.contact_email, p.domain
-       from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
+       from backlink_outreach o join backlink_prospects p
+         on p.id = o.prospect_id and p.org_id = o.org_id
       where o.org_id = $2 and o.id = $1`,
     [outreachId, orgId]
   );
@@ -101,8 +148,35 @@ export async function sendApprovedOutreach(
   if (row.sent_at) return { status: "skipped", reason: "already sent" };
   if (!row.contact_email) return { status: "skipped", reason: "no contact email yet" };
 
-  if (!(await gmail.isConnected(orgId))) {
+  let connected = false;
+  try {
+    connected = await gmail.isConnected(orgId);
+  } catch {
+    const reason =
+      "The Gmail connection could not be checked because its settings could not be read. No email was sent. Reload the integration status and retry.";
+    await recordSendFailure({
+      outreachId: row.id,
+      orgId,
+      domain: row.domain,
+      reason,
+      action: "outreach-send",
+    });
+    return { status: "error", reason };
+  }
+  if (!connected) {
     return { status: "skipped", reason: "Gmail not connected" };
+  }
+
+  const sender = await senderHeaders(orgId);
+  if (!sender.ok) {
+    await recordSendFailure({
+      outreachId: row.id,
+      orgId,
+      domain: row.domain,
+      reason: sender.reason,
+      action: "outreach-send",
+    });
+    return { status: "error", reason: sender.reason };
   }
 
   const trackingId = randomUUID();
@@ -110,28 +184,51 @@ export async function sendApprovedOutreach(
   const html = plain.replace(/\n/g, "<br>");
   // Named, not inferred: this decides whose mailbox the outreach leaves from,
   // and which of that mailbox's verified addresses it appears to come from.
-  const res = await gmail.send({
-    to: row.contact_email,
-    subject: row.subject ?? "Hello",
-    html,
-    text: plain,
-    trackingId,
-    orgId,
-    ...(await senderHeaders(orgId)),
-  });
-
-  if (res.disabled) return { status: "skipped", reason: "Gmail not connected" };
-  if (res.error) {
-    await query(`update backlink_outreach set send_error = $2, updated_at = now() where id = $1`, [
-      row.id,
-      res.error,
-    ]);
-    await logAgent({
-      agent: "backlink-scout",
+  let res: Awaited<ReturnType<typeof gmail.send>>;
+  try {
+    res = await gmail.send({
+      to: row.contact_email,
+      subject: row.subject ?? "Hello",
+      html,
+      text: plain,
+      trackingId,
+      orgId,
+      ...sender.headers,
+    });
+  } catch (err) {
+    console.error("[backlink-send] Gmail send did not return a result:", err);
+    const reason =
+      "Gmail delivery could not be confirmed. Check the Gmail Sent folder before retrying to avoid a duplicate.";
+    await recordSendFailure({
+      outreachId: row.id,
+      orgId,
+      domain: row.domain,
+      reason,
       action: "outreach-send",
-      level: "error",
-      status: "error",
-      message: `Failed to send backlink outreach to ${row.domain}: ${res.error}`,
+    });
+    return { status: "error", reason };
+  }
+
+  if (res.disabled) {
+    const reason =
+      res.error ??
+      "Gmail refused the approved outreach because the connection is unavailable. Reconnect Gmail and retry.";
+    await recordSendFailure({
+      outreachId: row.id,
+      orgId,
+      domain: row.domain,
+      reason,
+      action: "outreach-send",
+    });
+    return { status: "error", reason };
+  }
+  if (res.error) {
+    await recordSendFailure({
+      outreachId: row.id,
+      orgId,
+      domain: row.domain,
+      reason: res.error,
+      action: "outreach-send",
     });
     return { status: "error", reason: res.error };
   }
@@ -141,12 +238,14 @@ export async function sendApprovedOutreach(
     `update backlink_outreach
         set sent_at = now(), gmail_message_id = $2, gmail_thread_id = $3,
             tracking_id = $4, follow_up_at = $5, send_error = null, updated_at = now()
-      where id = $1`,
-    [row.id, res.messageId ?? null, res.threadId ?? null, trackingId, followUpAt]
+      where id = $1 and org_id = $6`,
+    [row.id, res.messageId ?? null, res.threadId ?? null, trackingId, followUpAt, orgId]
   );
-  await query(`update backlink_prospects set status = 'in_outreach', updated_at = now() where id = $1`, [
-    row.prospect_id,
-  ]);
+  await query(
+    `update backlink_prospects set status = 'in_outreach', updated_at = now()
+      where id = $1 and org_id = $2`,
+    [row.prospect_id, orgId]
+  );
   await logAgent({
     agent: "backlink-scout",
     action: "outreach-send",
@@ -166,7 +265,8 @@ export async function sendPendingApproved(
 ): Promise<{ sent: number; skipped: number; errors: number }> {
   const orgId = await resolveOrgId(orgIdOpt);
   const rows = await query<{ id: string }>(
-    `select o.id from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
+    `select o.id from backlink_outreach o join backlink_prospects p
+        on p.id = o.prospect_id and p.org_id = o.org_id
       where o.org_id = $2
         and o.approval_status = 'approved' and o.sent_at is null and p.contact_email is not null
       order by o.updated_at asc limit $1`,
@@ -191,7 +291,7 @@ export async function sendPendingApproved(
 export async function sendFollowUps(
   orgIdOpt?: string,
   limit = 25
-): Promise<{ sent: number }> {
+): Promise<{ sent: number; errors: number }> {
   const orgId = await resolveOrgId(orgIdOpt);
   const rows = await query<{
     id: string;
@@ -203,7 +303,8 @@ export async function sendFollowUps(
     tracking_id: string | null;
   }>(
     `select o.id, o.subject, o.body, o.gmail_thread_id, o.tracking_id, p.contact_email, p.domain
-       from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
+       from backlink_outreach o join backlink_prospects p
+         on p.id = o.prospect_id and p.org_id = o.org_id
       where o.org_id = $2
         and o.approval_status = 'approved' and o.sent_at is not null
         and o.replied_at is null and o.follow_up_sent = false
@@ -212,28 +313,85 @@ export async function sendFollowUps(
       order by o.follow_up_at asc limit $1`,
     [limit, orgId]
   );
-  if (!rows.length || (await blockedBySupportSession())) return { sent: 0 };
-  if (!(await gmail.isConnected(orgId))) return { sent: 0 };
+  if (!rows.length || (await blockedBySupportSession())) return { sent: 0, errors: 0 };
+  let connected = false;
+  try {
+    connected = await gmail.isConnected(orgId);
+  } catch {
+    const reason =
+      "The Gmail connection could not be checked because its settings could not be read. No follow-up was sent. Reload the integration status and retry.";
+    for (const row of rows) {
+      await recordSendFailure({
+        outreachId: row.id,
+        orgId,
+        domain: row.domain,
+        reason,
+        action: "outreach-followup",
+      });
+    }
+    return { sent: 0, errors: rows.length };
+  }
+  if (!connected) return { sent: 0, errors: 0 };
   // Read once for the sweep: a follow-up has to arrive from the same address
   // as the message it is following up on.
   const sender = await senderHeaders(orgId);
+  if (!sender.ok) {
+    for (const row of rows) {
+      await recordSendFailure({
+        outreachId: row.id,
+        orgId,
+        domain: row.domain,
+        reason: sender.reason,
+        action: "outreach-followup",
+      });
+    }
+    return { sent: 0, errors: rows.length };
+  }
   let sent = 0;
+  let errors = 0;
   for (const r of rows) {
     const body = `Hi,\n\nJust following up on my note below in case it slipped through. No worries if now isn't a good time.\n\n${r.body ?? ""}`;
-    const res = await gmail.send({
-      to: r.contact_email!,
-      subject: `Re: ${r.subject ?? "Following up"}`,
-      html: body.replace(/\n/g, "<br>"),
-      text: body,
-      trackingId: r.tracking_id ?? undefined,
-      orgId,
-      ...sender,
-    });
+    let res: Awaited<ReturnType<typeof gmail.send>>;
+    try {
+      res = await gmail.send({
+        to: r.contact_email!,
+        subject: `Re: ${r.subject ?? "Following up"}`,
+        html: body.replace(/\n/g, "<br>"),
+        text: body,
+        trackingId: r.tracking_id ?? undefined,
+        orgId,
+        ...sender.headers,
+      });
+    } catch (err) {
+      console.error("[backlink-send] Gmail follow-up did not return a result:", err);
+      errors++;
+      await recordSendFailure({
+        outreachId: r.id,
+        orgId,
+        domain: r.domain,
+        reason:
+          "Gmail delivery could not be confirmed. Check the Gmail Sent folder before retrying to avoid a duplicate.",
+        action: "outreach-followup",
+      });
+      continue;
+    }
     if (!res.error && !res.disabled) {
       sent++;
-      await query(`update backlink_outreach set follow_up_sent = true, updated_at = now() where id = $1`, [
-        r.id,
-      ]);
+      await query(
+        `update backlink_outreach
+            set follow_up_sent = true, send_error = null, updated_at = now()
+          where id = $1 and org_id = $2`,
+        [r.id, orgId]
+      );
+    } else {
+      errors++;
+      await recordSendFailure({
+        outreachId: r.id,
+        orgId,
+        domain: r.domain,
+        reason: res.error ?? "Gmail refused the follow-up because the connection is unavailable.",
+        action: "outreach-followup",
+      });
     }
   }
   if (sent > 0) {
@@ -243,5 +401,5 @@ export async function sendFollowUps(
       message: `Sent ${sent} backlink outreach follow-up(s).`,
     });
   }
-  return { sent };
+  return { sent, errors };
 }

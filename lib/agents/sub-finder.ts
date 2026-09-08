@@ -14,7 +14,7 @@
 import { query, queryOne } from "../db";
 import { getProfileJson } from "../ai/companyProfile";
 import { logAgent } from "../logger";
-import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
+import { runWithOrg } from "../tenant-context";
 import {
   contactabilityBonus,
   hasContactPathway,
@@ -56,7 +56,24 @@ export const subFinder: AgentDefinition = {
     // source subs against another company's trades and standards. Raw SQL
     // below still passes orgId explicitly; the context only reaches code that
     // resolves the tenant itself.
-    const orgId = opp.org_id ?? LEGACY_ORG_ID;
+    if (!opp.org_id) {
+      await logAgent({
+        agent: "sub-finder",
+        action: "missing-organization",
+        opportunityId,
+        level: "error",
+        status: "error",
+        message:
+          "Subcontractor discovery stopped because this opportunity has no organization owner. Repair tenant ownership before retrying; no tenant roster was searched.",
+      });
+      return {
+        ok: false,
+        summary:
+          "Subcontractor discovery stopped because this opportunity has no organization owner. Repair tenant ownership, then retry.",
+        humanActionRequired: true,
+      };
+    }
+    const orgId = opp.org_id;
     const onlyTrade =
       typeof ctx.payload.trade === "string" ? ctx.payload.trade.trim() : "";
     return runWithOrg(orgId, () => sourceSubs(opp, orgId, onlyTrade));

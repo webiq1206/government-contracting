@@ -10,12 +10,13 @@
  *  - team_accepted -> generate an experience narrative from sub project history.
  *  - not_required  -> omit the narrative.
  */
-import { query, queryOne } from "../db";
+import { query, queryOne, transaction } from "../db";
+import { createHash, randomUUID } from "node:crypto";
 import { getProfileJson } from "../ai/companyProfile";
 import { complete, ClaudeNotConfiguredError } from "../ai/claude";
 import { logAgent } from "../logger";
 import { noEmDash } from "../sanitize";
-import { storage } from "../integrations/storage";
+import { storage, type StorageBackend } from "../integrations/storage";
 import { documents, type BidDocData } from "../integrations/documents";
 import {
   bidForTargetMargin,
@@ -38,9 +39,21 @@ import {
 import { checkEligibility } from "../domain/eligibility";
 import { matchOfficialForm } from "../domain/official-form";
 import { competitivePositioningBrief } from "../domain/competition";
+import {
+  priceRow,
+  pricingSheet,
+  type PricedRow,
+  type RowContext,
+} from "../domain/pricing-row";
+import {
+  EDITABLE_OPPORTUNITY_STAGES,
+  opportunityMutationProblem,
+} from "../domain/opportunity-lifecycle";
+import { pricingRowsWithQuotes } from "../pricing-rows";
 import { opportunityCompetitors } from "../data";
 import { retrieveRelevantContent, renderContentForPrompt } from "../ai/contentLibrary";
 import { assemblePackageDocuments } from "./package-builder";
+import { expectedPursuitVersion } from "../pursuit-job-context";
 import type { AgentDefinition } from "./types";
 import type {
   AgentResult,
@@ -62,6 +75,66 @@ interface QuoteRow {
   notes: string | null;
   is_out_of_range: boolean;
   comparison_json: Record<string, unknown> | null;
+}
+
+interface GeneratedBidDocument {
+  name: string;
+  storage_path: string;
+  storage_backend: StorageBackend;
+  content_hash: string;
+  kind: string;
+}
+
+async function publishGeneratedDocuments(
+  opportunityId: string,
+  orgId: string,
+  pursuitVersion: number,
+  docs: GeneratedBidDocument[]
+): Promise<boolean> {
+  if (docs.length === 0) return true;
+  const kinds = docs.map((doc) => doc.kind);
+  return transaction(async (client) => {
+    const draft = await client.query<{ id: string }>(
+      `select b.id from bids b
+        join opportunities o on o.id=b.opportunity_id and o.org_id=b.org_id
+       where b.opportunity_id=$1 and b.org_id=$2 and b.submission_state='package_ready'
+         and o.pursuit_version=$3 and o.status='open'
+         and coalesce(o.pursuit_state, 'active')='active'
+         and o.stage=any($4::text[])
+       order by b.created_at desc limit 1
+       for update of o, b`,
+      [opportunityId, orgId, pursuitVersion, EDITABLE_OPPORTUNITY_STAGES]
+    );
+    if (draft.rows.length === 0) return false;
+    await client.query(
+      `delete from documents
+        where opportunity_id=$1 and org_id=$2 and kind=any($3::text[])`,
+      [opportunityId, orgId, kinds]
+    );
+    for (const doc of docs) {
+      const mime =
+        doc.kind === "bid_docx"
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : "application/pdf";
+      await client.query(
+        `insert into documents
+           (org_id, opportunity_id, kind, name, storage_path, storage_backend, mime,
+            content_hash, disposition, extraction_state)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,'delivered','not_applicable')`,
+        [
+          orgId,
+          opportunityId,
+          doc.kind,
+          doc.name,
+          doc.storage_path,
+          doc.storage_backend,
+          mime,
+          doc.content_hash,
+        ]
+      );
+    }
+    return true;
+  });
 }
 
 function num(v: unknown): number {
@@ -87,6 +160,56 @@ export const bidBuilder: AgentDefinition = {
       opportunityId,
     ]);
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
+    if (!opp.org_id) {
+      return {
+        ok: false,
+        permanent: true,
+        summary: `Opportunity ${opportunityId} has no account owner, so its bid was not built.`,
+        humanActionRequired: true,
+      };
+    }
+    const observedPursuitVersion = Number(opp.pursuit_version);
+    const buildPursuitVersion =
+      expectedPursuitVersion(opportunityId) ?? observedPursuitVersion;
+    if (!Number.isInteger(buildPursuitVersion) || buildPursuitVersion < 1) {
+      return {
+        ok: false,
+        permanent: true,
+        summary: "The pursuit version could not be verified, so the bid was not built.",
+        humanActionRequired: true,
+      };
+    }
+
+    const existingBidAtStart = await queryOne<{ id: string; submission_state: string }>(
+      `select id, submission_state from bids where opportunity_id=$1
+        and org_id=$2
+        order by created_at desc limit 1`,
+      [opportunityId, opp.org_id]
+    );
+    const lifecycleProblem = opportunityMutationProblem(
+      {
+        stage: opp.stage,
+        status: opp.status,
+        pursuitState: opp.pursuit_state,
+        submissionState: existingBidAtStart?.submission_state ?? null,
+      },
+      "bid_build"
+    );
+    if (lifecycleProblem) {
+      await logAgent({
+        agent: "bid-builder",
+        action: "build-blocked",
+        opportunityId,
+        level: "warn",
+        message: lifecycleProblem,
+      });
+      return {
+        ok: false,
+        permanent: true,
+        summary: lifecycleProblem,
+        humanActionRequired: true,
+      };
+    }
 
     // Trial meter, before any Claude call or document render. A bid package is
     // the most expensive thing the platform builds, so the check sits ahead of
@@ -100,13 +223,17 @@ export const bidBuilder: AgentDefinition = {
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 
-    const allQuotes = await query<QuoteRow>(`select * from quotes where opportunity_id = $1`, [
-      opportunityId,
+    const [allQuotes, pricingRows] = await Promise.all([
+      query<QuoteRow>(`select * from quotes where opportunity_id = $1 and org_id = $2`, [
+        opportunityId,
+        opp.org_id,
+      ]),
+      pricingRowsWithQuotes(opportunityId, opp.org_id),
     ]);
-    if (allQuotes.length === 0) {
+    if (allQuotes.length === 0 && pricingRows.length === 0) {
       return {
         ok: true,
-        summary: `No quotes entered yet for opportunity ${opportunityId}; nothing to build.`,
+        summary: `No pricing entered yet for opportunity ${opportunityId}; nothing to build.`,
       };
     }
 
@@ -114,10 +241,11 @@ export const bidBuilder: AgentDefinition = {
     // must never silently drop a sub's cost out of the bid total.
     const quotes = allQuotes.filter((q) => num(q.quote_amount) > 0);
     const invalidCount = allQuotes.length - quotes.length;
-    if (quotes.length === 0) {
-      await query(`update opportunities set human_action_required = true where id = $1`, [
-        opportunityId,
-      ]);
+    if (quotes.length === 0 && pricingRows.every((r) => r.baseQuote == null)) {
+      await query(
+        `update opportunities set human_action_required = true where id = $1 and org_id = $2`,
+        [opportunityId, opp.org_id]
+      );
       await logAgent({
         agent: "bid-builder",
         action: "invalid-quotes",
@@ -127,7 +255,7 @@ export const bidBuilder: AgentDefinition = {
       });
       return {
         ok: true,
-        summary: `All quotes for ${opportunityId} are missing amounts; flagged for review instead of building a $0 bid.`,
+        summary: `All pricing for ${opportunityId} is missing amounts; flagged for review instead of building a $0 bid.`,
         humanActionRequired: true,
       };
     }
@@ -158,8 +286,69 @@ export const bidBuilder: AgentDefinition = {
         quote_amount: num(q.quote_amount),
       }))
     );
-    const pricedQuotes = selection.selected;
-    const subQuoteTotal = pricedQuotes.reduce((sum, q) => sum + q.quote_amount, 0);
+    const requiredTradeList = requiredTrades(opp);
+    const pricingContext: RowContext = {
+      now: new Date(),
+      bidDueAt: opp.deadline ? new Date(opp.deadline) : null,
+      quoteValidityRequired: (opp.solicitation_analysis?.compliance_matrix ?? []).some((r) =>
+        /quote\s+validity|price\s+validity|prices?\s+(?:must\s+)?(?:remain|held|hold)/i.test(
+          `${r?.title ?? ""} ${r?.instructions ?? ""} ${r?.format ?? ""}`
+        )
+      ),
+    };
+    const reviewedSheet = pricingSheet(requiredTradeList, pricingRows, pricingContext);
+    // A stored pricing row is the reviewed source of truth. Quote records are
+    // evidence feeding that row, not a second total for the builder to choose.
+    const pricedRows: PricedRow[] =
+      requiredTradeList.length > 0
+        ? reviewedSheet.rows
+        : pricingRows.map((row) => priceRow(row, pricingContext));
+    const pricingBlockers =
+      requiredTradeList.length > 0
+        ? reviewedSheet.blockers
+        : pricedRows.flatMap((row) => row.problems.filter((p) => p.severity === "blocker"));
+    const rowTotals = pricedRows.map((row) => row.total);
+    const subQuoteTotal =
+      requiredTradeList.length > 0
+        ? reviewedSheet.cost
+        : rowTotals.some((total) => total == null)
+          ? null
+          : rowTotals.reduce<number>((sum, total) => sum + (total ?? 0), 0);
+
+    if (subQuoteTotal == null || pricingBlockers.length > 0) {
+      const messages = pricingBlockers.map((problem) => problem.message);
+      await query(
+        `update opportunities set human_action_required=true
+          where id=$1 and org_id=$2 and status='open'
+            and coalesce(pursuit_state, 'active')='active'`,
+        [opportunityId, opp.org_id]
+      );
+      await query(
+        `update bids set package_ready=false, audit_status='pending', updated_at=now()
+          where opportunity_id=$1 and org_id=$2 and submission_state='package_ready'`,
+        [opportunityId, opp.org_id]
+      );
+      await logAgent({
+        agent: "bid-builder",
+        action: "pricing-incomplete",
+        opportunityId,
+        level: "warn",
+        message: `The bid was not rebuilt because pricing is incomplete: ${messages.join(" ")}`.slice(
+          0,
+          500
+        ),
+        output: { blockers: messages },
+      });
+      return {
+        ok: true,
+        summary:
+          messages.length > 0
+            ? `Pricing needs attention before the bid can be rebuilt: ${messages.join(" ")}`
+            : "Pricing needs attention before the bid can be rebuilt.",
+        humanActionRequired: true,
+        data: { blockers: messages },
+      };
+    }
 
     if (selection.contestedTrades.length > 0) {
       // The cheapest is a sound default and not a decision. Say which trades
@@ -181,23 +370,47 @@ export const bidBuilder: AgentDefinition = {
     if (pastPerf === "prime_only") {
       const humanFlags = ["prime_only"];
       const oppFlags = Array.from(new Set([...(opp.risk_flags ?? []), "prime_only"]));
-      await query(
+      const blockedBid = await query<{ id: string }>(
         // One bid per opportunity: a re-run of the prime_only block updates the
         // existing row's flags rather than stacking a second row (which the
         // unique index would now reject anyway).
-        `insert into bids
-           (opportunity_id, sub_quote_total, human_flags, outcome)
-         values ($1,$2,$3,'pending')
+        `with eligible as (
+           select id from opportunities
+            where id=$2 and org_id=$1 and pursuit_version=$5
+              and status='open' and coalesce(pursuit_state, 'active')='active'
+              and stage=any($6::text[])
+            for update
+         )
+         insert into bids
+           (org_id, opportunity_id, sub_quote_total, human_flags, outcome)
+         select $1,$2,$3,$4,'pending' from eligible
          on conflict (opportunity_id) do update set
            sub_quote_total=excluded.sub_quote_total,
-           human_flags=excluded.human_flags, outcome='pending', updated_at=now()`,
-        [opportunityId, subQuoteTotal, humanFlags]
+           human_flags=excluded.human_flags, outcome='pending', updated_at=now()
+         where bids.org_id=excluded.org_id and bids.submission_state='package_ready'
+         returning id`,
+        [
+          opp.org_id,
+          opportunityId,
+          subQuoteTotal,
+          humanFlags,
+          buildPursuitVersion,
+          EDITABLE_OPPORTUNITY_STAGES,
+        ]
       );
+      if (blockedBid.length === 0) {
+        return {
+          ok: false,
+          permanent: true,
+          summary: "The approved or sent package is locked and was not changed.",
+          humanActionRequired: true,
+        };
+      }
       await query(
         `update opportunities
             set human_action_required = true, risk_flags = $2
-          where id = $1`,
-        [opportunityId, oppFlags]
+          where id = $1 and org_id = $3`,
+        [opportunityId, oppFlags, opp.org_id]
       );
       await logAgent({
         agent: "bid-builder",
@@ -238,14 +451,15 @@ export const bidBuilder: AgentDefinition = {
       bidAmount,
       marginPct,
       narrative,
+      pricedTrades: pricedRows.map((row) => row.row.trade),
     });
     const failing = qaChecklist.filter((q) => !q.ok);
 
     // --- Line items. ---
     // Cost basis, for the record and for internal review.
-    const costLineItems: Array<{ label: string; amount: number }> = pricedQuotes.map((q) => ({
-      label: q.trade || "Subcontractor",
-      amount: q.quote_amount,
+    const costLineItems: Array<{ label: string; amount: number }> = pricedRows.map((row) => ({
+      label: row.row.trade || "Subcontractor",
+      amount: row.total!,
     }));
     // What the agency sees: a price per scope. The markup is carried inside
     // the scope lines rather than announced on its own line next to our
@@ -265,39 +479,37 @@ export const bidBuilder: AgentDefinition = {
       qa_checklist: qaChecklist,
     };
 
+    // Every build gets immutable object keys. If approval races with this
+    // worker, these bytes cannot replace the package that was approved.
+    const buildToken = randomUUID();
     const pdfBuffer = await documents.buildBidPdf(docData);
     const docxBuffer = await documents.buildBidDocx(docData);
-    const pdfKey = `bids/${opportunityId}.pdf`;
-    const docxKey = `bids/${opportunityId}.docx`;
+    const pdfKey = `bids/${opportunityId}/${buildToken}/bid.pdf`;
+    const docxKey = `bids/${opportunityId}/${buildToken}/bid.docx`;
     const pdfUpload = await storage.upload(pdfKey, pdfBuffer, "application/pdf");
     const docxUpload = await storage.upload(
       docxKey,
       docxBuffer,
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
-
-    // Fresh document rows for this opportunity's bid (replace any prior).
-    await query(`delete from documents where opportunity_id = $1 and kind in ('bid_pdf','bid_docx')`, [
-      opportunityId,
-    ]);
-    await query(
-      `insert into documents (opportunity_id, kind, name, storage_path, storage_backend, mime)
-       values ($1,'bid_pdf',$2,$3,$4,'application/pdf'),
-              ($1,'bid_docx',$5,$6,$7,'application/vnd.openxmlformats-officedocument.wordprocessingml.document')`,
-      [
-        opportunityId,
-        `Bid, ${opp.title ?? opportunityId}.pdf`,
-        pdfUpload.path,
-        pdfUpload.backend,
-        `Bid, ${opp.title ?? opportunityId}.docx`,
-        docxUpload.path,
-        docxUpload.backend,
-      ]
-    );
+    const pdfHash = createHash("sha256").update(pdfBuffer).digest("hex");
+    const docxHash = createHash("sha256").update(docxBuffer).digest("hex");
 
     const documentsJson = [
-      { name: `Bid PDF`, storage_path: pdfUpload.path, kind: "bid_pdf" },
-      { name: `Bid DOCX`, storage_path: docxUpload.path, kind: "bid_docx" },
+      {
+        name: "Bid PDF",
+        storage_path: pdfUpload.path,
+        storage_backend: pdfUpload.backend,
+        content_hash: pdfHash,
+        kind: "bid_pdf",
+      },
+      {
+        name: "Bid DOCX",
+        storage_path: docxUpload.path,
+        storage_backend: docxUpload.backend,
+        content_hash: docxHash,
+        kind: "bid_docx",
+      },
     ];
 
     // --- Submission compliance matrix + assembled package. ---
@@ -327,8 +539,10 @@ export const bidBuilder: AgentDefinition = {
       // and write the OLDEST row, so on an opportunity with two bid rows (the
       // prime_only path inserts one unconditionally) the manifest was written
       // where nothing looks for it and the download reported "no package".
-      `select compliance_matrix from bids where opportunity_id = $1 order by created_at desc limit 1`,
-      [opportunityId]
+      `select compliance_matrix from bids
+        where opportunity_id = $1 and org_id = $2
+        order by created_at desc limit 1`,
+      [opportunityId, opp.org_id]
     );
     // Keyed by every identity the requirement had, not just the model's slug:
     // a re-analysis regenerates those slugs, and matching on the slug alone
@@ -338,7 +552,10 @@ export const bidBuilder: AgentDefinition = {
     // rebuild too. Without this the rebuild kept their confirmation (matched
     // above) but dropped the attachment, so the item read as done and the
     // manifest pointed at nothing again.
-    const priorDocs = new Map<string, { name: string; path: string; mime?: string }>();
+    const priorDocs = new Map<
+      string,
+      { name: string; path: string; mime?: string; content_hash?: string }
+    >();
     for (const r of priorBid?.compliance_matrix ?? []) {
       if (!r.operator_doc) continue;
       for (const k of requirementKeys(r)) priorDocs.set(k, r.operator_doc);
@@ -367,8 +584,9 @@ export const bidBuilder: AgentDefinition = {
     // Link required official forms to the ACTUAL blank form when it's among the
     // solicitation attachments, so the operator signs the real agency document.
     const solDocs = await query<{ name: string; storage_path: string | null }>(
-      `select name, storage_path from documents where opportunity_id=$1 and kind='solicitation'`,
-      [opportunityId]
+      `select name, storage_path from documents
+        where opportunity_id=$1 and org_id=$2 and kind='solicitation'`,
+      [opportunityId, opp.org_id]
     );
     for (const r of resolved) {
       if (!r.official_form || !r.official_form_doc) {
@@ -380,7 +598,13 @@ export const bidBuilder: AgentDefinition = {
       }
     }
 
-    let packageDocs: { name: string; storage_path: string; kind: string }[] = [];
+    let packageDocs: {
+      name: string;
+      storage_path: string;
+      kind: string;
+      storage_backend: StorageBackend;
+      content_hash: string;
+    }[] = [];
     if (resolved.length > 0) {
       try {
         packageDocs = await assemblePackageDocuments({
@@ -390,6 +614,7 @@ export const bidBuilder: AgentDefinition = {
           resolved,
           lineItems,
           bidAmount,
+          buildToken,
           amendments: amendments.map((a) => ({
             label: a.label,
             date: a.date,
@@ -424,16 +649,7 @@ export const bidBuilder: AgentDefinition = {
 
     // Hard gate: every required trade must have a positive quote before the
     // package can be considered ready for submission.
-    const requiredTradeList = requiredTrades(opp);
-    const quotedTradeSet = new Set(
-      quotes
-        .filter((q) => Number(q.quote_amount) > 0)
-        .map((q) => (q.trade ?? "").trim().toLowerCase())
-        .filter(Boolean)
-    );
-    const missingTrades = requiredTradeList.filter(
-      (t) => !quotedTradeSet.has(t.trim().toLowerCase())
-    );
+    const missingTrades = reviewedSheet.missingTrades;
     if (missingTrades.length > 0) {
       for (const t of missingTrades) {
         validation.blockers.push(
@@ -471,8 +687,8 @@ export const bidBuilder: AgentDefinition = {
                 risk_flags = (
                   select array(select distinct unnest(coalesce(risk_flags,'{}') || array['requirements_missing']))
                 )
-          where id = $1`,
-        [opportunityId]
+          where id = $1 and org_id = $2`,
+        [opportunityId, opp.org_id]
       );
       await logAgent({
         agent: "bid-builder",
@@ -494,19 +710,31 @@ export const bidBuilder: AgentDefinition = {
     const builtFingerprint = requirementsFingerprint(requirements, amendments);
 
     const existing = await queryOne<{ id: string }>(
-      `select id from bids where opportunity_id = $1 order by created_at desc limit 1`,
-      [opportunityId]
+      `select id from bids where opportunity_id = $1 and org_id = $2
+        order by created_at desc limit 1`,
+      [opportunityId, opp.org_id]
     );
+    let persisted: { id: string }[];
     if (existing) {
-      await query(
-        `update bids
+      persisted = await query<{ id: string }>(
+        `with eligible as (
+           select id from opportunities
+            where id=$18 and org_id=$17 and pursuit_version=$19
+              and status='open' and coalesce(pursuit_state, 'active')='active'
+              and stage=any($20::text[])
+            for update
+         )
+         update bids
             set sub_quote_total=$2, markup_pct=$3, bid_amount=$4, margin_pct=$5,
                 target_margin_pct=$6, qa_checklist=$7, narrative=$8, documents_json=$9,
                 human_flags=$10, outcome='pending',
                 compliance_matrix=$11, package_manifest=$12, package_ready=$13, validation_json=$14,
                 audit_findings=$15, audit_status='pending', requirements_fingerprint=$16,
                 updated_at=now()
-          where id=$1`,
+           from eligible
+          where bids.id=$1 and bids.org_id=$17 and bids.opportunity_id=eligible.id
+            and bids.submission_state='package_ready'
+          returning bids.id`,
         [
           existing.id,
           subQuoteTotal,
@@ -524,20 +752,32 @@ export const bidBuilder: AgentDefinition = {
           JSON.stringify(validation),
           JSON.stringify(eligibilityFindings),
           builtFingerprint,
+          opp.org_id,
+          opportunityId,
+          buildPursuitVersion,
+          EDITABLE_OPPORTUNITY_STAGES,
         ]
       );
     } else {
-      await query(
+      persisted = await query<{ id: string }>(
         // on conflict: if a concurrent build inserted the row between our read
         // and this write, become an update instead of a second row. The unique
         // index on opportunity_id (migration 058) is what makes this atomic;
         // without the clause the second insert would raise instead.
-        `insert into bids
-           (opportunity_id, sub_quote_total, markup_pct, bid_amount, margin_pct,
+        `with eligible as (
+           select id from opportunities
+            where id=$2 and org_id=$1 and pursuit_version=$18
+              and status='open' and coalesce(pursuit_state, 'active')='active'
+              and stage=any($19::text[])
+            for update
+         )
+         insert into bids
+           (org_id, opportunity_id, sub_quote_total, markup_pct, bid_amount, margin_pct,
             target_margin_pct, qa_checklist, narrative, documents_json, human_flags, outcome,
             compliance_matrix, package_manifest, package_ready, validation_json,
             audit_findings, audit_status, requirements_fingerprint)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending',$11,$12,$13,$14,$15,'pending',$16)
+         select $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending',$12,$13,$14,$15,$16,'pending',$17
+           from eligible
          on conflict (opportunity_id) do update set
            sub_quote_total=excluded.sub_quote_total, markup_pct=excluded.markup_pct,
            bid_amount=excluded.bid_amount, margin_pct=excluded.margin_pct,
@@ -547,8 +787,11 @@ export const bidBuilder: AgentDefinition = {
            compliance_matrix=excluded.compliance_matrix, package_manifest=excluded.package_manifest,
            package_ready=excluded.package_ready, validation_json=excluded.validation_json,
            audit_findings=excluded.audit_findings, audit_status='pending',
-           requirements_fingerprint=excluded.requirements_fingerprint, updated_at=now()`,
+           requirements_fingerprint=excluded.requirements_fingerprint, updated_at=now()
+         where bids.org_id=excluded.org_id and bids.submission_state='package_ready'
+         returning id`,
         [
+          opp.org_id,
           opportunityId,
           subQuoteTotal,
           markupPct,
@@ -565,14 +808,68 @@ export const bidBuilder: AgentDefinition = {
           JSON.stringify(validation),
           JSON.stringify(eligibilityFindings),
           builtFingerprint,
+          buildPursuitVersion,
+          EDITABLE_OPPORTUNITY_STAGES,
         ]
       );
     }
 
-    await query(
-      `update opportunities set stage='bid_building', human_action_required=true where id=$1`,
-      [opportunityId]
+    if (persisted.length === 0) {
+      await logAgent({
+        agent: "bid-builder",
+        action: "build-blocked",
+        opportunityId,
+        level: "warn",
+        message:
+          "The package was approved or sent while a rebuild was running. The approved package was left unchanged.",
+      });
+      return {
+        ok: false,
+        permanent: true,
+        summary:
+          "The package was approved or sent while this rebuild was running, so the rebuild was discarded.",
+        humanActionRequired: true,
+      };
+    }
+
+    // The bid row is the package version. Publish its document pointers only
+    // after the guarded bid write succeeds, so a discarded racing build never
+    // becomes the current file list for an approved package.
+    const pointersPublished = await publishGeneratedDocuments(
+      opportunityId,
+      opp.org_id,
+      buildPursuitVersion,
+      documentsJson
     );
+    if (!pointersPublished) {
+      await logAgent({
+        agent: "bid-builder",
+        action: "document-pointers-not-published",
+        opportunityId,
+        level: "warn",
+        message:
+          "The package was approved while its Files entries were being published. The approved bid still keeps the exact immutable document paths, but the Files list may show the prior draft.",
+      });
+    }
+
+    const moved = await query<{ id: string }>(
+      `update opportunities set stage='bid_building', human_action_required=true
+        where id=$1 and org_id=$2 and status='open' and stage=any($3::text[])
+          and coalesce(pursuit_state, 'active')='active'
+          and pursuit_version=$4
+        returning id`,
+      [opportunityId, opp.org_id, EDITABLE_OPPORTUNITY_STAGES, buildPursuitVersion]
+    );
+    if (moved.length === 0) {
+      await logAgent({
+        agent: "bid-builder",
+        action: "stage-not-regressed",
+        opportunityId,
+        level: "warn",
+        message:
+          "The bid package was built, but the opportunity reached a locked state before its stage could be updated. Its current stage was preserved.",
+      });
+    }
 
     await logAgent({
       agent: "bid-builder",
@@ -623,10 +920,10 @@ async function buildNarrative(
 ): Promise<string | null> {
   const subs = await query<{ company_name: string; project_history: ProjectHistoryItem[] }>(
     `select s.company_name, s.project_history
-       from subcontractors s
+      from subcontractors s
        join opportunity_subs os on os.subcontractor_id = s.id
-      where os.opportunity_id = $1`,
-    [opportunityId]
+      where os.opportunity_id = $1 and s.org_id = $2`,
+    [opportunityId, opp.org_id]
   );
   const historyLines: string[] = [];
   for (const s of subs) {
@@ -712,6 +1009,8 @@ interface QaInputs {
   bidAmount: number;
   marginPct: number;
   narrative: string | null;
+  /** Trades included in the reviewed pricing sheet for this build. */
+  pricedTrades?: string[];
 }
 
 /** Deterministic QA checklist covering pricing, margin, trades, lead time, docs, certs. */
@@ -754,7 +1053,9 @@ function buildQaChecklist(i: QaInputs): QaChecklistItem[] {
   // 3) All required trades have a quote.
   const required = requiredTrades(i.opp);
   const quotedTrades = new Set(
-    i.quotes.map((q) => (q.trade ?? "").trim().toLowerCase()).filter(Boolean)
+    (i.pricedTrades ?? i.quotes.map((q) => q.trade ?? ""))
+      .map((trade) => trade.trim().toLowerCase())
+      .filter(Boolean)
   );
   const missing = required.filter((t) => !quotedTrades.has(t.trim().toLowerCase()));
   items.push({

@@ -102,6 +102,7 @@ d("subscription lifecycle (integration)", () => {
     if (org.id) {
       await query(`delete from stripe_events where org_id=$1`, [org.id]).catch(() => {});
       await query(`delete from stripe_events`).catch(() => {}); // our synthetic ids carry null org
+      await query(`delete from agent_logs where org_id=$1`, [org.id]);
       await query(`delete from organizations where id=$1`, [org.id]);
     }
     vi.restoreAllMocks();

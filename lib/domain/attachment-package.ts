@@ -34,9 +34,8 @@ export interface PackageLink {
   /**
    * Whether the link was checked and found to work.
    *
-   * Undefined means it was not checked, which is treated as fine: a caller
-   * that cannot verify should not be forced to block a send. Only an explicit
-   * false stops the email.
+   * Undefined means it was not checked and therefore cannot be promised to a
+   * recipient. Only an explicit true allows the email to be sent.
    */
   reachable?: boolean;
 }
@@ -257,11 +256,14 @@ export function assessAttachmentPackage(input: {
    * exist and were provided, and blames themselves for not finding them.
    */
   for (const link of input.links) {
-    if (link.reachable === false) {
+    if (link.reachable !== true) {
       problems.push({
         kind: "unreachable_link",
         filename: link.name,
-        message: `The document link for "${link.name}" does not resolve, so the subcontractor would have no way to reach the documents it covers.`,
+        message:
+          link.reachable === false
+            ? `The document link for "${link.name}" does not resolve, so the subcontractor would have no way to reach the documents it covers.`
+            : `The document link for "${link.name}" was not verified, so the subcontractor could be promised documents they cannot reach.`,
         blocking: true,
       });
     }

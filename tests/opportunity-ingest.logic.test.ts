@@ -15,6 +15,29 @@ vi.mock("../lib/db", () => ({
 
 import { ingestOpportunity } from "../lib/domain/opportunity-ingest";
 
+const stored = (over: Record<string, unknown> = {}) => ({
+  source_id: "notice-1",
+  solicitation_number: "SOL-1",
+  title: "Job",
+  description: null,
+  naics_code: null,
+  psc_code: null,
+  set_aside_type: null,
+  value_estimated: null,
+  value_estimated_source: null,
+  deadline: null,
+  posted_at: null,
+  location_state: null,
+  location_text: null,
+  agency: null,
+  sub_agency: null,
+  contact_json: null,
+  attachments_json: [],
+  raw_json: null,
+  risk_flags: [],
+  ...over,
+});
+
 describe("ingestOpportunity (mocked db)", () => {
   beforeEach(() => {
     query.mockReset();
@@ -25,7 +48,7 @@ describe("ingestOpportunity (mocked db)", () => {
   it("skips insert when source_id already exists", async () => {
     queryOne
       .mockResolvedValueOnce({ id: "existing-1" }) // by source_id
-      .mockResolvedValueOnce(null); // unused
+      .mockResolvedValueOnce(stored()); // refresh snapshot
     query.mockResolvedValueOnce([]); // refresh
 
     const res = await ingestOpportunity({
@@ -39,6 +62,7 @@ describe("ingestOpportunity (mocked db)", () => {
     expect(res.inserted).toBe(false);
     expect(res.id).toBe("existing-1");
     expect(res.dedupedBy).toBe("source_id");
+    expect(res.materialChanged).toBe(false);
     // No INSERT statement
     expect(
       queryOne.mock.calls.some((c) => String(c[0]).includes("insert into opportunities"))
@@ -48,7 +72,8 @@ describe("ingestOpportunity (mocked db)", () => {
   it("skips insert when open solicitation_number already exists", async () => {
     queryOne
       .mockResolvedValueOnce(null) // by source_id
-      .mockResolvedValueOnce({ id: "existing-sol" }); // by sol number
+      .mockResolvedValueOnce({ id: "existing-sol" }) // by sol number
+      .mockResolvedValueOnce(stored({ source_id: "notice-old", title: "Amendment" }));
     query.mockResolvedValueOnce([]); // refresh
 
     const res = await ingestOpportunity({
@@ -93,7 +118,14 @@ describe("ingestOpportunity (mocked db)", () => {
       .mockResolvedValueOnce(null) // source lookup
       .mockResolvedValueOnce(null) // sol lookup
       .mockRejectedValueOnce(uniqueErr) // insert
-      .mockResolvedValueOnce({ id: "raced-1" }); // re-find by source
+      .mockResolvedValueOnce({ id: "raced-1" }) // re-find by source
+      .mockResolvedValueOnce(
+        stored({
+          source_id: "notice-race",
+          solicitation_number: "SOL-RACE",
+          title: "Race",
+        })
+      );
     query.mockResolvedValue([]);
 
     const res = await ingestOpportunity({
@@ -109,6 +141,44 @@ describe("ingestOpportunity (mocked db)", () => {
     expect(res.inserted).toBe(false);
     expect(res.id).toBe("raced-1");
     expect(res.dedupedBy).toBe("source_id");
+  });
+
+  it("reports a material refresh and merges a new amendment link", async () => {
+    queryOne
+      .mockResolvedValueOnce({ id: "existing-1" })
+      .mockResolvedValueOnce(
+        stored({
+          description: "Original scope",
+          attachments_json: [
+            { name: "attachment", url: "https://api.sam.gov/file?id=base&api_key=old" },
+          ],
+        })
+      );
+
+    const res = await ingestOpportunity({
+      orgId: "org-1",
+      source: "sam_federal",
+      source_id: "notice-1",
+      solicitation_number: "SOL-1",
+      title: "Job",
+      description: "Scope changed by Amendment 1",
+      attachments_json: [
+        { name: "attachment", url: "https://api.sam.gov/file?id=amendment&api_key=fresh" },
+      ],
+    });
+
+    expect(res.refreshed).toBe(true);
+    expect(res.materialChanged).toBe(true);
+    expect(res.materialFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    const update = query.mock.calls.find((call) =>
+      String(call[0]).includes("update opportunities set")
+    );
+    expect(update).toBeTruthy();
+    const params = update?.[1] as unknown[];
+    expect(JSON.parse(String(params[17]))).toHaveLength(2);
+    expect(params[19]).toContain("awaiting_document_analysis");
+    expect(params[20]).toBe(true);
+    expect(String(update?.[0])).toContain("analysis_input_hash=case when");
   });
 
   it("refuses ingest without a source_id", async () => {

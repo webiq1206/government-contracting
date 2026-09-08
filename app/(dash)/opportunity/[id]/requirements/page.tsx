@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { NextResponse } from "next/server";
 import { PageFrame } from "@/components/page-frame";
 import { EmptyState } from "@/components/empty-state";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 import { requireOrgContext } from "@/lib/org-guard";
 import { can } from "@/lib/domain/roles";
 import { opportunityDetail } from "@/lib/data";
@@ -17,6 +18,14 @@ import {
 import type { SolicitationAnalysis } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+async function optionalRead<T>(promise: Promise<T>) {
+  try {
+    return { value: await promise, failed: false as const };
+  } catch {
+    return { value: null, failed: true as const };
+  }
+}
 
 /**
  * The submission checklist, worked against the solicitation itself.
@@ -47,19 +56,31 @@ export default async function RequirementsPage({
   const brief = analysis ? buildOpportunityBrief(briefInputFrom(analysis)) : null;
   const requirements = brief?.requirements ?? [];
 
-  const [tracking, members] = await Promise.all([
+  const [trackingRead, membersRead] = await Promise.all([
     requirements.length > 0
-      ? requirementViews(
-          params.id,
-          requirements.map((r) => ({
-            id: r.id,
-            needsSignature: r.needsSignature,
-            producedByPlatform: r.owner === "platform",
-          }))
-        ).catch(() => null)
-      : Promise.resolve(null),
-    assignableMembers().catch(() => []),
+      ? optionalRead(
+          requirementViews(
+            params.id,
+            requirements.map((r) => ({
+              id: r.id,
+              needsSignature: r.needsSignature,
+              producedByPlatform: r.owner === "platform",
+            }))
+          )
+        )
+      : Promise.resolve({ value: null, failed: false as const }),
+    optionalRead(assignableMembers()),
   ]);
+  const tracking = trackingRead.value;
+  const members = membersRead.value ?? [];
+  const dataWarnings = [
+    ...(trackingRead.failed
+      ? ["Requirement progress could not be loaded. Checklist changes are disabled."]
+      : []),
+    ...(membersRead.failed
+      ? ["Assignable team members could not be loaded. Checklist changes are disabled."]
+      : []),
+  ];
 
   /*
    * Only the solicitation documents, and only the ones a browser will draw.
@@ -87,6 +108,7 @@ export default async function RequirementsPage({
 
   return (
     <div className="flex page-shell">
+      <ShellDataWarning items={dataWarnings} />
       <PageFrame
         breadcrumbs={[
           { label: "Opportunities", href: "/pipeline" },
@@ -132,7 +154,9 @@ export default async function RequirementsPage({
           documents={readable}
           members={members}
           viewerId={ctx.user.id}
-          canEdit={can(ctx.user.orgRole, "decide")}
+          canEdit={
+            !trackingRead.failed && !membersRead.failed && can(ctx.user.orgRole, "decide")
+          }
           recordHref={recordHref}
         />
       )}

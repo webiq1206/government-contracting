@@ -29,7 +29,8 @@ import {
 } from "../domain/score-confidence";
 import { getAutomationRules } from "../app-settings";
 import { queuedAfterScore } from "../domain/score-downstream";
-import { LEGACY_ORG_ID, runWithOrg } from "../tenant-context";
+import { documentScoringReadiness } from "../domain/document-scoring";
+import { runWithOrg } from "../tenant-context";
 import type { AgentDefinition } from "./types";
 import type { AgentResult, Opportunity } from "../types";
 
@@ -87,12 +88,47 @@ export const scoringEngine: AgentDefinition = {
      * was billed to. Every customer's opportunities have been scored on our
      * profile, and paid for on our key.
      */
-    const orgId = opp.org_id ?? LEGACY_ORG_ID;
-    return runWithOrg(orgId, () => scoreOpportunity(opp, orgId));
+    if (!opp.org_id) {
+      await logAgent({
+        agent: "scoring-engine",
+        action: "missing-organization",
+        opportunityId,
+        level: "error",
+        status: "error",
+        message:
+          "Scoring stopped because this opportunity has no organization owner. Repair its tenant ownership before retrying; it was not attributed to another account.",
+      });
+      return {
+        ok: false,
+        summary:
+          "Scoring stopped because this opportunity has no organization owner. Repair tenant ownership, then retry.",
+        humanActionRequired: true,
+      };
+    }
+    const orgId = opp.org_id;
+    const expectedAnalysisHash =
+      typeof ctx.payload.analysisInputHash === "string"
+        ? ctx.payload.analysisInputHash
+        : null;
+    return runWithOrg(orgId, () =>
+      scoreOpportunity(opp, orgId, {
+        analysisComplete: ctx.payload.analysisComplete === true,
+        expectedAnalysisHash,
+        preserveLifecycle: ctx.payload.preserveLifecycle === true,
+      })
+    );
   },
 };
 
-async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentResult> {
+async function scoreOpportunity(
+  opp: Opportunity,
+  orgId: string,
+  opts: {
+    analysisComplete: boolean;
+    expectedAnalysisHash: string | null;
+    preserveLifecycle: boolean;
+  }
+): Promise<AgentResult> {
   const opportunityId = opp.id;
 
   // Backstop for records ingested before value extraction existed (or from
@@ -113,6 +149,67 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
 
   const profile = await getProfileJson();
   if (!profile) return { ok: false, summary: "no active Company Profile" };
+
+  const sourceAttachments = Array.isArray(opp.attachments_json)
+    ? opp.attachments_json.filter((a) => Boolean(a?.url || a?.storage_path))
+    : [];
+  const sourceDocumentRow = await queryOne<{ n: number }>(
+    `select count(*)::int as n from documents
+      where opportunity_id=$1 and kind in ('solicitation','sow')
+        and superseded_by is null and disposition <> 'excluded'`,
+    [opportunityId]
+  );
+  const documentReadiness = documentScoringReadiness({
+    sourceAttachmentCount: sourceAttachments.length,
+    activeDocumentCount: sourceDocumentRow?.n ?? 0,
+    hasAnalysis: Boolean(opp.solicitation_analysis),
+    analysisInputHash: opp.analysis_input_hash,
+    briefSource: opp.solicitation_analysis?.brief_source,
+    completenessOk: opp.solicitation_analysis?.completeness?.ok,
+  });
+  const { analysisComplete: completedAnalysis, documentsRequired } = documentReadiness;
+
+  /*
+   * A score queued by the analyst is valid only for the exact document set it
+   * just read. Check this before intake or any other write so a late job from
+   * the previous amendment cannot archive, advance, or otherwise mutate the
+   * newly refreshed opportunity.
+   */
+  if (opts.analysisComplete) {
+    if (
+      !opts.expectedAnalysisHash ||
+      !opp.analysis_input_hash ||
+      opts.expectedAnalysisHash !== opp.analysis_input_hash
+    ) {
+      await logAgent({
+        agent: "scoring-engine",
+        action: "stale-analysis-score-refused",
+        opportunityId,
+        level: "warn",
+        status: "skipped",
+        message:
+          "The solicitation changed after document analysis finished, so this stale scoring job was refused. Re-run Solicitation Analyst against the current documents.",
+      });
+      return {
+        ok: false,
+        summary:
+          "Scoring stopped because its document analysis is stale. Re-run Solicitation Analyst before relying on this score.",
+        humanActionRequired: true,
+      };
+    }
+    if (!completedAnalysis) {
+      await query(
+        `update opportunities set stage='analysis', human_action_required=true where id=$1`,
+        [opportunityId]
+      );
+      return {
+        ok: false,
+        summary:
+          "Final scoring was refused because the document analysis is incomplete. Resolve the document blockers, then re-run Solicitation Analyst.",
+        humanActionRequired: true,
+      };
+    }
+  }
 
   // 0) Intake quality gate, BEFORE any scoring spend: minimum lead time,
   // missing deadline, duplicate solicitation number. Nothing is excluded
@@ -165,6 +262,41 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
   }
   const intakeFlags = findings.map((f) => f.flag);
   const forceIntakeReview = gate === "review";
+
+  if (documentReadiness.next === "analyze") {
+    await query(
+      `update opportunities
+          set stage='analysis', human_action_required=false,
+              risk_flags=(select array(select distinct unnest(coalesce(risk_flags,'{}') || array['awaiting_document_analysis'])))
+        where id=$1`,
+      [opportunityId]
+    );
+    return {
+      ok: true,
+      summary:
+        "Document analysis is required before final scoring. The solicitation is queued for a full read; pricing and subcontractor work have not started.",
+      enqueued: [
+        {
+          agent: "solicitation-analyst",
+          payload: { opportunityId, preScoring: true, force: "always" },
+          opts: { singletonKey: `analyze-before-score:${opportunityId}`, singletonSeconds: 3600 },
+        },
+      ],
+    };
+  }
+
+  if (documentReadiness.next === "blocked") {
+    await query(
+      `update opportunities set stage='analysis', human_action_required=true where id=$1`,
+      [opportunityId]
+    );
+    return {
+      ok: true,
+      summary:
+        "Final scoring is blocked because one or more solicitation documents were not fully analyzed. Resolve the document blockers, then re-run Solicitation Analyst.",
+      humanActionRequired: true,
+    };
+  }
 
   // 1) Deterministic hard exclusions FIRST.
   const structuralExclusions = checkHardExclusions(opp, profile);
@@ -278,13 +410,17 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
     locationKnown: Boolean((opp.location_state ?? "").trim()),
     // A title is not a scope. The threshold is deliberately generous: enough
     // prose to judge the work, not merely a sentence restating the title.
-    scopeKnown: ((opp.description ?? "").trim().length ?? 0) >= 400,
+    scopeKnown:
+      (opp.description ?? "").trim().length >= 400 ||
+      (opp.solicitation_analysis?.scope_plain_language ?? "").trim().length >= 120,
     // Only true when the notice says either way. "Not mentioned" is unknown,
     // and scoring it as "not required" is the optimistic reading that costs a
     // newcomer a wasted pursuit.
-    pastPerformanceKnown: /past performance|previous experience|similar projects|references/i.test(
-      `${opp.title ?? ""} ${opp.description ?? ""}`
-    ),
+    pastPerformanceKnown:
+      Boolean(opp.solicitation_analysis?.past_perf_classification) ||
+      /past performance|previous experience|similar projects|references/i.test(
+        `${opp.title ?? ""} ${opp.description ?? ""}`
+      ),
   };
   const confidence = assessDataConfidence(facts);
   const { dims: supportedDims, capped } = capUnsupportedDimensions(dims, facts);
@@ -305,6 +441,7 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
   const breakdown = {
     ...buildScoreBreakdown(dims, exclusions, profile, summary),
     data_confidence: confidence,
+    analysis_input_hash: completedAnalysis ? opp.analysis_input_hash ?? null : null,
   };
 
   // Non-dismiss review flags (e.g. value over $350K) + incomplete scoring both
@@ -322,37 +459,85 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
   let stage = opp.stage;
   let humanAction = false;
   let reviewExpires: string | null = null;
-  let status = "open";
+  let status = opp.status ?? "open";
+  const scoringFromDocuments = opts.analysisComplete || (documentsRequired && completedAnalysis);
+  const preserveLifecycle =
+    opts.preserveLifecycle ||
+    new Set([
+      "sub_research",
+      "outreach",
+      "call_queue",
+      "quote_entry",
+      "bid_building",
+      "review_submit",
+      "submitted",
+      "won",
+      "lost",
+    ]).has(opp.stage);
 
   if (breakdown.tier === "pursue") {
-    // AUTO-PURSUE, unconditional above the pursue threshold (operator preference).
-    // A score >= pursue_min_score that isn't hard-excluded advances straight into
-    // the pipeline (analysis -> pricing -> subs -> outreach) with NO human gate.
-    // Risk conditions (high value, new NAICS, unusual clauses, prime-only) do not
-    // stop it here; a human still reviews before any bid is submitted.
-    stage = "analysis";
-    humanAction = false;
-    enqueued.push(...queuedAfterScore("pursue", opportunityId));
+    // A preliminary score above the pursue threshold advances to document
+    // analysis only. Pricing and sourcing begin only on the exact-hash scoring
+    // job returned by a complete analysis.
+    if (preserveLifecycle) {
+      stage = opp.stage;
+      humanAction = opp.human_action_required;
+    } else if (scoringFromDocuments) {
+      stage = "sub_research";
+      humanAction = false;
+      enqueued.push(
+        { agent: "pricing-research", payload: { opportunityId } },
+        { agent: "sub-finder", payload: { opportunityId } }
+      );
+    } else {
+      stage = "analysis";
+      humanAction = false;
+      enqueued.push(...queuedAfterScore("pursue", opportunityId));
+    }
     await logAgent({
       agent: "scoring-engine",
-      action: "auto-pursue",
+      action: preserveLifecycle
+        ? "rescore"
+        : scoringFromDocuments
+          ? "auto-pursue"
+          : "document-analysis-qualified",
       opportunityId,
       level: "success",
-      message: `Auto-pursued: ${breakdown.total} >= pursue threshold ${profile.decision_thresholds.pursue_min_score}. Pipeline started, no human action required.`,
+      message: preserveLifecycle
+        ? `Re-scored against the completed document analysis: ${breakdown.total}. The existing ${stage} workflow was preserved.`
+        : scoringFromDocuments
+          ? `Auto-pursued after required document analysis: ${breakdown.total} >= pursue threshold ${profile.decision_thresholds.pursue_min_score}. Pricing and subcontractor research started.`
+          : `Qualified for document analysis: ${breakdown.total} >= pursue threshold ${profile.decision_thresholds.pursue_min_score}. Pricing and subcontractor work wait for the completed-document score.`,
     });
   } else if (breakdown.tier === "review") {
-    stage = "scoring";
+    stage = preserveLifecycle ? opp.stage : "scoring";
     humanAction = true;
     reviewExpires = new Date(
       Date.now() + profile.decision_thresholds.review_auto_dismiss_hours * 3_600_000
     ).toISOString();
     // The brief is the input to pursue-or-pass. Leaving it unqueued meant
     // Overview stayed empty on the records people actually open.
-    enqueued.push(...queuedAfterScore("review", opportunityId));
+    if (!scoringFromDocuments && !preserveLifecycle) {
+      enqueued.push(...queuedAfterScore("review", opportunityId));
+    }
   } else {
-    stage = "dismissed";
-    status = "archived";
+    if (preserveLifecycle) {
+      stage = opp.stage;
+      humanAction = true;
+    } else {
+      stage = "dismissed";
+      status = "archived";
+    }
   }
+
+  const persistedFlags = [
+    ...(opp.risk_flags ?? []).filter((flag) => flag !== "awaiting_document_analysis"),
+    ...exclusions,
+    ...flags,
+    ...(preserveLifecycle && breakdown.tier !== "pursue"
+      ? ["score_changed_after_document_analysis"]
+      : []),
+  ];
 
   await query(
     `update opportunities
@@ -368,7 +553,7 @@ async function scoreOpportunity(opp: Opportunity, orgId: string): Promise<AgentR
       status,
       humanAction,
       reviewExpires,
-      [...new Set([...exclusions, ...flags])],
+      [...new Set(persistedFlags)],
     ]
   );
 
@@ -395,6 +580,24 @@ function buildScoringPrompt(
   const exclLines = hardExclusions
     .map((e) => `- ${e.key} ("${e.label}"): ${e.rule}`)
     .join("\n");
+  const analysis = opp.solicitation_analysis;
+  const documentFacts = analysis
+    ? JSON.stringify({
+        scope: analysis.scope_plain_language,
+        estimated_value: analysis.estimated_value,
+        location: analysis.location,
+        period_of_performance: analysis.period_of_performance,
+        set_aside: analysis.set_aside,
+        qualifications: analysis.qualifications,
+        evaluation_criteria: analysis.evaluation_criteria,
+        special_requirements: analysis.special_requirements,
+        required_trades: analysis.required_trades,
+        past_performance: analysis.past_perf_classification,
+        attention_items: analysis.attention_items,
+        risk_flags: analysis.risk_flags,
+        compliance_matrix: analysis.compliance_matrix,
+      }).slice(0, 20_000)
+    : "(document analysis not available)";
   return [
     "Score this government contracting opportunity against our rubric. Use the Company Profile (your system context) as the source of truth for what we pursue, our certifications, service areas, and thresholds.",
     "",
@@ -409,6 +612,7 @@ function buildScoringPrompt(
     `Location: ${opp.location_state ?? "(unknown)"}`,
     `Deadline: ${opp.deadline ?? "(unknown)"}`,
     `Description: ${(opp.description ?? "").slice(0, 2000)}`,
+    `Completed document analysis: ${documentFacts}`,
     "",
     "RUBRIC DIMENSIONS (award points up to each max, you MUST return every dimension key below):",
     dimLines,

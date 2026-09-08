@@ -27,6 +27,7 @@ import type {
 import { currency, pct, timeAgo } from "@/lib/format";
 import { auditNotice, packageChecklist } from "@/lib/domain/package";
 import { ThemeWordmark } from "@/components/theme-wordmark";
+import { useToast } from "@/components/toaster";
 
 const STATUS_META: Record<
   ResolvedRequirement["status"],
@@ -68,6 +69,7 @@ export function SubmissionPackage({
   proofOptions?: { id: string; name: string }[];
 }) {
   const router = useRouter();
+  const { push } = useToast();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -197,7 +199,10 @@ export function SubmissionPackage({
         method: "POST",
         body,
       });
-      const d = await res.json().catch(() => ({}));
+      const d = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        requirement_error?: string;
+      };
       if (!res.ok) setError(d.error ?? "Could not upload that file.");
       else if (d.requirement_error) setError(d.requirement_error);
       else router.refresh();
@@ -232,10 +237,20 @@ export function SubmissionPackage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(override ? { override } : {}),
       });
-      const d = await res.json().catch(() => ({}));
+      const d = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        warnings?: string[];
+      };
       if (!res.ok) {
         setError(d.error ?? "Could not submit.");
       } else {
+        const warnings = d.warnings?.filter(Boolean) ?? [];
+        push({
+          message:
+            warnings.length > 0
+              ? `Package approved. Attention is still needed: ${warnings.join(" ")}`
+              : "Package approved. Send it through the agency channel, then record the delivery evidence.",
+        });
         router.refresh();
       }
     } finally {
@@ -470,9 +485,10 @@ export function SubmissionPackage({
                     </div>
                     {!submitted && (
                       <button
+                        type="button"
                         onClick={() => acknowledge(f.id, !f.acknowledged)}
                         disabled={busyId === f.id}
-                        className={`shrink-0 text-xs ${
+                        className={`inline-flex min-h-11 shrink-0 items-center text-xs lg:min-h-0 ${
                           f.acknowledged ? "text-slate-500 hover:text-slate-700" : "btn-ghost"
                         }`}
                       >
@@ -538,7 +554,7 @@ export function SubmissionPackage({
                           href={`/api/files/${r.official_form_doc.path}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="mt-0.5 inline-block text-xs text-accent hover:underline"
+                          className="mt-0.5 inline-flex min-h-11 items-center text-xs text-accent hover:underline lg:min-h-0"
                         >
                           Open the agency&rsquo;s form to sign →
                         </a>
@@ -548,7 +564,7 @@ export function SubmissionPackage({
                           href={`/api/files/${r.operator_doc.path}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="mt-0.5 block text-xs text-accent hover:underline"
+                          className="mt-0.5 flex min-h-11 items-center text-xs text-accent hover:underline lg:min-h-0"
                         >
                           In the package: {r.operator_doc.name} →
                         </a>
@@ -557,7 +573,7 @@ export function SubmissionPackage({
                     {!submitted && (needsAction || r.operator_confirmed) && (
                       <div className="flex shrink-0 items-center gap-3">
                         <label
-                          className={`cursor-pointer text-xs ${
+                          className={`inline-flex min-h-11 cursor-pointer items-center text-xs lg:min-h-0 ${
                             busyId === r.id ? "text-slate-500" : "text-accent hover:underline"
                           }`}
                         >
@@ -574,9 +590,10 @@ export function SubmissionPackage({
                           />
                         </label>
                         <button
+                          type="button"
                           onClick={() => confirm(r.id, !r.operator_confirmed)}
                           disabled={busyId === r.id}
-                          className={`text-xs ${
+                          className={`inline-flex min-h-11 items-center text-xs lg:min-h-0 ${
                             r.operator_confirmed
                               ? "text-slate-500 hover:text-slate-700"
                               : "btn-ghost"
@@ -619,7 +636,7 @@ export function SubmissionPackage({
                       href={`/api/files/${path}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="shrink-0 text-xs text-accent hover:underline"
+                      className="inline-flex min-h-11 shrink-0 items-center text-xs text-accent hover:underline lg:min-h-0"
                     >
                       Open
                     </a>
@@ -735,7 +752,7 @@ export function SubmissionPackage({
                   <li key={b} className="flex flex-wrap items-start justify-between gap-2">
                     <span className="text-slate-800">• {b}</span>
                     {/pricing has not been received/i.test(b) ? (
-                      <a href="#coverage" className="text-xs font-medium text-accent hover:underline">
+                      <a href="#coverage" className="inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0">
                         Open required pricing
                       </a>
                     ) : (
@@ -788,6 +805,7 @@ export function SubmissionPackage({
                 onCancel={() => setConfirmingApproval(false)}
               />
               <button
+                type="button"
                 onClick={() => setConfirmingApproval(true)}
                 disabled={submitting || !ready}
                 className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-50"

@@ -1,5 +1,6 @@
 import { query, transaction } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
+import type { PoolClient } from "pg";
 import {
   BULK_LIMIT,
   BULK_REVERSIBLE,
@@ -71,21 +72,30 @@ export async function bulkVerify(input: Common): Promise<BulkResult> {
      * queued must not be reported as queued: the operator would go looking
      * for results that are not coming.
      *
-     * A queue that refused one job also should not lose the other hundred and
-     * seventy-two, so a throw is caught per row rather than for the batch.
+     * A queue outage affecting one job also should not lose the other hundred
+     * and seventy-two. It is caught per row, but kept distinct from a deliberate
+     * pause so the operator knows whether to resume automation or retry later.
      */
-    const jobId = await enqueue("sub-verify", {
-      subcontractorId: id,
-      enqueuedByOrgId: input.orgId,
-    }).catch(() => null);
-    if (jobId) queued.push(id);
-    else skipped.push({ id, reason: "automation_paused" });
+    try {
+      const jobId = await enqueue("sub-verify", {
+        subcontractorId: id,
+        enqueuedByOrgId: input.orgId,
+      });
+      if (jobId) queued.push(id);
+      else skipped.push({ id, reason: "automation_paused" });
+    } catch {
+      skipped.push({ id, reason: "queue_failed" });
+    }
   }
 
-  const batchId = await record({
-    orgId: input.orgId, kind: "verify", actorId: input.actorId,
-    affected: queued, skipped, detail: null,
-  });
+  // A queue job cannot share a transaction with its ledger row, but a request
+  // is never reported as successful unless that row was durably written.
+  const batchId = await transaction((client) =>
+    record(client, {
+      orgId: input.orgId, kind: "verify", actorId: input.actorId,
+      affected: queued, skipped, detail: null,
+    })
+  );
   return { ok: true, kind: "verify", changed: queued.length, skipped, batchId };
 }
 
@@ -97,41 +107,43 @@ export async function bulkTag(
   const tag = normalizeTag(input.tag);
   if (!tag) return { ok: false, status: 400, error: "A tag has to be between 1 and 40 characters." };
 
-  const kind: BulkKind = input.remove ? "untag" : "tag";
-  const changed = input.remove
-    ? await query<{ subcontractor_id: string }>(
-        `delete from subcontractor_tags
-          where org_id = $1 and subcontractor_id = any($2::uuid[]) and lower(tag) = lower($3)
-          returning subcontractor_id`,
-        [input.orgId, input.ids, tag]
-      )
-    : await query<{ subcontractor_id: string }>(
-        /*
-         * Sourced from the subcontractor row rather than from the request, so
-         * the tenant guard is inside the statement that writes. An id from
-         * another organization matches nothing and inserts nothing.
-         */
-        `insert into subcontractor_tags (org_id, subcontractor_id, tag, created_by)
-         select s.org_id, s.id, $3, $4::uuid
-           from subcontractors s
-          where s.org_id = $1 and s.id = any($2::uuid[])
-         on conflict (subcontractor_id, lower(tag)) do nothing
-         returning subcontractor_id`,
-        [input.orgId, input.ids, tag, input.actorId]
-      );
+  return transaction(async (client) => {
+    const kind: BulkKind = input.remove ? "untag" : "tag";
+    const changed = input.remove
+      ? (await client.query<{ subcontractor_id: string }>(
+          `delete from subcontractor_tags
+            where org_id = $1 and subcontractor_id = any($2::uuid[]) and lower(tag) = lower($3)
+            returning subcontractor_id`,
+          [input.orgId, input.ids, tag]
+        )).rows
+      : (await client.query<{ subcontractor_id: string }>(
+          /*
+           * Sourced from the subcontractor row rather than from the request, so
+           * the tenant guard is inside the statement that writes. An id from
+           * another organization matches nothing and inserts nothing.
+           */
+          `insert into subcontractor_tags (org_id, subcontractor_id, tag, created_by)
+           select s.org_id, s.id, $3, $4::uuid
+             from subcontractors s
+            where s.org_id = $1 and s.id = any($2::uuid[])
+           on conflict (subcontractor_id, lower(tag)) do nothing
+           returning subcontractor_id`,
+          [input.orgId, input.ids, tag, input.actorId]
+        )).rows;
 
-  const touched = new Set(changed.map((r) => r.subcontractor_id));
-  const skipped: BulkSkip[] = input.ids
-    .filter((id) => !touched.has(id))
-    // Already carrying the tag, or not on this roster. Both read as "left
-    // alone" to the operator, and both are named rather than counted.
-    .map((id) => ({ id, reason: "already" as const }));
+    const touched = new Set(changed.map((r) => r.subcontractor_id));
+    const skipped: BulkSkip[] = input.ids
+      .filter((id) => !touched.has(id))
+      // Already carrying the tag, or not on this roster. Both read as "left
+      // alone" to the operator, and both are named rather than counted.
+      .map((id) => ({ id, reason: "already" as const }));
 
-  const batchId = await record({
-    orgId: input.orgId, kind, actorId: input.actorId,
-    affected: [...touched], skipped, detail: tag,
+    const batchId = await record(client, {
+      orgId: input.orgId, kind, actorId: input.actorId,
+      affected: [...touched], skipped, detail: tag,
+    });
+    return { ok: true, kind, changed: touched.size, skipped, batchId };
   });
-  return { ok: true, kind, changed: touched.size, skipped, batchId };
 }
 
 export async function bulkArchive(
@@ -144,24 +156,26 @@ export async function bulkArchive(
     return { ok: false, status: 400, error: "Say why they are being put aside." };
   }
 
-  const rows = await query<{ id: string }>(
-    `update subcontractors
-        set archived_at = now(), archived_reason = $3, archived_by = $4::uuid
-      where org_id = $1 and id = any($2::uuid[])
-        and archived_at is null and merged_into is null
-      returning id`,
-    [input.orgId, input.ids, reason, input.actorId]
-  );
-  const touched = new Set(rows.map((r) => r.id));
-  const skipped: BulkSkip[] = input.ids
-    .filter((id) => !touched.has(id))
-    .map((id) => ({ id, reason: "already" as const }));
+  return transaction(async (client) => {
+    const rows = (await client.query<{ id: string }>(
+      `update subcontractors
+          set archived_at = now(), archived_reason = $3, archived_by = $4::uuid
+        where org_id = $1 and id = any($2::uuid[])
+          and archived_at is null and merged_into is null
+        returning id`,
+      [input.orgId, input.ids, reason, input.actorId]
+    )).rows;
+    const touched = new Set(rows.map((r) => r.id));
+    const skipped: BulkSkip[] = input.ids
+      .filter((id) => !touched.has(id))
+      .map((id) => ({ id, reason: "already" as const }));
 
-  const batchId = await record({
-    orgId: input.orgId, kind: "archive", actorId: input.actorId,
-    affected: [...touched], skipped, detail: reason,
+    const batchId = await record(client, {
+      orgId: input.orgId, kind: "archive", actorId: input.actorId,
+      affected: [...touched], skipped, detail: reason,
+    });
+    return { ok: true, kind: "archive", changed: touched.size, skipped, batchId };
   });
-  return { ok: true, kind: "archive", changed: touched.size, skipped, batchId };
 }
 
 /**
@@ -273,21 +287,23 @@ function check(ids: string[]): { ok: false; status: number; error: string } | nu
   return null;
 }
 
-async function record(input: {
+async function record(client: PoolClient, input: {
   orgId: string;
   kind: BulkKind;
   actorId: string | null;
   affected: string[];
   skipped: BulkSkip[];
   detail: string | null;
-}): Promise<string | null> {
-  const rows = await query<{ id: string }>(
+}): Promise<string> {
+  const result = await client.query<{ id: string }>(
     `insert into subcontractor_bulk_actions (org_id, kind, detail, affected, skipped, actor_id)
      values ($1,$2,$3,$4::jsonb,$5::jsonb,$6::uuid) returning id`,
     [
       input.orgId, input.kind, input.detail,
       JSON.stringify(input.affected), JSON.stringify(input.skipped), input.actorId,
     ]
-  ).catch(() => []);
-  return rows[0]?.id ?? null;
+  );
+  const id = result.rows[0]?.id;
+  if (!id) throw new Error("The bulk action ledger did not return a batch id.");
+  return id;
 }

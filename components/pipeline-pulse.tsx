@@ -6,8 +6,27 @@ import type { PulseFinding } from "@/lib/domain/pipeline-pulse";
  * a broken leg of the machine (discovery, movement, outreach), says what the
  * customer is losing while it stays broken, and links the fix.
  */
-export function PipelinePulse({ findings }: { findings: PulseFinding[] }) {
+export function PipelinePulse({ findings, compact = false }: { findings: PulseFinding[]; compact?: boolean }) {
   if (findings.length === 0) return null;
+  if (compact) {
+    return (
+      <section aria-label="Automation needs attention" className="divide-y divide-border rounded-md border border-review/40 bg-surface px-4">
+        {findings.map((finding) => (
+          <div key={finding.key} className="py-2">
+            <details>
+              <summary className={`min-h-11 cursor-pointer py-2 text-sm font-semibold ${finding.severity === "down" ? "text-risk" : "text-foreground"}`}>
+                {finding.title}
+              </summary>
+              <p className="pb-2 text-sm text-muted-foreground">{finding.detail}</p>
+            </details>
+            <Link href={finding.href} className="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-2">
+              {finding.cta}
+            </Link>
+          </div>
+        ))}
+      </section>
+    );
+  }
   return (
     <div className="space-y-3">
       {findings.map((f) => (

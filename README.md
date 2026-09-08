@@ -77,9 +77,13 @@ The repo is structured to import into Replit and run with minimal setup, see
 [DEPLOYMENT.md](./DEPLOYMENT.md) for the step-by-step. Summary:
 
 1. Import the repo. `.replit` + `replit.nix` are included (Node 20, Chromium for scrapers).
-2. Add your Secrets (env vars), at minimum `DATABASE_URL` and `ANTHROPIC_API_KEY`.
-3. Run once: `npm run db:setup`.
+2. Give web and worker a restricted `DATABASE_URL`. Give only the release job
+   an owner-level `MIGRATION_DATABASE_URL`.
+3. Before each release, pause writes and run `npm run db:migrate` in that
+   owner-only release job. Seed only a new installation, never an upgrade.
 4. Press Run (`npm run start` launches web + worker together via `concurrently`).
+   Both runtime services perform a read-only schema check and refuse to start
+   if the release migration is missing.
 
 No Redis required (pg-boss uses your Postgres). To use BullMQ instead, set `REDIS_URL`.
 

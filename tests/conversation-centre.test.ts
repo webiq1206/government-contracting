@@ -47,6 +47,7 @@ function msg(over: Partial<CentreMessage> & { id: string }): CentreMessage {
     created_at: at(-48),
     recipient_email: "sub@example.test",
     gmail_message_id: null,
+    rfc822_message_id: null,
     follow_up_at: null,
     meta: null,
     state: "sent",

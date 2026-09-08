@@ -5,6 +5,7 @@
  */
 import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
 import { cookies } from "next/headers";
+import type { PoolClient } from "pg";
 import { query, queryOne } from "./db";
 import { config } from "./config";
 import { sanitizeUserAgent } from "./domain/session-device";
@@ -214,25 +215,28 @@ export async function authenticate(
 }
 
 async function attachOrg(user: SessionUser): Promise<SessionUser> {
-  try {
-    const { getOrgForUser, getOrgRoleForUser } = await import("./organizations");
-    const [org, orgRole] = await Promise.all([
-      getOrgForUser(user.id),
-      getOrgRoleForUser(user.id).catch(() => null),
-    ]);
-    return {
-      ...user,
-      orgRole,
-      organizationId: org?.id ?? null,
-      subscriptionStatus: org?.subscription_status ?? null,
-      planKey: org?.plan_key ?? null,
-      trialEndsAt: org?.trial_ends_at ?? null,
-      billingExempt: Boolean(org?.billing_exempt),
-      suspendedAt: org?.suspended_at ?? null,
-    };
-  } catch {
-    return user;
-  }
+  const { getOrgForUser, getOrgRoleForUser } = await import("./organizations");
+  /*
+   * A successful null is an orphaned account and stays NO_ORG. A rejected
+   * membership read is not the same state: letting it propagate gives the
+   * authenticated layouts' error boundaries a chance to say the page could
+   * not load, instead of redirecting a real customer to signup as though their
+   * organization had disappeared.
+   */
+  const [org, orgRole] = await Promise.all([
+    getOrgForUser(user.id),
+    getOrgRoleForUser(user.id),
+  ]);
+  return {
+    ...user,
+    orgRole,
+    organizationId: org?.id ?? null,
+    subscriptionStatus: org?.subscription_status ?? null,
+    planKey: org?.plan_key ?? null,
+    trialEndsAt: org?.trial_ends_at ?? null,
+    billingExempt: Boolean(org?.billing_exempt),
+    suspendedAt: org?.suspended_at ?? null,
+  };
 }
 
 /**
@@ -292,24 +296,30 @@ export async function createImpersonationSession(input: {
   adminUserId: string | null;
   adminEmail: string;
   adminSessionId: string | null;
-}): Promise<string> {
+}, client?: PoolClient): Promise<string> {
   const token = randomBytes(32).toString("hex");
   const expires = new Date(Date.now() + IMPERSONATION_TTL_MINUTES * 60_000);
-  await query(
-    `insert into sessions
+  const statement = `insert into sessions
        (id, user_id, expires_at, impersonator_user_id, impersonator_email, impersonator_session_id)
-     values ($1, $2, $3, $4, $5, $6)`,
-    [
-      token,
-      input.targetUserId,
-      expires.toISOString(),
-      // The env operator has no users row, so only its email is recorded.
-      input.adminUserId && input.adminUserId !== "env-operator" ? input.adminUserId : null,
-      input.adminEmail,
-      input.adminSessionId,
-    ]
-  );
+     values ($1, $2, $3, $4, $5, $6)`;
+  const values = [
+    token,
+    input.targetUserId,
+    expires.toISOString(),
+    // The env operator has no users row, so only its email is recorded.
+    input.adminUserId && input.adminUserId !== "env-operator" ? input.adminUserId : null,
+    input.adminEmail,
+    input.adminSessionId,
+  ];
+  if (client) await client.query(statement, values);
+  else await query(statement, values);
   return token;
+}
+
+export interface EndImpersonationResult {
+  restoredToken: string | null;
+  impersonatorEmail: string;
+  userId: string;
 }
 
 /**
@@ -319,24 +329,49 @@ export async function createImpersonationSession(input: {
  * has since expired; the caller should then just sign the browser out rather
  * than leave it holding a dead cookie.
  */
-export async function endImpersonation(token: string | undefined): Promise<string | null> {
+export async function endImpersonation(
+  token: string | undefined,
+  client?: PoolClient
+): Promise<EndImpersonationResult | null> {
   if (!token || token.startsWith("env-operator.")) return null;
-  const row = await queryOne<{
-    impersonator_session_id: string | null;
-    impersonator_email: string | null;
-  }>(
-    `select impersonator_session_id, impersonator_email from sessions
-      where id = $1 and impersonator_email is not null`,
-    [token]
-  );
+  const statement = `select impersonator_session_id, impersonator_email, user_id
+       from sessions
+      where id = $1 and impersonator_email is not null
+      for update`;
+  const row = client
+    ? (
+        await client.query<{
+          impersonator_session_id: string | null;
+          impersonator_email: string;
+          user_id: string;
+        }>(statement, [token])
+      ).rows[0] ?? null
+    : await queryOne<{
+        impersonator_session_id: string | null;
+        impersonator_email: string;
+        user_id: string;
+      }>(statement, [token]);
   if (!row) return null;
-  await query(`delete from sessions where id = $1`, [token]).catch(() => {});
-  if (!row.impersonator_session_id) return null;
-  const original = await queryOne<{ id: string }>(
-    `select id from sessions where id = $1 and expires_at > now()`,
-    [row.impersonator_session_id]
-  );
-  return original?.id ?? null;
+  // Ending support access is security-sensitive. If the session cannot be
+  // deleted, do not claim it ended or move the browser to another identity.
+  if (client) await client.query(`delete from sessions where id = $1`, [token]);
+  else await query(`delete from sessions where id = $1`, [token]);
+
+  let restoredToken: string | null = null;
+  if (row.impersonator_session_id) {
+    const originalStatement = `select id from sessions where id = $1 and expires_at > now()`;
+    const original = client
+      ? (await client.query<{ id: string }>(originalStatement, [row.impersonator_session_id]))
+          .rows[0] ?? null
+      : await queryOne<{ id: string }>(originalStatement, [row.impersonator_session_id]);
+    restoredToken = original?.id ?? null;
+  }
+
+  return {
+    restoredToken,
+    impersonatorEmail: row.impersonator_email,
+    userId: row.user_id,
+  };
 }
 
 export async function resolveSession(token: string | undefined): Promise<SessionUser | null> {
@@ -401,7 +436,10 @@ export async function resolveSession(token: string | undefined): Promise<Session
 
 export async function destroySession(token: string | undefined): Promise<void> {
   if (token && !token.startsWith("env-operator.")) {
-    await query(`delete from sessions where id = $1`, [token]).catch(() => {});
+    // A failed delete means the server session is still valid. Let the logout
+    // route report failure rather than clearing only the browser cookie and
+    // claiming the account was signed out everywhere this token can be used.
+    await query(`delete from sessions where id = $1`, [token]);
   }
 }
 
@@ -421,9 +459,29 @@ export async function clearSessionCookie(): Promise<void> {
   cookies().delete(SESSION_COOKIE);
 }
 
+/**
+ * Read the session cookie when this code is serving an HTTP request.
+ *
+ * Authentication helpers are also reached by the queue scheduler and other
+ * background work. Next has no request cookie store there and throws before
+ * there is any session to resolve. That is a real "no session" state, unlike
+ * a database or membership failure after a cookie was read, which must keep
+ * propagating so callers cannot mistake an outage for a signed-out user.
+ */
+function requestSessionToken(): string | undefined {
+  try {
+    return cookies().get(SESSION_COOKIE)?.value;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("`cookies` was called outside a request scope")) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 export async function currentUser(): Promise<SessionUser | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
-  return resolveSession(token);
+  return resolveSession(requestSessionToken());
 }
 
 /**

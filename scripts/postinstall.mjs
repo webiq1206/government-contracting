@@ -3,5 +3,6 @@
 console.log("[postinstall] BROSTCO dependencies installed.");
 console.log("[postinstall] Next steps:");
 console.log("  1. cp .env.example .env  &&  fill in DATABASE_URL + ANTHROPIC_API_KEY");
-console.log("  2. npm run db:setup       (runs migrations + seeds company profile)");
-console.log("  3. npm run dev            (starts web + worker)");
+console.log("  2. npm run db:migrate     (owner-only release step in production)");
+console.log("  3. npm run db:seed        (new local installation only, never an upgrade)");
+console.log("  4. npm run dev            (starts web + worker)");

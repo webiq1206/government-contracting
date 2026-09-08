@@ -74,26 +74,13 @@ export function GuideStepActions({
 
   if (step.kind === "outcome" && step.opportunityId) {
     return (
-      <div className="flex flex-wrap gap-2">
-        <ActionButton
-          endpoint={`/api/opportunities/${step.opportunityId}/outcome`}
-          body={{ outcome: "won" }}
-          className="btn-success text-xs"
-          confirm="Mark as WON and create the contract?"
-          onDone={() => void onDone()}
-        >
-          Mark won
-        </ActionButton>
-        <ActionButton
-          endpoint={`/api/opportunities/${step.opportunityId}/outcome`}
-          body={{ outcome: "lost" }}
-          className="btn-danger text-xs"
-          confirm="Mark this bid as lost?"
-          onDone={() => void onDone()}
-        >
-          Mark lost
-        </ActionButton>
-      </div>
+      <Link
+        href={`/opportunity/${step.opportunityId}#outcome`}
+        className="btn-primary min-h-11 text-xs"
+        onClick={onClose}
+      >
+        Record agency outcome
+      </Link>
     );
   }
 
@@ -373,7 +360,7 @@ function GuideCallLauncher({
           {loading ? "Loading…" : "Start call workspace"}
         </button>
         {error && <p className="text-xs text-risk">{error}</p>}
-        <Link href={`/call-queue?open=${cardId}`} className="ml-2 text-xs text-slate-500 underline-offset-2 hover:underline">
+        <Link href={`/call-queue?open=${cardId}`} className="ml-2 inline-flex min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline lg:min-h-0">
           Open in Call Queue
         </Link>
       </div>
@@ -899,7 +886,7 @@ export function IdentityFields({ onSaved }: { onSaved: () => Promise<void> }) {
       </button>
       <Link
         href="/settings/profile"
-        className="ml-2 text-xs text-slate-500 underline-offset-2 hover:underline"
+        className="ml-2 inline-flex min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline lg:min-h-0"
       >
         Open full profile
       </Link>

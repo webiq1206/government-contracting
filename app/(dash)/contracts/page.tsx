@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { allContracts } from "@/lib/data";
+import { allContracts, currentOrg } from "@/lib/data";
 import {
   contractView,
   contractRisks,
@@ -21,7 +21,7 @@ import { can } from "@/lib/domain/roles";
 import { contractRecord } from "@/lib/contract-record";
 import { ContractDetail } from "@/components/contract-detail";
 import { ownerOf } from "@/lib/ownership";
-import { tryResolveTenantOrgId } from "@/lib/tenant";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 import {
   ContextSection,
   WorkspacePane,
@@ -93,12 +93,23 @@ export default async function ContractsPage({
 }: {
   searchParams?: { view?: string; c?: string };
 }) {
+  const loadWarnings: string[] = [];
   const [rows, teamMembers, viewer] = await Promise.all([
     allContracts(),
     // Tolerant: a picker that cannot load its list is a read-only owner
     // field, where a throw is a Contracts page that will not open.
-    assignableMembers().catch(() => []),
-    currentUser().catch(() => null),
+    assignableMembers().catch(() => {
+      loadWarnings.push(
+        "Assignable team members could not be loaded, so assignment controls are unavailable."
+      );
+      return [];
+    }),
+    currentUser().catch(() => {
+      loadWarnings.push(
+        "Your role could not be confirmed, so contract editing is disabled."
+      );
+      return null;
+    }),
   ]);
 
   /*
@@ -178,11 +189,21 @@ export default async function ContractsPage({
     { view: active },
     "c"
   );
-  const orgId = (await tryResolveTenantOrgId()) ?? "";
+  const orgId = currentId ? await currentOrg() : "";
   const [record, owner] = currentId
     ? await Promise.all([
-        contractRecord(orgId, currentId).catch(() => null),
-        ownerOf("contract", currentId).catch(() => null),
+        contractRecord(orgId, currentId).catch(() => {
+          loadWarnings.push(
+            "The selected contract detail could not be loaded, so its workspace is unavailable."
+          );
+          return null;
+        }),
+        ownerOf("contract", currentId).catch(() => {
+          loadWarnings.push(
+            "The selected contract owner could not be loaded, so it may appear unassigned."
+          );
+          return null;
+        }),
       ])
     : [null, null];
 
@@ -254,6 +275,8 @@ export default async function ContractsPage({
         )}
       </div>
 
+      <ShellDataWarning items={loadWarnings} />
+
       {rows.length === 0 ? (
         <div className="scroll-thin flex-1 overflow-y-auto p-4">
           <div className="mx-auto max-w-4xl">
@@ -261,7 +284,7 @@ export default async function ContractsPage({
               title="No contracts yet"
               description="When you record a win on an opportunity, the contract appears here for milestone tracking, coordination logs, and compliance caps."
               action={
-                <div className="space-y-3">
+                <div className="flex flex-wrap justify-center gap-2">
                   <Link href="/pipeline" className="btn-ghost text-sm">
                     Open opportunities
                   </Link>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireOrgContext } from "@/lib/org-guard";
+import { requirePlatformAdmin } from "@/lib/platform-admin";
+import { LEGACY_ORG_ID, runWithOrg } from "@/lib/tenant-context";
 import { AUTOMATION_PAUSED_ERROR, isAutomationStopped } from "@/lib/app-settings";
 import { query, queryOne } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
@@ -16,10 +17,11 @@ export const dynamic = "force-dynamic";
  * ever goes out unattended. Editing the copy before approval is supported.
  */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const ctx = await requireOrgContext();
-  if (ctx instanceof NextResponse) return ctx;
-  const { orgId } = ctx;
-  const body = (await req.json().catch(() => ({}))) as {
+  const admin = await requirePlatformAdmin();
+  if (admin instanceof NextResponse) return admin;
+  const orgId = LEGACY_ORG_ID;
+  return runWithOrg(orgId, async () => {
+    const body = (await req.json().catch(() => ({}))) as {
     action?: "approve" | "reject";
     subject?: string;
     body?: string;
@@ -35,8 +37,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!outreach) return NextResponse.json({ error: "Draft not found." }, { status: 404 });
 
   const domainRow = await queryOne<{ domain: string }>(
-    `select domain from backlink_prospects where id = $1`,
-    [outreach.prospect_id]
+    `select domain from backlink_prospects where id = $1 and org_id = $2`,
+    [outreach.prospect_id, orgId]
   );
 
   if (body.action === "approve") {
@@ -50,12 +52,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
               subject = coalesce($2, subject),
               body = coalesce($3, body),
               updated_at = now()
-        where id = $1`,
-      [params.id, body.subject ?? null, body.body ?? null]
+        where id = $1 and org_id = $4`,
+      [params.id, body.subject ?? null, body.body ?? null, orgId]
     );
-    await query(`update backlink_prospects set status = 'in_outreach', updated_at = now() where id = $1`, [
-      outreach.prospect_id,
-    ]);
+    await query(
+      `update backlink_prospects set status = 'in_outreach', updated_at = now()
+        where id = $1 and org_id = $2`,
+      [outreach.prospect_id, orgId]
+    );
     await logAgent({
       agent: "operator",
       action: "outreach-approved",
@@ -71,12 +75,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ ok: true, action: "approve", send });
   } else {
     await query(
-      `update backlink_outreach set approval_status = 'rejected', updated_at = now() where id = $1`,
-      [params.id]
+      `update backlink_outreach set approval_status = 'rejected', updated_at = now()
+        where id = $1 and org_id = $2`,
+      [params.id, orgId]
     );
-    await query(`update backlink_prospects set status = 'rejected', updated_at = now() where id = $1`, [
-      outreach.prospect_id,
-    ]);
+    await query(
+      `update backlink_prospects set status = 'rejected', updated_at = now()
+        where id = $1 and org_id = $2`,
+      [outreach.prospect_id, orgId]
+    );
     await logAgent({
       agent: "operator",
       action: "outreach-rejected",
@@ -84,5 +91,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     });
   }
 
-  return NextResponse.json({ ok: true, action: body.action });
+    return NextResponse.json({ ok: true, action: body.action });
+  });
 }

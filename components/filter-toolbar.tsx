@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -87,8 +87,12 @@ export function FilterToolbar({
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState("");
   const [viewError, setViewError] = useState<string | null>(null);
+  const [viewLoadError, setViewLoadError] = useState<string | null>(null);
+  const [viewBusy, setViewBusy] = useState(false);
+  const viewMutation = useRef(false);
+  const [navigating, startTransition] = useTransition();
   const [sheetOpen, setSheetOpen] = useState(false);
-  const sheetTrigger = useRef<HTMLButtonElement>(null);
+  const sheetTrigger = useRef<HTMLButtonElement | null>(null);
   /*
    * Where the last view is kept, beside the saved ones. Separate key: a saved
    * view is something a person named and expects to find again, and the last
@@ -125,14 +129,19 @@ export function FilterToolbar({
    * convenience rather than a thing anybody named.
    */
   const loadViews = useCallback(async () => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20_000);
     try {
-      const res = await fetch(`/api/views?page=${encodeURIComponent(viewsKey)}`);
-      if (!res.ok) return;
+      const res = await fetch(`/api/views?page=${encodeURIComponent(viewsKey)}`, { signal: controller.signal });
+      if (!res.ok) throw new Error("Saved views could not be loaded.");
       const data = (await res.json()) as { views?: SavedView[] };
-      setViews(data.views ?? []);
+      if (!Array.isArray(data.views)) throw new Error("Saved views response is incomplete.");
+      setViews(data.views);
+      setViewLoadError(null);
     } catch {
-      // A failed read leaves the bar without its saved views and with
-      // everything else working, which is the right half to lose.
+      setViewLoadError("Saved views could not be loaded. You can still search and filter this list.");
+    } finally {
+      window.clearTimeout(timeout);
     }
   }, [viewsKey]);
 
@@ -140,34 +149,45 @@ export function FilterToolbar({
     void loadViews();
   }, [loadViews]);
 
-  async function saveCurrentView(name: string, scope: "personal" | "team") {
+  async function mutateView(url: string, init: RequestInit): Promise<boolean> {
+    if (viewMutation.current) return false;
+    viewMutation.current = true;
+    setViewBusy(true);
     setViewError(null);
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 20_000);
     try {
-      const res = await fetch("/api/views", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page: viewsKey, name, query: currentQuery, scope }),
-      });
+      const res = await fetch(url, { ...init, signal: controller.signal });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setViewError(data.error ?? "Could not save that view.");
-        return;
+        setViewError(data.error ?? "That view could not be updated. Check your access and try again.");
+        return false;
       }
+      return true;
+    } catch {
+      setViewError("The view change could not be confirmed. Retry loading saved views to check whether it completed before trying again.");
+      return false;
+    } finally {
+      window.clearTimeout(timeout);
+      viewMutation.current = false;
+      setViewBusy(false);
+    }
+  }
+
+  async function saveCurrentView(name: string, scope: "personal" | "team") {
+    if (await mutateView("/api/views", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page: viewsKey, name, query: currentQuery, scope }),
+    })) {
       setName("");
       setNaming(false);
       await loadViews();
-    } catch {
-      setViewError("Could not reach the server. The view was not saved.");
     }
   }
 
   async function removeView(id: string) {
-    try {
-      const res = await fetch(`/api/views/${id}`, { method: "DELETE" });
-      if (res.ok) await loadViews();
-    } catch {
-      /* leaves the view on screen, which is better than pretending it is gone */
-    }
+    if (await mutateView(`/api/views/${id}`, { method: "DELETE" })) await loadViews();
   }
 
   /*
@@ -211,13 +231,13 @@ export function FilterToolbar({
     // Any filter change returns to page 1. Staying on page 7 of a list that
     // now has two pages is the "empty table that looks like no results"
     // failure, arrived at from the other direction.
-    router.push(
+    startTransition(() => router.push(
       buildHref(pathname, {
         filters: nextFilters,
         sort: sortParam ? parseSortParam(sortParam) : undefined,
         perPage,
       })
-    );
+    ));
   }
 
   function set(key: string, value: string) {
@@ -291,11 +311,11 @@ export function FilterToolbar({
   }, [remember, rememberedQuery, lastKey, restoredKey]);
 
   return (
-    <div className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+    <div aria-busy={navigating} className="sticky top-0 z-20 border-b border-border bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="flex flex-col gap-3 px-4 py-3 sm:px-5">
         {/* Wide enough for the fields: they apply as they change. */}
         <div className="hidden flex-wrap items-end gap-3 lg:flex">
-          {specs.map((spec) => (
+          {specs.slice(0, 4).map((spec) => (
             <Control
               key={spec.key}
               spec={spec}
@@ -304,15 +324,25 @@ export function FilterToolbar({
               onCommit={(v) => go(set(spec.key, v))}
             />
           ))}
+          {specs.length > 4 && (
+            <button
+              type="button"
+              onClick={(event) => { sheetTrigger.current = event.currentTarget; setSheetOpen(true); }}
+              aria-haspopup="dialog"
+              aria-expanded={sheetOpen}
+              className="btn-ghost min-h-11"
+            >
+              All filters ({specs.length})
+            </button>
+          )}
           {action && <div className="ml-auto flex items-end">{action}</div>}
         </div>
 
         {/* Phone: one button, and the page's own action beside it. */}
         <div className="flex items-center gap-2 lg:hidden">
           <button
-            ref={sheetTrigger}
             type="button"
-            onClick={() => setSheetOpen(true)}
+            onClick={(event) => { sheetTrigger.current = event.currentTarget; setSheetOpen(true); }}
             aria-haspopup="dialog"
             aria-expanded={sheetOpen}
             className="btn-ghost inline-flex min-h-11 flex-1 items-center justify-center gap-2"
@@ -327,6 +357,21 @@ export function FilterToolbar({
           </button>
           {action}
         </div>
+
+        {navigating && <p role="status" className="text-sm text-muted-foreground">Updating results…</p>}
+        {viewBusy && <p role="status" className="text-sm text-muted-foreground">Updating saved views…</p>}
+        {viewError && (
+          <p role="alert" className="text-sm text-risk">
+            {viewError}{" "}
+            <button type="button" className="inline-flex min-h-11 items-center font-medium underline" onClick={() => void loadViews()}>Reload saved views</button>
+          </p>
+        )}
+        {viewLoadError && (
+          <p role="alert" className="text-sm text-risk">
+            {viewLoadError}{" "}
+            <button type="button" onClick={() => void loadViews()} className="inline-flex min-h-11 items-center font-medium underline">Retry saved views</button>
+          </p>
+        )}
 
         {(chips.length > 0 || views.length > 0 || resultLabel || restored) && (
           <div className="flex flex-wrap items-center gap-2">
@@ -392,7 +437,7 @@ export function FilterToolbar({
                   <button
                     type="button"
                     className="btn-ghost min-h-11 px-2 text-xs lg:min-h-0"
-                    disabled={!name.trim()}
+                    disabled={!name.trim() || viewBusy}
                     onClick={() => void saveCurrentView(name, "personal")}
                   >
                     Just for me
@@ -400,7 +445,7 @@ export function FilterToolbar({
                   <button
                     type="button"
                     className="btn-ghost min-h-11 px-2 text-xs lg:min-h-0"
-                    disabled={!name.trim()}
+                    disabled={!name.trim() || viewBusy}
                     onClick={() => void saveCurrentView(name, "team")}
                     title="Everybody in this account will see it, with your name on it."
                   >
@@ -416,11 +461,6 @@ export function FilterToolbar({
                   >
                     Cancel
                   </button>
-                  {viewError && (
-                    <span role="alert" className="text-xs text-risk">
-                      {viewError}
-                    </span>
-                  )}
                 </span>
               ) : (
                 <button
@@ -442,7 +482,7 @@ export function FilterToolbar({
                   <span key={v.id} className="inline-flex items-center">
                     <button
                       type="button"
-                      onClick={() => router.push(v.query ? `${pathname}?${v.query}` : pathname)}
+                      onClick={() => startTransition(() => router.push(v.query ? `${pathname}?${v.query}` : pathname))}
                       className={`badge transition-colors ${
                         activeView?.id === v.id
                           ? "bg-gold text-ink"
@@ -468,6 +508,7 @@ export function FilterToolbar({
                         aria-label={`Delete the ${v.name} view`}
                         title={`Delete the ${v.name} view`}
                         onClick={() => void removeView(v.id)}
+                        disabled={viewBusy}
                         className="px-1 text-xs text-muted-foreground hover:text-risk"
                       >
                         ×
@@ -627,13 +668,14 @@ function FilterSheet({
   }
 
   return createPortal(
+    <div className="fixed inset-0 z-[85] bg-foreground/30">
     <div
       ref={panel}
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
       onKeyDown={trap}
-      className="fixed inset-0 z-[85] flex flex-col bg-background lg:hidden"
+      className="absolute inset-0 flex flex-col bg-background lg:inset-y-8 lg:left-auto lg:right-8 lg:w-[32rem] lg:rounded-lg lg:border lg:border-border lg:shadow-2xl"
     >
       <header
         className="flex items-center justify-between gap-3 border-b border-border px-4 py-3"
@@ -709,6 +751,7 @@ function FilterSheet({
           </button>
         </div>
       </footer>
+    </div>
     </div>,
     document.body
   );

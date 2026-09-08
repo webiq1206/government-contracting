@@ -19,7 +19,10 @@ export interface ConversationMessage {
   recipient_email: string | null;
   /** "clarification" for the automatic follow-up, so the UI can label it. */
   kind: string | null;
+  /** Gmail API id, used only to retrieve the provider record. */
   gmail_message_id: string | null;
+  /** Internet Message-ID header, used by the recipient's client for threading. */
+  rfc822_message_id: string | null;
 }
 
 export interface Conversation {
@@ -31,7 +34,7 @@ export interface Conversation {
   trade: string | null;
   subject: string | null;
   lastAt: string;
-  /** Newest inbound message id, used as In-Reply-To when replying. */
+  /** Newest inbound RFC822 Message-ID, used as In-Reply-To when replying. */
   replyToMessageId: string | null;
   awaitingUs: boolean;
   messages: ConversationMessage[];

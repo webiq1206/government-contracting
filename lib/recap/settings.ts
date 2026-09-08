@@ -27,21 +27,16 @@ function scopedKey(orgId: string): string {
 /**
  * This account's settings, with defaults filled in.
  *
- * A read that throws returns the defaults rather than propagating. The recap
- * is a report about the account's health; failing to send it because the
- * settings row could not be read would make a database hiccup silently cancel
- * the one message that would have reported the hiccup.
+ * A missing row uses defaults. A failed read throws so a morning run cannot
+ * send with settings it never verified and a page cannot present coherent but
+ * invented preferences.
  */
 export async function getRecapSettings(orgId: string): Promise<RecapSettings> {
-  try {
-    const row = await queryOne<{ value_json: Partial<RecapSettings> | null }>(
-      `select value_json from app_settings where key = $1`,
-      [scopedKey(orgId)]
-    );
-    return normalizeRecapSettings(row?.value_json ?? null);
-  } catch {
-    return { ...DEFAULT_RECAP_SETTINGS };
-  }
+  const row = await queryOne<{ value_json: Partial<RecapSettings> | null }>(
+    `select value_json from app_settings where key = $1`,
+    [scopedKey(orgId)]
+  );
+  return normalizeRecapSettings(row?.value_json ?? null);
 }
 
 /** Whether anybody on this account has ever opened the settings. */
@@ -49,7 +44,7 @@ export async function recapConfigured(orgId: string): Promise<boolean> {
   const row = await queryOne<{ key: string }>(
     `select key from app_settings where key = $1`,
     [scopedKey(orgId)]
-  ).catch(() => null);
+  );
   return row != null;
 }
 

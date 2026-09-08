@@ -44,7 +44,13 @@ describe("the link a subcontractor signs through", () => {
    */
   it("cannot be swapped with a document link in either direction", () => {
     const portal = encodePortalToken({ s: SUB, e: nowSec() + 60 });
-    const doc = encodeDocToken({ k: "s", v: "some/key.pdf", n: "plans.pdf", e: nowSec() + 60 });
+    const doc = encodeDocToken({
+      k: "s",
+      v: "some/key.pdf",
+      n: "plans.pdf",
+      e: nowSec() + 60,
+      o: "991f1e31-4c12-4a3c-80af-0fb8c8c67784",
+    });
     expect(decodeDocToken(portal)).toBeNull();
     expect(decodePortalToken(doc)).toBeNull();
   });

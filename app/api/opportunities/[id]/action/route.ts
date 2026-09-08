@@ -6,6 +6,7 @@ import {
   isAutomationStopped,
 } from "@/lib/app-settings";
 import { CALL_STAGE, STAGE_AFTER_CALLS, withoutCallStage } from "@/lib/domain/call-step";
+import { opportunityMutationProblem } from "@/lib/domain/opportunity-lifecycle";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
@@ -52,8 +53,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { user: auth, orgId } = ctx;
 
   const { action, stage: targetStage, reason } = await req.json().catch(() => ({}));
-  const opp = await queryOne<{ id: string; stage: string }>(
-    `select id, stage from opportunities where id=$1 and org_id=$2`,
+  const opp = await queryOne<{
+    id: string;
+    stage: string;
+    status: string;
+    tier: string | null;
+    pursuit_state: string | null;
+    submission_state: string | null;
+  }>(
+    `select o.id, o.stage, o.status, o.tier, o.pursuit_state,
+            (select b.submission_state from bids b
+              where b.opportunity_id=o.id and b.org_id=o.org_id
+              order by b.created_at desc limit 1) as submission_state
+       from opportunities o where o.id=$1 and o.org_id=$2`,
     [params.id, orgId]
   );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -76,6 +88,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
    * named blocker rather than a bad artifact.
    */
   if (action === "move") {
+    const lifecycleProblem = opportunityMutationProblem(
+      {
+        stage: opp.stage,
+        status: opp.status,
+        pursuitState: opp.pursuit_state,
+        submissionState: opp.submission_state,
+      },
+      "manual_move"
+    );
+    if (lifecycleProblem) {
+      return NextResponse.json({ error: lifecycleProblem }, { status: 409 });
+    }
     const { resolveManualMove } = await import("@/lib/domain/stage-move");
     const callsEnabled = await areCallsEnabled();
     const resolved = resolveManualMove(opp.stage, String(targetStage ?? ""), callsEnabled);
@@ -89,13 +113,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       auth.email,
       opp.stage
     );
-    if (!moved.ok) return NextResponse.json({ error: "No such record." }, { status: 404 });
+    if (!moved.ok) {
+      return NextResponse.json(
+        { error: "The opportunity changed before the move completed. Refresh it and try again." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ ok: true, stage: resolved.stage, requeued: moved.requeued });
   }
 
   if (action === "pursue") {
     const ok = await pursueOpportunity(orgId, params.id, auth.email);
-    if (!ok) return NextResponse.json({ error: "No such record." }, { status: 404 });
+    if (!ok) {
+      return NextResponse.json(
+        { error: "Only an open review-stage opportunity can be pursued. Refresh the record to see its current state." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ ok: true, stage: "analysis" });
   }
 
@@ -118,7 +152,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return NextResponse.json({ error: "That reason is too long." }, { status: 400 });
     }
     const ok = await passOpportunity(orgId, params.id, passReason, auth.email);
-    if (!ok) return NextResponse.json({ error: "No such record." }, { status: 404 });
+    if (!ok) {
+      return NextResponse.json(
+        { error: "This opportunity is no longer active, so it cannot be passed from this screen." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ ok: true, stage: "dismissed" });
   }
 
@@ -131,10 +170,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
    * keep it was to pursue it, which files a decision that has not been made.
    */
   if (action === "extend_review") {
-    if (opp.stage === "dismissed") {
+    if (
+      opp.stage !== "scoring" ||
+      opp.tier !== "review" ||
+      opp.status !== "open" ||
+      (opp.pursuit_state ?? "active") !== "active"
+    ) {
       return NextResponse.json(
-        { error: "This one has already been passed on. Restore it first." },
-        { status: 400 }
+        { error: "Only an active opportunity in the review queue can be extended." },
+        { status: 409 }
       );
     }
     const row = await queryOne<{ review_expires_at: string | null }>(
@@ -142,10 +186,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           set review_expires_at = greatest(coalesce(review_expires_at, now()), now())
                                   + interval '24 hours',
               human_action_required = true
-        where id=$1
+        where id=$1 and org_id=$2 and stage='scoring' and tier='review'
+          and status='open' and coalesce(pursuit_state, 'active')='active'
         returning review_expires_at::text as review_expires_at`,
-      [params.id]
+      [params.id, orgId]
     );
+    if (!row) {
+      return NextResponse.json(
+        { error: "The opportunity changed before its review time could be extended. Refresh and try again." },
+        { status: 409 }
+      );
+    }
     await logAgent({
       agent: "operator",
       action: "extend_review",
@@ -165,7 +216,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         { status: 400 }
       );
     }
-    await query(
+    const restored = await queryOne<{ id: string }>(
       `update opportunities
           set tier='review', stage='scoring', status='open',
               human_action_required=true,
@@ -174,10 +225,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
               pursuit_reason=null,
               pursuit_note=null,
               pursuit_changed_at=now(),
-              pursuit_changed_by=$2
-        where id=$1`,
-      [params.id, auth.email]
+              pursuit_changed_by=$2,
+              pursuit_version=pursuit_version + 1
+        where id=$1 and org_id=$3 and stage='dismissed' and status='archived'
+          and coalesce(pursuit_state, 'aborted')='aborted'
+        returning id`,
+      [params.id, auth.email, orgId]
     );
+    if (!restored) {
+      return NextResponse.json(
+        { error: "The opportunity changed before it could be restored. Refresh and try again." },
+        { status: 409 }
+      );
+    }
     await logAgent({
       agent: "operator",
       action: "restore",
@@ -189,6 +249,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   if (action === "rerun") {
+    const lifecycleProblem = opportunityMutationProblem(
+      {
+        stage: opp.stage,
+        status: opp.status,
+        pursuitState: opp.pursuit_state,
+        submissionState: opp.submission_state,
+      },
+      "rerun"
+    );
+    if (lifecycleProblem) {
+      return NextResponse.json({ error: lifecycleProblem }, { status: 409 });
+    }
     const agents = STAGE_AGENTS[opp.stage] ?? [];
     if (agents.length === 0) {
       return NextResponse.json(
@@ -197,9 +269,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       );
     }
     // Clear the human-action flag so the agent reprocesses cleanly.
-    await query(`update opportunities set human_action_required=false where id=$1`, [
-      params.id,
-    ]);
+    const claimed = await query<{ id: string }>(
+      `update opportunities set human_action_required=false
+        where id=$1 and org_id=$2 and stage=$3 and status='open'
+          and coalesce(pursuit_state, 'active')='active'
+        returning id`,
+      [params.id, orgId, opp.stage]
+    );
+    if (claimed.length === 0) {
+      return NextResponse.json(
+        { error: "The opportunity changed before the rerun started. Refresh and try again." },
+        { status: 409 }
+      );
+    }
     for (const a of agents) await enqueue(a, { opportunityId: params.id });
     await logAgent({
       agent: "operator",
@@ -212,6 +294,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   if (action === "send_back") {
+    const lifecycleProblem = opportunityMutationProblem(
+      {
+        stage: opp.stage,
+        status: opp.status,
+        pursuitState: opp.pursuit_state,
+        submissionState: opp.submission_state,
+      },
+      "manual_move"
+    );
+    if (lifecycleProblem) {
+      return NextResponse.json({ error: lifecycleProblem }, { status: 409 });
+    }
     // Calling off means the call stage is not part of this account's pipeline,
     // so stepping back through it would park the record in a stage nothing
     // will ever pick up. Step over it to the stage before instead.
@@ -231,12 +325,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
     const prev = stageOrder[idx - 1];
     const agents = STAGE_AGENTS[prev] ?? [];
-    await query(
+    const moved = await query<{ id: string }>(
       `update opportunities
           set stage=$2, status='open', human_action_required=$3
-        where id=$1`,
-      [params.id, prev, agents.length === 0]
+        where id=$1 and org_id=$4 and stage=$5 and status='open'
+          and coalesce(pursuit_state, 'active')='active'
+        returning id`,
+      [params.id, prev, agents.length === 0, orgId, opp.stage]
     );
+    if (moved.length === 0) {
+      return NextResponse.json(
+        { error: "The opportunity changed before it could move back. Refresh and try again." },
+        { status: 409 }
+      );
+    }
     for (const a of agents) await enqueue(a, { opportunityId: params.id });
     await logAgent({
       agent: "operator",

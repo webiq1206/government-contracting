@@ -19,6 +19,7 @@ import { getAutomationState } from "@/lib/app-settings";
 import { invoicesFor } from "@/lib/billing/invoices";
 import { describeCard, describeInvoice } from "@/lib/domain/payment-method";
 import { reconcile } from "@/lib/domain/billing-reconciliation";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -74,8 +75,12 @@ export default async function BillingSettingsPage({
   const access = org ? accessLevel(org) : "none";
   const onTrial = org ? isCardlessTrial(org) : false;
   const daysLeft = org ? trialDaysLeft(org) : 0;
+  const loadWarnings: string[] = [];
   // Only a live trial has meters worth showing.
-  const quotas = org && access === "trial" ? await allQuotaStates(org.id).catch(() => []) : [];
+  const quotas = org && access === "trial" ? await allQuotaStates(org.id).catch(() => {
+    loadWarnings.push("Trial usage could not be checked, so no meter should be read as zero.");
+    return [];
+  }) : [];
 
   const status = org?.subscription_status ?? "none";
   /*
@@ -85,7 +90,10 @@ export default async function BillingSettingsPage({
    * a reader sees at the top now comes from a single decision rather than
    * from whichever field that part of the page happened to read.
    */
-  const automationState = await getAutomationState().catch(() => ({ paused: false }));
+  const automationState = await getAutomationState().catch(() => {
+    loadWarnings.push("The account automation switch could not be checked.");
+    return { paused: false };
+  });
   const accountFacts = accountStatus({
     subscriptionStatus: org?.subscription_status ?? null,
     trialEndsAt: org?.trial_ends_at ?? null,
@@ -127,7 +135,10 @@ export default async function BillingSettingsPage({
    * render when Stripe is slow, and a billing page that hangs on the day
    * payments are having trouble is the one day it is being read.
    */
-  const invoices = org && !comped ? await invoicesFor(org.id).catch(() => []) : [];
+  const invoices = org && !comped ? await invoicesFor(org.id).catch(() => {
+    loadWarnings.push("Invoice history could not be loaded, so an empty list is not confirmed.");
+    return [];
+  }) : [];
   const card = describeCard({
     brand: org?.card_brand ?? null,
     last4: org?.card_last4 ?? null,
@@ -244,6 +255,7 @@ export default async function BillingSettingsPage({
         breadcrumbs={[{ label: "Settings", href: "/settings/profile" }]}
         status={accountFacts.effective.value}
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
         {/* The six facts first. Everything below is detail on one of them. */}
         {/*
@@ -337,6 +349,18 @@ export default async function BillingSettingsPage({
             There is nothing to subscribe to. This account is free and has full
             access already.
           </div>
+        ) : searchParams?.error === "terms_unavailable" ? (
+          <div className="card border-risk/40 bg-risk/5 text-sm text-risk">
+            Your invitation terms could not be verified, so checkout was stopped before any
+            charge. Try again after the database connection recovers. If it still fails, contact
+            support and mention invitation terms.
+          </div>
+        ) : searchParams?.error === "promo_unavailable" ? (
+          <div className="card border-risk/40 bg-risk/5 text-sm text-risk">
+            Promotion eligibility could not be verified, so checkout was stopped before any
+            charge. Try again after the account connection recovers. If it still fails, contact
+            support and mention the founding promotion setting.
+          </div>
         ) : (
           searchParams?.error && (
             <div className="rounded-md border border-risk/40 bg-risk/5 px-4 py-3 text-sm text-risk">
@@ -393,7 +417,7 @@ export default async function BillingSettingsPage({
               </p>
             </div>
             <p className="text-sm leading-relaxed text-slate-600">
-              Finding, scoring, and analysing opportunities runs without limit during the
+              Finding and scoring opportunities are unmetered during the
               trial. These three are metered so the trial cannot run up a bill on your
               behalf:
             </p>
@@ -638,7 +662,7 @@ export default async function BillingSettingsPage({
                       )}
                       {(inv.hosted_invoice_url || inv.invoice_pdf_url) && (
                         <a
-                          className="mt-1 inline-block text-xs font-medium text-accent-strong underline"
+                          className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent-strong underline lg:min-h-0"
                           href={inv.invoice_pdf_url ?? inv.hosted_invoice_url ?? "#"}
                           target="_blank"
                           rel="noreferrer noopener"

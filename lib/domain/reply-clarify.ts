@@ -59,24 +59,39 @@ export async function requestClarification(input: {
   outcome: ReplyOutcome;
   threadId?: string | null;
   inReplyToMessageId?: string | null;
-  orgId?: string | null;
+  references?: string[];
+  originalSubject?: string | null;
+  orgId: string;
 }): Promise<ClarifyResult> {
   if (input.gaps.length === 0) return { sent: false, reason: "nothing missing" };
   // Someone who said no is not chased for paperwork.
-  if (input.outcome !== "quoted" && input.outcome !== "interested") {
+  if (
+    input.outcome !== "quoted" &&
+    input.outcome !== "interested" &&
+    input.outcome !== "partial_scope"
+  ) {
     return { sent: false, reason: "outcome does not warrant a follow-up" };
   }
   if (!input.toEmail) return { sent: false, reason: "no email address" };
 
   // One ask per sub per solicitation. Without this, every re-poll of the
   // sliding window would send another near-identical email.
-  const already = await queryOne<{ id: string }>(
-    `select id from communications
-      where subcontractor_id = $1 and opportunity_id = $2
-        and direction = 'outbound' and meta->>'kind' = 'clarification'
-      limit 1`,
-    [input.subcontractorId, input.opportunityId]
-  ).catch(() => null);
+  let already: { id: string } | null;
+  try {
+    already = await queryOne<{ id: string }>(
+      `select id from communications
+        where org_id = $3 and subcontractor_id = $1 and opportunity_id = $2
+          and direction = 'outbound' and meta->>'kind' = 'clarification'
+        limit 1`,
+      [input.subcontractorId, input.opportunityId, input.orgId]
+    );
+  } catch {
+    return {
+      sent: false,
+      reason:
+        "Could not verify whether a clarification was already sent. Nothing was sent; retry after the connection recovers.",
+    };
+  }
   if (already) return { sent: false, reason: "already asked" };
 
   const job = input.opportunityTitle ?? "the project we contacted you about";
@@ -85,7 +100,9 @@ export async function requestClarification(input: {
   const plainList = items.map((i) => `- ${i}`).join("\n");
 
   const greeting = input.companyName ? `Hi ${input.companyName},` : "Hi,";
-  const subject = `Quick follow-up on ${job}`;
+  const subject = input.originalSubject?.trim()
+    ? `Re: ${input.originalSubject.trim().replace(/^re:\s*/i, "")}`
+    : `Quick follow-up on ${job}`;
   const html =
     `<div style="font-family:Inter,Helvetica,Arial,sans-serif;color:#242424;font-size:14px;line-height:1.6">` +
     `<p>${greeting}</p>` +
@@ -109,9 +126,10 @@ export async function requestClarification(input: {
     html,
     text,
     // Same thread, so the sub sees their own message below ours.
-    threadId: input.threadId ?? undefined,
+    threadId: input.inReplyToMessageId ? input.threadId ?? undefined : undefined,
     inReplyTo: input.inReplyToMessageId ?? undefined,
-    orgId: input.orgId ?? undefined,
+    references: input.references ?? [],
+    orgId: input.orgId,
     opportunityId: input.opportunityId ?? undefined,
     // A clarification request is still an automated approach, and stopping
     // outreach for a firm has to stop it too.
@@ -125,16 +143,20 @@ export async function requestClarification(input: {
 
   await query(
     `insert into communications
-       (subcontractor_id, opportunity_id, channel, direction, subject, body,
-        gmail_message_id, gmail_thread_id, provider, recipient_email, meta)
-     values ($1,$2,'email','outbound',$3,$4,$5,$6,'gmail',$7,$8::jsonb)`,
+       (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body,
+        gmail_message_id, gmail_thread_id, rfc822_message_id, provider,
+        recipient_email, meta)
+     values ($1,$2,$3,'email','outbound',$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,
     [
+      input.orgId,
       input.subcontractorId,
       input.opportunityId,
       subject,
       text,
-      res.messageId,
-      res.threadId,
+      res.messageId ?? null,
+      res.threadId ?? input.threadId ?? null,
+      res.rfc822MessageId ?? null,
+      res.provider,
       input.toEmail,
       JSON.stringify({
         kind: "clarification",

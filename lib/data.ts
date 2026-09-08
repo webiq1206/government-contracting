@@ -26,23 +26,22 @@ import {
 import type { ContentLibraryItem, Opportunity, Subcontractor } from "./types";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { THREAD_KEY_SQL } from "./thread-key";
+import { DEFAULT_TIMEZONE, dayWindow, localDateOf, safeTimeZone } from "./domain/recap/day-window";
 
 /**
  * The organization every read in this module is scoped to.
  *
  * Resolves from the agent's async-local context first (worker jobs) and then
- * the signed-in user's membership. Falls back to the founding org so the
- * original single-tenant install, whose rows predate organization_members,
- * keeps working.
+ * the signed-in user's membership. Missing context is an error, never a cue
+ * to read the founding organization's data.
  *
  * Exported so lib/conversations.ts resolves the tenant the same way rather
  * than growing a second answer to "which org is this". Two resolvers is one
  * more than the number that can be right.
  */
 export async function currentOrg(): Promise<string> {
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  const { LEGACY_ORG_ID } = await import("./tenant-context");
-  return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const { resolveTenantOrgId } = await import("./tenant");
+  return resolveTenantOrgId();
 }
 
 /**
@@ -109,12 +108,7 @@ export async function queueCounts(): Promise<{
   callQueue: number;
   today: number;
 }> {
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  const { LEGACY_ORG_ID } = await import("./tenant-context");
-  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  if (!/^[0-9a-f-]{36}$/i.test(orgId)) {
-    return { review: 0, callQueue: 0, today: 0 };
-  }
+  const orgId = await currentOrg();
   /*
    * Review and Calls stay as the named badges they always were. Today is the
    * same set the work queue lists: unique records that still need a person.
@@ -182,10 +176,7 @@ export const PIPELINE_STAGES: { key: string; label: string }[] = [
 ];
 
 export async function pipelineOpportunities(): Promise<Opportunity[]> {
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  const { LEGACY_ORG_ID } = await import("./tenant-context");
-  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
+  const orgId = await currentOrg();
   return query<Opportunity>(
     `select * from opportunities
       where org_id = $1 and stage <> 'dismissed' and status <> 'archived'
@@ -433,10 +424,7 @@ function oppTableWhere(f: OppTableFilters, params: unknown[]): string[] {
 }
 
 export async function opportunityTableCount(f: OppTableFilters = {}): Promise<number> {
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  const { LEGACY_ORG_ID } = await import("./tenant-context");
-  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return 0;
+  const orgId = await currentOrg();
   const params: unknown[] = [orgId];
   const where = oppTableWhere(f, params);
   const row = await queryOne<{ n: number }>(
@@ -451,10 +439,7 @@ export async function opportunityTable(
   f: OppTableFilters = {},
   page?: { sort?: string; direction?: "asc" | "desc"; limit?: number; offset?: number }
 ): Promise<Opportunity[]> {
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  const { LEGACY_ORG_ID } = await import("./tenant-context");
-  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
+  const orgId = await currentOrg();
   const params: unknown[] = [orgId];
   const where = oppTableWhere(f, params);
 
@@ -482,10 +467,7 @@ export async function opportunityTable(
 }
 
 export async function reviewQueue(): Promise<Opportunity[]> {
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  const { LEGACY_ORG_ID } = await import("./tenant-context");
-  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
+  const orgId = await currentOrg();
   return query<Opportunity>(
     `select * from opportunities
       where org_id = $1 and tier='review' and human_action_required=true and status='open'
@@ -1008,36 +990,29 @@ export interface SubPairingRow {
 }
 
 export async function subDetail(id: string) {
-  let orgId: string | null = null;
-  try {
-    const { tryResolveTenantOrgId } = await import("./tenant");
-    orgId = await tryResolveTenantOrgId();
-  } catch {
-    orgId = null;
-  }
-  const sub = orgId
-    ? await queryOne<Subcontractor>(
-        `select * from subcontractors where id=$1 and org_id=$2`,
-        [id, orgId]
-      )
-    : await queryOne<Subcontractor>(`select * from subcontractors where id=$1`, [id]);
+  const orgId = await currentOrg();
+  const sub = await queryOne<Subcontractor>(
+    `select * from subcontractors where id=$1 and org_id=$2`,
+    [id, orgId]
+  );
   if (!sub) return null;
   const [communications, quotes, stats, pairings] = await Promise.all([
     query<SubCommRow>(
       `select c.id, c.channel, c.direction, c.subject, c.body, c.created_at, c.replied_at,
               c.opportunity_id, o.title as opportunity_title, c.provider, c.recipient_email
          from communications c
-         left join opportunities o on o.id = c.opportunity_id
-        where c.subcontractor_id = $1
+         left join opportunities o on o.id = c.opportunity_id and o.org_id = $2
+        where c.subcontractor_id = $1 and c.org_id = $2
         order by c.created_at desc
         limit 100`,
-      [id]
+      [id, orgId]
     ),
     query(
       `select q.*, o.title as opportunity_title, o.id as opportunity_id from quotes q
          join opportunities o on o.id=q.opportunity_id
-        where q.subcontractor_id=$1 order by q.created_at desc limit 100`,
-      [id]
+        where q.subcontractor_id=$1 and q.org_id=$2 and o.org_id=$2
+        order by q.created_at desc limit 100`,
+      [id, orgId]
     ),
     queryOne<SubContactStats>(
       `select
@@ -1050,8 +1025,8 @@ export async function subDetail(id: string) {
          )::int as skips_logged,
          count(*)::int as touches
        from communications
-       where subcontractor_id = $1`,
-      [id]
+       where subcontractor_id = $1 and org_id = $2`,
+      [id, orgId]
     ),
     query<SubPairingRow>(
       `select os.opportunity_id, o.title as opportunity_title, o.stage, o.deadline, o.status,
@@ -1064,13 +1039,14 @@ export async function subDetail(id: string) {
              from quotes
             where opportunity_id = os.opportunity_id
               and subcontractor_id = os.subcontractor_id
+              and org_id = $2
             order by created_at desc
             limit 1
          ) q on true
-        where os.subcontractor_id = $1
+        where os.subcontractor_id = $1 and o.org_id = $2
         order by o.deadline asc nulls last, o.updated_at desc
         limit 50`,
-      [id]
+      [id, orgId]
     ),
   ]);
   return {
@@ -1145,11 +1121,9 @@ function isoOrNull(v: unknown): string | null {
  * leaves behind: a call placed, a quote entered, a bid submitted, a decision
  * recorded, a compliance item resolved.
  *
- * The day boundary is the database's, which is the server's. That is a real
- * limitation on an account whose operator is several timezones away, and it
- * is named here rather than papered over: the alternative is passing a
- * timezone from the browser into a server component, which arrives one render
- * late and would make the counter flicker.
+ * The window is explicit and belongs to the operator, never the database
+ * server. The user's saved IANA timezone is available during server rendering,
+ * so daylight-saving days remain correct without a client-side flicker.
  */
 export interface CompletedToday {
   calls: number;
@@ -1165,34 +1139,39 @@ export interface CompletedToday {
   total: number;
 }
 
-export async function completedToday(): Promise<CompletedToday> {
+export async function completedToday(
+  opts: { timezone?: string; now?: Date } = {}
+): Promise<CompletedToday> {
   const orgId = await currentOrg();
+  const timezone = safeTimeZone(opts.timezone ?? DEFAULT_TIMEZONE);
+  const now = opts.now ?? new Date();
+  const window = dayWindow(localDateOf(now, timezone), timezone);
   const row = await queryOne<Record<string, string>>(
     `select
        (select count(*) from call_cards cc
           join opportunities o on o.id = cc.opportunity_id
-         where o.org_id = $1 and cc.called_at >= date_trunc('day', now()))::text as calls,
+         where o.org_id = $1 and cc.called_at >= $2 and cc.called_at < $3)::text as calls,
        (select count(*) from quotes q
-         where q.org_id = $1 and q.created_at >= date_trunc('day', now()))::text as quotes,
+         where q.org_id = $1 and q.created_at >= $2 and q.created_at < $3)::text as quotes,
        (select count(*) from bids b
-         where b.org_id = $1 and b.submitted_at >= date_trunc('day', now()))::text as bids,
+         where b.org_id = $1 and b.submitted_at >= $2 and b.submitted_at < $3)::text as bids,
        (select count(distinct l.opportunity_id) from agent_logs l
          where l.org_id = $1
            and l.agent = 'operator'
            and l.action in ('pursue', 'dismiss')
-           and l.created_at >= date_trunc('day', now()))::text as decisions,
+           and l.created_at >= $2 and l.created_at < $3)::text as decisions,
        (select count(*) from compliance_items ci
          where ci.org_id = $1 and ci.status_override = 'resolved'
-           and ci.updated_at >= date_trunc('day', now()))::text as compliance,
+           and ci.updated_at >= $2 and ci.updated_at < $3)::text as compliance,
        (select count(*) from opportunities o
-         where o.org_id = $1 and o.created_at >= date_trunc('day', now()))::text as found,
+         where o.org_id = $1 and o.created_at >= $2 and o.created_at < $3)::text as found,
        (select count(*) from communications c
          where c.org_id = $1
            and c.channel = 'email'
            and c.direction = 'outbound'
            and coalesce(c.delivery_state, 'sent') not in ('failed', 'bounced')
-           and c.created_at >= date_trunc('day', now()))::text as emails`,
-    [orgId]
+           and c.created_at >= $2 and c.created_at < $3)::text as emails`,
+    [orgId, window.start, window.end]
   );
 
   const n = (v: string | undefined) => {
@@ -1305,8 +1284,14 @@ export interface CompletedItem {
  * wants the last hour before the first, and a day that produced two hundred
  * rows is one where the top fifty answer the question.
  */
-export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> {
+export async function completedTodayItems(
+  limit = 50,
+  opts: { timezone?: string; now?: Date } = {}
+): Promise<CompletedItem[]> {
   const orgId = await currentOrg();
+  const timezone = safeTimeZone(opts.timezone ?? DEFAULT_TIMEZONE);
+  const now = opts.now ?? new Date();
+  const window = dayWindow(localDateOf(now, timezone), timezone);
   const rows = await query<{
     key: string;
     kind: string;
@@ -1326,7 +1311,7 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
        from call_cards cc
        join opportunities o on o.id = cc.opportunity_id
        left join subcontractors s on s.id = cc.subcontractor_id
-       where o.org_id = $1 and cc.called_at >= date_trunc('day', now())
+       where o.org_id = $1 and cc.called_at >= $2 and cc.called_at < $3
 
        union all
        select
@@ -1338,7 +1323,7 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
          q.created_at
        from quotes q
        join opportunities o on o.id = q.opportunity_id
-       where q.org_id = $1 and q.created_at >= date_trunc('day', now())
+       where q.org_id = $1 and q.created_at >= $2 and q.created_at < $3
 
        union all
        select
@@ -1350,7 +1335,7 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
          b.submitted_at
        from bids b
        join opportunities o on o.id = b.opportunity_id
-       where b.org_id = $1 and b.submitted_at >= date_trunc('day', now())
+       where b.org_id = $1 and b.submitted_at >= $2 and b.submitted_at < $3
 
        union all
        select
@@ -1366,7 +1351,7 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
           where org_id = $1
             and agent = 'operator'
             and action in ('pursue', 'dismiss')
-            and created_at >= date_trunc('day', now())
+            and created_at >= $2 and created_at < $3
             and opportunity_id is not null
           order by opportunity_id, created_at desc
        ) l
@@ -1382,7 +1367,7 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
          ci.updated_at
        from compliance_items ci
        where ci.org_id = $1 and ci.status_override = 'resolved'
-         and ci.updated_at >= date_trunc('day', now())
+         and ci.updated_at >= $2 and ci.updated_at < $3
 
        union all
        select
@@ -1393,7 +1378,7 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
          '/opportunity/' || o.id::text,
          o.created_at
        from opportunities o
-       where o.org_id = $1 and o.created_at >= date_trunc('day', now())
+       where o.org_id = $1 and o.created_at >= $2 and o.created_at < $3
 
        union all
        select
@@ -1410,11 +1395,11 @@ export async function completedTodayItems(limit = 50): Promise<CompletedItem[]> 
          and c.channel = 'email'
          and c.direction = 'outbound'
          and coalesce(c.delivery_state, 'sent') not in ('failed', 'bounced')
-         and c.created_at >= date_trunc('day', now())
+         and c.created_at >= $2 and c.created_at < $3
      ) done
      order by at desc
-     limit $2`,
-    [orgId, limit]
+     limit $4`,
+    [orgId, window.start, window.end, limit]
   );
   return rows.map((r) => ({
     key: r.key,
@@ -1762,24 +1747,24 @@ export async function providerUsage(): Promise<{
     queryOne<{ ok: boolean }>(
       `select true as ok from integration_settings where env_key = $1 and org_id = $2`,
       [KEY, orgId]
-    ).catch(() => null),
+    ),
     queryOne<{ expires_at: Date | null }>(
       `select expires_at from platform_key_grants
         where org_id = $1 and env_key = $2
           and (expires_at is null or expires_at > now())`,
       [orgId, KEY]
-    ).catch(() => null),
+    ),
     queryOne<{ calls: number }>(
       `select calls from platform_key_usage where org_id = $1 and env_key = $2`,
       [orgId, KEY]
-    ).catch(() => null),
+    ),
     query<{ claude_usage: Record<string, unknown> }>(
       `select claude_usage from agent_logs
         where org_id = $1 and claude_usage is not null
           and created_at >= now() - interval '24 hours'
         limit 5000`,
       [orgId]
-    ).catch(() => []),
+    ),
   ]);
 
   // The same order the key resolver uses, so this panel cannot describe a
@@ -2318,33 +2303,28 @@ export interface CustomKpiRow {
   sort_order: number;
 }
 
-/** Operator-defined KPI definitions for the Analytics dashboard. [] pre-migration. */
+/** Operator-defined KPI definitions for the Analytics dashboard. */
 export async function customKpis(): Promise<CustomKpiRow[]> {
-  try {
-    return await query<CustomKpiRow>(
-      `select id, label, metric, params, sort_order from custom_kpis
-        where org_id = $1
-        order by sort_order asc, created_at asc limit 50`,
-      [await currentOrg()]
-    );
-  } catch {
-    return [];
-  }
+  return query<CustomKpiRow>(
+    `select id, label, metric, params, sort_order from custom_kpis
+      where org_id = $1
+      order by sort_order asc, created_at asc limit 50`,
+    [await currentOrg()]
+  );
 }
 
 /**
  * Compute one custom KPI. Each metric maps to a fixed, bounded, parameterized
- * query (no free-form SQL), and every failure returns null so a bad definition
- * or a not-yet-migrated table can't break the dashboard. Percent metrics return
- * a 0..100 number; currency/count return the raw number.
+ * query (no free-form SQL). Query failures propagate so they cannot be rendered
+ * as a legitimate empty range. Percent metrics return a 0..100 number;
+ * currency/count return the raw number.
  */
 export async function computeCustomKpi(metric: string, params: KpiParams): Promise<number | null> {
   const orgId = await currentOrg();
   const days = params.days ?? 0;
   const minScore = params.minScore ?? 0;
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
-  try {
-    switch (metric) {
+  switch (metric) {
       case "open_opportunities": {
         const r = await queryOne<{ n: number }>(
           `select count(*)::int as n from opportunities
@@ -2413,11 +2393,8 @@ export async function computeCustomKpi(metric: string, params: KpiParams): Promi
         );
         return Number(r?.n ?? 0);
       }
-      default:
-        return null;
-    }
-  } catch {
-    return null;
+    default:
+      return null;
   }
 }
 
@@ -2481,12 +2458,12 @@ export async function agentRun(id: string): Promise<AgentRunDetail | null> {
             l.subcontractor_id, s.company_name as subcontractor_name,
             l.bid_id, b.opportunity_id as bid_opportunity_id
        from agent_logs l
-       left join opportunities o on o.id = l.opportunity_id
-       left join subcontractors s on s.id = l.subcontractor_id
-       left join bids b on b.id = l.bid_id
+       left join opportunities o on o.id = l.opportunity_id and o.org_id = l.org_id
+       left join subcontractors s on s.id = l.subcontractor_id and s.org_id = l.org_id
+       left join bids b on b.id = l.bid_id and b.org_id = l.org_id
       where l.id = $1 and l.org_id = $2`,
     [id, await currentOrg()]
-  ).catch(() => null);
+  );
 }
 
 export const LOG_PAGE_SIZE = 50;
@@ -2574,11 +2551,8 @@ export interface AgentStatusRow {
  * a platform-wide question is the question being asked.
  */
 export async function agentStatuses(orgId?: string): Promise<AgentStatusRow[]> {
-  // currentOrg, not tryResolveTenantOrgId: this file resolves the tenant one
-  // way, and that way falls back to the founding organization so the original
-  // single-tenant install, whose rows predate organization_members, still sees
-  // its own page. LEGACY_ORG_ID is a real organization id, so that fallback is
-  // still a scope and not a fall-open.
+  // currentOrg, not an optional resolver: a missing tenant is an error and
+  // must never become access to the founding organization's run history.
   const org = orgId ?? (await currentOrg());
   const [fromJobs, fromLogs] = await Promise.all([
     query<AgentStatusRow>(
@@ -2607,7 +2581,7 @@ export async function agentStatuses(orgId?: string): Promise<AgentStatusRow[]> {
         where r.org_id = $1
         group by r.agent, last.status, last.error, last.summary, last.finished_at`,
       [org]
-    ).catch(() => [] as AgentStatusRow[]),
+    ),
     // Fan-out agents (opportunity-monitor) write one job_runs row for the
     // sweep and per-org evidence in agent_logs. Without this fallback the
     // roster said "Has never run" on an account that had just ingested work.
@@ -2627,7 +2601,7 @@ export async function agentStatuses(orgId?: string): Promise<AgentStatusRow[]> {
           and status in ('ok','error')
         group by agent`,
       [org]
-    ).catch(() => [] as AgentStatusRow[]),
+    ),
   ]);
   const byAgent = new Map(fromJobs.map((row) => [row.agent, row]));
   for (const row of fromLogs) {
@@ -2770,28 +2744,24 @@ export interface OppSubCommRow {
 
 export async function opportunityDetail(id: string) {
   // Tenant check: never return another org's opportunity by UUID guess.
-  let orgId: string | null = null;
-  try {
-    const { tryResolveTenantOrgId } = await import("./tenant");
-    orgId = await tryResolveTenantOrgId();
-  } catch {
-    orgId = null;
-  }
-  const opp = orgId
-    ? await queryOne<Opportunity>(
-        `select * from opportunities where id=$1 and org_id=$2`,
-        [id, orgId]
-      )
-    : await queryOne<Opportunity>(`select * from opportunities where id=$1`, [id]);
+  const orgId = await currentOrg();
+  const opp = await queryOne<Opportunity>(
+    `select * from opportunities where id=$1 and org_id=$2`,
+    [id, orgId]
+  );
   if (!opp) return null;
   // Independent lookups run in parallel; every list is bounded so an aged
   // opportunity can't balloon the page render.
   const [bid, quotes, subs, documents, logs, competitors, subComms, callRow, callEvents] = await Promise.all([
-    queryOne(`select * from bids where opportunity_id=$1 order by created_at desc limit 1`, [id]),
+    queryOne(
+      `select * from bids where opportunity_id=$1 and org_id=$2 order by created_at desc limit 1`,
+      [id, orgId]
+    ),
     query(
-      `select q.*, s.company_name from quotes q left join subcontractors s on s.id=q.subcontractor_id
-        where q.opportunity_id=$1 order by q.created_at desc limit 200`,
-      [id]
+      `select q.*, s.company_name from quotes q
+         left join subcontractors s on s.id=q.subcontractor_id and s.org_id=$2
+        where q.opportunity_id=$1 and q.org_id=$2 order by q.created_at desc limit 200`,
+      [id, orgId]
     ),
     query<OppSubRow>(
       `select os.id, os.opportunity_id, os.subcontractor_id, os.trade, os.candidate_rank,
@@ -2809,9 +2779,10 @@ export async function opportunityDetail(id: string) {
                 select 1 from quotes q
                  where q.opportunity_id = os.opportunity_id
                    and q.subcontractor_id = os.subcontractor_id
+                   and q.org_id = $2
               ) as has_quote
          from opportunity_subs os
-         join subcontractors s on s.id = os.subcontractor_id
+         join subcontractors s on s.id = os.subcontractor_id and s.org_id = $2
          left join lateral (
            select
              count(*) filter (where channel = 'email' and direction = 'outbound') as emails_sent,
@@ -2829,6 +2800,7 @@ export async function opportunityDetail(id: string) {
            from communications c
            where c.subcontractor_id = os.subcontractor_id
              and c.opportunity_id = os.opportunity_id
+             and c.org_id = $2
          ) stats on true
         where os.opportunity_id = $1
         order by os.trade nulls last,
@@ -2842,30 +2814,34 @@ export async function opportunityDetail(id: string) {
                  (os.role is distinct from 'backup'),
                  os.candidate_rank nulls last, s.company_name
         limit 300`,
-      [id]
+      [id, orgId]
     ),
-    query(`select * from documents where opportunity_id=$1 order by created_at desc limit 100`, [id]),
+    query(
+      `select * from documents where opportunity_id=$1 and org_id=$2 order by created_at desc limit 100`,
+      [id, orgId]
+    ),
     query(
       `select agent, action, level, message, reasoning, created_at from agent_logs
-        where opportunity_id=$1 order by created_at desc limit 50`,
-      [id]
+        where opportunity_id=$1 and org_id=$2 order by created_at desc limit 50`,
+      [id, orgId]
     ),
     opportunityCompetitors(id),
     query<OppSubCommRow>(
       `select id, subcontractor_id, channel, direction, subject, body, created_at, replied_at
          from communications
-        where opportunity_id = $1
+        where opportunity_id = $1 and org_id = $2
         order by created_at desc
         limit 400`,
-      [id]
+      [id, orgId]
     ),
     queryOne<{ n: number }>(
       `select count(*)::int as n
          from call_cards cc
          join opportunities o on o.id = cc.opportunity_id
          join subcontractors s on s.id = cc.subcontractor_id
-        where cc.opportunity_id = $1 and ${WORKABLE_CALL_CARD_SQL}`,
-      [id]
+        where cc.opportunity_id = $1 and cc.org_id = $2 and o.org_id = $2
+          and s.org_id = $2 and ${WORKABLE_CALL_CARD_SQL}`,
+      [id, orgId]
     ),
     // Calls are part of the record too. The activity feed listed agent logs
     // and emails only, so a solicitation whose history was a round of phone
@@ -2878,13 +2854,15 @@ export async function opportunityDetail(id: string) {
       status: string;
       created_at: string;
     }>(
-      `select cc.id, s.company_name, cc.trade, cc.status, cc.created_at
+      `select cc.id, s.company_name,
+              coalesce(cc.card_json->>'trade', s.trade_categories[1]) as trade,
+              cc.status, cc.created_at
          from call_cards cc
-         left join subcontractors s on s.id = cc.subcontractor_id
-        where cc.opportunity_id = $1
+         left join subcontractors s on s.id = cc.subcontractor_id and s.org_id = $2
+        where cc.opportunity_id = $1 and cc.org_id = $2
         order by cc.created_at desc limit 100`,
-      [id]
-    ).catch(() => []),
+      [id, orgId]
+    ),
   ]);
   return {
     opp,
@@ -2906,22 +2884,22 @@ export async function pricingSummaryFor(opp: Opportunity): Promise<Record<string
 }
 
 /**
- * Every content-library snippet, for the management screen. Returns [] if the
- * table hasn't been migrated yet so the settings page still renders its empty
- * state instead of erroring.
+ * Every content-library snippet, for the management screen.
+ *
+ * An empty list is meaningful: this account has not saved any snippets. A
+ * failed read must therefore propagate to the page, which can keep the rest
+ * of the content workspace available while clearly disabling this section.
+ * Returning [] on failure made a database outage look exactly like a new
+ * account and invited an operator to create duplicate content.
  */
 export async function contentLibrary(): Promise<ContentLibraryItem[]> {
-  try {
-    return await query<ContentLibraryItem>(
-      `select * from content_library
-        where org_id = $1
-        order by is_active desc, category asc, updated_at desc
-        limit 500`,
-      [await currentOrg()]
-    );
-  } catch {
-    return [];
-  }
+  return query<ContentLibraryItem>(
+    `select * from content_library
+      where org_id = $1
+      order by is_active desc, category asc, updated_at desc
+      limit 500`,
+    [await currentOrg()]
+  );
 }
 
 /* ------------------------------------------------------------------------ */
@@ -3088,9 +3066,13 @@ function actionOppSelect(orgId: string): string {
   if (!/^[0-9a-f-]{36}$/i.test(orgId)) throw new Error("Invalid organization id.");
   return `
   select o.id, o.title, o.agency, o.stage, o.deadline, o.value_estimated, o.risk_flags,
-         (select count(*)::int from quotes q where q.opportunity_id = o.id) as quote_count,
-         exists(select 1 from bids b where b.opportunity_id = o.id) as has_bid,
-         exists(select 1 from bids b where b.opportunity_id = o.id and b.submitted_at is not null) as bid_submitted
+         (select count(*)::int from quotes q
+           where q.opportunity_id = o.id and q.org_id = o.org_id) as quote_count,
+         exists(select 1 from bids b
+                  where b.opportunity_id = o.id and b.org_id = o.org_id) as has_bid,
+         exists(select 1 from bids b
+                  where b.opportunity_id = o.id and b.org_id = o.org_id
+                    and b.submitted_at is not null) as bid_submitted
     from opportunities o
    where o.org_id = '${orgId}'`;
 }
@@ -3133,9 +3115,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
   // The "do this first" window matches the configurable red deadline badge, so
   // "urgent" means the same thing everywhere (Settings → Automation rules).
   const urgentDays = Math.max(1, opts?.urgentDays ?? 3);
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  const { LEGACY_ORG_ID } = await import("./tenant-context");
-  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
+  const orgId = await currentOrg();
   const ACTION_OPP_SELECT = actionOppSelect(orgId);
   const [
     triage,
@@ -3330,18 +3310,20 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
               e.intent, e.reason, e.review_reason, e.original_message,
               e.confidence::text as confidence, e.created_at
          from subcontractor_reply_events e
-         left join subcontractors s on s.id = e.subcontractor_id
          left join opportunities o on o.id = e.opportunity_id
+           and (e.org_id is null or o.org_id = e.org_id)
+         left join subcontractors s on s.id = e.subcontractor_id
+           and s.org_id = coalesce(e.org_id, o.org_id)
         where e.needs_review and e.reviewed_at is null
           and (e.org_id = '${orgId}' or (e.org_id is null and o.org_id = '${orgId}'))
           and (o.id is null or ${ACTIVE_PURSUIT_SQL})
         order by e.created_at desc
         limit 20`
-    ).catch(() => []),
+    ),
     // Subcontractor paperwork on live contracts. Assessed in TypeScript rather
     // than SQL so Today, the onboarding agent, and the sub's own page all
     // apply exactly the same rules.
-    loadAwardCompliance({ orgId }).catch(() => []),
+    loadAwardCompliance({ orgId }),
     /*
      * The same predicates, uncapped. Built from ACTION_OPP_WHERE so a change
      * to a bucket's meaning cannot move the list without moving the number.
@@ -3379,7 +3361,7 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
              and coalesce(ci.status_override, ci.status)
                  in ('conflicting','expired','blocked','needs_review','expiring_soon')) as compliance`,
       [urgentDays]
-    ).catch(() => null),
+    ),
   ]);
 
   const callsWithWork: ActionCallRow[] = callRows.map(
@@ -3410,6 +3392,10 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     })
   );
 
+  if (!totalsRow) {
+    throw new Error("The Action Center totals query returned no result.");
+  }
+
   return {
     triage,
     calls: {
@@ -3430,20 +3416,15 @@ export async function actionCenter(opts?: { urgentDays?: number }): Promise<Acti
     snoozedCount: snoozedRow?.n ?? 0,
     stageCounts,
     replyReviews,
-    /*
-     * Fall back to the fetched lengths when the count query fails, rather
-     * than to zero: an understated number is a smaller lie than a screen
-     * claiming there is nothing to do while showing ten things to do.
-     */
     totals: {
-      triage: totalsRow?.triage ?? triage.length,
-      bidWork: totalsRow?.bid_work ?? bidWork.length,
-      urgent: totalsRow?.urgent ?? urgent.length,
-      flagged: totalsRow?.flagged ?? flagged.length,
-      subFollowUps: totalsRow?.sub_follow_ups ?? followUpsWithWork.length,
-      quoteReviews: totalsRow?.quote_reviews ?? quoteReviews.length,
-      replyReviews: totalsRow?.reply_reviews ?? replyReviews.length,
-      compliance: totalsRow?.compliance ?? complianceAlerts.length,
+      triage: totalsRow.triage,
+      bidWork: totalsRow.bid_work,
+      urgent: totalsRow.urgent,
+      flagged: totalsRow.flagged,
+      subFollowUps: totalsRow.sub_follow_ups,
+      quoteReviews: totalsRow.quote_reviews,
+      replyReviews: totalsRow.reply_reviews,
+      compliance: totalsRow.compliance,
     },
   };
 }
@@ -3574,9 +3555,13 @@ export interface AuthorityOverview {
 
 /** Latest authority snapshot + a trend series (most recent 60 points). */
 export async function authorityOverview(): Promise<AuthorityOverview> {
+  const orgId = await currentOrg();
   const rows = await query<{ domain_rating: string | null; referring_domains: number | null; backlinks_total: number | null; captured_at: string }>(
     `select domain_rating, referring_domains, backlinks_total, captured_at
-       from authority_snapshots order by captured_at desc limit 60`
+       from authority_snapshots
+      where org_id = $1
+      order by captured_at desc limit 60`,
+    [orgId]
   );
   const asNum = (v: string | null) => (v == null ? null : Number(v));
   const latest = rows[0]
@@ -3611,7 +3596,8 @@ export async function backlinkProspects(limit = 200): Promise<ProspectRow[]> {
     `select p.id, p.domain, p.opportunity_type, p.domain_rating, p.relevance, p.traffic,
             p.priority_score, p.tier, p.link_type, p.status, p.qualification_json, p.contact_email,
             (select o.approval_status from backlink_outreach o
-               where o.prospect_id = p.id order by o.created_at desc limit 1) as outreach_status
+               where o.prospect_id = p.id and o.org_id = p.org_id
+               order by o.created_at desc limit 1) as outreach_status
        from backlink_prospects p
       where p.org_id = $2 and p.tier is not null and p.tier <> 'reject'
       order by p.priority_score desc nulls last
@@ -3651,7 +3637,8 @@ export async function outreachActivity(limit = 100): Promise<OutreachActivityRow
   const rows = await query<Record<string, unknown>>(
     `select o.id, p.domain, p.contact_email, o.subject, o.sent_at, o.replied_at,
             o.follow_up_sent, o.send_error
-       from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
+       from backlink_outreach o
+       join backlink_prospects p on p.id = o.prospect_id and p.org_id = o.org_id
       where o.org_id = $2 and o.approval_status = 'approved'
       order by o.replied_at desc nulls last, o.sent_at desc nulls last, o.updated_at desc
       limit $1`,
@@ -3686,7 +3673,8 @@ export async function outreachQueue(status = "pending"): Promise<OutreachRow[]> 
   const rows = await query<Record<string, unknown>>(
     `select o.id, o.prospect_id, p.domain, o.channel, o.subject, o.body,
             o.approval_status, o.created_at, o.sent_at
-       from backlink_outreach o join backlink_prospects p on p.id = o.prospect_id
+       from backlink_outreach o
+       join backlink_prospects p on p.id = o.prospect_id and p.org_id = o.org_id
       where o.org_id = $2 and o.approval_status = $1
       order by p.priority_score desc nulls last, o.created_at desc`,
     [status, await currentOrg()]
@@ -3715,6 +3703,7 @@ export interface BacklinkChange {
 
 /** Recent backlink changes: newest live links and recently-lost links. */
 export async function backlinkChanges(): Promise<{ recent: BacklinkChange[]; lost: BacklinkChange[]; liveCount: number }> {
+  const orgId = await currentOrg();
   const map = (r: Record<string, unknown>): BacklinkChange => ({
     source_domain: String(r.source_domain),
     domain_rating: r.domain_rating == null ? null : Number(r.domain_rating),
@@ -3725,13 +3714,22 @@ export async function backlinkChanges(): Promise<{ recent: BacklinkChange[]; los
   });
   const recent = await query<Record<string, unknown>>(
     `select source_domain, domain_rating, link_type, first_seen_at, last_seen_at, lost_at
-       from backlinks where lost_at is null order by first_seen_at desc limit 25`
+       from backlinks
+      where org_id = $1 and lost_at is null
+      order by first_seen_at desc limit 25`,
+    [orgId]
   );
   const lost = await query<Record<string, unknown>>(
     `select source_domain, domain_rating, link_type, first_seen_at, last_seen_at, lost_at
-       from backlinks where lost_at is not null order by lost_at desc limit 25`
+       from backlinks
+      where org_id = $1 and lost_at is not null
+      order by lost_at desc limit 25`,
+    [orgId]
   );
-  const live = await queryOne<{ n: string }>(`select count(*)::text as n from backlinks where lost_at is null`);
+  const live = await queryOne<{ n: string }>(
+    `select count(*)::text as n from backlinks where org_id = $1 and lost_at is null`,
+    [orgId]
+  );
   return { recent: recent.map(map), lost: lost.map(map), liveCount: Number(live?.n ?? 0) };
 }
 
@@ -3746,10 +3744,7 @@ export async function backlinkChanges(): Promise<{ recent: BacklinkChange[]; los
 export async function workQueue(): Promise<import("./domain/work-queue").WorkItem[]> {
   const { dedupeWorkItems } = await import("./domain/work-queue");
   const { flagSummary } = await import("./flag-labels");
-  const { tryResolveTenantOrgId } = await import("./tenant");
-  const { LEGACY_ORG_ID } = await import("./tenant-context");
-  const orgId = (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  if (!/^[0-9a-f-]{36}$/i.test(orgId)) return [];
+  const orgId = await currentOrg();
 
   const [replies, decisions, calls, actionable, awaitingReply] = await Promise.all([
     // Unread subcontractor replies. These go to the very front of the queue:

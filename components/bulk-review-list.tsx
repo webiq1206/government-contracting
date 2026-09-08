@@ -94,7 +94,7 @@ function ReviewCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2">
         <div>
           <p className="label">Est. value</p>
           <p className="mt-0.5 text-sm font-medium text-slate-900">
@@ -120,7 +120,7 @@ function ReviewCard({
             {o.past_perf_classification
               ? (PAST_PERF_LABEL[o.past_perf_classification] ??
                 o.past_perf_classification)
-              : "-"}
+              : "Not assessed"}
           </p>
         </div>
         <div>
@@ -130,7 +130,7 @@ function ReviewCard({
               o.review_expires_at ? "text-review" : "text-slate-500"
             }`}
           >
-            {o.review_expires_at ? `auto-dismiss in ${expiry}` : "-"}
+            {o.review_expires_at ? `Auto-dismiss in ${expiry}` : "No automatic dismissal"}
           </p>
         </div>
       </div>

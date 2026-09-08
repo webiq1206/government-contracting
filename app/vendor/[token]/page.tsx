@@ -70,10 +70,35 @@ export default async function VendorPortalPage({
     return <Expired />;
   }
 
-  const sub = await loadPortalSubject(pointer.s);
+  let sub: Awaited<ReturnType<typeof loadPortalSubject>>;
+  try {
+    sub = await loadPortalSubject(pointer.s);
+  } catch (error) {
+    console.error("[vendor-portal] subcontractor could not be loaded:", error);
+    return (
+      <Notice title="This page could not be loaded">
+        Your link has not been rejected, and you do not need to start the paperwork again. Try
+        this page again in a few minutes. If it still will not load, reply to the email you
+        received and a person will pick it up.
+      </Notice>
+    );
+  }
   if (!sub) return <Expired />;
 
-  const { docs, assessment, liveStatus } = await subComplianceView(pointer.s);
+  let compliance: Awaited<ReturnType<typeof subComplianceView>>;
+  try {
+    compliance = await subComplianceView(pointer.s);
+  } catch (error) {
+    console.error("[vendor-portal] paperwork could not be loaded:", error);
+    return (
+      <Notice title="Your paperwork could not be checked">
+        No document is being called missing or expired, and nothing needs to be uploaded again
+        yet. Try this page again in a few minutes. If it still will not load, reply to the email
+        you received and a person will pick it up.
+      </Notice>
+    );
+  }
+  const { docs, assessment, liveStatus } = compliance;
 
   return (
     <main className="mx-auto min-h-screen max-w-2xl px-5 py-10">

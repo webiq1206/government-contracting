@@ -65,8 +65,12 @@ import {
   workItemRowActions,
   type RowAction,
 } from "@/lib/domain/row-actions";
+import { DEFAULT_TIMEZONE, getUserRecapPreference } from "@/lib/recap/settings";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
+
+const QUEUE_PAGE_SIZE = 50;
 
 /**
  * One screen that finishes work, rather than six screens that lead to it.
@@ -95,13 +99,13 @@ function one(v: string | string[] | undefined): string | undefined {
 }
 
 /** The queue row's state word, from the same axis Today's filters use. */
-function toneFor(item: WorkItem, now: Date): { label: string; tone: QueueTone } {
+function toneFor(item: WorkItem, now: Date, timezone: string): { label: string; tone: QueueTone } {
   const state = stateOf(item);
   if (state === "blocked") return { label: "Blocked", tone: "blocked" };
   if (state === "waiting_on_others") {
     return { label: `Waiting on ${item.waitingOn?.party ?? "them"}`, tone: "waiting" };
   }
-  const bucket = bucketOf(item, now);
+  const bucket = bucketOf(item, now, timezone);
   if (bucket === "overdue") return { label: "Overdue", tone: "blocked" };
   if (bucket === "due_today") return { label: "Due today", tone: "attention" };
   return { label: PANE_CHIP[paneFor(item)], tone: "neutral" };
@@ -115,14 +119,27 @@ export default async function WorkbenchPage({
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
 
-  const [items, rules, members] = await Promise.all([
+  const loadWarnings: string[] = [];
+  let queueUnavailable = false;
+  const [items, rules, members, preference] = await Promise.all([
     workQueue().catch((e) => {
       console.error("[workbench] queue failed to load:", e);
+      queueUnavailable = true;
+      loadWarnings.push("The work queue is unavailable, so no task count or empty state is confirmed.");
       return [] as WorkItem[];
     }),
     getAutomationRules(),
-    assignableMembers().catch(() => []),
+    assignableMembers().catch(() => {
+      loadWarnings.push("Assignable team members could not be loaded.");
+      return [];
+    }),
+    getUserRecapPreference(ctx.user.id).catch(() => {
+      loadWarnings.push("Your time zone could not be loaded, so deadlines use the default zone.");
+      return null;
+    }),
   ]);
+  const timezone = preference?.timezone ?? DEFAULT_TIMEZONE;
+  const now = new Date();
 
   const q = one(searchParams?.q)?.trim() ?? "";
   const rawBucket = parseQueueFilter(searchParams?.due);
@@ -140,7 +157,7 @@ export default async function WorkbenchPage({
   const selectedKey = one(searchParams?.i) ?? null;
 
   const actionable = needsYou(items);
-  const counts = queueCounts(actionable);
+  const counts = queueCounts(actionable, now, timezone);
   const kindCounts = (Object.keys(KIND_FILTER_LABEL) as WorkKind[]).reduce(
     (acc, k) => {
       acc[k] = actionable.filter((i) => i.kind === k).length;
@@ -149,19 +166,36 @@ export default async function WorkbenchPage({
     {} as Record<WorkKind, number>
   );
 
-  const shown = filterWorkItems(bucket === "waiting_on_others" ? items : actionable, {
-    bucket,
-    kind,
-    q,
-    owner,
-    viewerId: ctx.user.id,
-  });
+  const filteredItems = filterWorkItems(
+    bucket === "waiting_on_others" ? items : actionable,
+    { bucket, kind, q, owner, viewerId: ctx.user.id },
+    now,
+    timezone
+  );
+
+  // Keep the queue usable when an account has hundreds of open actions. A
+  // selected item chooses its own page, so links from Today still open the
+  // exact task even when they do not carry a page number.
+  const selectedIndex = selectedKey
+    ? filteredItems.findIndex((item) => item.key === selectedKey)
+    : -1;
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / QUEUE_PAGE_SIZE));
+  const requestedPage = Math.max(1, Number(one(searchParams?.page) ?? "1") || 1);
+  const page =
+    selectedIndex >= 0
+      ? Math.floor(selectedIndex / QUEUE_PAGE_SIZE) + 1
+      : Math.min(requestedPage, totalPages);
+  const shown = filteredItems.slice(
+    (page - 1) * QUEUE_PAGE_SIZE,
+    page * QUEUE_PAGE_SIZE
+  );
 
   const params: Record<string, string | undefined> = {
     q: q || undefined,
     due: bucket === "all" ? undefined : bucket,
     kind: kind ?? undefined,
     owner: owner === "anyone" ? undefined : owner,
+    page: page > 1 ? String(page) : undefined,
   };
   const { forItem, base } = queueHrefBuilder("/workbench", params, "i");
 
@@ -193,7 +227,7 @@ export default async function WorkbenchPage({
    * answers the wrong subcontractor. So the page says what happened, and opens
    * nothing.
    */
-  const missing = selectedKey != null && !shown.some((i) => i.key === selectedKey);
+  const missing = selectedKey != null && selectedIndex < 0;
   const selected = missing ? null : resolved;
   /*
    * Whether the URL actually names an item, as opposed to the page having
@@ -212,7 +246,6 @@ export default async function WorkbenchPage({
   const nextHref = nextKey ? forItem(nextKey) : null;
   const prevHref = position.prevId ? forItem(position.prevId) : null;
 
-  const now = new Date();
   const peekValues = shown.map((item) => {
     const kind =
       item.record?.kind === "opportunity" || item.record?.kind === "call_card"
@@ -228,7 +261,7 @@ export default async function WorkbenchPage({
     title: i.title,
     context: i.context || null,
     meta: i.due ? countdown(i.due) : null,
-    state: toneFor(i, now),
+    state: toneFor(i, now, timezone),
   }));
 
   const peekTarget = parseQuickView(searchParams?.peek, {
@@ -280,9 +313,22 @@ export default async function WorkbenchPage({
   }
   const peekPosition = queuePosition(peekValues, peekView ? peekValue : null);
 
-  const detail = selected ? await loadWorkbenchDetail(selected, ctx.orgId) : null;
+  let selectedDetailUnavailable = false;
+  const detail = selected
+    ? await loadWorkbenchDetail(selected, ctx.orgId).catch((error) => {
+        console.error("[workbench] selected task detail failed to load:", error);
+        selectedDetailUnavailable = true;
+        loadWarnings.push(
+          "The selected task could not be loaded. It has not been treated as finished or removed, and its actions are disabled."
+        );
+        return null;
+      })
+    : null;
   const owners = selected?.opportunityId
-    ? await ownersFor("opportunity", [selected.opportunityId]).catch(() => new Map())
+    ? await ownersFor("opportunity", [selected.opportunityId]).catch(() => {
+        loadWarnings.push("The selected opportunity owner could not be loaded.");
+        return new Map();
+      })
     : new Map();
 
   const filtered = bucket !== "all" || kind != null || q !== "" || owner !== "anyone";
@@ -293,7 +339,7 @@ export default async function WorkbenchPage({
         <PageFrame
           help={PAGE_HELP["workbench"]}
           title="Workbench"
-          status={summarizeQueue(items)}
+          status={queueUnavailable ? "Queue status unavailable" : summarizeQueue(items)}
           explanation="Everything waiting on a person, worked one at a time without leaving this screen."
           primaryAction={
             <Link href="/today" className="btn-ghost text-xs">
@@ -442,16 +488,40 @@ export default async function WorkbenchPage({
         </PageToolbar>
       </div>
 
-      {items.length === 0 ? (
+      <ShellDataWarning items={loadWarnings} />
+
+      {queueUnavailable ? (
+        <div className="scroll-thin flex-1 overflow-y-auto p-5">
+          <EmptyState
+            title="The work queue could not be loaded"
+            description="No task is being shown as complete or absent. Reload the page first. If it still fails, open Automation Health to see the underlying incident."
+            action={
+              <div className="flex flex-wrap gap-2">
+                <Link href="/workbench" className="btn-primary text-sm">
+                  Reload queue
+                </Link>
+                <Link href="/agents" className="btn-ghost text-sm">
+                  Open Automation Health
+                </Link>
+              </div>
+            }
+          />
+        </div>
+      ) : items.length === 0 ? (
         <div className="scroll-thin flex-1 overflow-y-auto p-5">
           <EmptyState
             tone="success"
             title="Nothing is waiting on a person"
-            description="The automation keeps running: notices are polled and scored, outreach goes out, and replies are read. Anything it will not decide on its own lands here."
+            description="No pending tasks were found. Check Automation Health to confirm that discovery, outreach, and reply collection are running. New decisions and tasks will appear here."
             action={
-              <Link href="/pipeline" className="btn-ghost text-sm">
-                Open Opportunities
-              </Link>
+              <>
+                <Link href="/pipeline" className="btn-ghost text-sm">
+                  Open Opportunities
+                </Link>
+                <Link href="/agents" className="btn-ghost text-sm">
+                  Check Automation Health
+                </Link>
+              </>
             }
           />
         </div>
@@ -472,7 +542,7 @@ export default async function WorkbenchPage({
                 entries={entries}
                 selectedId={selected?.key ?? null}
                 heading="Your queue"
-                summary={summarizeQueue(shown)}
+                summary={summarizeQueue(filteredItems)}
                 toolbar={
                   <div className="flex flex-wrap gap-1.5">
                     <KeyHint keys="J / K" label="move" />
@@ -492,7 +562,32 @@ export default async function WorkbenchPage({
                     }
                   />
                 }
-              />
+              >
+                {totalPages > 1 && (
+                  <nav
+                    aria-label="Work queue pages"
+                    className="flex items-center justify-between gap-3 pb-3 text-xs"
+                  >
+                    {page > 1 ? (
+                      <Link href={pageHref(page - 1)} className="tap text-accent">
+                        Previous 50
+                      </Link>
+                    ) : (
+                      <span />
+                    )}
+                    <span className="num text-muted-foreground">
+                      Page {page} of {totalPages}
+                    </span>
+                    {page < totalPages ? (
+                      <Link href={pageHref(page + 1)} className="tap text-accent">
+                        Next 50
+                      </Link>
+                    ) : (
+                      <span />
+                    )}
+                  </nav>
+                )}
+              </QueueRail>
             }
             primary={
               selected && detail ? (
@@ -506,6 +601,14 @@ export default async function WorkbenchPage({
                   canSubmit={can(ctx.user.orgRole, "submit")}
                   position={{ index: position.index, total: position.total }}
                 />
+              ) : selected && selectedDetailUnavailable ? (
+                <WorkspacePlaceholder>
+                  <span role="alert" className="block max-w-lg text-center">
+                    This task is still in the queue, but its record could not be read. No action is
+                    available and nothing has been marked complete. Reload the page before working
+                    it.
+                  </span>
+                </WorkspacePlaceholder>
               ) : (
                 <WorkspacePlaceholder>
                   Pick an item to work on it. The queue is ordered by how close each
@@ -661,10 +764,20 @@ export default async function WorkbenchPage({
   /** A filter chip's link: this page, with one parameter swapped. */
   function chip(over: Partial<Record<"due" | "kind" | "owner", string | undefined>>): string {
     const p = new URLSearchParams();
-    const next = { ...params, ...over };
+    const next = { ...params, ...over, page: undefined };
     for (const [k, v] of Object.entries(next)) {
       if (v) p.set(k, v);
     }
+    const s = p.toString();
+    return s ? `/workbench?${s}` : "/workbench";
+  }
+
+  function pageHref(nextPage: number): string {
+    const p = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (key !== "page" && value) p.set(key, value);
+    }
+    if (nextPage > 1) p.set("page", String(nextPage));
     const s = p.toString();
     return s ? `/workbench?${s}` : "/workbench";
   }

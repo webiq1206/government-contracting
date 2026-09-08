@@ -17,6 +17,7 @@ import {
 } from "@/lib/domain/recap/day-window";
 import { getUserRecapPreference } from "@/lib/recap/settings";
 import { buildPlatformRecap, gatherPlatformFacts } from "@/lib/recap/platform";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,13 @@ export default async function PlatformRecapPage({
   const auth = await requirePlatformAdmin();
   if (auth instanceof Response) notFound();
 
-  const pref = await getUserRecapPreference(auth.id).catch(() => null);
+  const loadWarnings: string[] = [];
+  const pref = await getUserRecapPreference(auth.id).catch(() => {
+    loadWarnings.push(
+      "Your recap time zone could not be loaded, so dates are shown in the default time zone."
+    );
+    return null;
+  });
   const timezone = safeTimeZone(pref?.timezone ?? null);
 
   const now = new Date();
@@ -50,13 +57,20 @@ export default async function PlatformRecapPage({
   const localDate = requested && parseLocalDate(requested) ? requested : yesterday;
 
   const window = dayWindow(localDate, timezone);
-  const facts = await gatherPlatformFacts(window.start, window.end);
-  const recap = buildPlatformRecap(facts, {
-    localDate,
-    timezone,
-    now,
-    partial: localDate === today,
+  const facts = await gatherPlatformFacts(window.start, window.end).catch(() => {
+    loadWarnings.push(
+      "Platform recap facts could not be loaded. Counts, failures, and the urgent state are unavailable; reload before relying on this page."
+    );
+    return null;
   });
+  const recap = facts
+    ? buildPlatformRecap(facts, {
+        localDate,
+        timezone,
+        now,
+        partial: localDate === today,
+      })
+    : null;
 
   /*
    * The open preview, restricted to accounts.
@@ -68,7 +82,14 @@ export default async function PlatformRecapPage({
    * relying on that is the difference between a guard and a coincidence.
    */
   const peek = parsePeekParam(searchParams?.peek, ["account"]);
-  const peeked = peek ? await adminAccount(peek.id).catch(() => null) : null;
+  const peeked = peek
+    ? await adminAccount(peek.id).catch(() => {
+        loadWarnings.push(
+          "The selected account preview could not be loaded, so its detail is unavailable."
+        );
+        return null;
+      })
+    : null;
   const peekHref = (value: string | null) => {
     const p = new URLSearchParams();
     if (requested) p.set("date", localDate);
@@ -84,7 +105,11 @@ export default async function PlatformRecapPage({
         explanation="What happened across every account on one day: what broke, whose mail did not arrive, and who has gone quiet."
         breadcrumbs={[{ label: "Platform admin", href: "/admin/accounts" }]}
         status={
-          recap.urgentCount > 0 ? `${recap.urgentCount} needing attention` : "Nothing urgent"
+          !recap
+            ? "Recap data unavailable"
+            : recap.urgentCount > 0
+              ? `${recap.urgentCount} needing attention`
+              : "Nothing urgent"
         }
         primaryAction={
           <Link href="/admin/health" className="btn-secondary text-xs">
@@ -92,6 +117,7 @@ export default async function PlatformRecapPage({
           </Link>
         }
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div className="scroll-thin min-w-0 flex-1 space-y-4 overflow-y-auto p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -111,12 +137,19 @@ export default async function PlatformRecapPage({
           />
         </div>
 
-        <RecapView
-          recap={recap}
-          peekKinds={["account"]}
-          peekHref={(v) => peekHref(v)}
-          openPeek={searchParams?.peek ?? null}
-        />
+        {recap ? (
+          <RecapView
+            recap={recap}
+            peekKinds={["account"]}
+            peekHref={(v) => peekHref(v)}
+            openPeek={searchParams?.peek ?? null}
+          />
+        ) : (
+          <div role="alert" className="rounded-md border border-review/50 bg-review/10 px-4 py-3 text-sm leading-relaxed text-foreground">
+            No platform recap is shown because its source records could not be read. This is an
+            unavailable state, not a day with zero failures. Reload or open Platform Health.
+          </div>
+        )}
       </div>
 
       {peeked && <AdminAccountPeek account={peeked} closeHref={peekHref(null)} />}

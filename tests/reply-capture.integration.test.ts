@@ -257,8 +257,8 @@ d("reply capture pipeline (Resend inbound path)", () => {
   it("never auto-saves on a weak (sender-only) match", async () => {
     // New outbound comm without tracking/thread; reply matches only by sender.
     const comm2 = await queryOne<{ id: string }>(
-      `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, provider)
-       values ($1,$2,'email','outbound','TEST outreach 2','body','resend') returning id`,
+      `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, provider, meta)
+       values ($1,$2,'email','outbound','TEST outreach 2','body','resend','{"trade":"electrical"}'::jsonb) returning id`,
       [ids.sub, ids.opp]
     );
     const { comm, strongMatch } = await cap.matchInboundReply({
@@ -318,11 +318,12 @@ d("reply capture pipeline (Resend inbound path)", () => {
   });
 
   it("soft-closes on cant_fulfill, skips quote save, and records thank-you outbound", async () => {
-    // Fresh outbound so matchInboundReply can find an unreplied send.
+    // A decline needs the exact conversation, not just a matching sender.
+    const declineTracking = randomUUID();
     const outbound = await queryOne<{ id: string }>(
       `insert into communications (subcontractor_id, opportunity_id, channel, direction, subject, body, tracking_id, provider)
        values ($1,$2,'email','outbound','TEST decline outreach','body',$3,'resend') returning id`,
-      [ids.sub, ids.opp, randomUUID()]
+      [ids.sub, ids.opp, declineTracking]
     );
     await query(
       `update opportunity_subs set outreach_state='sent', responded_at=null
@@ -339,7 +340,7 @@ d("reply capture pipeline (Resend inbound path)", () => {
 
     const { comm, strongMatch } = await cap.matchInboundReply({
       orgId: ids.org,
-      trackingToken: null,
+      trackingToken: declineTracking,
       fromEmail: ids.subEmail,
     });
     expect(comm?.id).toBe(outbound!.id);

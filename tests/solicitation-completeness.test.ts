@@ -72,6 +72,37 @@ describe("evaluateSolicitationCompleteness", () => {
     expect(item?.resolution).toContain("Solicitation.pdf");
   });
 
+  it("blocks when extraction or OCR read only part of a document", () => {
+    const result = evaluateSolicitationCompleteness({
+      ...base,
+      attachmentOutcomes: [
+        {
+          name: "Scanned Solicitation.pdf",
+          status: "partial" as const,
+          detail: "90 of 140 pages transcribed",
+        },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.riskFlags).toContain("documents_partly_read");
+    expect(result.missing.find((m) => m.key === "documents_partly_read")?.critical).toBe(true);
+  });
+
+  it.each(["Scope.docx", "Pricing.xlsx", "Site photo.png"])(
+    "blocks unsupported content in %s",
+    (name) => {
+      const result = evaluateSolicitationCompleteness({
+        ...base,
+        attachmentOutcomes: [
+          { name, status: "unsupported" as const, detail: "application/octet-stream" },
+        ],
+      });
+      expect(result.ok).toBe(false);
+      expect(result.riskFlags).toContain("unsupported_documents");
+      expect(result.missing.find((m) => m.key === "unsupported_documents")?.resolution).toContain(name);
+    }
+  );
+
   it("blocks when scope is placeholder", () => {
     const result = evaluateSolicitationCompleteness({
       ...base,

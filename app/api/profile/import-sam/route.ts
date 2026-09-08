@@ -43,9 +43,18 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = await sam.findEntities(uei ? { uei } : { name });
+  const result = await sam.findEntities(uei ? { uei } : { name }, ctx.orgId);
 
   if (result.disabled) {
+    if (result.disabledReason === "quota_exhausted") {
+      return NextResponse.json(
+        {
+          error:
+            "Today's SAM.gov call budget is used up. Try this import again after midnight UTC; your connected key was not changed.",
+        },
+        { status: 429 }
+      );
+    }
     return NextResponse.json(
       {
         error:

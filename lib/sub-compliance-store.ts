@@ -77,7 +77,7 @@ export async function loadComplianceDocs(subId: string): Promise<ComplianceDocRo
       where subcontractor_id = $1
       order by created_at desc`,
     [subId]
-  ).catch(() => []);
+  );
 }
 
 export interface ComplianceView {
@@ -115,7 +115,7 @@ export async function loadPortalSubject(subId: string): Promise<PortalSubject | 
     `select id, company_name, owner_name, email, org_id
        from subcontractors where id = $1`,
     [subId]
-  ).catch(() => null);
+  );
 }
 
 /**
@@ -406,7 +406,7 @@ export async function loadAwardCompliance(
       where ${where.join(" and ")}
       order by c.id, s.id, named_on_contract desc`,
     params
-  ).catch(() => []);
+  );
 
   return rows.map((r) => ({
     opportunityId: r.opportunity_id,

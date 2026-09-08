@@ -1,7 +1,7 @@
 /**
  * Migration runner CLI. Applies every db/migrations/*.sql file in order.
- * Idempotent and safe to re-run. The worker also applies pending migrations
- * automatically at boot (lib/migrate.ts).
+ * Idempotent and safe to re-run. In production this requires the dedicated
+ * MIGRATION_DATABASE_URL owner credential and runs before runtime services.
  *
  *   npm run db:migrate
  */

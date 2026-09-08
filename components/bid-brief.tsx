@@ -13,7 +13,7 @@ interface DocRow {
 }
 
 const NA = "Not specified in the provided documents";
-const has = (s?: string | null) => Boolean(s && s.trim() && s !== NA);
+const has = (s?: string | null) => typeof s === "string" && Boolean(s.trim()) && s !== NA;
 
 /**
  * Format a date-ish string cleanly (e.g. a raw JS Date/ISO the analyst returned,
@@ -21,12 +21,12 @@ const has = (s?: string | null) => Boolean(s && s.trim() && s !== NA);
  * "Aug 18, 2026". Anything that isn't a real, full date (e.g. "Not specified",
  * "TBD", "2026") is returned untouched.
  */
-function fmtDate(v?: string): string | undefined {
-  if (!v) return v;
-  const s = v.trim();
-  if (s.length < 8) return v; // too short to be a full date (guards "2026", "Q1")
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return v;
+function fmtDate(v?: string | Date | null): string | undefined {
+  if (v == null) return undefined;
+  const s = typeof v === "string" ? v.trim() : "";
+  if (!(v instanceof Date) && s.length < 8) return s || "Date not specified";
+  const d = v instanceof Date ? v : new Date(s);
+  if (Number.isNaN(d.getTime())) return s || "Date not specified";
   return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
 

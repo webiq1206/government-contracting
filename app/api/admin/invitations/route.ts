@@ -56,5 +56,9 @@ export async function POST(req: Request) {
   });
 
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
-  return NextResponse.json({ ok: true, message: result.message });
+  return NextResponse.json({
+    ok: true,
+    message: result.message,
+    mailSent: result.mailSent ?? false,
+  });
 }

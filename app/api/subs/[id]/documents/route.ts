@@ -21,9 +21,9 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const ctx = await requireOrgContext({ capability: "manage_subs" });
   if (ctx instanceof NextResponse) return ctx;
-  const { user: auth } = ctx;
+  const { user: auth, orgId } = ctx;
 
-  const sub = await loadSubForOperator(params.id);
+  const sub = await loadSubForOperator(params.id, orgId);
   if (!sub) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const form = await req.formData().catch(() => null);

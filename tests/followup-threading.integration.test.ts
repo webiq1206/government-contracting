@@ -51,6 +51,7 @@ vi.mock("../lib/opportunity-attachments", () => ({
     links: [],
     expected: true,
     undelivered: [],
+    omitted: [],
   }),
 }));
 

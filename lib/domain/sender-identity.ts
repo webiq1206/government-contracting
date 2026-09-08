@@ -89,7 +89,13 @@ export async function resolveOutreachSender(orgId: string): Promise<OutreachSend
 
   const row = rows[0];
   // send_as wins when set (a verified alias), otherwise the authorized address.
-  const address = sanitizeAddress(row?.send_as) || sanitizeAddress(row?.email);
+  // A nonempty but invalid alias is not the same as no alias. Falling through
+  // to the authorized address would silently send as somebody other than the
+  // identity the operator selected, so corrupted legacy data fails closed.
+  const configuredAlias = row?.send_as?.trim() ?? "";
+  const address = configuredAlias
+    ? sanitizeAddress(configuredAlias)
+    : sanitizeAddress(row?.email);
   if (!address || row?.status === "revoked") {
     return { from: "", replyTo: "", connected: false };
   }

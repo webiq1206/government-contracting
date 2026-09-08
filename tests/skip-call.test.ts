@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const queryOne = vi.fn();
 const logAgent = vi.fn(async () => undefined);
 const txnQuery = vi.fn();
+const suppress = vi.fn(async () => ({ id: "suppression-1" }));
 
 vi.mock("../lib/db", () => ({
   queryOne: (...args: unknown[]) => queryOne(...args),
@@ -12,8 +13,13 @@ vi.mock("../lib/db", () => ({
 vi.mock("../lib/logger", () => ({
   logAgent: (...args: unknown[]) => logAgent(...args),
 }));
+vi.mock("../lib/suppressions", () => ({
+  suppress: (...args: unknown[]) => suppress(...args),
+}));
 
 import { shouldPreserveCallCardStatus, skipCallCard } from "../lib/skip-call";
+
+const ORG_ID = "00000000-0000-4000-8000-000000000111";
 
 describe("shouldPreserveCallCardStatus", () => {
   it("preserves completed and skipped cards", () => {
@@ -28,6 +34,7 @@ describe("skipCallCard", () => {
     queryOne.mockReset();
     logAgent.mockReset();
     txnQuery.mockReset();
+    suppress.mockClear();
   });
 
   it("marks the card skipped, writes a note, and audits the choice", async () => {
@@ -48,7 +55,7 @@ describe("skipCallCard", () => {
       return { rows: [] };
     });
 
-    const result = await skipCallCard("card-1");
+    const result = await skipCallCard("card-1", { orgId: ORG_ID });
 
     expect(result).toEqual({
       opportunityId: "opp-1",
@@ -73,6 +80,7 @@ describe("skipCallCard", () => {
       "sub-1",
       "opp-1",
       "Operator chose not to call.",
+      ORG_ID,
     ]);
 
     expect(logAgent).toHaveBeenCalledWith(
@@ -98,8 +106,48 @@ describe("skipCallCard", () => {
       ],
     });
 
-    await expect(skipCallCard("card-1")).rejects.toThrow(/already completed/);
+    await expect(skipCallCard("card-1", { orgId: ORG_ID })).rejects.toThrow(
+      /already completed/
+    );
     expect(logAgent).not.toHaveBeenCalled();
+  });
+
+  it("writes a standing suppression on the same transaction client", async () => {
+    txnQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("from call_cards cc")) {
+        return {
+          rows: [
+            {
+              opportunity_id: "opp-1",
+              subcontractor_id: "sub-1",
+              status: "pending",
+              response_json: null,
+              company_name: "Acme HVAC",
+              trade: "HVAC",
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    await skipCallCard("card-1", {
+      orgId: ORG_ID,
+      scope: "subcontractor",
+      skipReason: "prefer_email",
+      actor: "operator@example.com",
+    });
+
+    expect(suppress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: ORG_ID,
+        subcontractorId: "sub-1",
+        opportunityId: null,
+        channel: "call",
+        actor: "operator@example.com",
+      }),
+      expect.objectContaining({ query: txnQuery })
+    );
   });
 
   it("restores a skipped card to the queue on undo", async () => {
@@ -119,7 +167,7 @@ describe("skipCallCard", () => {
       return { rows: [] };
     });
 
-    await skipCallCard("card-1", { undo: true });
+    await skipCallCard("card-1", { undo: true, orgId: ORG_ID });
 
     expect(
       txnQuery.mock.calls.some((c) => String(c[0]).includes("status = 'pending'"))

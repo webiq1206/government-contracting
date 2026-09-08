@@ -118,7 +118,7 @@ export function accountStatus(facts: AccountFacts): AccountStatus {
       : access === "trial"
         ? {
             value: "Trial access",
-            detail: `Everything works. A few metered actions stop at a quota until the account is upgraded.`,
+            detail: "Your plan includes trial access. Metered actions stop at the limits shown below.",
             tone: "warn",
           }
         : {
@@ -203,7 +203,7 @@ export function accountStatus(facts: AccountFacts): AccountStatus {
     : access === "none"
       ? { value: "Stopped", detail: "Automation does not run without access.", tone: "bad" }
       : access === "trial"
-        ? { value: "Running, with trial quotas", detail: "Metered actions stop at a quota until the account is upgraded.", tone: "warn" }
+        ? { value: "Allowed, with trial quotas", detail: "Your plan permits automation within trial limits. Check Automation Health to see whether work is running.", tone: "warn" }
         : { value: "Allowed to run", detail: "Whether it IS running is on the Automation Health page.", tone: "good" };
 
   const effective: StatusLine = suspended

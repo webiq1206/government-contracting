@@ -7,6 +7,7 @@
  * returns "nothing is suppressed" is the failure that sends the email.
  */
 import { query, queryOne } from "./db";
+import type { PoolClient, QueryResultRow } from "pg";
 import {
   blockingSuppression,
   parseChannel,
@@ -103,6 +104,15 @@ export class SuppressionRejected extends Error {
   }
 }
 
+async function queryOneWithClient<T extends QueryResultRow>(
+  client: PoolClient | undefined,
+  text: string,
+  params: unknown[]
+): Promise<T | null> {
+  if (!client) return queryOne<T>(text, params);
+  return (await client.query<T>(text, params as never[])).rows[0] ?? null;
+}
+
 /**
  * Record a stop.
  *
@@ -119,26 +129,42 @@ export async function suppress(input: {
   reason: string;
   note?: string | null;
   actor: string;
-}): Promise<Suppression> {
+  /** Call card that created this rule, so undo can lift only its own rule. */
+  sourceCallCardId?: string | null;
+}, client?: PoolClient): Promise<Suppression> {
   if (input.trade != null && input.opportunityId == null) {
     throw new SuppressionRejected(
       "A trade-wide stop has to name the bid: trade names belong to one solicitation."
     );
   }
-  const owned = await queryOne<{ id: string }>(
+  const owned = await queryOneWithClient<{ id: string }>(
+    client,
     `select id from subcontractors where id = $1 and org_id = $2`,
     [input.subcontractorId, input.orgId]
   );
   if (!owned) throw new SuppressionRejected("That subcontractor is not on this account.");
   if (input.opportunityId) {
-    const opp = await queryOne<{ id: string }>(
+    const opp = await queryOneWithClient<{ id: string }>(
+      client,
       `select id from opportunities where id = $1 and org_id = $2`,
       [input.opportunityId, input.orgId]
     );
     if (!opp) throw new SuppressionRejected("That opportunity is not on this account.");
   }
+  if (input.sourceCallCardId) {
+    const card = await queryOneWithClient<{ id: string }>(
+      client,
+      `select id from call_cards
+        where id = $1 and org_id = $2 and subcontractor_id = $3`,
+      [input.sourceCallCardId, input.orgId, input.subcontractorId]
+    );
+    if (!card) {
+      throw new SuppressionRejected("The call that created this stop is not on this account.");
+    }
+  }
 
-  const existing = await queryOne<Row>(
+  const existing = await queryOneWithClient<Row>(
+    client,
     `select id, subcontractor_id, opportunity_id, trade, channel, reason, note,
             actor, created_at, lifted_at, lifted_by
        from outreach_suppressions
@@ -152,10 +178,12 @@ export async function suppress(input: {
   );
   if (existing) return toSuppression(existing);
 
-  const row = await queryOne<Row>(
+  const row = await queryOneWithClient<Row>(
+    client,
     `insert into outreach_suppressions
-       (org_id, subcontractor_id, opportunity_id, trade, channel, reason, note, actor)
-     values ($1,$2,$3,$4,$5,$6,$7,$8)
+       (org_id, subcontractor_id, opportunity_id, trade, channel, reason, note, actor,
+        source_call_card_id)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
      returning id, subcontractor_id, opportunity_id, trade, channel, reason, note,
                actor, created_at, lifted_at, lifted_by`,
     [
@@ -167,6 +195,7 @@ export async function suppress(input: {
       input.reason,
       input.note?.trim() || null,
       input.actor,
+      input.sourceCallCardId ?? null,
     ]
   );
   if (!row) throw new SuppressionRejected("The stop could not be recorded.");
@@ -227,7 +256,7 @@ export async function stopImpact(
         and coalesce(c.delivery_state, '') in ('draft','queued')
         ${oppFilter}`,
     params
-  ).catch(() => [{ n: "0" }]);
+  );
 
   const calls = await query<{ n: string }>(
     `select count(*)::text as n
@@ -237,7 +266,7 @@ export async function stopImpact(
         and cc.status = 'pending'
         ${scope.opportunityId ? "and cc.opportunity_id = $3" : ""}`,
     params
-  ).catch(() => [{ n: "0" }]);
+  );
 
   /*
    * Follow-ups are not rows: the sweep decides on the fly whether a pairing is
@@ -253,7 +282,7 @@ export async function stopImpact(
         ${scope.opportunityId ? "and os.opportunity_id = $3" : ""}
         ${scope.trade ? `and lower(btrim(coalesce(os.trade,''))) = lower(btrim($${params.length + 1}))` : ""}`,
     scope.trade ? [...params, scope.trade] : params
-  ).catch(() => [{ n: "0" }]);
+  );
 
   /*
    * Trades this firm is the only live responder on.
@@ -278,7 +307,7 @@ export async function stopImpact(
                  and other.outreach_state in ('sent','followed_up','responsive')
             )`,
         [scope.opportunityId, scope.subcontractorId]
-      ).catch(() => [])
+      )
     : [];
 
   return {

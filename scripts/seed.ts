@@ -7,29 +7,36 @@
  *
  *   npm run db:seed
  */
-import { query, queryOne, closePool } from "../lib/db";
+import { query, queryOne, closePool, transaction } from "../lib/db";
 import { renderProfileText } from "../lib/ai/companyProfile";
 import { DEFAULT_PROFILE, DEFAULT_TEMPLATES } from "../db/seedData";
 import { config } from "../lib/config";
 import { LEGACY_ORG_ID } from "../lib/tenant-context";
 
 async function seedProfile() {
-  const existing = await queryOne(`select id from company_profile where is_active = true`);
+  const existing = await queryOne(
+    `select id from company_profile where is_active = true and org_id = $1`,
+    [LEGACY_ORG_ID]
+  );
   if (existing) {
     console.log("= company_profile already active (skip)");
     return;
   }
   const text = renderProfileText(DEFAULT_PROFILE);
   await query(
-    `insert into company_profile (version, is_active, profile_json, profile_text, updated_by)
-     values (1, true, $1, $2, 'seed')`,
-    [JSON.stringify(DEFAULT_PROFILE), text]
+    `insert into company_profile
+       (org_id, version, is_active, profile_json, profile_text, updated_by)
+     values ($3, 1, true, $1, $2, 'seed')`,
+    [JSON.stringify(DEFAULT_PROFILE), text, LEGACY_ORG_ID]
   );
   console.log("+ seeded company_profile v1");
 }
 
 async function seedScoringWeights() {
-  const existing = await queryOne(`select id from scoring_weights where is_active = true`);
+  const existing = await queryOne(
+    `select id from scoring_weights where is_active = true and org_id = $1`,
+    [LEGACY_ORG_ID]
+  );
   if (existing) {
     console.log("= scoring_weights already active (skip)");
     return;
@@ -39,9 +46,10 @@ async function seedScoringWeights() {
     weights[d.key] = { weight: d.max_points, label: d.label };
   }
   await query(
-    `insert into scoring_weights (version, weights, rationale, is_active, proposed_by, approved_at, approved_by)
-     values (1, $1, 'Initial rubric from Company Profile', true, 'seed', now(), 'seed')`,
-    [JSON.stringify(weights)]
+    `insert into scoring_weights
+       (org_id, version, weights, rationale, is_active, proposed_by, approved_at, approved_by)
+     values ($2, 1, $1, 'Initial rubric from Company Profile', true, 'seed', now(), 'seed')`,
+    [JSON.stringify(weights), LEGACY_ORG_ID]
   );
   console.log("+ seeded scoring_weights v1");
 }
@@ -85,13 +93,32 @@ async function seedOperator() {
     config.auth.operatorEmail,
   ]);
   if (existing) {
-    console.log("= operator user exists (skip)");
+    const membership = await queryOne(
+      `select 1 from organization_members where user_id = $1 limit 1`,
+      [existing.id]
+    );
+    console.log(
+      membership
+        ? "= operator user exists (skip)"
+        : "! operator user exists without an organization membership; repair it explicitly before using this account"
+    );
     return;
   }
-  await query(
-    `insert into users (email, password_hash, name, role) values ($1, $2, 'Operator', 'operator')`,
-    [config.auth.operatorEmail, config.auth.operatorPasswordHash]
-  );
+  await transaction(async (client) => {
+    const inserted = await client.query<{ id: string }>(
+      `insert into users (email, password_hash, name, role)
+       values ($1, $2, 'Operator', 'operator')
+       returning id`,
+      [config.auth.operatorEmail, config.auth.operatorPasswordHash]
+    );
+    const userId = inserted.rows[0]?.id;
+    if (!userId) throw new Error("Operator insert returned no user id.");
+    await client.query(
+      `insert into organization_members (org_id, user_id, role)
+       values ($1, $2, 'owner')`,
+      [LEGACY_ORG_ID, userId]
+    );
+  });
   console.log(`+ seeded operator user ${config.auth.operatorEmail}`);
 }
 

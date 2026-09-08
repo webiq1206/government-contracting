@@ -20,6 +20,7 @@
  * cannot be left to the caller to remember.
  */
 import { query, queryOne } from "./db";
+import { actingOrgId, runWithOrg } from "./tenant-context";
 import {
   extractReplyFromReply,
   type ExtractedReply,
@@ -31,12 +32,12 @@ import {
   normalizeEmail,
 } from "./reply-matching";
 import { closeOutDeclinedSub } from "./domain/decline-closeout";
-import { decideReply, type ReplyDecision } from "./domain/reply-outcome";
+import { decideReply, recordReplyEvent, type ReplyDecision } from "./domain/reply-outcome";
 import { looksLikeBounce } from "./domain/email-delivery";
 import { enqueue } from "./queue";
 import { logAgent } from "./logger";
 import { proposeRow, type Refusal } from "./domain/quote-fields";
-import { saveProposedRow } from "./pricing-rows";
+import { persistReplyQuote } from "./reply-quote";
 
 export interface MatchedComm {
   id: string;
@@ -59,6 +60,8 @@ export interface CaptureReplyInput {
   comm: MatchedComm;
   /** Reply correlated reliably (Gmail thread id or Resend plus-address token). */
   strongMatch: boolean;
+  /** A signed-in operator explicitly placed this message against this record. */
+  attributionConfirmed?: boolean;
   fromEmail: string;
   replyText: string;
   threadId?: string | null;
@@ -84,6 +87,8 @@ export interface CaptureReplyInput {
   attachmentNames?: string[];
   /** The reply's own RFC822 Message-ID, so a later message can cite it. */
   rfc822MessageId?: string | null;
+  /** The message's RFC822 reference chain, oldest first. */
+  references?: string[];
   /**
    * Attachments that looked like a quote but could not be read. Their contents
    * are unknown, not absent, so a reply carrying one is never acted on
@@ -218,11 +223,12 @@ export async function matchInboundReply(opts: {
   fromEmail: string;
 }): Promise<{ comm: MatchedComm | null; strongMatch: boolean }> {
   const select = `select c.id, c.subcontractor_id, c.opportunity_id,
-            s.company_name, s.email as sub_email, o.title as opportunity_title,
+            s.company_name, coalesce(c.recipient_email, s.email) as sub_email,
+            o.title as opportunity_title,
             (c.meta->>'trade') as trade
        from communications c
-       left join subcontractors s on s.id = c.subcontractor_id
-       join opportunities o on o.id = c.opportunity_id
+       left join subcontractors s on s.id = c.subcontractor_id and s.org_id = $1
+       join opportunities o on o.id = c.opportunity_id and o.org_id = $1
       where c.org_id = $1`;
   if (opts.trackingToken) {
     const comm = await queryOne<MatchedComm>(
@@ -289,17 +295,79 @@ export async function matchInboundReply(opts: {
    * to that year-old solicitation. Ninety days is far longer than any live
    * bid cycle and far shorter than "forever".
    */
-  const comm = await queryOne<MatchedComm>(
-    `${select}
-      and lower(s.email) = $2 and c.direction='outbound'
-      and c.created_at > now() - interval '90 days'
-      order by c.created_at desc limit 1`,
+  const candidates = await query<MatchedComm>(
+    `select id, subcontractor_id, opportunity_id, company_name, sub_email,
+            opportunity_title, trade
+       from (
+         select c.id, c.subcontractor_id, c.opportunity_id,
+                s.company_name, coalesce(c.recipient_email, s.email) as sub_email,
+                o.title as opportunity_title, (c.meta->>'trade') as trade,
+                c.created_at,
+                row_number() over (
+                  partition by c.opportunity_id, coalesce(c.meta->>'trade', ''),
+                               coalesce(c.gmail_thread_id, '')
+                  order by c.created_at desc
+                ) as conversation_rank
+           from communications c
+           left join subcontractors s on s.id = c.subcontractor_id and s.org_id = $1
+           join opportunities o on o.id = c.opportunity_id and o.org_id = $1
+          where c.org_id = $1 and c.direction = 'outbound'
+            and lower(coalesce(c.recipient_email, s.email)) = $2
+            and c.created_at > now() - interval '90 days'
+            and exists (
+              select 1 from opportunity_subs os
+               where os.opportunity_id = c.opportunity_id
+                 and os.subcontractor_id = c.subcontractor_id
+                 and os.removed_at is null
+                 and coalesce(os.trade, '') = coalesce(c.meta->>'trade', '')
+            )
+       ) candidate
+      where conversation_rank = 1
+      order by created_at desc
+      limit 2`,
     [opts.orgId, normalizeEmail(opts.fromEmail)]
   );
-  return { comm, strongMatch: false };
+  // Sender alone identifies a firm, not a solicitation. It is usable only
+  // when exactly one live conversation could possibly be the answer.
+  return {
+    comm: candidates.length === 1 ? candidates[0]! : null,
+    strongMatch: false,
+  };
 }
 
 export async function captureReply(input: CaptureReplyInput): Promise<CaptureReplyResult> {
+  if (!input.comm) throw new Error("Choose the conversation this reply belongs to before capturing it.");
+  const actorOrg = await actingOrgId();
+  if (actorOrg && actorOrg !== input.orgId) {
+    throw new Error("Reply capture was refused because the account does not own this conversation.");
+  }
+  const owner = await queryOne<{ id: string }>(
+    `select o.id from opportunities o
+      where o.id=$1 and o.org_id=$2
+        and ($3::uuid is null or exists (
+          select 1 from subcontractors s where s.id=$3 and s.org_id=o.org_id
+        ))
+        and (exists (
+          select 1 from communications c
+           where c.id::text=$4 and c.org_id=o.org_id and c.opportunity_id=o.id
+             and c.subcontractor_id is not distinct from $3::uuid
+             and c.direction='outbound'
+        ) or ($5::boolean and exists (
+          select 1 from unmatched_inbound u
+           where ('unmatched:' || u.id::text)=$4 and u.org_id=o.org_id
+             and u.state='needs_matching' and u.matched_by like 'matching:%'
+        )))`,
+    [input.comm.opportunity_id, input.orgId, input.comm.subcontractor_id,
+      input.comm.id, input.attributionConfirmed === true]
+  );
+  if (!owner) {
+    throw new Error("Reply capture was refused because the opportunity and contact do not belong to this account.");
+  }
+  // Extraction, closeout, queueing and logs share the already-proven owner.
+  return runWithOrg(input.orgId, () => captureReplyInOrg(input));
+}
+
+async function captureReplyInOrg(input: CaptureReplyInput): Promise<CaptureReplyResult> {
   const { orgId, comm, strongMatch, fromEmail, replyText } = input;
   const extract = input.extract ?? extractReplyFromReply;
   const closeOut = input.closeOut ?? closeOutDeclinedSub;
@@ -386,17 +454,22 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // is stamped in the comm's meta at send time), then the pairing row, but
   // only when the pair has exactly ONE trade. An unordered `limit 1` over a
   // multi-trade pair picked an arbitrary trade and the outcome landed on it.
-  const pairTrades = comm.subcontractor_id
+  let pairTrades = comm.subcontractor_id
     ? await query<{ trade: string | null }>(
-        `select distinct trade from opportunity_subs where opportunity_id=$1 and subcontractor_id=$2`,
+        `select distinct trade from opportunity_subs
+          where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null`,
         [comm.opportunity_id, comm.subcontractor_id]
-      ).catch(() => [])
+      )
     : [];
-  const osRow: { trade: string | null } | null = comm.trade
+  const commTradeIsActive = Boolean(
+    comm.trade && pairTrades.some((p) => (p.trade ?? "") === comm.trade)
+  );
+  let osRow: { trade: string | null } | null = commTradeIsActive
     ? { trade: comm.trade }
-    : pairTrades.length === 1
+    : !comm.trade && pairTrades.length === 1
       ? pairTrades[0]
       : null;
+  let linkedPair = comm.subcontractor_id != null && osRow != null;
 
   const extracted = await extract(replyText, {
     opportunityTitle: comm.opportunity_title,
@@ -419,9 +492,25 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
    * apply on top of this: they establish who is speaking, this establishes
    * whether we understood them.
    */
-  const decision = decideReply(extracted, {
+  const readingDecision = decideReply(extracted, {
     unreadableAttachments: input.unreadableAttachments ?? [],
   });
+
+  // When several active trade assignments exist and the outbound row did not
+  // carry one, use the reply's own explicit trade only if it identifies one
+  // pairing uniquely. Anything less stays unassigned for a person to resolve.
+  if (!osRow && pairTrades.length > 1 && extracted.tradesMentioned.length > 0) {
+    const mentioned = new Set(
+      extracted.tradesMentioned.map((trade) => trade.trim().toLowerCase()).filter(Boolean)
+    );
+    const matches = pairTrades.filter((pair) =>
+      pair.trade ? mentioned.has(pair.trade.trim().toLowerCase()) : false
+    );
+    if (matches.length === 1) {
+      osRow = matches[0];
+      linkedPair = comm.subcontractor_id != null;
+    }
+  }
 
   // Resolve the subcontractor. Sender ownership: the reply must come from the
   // mailbox of the sub the outreach was addressed to; when the comm had no
@@ -429,7 +518,8 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // verification by definition.
   let subId = comm.subcontractor_id;
   let companyName = comm.company_name;
-  let senderVerified = senderMatchesSub(fromEmail, comm.sub_email);
+  let senderVerified =
+    input.attributionConfirmed === true || senderMatchesSub(fromEmail, comm.sub_email);
   if (!subId) {
     // Scoped to this org: the same firm sits on several customers' rosters, so
     // an unscoped match hands back another customer's subcontractor and pairs
@@ -461,18 +551,68 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       companyName = name;
       if (subId) {
         senderVerified = true; // sub is defined by this sender's address
-        await query(`update communications set subcontractor_id=$2 where id=$1`, [
-          comm.id,
-          subId,
-        ]);
-        await query(
-          `insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state)
-           values ($1,$2,$3,'responsive')
-           on conflict do nothing`,
-          [comm.opportunity_id, subId, osRow?.trade ?? null]
-        );
       }
     }
+
+    if (subId) {
+      await query(`update communications set subcontractor_id=$2
+                    where id::text=$1 and org_id=$3 and opportunity_id=$4`, [
+        comm.id,
+        subId,
+        orgId,
+        comm.opportunity_id,
+      ]);
+      // The message has just established the missing relationship. Use a
+      // not-exists insert because the historical unique constraint treats a
+      // null trade as distinct and `on conflict` alone can create duplicates.
+      await query(
+        `insert into opportunity_subs (opportunity_id, subcontractor_id, trade, outreach_state)
+         select $1,$2,$3,'pending'
+          where not exists (
+            select 1 from opportunity_subs
+             where opportunity_id=$1 and subcontractor_id=$2
+               and removed_at is null
+               and coalesce(trade, '') = coalesce($3::text, '')
+          )`,
+        [comm.opportunity_id, subId, osRow?.trade ?? comm.trade ?? null]
+      );
+      pairTrades = await query<{ trade: string | null }>(
+        `select distinct trade from opportunity_subs
+          where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null`,
+        [comm.opportunity_id, subId]
+      );
+      if (!osRow && pairTrades.length === 1) osRow = pairTrades[0];
+      linkedPair = osRow != null;
+    }
+  }
+
+  const holdForReview = (reason: string): ReplyDecision => ({
+    outcome: "unclear",
+    proposed:
+      readingDecision.outcome === "unclear"
+        ? readingDecision.proposed
+        : readingDecision.outcome,
+    act: false,
+    needsReview: true,
+    reviewReason: readingDecision.reviewReason
+      ? `${readingDecision.reviewReason} ${reason}`
+      : reason,
+  });
+  let decision = readingDecision;
+  if (!linkedPair) {
+    decision = holdForReview(
+      pairTrades.length > 1
+        ? "This subcontractor covers multiple trades here. Confirm which trade this reply answers before applying it."
+        : "This subcontractor is no longer active on that opportunity, so the reply was saved but no workflow status was changed."
+    );
+  } else if (!strongMatch && input.attributionConfirmed !== true) {
+    decision = holdForReview(
+      "The message matched only by sender address, not by a conversation identifier. Confirm which solicitation it answers."
+    );
+  } else if (!senderVerified) {
+    decision = holdForReview(
+      "The sender address differs from the contact that received the request. Confirm who sent it before applying the answer."
+    );
   }
 
   const meta = {
@@ -506,10 +646,13 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   // Record the inbound reply and mark the outbound as replied. The partial
   // unique index (migration 022) makes this race-safe under concurrent
   // webhook retries.
-  await query(
+  const inbound = await queryOne<{ id: string }>(
     `insert into communications (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body, gmail_thread_id, gmail_message_id, rfc822_message_id, recipient_email, replied_at, meta)
      values ($9,$1,$2,'email','inbound',$3,$4,$5,$6,$7,$8, now(), $10::jsonb)
-     on conflict do nothing`,
+     on conflict (org_id, gmail_message_id)
+       where direction = 'inbound' and gmail_message_id is not null and org_id is not null
+     do nothing
+     returning id`,
     [
       subId,
       comm.opportunity_id,
@@ -528,13 +671,40 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       JSON.stringify(meta),
     ]
   );
-  await query(`update communications set replied_at = now() where id = $1`, [comm.id]);
+  // The pre-read above makes ordinary retries cheap; RETURNING is what makes
+  // concurrent webhook and poller deliveries safe. Only the transaction that
+  // won the unique insert may update status, save a quote, or send a closeout.
+  if (!inbound) {
+    return {
+      subId: comm.subcontractor_id,
+      companyName: comm.company_name,
+      extracted: emptyExtracted(),
+      decision: {
+        outcome: "none",
+        proposed: null,
+        act: false,
+        needsReview: false,
+        reviewReason: null,
+      },
+      quoteSaved: false,
+      quoteSkippedExisting: false,
+      senderVerified: false,
+      trade: null,
+      duplicate: true,
+      declined: false,
+      thankYouSent: false,
+    };
+  }
+  await query(`update communications set replied_at = now()
+                where id::text=$1 and org_id=$2 and opportunity_id=$3`,
+    [comm.id, orgId, comm.opportunity_id]);
 
   // Closing a sub out ends their involvement in this solicitation and emails
   // them a thank-you, which cannot be recalled. It needs an understood reply,
   // not just a recognised sender.
   const autoDecline =
     decision.act &&
+    strongMatch &&
     !!subId &&
     shouldAutoDecline({
       senderVerified,
@@ -553,12 +723,18 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
       .join(" ");
 
     const close = await closeOut({
+      orgId,
       opportunityId: comm.opportunity_id,
       subcontractorId: subId,
       trade: osRow?.trade ?? null,
       source: "email_reply",
       capabilityNotes: capabilityNotes || null,
       sendThankYou: true,
+      recipientEmail: fromEmail,
+      threadId: input.rfc822MessageId ? input.threadId ?? null : null,
+      inReplyTo: input.rfc822MessageId ?? null,
+      references: input.references ?? [],
+      originalSubject: input.subject ?? null,
     });
 
     return {
@@ -576,11 +752,12 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
     };
   }
 
-  if (subId) {
+  if (subId && decision.act && strongMatch && senderVerified) {
     await query(
       `update opportunity_subs set outreach_state='responsive', responded_at=now()
-        where opportunity_id=$1 and subcontractor_id=$2`,
-      [comm.opportunity_id, subId]
+        where opportunity_id=$1 and subcontractor_id=$2 and removed_at is null
+          and ($3::text is null or coalesce(trade, '') = coalesce($3, ''))`,
+      [comm.opportunity_id, subId, osRow?.trade ?? null]
     );
   }
 
@@ -620,80 +797,48 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
   });
 
   if (autoSaveOk && subId && extracted.quoteAmount != null && proposal.ok) {
-    const trade = proposal.row.trade;
-    const notes = ["Auto-captured from email reply.", extracted.notes ?? ""]
-      .filter(Boolean)
-      .join(" ");
-    const inserted = await queryOne<{ id: string }>(
-      `insert into quotes (org_id, opportunity_id, subcontractor_id, trade, quote_amount, payment_terms, notes)
-       values ($7,$1,$2,$3,$4,$5,$6)
-       on conflict (opportunity_id, subcontractor_id, (coalesce(trade,''))) do nothing
-       returning id`,
-      [
-        comm.opportunity_id,
-        subId,
-        trade,
-        extracted.quoteAmount,
-        extracted.paymentTerms,
-        notes,
-        orgId,
-      ]
-    );
-    quoteSaved = inserted != null;
-    quoteSkippedExisting = inserted == null;
-    /*
-     * When their price arrived, and whether it covered what was asked for.
-     *
-     * Stamped on the pairing rather than on the quote, because that is where
-     * the date they were given lives, and lateness is the subtraction of the
-     * two. Their Date header rather than our poll time: a reply written on
-     * Friday and collected on Monday was not late.
-     *
-     * The scope judgement here is the extractor's, and it is a real
-     * determination rather than a guess: `partial_scope` is a refusal the
-     * pipeline raises by name when a reply prices only part of the work.
-     * Absence of that refusal on a saved quote is the affirmative reading.
-     */
-    if (quoteSaved) {
-      await query(
-        `update opportunity_subs
-            set quoted_at = coalesce(quoted_at, $4::timestamptz),
-                quote_full_scope = coalesce(quote_full_scope, true)
-          where opportunity_id = $1 and subcontractor_id = $2
-            and coalesce(trade,'') = coalesce($3,'')`,
-        [comm.opportunity_id, subId, trade, replyWrittenAt]
-      );
-    }
-    if (quoteSaved) {
-      /*
-       * Everything the reply actually said, kept as fields rather than prose.
-       *
-       * The `notes` column above is where all of this used to go: what they
-       * excluded, how firm the number is, how long it holds, how soon they can
-       * start. An estimator reading a paragraph has to re-derive every one of
-       * those, and the bid has no way to act on any of them.
-       *
-       * `onlyIfAbsent` because a person's row always wins. An automatic read
-       * of an email must never overwrite a figure somebody typed.
-       */
-      await saveProposedRow({
+    try {
+      const persisted = await persistReplyQuote({
         orgId,
         opportunityId: comm.opportunity_id,
         subcontractorId: subId,
-        sourceQuoteId: inserted!.id,
         proposal: proposal.row,
-        onlyIfAbsent: true,
-      }).catch(() => undefined);
-      // Keep detail / Coverage / Next Step in sync with manual quote entry.
-      await query(
-        `update opportunities
-           set stage='quote_entry', human_action_required=false, updated_at=now()
-         where id=$1 and stage in ('outreach','call_queue')`,
-        [comm.opportunity_id]
+        notes: ["Auto-captured from email reply.", extracted.notes ?? ""].filter(Boolean).join(" "),
+        receivedAt: Number.isNaN(replyWrittenAt.getTime()) ? new Date() : replyWrittenAt,
+      });
+      quoteSaved = persisted === "saved";
+      quoteSkippedExisting = persisted === "kept_existing";
+      if (persisted === "not_editable") {
+        decision = holdForReview(
+          "The reply was saved, but this opportunity or trade is no longer open for automatic pricing. Review its current status before applying the price."
+        );
+      }
+    } catch (error) {
+      console.error("[reply-capture] quote transaction failed:", error);
+      decision = holdForReview(
+        "The reply was saved, but its quote and pricing details could not be filed together. Open the reply and verify the current quote before applying it again."
       );
-      await enqueue("bid-builder", { opportunityId: comm.opportunity_id }).catch(
-        () => undefined
-      );
+    }
+
+    if (quoteSaved) {
+      try {
+        await enqueue("bid-builder", { opportunityId: comm.opportunity_id });
+      } catch (error) {
+        console.error("[reply-capture] bid build could not be queued:", error);
+        decision = holdForReview(
+          "The quote was saved, but automatic bid building could not be scheduled. Check Automation Health, then open the opportunity and retry building its bid."
+        );
+      }
+    }
+    if (decision.needsReview) {
+      // Persist the recovery task here. A later caller failure or duplicate
+      // poll must not erase the explanation after the inbound was recorded.
+      await recordReplyEvent({
+        orgId, subcontractorId: subId, opportunityId: comm.opportunity_id,
+        trade: osRow?.trade ?? null, extracted, originalMessage: replyText,
+        gmailMessageId: input.messageId, gmailThreadId: input.threadId,
+        needsReview: true, reviewReason: decision.reviewReason,
+      });
     }
   }
 
@@ -711,16 +856,23 @@ export async function captureReply(input: CaptureReplyInput): Promise<CaptureRep
    * one of the six things the reliability score is made of. Recorded even
    * though no quote was saved: the refusal is the finding.
    */
-  if (subId && !proposal.ok && proposal.refusal === "partial_scope") {
+  if (
+    subId && linkedPair && osRow && decision.act && strongMatch && senderVerified &&
+    !proposal.ok && proposal.refusal === "partial_scope"
+  ) {
     await query(
       `update opportunity_subs
           set quote_full_scope = false
-        where opportunity_id = $1 and subcontractor_id = $2`,
-      [comm.opportunity_id, subId]
+        where opportunity_id = $1 and subcontractor_id = $2
+          and org_id = $3 and removed_at is null
+          and coalesce(trade, '') = coalesce($4::text, '')`,
+      [comm.opportunity_id, subId, orgId, osRow.trade]
     );
   }
 
-  if (autoSaveOk && !proposal.ok && !quoteSaved) {
+  // A missing trade already turns decision.act off. Requiring autoSaveOk
+  // here suppressed the very refusal that needed an operator's attention.
+  if (extracted.isQuote && !proposal.ok && !quoteSaved) {
     await logAgent({
       agent: "reply-capture",
       action: "quote-not-filed",

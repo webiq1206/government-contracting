@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/api-auth";
 import { currentSessionId, hashPassword, verifyPassword } from "@/lib/auth";
-import { query, queryOne } from "@/lib/db";
+import { transaction } from "@/lib/db";
 import { clientIp, consume, tooManyRequests } from "@/lib/rate-limit";
 import { trackEvent } from "@/lib/analytics";
+import { impersonationRefusal } from "@/lib/impersonation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ const MIN_LENGTH = 10;
 export async function POST(req: Request) {
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
+  const supportRefusal = impersonationRefusal(auth);
+  if (supportRefusal) return supportRefusal;
 
   // Keyed by user and by address: guessing the current password is a guessing
   // attack like any other, and it is being made from inside a session.
@@ -65,28 +68,6 @@ export async function POST(req: Request) {
     );
   }
 
-  const row = await queryOne<{ password_hash: string }>(
-    `select password_hash from users where id = $1`,
-    [auth.id]
-  ).catch(() => null);
-  if (!row?.password_hash) {
-    // The env operator signs in against a hash in configuration and has no
-    // users row, so there is nothing here to change. Said plainly rather than
-    // failing as if the password were wrong.
-    return NextResponse.json(
-      { error: "This sign-in is configured outside the application, so its password cannot be changed here." },
-      { status: 400 }
-    );
-  }
-  if (!verifyPassword(current, row.password_hash)) {
-    return NextResponse.json({ error: "That is not your current password." }, { status: 400 });
-  }
-
-  await query(`update users set password_hash = $2 where id = $1`, [
-    auth.id,
-    hashPassword(next),
-  ]);
-
   /*
    * Every other session goes, and this one stays.
    *
@@ -97,15 +78,58 @@ export async function POST(req: Request) {
    * punishing the good case. Anyone else holding the old password is out.
    */
   const keep = await currentSessionId();
-  const removed = keep
-    ? await query<{ id: string }>(
-        `delete from sessions where user_id = $1 and id <> $2 returning id`,
-        [auth.id, keep]
-      ).catch(() => [])
-    : await query<{ id: string }>(
-        `delete from sessions where user_id = $1 returning id`,
+  let result:
+    | { kind: "external" }
+    | { kind: "wrong" }
+    | { kind: "changed"; removed: number };
+  try {
+    result = await transaction(async (client) => {
+      const selected = await client.query<{ password_hash: string }>(
+        `select password_hash from users where id = $1 for update`,
         [auth.id]
-      ).catch(() => []);
+      );
+      const row = selected.rows[0];
+      if (!row?.password_hash) return { kind: "external" as const };
+      if (!verifyPassword(current, row.password_hash)) return { kind: "wrong" as const };
+
+      await client.query(`update users set password_hash = $2 where id = $1`, [
+        auth.id,
+        hashPassword(next),
+      ]);
+      const removed = keep
+        ? await client.query<{ id: string }>(
+            `delete from sessions where user_id = $1 and id <> $2 returning id`,
+            [auth.id, keep]
+          )
+        : await client.query<{ id: string }>(
+            `delete from sessions where user_id = $1 returning id`,
+            [auth.id]
+          );
+      return { kind: "changed" as const, removed: removed.rowCount ?? removed.rows.length };
+    });
+  } catch (error) {
+    console.error("[account] password change failed before commit", error);
+    return NextResponse.json(
+      {
+        error:
+          "Your password was not changed because the account update could not be completed. Your existing password and sessions are unchanged. Try again.",
+      },
+      { status: 503, headers: { "Retry-After": "5" } }
+    );
+  }
+
+  if (result.kind === "external") {
+    // The env operator signs in against a hash in configuration and has no
+    // users row, so there is nothing here to change. Said plainly rather than
+    // failing as if the password were wrong.
+    return NextResponse.json(
+      { error: "This sign-in is configured outside the application, so its password cannot be changed here." },
+      { status: 400 }
+    );
+  }
+  if (result.kind === "wrong") {
+    return NextResponse.json({ error: "That is not your current password." }, { status: 400 });
+  }
 
   void trackEvent({
     event: "password_changed",
@@ -114,5 +138,5 @@ export async function POST(req: Request) {
     path: "/settings/account",
   });
 
-  return NextResponse.json({ ok: true, otherSessionsEnded: removed.length });
+  return NextResponse.json({ ok: true, otherSessionsEnded: result.removed });
 }

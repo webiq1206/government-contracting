@@ -90,11 +90,49 @@ export const callPrep: AgentDefinition = {
       };
     }
 
-    const sub = await queryOne<Subcontractor>(
-      `select * from subcontractors where id = $1`,
-      [subcontractorId]
+    const orgId = String(ctx.payload.orgId ?? "") || (await actingOrgId()) || "";
+    if (!orgId) {
+      return {
+        ok: false,
+        summary: "Call Prep could not establish which account owns this work. Nothing changed.",
+        humanActionRequired: true,
+      };
+    }
+
+    const opp = await queryOne<Opportunity>(
+      `select * from opportunities where id = $1 and org_id = $2`,
+      [opportunityId, orgId]
     );
-    if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found` };
+    if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found on this account` };
+
+    const sub = await queryOne<Subcontractor>(
+      `select * from subcontractors where id = $1 and org_id = $2`,
+      [subcontractorId, orgId]
+    );
+    if (!sub) return { ok: false, summary: `subcontractor ${subcontractorId} not found on this account` };
+
+    const oppSub = await queryOne<{
+      id: string;
+      trade: string | null;
+      outreach_state: string | null;
+      verification_json: { needs_project_history?: boolean } | null;
+    }>(
+      `select os.id, os.trade, os.outreach_state, os.verification_json
+         from opportunity_subs os
+         join opportunities o on o.id = os.opportunity_id and o.org_id = $3
+        where os.opportunity_id=$1 and os.subcontractor_id=$2
+          and os.removed_at is null
+        order by os.created_at asc limit 1`,
+      [opportunityId, subcontractorId, orgId]
+    );
+    if (!oppSub) {
+      return {
+        ok: false,
+        permanent: true,
+        summary:
+          "Call Prep stopped because this subcontractor is no longer assigned to the opportunity. No call card was created.",
+      };
+    }
 
     // Never put an uncallable card on Today / Call Queue — there is nothing
     // the operator can do until a phone number exists. Re-run verify instead.
@@ -102,12 +140,12 @@ export const callPrep: AgentDefinition = {
       await query(
         `update opportunity_subs
             set outreach_state = coalesce(nullif(outreach_state, ''), 'no_email')
-          where opportunity_id = $1 and subcontractor_id = $2`,
-        [opportunityId, subcontractorId]
+          where opportunity_id = $1 and subcontractor_id = $2 and org_id = $3`,
+        [opportunityId, subcontractorId, orgId]
       );
       await query(
-        `update opportunities set human_action_required = true where id = $1`,
-        [opportunityId]
+        `update opportunities set human_action_required = true where id = $1 and org_id = $2`,
+        [opportunityId, orgId]
       );
       await logAgent({
         agent: "call-prep",
@@ -134,31 +172,15 @@ export const callPrep: AgentDefinition = {
       };
     }
 
-    const opp = await queryOne<Opportunity>(
-      `select * from opportunities where id = $1`,
-      [opportunityId]
-    );
-    if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
-
-    const oppSub = await queryOne<{
-      trade: string | null;
-      outreach_state: string | null;
-      verification_json: { needs_project_history?: boolean } | null;
-    }>(
-      `select trade, outreach_state, verification_json from opportunity_subs
-       where opportunity_id=$1 and subcontractor_id=$2
-       order by created_at asc limit 1`,
-      [opportunityId, subcontractorId]
-    );
-
     if (isClosedOutreach(oppSub?.outreach_state)) {
       await query(
         `update call_cards
             set status = 'skipped',
                 response_json = coalesce(response_json, '{}'::jsonb)
                   || jsonb_build_object('skip_reason', 'pairing_closed')
-          where opportunity_id = $1 and subcontractor_id = $2 and status = 'pending'`,
-        [opportunityId, subcontractorId]
+          where opportunity_id = $1 and subcontractor_id = $2
+            and org_id = $3 and status = 'pending'`,
+        [opportunityId, subcontractorId, orgId]
       );
       await logAgent({
         agent: "call-prep",
@@ -194,8 +216,8 @@ export const callPrep: AgentDefinition = {
         trade: oppSub?.trade ?? null,
         channel: "call",
       },
-      opp.org_id ?? (await actingOrgId()) ?? ""
-    ).catch(() => null);
+      orgId
+    );
     if (stopped) {
       await logAgent({
         agent: "call-prep",
@@ -309,11 +331,12 @@ export const callPrep: AgentDefinition = {
 
     await query(
       `insert into call_cards
-         (opportunity_id, subcontractor_id, card_json, call_script, question_list,
+         (org_id, opportunity_id, subcontractor_id, card_json, call_script, question_list,
           needs_project_history, status, source)
-       values ($1,$2,$3,$4,$5,$6,'pending',$7)
+       values ($1,$2,$3,$4,$5,$6,$7,'pending',$8)
        on conflict (opportunity_id, subcontractor_id)
-       do update set card_json=excluded.card_json, call_script=excluded.call_script,
+       do update set org_id=excluded.org_id,
+                     card_json=excluded.card_json, call_script=excluded.call_script,
                      question_list=excluded.question_list,
                      needs_project_history=excluded.needs_project_history,
                      -- Keep completed / operator-skipped cards out of the queue.
@@ -326,6 +349,7 @@ export const callPrep: AgentDefinition = {
                      source=case when call_cards.source='reply' then 'reply'
                                  else excluded.source end`,
       [
+        orgId,
         opportunityId,
         subcontractorId,
         JSON.stringify(card),
@@ -343,8 +367,9 @@ export const callPrep: AgentDefinition = {
         `update opportunity_subs
            set outreach_state='responsive', responded_at=now()
          where opportunity_id=$1 and subcontractor_id=$2
+           and org_id=$3 and removed_at is null
            and outreach_state not in ('declined','not_a_fit','unavailable')`,
-        [opportunityId, subcontractorId]
+        [opportunityId, subcontractorId, orgId]
       );
     }
 
@@ -353,14 +378,15 @@ export const callPrep: AgentDefinition = {
     // opportunity backwards out of pricing or bidding.
     if (replied) {
       await query(
-        `update opportunities set stage='call_queue', human_action_required=true where id=$1`,
-        [opportunityId]
+        `update opportunities set stage='call_queue', human_action_required=true
+          where id=$1 and org_id=$2`,
+        [opportunityId, orgId]
       );
     } else {
       await query(
         `update opportunities set stage='call_queue', human_action_required=true
-         where id=$1 and stage='outreach'`,
-        [opportunityId]
+         where id=$1 and org_id=$2 and stage='outreach'`,
+        [opportunityId, orgId]
       );
     }
 

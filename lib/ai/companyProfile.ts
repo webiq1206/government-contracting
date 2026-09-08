@@ -8,7 +8,7 @@ import { queryOne, query } from "../db";
 import { noEmDash } from "../sanitize";
 import { defaultCompanyProfile } from "../domain/default-profile";
 import type { CompanyProfile, CompanyProfileJson } from "../types";
-import { currentOrgId, LEGACY_ORG_ID } from "../tenant-context";
+import { currentOrgId } from "../tenant-context";
 
 // Short TTL: invalidateProfileCache() busts this process's cache on write, but a
 // separate worker process only picks up a newly-published profile after the TTL,
@@ -21,14 +21,11 @@ async function resolveProfileOrgId(): Promise<string> {
   const fromAls = currentOrgId();
   if (fromAls) return fromAls;
   // Lazy import avoids a circular auth ↔ profile dependency at module load.
-  try {
-    const { currentUser } = await import("../auth");
-    const user = await currentUser().catch(() => null);
-    if (user?.organizationId) return user.organizationId;
-  } catch {
-    /* worker / non-request context */
-  }
-  return LEGACY_ORG_ID;
+  // Missing context must reject: silently borrowing the founding profile here
+  // can put another company's identity into an AI prompt or generated bid.
+  // Background jobs already carry their owner through runWithOrg().
+  const { resolveTenantOrgId } = await import("../tenant");
+  return resolveTenantOrgId();
 }
 
 export async function getActiveProfile(

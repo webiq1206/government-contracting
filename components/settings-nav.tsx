@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import Link from "next/link";
+import { PendingLink as Link } from "@/components/pending-link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 

@@ -69,9 +69,19 @@ export async function GET(req: Request) {
   // one plan onto another, and running the public founding window against
   // them would downgrade a founding invitation accepted after that window
   // closed. Neither has anything to do with what was agreed with them.
-  const invited = org.stripe_subscription_id
-    ? null
-    : await invitedTermsForOrg(org.id).catch(() => null);
+  let invited: Awaited<ReturnType<typeof invitedTermsForOrg>> = null;
+  if (!org.stripe_subscription_id) {
+    try {
+      invited = await invitedTermsForOrg(org.id);
+    } catch {
+      // Falling back to public pricing after an agreed invitation could charge
+      // the wrong plan or omit a promised concession. Stop before Stripe and
+      // send the account back with a precise, retryable explanation.
+      return NextResponse.redirect(
+        new URL("/settings/billing?error=terms_unavailable", appBaseUrl())
+      );
+    }
+  }
 
   let plan: "founding" | "standard";
   let interval: BillingInterval;
@@ -79,7 +89,15 @@ export async function GET(req: Request) {
     plan = invited.plan;
     interval = invited.interval;
   } else {
-    const promo = await getFoundingPromo({ startIfMissing: false });
+    const promo = await getFoundingPromo({ startIfMissing: false }).catch((error) => {
+      console.error("[billing] founding promotion eligibility could not be read:", error);
+      return null;
+    });
+    if (!promo) {
+      return NextResponse.redirect(
+        new URL("/settings/billing?error=promo_unavailable", appBaseUrl())
+      );
+    }
     plan = url.searchParams.get("plan") === "founding" ? "founding" : "standard";
     // Eligibility is decided here, on the server, from the stored promo window.
     // A closed window means the founding rate cannot be claimed by anyone who

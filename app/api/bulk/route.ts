@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireSubscriber, requireCapability } from "@/lib/api-auth";
+import { requireCapability } from "@/lib/api-auth";
 import { AUTOMATION_PAUSED_ERROR, isAutomationStopped } from "@/lib/app-settings";
-import { query, queryOne } from "@/lib/db";
+import { query } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
 import { skipCallCard } from "@/lib/skip-call";
+import { SuppressionRejected } from "@/lib/suppressions";
 import { findOrgRecord } from "@/lib/org-guard";
 import {
   resolveSnoozeUntil,
@@ -60,16 +61,30 @@ export async function POST(req: Request) {
     const errors: string[] = [];
     for (const id of ids) {
       try {
-        // Ownership first: skipCallCard looks a card up by bare id, so without
-        // this a subscriber could skip another tenant's queued calls by
-        // POSTing their UUIDs. Silently ignore ids that are not this org's,
-        // exactly as the pursue/dismiss loop does.
+        // Keep the pre-check for an inexpensive not-found decision. The helper
+        // also rechecks this organization while holding its transaction lock.
         const owned = await findOrgRecord("call_cards", id, auth.organizationId!, "id");
         if (!owned) continue;
-        await skipCallCard(id, { reason: "Skipped in bulk by operator." });
+        await skipCallCard(id, {
+          reason: "Skipped in bulk by operator.",
+          orgId: auth.organizationId!,
+          actor: auth.email,
+        });
         ok += 1;
       } catch (err) {
-        errors.push((err as Error).message);
+        const message = (err as Error).message;
+        if (
+          err instanceof SuppressionRejected ||
+          message.includes("cannot be skipped") ||
+          message.includes("Only a skipped")
+        ) {
+          errors.push(message);
+        } else {
+          console.error(`[bulk] call skip ${id} failed:`, err);
+          errors.push(
+            "A call decision could not be saved. Reload the queue and retry it before contacting that subcontractor."
+          );
+        }
       }
     }
     await logAgent({

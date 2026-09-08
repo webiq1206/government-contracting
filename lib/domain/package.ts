@@ -517,29 +517,50 @@ export function buildManifest(
  * against superseded instructions, which is exactly the failure the whole
  * amendment workflow exists to prevent, and nothing anywhere said so.
  *
- * Deliberately covers only the fields that change what the package must
- * CONTAIN. Reworded instructions or a re-sourced section reference do not
- * invalidate an assembled package; a new requirement, a dropped one, a
- * changed form number, or a new amendment do.
+ * Deliberately covers the fields that change what the package must contain or
+ * how it must be completed. A re-sourced section reference alone does not
+ * invalidate an assembled package; a new requirement, changed instructions,
+ * changed format, changed form, signature rule, satisfier, or amendment does.
  */
 export function requirementsFingerprint(
-  requirements: { id?: string; title?: string; mandatory?: boolean; official_form?: string }[],
-  amendments: { label?: string }[] = []
+  requirements: {
+    id?: string;
+    title?: string;
+    mandatory?: boolean;
+    official_form?: string;
+    category?: string;
+    format?: string;
+    signature_required?: boolean;
+    satisfied_by?: string;
+    instructions?: string;
+  }[],
+  amendments: { label?: string; summary?: string; date?: string }[] = []
 ): string {
+  const words = (value: string | undefined) =>
+    (value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
   const parts = requirements
     .map((r) =>
       [
         (r.title ?? r.id ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(),
         r.mandatory === false ? "opt" : "req",
         (r.official_form ?? "").toLowerCase().replace(/[^a-z0-9]+/g, ""),
+        words(r.category),
+        words(r.format),
+        r.signature_required === true ? "signature" : "no-signature",
+        words(r.satisfied_by),
+        words(r.instructions),
       ].join(":")
     )
     .sort();
   const amds = amendments
-    .map((a) => (a?.label ?? "").toLowerCase().replace(/[^a-z0-9]+/g, ""))
+    .map((a) => [words(a?.label), words(a?.summary), words(a?.date)].join(":"))
     .filter(Boolean)
     .sort();
-  return fnv1a([...parts, "|", ...amds].join("\n"));
+  const payload = [...parts, "|", ...amds].join("\n");
+  // Two directions plus length make accidental collisions materially less
+  // likely than the former single 32-bit value while keeping this client-safe
+  // and synchronous for package previews.
+  return `${fnv1a(payload)}${fnv1a([...payload].reverse().join(""))}${payload.length.toString(16)}`;
 }
 
 /** FNV-1a, 32-bit. Pure, dependency-free, and stable across processes. */

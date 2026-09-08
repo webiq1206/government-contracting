@@ -5,12 +5,19 @@ import { describe, it, expect, vi, afterEach } from "vitest";
  * guardrails matter more than the copy: never chase someone who said no, never
  * ask twice, and never send when there is nothing to ask for.
  */
-async function load(opts: { alreadyAsked?: boolean; send?: ReturnType<typeof vi.fn> } = {}) {
+async function load(opts: {
+  alreadyAsked?: boolean;
+  dedupeError?: boolean;
+  send?: ReturnType<typeof vi.fn>;
+} = {}) {
   vi.resetModules();
   const send = opts.send ?? vi.fn(async () => ({ provider: "gmail", messageId: "m1", threadId: "t1" }));
   vi.doMock("@/lib/db", () => ({
     query: vi.fn(async () => []),
-    queryOne: vi.fn(async () => (opts.alreadyAsked ? { id: "prior" } : null)),
+    queryOne: vi.fn(async () => {
+      if (opts.dedupeError) throw new Error("database unavailable");
+      return opts.alreadyAsked ? { id: "prior" } : null;
+    }),
   }));
   vi.doMock("@/lib/integrations/email-transport", () => ({ sendOutreachEmail: send }));
   const mod = await import("@/lib/domain/reply-clarify");
@@ -26,6 +33,7 @@ afterEach(() => {
 const BASE = {
   opportunityId: "o1",
   subcontractorId: "s1",
+  orgId: "org-1",
   toEmail: "sub@example.com",
   companyName: "Acme",
   opportunityTitle: "Grounds maintenance",
@@ -61,6 +69,14 @@ describe("clarification requests", () => {
   it("does not ask twice for the same solicitation", async () => {
     const { mod, send } = await load({ alreadyAsked: true });
     expect((await mod.requestClarification(BASE)).sent).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("sends nothing when duplicate protection cannot be checked", async () => {
+    const { mod, send } = await load({ dedupeError: true });
+    const res = await mod.requestClarification(BASE);
+    expect(res).toMatchObject({ sent: false });
+    expect(res.reason).toMatch(/Nothing was sent/);
     expect(send).not.toHaveBeenCalled();
   });
 

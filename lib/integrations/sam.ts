@@ -4,11 +4,9 @@
  * Requires SAM_API_KEY. When missing, methods return empty results + disabled:true
  * so agents log a skip instead of crashing.
  */
-import { config } from "../config";
 import { orgApiKey } from "../integration-keys";
 import { recordIntegrationUse } from "../integration-settings";
-import { queryOne, query } from "../db";
-import { LEGACY_ORG_ID } from "../tenant-context";
+import { queryOne } from "../db";
 
 /**
  * Daily ceiling on SAM calls for one organization.
@@ -19,14 +17,12 @@ import { LEGACY_ORG_ID } from "../tenant-context";
  * can act on rather than SAM refusing with an opaque 429.
  */
 const SAM_DAILY_CALL_CAP = 900;
+export type SamDisabledReason = "no_key" | "quota_exhausted";
 
-async function samOrg(): Promise<string> {
-  try {
-    const { tryResolveTenantOrgId } = await import("../tenant");
-    return (await tryResolveTenantOrgId()) ?? LEGACY_ORG_ID;
-  } catch {
-    return LEGACY_ORG_ID;
-  }
+async function samOrg(explicitOrgId?: string): Promise<string> {
+  if (explicitOrgId?.trim()) return explicitOrgId.trim();
+  const { resolveTenantOrgId } = await import("../tenant");
+  return resolveTenantOrgId();
 }
 
 /**
@@ -38,18 +34,19 @@ async function samOrg(): Promise<string> {
  * profile import all draw on the same quota, so guarding only the monitor
  * would leave the ceiling reachable by other paths.
  */
-async function reserveSamCall(): Promise<boolean> {
-  const org = await samOrg();
+async function reserveSamCall(orgId?: string): Promise<boolean> {
+  const org = await samOrg(orgId);
   const row = await queryOne<{ calls: number }>(
     `insert into sam_daily_calls (org_id, day, calls)
      values ($1, (now() at time zone 'utc')::date, 1)
      on conflict (org_id, day) do update set calls = sam_daily_calls.calls + 1
      returning calls`,
     [org]
-  ).catch(() => null);
-  // A ledger failure must not stop ingestion; SAM's own limiter remains the
-  // backstop in that case.
-  if (!row) return true;
+  );
+  // If the ledger cannot reserve a row, do not make an unmetered external
+  // request. A database error throws before network I/O and the calling agent
+  // records the integration failure visibly.
+  if (!row) return false;
   return row.calls <= SAM_DAILY_CALL_CAP;
 }
 
@@ -57,12 +54,14 @@ async function reserveSamCall(): Promise<boolean> {
 export async function samDailyUsage(
   orgId?: string
 ): Promise<{ used: number; cap: number; remaining: number }> {
-  const org = orgId ?? (await samOrg());
+  const org = await samOrg(orgId);
   const row = await queryOne<{ calls: number }>(
     `select calls from sam_daily_calls
       where org_id = $1 and day = (now() at time zone 'utc')::date`,
     [org]
-  ).catch(() => null);
+  );
+  // No row means no calls today. A failed query throws instead of publishing
+  // a reassuring zero and an incorrect full quota on the dashboard.
   const used = row?.calls ?? 0;
   return { used, cap: SAM_DAILY_CALL_CAP, remaining: Math.max(0, SAM_DAILY_CALL_CAP - used) };
 }
@@ -282,14 +281,18 @@ export const sam = {
    * Per-org, not per-deployment: every customer brings their own key, so
    * "enabled" is a question about them, not about the platform.
    */
-  enabled: async () => (await orgApiKey("SAM_API_KEY")).length > 0,
+  enabled: async (orgId?: string) => {
+    const org = await samOrg(orgId);
+    return (await orgApiKey("SAM_API_KEY", org)).length > 0;
+  },
 
   async searchOpportunities(
-    params: SearchParams = {}
+    params: SearchParams = {},
+    orgId?: string
   ): Promise<{
     disabled?: boolean;
     /** Why the call was refused before it was made. */
-    disabledReason?: "no_key" | "quota_exhausted";
+    disabledReason?: SamDisabledReason;
     /**
      * SAM answered with an error (or never answered). The items are empty
      * because the request FAILED, not because nothing was posted; callers that
@@ -302,9 +305,10 @@ export const sam = {
     total: number;
     items: SamOpportunity[];
   }> {
-    const apiKey = await orgApiKey("SAM_API_KEY");
+    const org = await samOrg(orgId);
+    const apiKey = await orgApiKey("SAM_API_KEY", org);
     if (!apiKey) return { disabled: true, disabledReason: "no_key", total: 0, items: [] };
-    if (!(await reserveSamCall()))
+    if (!(await reserveSamCall(org)))
       return { disabled: true, disabledReason: "quota_exhausted", total: 0, items: [] };
     const query = buildOpportunityQuery(params, apiKey);
     // Never throw on a SAM outage / rate-limit: the Opportunity Monitor's
@@ -321,7 +325,7 @@ export const sam = {
        * operator it showed when each service was last used successfully, and
        * showed the last time somebody pressed Test instead.
        */
-      void recordIntegrationUse("SAM_API_KEY", { ok: true });
+      void recordIntegrationUse("SAM_API_KEY", { ok: true, orgId: org });
       return {
         total: data.totalRecords ?? 0,
         items: data.opportunitiesData ?? [],
@@ -335,7 +339,7 @@ export const sam = {
             ? JSON.stringify(e.body).slice(0, 200)
             : "";
       const message = [e.message ?? "request failed", detail].filter(Boolean).join(": ");
-      void recordIntegrationUse("SAM_API_KEY", { ok: false, error: message });
+      void recordIntegrationUse("SAM_API_KEY", { ok: false, error: message, orgId: org });
       return {
         total: 0,
         items: [],
@@ -349,14 +353,14 @@ export const sam = {
    * Sources Sought notices specifically (routed to the high-priority sub-queue).
    * One request per NAICS code, since `ncode` is single-value; deduped by noticeId.
    */
-  async searchSourcesSought(naicsCodes: string[]): Promise<SamOpportunity[]> {
+  async searchSourcesSought(naicsCodes: string[], orgId?: string): Promise<SamOpportunity[]> {
     const byId = new Map<string, SamOpportunity>();
     for (const code of naicsCodes) {
       const res = await this.searchOpportunities({
         naics: code,
         ptype: "r", // 'r' = Sources Sought in SAM's ptype codes
         limit: 50,
-      });
+      }, orgId);
       if (res.disabled) return [];
       for (const o of res.items) if (o.noticeId) byId.set(o.noticeId, o);
     }
@@ -365,11 +369,21 @@ export const sam = {
 
   /** Entity registration status + expiry, used by Compliance Monitor. */
   async getEntityRegistration(
-    uei: string
-  ): Promise<{ disabled?: boolean; status?: string; expiresAt?: string } | null> {
-    const apiKey = await orgApiKey("SAM_API_KEY");
-    if (!apiKey || !uei) return { disabled: true };
-    if (!(await reserveSamCall())) return { disabled: true };
+    uei: string,
+    orgId?: string
+  ): Promise<{
+    disabled?: boolean;
+    disabledReason?: SamDisabledReason;
+    status?: string;
+    expiresAt?: string;
+  } | null> {
+    const org = await samOrg(orgId);
+    const apiKey = await orgApiKey("SAM_API_KEY", org);
+    if (!apiKey) return { disabled: true, disabledReason: "no_key" };
+    if (!uei) return null;
+    if (!(await reserveSamCall(org))) {
+      return { disabled: true, disabledReason: "quota_exhausted" };
+    }
     try {
       const data = await withRetry(() =>
         fetchJson<{ entityData?: { entityRegistration?: { registrationStatus?: string; registrationExpirationDate?: string } }[] }>(
@@ -402,8 +416,9 @@ export const sam = {
   async findEntities(input: {
     uei?: string;
     name?: string;
-  }): Promise<{
+  }, orgId?: string): Promise<{
     disabled?: boolean;
+    disabledReason?: SamDisabledReason;
     error?: boolean;
     /** HTTP status SAM returned, so a permissions problem is diagnosable. */
     status?: number;
@@ -411,9 +426,12 @@ export const sam = {
     detail?: string;
     entities: SamEntity[];
   }> {
-    const apiKey = await orgApiKey("SAM_API_KEY");
-    if (!apiKey) return { disabled: true, entities: [] };
-    if (!(await reserveSamCall())) return { disabled: true, entities: [] };
+    const org = await samOrg(orgId);
+    const apiKey = await orgApiKey("SAM_API_KEY", org);
+    if (!apiKey) return { disabled: true, disabledReason: "no_key", entities: [] };
+    if (!(await reserveSamCall(org))) {
+      return { disabled: true, disabledReason: "quota_exhausted", entities: [] };
+    }
     const uei = input.uei?.trim();
     const name = input.name?.trim();
     if (!uei && !name) return { entities: [] };
@@ -474,11 +492,21 @@ export const sam = {
    * negative for a gov-contracting gate.
    */
   async isExcluded(
-    name: string
-  ): Promise<{ disabled?: boolean; excluded: boolean; error?: boolean }> {
-    const apiKey = await orgApiKey("SAM_API_KEY");
-    if (!apiKey || !name) return { disabled: true, excluded: false };
-    if (!(await reserveSamCall())) return { disabled: true, excluded: false };
+    name: string,
+    orgId?: string
+  ): Promise<{
+    disabled?: boolean;
+    disabledReason?: SamDisabledReason;
+    excluded: boolean;
+    error?: boolean;
+  }> {
+    const org = await samOrg(orgId);
+    const apiKey = await orgApiKey("SAM_API_KEY", org);
+    if (!apiKey) return { disabled: true, disabledReason: "no_key", excluded: false };
+    if (!name) return { excluded: false, error: true };
+    if (!(await reserveSamCall(org))) {
+      return { disabled: true, disabledReason: "quota_exhausted", excluded: false };
+    }
     try {
       const data = await withRetry(() =>
         fetchJson<{ totalRecords?: number }>(EXCLUSION_BASE, {
@@ -492,8 +520,9 @@ export const sam = {
   },
 
   /** Award notices for post-submission tracking (win/loss detection). */
-  async getAwardNotices(solicitationNumber: string): Promise<SamOpportunity[]> {
-    const apiKey = await orgApiKey("SAM_API_KEY");
+  async getAwardNotices(solicitationNumber: string, orgId?: string): Promise<SamOpportunity[]> {
+    const org = await samOrg(orgId);
+    const apiKey = await orgApiKey("SAM_API_KEY", org);
     if (!apiKey || !solicitationNumber) return [];
     // Look up by exact solicitation number (solnum), not a title keyword, award
     // notices rarely carry the solicitation number in their title, so the old
@@ -502,7 +531,7 @@ export const sam = {
       solnum: solicitationNumber,
       ptype: "a", // 'a' = Award Notice
       limit: 10,
-    });
+    }, org);
     return res.items.filter(
       (i: SamOpportunity) =>
         i.solicitationNumber === solicitationNumber || i.type === "Award Notice"

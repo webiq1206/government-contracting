@@ -1,13 +1,10 @@
 /**
  * The document slots the package builder owns.
  *
- * `storeDoc` clears a slot before writing it: `delete from documents where
- * opportunity_id = $1 and kind = $2`. That is correct for a regenerated
- * artifact and destructive for anything else, so a file uploaded under one of
- * those names is deleted by the next package build, silently, with no copy
- * left. The upload route takes `kind` from the request, so the only thing
- * standing between an operator's signed bid bond and that delete was the
- * interface happening never to send a colliding value.
+ * Generated artifact kinds are platform-owned. They remain reserved so an
+ * operator upload cannot impersonate a generated file in the package, even
+ * though package builds now write immutable versioned objects rather than
+ * deleting the previous object first.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -34,13 +31,10 @@ describe("kinds an upload may not claim", () => {
     expect(route).toContain("status: 400");
   });
 
-  it("names the slots the builder clears", () => {
-    /*
-     * If storeDoc stops deleting first, this reservation becomes unnecessary
-     * restriction rather than protection, and should be reconsidered rather
-     * than left in place because it is already written.
-     */
+  it("writes a new immutable object version and never deletes from the renderer", () => {
     const builder = readFileSync("lib/agents/package-builder.ts", "utf8");
-    expect(builder).toContain("delete from documents where opportunity_id = $1 and kind = $2");
+    expect(builder).toContain("/${buildToken}/${kind}.pdf");
+    expect(builder).toContain("content_hash");
+    expect(builder).not.toMatch(/delete\s+from\s+documents/i);
   });
 });

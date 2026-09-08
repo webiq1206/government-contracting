@@ -86,7 +86,7 @@ d("the abort impact summary", () => {
   });
 
   it("counts what would stop", async () => {
-    const i = (await pursuitImpact(busy))!;
+    const i = (await pursuitImpact(busy, org))!;
     const stops = i.stops.find((s) => s.label.includes("follow-up"));
     expect(stops?.count).toBe(1);
   });
@@ -96,18 +96,18 @@ d("the abort impact summary", () => {
      * The half that matters most. Two emails are in somebody's inbox and are
      * staying there; an abort does not reach into another company's mail.
      */
-    const i = (await pursuitImpact(busy))!;
+    const i = (await pursuitImpact(busy, org))!;
     const sent = i.stands.find((s) => s.label.includes("cannot be recalled"));
     expect(sent?.count).toBe(2);
   });
 
   it("names the subcontractor still waiting on us", async () => {
-    const i = (await pursuitImpact(busy))!;
+    const i = (await pursuitImpact(busy, org))!;
     expect(i.stands.some((s) => s.label.includes("still waiting"))).toBe(true);
   });
 
   it("lists what is retained, so an abort does not read as a delete", async () => {
-    const i = (await pursuitImpact(busy))!;
+    const i = (await pursuitImpact(busy, org))!;
     const text = i.retained.join(" | ");
     expect(text).toMatch(/1 reply received/);
     expect(text).toMatch(/1 quote/);
@@ -120,7 +120,7 @@ d("the abort impact summary", () => {
      * opportunity is being looked at. The solicitation number is on the screen
      * and is specific to this record.
      */
-    const i = (await pursuitImpact(busy))!;
+    const i = (await pursuitImpact(busy, org))!;
     expect(i.confirmPhrase).toBe("W912DR-26-R-0042");
   });
 
@@ -130,7 +130,7 @@ d("the abort impact summary", () => {
      * displays the exact phrase, so a truncated title is unambiguous rather
      * than a guessing game: the operator types what is shown.
      */
-    const i = (await pursuitImpact(quiet))!;
+    const i = (await pursuitImpact(quiet, org))!;
     expect(i.title).toBe("Nothing has happened yet");
     expect(i.confirmPhrase).toBe("Nothing has happened");
     expect(i.confirmPhrase.split(/\s+/).length).toBeLessThanOrEqual(3);
@@ -141,7 +141,7 @@ d("the abort impact summary", () => {
     // An empty confirmation target would make the typed check pass on an
     // empty box, which is no check at all.
     for (const id of [busy, quiet]) {
-      const i = (await pursuitImpact(id))!;
+      const i = (await pursuitImpact(id, org))!;
       expect(i.confirmPhrase.trim().length).toBeGreaterThan(0);
     }
   });
@@ -149,12 +149,12 @@ d("the abort impact summary", () => {
   it("shows no lines at all when nothing has happened", async () => {
     // "0 calls will stop" is noise that makes the two lines that matter harder
     // to find, in the moment somebody is deciding.
-    const i = (await pursuitImpact(quiet))!;
+    const i = (await pursuitImpact(quiet, org))!;
     expect(i.stops).toHaveLength(0);
     expect(i.stands).toHaveLength(0);
   });
 
   it("returns null for an opportunity that does not exist", async () => {
-    expect(await pursuitImpact(randomUUID())).toBeNull();
+    expect(await pursuitImpact(randomUUID(), org)).toBeNull();
   });
 });

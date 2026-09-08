@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getFoundingPromo } from "@/lib/billing/promo";
 import { ANNUAL_MONTHS_CHARGED } from "@/lib/billing/catalog";
 import { FOUNDING_MONTHLY_USD, STANDARD_MONTHLY_USD } from "@/lib/billing/prices";
+import { LogoutControl } from "@/components/logout-control";
+import { BlockingDialog } from "@/components/blocking-dialog";
 
 /**
  * The paywall, shown over the customer's own dashboard when their trial ends.
@@ -28,10 +30,8 @@ export async function TrialExpiredModal() {
   const money = (n: number) => `$${n.toLocaleString("en-US")}`;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="trial-expired-title"
+    <BlockingDialog
+      labelledBy="trial-expired-title"
       className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-background/85 p-4 backdrop-blur-sm"
     >
       <div className="card w-full max-w-md space-y-5 shadow-xl">
@@ -83,14 +83,12 @@ export async function TrialExpiredModal() {
         </p>
 
         <div className="flex items-center justify-between border-t border-border pt-3 text-xs">
-          <Link href="/settings/billing" className="text-accent hover:underline">
+          <Link href="/settings/billing" className="inline-flex min-h-11 items-center text-accent hover:underline">
             Billing details
           </Link>
-          <Link href="/api/auth/logout" className="text-slate-500 hover:underline">
-            Sign out
-          </Link>
+          <LogoutControl className="min-h-11 text-slate-500 hover:underline" />
         </div>
       </div>
-    </div>
+    </BlockingDialog>
   );
 }

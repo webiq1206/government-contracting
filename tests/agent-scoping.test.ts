@@ -26,10 +26,25 @@ import { join } from "node:path";
  * written down beside it.
  */
 const TENANT_TABLES = [
-  "subcontractors", "opportunities", "contracts", "quotes", "bids", "call_cards",
-  "communications", "compliance_items", "content_library", "custom_kpis",
-  "documents", "pricing_comps", "scoring_weights", "templates",
-  "backlink_outreach", "opportunity_subs",
+  "company_profile", "subcontractors", "opportunities", "contracts", "quotes", "bids",
+  "call_cards", "communications", "compliance_items", "content_library", "custom_kpis",
+  "documents", "pricing_comps", "scoring_weights", "templates", "agent_logs",
+  "integration_tokens", "integration_settings", "app_settings", "file_blobs", "job_runs",
+  "backlink_competitors", "backlink_prospects", "backlink_outreach",
+  "backlinks", "authority_snapshots", "opportunity_subs", "subcontractor_reply_events",
+  "subcontractor_documents", "subcontractor_payments", "reply_drafts", "sam_daily_calls",
+  "email_suppressions", "conversation_flags", "automation_incidents", "incident_events",
+  "incident_requeues", "unmatched_inbound", "bid_submission_events", "bid_overrides",
+  "trade_pricing_rows", "bid_calculation_snapshots", "outreach_suppressions",
+  "solicitation_verifications", "saved_views", "requirement_states",
+  "requirement_state_events", "subcontractor_performance_events", "subcontractor_merges",
+  "subcontractor_contacts", "subcontractor_licenses", "subcontractor_tags",
+  "subcontractor_bulk_actions", "compliance_item_events", "compliance_item_documents",
+  "contract_milestones", "contract_modifications", "contract_invoices", "contract_issues",
+  "contract_coordination", "billing_invoices", "feedback_reports", "recap_deliveries",
+  "recap_urgent_items", "account_invitations", "platform_key_grants", "platform_key_usage",
+  "commission_events", "influencer_payouts", "referral_attributions", "organization_members",
+  "analytics_events",
 ];
 
 /** Files with cross-tenant scans still outstanding. There are none. */
@@ -64,7 +79,35 @@ const DELIBERATELY_GLOBAL = [
   // references that path. Blob paths are content-addressed and shared between
   // organizations, so scoping this to one org would delete bytes another
   // customer's document still points at.
+  "select candidate.path from unnest($1::text[]) as candidate(path)",
   "from file_blobs where path = any($1)",
+  // app_settings.key is the primary key. Tenant settings encode the org in
+  // that key; the two platform settings deliberately use an unprefixed key.
+  "from app_settings where key = $1",
+  // file_blobs.path is a unique, tenant-namespaced ownership key. The storage
+  // layer refuses a cross-tenant collision before any read can occur.
+  "select bytes from file_blobs where path = $1",
+  "select mime from file_blobs where path = $1",
+  // These log queries construct a mandatory `org_id = $1` clause before the
+  // SQL template is interpolated. The literal cannot show the contents of the
+  // variable to this source scanner.
+  "from agent_logs ${where}",
+  "from agent_logs ${whereSql}",
+  // Worker heartbeat is platform process health, not customer data. A global
+  // last-run timestamp answers whether the shared worker is alive.
+  "select (select max(started_at) from job_runs) as worker_last",
+  // Recap bounces arrive in one platform inbox. Matching therefore has to
+  // search delivery records across organizations, but recentDeliveryTo now
+  // refuses an address-only match when more than one tenant/scope is present.
+  "from recap_deliveries where lower(recipient_email) = lower($1)",
+  // Invitations exist before a recipient belongs to an organization. These
+  // platform-admin and concession sweeps must find unaccepted rows globally;
+  // accepted_org_id is nullable until acceptance and the routes are guarded
+  // separately by platform-admin or invitation-token credentials.
+  "from account_invitations where concession_code = $1",
+  "from account_invitations where lower(email) = $1",
+  "from account_invitations where accepted_at is null",
+  "from account_invitations where accepted_at is not null",
   // storage.getMime: the stored MIME type for a path the caller already holds.
   // Same shared-path reason, and the answer is "this is a PDF", which carries
   // nothing of the document itself.
@@ -146,5 +189,16 @@ describe("server code does not read across organizations", () => {
       /insert into agent_logs \(org_id,/
     );
     expect(src, "must compute per organization").toMatch(/runWithOrg\(org\.id/);
+  });
+
+  it("keeps the platform authority scout inside the founding organization", () => {
+    const src = readFileSync("lib/agents/backlink-scout.ts", "utf8");
+    expect(crossTenantScans(src)).toEqual([]);
+    expect(src).toContain("const orgId = LEGACY_ORG_ID");
+    expect(src).toContain("runWithOrg(orgId");
+    expect(src).toMatch(/insert into authority_snapshots\s+\(org_id,/);
+    expect(src).toMatch(/insert into backlinks\s+\(org_id,/);
+    expect(src).toMatch(/insert into backlink_competitors\s+\(org_id,/);
+    expect(src).toMatch(/insert into backlink_prospects\s+\(org_id,/);
   });
 });

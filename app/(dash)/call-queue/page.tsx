@@ -30,6 +30,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const CALL_PAGE_SIZE = 50;
+
 export default async function CallQueuePage({
   searchParams,
 }: {
@@ -40,7 +42,7 @@ export default async function CallQueuePage({
   const [allCards, callsEnabled, viewer] = await Promise.all([
     callQueue(),
     areCallsEnabled(),
-    currentUser().catch(() => null),
+    currentUser(),
   ]);
   // Deep link support: /call-queue?open=<cardId> opens that card's workspace
   // immediately (used by the Today page so one click lands in the call).
@@ -90,7 +92,21 @@ export default async function CallQueuePage({
   // reads them rather than assuming 8 to 6 and no limit.
   const rules = await getAutomationRules();
   const counts = callQueueCounts(facts, now, rules);
-  const shown = filterCalls(facts, q);
+  const filteredCalls = filterCalls(facts, q);
+  const selectedIndex = openId
+    ? filteredCalls.findIndex((card) => card.id === openId)
+    : -1;
+  const totalPages = Math.max(1, Math.ceil(filteredCalls.length / CALL_PAGE_SIZE));
+  const pageRaw = searchParams?.page;
+  const requestedPage = Math.max(
+    1,
+    Number(Array.isArray(pageRaw) ? pageRaw[0] : pageRaw ?? "1") || 1
+  );
+  const page =
+    selectedIndex >= 0
+      ? Math.floor(selectedIndex / CALL_PAGE_SIZE) + 1
+      : Math.min(requestedPage, totalPages);
+  const shown = filteredCalls.slice((page - 1) * CALL_PAGE_SIZE, page * CALL_PAGE_SIZE);
   /*
    * Where in the morning's calls this one is.
    *
@@ -104,13 +120,18 @@ export default async function CallQueuePage({
     openId ?? null
   );
 
-  function queueHref(over: { q?: string; group?: string; open?: string | null } = {}): string {
+  function queueHref(
+    over: { q?: string; group?: string; open?: string | null; page?: number } = {}
+  ): string {
     const p = new URLSearchParams();
     if (focusId) p.set("opportunity", focusId);
     const nextQ = over.q ?? q;
     const nextGroup = over.group ?? grouping;
     if (nextQ) p.set("q", nextQ);
     if (nextGroup !== "none") p.set("group", nextGroup);
+    const filtersChanged = over.q !== undefined || over.group !== undefined;
+    const nextPage = over.page ?? (filtersChanged ? 1 : page);
+    if (nextPage > 1) p.set("page", String(nextPage));
     const nextOpen = over.open === undefined ? openId : over.open;
     if (nextOpen) p.set("open", nextOpen);
     const str = p.toString();
@@ -121,6 +142,7 @@ export default async function CallQueuePage({
     if (focusId) p.set("opportunity", focusId);
     if (q) p.set("q", q);
     if (grouping !== "none") p.set("group", grouping);
+    if (page > 1) p.set("page", String(page));
     const str = p.toString();
     return str ? `/call-queue?${str}&open=` : "/call-queue?open=";
   })();
@@ -294,6 +316,36 @@ export default async function CallQueuePage({
                   </span>
                 )}
               </div>
+              {totalPages > 1 && (
+                <nav
+                  aria-label="Call queue pages"
+                  className="flex items-center justify-between gap-3 text-xs"
+                >
+                  {page > 1 ? (
+                    <Link
+                      href={queueHref({ open: null, page: page - 1 })}
+                      className="tap text-accent"
+                    >
+                      Previous 50
+                    </Link>
+                  ) : (
+                    <span />
+                  )}
+                  <span className="num text-muted-foreground">
+                    Page {page} of {totalPages}
+                  </span>
+                  {page < totalPages ? (
+                    <Link
+                      href={queueHref({ open: null, page: page + 1 })}
+                      className="tap text-accent"
+                    >
+                      Next 50
+                    </Link>
+                  ) : (
+                    <span />
+                  )}
+                </nav>
+              )}
               {/*
                 * The plan names the call to start with, so it only makes sense
                 * over the unfiltered queue in its default order. Shown beside a
@@ -304,10 +356,10 @@ export default async function CallQueuePage({
                   eyebrow="How calling works"
                   plan={buildCallQueueGuide({
                     first: {
-                      id: cards[0].id,
-                      companyName: cards[0].company_name,
-                      trade: cards[0].trade ?? null,
-                      fromReply: cards[0].source === "reply",
+                      id: shown[0].id,
+                      companyName: shown[0].companyName,
+                      trade: shown[0].trade ?? null,
+                      fromReply: shown[0].source === "reply",
                     },
                     queueLength: cards.length,
                   })}

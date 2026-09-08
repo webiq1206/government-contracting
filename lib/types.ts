@@ -197,6 +197,8 @@ export interface Opportunity {
    */
   snoozed_until?: string | null;
   pursuit_state?: string | null;
+  /** Monotonic generation that fences work queued before an abort or restart. */
+  pursuit_version?: number;
   created_at: string;
   updated_at: string;
 }
@@ -218,6 +220,8 @@ export interface ScoreBreakdown {
    * and the UI must say so rather than imply a full reading.
    */
   data_confidence?: import("./domain/score-confidence").DataConfidence;
+  /** Exact completed analysis used for this score, when documents were present. */
+  analysis_input_hash?: string | null;
   hard_exclusions_triggered: string[];
   dimensions: {
     key: string;
@@ -334,7 +338,7 @@ export interface ResolvedRequirement extends ComplianceRequirement {
    * The operator's signed offer form and their bid bond were never in the
    * package they downloaded and sent.
    */
-  operator_doc?: { name: string; path: string; mime?: string };
+  operator_doc?: { name: string; path: string; mime?: string; content_hash?: string };
 }
 
 /** One file in the assembled, ordered submission package. */
@@ -575,7 +579,13 @@ export interface Bid {
   target_margin_pct: number | null;
   qa_checklist: QaChecklistItem[] | null;
   narrative: string | null;
-  documents_json: { name: string; storage_path: string; kind: string }[];
+  documents_json: {
+    name: string;
+    storage_path: string;
+    kind: string;
+    storage_backend?: string;
+    content_hash?: string;
+  }[];
   human_flags: string[];
   submitted_at: string | null;
   /**

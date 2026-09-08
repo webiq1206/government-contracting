@@ -3,7 +3,8 @@ import { SkeletonBar, SkeletonHeader, SkeletonRow } from "@/components/skeleton"
 /** Sketch of the Today layout while its data loads. */
 export default function TodayLoading() {
   return (
-    <div className="flex page-shell">
+    <div className="flex page-shell" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">Loading Today</span>
       <SkeletonHeader />
       <div className="flex-1 overflow-hidden p-5">
         <div className="mx-auto w-full max-w-5xl space-y-8">

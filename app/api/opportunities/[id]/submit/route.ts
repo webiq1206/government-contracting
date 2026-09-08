@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
-import { query, queryOne } from "@/lib/db";
+import { queryOne, transaction } from "@/lib/db";
 import { getProfileJson } from "@/lib/ai/companyProfile";
 import { logAgent } from "@/lib/logger";
 import { currentRequirementsFingerprint } from "@/lib/bid-package-state";
@@ -11,13 +11,142 @@ import {
   overrideSummary,
   OVERRIDE_PROBLEM_MESSAGE,
 } from "@/lib/domain/override";
-import { pricingRowsWithQuotes, freezeCalculation } from "@/lib/pricing-rows";
-import { pricingSheet } from "@/lib/domain/pricing-row";
+import {
+  calculationHash,
+  pricingRowsWithQuotes,
+  pricingRowsWithQuotesInTransaction,
+} from "@/lib/pricing-rows";
+import { pricingSheet, type PricingSheet } from "@/lib/domain/pricing-row";
 import { bidMath, explainBidMath } from "@/lib/domain/trade-pricing";
 import type { Opportunity } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+interface BidApprovalFacts {
+  id: string;
+  human_flags: string[];
+  qa_checklist: { ok: boolean }[] | null;
+  package_ready: boolean;
+  validation_json: { blockers?: string[] } | null;
+  requirements_fingerprint: string | null;
+  audit_findings: { severity: string; acknowledged?: boolean; finding: string }[] | null;
+  bid_amount: string | null;
+  submission_state: string;
+  updated_at_token: string;
+  compliance_matrix: unknown;
+  package_manifest: unknown;
+  documents_json: unknown;
+}
+
+interface LockedApprovalFacts extends BidApprovalFacts {
+  opportunity_updated_at_token: string;
+  stage: string;
+  status: string;
+  pursuit_state: string | null;
+  deadline: string | null;
+  past_perf_classification: string | null;
+  solicitation_analysis: Opportunity["solicitation_analysis"];
+}
+
+function sourceRequirementsExist(opp: {
+  solicitation_analysis?: Opportunity["solicitation_analysis"];
+}): boolean {
+  return (
+    (opp.solicitation_analysis?.compliance_matrix?.length ?? 0) > 0 ||
+    (opp.solicitation_analysis?.qa_addenda?.length ?? 0) > 0
+  );
+}
+
+function requirementsState(
+  built: string | null,
+  opp: { solicitation_analysis?: Opportunity["solicitation_analysis"] }
+): { current: string; valid: boolean } {
+  const current = currentRequirementsFingerprint(opp);
+  return {
+    current,
+    valid: sourceRequirementsExist(opp) ? Boolean(built && built === current) : !built || built === current,
+  };
+}
+
+function packageFactsFingerprint(bid: BidApprovalFacts): string {
+  return calculationHash({
+    humanFlags: bid.human_flags,
+    qaChecklist: bid.qa_checklist,
+    packageReady: bid.package_ready,
+    validation: bid.validation_json,
+    auditFindings: bid.audit_findings,
+    requirementsFingerprint: bid.requirements_fingerprint,
+    bidAmount: bid.bid_amount,
+    complianceMatrix: bid.compliance_matrix,
+    manifest: bid.package_manifest,
+    documents: bid.documents_json,
+  });
+}
+
+function approvalCalculation(sheet: PricingSheet, rawBidAmount: string | null) {
+  // Numeric arrives as a string. Null stays null: a bid nobody has set is not
+  // a bid of zero, and Number(null) is exactly how it would become one.
+  const bidAmount =
+    rawBidAmount != null && Number.isFinite(Number(rawBidAmount))
+      ? Number(rawBidAmount)
+      : null;
+  const math = bidMath({ cost: sheet.cost, bid: bidAmount, contingencyPct: null });
+  return {
+    cost: sheet.cost,
+    bid: bidAmount,
+    grossProfit: math.grossProfit,
+    marginPct: math.marginPct,
+    markupPct: math.markupPct,
+    unknown: math.unknown,
+    formula: explainBidMath(math),
+    weakestConfidence: sheet.weakestConfidence,
+    rows: sheet.rows.map((p) => ({
+      trade: p.row.trade,
+      scopeKey: p.row.scopeKey,
+      selectedSub: p.row.selectedSubName ?? null,
+      backupSub: p.row.backupSubName ?? null,
+      baseQuote: p.row.baseQuote,
+      total: p.total,
+      confidence: p.row.confidence,
+      quoteExpiresOn: p.row.quoteExpiresOn,
+      exclusions: p.row.exclusions,
+      alternates: p.row.alternates,
+      problems: p.problems.map((x) => x.message),
+    })),
+  };
+}
+
+function checkedPricingSheet(
+  opp: { deadline: string | null; solicitation_analysis?: Opportunity["solicitation_analysis"] },
+  rows: Awaited<ReturnType<typeof pricingRowsWithQuotes>>,
+  checkedAt: Date
+): PricingSheet {
+  const required = (opp.solicitation_analysis?.required_trades ?? [])
+    .map((trade) => String(trade).trim())
+    .filter(Boolean);
+  return pricingSheet(required, rows, {
+    now: checkedAt,
+    bidDueAt: opp.deadline ? new Date(opp.deadline) : null,
+    quoteValidityRequired: (opp.solicitation_analysis?.compliance_matrix ?? []).some((requirement) =>
+      /quote\s+validity|price\s+validity|prices?\s+(?:must\s+)?(?:remain|held|hold)/i.test(
+        `${requirement?.title ?? ""} ${requirement?.instructions ?? ""} ${requirement?.format ?? ""}`
+      )
+    ),
+  });
+}
+
+function requirementsChangedResponse() {
+  return NextResponse.json(
+    {
+      error:
+        "This solicitation's requirements changed after the package was assembled, or this package has no record of which requirements it used. Re-run the Bid Builder, review whatever it flags, then submit.",
+      needsForce: false,
+      blockers: ["The package is not tied to the current solicitation requirements"],
+    },
+    { status: 409 }
+  );
+}
 
 /** Operator submits the reviewed bid package. Guards the submit-lead-hours rule + prime_only block. */
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -50,25 +179,48 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const overrideOk = wantsOverride && mayOverride(overrideReq);
   const force = overrideOk;
 
-  const opp = await queryOne<Opportunity>(`select * from opportunities where id=$1 and org_id=$2`, [params.id, orgId]);
+  const opp = await queryOne<Opportunity & { updated_at_token: string }>(
+    `select *, updated_at::text as updated_at_token
+       from opportunities where id=$1 and org_id=$2`,
+    [params.id, orgId]
+  );
   if (!opp) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const bid = await queryOne<{
-    id: string;
-    human_flags: string[];
-    qa_checklist: { ok: boolean }[] | null;
-    package_ready: boolean;
-    validation_json: { blockers?: string[] } | null;
-    requirements_fingerprint: string | null;
-    audit_findings: { severity: string; acknowledged?: boolean; finding: string }[] | null;
-    bid_amount: string | null;
-  }>(
+  const bid = await queryOne<BidApprovalFacts>(
     `select id, human_flags, qa_checklist, package_ready, validation_json, audit_findings,
-            requirements_fingerprint, bid_amount
-       from bids where opportunity_id=$1 order by created_at desc limit 1`,
-    [params.id]
+            requirements_fingerprint, bid_amount, submission_state,
+            updated_at::text as updated_at_token, compliance_matrix,
+            package_manifest, documents_json
+       from bids where opportunity_id=$1 and org_id=$2 order by created_at desc limit 1`,
+    [params.id, orgId]
   );
   if (!bid) return NextResponse.json({ error: "No bid package to submit." }, { status: 400 });
+  if (bid.submission_state !== "package_ready") {
+    return NextResponse.json(
+      {
+        error:
+          bid.submission_state === "approved"
+            ? "This package is already approved to send. Record the delivery evidence after it reaches the agency."
+            : "This package has submission history and cannot be approved again from its current state.",
+      },
+      { status: 409 }
+    );
+  }
+  if (
+    opp.stage !== "bid_building" ||
+    opp.status !== "open" ||
+    (opp.pursuit_state ?? "active") !== "active"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          opp.stage === "submitted"
+            ? "This bid is already submitted. Record the agency outcome instead of approving it again."
+            : "Only an active, open bid in the package review stage can be approved. Refresh the opportunity to see its current state.",
+      },
+      { status: 409 }
+    );
+  }
 
   /**
    * The requirements must not have moved since the package was assembled.
@@ -82,19 +234,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
    * force must NOT override it: forcing past a known-outdated package is not
    * a judgement call an operator can make from this screen.
    */
-  const built = bid.requirements_fingerprint;
-  const current = currentRequirementsFingerprint(opp);
-  if (built && built !== current) {
-    return NextResponse.json(
-      {
-        error:
-          "This solicitation's requirements changed after the package was assembled, so the package no longer matches what is being asked for. Re-run the Bid Builder, review whatever it flags, then submit.",
-        needsForce: false,
-        blockers: ["Requirements changed after the package was built"],
-      },
-      { status: 409 }
-    );
-  }
+  const preflightRequirements = requirementsState(bid.requirements_fingerprint, opp);
+  if (!preflightRequirements.valid) return requirementsChangedResponse();
 
   // Block prime_only per past-performance policy.
   if (opp.past_perf_classification === "prime_only") {
@@ -117,19 +258,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
    * The sheet answers all of them from one model, and it is the same model the
    * Pricing tab renders, so the screen and the gate cannot disagree.
    */
-  const required = (opp.solicitation_analysis?.required_trades ?? [])
-    .map((t) => String(t).trim())
-    .filter(Boolean);
-  const pricingRows = await pricingRowsWithQuotes(params.id, orgId).catch(() => []);
-  const sheet = pricingSheet(required, pricingRows, {
-    now: new Date(),
-    bidDueAt: opp.deadline ? new Date(opp.deadline) : null,
-    quoteValidityRequired: (opp.solicitation_analysis?.compliance_matrix ?? []).some((r) =>
-      /quote\s+validity|price\s+validity|prices?\s+(?:must\s+)?(?:remain|held|hold)/i.test(
-        `${r?.title ?? ""} ${r?.instructions ?? ""} ${r?.format ?? ""}`
-      )
-    ),
-  });
+  const approvalCheckedAt = new Date();
+  let pricingRows: Awaited<ReturnType<typeof pricingRowsWithQuotes>>;
+  try {
+    pricingRows = await pricingRowsWithQuotes(params.id, orgId);
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "The pricing sheet could not be checked, so nothing was submitted. Reload the opportunity and try again after the database connection recovers.",
+        needsForce: false,
+      },
+      { status: 503 }
+    );
+  }
+  const sheet = checkedPricingSheet(opp, pricingRows, approvalCheckedAt);
   if (sheet.blockers.length > 0) {
     const messages = sheet.blockers.map((b) => b.message);
     return NextResponse.json(
@@ -175,6 +318,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         error: `The submission package is not complete yet:\n• ${hardBlockers.join("\n• ")}`,
         needsForce: false,
         blockers: hardBlockers,
+      },
+      { status: 409 }
+    );
+  }
+
+  const rebuildBlocker = (bid.human_flags ?? []).find((flag) =>
+    ["pricing_changed_rebuild_required", "restart_revalidation_pending"].includes(flag)
+  );
+  if (rebuildBlocker) {
+    return NextResponse.json(
+      {
+        error:
+          rebuildBlocker === "pricing_changed_rebuild_required"
+            ? "Pricing changed after this package was assembled. Wait for Bid Builder to finish, then review the rebuilt package before approval."
+            : "This pursuit was restarted, so its prior package is no longer cleared for use. Wait for revalidation and Bid Builder to finish, then review the rebuilt package before approval.",
+        needsForce: false,
+        blockers: [
+          rebuildBlocker === "pricing_changed_rebuild_required"
+            ? "Pricing changed after the package was built"
+            : "Pursuit restart requires a revalidated package",
+        ],
       },
       { status: 409 }
     );
@@ -252,114 +416,231 @@ export async function POST(req: Request, { params }: { params: { id: string } })
    * requires the evidence, and a check constraint refuses the column without
    * it either way.
    */
-  await query(
-    `update bids set submission_state='approved' where id=$1 and submission_state='package_ready'`,
-    [bid.id]
-  );
-  if (overrideOk) {
-    /*
-     * Written before the approval event, so an override can never end up
-     * without the approval it justified, and so the two read in the order
-     * they happened.
-     */
-    const at = new Date();
-    await query(
-      `insert into bid_overrides (bid_id, org_id, requirement, reason, risk, actor)
-       values ($1,$2,$3,$4,$5,$6)`,
-      [
-        bid.id,
-        orgId,
-        overrideReq.requirement.trim(),
-        overrideReq.reason.trim(),
-        overrideRisk(overrideReq.requirement),
-        auth.email,
-      ]
-    ).catch(() => {});
+  const overrideAt = overrideOk ? new Date() : null;
+  const preflightPricingFingerprint = calculationHash(pricingRows);
+  const preflightPackageFingerprint = packageFactsFingerprint(bid);
+  type ApprovalResult =
+    | { ok: true }
+    | { ok: false; reason: "stale" | "requirements" | "pricing"; blockers?: string[] };
+  let approval: ApprovalResult;
+  try {
+    approval = await transaction(async (client): Promise<ApprovalResult> => {
+      /*
+       * Quote and pricing-row writes take ROW EXCLUSIVE table locks. Holding
+       * SHARE locks until commit means none can slip between the second check
+       * and the approval update. The bid and opportunity row locks do the same
+       * for package and solicitation facts. SERIALIZABLE is the final guard
+       * against a future pricing source being added without joining this lock.
+       */
+      await client.query("set transaction isolation level serializable");
+      await client.query("set local lock_timeout = '10s'");
+      await client.query("lock table trade_pricing_rows, quotes in share mode");
+      const lockedRows = await client.query<LockedApprovalFacts>(
+        `select b.id, b.human_flags, b.qa_checklist, b.package_ready,
+                b.validation_json, b.requirements_fingerprint, b.audit_findings,
+                b.bid_amount, b.submission_state,
+                b.updated_at::text as updated_at_token,
+                b.compliance_matrix, b.package_manifest, b.documents_json,
+                o.updated_at::text as opportunity_updated_at_token,
+                o.stage, o.status, o.pursuit_state, o.deadline,
+                o.past_perf_classification, o.solicitation_analysis
+           from bids b
+           join opportunities o on o.id=b.opportunity_id and o.org_id=b.org_id
+          where b.id=$1 and b.org_id=$2 and o.id=$3
+          for update of b, o`,
+        [bid.id, orgId, params.id]
+      );
+      const locked = lockedRows.rows[0];
+      if (!locked) return { ok: false, reason: "stale" };
+
+      const lockedRequirements = requirementsState(locked.requirements_fingerprint, locked);
+      if (
+        !lockedRequirements.valid ||
+        lockedRequirements.current !== preflightRequirements.current
+      ) {
+        return { ok: false, reason: "requirements" };
+      }
+      if (
+        locked.submission_state !== "package_ready" ||
+        (!locked.package_ready && !force) ||
+        locked.stage !== "bid_building" ||
+        locked.status !== "open" ||
+        (locked.pursuit_state ?? "active") !== "active" ||
+        locked.past_perf_classification === "prime_only"
+      ) {
+        return { ok: false, reason: "stale" };
+      }
+
+      const transactionPricingRows = await pricingRowsWithQuotesInTransaction(
+        client,
+        params.id,
+        orgId
+      );
+      const transactionSheet = checkedPricingSheet(
+        locked,
+        transactionPricingRows,
+        approvalCheckedAt
+      );
+      if (transactionSheet.blockers.length > 0) {
+        return {
+          ok: false,
+          reason: "pricing",
+          blockers: transactionSheet.blockers.map((blocker) => blocker.message),
+        };
+      }
+
+      const pricingFingerprint = calculationHash(transactionPricingRows);
+      const packageFingerprint = packageFactsFingerprint(locked);
+      if (
+        locked.updated_at_token !== bid.updated_at_token ||
+        locked.opportunity_updated_at_token !== opp.updated_at_token ||
+        pricingFingerprint !== preflightPricingFingerprint ||
+        packageFingerprint !== preflightPackageFingerprint
+      ) {
+        return { ok: false, reason: "stale" };
+      }
+
+      const calculation = approvalCalculation(transactionSheet, locked.bid_amount);
+      const snapshotHash = calculationHash(calculation);
+      const changed = await client.query<{ id: string }>(
+        `update bids b
+            set submission_state='approved', updated_at=now()
+           from opportunities o
+          where b.id=$1 and b.org_id=$2 and b.submission_state='package_ready'
+            and b.updated_at=$3::timestamptz and b.package_ready=$4
+            and o.id=b.opportunity_id and o.org_id=b.org_id
+            and o.stage='bid_building' and o.status='open'
+            and coalesce(o.pursuit_state, 'active')='active'
+            and o.updated_at=$5::timestamptz
+            and b.requirements_fingerprint is not distinct from $6
+          returning b.id`,
+        [
+          bid.id,
+          orgId,
+          locked.updated_at_token,
+          locked.package_ready,
+          locked.opportunity_updated_at_token,
+          locked.requirements_fingerprint,
+        ]
+      );
+      if (changed.rows.length === 0) return { ok: false, reason: "stale" };
+
+      if (overrideOk) {
+        await client.query(
+          `insert into bid_overrides (bid_id, org_id, requirement, reason, risk, actor)
+           values ($1,$2,$3,$4,$5,$6)`,
+          [
+            bid.id,
+            orgId,
+            overrideReq.requirement.trim(),
+            overrideReq.reason.trim(),
+            overrideRisk(overrideReq.requirement),
+            auth.email,
+          ]
+        );
+      }
+      await client.query(
+        `insert into bid_calculation_snapshots
+           (bid_id, org_id, opportunity_id, reason, actor, calculation, calculation_hash)
+         values ($1,$2,$3,'approved',$4,$5::jsonb,$6)`,
+        [
+          bid.id,
+          orgId,
+          params.id,
+          auth.email,
+          JSON.stringify(calculation),
+          snapshotHash,
+        ]
+      );
+      const proof = [
+        overrideOk
+          ? `Cleared to send with a warning overridden by ${auth.email}: ${overrideReq.reason.trim()}`
+          : "Every check passed and the package was cleared to send. Nothing has been sent yet.",
+        `Requirements ${lockedRequirements.current}.`,
+        `Pricing facts ${pricingFingerprint}.`,
+        `Package facts ${packageFingerprint}.`,
+        `Calculation ${snapshotHash}.`,
+      ].join(" ");
+      await client.query(
+        `insert into bid_submission_events (bid_id, org_id, from_state, to_state, actor, proof)
+         values ($1,$2,'package_ready','approved',$3,$4)`,
+        [bid.id, orgId, auth.email, proof]
+      );
+      if (overrideOk && overrideAt) {
+        await client.query(
+          `insert into agent_logs
+             (org_id, agent, action, opportunity_id, bid_id, level, status, message)
+           values ($1,'operator','submit-override',$2,$3,'warn','ok',$4)`,
+          [orgId, params.id, bid.id, overrideSummary(overrideReq, auth.email, overrideAt)]
+        );
+      }
+      await client.query(
+        `insert into agent_logs
+           (org_id, agent, action, opportunity_id, bid_id, level, status, message, reasoning,
+            output_json)
+         values ($1,'operator','approve-bid',$2,$3,'success','ok',$4,$5,$6::jsonb)`,
+        [
+          orgId,
+          params.id,
+          bid.id,
+          `Operator ${auth.email} approved the bid package to be sent.`,
+          "The package is cleared. It counts as submitted only once somebody records how and when it reached the agency.",
+          JSON.stringify({
+            requirementsFingerprint: lockedRequirements.current,
+            pricingFingerprint,
+            packageFingerprint,
+            calculationHash: snapshotHash,
+          }),
+        ]
+      );
+      return { ok: true };
+    });
+  } catch (error) {
     await logAgent({
       agent: "operator",
-      action: "submit-override",
+      action: "approve-bid-failed",
       opportunityId: params.id,
       bidId: bid.id,
-      level: "warn",
-      message: overrideSummary(overrideReq, auth.email, at),
-    });
+      level: "error",
+      status: "error",
+      message: `The package approval transaction failed and was rolled back: ${(error as Error).message}`,
+    }).catch(() => {});
+    return NextResponse.json(
+      {
+        error:
+          "The package approval could not be saved. Nothing was approved. Refresh, verify the package, and try again.",
+      },
+      { status: 500 }
+    );
   }
-  /*
-   * Freeze the arithmetic this approval was given against.
-   *
-   * A package approved against particular numbers is approved against those
-   * numbers. If the pricing rows can move afterwards then the sign-off is a
-   * record of nothing: the screen shows today's total beside a decision made
-   * for yesterday's, and there is no way from inside the product to tell that
-   * they differ. The snapshot row cannot be edited once written.
-   *
-   * Not fatal if it fails. Losing the frozen copy is bad; refusing an approval
-   * that passed every gate because a second insert failed is worse, and the
-   * approval event below is still written either way.
-   */
-  // numeric arrives as a string. Null stays null: a bid nobody has set is not
-  // a bid of zero, and Number(null) is exactly how it would become one.
-  const bidAmount =
-    bid.bid_amount != null && Number.isFinite(Number(bid.bid_amount))
-      ? Number(bid.bid_amount)
-      : null;
-  const math = bidMath({ cost: sheet.cost, bid: bidAmount, contingencyPct: null });
-  await freezeCalculation({
-    bidId: bid.id,
-    orgId,
-    opportunityId: params.id,
-    reason: "approved",
-    actor: auth.email,
-    calculation: {
-      cost: sheet.cost,
-      bid: bidAmount,
-      grossProfit: math.grossProfit,
-      marginPct: math.marginPct,
-      markupPct: math.markupPct,
-      unknown: math.unknown,
-      formula: explainBidMath(math),
-      weakestConfidence: sheet.weakestConfidence,
-      rows: sheet.rows.map((p) => ({
-        trade: p.row.trade,
-        scopeKey: p.row.scopeKey,
-        selectedSub: p.row.selectedSubName ?? null,
-        backupSub: p.row.backupSubName ?? null,
-        baseQuote: p.row.baseQuote,
-        total: p.total,
-        confidence: p.row.confidence,
-        quoteExpiresOn: p.row.quoteExpiresOn,
-        exclusions: p.row.exclusions,
-        alternates: p.row.alternates,
-        problems: p.problems.map((x) => x.message),
-      })),
-    },
-  }).catch(() => {});
-  await query(
-    `insert into bid_submission_events (bid_id, org_id, from_state, to_state, actor, proof)
-     values ($1,$2,'package_ready','approved',$3,$4)`,
-    [
-      bid.id,
-      orgId,
-      auth.email,
-      overrideOk
-        ? `Cleared to send with a warning overridden by ${auth.email}: ${overrideReq.reason.trim()}`
-        : "Every check passed and the package was cleared to send. Nothing has been sent yet.",
-    ]
-  ).catch(() => {});
-  await logAgent({
-    agent: "operator",
-    action: "approve-bid",
-    opportunityId: params.id,
-    bidId: bid.id,
-    level: "success",
-    message: `Operator ${auth.email} approved the bid package to be sent.`,
-    reasoning:
-      "The package is cleared. It counts as submitted only once somebody records how and when it reached the agency.",
-  });
+  if (!approval.ok && approval.reason === "requirements") {
+    return requirementsChangedResponse();
+  }
+  if (!approval.ok && approval.reason === "pricing") {
+    const blockers = approval.blockers ?? [];
+    return NextResponse.json(
+      {
+        error: `Bid cannot be submitted. The pricing changed and is not complete:\n\u2022 ${blockers.join("\n\u2022 ")}`,
+        needsForce: false,
+        blockers,
+      },
+      { status: 409 }
+    );
+  }
+  if (!approval.ok) {
+    return NextResponse.json(
+      {
+        error:
+          "The package changed before approval completed. Refresh it and verify its current submission state.",
+      },
+      { status: 409 }
+    );
+  }
 
   return NextResponse.json({
     ok: true,
     state: "approved",
+    warnings: [],
     // Said plainly so the UI cannot imply the package has gone.
     message:
       "Approved. Send it through the agency's portal, then record how and when you did.",

@@ -17,6 +17,7 @@ const INBOUND = {
   subject: "Re: Grounds maintenance",
   created_at: new Date("2026-08-01T15:00:00Z"),
   gmail_message_id: "g-1",
+  rfc822_message_id: "<g-1@example.test>",
   gmail_thread_id: "t-1",
   subcontractor_id: "s1",
   opportunity_id: "o1",
@@ -225,7 +226,7 @@ describe("what a draft is offered for", () => {
     const messages = [
       { id: "m1", direction: "inbound" as const },
       { id: "m2", direction: "outbound" as const },
-    ].map((m) => ({ ...m, subject: null, body: "x", created_at: "", recipient_email: null, kind: null, gmail_message_id: null }));
+    ].map((m) => ({ ...m, subject: null, body: "x", created_at: "", recipient_email: null, kind: null, gmail_message_id: null, rfc822_message_id: null }));
     // A thread we already answered must not keep offering their older email as
     // something to reply to: that is a second answer to a settled question and
     // a stale draft coming back as if it were new.
@@ -244,6 +245,7 @@ describe("what a draft is offered for", () => {
       recipient_email: null,
       kind: null,
       gmail_message_id: null,
+      rfc822_message_id: null,
     }));
     expect(replyTarget({ messages })?.id).toBe("m3");
   });

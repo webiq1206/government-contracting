@@ -48,7 +48,8 @@ export type SkipReason =
   | "blocked"
   | "merged"
   | "nothing_to_check"
-  | "automation_paused";
+  | "automation_paused"
+  | "queue_failed";
 
 export const SKIP_REASON_TEXT: Record<SkipReason, string> = {
   not_found: "no longer on the roster",
@@ -63,6 +64,7 @@ export const SKIP_REASON_TEXT: Record<SkipReason, string> = {
    * coming.
    */
   automation_paused: "not queued, because automation is paused",
+  queue_failed: "not queued, because the work queue could not be reached; try again",
 };
 
 export interface BulkSkip {

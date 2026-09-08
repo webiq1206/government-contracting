@@ -21,7 +21,7 @@ import http from "node:http";
 import { config } from "../lib/config";
 import { dbHealthy } from "../lib/db";
 import { getQueue, resetQueue, stopQueue } from "../lib/queue";
-import { applyMigrations } from "../lib/migrate";
+import { verifyMigrationsCurrent } from "../lib/migrate";
 import { ensureOperatorFromEnv } from "../lib/operator-bootstrap";
 import { hydrateIntegrationEnv } from "../lib/integration-settings";
 import { ALL_AGENTS } from "../lib/agents/registry";
@@ -125,14 +125,10 @@ async function main() {
   // report the phase.
   const stopHeartbeat = startHeartbeat(() => phase);
 
-  // Apply any pending schema migrations before handlers start. Idempotent,
-  // advisory-locked, and non-fatal: on failure the worker still boots so the
-  // web app keeps serving with the previous schema.
-  try {
-    await step("migrations", STEP_TIMEOUTS.migrations, () => applyMigrations());
-  } catch (err) {
-    console.error("[worker] continuing with the existing schema:", (err as Error).message);
-  }
+  // Release migrations run with a separate owner-only credential. This
+  // restricted runtime only proves that its expected schema is installed.
+  // Failure leaves readiness at 503 and exits for the supervisor to retry.
+  await step("schema-check", STEP_TIMEOUTS.migrations, () => verifyMigrationsCurrent());
 
   // Ensure the owner's operator login exists (from OPERATOR_EMAIL/OPERATOR_PASSWORD secrets).
   // Never fatal: the app has other ways in, and a locked-out owner is not
@@ -151,15 +147,23 @@ async function main() {
   // leave it marked "running" until some later restart happened to fall more
   // than an hour after it. The sweep is a single cheap update.
   const sweepInterruptedRuns = async (context: string) => {
-    try {
-      const closed = await withTimeout(closeInterruptedRuns(), STEP_TIMEOUTS.recovery, "recover-interrupted-runs");
-      if (closed > 0) console.log(`[worker] closed ${closed} run(s) interrupted by a restart (${context})`);
-    } catch (err) {
-      console.error("[worker] interrupted-run cleanup skipped:", (err as Error).message);
+    const closed = await withTimeout(
+      closeInterruptedRuns(),
+      STEP_TIMEOUTS.recovery,
+      "recover-interrupted-runs"
+    );
+    if (closed > 0) {
+      console.log(`[worker] closed ${closed} run(s) interrupted by a restart (${context})`);
     }
   };
   await step("recover-interrupted-runs", STEP_TIMEOUTS.recovery, () => sweepInterruptedRuns("boot"));
-  const recoveryTimer = setInterval(() => void sweepInterruptedRuns("sweep"), 15 * 60_000);
+  const recoveryTimer = setInterval(
+    () =>
+      void sweepInterruptedRuns("sweep").catch((error) => {
+        console.error("[worker] interrupted-run cleanup failed:", (error as Error).message);
+      }),
+    15 * 60_000
+  );
   recoveryTimer.unref?.();
 
   // Load UI-managed integration credentials into the environment, and keep

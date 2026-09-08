@@ -39,6 +39,10 @@ function str(v: unknown): string | null {
 export interface KnowledgeFacts {
   evidence: Partial<Record<EvidenceKey, Evidence>>;
   quickStart: QuickStartFacts;
+  /** False when first-run facts could not be read, never when they are zero. */
+  quickStartAvailable: boolean;
+  /** Plain-language failures for the page's live-status banner. */
+  warnings: string[];
 }
 
 /** Stages an opportunity has reached once somebody decided to pursue it. */
@@ -47,6 +51,7 @@ const PURSUED_STAGES =
 
 export async function knowledgeFacts(): Promise<KnowledgeFacts> {
   const orgId = await currentOrg();
+  const warnings: string[] = [];
   /*
    * The two "waiting on you" figures come from queueCounts, which is what the
    * sidebar badge and Today already count. Writing the predicates again here
@@ -129,11 +134,21 @@ export async function knowledgeFacts(): Promise<KnowledgeFacts> {
        (select max(updated_at) from bids
          where org_id = $1 and outcome in ('won','lost')) as outcome_at`,
       [orgId],
-    ).catch(() => [] as Row[]),
-    queueCounts().catch(() => ({ review: 0, callQueue: 0 })),
+    ).catch(() => {
+      warnings.push(
+        "Workflow activity could not be loaded, so step history and quick-start progress are unknown."
+      );
+      return null;
+    }),
+    queueCounts().catch(() => {
+      warnings.push(
+        "Review and call queue totals could not be loaded, so waiting-for-you counts are unknown."
+      );
+      return null;
+    }),
   ]);
 
-  const r = rows[0];
+  const r = rows?.[0];
   // No row at all means the read failed. Every step then reads "Not recorded",
   // which is the truth, rather than a page full of confident zeroes.
   if (!r) {
@@ -144,6 +159,11 @@ export async function knowledgeFacts(): Promise<KnowledgeFacts> {
         hasDecided: false,
         hasSubs: false,
       },
+      quickStartAvailable: false,
+      warnings:
+        warnings.length > 0
+          ? warnings
+          : ["Workflow activity returned no status, so step history and quick-start progress are unknown."],
     };
   }
 
@@ -162,7 +182,7 @@ export async function knowledgeFacts(): Promise<KnowledgeFacts> {
     decided: {
       recent: n(r.decided_recent),
       lastAt: iso(r.decided_at),
-      waiting: queues.review,
+      waiting: queues?.review ?? null,
     },
     analyzed: {
       recent: n(r.analyzed_recent),
@@ -179,7 +199,7 @@ export async function knowledgeFacts(): Promise<KnowledgeFacts> {
     called: {
       recent: n(r.called_recent),
       lastAt: iso(r.called_at),
-      waiting: queues.callQueue,
+      waiting: queues?.callQueue ?? null,
     },
     quoted: { recent: n(r.quoted_recent), lastAt: iso(r.quoted_at) },
     built: { recent: n(r.built_recent), lastAt: iso(r.built_at) },
@@ -194,5 +214,7 @@ export async function knowledgeFacts(): Promise<KnowledgeFacts> {
       hasDecided: iso(r.decided_at) != null,
       hasSubs: iso(r.subs_at) != null,
     },
+    quickStartAvailable: true,
+    warnings,
   };
 }

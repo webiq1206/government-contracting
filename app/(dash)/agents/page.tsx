@@ -32,6 +32,8 @@ import { ProviderUsagePanel } from "@/components/provider-usage-panel";
 import { getAutomationState } from "@/lib/app-settings";
 import { timeAgo } from "@/lib/format";
 import { scheduleLabel, nextRunAt, nextRunAcross } from "@/lib/domain/cron-describe";
+import { manualRunRequirement } from "@/lib/domain/agent-manual-run";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -133,13 +135,19 @@ export default async function AgentsPage({
   const levelFilter = searchParams?.level;
   const q = searchParams?.q ?? "";
   const page = Math.max(1, Number(searchParams?.page ?? "1") || 1);
+  const loadWarnings: string[] = [];
   const [runs, paged, automation, statuses, live, provider] = await Promise.all([
     jobRunsSummary() as Promise<Row[]>,
     agentLogsPaged({ agent: agentFilter, level: levelFilter, q, page }),
     getAutomationState(),
     agentStatuses(),
     automationHealth(),
-    providerUsage(),
+    providerUsage().catch(() => {
+      loadWarnings.push(
+        "The AI credential source, allowance, and 24-hour usage could not be read. Reload before replacing a key or relying on the usage panel."
+      );
+      return null;
+    }),
   ]);
   const statusByAgent = new Map(statuses.map((s) => [s.agent, s]));
   // "When will anything happen next" is one of the seven facts the audit asks
@@ -159,7 +167,12 @@ export default async function AgentsPage({
     await currentOrg(),
     live,
     nextRunLater
-  ).catch(() => []);
+  ).catch(() => {
+    loadWarnings.push(
+      "Recovery incidents could not be synchronized, so the recovery list may be incomplete."
+    );
+    return [];
+  });
 
   const agentNext = new Map(ROSTER.map((a) => [a.name, nextRunAt(a.cron)]));
   const logs = paged.rows as Row[];
@@ -194,7 +207,12 @@ export default async function AgentsPage({
   const runIds = logs.map((l) => str(l.id));
   const runPosition = queuePosition(runIds, openRunId);
   const runHref = (id: string | null) => link({ page, run: id ?? undefined });
-  const viewer = await currentUser().catch(() => null);
+  const viewer = await currentUser().catch(() => {
+    loadWarnings.push(
+      "Your role could not be confirmed, so protected recovery actions are disabled."
+    );
+    return null;
+  });
 
   return (
     <div className="flex page-shell">
@@ -204,6 +222,8 @@ export default async function AgentsPage({
         explanation="Whether the automation is doing its work, what is stopping it, and how to fix it."
         status={live.headline}
       />
+
+      <ShellDataWarning items={loadWarnings} />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
       <div
@@ -255,14 +275,27 @@ export default async function AgentsPage({
           * question the incidents raise: the balance ran out, so what is the
           * balance, and how much of it is left.
           */}
-        <ProviderUsagePanel
-          source={provider.source}
-          grantExpiresAt={provider.grantExpiresAt ? provider.grantExpiresAt.toISOString() : null}
-          callsOnPlatformKey={provider.callsOnPlatformKey}
-          trialBudget={provider.trialBudget}
-          usageRows={provider.usageRows}
-          incidentCauses={live.incidents.map((i) => i.cause)}
-        />
+        {provider ? (
+          <ProviderUsagePanel
+            source={provider.source}
+            grantExpiresAt={provider.grantExpiresAt ? provider.grantExpiresAt.toISOString() : null}
+            callsOnPlatformKey={provider.callsOnPlatformKey}
+            trialBudget={provider.trialBudget}
+            usageRows={provider.usageRows}
+            incidentCauses={live.incidents.map((i) => i.cause)}
+          />
+        ) : (
+          <section aria-labelledby="provider-usage" className="card space-y-2 border-review/50 bg-review/5">
+            <h2 id="provider-usage" className="label">
+              Provider usage and credit
+            </h2>
+            <p className="text-sm leading-relaxed text-foreground">
+              Provider status is unavailable. This does not mean the key is missing or that no
+              calls were made. Reload before changing credentials; if it remains unavailable,
+              use the incidents above to identify the failed read.
+            </p>
+          </section>
+        )}
 
         {live.errors24h > 0 && (
           <p className="text-xs text-muted-foreground">
@@ -280,6 +313,7 @@ export default async function AgentsPage({
             {ROSTER.map((a) => {
               const st = statusByAgent.get(a.name);
               const last = lastRunState(st);
+              const manual = manualRunRequirement(a.name);
               return (
                 <div key={a.name} className="card flex flex-col gap-2">
                   <div className="flex items-start justify-between gap-2">
@@ -337,9 +371,15 @@ export default async function AgentsPage({
                     >
                       See what it did
                     </Link>
-                    <ActionButton endpoint={`/api/agents/${a.name}/run`} className="btn-ghost">
-                      Run now
-                    </ActionButton>
+                    {manual === "global" ? (
+                      <ActionButton endpoint={`/api/agents/${a.name}/run`} className="btn-ghost">
+                        Run now
+                      </ActionButton>
+                    ) : (
+                      <Link href="/pipeline" className="inline-flex min-h-11 items-center text-xs font-medium text-accent lg:min-h-0">
+                        {manual === "workflow_only" ? "Reverify from an opportunity" : "Run from an opportunity"}
+                      </Link>
+                    )}
                   </div>
                 </div>
               );
@@ -433,7 +473,7 @@ export default async function AgentsPage({
               Filter
             </button>
             {(q || levelFilter) && (
-              <Link href={link({ q: undefined, level: undefined, page: undefined })} className="text-xs text-slate-500 hover:text-accent">
+              <Link href={link({ q: undefined, level: undefined, page: undefined })} className="inline-flex min-h-11 items-center text-xs text-slate-500 hover:text-accent lg:min-h-0">
                 Clear
               </Link>
             )}

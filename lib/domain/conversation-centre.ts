@@ -74,7 +74,10 @@ export interface CentreMessage extends MessageRow {
   created_at: string;
   body: string | null;
   recipient_email: string | null;
+  /** Gmail API id, used only to retrieve the provider record. */
   gmail_message_id: string | null;
+  /** Internet Message-ID header, used by the recipient's client for threading. */
+  rfc822_message_id: string | null;
   /** When the automatic chase is due. Null once they answer, or if never set. */
   follow_up_at: string | Date | null;
   state: MessageState;
@@ -99,7 +102,7 @@ export interface ConversationSummary {
   reason: string;
   /** The single next action, named as a verb. */
   nextAction: string;
-  /** Newest inbound Gmail message id, for threading a reply. */
+  /** Newest inbound RFC822 Message-ID, for threading a reply. */
   replyToMessageId: string | null;
   /** True when the newest outbound message did not arrive. */
   failedState: MessageState | null;
@@ -323,7 +326,8 @@ export function summarize(t: ThreadInput, now = new Date()): ConversationSummary
     reason: v.reason,
     nextAction: v.nextAction,
     replyToMessageId:
-      [...t.messages].reverse().find((m) => m.direction === "inbound")?.gmail_message_id ?? null,
+      [...t.messages].reverse().find((m) => m.direction === "inbound")
+        ?.rfc822_message_id ?? null,
     failedState: v.failedState,
     followUpAt: facts.followUpAt,
   };

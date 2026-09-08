@@ -28,6 +28,7 @@ interface Row {
   recipient_email: string | null;
   gmail_thread_id: string | null;
   gmail_message_id: string | null;
+  rfc822_message_id: string | null;
   opportunity_id: string | null;
   opportunity_title: string | null;
   meta: { kind?: string; trade?: string } | null;
@@ -38,19 +39,21 @@ interface Row {
  * oldest message first inside each conversation (how a person reads a thread).
  */
 export async function subConversations(
-  subcontractorId: string
+  subcontractorId: string,
+  orgId: string
 ): Promise<Conversation[]> {
   const rows = await query<Row>(
     `select c.id, c.direction, c.subject, c.body, c.created_at,
             c.recipient_email, c.gmail_thread_id, c.gmail_message_id,
+            c.rfc822_message_id,
             c.opportunity_id, o.title as opportunity_title, c.meta
        from communications c
-       left join opportunities o on o.id = c.opportunity_id
-      where c.subcontractor_id = $1 and c.channel = 'email'
+       left join opportunities o on o.id = c.opportunity_id and o.org_id = $2
+      where c.org_id = $2 and c.subcontractor_id = $1 and c.channel = 'email'
       order by c.created_at asc
       limit 500`,
-    [subcontractorId]
-  ).catch(() => []);
+    [subcontractorId, orgId]
+  );
 
   const byKey = new Map<string, Conversation>();
   for (const r of rows) {
@@ -83,6 +86,7 @@ export async function subConversations(
       recipient_email: r.recipient_email,
       kind: r.meta?.kind ?? null,
       gmail_message_id: r.gmail_message_id,
+      rfc822_message_id: r.rfc822_message_id,
     });
     conv.lastAt = r.created_at;
     // The subject of the first message is the thread's subject; later "Re:"
@@ -92,8 +96,8 @@ export async function subConversations(
     if (!conv.opportunityTitle && r.opportunity_title) {
       conv.opportunityTitle = r.opportunity_title;
     }
-    if (direction === "inbound" && r.gmail_message_id) {
-      conv.replyToMessageId = r.gmail_message_id;
+    if (direction === "inbound" && r.rfc822_message_id) {
+      conv.replyToMessageId = r.rfc822_message_id;
     }
     // Whether the ball is in our court: true when the newest message is theirs.
     conv.awaitingUs = direction === "inbound";

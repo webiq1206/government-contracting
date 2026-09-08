@@ -201,7 +201,9 @@ describe("assessAttachmentPackage", () => {
   it("counts a link as delivery, because it is", () => {
     const r = assessAttachmentPackage({
       files: [],
-      links: [{ name: "Full document package", url: "https://brostco.test/d/abc" }],
+      links: [
+        { name: "Full document package", url: "https://brostco.test/d/abc", reachable: true },
+      ],
       expected: true,
     });
     expect(r.ok).toBe(true);
@@ -280,15 +282,17 @@ describe("the package link", () => {
     ).toBe(true);
   });
 
-  it("does not block a link nobody checked", () => {
-    // A caller that cannot verify should not be forced to hold a send; only
-    // an explicit failure stops the email.
-    expect(
-      assessAttachmentPackage({
-        files: [],
-        links: [{ name: "Full packet", url: "https://brostco.test/d/x" }],
-        expected: true,
-      }).ok
-    ).toBe(true);
+  it("blocks a link nobody checked", () => {
+    const assessment = assessAttachmentPackage({
+      files: [],
+      links: [{ name: "Full packet", url: "https://brostco.test/d/x" }],
+      expected: true,
+    });
+    expect(assessment.ok).toBe(false);
+    expect(assessment.problems[0]).toMatchObject({
+      kind: "unreachable_link",
+      blocking: true,
+    });
+    expect(assessment.problems[0]?.message).toMatch(/not verified/i);
   });
 });

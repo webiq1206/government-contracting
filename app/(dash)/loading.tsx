@@ -1,7 +1,13 @@
 /** Lightweight skeleton shown while a dashboard page's data loads. */
 export default function DashboardLoading() {
   return (
-    <div className="bg-background p-5 text-foreground">
+    <div
+      className="bg-background p-5 text-foreground"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading dashboard</span>
       <div className="h-8 w-64 animate-pulse rounded bg-muted" />
       <div className="mt-2 h-4 w-40 animate-pulse rounded bg-muted/70" />
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">

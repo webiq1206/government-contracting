@@ -11,8 +11,9 @@
  *     customer's name. An admin poking around an account to reproduce a bug
  *     must not be able to send that, and cannot un-send it.
  *
- * Everything else stays readable and usable, because a support session that
- * cannot reproduce the problem is not worth the risk of having one.
+ * Customer data stays readable, but mutations are refused centrally. Support
+ * can inspect the exact state without accidentally changing it while trying
+ * to reproduce an issue. The account holder performs any corrective action.
  */
 import { NextResponse } from "next/server";
 import type { SessionUser } from "./auth";
@@ -22,7 +23,8 @@ export const IMPERSONATION_REFUSAL =
 
 /**
  * A refusal response when the caller is inside a support session, or null when
- * they are not. Use in routes that spend money or change credentials.
+ * they are not. Capability guards use this for all customer-data mutations;
+ * personal credential and preference routes call it directly.
  */
 export function impersonationRefusal(
   user: Pick<SessionUser, "impersonatedBy">
@@ -34,19 +36,13 @@ export function impersonationRefusal(
 /**
  * The admin behind the current request's support session, or null.
  *
- * Deliberately tolerant of being called with no request scope at all. This is
- * read from inside the email transport, which runs both in request handlers
- * and in the background worker; in the worker there is no session and
- * `cookies()` throws, which is the correct answer (a scheduled send is the
- * customer's own automation, not an admin acting as them) rather than an
- * error worth propagating.
+ * Deliberately safe to call with no request scope at all. `currentUser()`
+ * distinguishes that worker state from a failed session or membership read:
+ * the former returns null, while the latter still propagates and prevents an
+ * outbound action from bypassing this guard during an authentication outage.
  */
 export async function currentImpersonator(): Promise<string | null> {
-  try {
-    const { currentUser } = await import("./auth");
-    const user = await currentUser();
-    return user?.impersonatedBy ?? null;
-  } catch {
-    return null;
-  }
+  const { currentUser } = await import("./auth");
+  const user = await currentUser();
+  return user?.impersonatedBy ?? null;
 }

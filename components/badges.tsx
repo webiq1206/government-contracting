@@ -57,7 +57,7 @@ export function PageHeader({
 }) {
   return (
     <div className="flex shrink-0 flex-wrap items-end justify-between gap-x-3 gap-y-1.5 border-b border-border/55 bg-background px-4 py-2 dark:border-white/10 sm:px-6 sm:py-3">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
         {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
         <div className="flex items-start gap-2">
           <h1 className="min-w-0 font-display text-lg font-semibold leading-tight tracking-tight text-foreground sm:text-2xl">
@@ -72,13 +72,13 @@ export function PageHeader({
           </div>
         )}
         {subtitle != null && subtitle !== "" && (
-          <div className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground sm:mt-1 sm:line-clamp-none sm:text-sm sm:leading-relaxed">
+          <div className="mt-0.5 text-xs leading-snug text-muted-foreground sm:mt-1 sm:text-sm sm:leading-relaxed">
             {subtitle}
           </div>
         )}
       </div>
       {children && (
-        <div className="flex max-w-full flex-wrap items-center gap-1.5 pt-0.5 sm:pt-0">
+        <div className="flex w-full max-w-full flex-wrap items-center gap-1.5 pt-1 sm:w-auto sm:pt-0">
           {children}
         </div>
       )}

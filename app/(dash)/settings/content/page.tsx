@@ -13,8 +13,9 @@ import {
   EDITABLE_TEMPLATE_SLUGS,
   templateSlugOrder,
 } from "@/lib/domain/template-slugs";
-import { tryResolveTenantOrgId } from "@/lib/tenant";
+import { resolveTenantOrgId } from "@/lib/tenant";
 import { getAutomationRules } from "@/lib/app-settings";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ async function outreachTemplates(): Promise<{
   templates: EmailTemplate[];
   drafts: Map<string, { version: number; subject: string | null; body: string; draftedAt: string; draftedBy: string | null }>;
 }> {
-  const orgId = await tryResolveTenantOrgId();
+  const orgId = await resolveTenantOrgId();
   const [rows, drafts] = await Promise.all([
     activeTemplates(EDITABLE_TEMPLATE_SLUGS, orgId),
     // Saved edits nobody has published. Loaded here rather than inside the
@@ -49,12 +50,25 @@ async function outreachTemplates(): Promise<{
 }
 
 export default async function ContentLibraryPage() {
+  const loadWarnings: string[] = [];
+  let snippetsUnavailable = false;
   // Who is reading, so the page can say plainly when it is read-only for
   // them rather than letting them fill in a form that will be refused.
-  const viewer = await currentUser().catch(() => null);
+  const viewer = await currentUser().catch(() => {
+    loadWarnings.push(
+      "Your role could not be confirmed, so content editing is disabled."
+    );
+    return null;
+  });
 
   const [items, outreach, stats, rules] = await Promise.all([
-    contentLibrary(),
+    contentLibrary().catch(() => {
+      snippetsUnavailable = true;
+      loadWarnings.push(
+        "Proposal snippets could not be loaded. Their count is unknown and snippet changes are disabled until this page reloads successfully."
+      );
+      return [];
+    }),
     outreachTemplates(),
     templateSendStats(),
     getAutomationRules(),
@@ -81,13 +95,17 @@ export default async function ContentLibraryPage() {
         help={PAGE_HELP["content"]}
         title="Content Library"
         status={
-          items.length
+          snippetsUnavailable
+            ? `${templates.length} email template${templates.length === 1 ? "" : "s"} · snippet status unavailable`
+            : items.length
             ? `${items.length} snippet${items.length === 1 ? "" : "s"} · ${templates.length} email template${templates.length === 1 ? "" : "s"}`
             : `${templates.length} email template${templates.length === 1 ? "" : "s"}`
         }
         explanation="The language this platform reuses: the emails it sends to subcontractors, and the short paragraphs it drafts into bids."
         breadcrumbs={[{ label: "Settings", href: "/settings" }]}
       />
+
+      <ShellDataWarning items={loadWarnings} />
 
       {/* Readable at every role; the controls below are gated to the
           roles that can actually change them. */}
@@ -152,10 +170,20 @@ export default async function ContentLibraryPage() {
           },
           {
             id: "snippets",
-            label: `Proposal snippets (${items.length})`,
+            label: snippetsUnavailable
+              ? "Proposal snippets (status unavailable)"
+              : `Proposal snippets (${items.length})`,
             content: (
               <div className="px-5 py-6 sm:px-6">
-                <ContentLibraryManager items={items} />
+                {snippetsUnavailable ? (
+                  <div role="alert" className="rounded-md border border-review/50 bg-review/10 px-4 py-3 text-sm leading-relaxed text-foreground">
+                    Proposal snippets are temporarily unavailable. Existing snippets have not
+                    been removed. Reload before adding or changing one, so a failed read cannot
+                    lead to a duplicate or overwrite.
+                  </div>
+                ) : (
+                  <ContentLibraryManager items={items} />
+                )}
               </div>
             ),
           },

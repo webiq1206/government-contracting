@@ -32,6 +32,11 @@ interface MilestoneRow {
   milestones: Array<{ name?: string; due?: string; amount?: number | string; status?: string }> | null;
 }
 
+interface AnalyticsOrgResult {
+  summary: string;
+  mailError: string | null;
+}
+
 function n(v: unknown): number {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) ? x : 0;
@@ -64,29 +69,36 @@ export const analyticsEngine: AgentDefinition = {
     const fanout = await orgsToSweep(AGENT_NAME);
     const orgs = fanout.orgs;
 
-    const summaries: string[] = [];
+    const results: AnalyticsOrgResult[] = [];
     for (const org of orgs) {
-      summaries.push(await runWithOrg(org.id, () => computeForOrg(org.id)));
+      results.push(await runWithOrg(org.id, () => computeForOrg(org.id)));
     }
 
     const note = fanoutNote(fanout);
+    const mailFailures = results.filter((result) => result.mailError).length;
+    const summary = note
+      ? note
+      : orgs.length === 1
+        ? results[0]?.summary ?? "No organization was processed."
+        : `Snapshots for ${orgs.length} organizations. ${results.map((r) => r.summary).join(" | ")}`;
     return {
       // Not ok when nobody was processed. A snapshot run that covered no
       // accounts must not read the same as one that covered them all.
-      ok: fanout.error == null,
-      summary: note
-        ? note
-        : orgs.length === 1
-          ? summaries[0]
-          : `Snapshots for ${orgs.length} organizations. ${summaries.join(" | ")}`,
+      ok: fanout.error == null && mailFailures === 0,
+      summary: `${summary}${
+        mailFailures
+          ? ` ${mailFailures} configured weekly KPI digest could not be sent; check the platform Gmail sender and retry.`
+          : ""
+      }`,
       reasoning:
         "Computed per organization from that organization's bids, opportunities, contracts, and subcontractors.",
+      humanActionRequired: mailFailures > 0 || fanout.error != null,
     };
   },
 };
 
 /** Build and store one organization's KPI snapshot. Returns a one-line summary. */
-async function computeForOrg(orgId: string): Promise<string> {
+async function computeForOrg(orgId: string): Promise<AnalyticsOrgResult> {
     // --- Win rate overall + by dimension. ---
     const overall = await queryOne<{ won: string | number; lost: string | number }>(
       `select count(*) filter (where outcome='won') as won,
@@ -241,16 +253,47 @@ async function computeForOrg(orgId: string): Promise<string> {
      * separate piece of work.
      */
     const isMonday = new Date().getDay() === 1;
-    if (orgId === LEGACY_ORG_ID && isMonday && (await systemMail.enabled())) {
-      await systemMail.sendDigest({
-        to: config.systemMail.digestTo,
-        subject: `BROST CO Weekly KPIs, ${kpis.win_rate.overall}% win rate`,
-        html: renderDigestHtml(kpis),
-        text: renderDigestText(kpis),
-      });
+    let mailError: string | null = null;
+    if (orgId === LEGACY_ORG_ID && isMonday && config.systemMail.digestTo) {
+      try {
+        const ready = await systemMail.deliverable();
+        if (!ready) {
+          mailError =
+            "The platform Gmail connection or verified sender identity is not ready.";
+        } else {
+          const delivery = await systemMail.sendDigest({
+            to: config.systemMail.digestTo,
+            subject: `BROST CO Weekly KPIs, ${kpis.win_rate.overall}% win rate`,
+            html: renderDigestHtml(kpis),
+            text: renderDigestText(kpis),
+          });
+          if (delivery.disabled || delivery.error) {
+            mailError =
+              delivery.error ?? "The platform inbox refused the weekly KPI digest.";
+          }
+        }
+      } catch (err) {
+        mailError = `The platform sender identity could not be checked: ${(err as Error).message}`;
+      }
+
+      if (mailError) {
+        await logAgent({
+          agent: "analytics-engine",
+          action: "weekly-digest-unsent",
+          level: "error",
+          status: "error",
+          message: `The KPI snapshot was saved, but its weekly digest was not sent: ${mailError}`.slice(
+            0,
+            500
+          ),
+        });
+      }
     }
 
-    return `${kpis.win_rate.overall}% win rate (${wonCount}W/${lostCount}L), $${pipelineValue.toLocaleString()} pipeline`;
+    return {
+      summary: `${kpis.win_rate.overall}% win rate (${wonCount}W/${lostCount}L), $${pipelineValue.toLocaleString()} pipeline`,
+      mailError,
+    };
 }
 
 interface CashFlowProjection {

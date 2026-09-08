@@ -5,7 +5,7 @@
  * leaves the queue as status=skipped, Sub Detail gets a note, and agent_logs
  * keeps an audit trail — without pretending contact happened (no last_contacted).
  */
-import { query, transaction } from "@/lib/db";
+import { transaction } from "@/lib/db";
 import { logAgent } from "@/lib/logger";
 import {
   CALL_STAGE,
@@ -18,6 +18,7 @@ import {
   type SkipReason,
   type SuppressionScope,
 } from "@/lib/domain/suppression";
+import { suppress } from "@/lib/suppressions";
 
 export interface SkipCallResult {
   opportunityId: string;
@@ -42,12 +43,12 @@ export async function skipCallCard(
     scope?: SuppressionScope;
     /** Whether somebody actually dialled before giving up. */
     dialed?: boolean;
-    orgId?: string;
+    orgId: string;
     actor?: string;
-  } = {}
+  }
 ): Promise<SkipCallResult> {
   if (opts.undo) {
-    return restoreSkippedCallCard(callCardId);
+    return restoreSkippedCallCard(callCardId, opts.orgId, opts.actor);
   }
 
   const structured = opts.skipReason ?? null;
@@ -73,11 +74,13 @@ export async function skipCallCard(
                 (select os.trade from opportunity_subs os
                   where os.opportunity_id = cc.opportunity_id
                     and os.subcontractor_id = cc.subcontractor_id
+                    and os.org_id = cc.org_id
                   order by os.created_at asc limit 1) as trade
            from call_cards cc
-           join subcontractors s on s.id = cc.subcontractor_id
-          where cc.id = $1`,
-        [callCardId]
+           join subcontractors s on s.id = cc.subcontractor_id and s.org_id = cc.org_id
+          where cc.id = $1 and cc.org_id = $2
+          for update`,
+        [callCardId, opts.orgId]
       )
     ).rows[0];
     if (!card) throw new Error("Call card not found.");
@@ -85,8 +88,38 @@ export async function skipCallCard(
       throw new Error("This call was already completed and cannot be skipped.");
     }
 
+    const ensureSuppression = async () => {
+      if (scope === "once") return;
+      const proposed = suppressionForSkip({
+        scope,
+        subcontractorId: card.subcontractor_id,
+        opportunityId: card.opportunity_id,
+        trade: card.trade,
+        reason: structured ?? "other",
+        note: opts.note ?? null,
+      });
+      if (!proposed) return;
+      await suppress(
+        {
+          orgId: opts.orgId,
+          subcontractorId: proposed.subcontractorId,
+          opportunityId: proposed.opportunityId,
+          trade: proposed.trade,
+          channel: proposed.channel,
+          reason: proposed.reason,
+          note: proposed.note,
+          actor: opts.actor ?? "operator",
+          sourceCallCardId: callCardId,
+        },
+        c
+      );
+    };
+
     // Idempotent: already skipped stays skipped without duplicate history rows.
     if (card.status === "skipped") {
+      // Also repairs a historical partial skip whose standing suppression did
+      // not commit. suppress() is idempotent for the same live scope.
+      await ensureSuppression();
       return {
         opportunityId: card.opportunity_id,
         subcontractorId: card.subcontractor_id,
@@ -120,7 +153,7 @@ export async function skipCallCard(
               -- four times and nobody rang reads as one that was chased four
               -- times and never answered, which is the opposite fact.
               dialed = $7
-        where id = $1`,
+        where id = $1 and org_id = $8`,
       [
         callCardId,
         JSON.stringify(response),
@@ -129,20 +162,27 @@ export async function skipCallCard(
         scope,
         opts.actor ?? null,
         opts.dialed === true,
+        opts.orgId,
       ]
     );
 
     // History on the sub, not last_contacted — we did not reach them.
     await c.query(
       `insert into communications
-          (subcontractor_id, opportunity_id, channel, direction, subject, body)
-        values ($1, $2, 'note', 'outbound', 'Skipped call', $3)`,
+          (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body)
+        values ($4, $1, $2, 'note', 'outbound', 'Skipped call', $3)`,
       [
         card.subcontractor_id,
         card.opportunity_id,
         reason,
+        opts.orgId,
       ]
     );
+
+    // The skip, its history, and any standing no-contact rule are one decision.
+    // A failed suppression rolls the other writes back instead of leaving a
+    // card that says "skipped everywhere" while future calls are still built.
+    await ensureSuppression();
 
     return {
       opportunityId: card.opportunity_id,
@@ -152,38 +192,6 @@ export async function skipCallCard(
       alreadySkipped: false as const,
     };
   });
-
-  /*
-   * The suppression, which is what makes the decision outlive the click.
-   *
-   * Written after the card is closed rather than before, so a failure here
-   * leaves a skipped call and no standing rule, which is the recoverable
-   * order. The other way round leaves a firm suppressed on the strength of a
-   * skip that did not happen.
-   */
-  if (!result.alreadySkipped && opts.orgId && scope !== "once") {
-    const proposed = suppressionForSkip({
-      scope,
-      subcontractorId: result.subcontractorId,
-      opportunityId: result.opportunityId,
-      trade: result.trade,
-      reason: structured ?? "other",
-      note: opts.note ?? null,
-    });
-    if (proposed) {
-      const { suppress } = await import("./suppressions");
-      await suppress({
-        orgId: opts.orgId,
-        subcontractorId: proposed.subcontractorId,
-        opportunityId: proposed.opportunityId,
-        trade: proposed.trade,
-        channel: proposed.channel,
-        reason: proposed.reason,
-        note: proposed.note,
-        actor: opts.actor ?? "operator",
-      }).catch(() => undefined);
-    }
-  }
 
   if (!result.alreadySkipped) {
     await logAgent({
@@ -203,7 +211,11 @@ export async function skipCallCard(
   };
 }
 
-async function restoreSkippedCallCard(callCardId: string): Promise<SkipCallResult> {
+async function restoreSkippedCallCard(
+  callCardId: string,
+  orgId: string,
+  actor?: string
+): Promise<SkipCallResult> {
   const result = await transaction(async (c) => {
     const card = (
       await c.query<{
@@ -214,9 +226,10 @@ async function restoreSkippedCallCard(callCardId: string): Promise<SkipCallResul
       }>(
         `select cc.opportunity_id, cc.subcontractor_id, cc.status, s.company_name
            from call_cards cc
-           join subcontractors s on s.id = cc.subcontractor_id
-          where cc.id = $1`,
-        [callCardId]
+           join subcontractors s on s.id = cc.subcontractor_id and s.org_id = cc.org_id
+          where cc.id = $1 and cc.org_id = $2
+          for update`,
+        [callCardId, orgId]
       )
     ).rows[0];
     if (!card) throw new Error("Call card not found.");
@@ -224,22 +237,37 @@ async function restoreSkippedCallCard(callCardId: string): Promise<SkipCallResul
       throw new Error("Only a skipped call can be restored to the queue.");
     }
 
+    // Lift only the standing rule created by this exact card. A matching rule
+    // that existed before the skip belongs to a separate operator decision and
+    // must survive this undo.
+    await c.query(
+      `update outreach_suppressions
+          set lifted_at = now(), lifted_by = $3
+        where source_call_card_id = $1 and org_id = $2 and lifted_at is null`,
+      [callCardId, orgId, actor ?? "operator"]
+    );
+
     await c.query(
       `update call_cards
           set status = 'pending',
               response_json = coalesce(response_json, '{}'::jsonb)
                 - 'outcome' - 'skipped_at',
-              snoozed_until = null
-        where id = $1`,
-      [callCardId]
+              snoozed_until = null,
+              skip_reason = null,
+              skip_note = null,
+              skip_scope = null,
+              skipped_by = null,
+              dialed = false
+        where id = $1 and org_id = $2`,
+      [callCardId, orgId]
     );
 
     await c.query(
       `insert into communications
-          (subcontractor_id, opportunity_id, channel, direction, subject, body)
-        values ($1, $2, 'note', 'outbound', 'Restored skipped call',
+          (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body)
+        values ($3, $1, $2, 'note', 'outbound', 'Restored skipped call',
                 'Operator undid skip; call returned to the queue.')`,
-      [card.subcontractor_id, card.opportunity_id]
+      [card.subcontractor_id, card.opportunity_id, orgId]
     );
 
     return {
@@ -256,6 +284,7 @@ async function restoreSkippedCallCard(callCardId: string): Promise<SkipCallResul
     subcontractorId: result.subcontractorId,
     level: "info",
     message: `Restored skipped call to ${result.companyName} to the queue.`,
+    reasoning: actor ? `Restored by ${actor}.` : undefined,
   });
 
   return result;
@@ -282,29 +311,32 @@ export interface ClearCallWorkResult {
 export async function clearCallWorkForOrg(orgId: string): Promise<ClearCallWorkResult> {
   const reason = CALLS_DISABLED_REASON;
 
-  const cards = await query<{ id: string }>(
-    `update call_cards cc
-        set status = 'skipped',
-            snoozed_until = null,
-            response_json = coalesce(cc.response_json, '{}'::jsonb)
-                            || jsonb_build_object('outcome', 'skipped', 'notes', $2::text)
-      from opportunities o
-     where o.id = cc.opportunity_id
-       and o.org_id = $1
-       and cc.status = 'pending'
-     returning cc.id`,
-    [orgId, reason]
-  ).catch(() => []);
+  const { cards, advanced } = await transaction(async (client) => {
+    const cardsResult = await client.query<{ id: string }>(
+      `update call_cards cc
+          set status = 'skipped',
+              snoozed_until = null,
+              response_json = coalesce(cc.response_json, '{}'::jsonb)
+                              || jsonb_build_object('outcome', 'skipped', 'notes', $2::text)
+        from opportunities o
+       where o.id = cc.opportunity_id
+         and o.org_id = $1
+         and cc.status = 'pending'
+       returning cc.id`,
+      [orgId, reason]
+    );
 
-  // Nothing is going to move these forward now that the stage is gone from
-  // their pipeline, so they go where the email step would have sent them.
-  const advanced = await query<{ id: string }>(
-    `update opportunities
-        set stage = $2, human_action_required = false, updated_at = now()
-      where org_id = $1 and stage = $3 and status = 'open'
-      returning id`,
-    [orgId, STAGE_AFTER_CALLS, CALL_STAGE]
-  ).catch(() => []);
+    // Nothing is going to move these forward now that the stage is gone from
+    // their pipeline, so they go where the email step would have sent them.
+    const advancedResult = await client.query<{ id: string }>(
+      `update opportunities
+          set stage = $2, human_action_required = false, updated_at = now()
+        where org_id = $1 and stage = $3 and status = 'open'
+        returning id`,
+      [orgId, STAGE_AFTER_CALLS, CALL_STAGE]
+    );
+    return { cards: cardsResult.rows, advanced: advancedResult.rows };
+  });
 
   if (cards.length > 0 || advanced.length > 0) {
     await logAgent({

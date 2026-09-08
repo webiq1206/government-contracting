@@ -3,7 +3,6 @@ import { requireOrgContext, notFoundResponse } from "@/lib/org-guard";
 import { query, queryOne } from "@/lib/db";
 import { enqueue } from "@/lib/queue";
 import { logAgent } from "@/lib/logger";
-import { LEGACY_ORG_ID } from "@/lib/tenant-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,20 +35,30 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     extraction_state: string;
   }>(
     `select id, org_id, opportunity_id, name, retry_count, extraction_state
-       from documents where id = $1`,
-    [params.id]
+       from documents where id = $1 and org_id = $2`,
+    [params.id, ctx.orgId]
   );
-  const owned =
-    doc != null && (doc.org_id === ctx.orgId || (doc.org_id === null && ctx.orgId === LEGACY_ORG_ID));
-  if (!owned || !doc?.opportunity_id) return notFoundResponse();
+  if (!doc?.opportunity_id) return notFoundResponse();
 
   await query(
     `update documents set extraction_state='pending', last_error=null, retry_count = retry_count + 1
-      where id = $1`,
-    [doc.id]
+      where id = $1 and org_id = $2`,
+    [doc.id, ctx.orgId]
   );
 
-  const jobId = await enqueue("solicitation-analyst", { opportunityId: doc.opportunity_id });
+  const jobId = await enqueue(
+    "solicitation-analyst",
+    {
+      opportunityId: doc.opportunity_id,
+      force: "always",
+      rescoreAfterAnalysis: true,
+      retryDocumentId: doc.id,
+    },
+    {
+      singletonKey: `analyze-retry:${doc.opportunity_id}:${doc.id}:${doc.retry_count + 1}`,
+      singletonSeconds: 3600,
+    }
+  );
   if (!jobId) {
     /*
      * The enqueue refused: automation is paused, or this pursuit has been
@@ -61,8 +70,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
      * label a document that was merely unread as unreadable, which is a
      * different and worse fact about the same file, invented by a rollback.
      */
-    await query(`update documents set extraction_state=$2 where id = $1`, [
+    await query(`update documents set extraction_state=$3 where id = $1 and org_id = $2`, [
       doc.id,
+      ctx.orgId,
       doc.extraction_state,
     ]);
     return NextResponse.json(

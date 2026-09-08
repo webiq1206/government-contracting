@@ -3,6 +3,7 @@
  * ever written, and the opportunity does not sit still waiting for one.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { runWithOrg } from "@/lib/tenant-context";
 
 const query = vi.fn(async () => []);
 const queryOne = vi.fn();
@@ -42,6 +43,7 @@ vi.mock("@/lib/ai/companyProfile", () => ({ getProfileJson: vi.fn(async () => nu
 describe("call-prep with calling off", () => {
   beforeEach(() => {
     query.mockClear();
+    query.mockResolvedValue([]);
     queryOne.mockClear();
     logAgent.mockClear();
     advancePastCallStep.mockClear();
@@ -52,7 +54,7 @@ describe("call-prep with calling off", () => {
     const { callPrep } = await import("@/lib/agents/call-prep");
 
     const res = await callPrep.handler({
-      payload: { opportunityId: "opp-1", subcontractorId: "sub-1" },
+      payload: { opportunityId: "opp-1", subcontractorId: "sub-1", orgId: "org-1" },
     } as never);
 
     expect(res.ok).toBe(true);
@@ -71,23 +73,24 @@ describe("call-prep with calling off", () => {
     areCallsEnabled.mockResolvedValue(true);
     queryOne
       .mockResolvedValueOnce({
-        id: "sub-1",
-        company_name: "Acme HVAC",
-        phone: "555-0100",
-      })
-      .mockResolvedValueOnce({
         id: "opp-1",
         title: "Base HVAC",
         org_id: "org-1",
       })
       .mockResolvedValueOnce({
+        id: "sub-1",
+        company_name: "Acme HVAC",
+        phone: "555-0100",
+      })
+      .mockResolvedValueOnce({
+        id: "pair-1",
         trade: "HVAC",
         outreach_state: "declined",
         verification_json: null,
       });
 
     const res = await callPrep.handler({
-      payload: { opportunityId: "opp-1", subcontractorId: "sub-1" },
+      payload: { opportunityId: "opp-1", subcontractorId: "sub-1", orgId: "org-1" },
     } as never);
 
     expect(res.ok).toBe(true);
@@ -107,7 +110,7 @@ describe("call-prep with calling off", () => {
     advancePastCallStep.mockResolvedValueOnce(false);
 
     const res = await callPrep.handler({
-      payload: { opportunityId: "opp-1", subcontractorId: "sub-1" },
+      payload: { opportunityId: "opp-1", subcontractorId: "sub-1", orgId: "org-1" },
     } as never);
 
     expect(res.ok).toBe(true);
@@ -121,18 +124,48 @@ describe("call-prep with calling off", () => {
     queryOne.mockResolvedValueOnce(null);
 
     const res = await callPrep.handler({
-      payload: { opportunityId: "opp-1", subcontractorId: "sub-1" },
+      payload: { opportunityId: "opp-1", subcontractorId: "sub-1", orgId: "org-1" },
     } as never);
 
     expect(advancePastCallStep).not.toHaveBeenCalled();
     expect(queryOne).toHaveBeenCalled();
     expect(res.summary).toMatch(/not found/);
   });
+
+  it("does not build a call card when the do-not-call list cannot be read", async () => {
+    const { callPrep } = await import("@/lib/agents/call-prep");
+    areCallsEnabled.mockResolvedValue(true);
+    queryOne
+      .mockResolvedValueOnce({ id: "opp-1", title: "Base HVAC", org_id: "org-1" })
+      .mockResolvedValueOnce({
+        id: "sub-1",
+        company_name: "Acme HVAC",
+        phone: "555-0100",
+      })
+      .mockResolvedValueOnce({
+        id: "pair-1",
+        trade: "HVAC",
+        outreach_state: "responsive",
+        verification_json: null,
+      });
+    query.mockRejectedValueOnce(new Error("suppression ledger unavailable"));
+
+    await expect(
+      callPrep.handler({
+        payload: { opportunityId: "opp-1", subcontractorId: "sub-1", orgId: "org-1" },
+      } as never)
+    ).rejects.toThrow("suppression ledger unavailable");
+
+    expect(query.mock.calls.map(([sql]) => sql).join("\n")).not.toMatch(
+      /insert into call_cards/
+    );
+  });
 });
 
 describe("outreach with calling off", () => {
   beforeEach(() => {
     query.mockClear();
+    query.mockResolvedValue([]);
     queryOne.mockClear();
     logAgent.mockClear();
     advancePastCallStep.mockClear();
@@ -141,17 +174,22 @@ describe("outreach with calling off", () => {
 
   it("leaves a phone-only sub out rather than queueing a call for them", async () => {
     const { outreach } = await import("@/lib/agents/outreach");
-    queryOne.mockResolvedValueOnce({
-      id: "sub-1",
-      company_name: "Acme HVAC",
-      email: null,
-      email_verified: false,
-      phone: "555-0100",
-    });
+    query.mockResolvedValueOnce([{ trade: "HVAC" }]);
+    queryOne
+      .mockResolvedValueOnce({ org_id: "org-1" })
+      .mockResolvedValueOnce({
+        id: "sub-1",
+        company_name: "Acme HVAC",
+        email: null,
+        email_verified: false,
+        phone: "555-0100",
+      });
 
-    const res = await outreach.handler({
-      payload: { opportunityId: "opp-1", subcontractorId: "sub-1", trade: "HVAC" },
-    } as never);
+    const res = await runWithOrg("org-1", () =>
+      outreach.handler({
+        payload: { opportunityId: "opp-1", subcontractorId: "sub-1", trade: "HVAC" },
+      } as never)
+    );
 
     expect(res.ok).toBe(true);
     expect(res.enqueued ?? []).toHaveLength(0);
@@ -166,18 +204,48 @@ describe("outreach with calling off", () => {
   it("queues the call for a phone-only sub when calling is on", async () => {
     const { outreach } = await import("@/lib/agents/outreach");
     areCallsEnabled.mockResolvedValue(true);
-    queryOne.mockResolvedValueOnce({
-      id: "sub-1",
-      company_name: "Acme HVAC",
-      email: null,
-      email_verified: false,
-      phone: "555-0100",
-    });
+    query.mockResolvedValueOnce([{ trade: "HVAC" }]);
+    queryOne
+      .mockResolvedValueOnce({ org_id: "org-1" })
+      .mockResolvedValueOnce({
+        id: "sub-1",
+        company_name: "Acme HVAC",
+        email: null,
+        email_verified: false,
+        phone: "555-0100",
+      });
 
-    const res = await outreach.handler({
-      payload: { opportunityId: "opp-1", subcontractorId: "sub-1", trade: "HVAC" },
-    } as never);
+    const res = await runWithOrg("org-1", () =>
+      outreach.handler({
+        payload: { opportunityId: "opp-1", subcontractorId: "sub-1", trade: "HVAC" },
+      } as never)
+    );
 
     expect((res.enqueued ?? []).map((e) => e.agent)).toEqual(["call-prep"]);
+  });
+
+  it("cancels a queued send when its opportunity pairing was removed", async () => {
+    const { outreach } = await import("@/lib/agents/outreach");
+    queryOne
+      .mockResolvedValueOnce({ org_id: "org-1" })
+      .mockResolvedValueOnce({
+        id: "sub-1",
+        company_name: "Acme HVAC",
+        email: "quotes@acme.example",
+        email_verified: true,
+      });
+
+    const res = await runWithOrg("org-1", () =>
+      outreach.handler({
+        payload: { opportunityId: "opp-1", subcontractorId: "sub-1", trade: "HVAC" },
+      } as never)
+    );
+
+    expect(res.ok).toBe(true);
+    expect(res.summary).toMatch(/pairing was removed/i);
+    expect(res.enqueued ?? []).toHaveLength(0);
+    expect(logAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "skip-removed-pairing", status: "skipped" })
+    );
   });
 });

@@ -172,8 +172,15 @@ d("the pricing sheet as the submit gate", () => {
       quoteExpiresOn: "2099-01-01",
       actor: "op@x.invalid",
     });
+    // Editing pricing invalidates an existing package. Represent the builder
+    // finishing its rebuild before testing approval of a current package.
+    await query(
+      `update bids set package_ready=true, human_flags='{}', validation_json='{"blockers":[]}'::jsonb
+        where id=$1 and org_id=$2`,
+      [bidId, org.id]
+    );
     const res = await POST(req({}), { params: { id: oppId } });
-    expect(res.status).toBe(200);
+    expect(res.status, JSON.stringify(await res.json())).toBe(200);
 
     const state = await queryOne<{ submission_state: string; submitted_at: Date | null }>(
       `select submission_state, submitted_at from bids where id=$1`,

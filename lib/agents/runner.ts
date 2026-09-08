@@ -9,9 +9,16 @@ import { claudeEnabled } from "../ai/claude";
 import { query, queryOne } from "../db";
 import { logAgent } from "../logger";
 import { pursuitStatus } from "../pursuit-guard";
-import { enqueue, ENQUEUED_BY_ORG_KEY } from "../queue";
+import {
+  CLOSED_OPPORTUNITY_JOB_KEY,
+  enqueue,
+  ENQUEUED_BY_ORG_KEY,
+  PURSUIT_VERSION_KEY,
+  RECOVERY_REQUEUE_KEY,
+} from "../queue";
 import { config } from "../config";
 import { runWithOrg } from "../tenant-context";
+import { runWithPursuitVersion } from "../pursuit-job-context";
 import {
   isPermanentlyGone,
   lookupPayloadRecords,
@@ -77,7 +84,7 @@ async function payloadOrgId(
   const missing = records.filter(isPermanentlyGone);
   let conflict = false;
 
-  for (const { key, orgId } of records) {
+  for (const { orgId } of records) {
     if (!orgId) continue;
     if (!resolved) {
       resolved = orgId;
@@ -90,17 +97,23 @@ async function payloadOrgId(
        * permanent so the queue does not retry the same mixed payload.
        */
       conflict = true;
-      await logAgent({
+    }
+  }
+
+  if (conflict) {
+    // A mixed-tenant reference cannot be inserted into either tenant's log.
+    // Record the refusal under a database-proven owner without disclosing or
+    // linking the other tenant's records. Never use the payload's org claim.
+    const owner = records.find((record) => record.orgId)?.orgId;
+    if (owner) {
+      await runWithOrg(owner, () => logAgent({
         agent: agentName,
         action: "payload-org-mismatch",
         level: "error",
         status: "error",
-        opportunityId: (payload.opportunityId as string) ?? null,
-        subcontractorId: (payload.subcontractorId as string) ?? null,
         message:
-          `Job payload names records from two organizations (${resolved} and ${orgId} via ${key}). ` +
-          `Abandoned rather than run under either one. Something upstream paired one organization's record with another's.`,
-      });
+          "Job payload names records from two organizations. Abandoned rather than run under either one. Review the upstream job that paired these records; nothing was run.",
+      }));
     }
   }
 
@@ -132,6 +145,127 @@ export function shouldQueueRetry(result: AgentResult): boolean {
   return !result.ok && !result.permanent;
 }
 
+/**
+ * The durable job_runs verdict for a handler result.
+ *
+ * A handler can return a structured failure without throwing. Agent logs used
+ * that boolean correctly, but job_runs was always finished as `ok`, leaving
+ * Automation Health with two opposite answers for the same run.
+ */
+export function jobRunCompletion(result: AgentResult): {
+  status: "ok" | "error";
+  error?: string;
+} {
+  return result.ok
+    ? { status: "ok" }
+    : { status: "error", error: result.summary };
+}
+
+export interface DownstreamEnqueueFailure {
+  agent: string;
+  reason: string;
+}
+
+/**
+ * Turn an unqueued required next step into the result the worker and operator
+ * actually need to see.
+ *
+ * A successful handler has already completed its canonical work by the time
+ * the runner reaches the downstream queue loop. Marking this failure
+ * permanent prevents pg-boss from replaying that completed work just to try
+ * the child enqueue again. Recovery or an operator can retry the named child
+ * step without duplicating the parent action.
+ */
+export function withDownstreamEnqueueFailures(
+  result: AgentResult,
+  failures: DownstreamEnqueueFailure[]
+): AgentResult {
+  if (failures.length === 0) return result;
+  const details = failures.map((failure) => `${failure.agent}: ${failure.reason}`).join("; ");
+  const completed = result.ok;
+  return {
+    ...result,
+    ok: false,
+    permanent: completed ? true : result.permanent,
+    humanActionRequired: true,
+    // The declarations have already been attempted by this runner. Returning
+    // them again invites a caller to enqueue the successful ones twice.
+    enqueued: [],
+    summary:
+      `${result.summary} Required downstream work was not queued: ${details}. ` +
+      (completed
+        ? "The completed parent step will not run again automatically. Resolve the queue or automation hold, then retry the named downstream step."
+        : "Resolve the queue or automation hold before retrying."),
+    data: {
+      ...(result.data ?? {}),
+      canonicalWorkCompleted: completed,
+      downstreamEnqueueFailures: failures,
+    },
+  };
+}
+
+/** A safe, useful sentence for an unknown rejection value. */
+function failureMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  const value = String(error).trim();
+  return value && value !== "undefined" ? value : "unknown failure";
+}
+
+/**
+ * A failed final job_runs write cannot leave an otherwise healthy result.
+ * When canonical work succeeded it is not replayed merely to repair audit
+ * bookkeeping; the failed durable status remains an attention item instead.
+ */
+function withJobRunPersistenceFailure(
+  result: AgentResult,
+  reason: string,
+  canonicalWorkCompleted: boolean
+): AgentResult {
+  return {
+    ...result,
+    ok: false,
+    permanent: canonicalWorkCompleted ? true : result.permanent,
+    humanActionRequired: true,
+    summary:
+      `${result.summary} Automation Health could not record the final run status: ${reason}. ` +
+      (canonicalWorkCompleted
+        ? "The completed agent work will not run again automatically; repair database health and reconcile this run."
+        : "Repair database health, then retry this run."),
+    data: {
+      ...(result.data ?? {}),
+      canonicalWorkCompleted,
+      jobRunPersistenceFailure: reason,
+    },
+  };
+}
+
+/**
+ * Settle the exact recovery claim carried by the queue-owned payload marker.
+ *
+ * Both identifiers are replaced by enqueue(), never accepted from a request
+ * payload. The row is additionally matched to its organization and agent, so
+ * even a malformed internal job cannot settle unrelated recovery work.
+ */
+async function settleRecoveryRequeue(
+  payload: Record<string, unknown>,
+  agent: string,
+  outcome: "succeeded" | "failed"
+): Promise<void> {
+  const id = payload[RECOVERY_REQUEUE_KEY];
+  const orgId = payload[ENQUEUED_BY_ORG_KEY];
+  if (typeof id !== "string" || typeof orgId !== "string") return;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return;
+  }
+  await query(
+    `update incident_requeues
+        set outcome=$4, outcome_at=now()
+      where id=$1 and org_id=$2 and agent=$3
+        and outcome in ('queued','failed')`,
+    [id, orgId, agent, outcome]
+  );
+}
+
 /** Plain sentence naming the records a job can no longer work on. */
 function describeMissing(missing: PayloadRecord[]): string {
   return missing
@@ -148,8 +282,22 @@ export async function runAgent(
   trigger: "cron" | "queue" | "manual",
   payload: Record<string, unknown> = {}
 ): Promise<AgentResult> {
+  const finish = async (result: AgentResult, handlerRan = false): Promise<AgentResult> => {
+    await settleRecoveryRequeue(
+      payload,
+      def.name,
+      handlerRan && result.ok ? "succeeded" : "failed"
+    ).catch((error) => {
+      console.error(
+        `[runner] recovery outcome could not be recorded for ${def.name}:`,
+        (error as Error).message
+      );
+    });
+    return result;
+  };
+
   if (config.worker.disabledAgents.includes(def.name)) {
-    return { ok: true, summary: `${def.name} is disabled via DISABLED_AGENTS` };
+    return finish({ ok: true, summary: `${def.name} is disabled via DISABLED_AGENTS` });
   }
 
   /*
@@ -162,22 +310,41 @@ export async function runAgent(
    */
   const { isPlatformAutomationPaused, isAutomationPaused } = await import("../app-settings");
   if (await isPlatformAutomationPaused()) {
-    return {
+    return finish({
       ok: true,
       summary: `${def.name} skipped: automation is paused platform-wide`,
-    };
+    });
   }
 
   const { orgId, missing, conflict } = await payloadOrgId(def.name, payload);
   const inOrg = <T>(fn: () => Promise<T>): Promise<T> =>
     orgId === null ? fn() : runWithOrg(orgId, fn);
+  const exposeJobRunPersistenceFailure = async (
+    result: AgentResult,
+    reason: string,
+    canonicalWorkCompleted: boolean
+  ): Promise<AgentResult> => {
+    const failed = withJobRunPersistenceFailure(result, reason, canonicalWorkCompleted);
+    await inOrg(() =>
+      logAgent({
+        agent: def.name,
+        action: "job-run-finish-failed",
+        level: "error",
+        status: "error",
+        message: failed.summary,
+        ...recordRefs(payload),
+        output: { jobRunPersistenceFailure: reason, canonicalWorkCompleted },
+      })
+    );
+    return failed;
+  };
 
   if (conflict) {
-    return {
+    return finish({
       ok: false,
       permanent: true,
       summary: `${def.name} abandoned: payload names records from two organizations. Nothing was run.`,
-    };
+    });
   }
 
   /*
@@ -197,10 +364,10 @@ export async function runAgent(
    * contacts anybody, so a paused organization stops here before any of it.
    */
   if (orgId !== null && (await inOrg(() => isAutomationPaused()))) {
-    return {
+    return finish({
       ok: true,
       summary: `${def.name} skipped: this account has automation paused`,
-    };
+    });
   }
 
   /*
@@ -222,9 +389,14 @@ export async function runAgent(
    * the log with the same refusal three times per job.
    */
   const pursuitId = typeof payload.opportunityId === "string" ? payload.opportunityId : "";
-  if (pursuitId) {
+  let guardedPursuitVersion: number | null = null;
+  // Missing or malformed records must reach the durable abandonment path.
+  // They have no pursuit version, which is not evidence of an abort/restart.
+  if (pursuitId && missing.length === 0) {
     const pursuit = await pursuitStatus(pursuitId);
-    if (!pursuit.mayAct && pursuit.known) {
+    const mayRunAfterClose =
+      def.name === "sub-onboarding" && payload[CLOSED_OPPORTUNITY_JOB_KEY] === true;
+    if (!pursuit.mayAct && pursuit.known && !mayRunAfterClose) {
       const summary = `${def.name} skipped: ${pursuit.reason}`;
       await inOrg(() =>
         logAgent({
@@ -236,8 +408,34 @@ export async function runAgent(
           message: summary,
         })
       );
-      return { ok: true, permanent: true, summary };
+      return finish({ ok: true, permanent: true, summary });
     }
+    const rawVersion = payload[PURSUIT_VERSION_KEY];
+    const payloadVersion =
+      typeof rawVersion === "number" && Number.isInteger(rawVersion) && rawVersion >= 1
+        ? rawVersion
+        : null;
+    const staleQueuedJob =
+      trigger === "queue" &&
+      (pursuit.version == null ||
+        (payloadVersion == null ? pursuit.version !== 1 : payloadVersion !== pursuit.version));
+    if (staleQueuedJob) {
+      const summary =
+        `${def.name} skipped: this job was queued for an earlier pursuit version. ` +
+        "Nothing ran after the abort and restart.";
+      await inOrg(() =>
+        logAgent({
+          agent: def.name,
+          action: "stale-pursuit-job",
+          level: "warn",
+          status: "skipped",
+          opportunityId: pursuitId,
+          message: summary,
+        })
+      );
+      return finish({ ok: true, permanent: true, summary });
+    }
+    guardedPursuitVersion = payloadVersion ?? pursuit.version;
   }
   const runId = randomUUID();
   const started = Date.now();
@@ -274,8 +472,8 @@ export async function runAgent(
    * gone.
    *
    * job_runs.opportunity_id is a foreign key, so writing the id of a deleted
-   * opportunity made the insert fail, the `.catch` below turned that into
-   * null, and the abandonment a few lines further down had no run row to
+   * opportunity made the insert fail, the old swallowed rejection turned that
+   * into null, and the abandonment a few lines further down had no run row to
    * finish. The one outcome the comment there insists must leave a trace was
    * the only outcome that left none, and it failed silently in exactly the
    * case it was written for. The id is still named in the abandonment message.
@@ -284,11 +482,42 @@ export async function runAgent(
     namedOpportunityId && missing.some((m) => m.id === namedOpportunityId)
       ? null
       : namedOpportunityId;
-  const jobRun = await queryOne<{ id: string }>(
-    `insert into job_runs (agent, trigger, status, org_id, opportunity_id)
-     values ($1,$2,'running',$3,$4) returning id`,
-    [def.name, trigger, orgId, runOpportunityId]
-  ).catch(() => null);
+  let jobRun: { id: string } | null = null;
+  let jobRunStartFailure: string | null = null;
+  try {
+    jobRun = await queryOne<{ id: string }>(
+      `insert into job_runs (agent, trigger, status, org_id, opportunity_id)
+       values ($1,$2,'running',$3,$4) returning id`,
+      [def.name, trigger, orgId, runOpportunityId]
+    );
+    if (!jobRun?.id) jobRunStartFailure = "the database returned no run identifier";
+  } catch (error) {
+    jobRunStartFailure = failureMessage(error);
+  }
+
+  /*
+   * No durable run row means no external or canonical work may begin. Letting
+   * the handler continue here made provider calls and writes that Automation
+   * Health could never account for. This is retryable because nothing in the
+   * handler ran; a recovered database can safely start the work later.
+   */
+  if (jobRunStartFailure || !jobRun?.id) {
+    const reason = jobRunStartFailure ?? "the database returned no run identifier";
+    const summary =
+      `${def.name} did not start because its durable run record could not be created: ${reason}. ` +
+      "No agent work was performed. Repair database health, then retry.";
+    await inOrg(() =>
+      logAgent({
+        agent: def.name,
+        action: "job-run-start-failed",
+        level: "error",
+        status: "error",
+        message: summary,
+        ...recordRefs(payload),
+      })
+    );
+    return finish({ ok: false, humanActionRequired: true, summary });
+  }
 
   /**
    * The record this job was about is gone, so stop here.
@@ -321,8 +550,19 @@ export async function runAgent(
         input: payload,
       })
     );
-    await finishJobRun(jobRun?.id, "error", { ok: false, summary }, Date.now() - started, summary);
-    return { ok: false, permanent: true, summary };
+    const result: AgentResult = { ok: false, permanent: true, summary };
+    const persistenceFailure = await finishJobRun(
+      jobRun.id,
+      "error",
+      result,
+      Date.now() - started,
+      summary
+    );
+    return finish(
+      persistenceFailure
+        ? await exposeJobRunPersistenceFailure(result, persistenceFailure, false)
+        : result
+    );
   }
 
   try {
@@ -331,7 +571,11 @@ export async function runAgent(
     // their own key had every AI agent skipped as "not set" whenever the
     // founding org had none, and a tenant with no key was let through on
     // somebody else's.
-    if (!(await inOrg(() => claudeEnabled())) && !def.worksWithoutClaude) {
+    // A payload-free cron fanout has no single credential to check here. Its
+    // handler enters each organization and handles availability there. Using
+    // the founding account as a proxy would skip or admit every tenant based
+    // on somebody else's key.
+    if (orgId !== null && !(await inOrg(() => claudeEnabled())) && !def.worksWithoutClaude) {
       const result: AgentResult = {
         ok: true,
         summary: `${def.name} skipped: ANTHROPIC_API_KEY not set`,
@@ -346,11 +590,27 @@ export async function runAgent(
           ...recordRefs(payload),
         })
       );
-      await finishJobRun(jobRun?.id, "ok", result, Date.now() - started);
-      return result;
+      const persistenceFailure = await finishJobRun(
+        jobRun.id,
+        "ok",
+        result,
+        Date.now() - started
+      );
+      return finish(
+        persistenceFailure
+          ? await exposeJobRunPersistenceFailure(result, persistenceFailure, false)
+          : result
+      );
     }
 
-    const result = await inOrg(() => def.handler({ runId, trigger, payload }));
+    const runHandler = () => inOrg(() => def.handler({ runId, trigger, payload }));
+    const result =
+      pursuitId && guardedPursuitVersion != null
+        ? await runWithPursuitVersion(
+            { opportunityId: pursuitId, version: guardedPursuitVersion },
+            runHandler
+          )
+        : await runHandler();
 
     await inOrg(() =>
       logAgent({
@@ -371,19 +631,66 @@ export async function runAgent(
     // runs outside it: enqueue() reads the automation pause switch, which is
     // per organization, and wrapping the loop would change whose switch that
     // check reads. An agent that names an org itself keeps it.
+    const downstreamFailures: DownstreamEnqueueFailure[] = [];
     for (const next of result.enqueued ?? []) {
-      await enqueue(next.agent, next.payload, {
-        ...next.opts,
-        ...(orgId ? { orgId } : {}),
-      }).catch((e) =>
-        console.error(`[runner] enqueue ${next.agent} failed:`, (e as Error).message)
+      const queueNext = () =>
+        enqueue(next.agent, next.payload, {
+          ...next.opts,
+          ...(orgId ? { orgId } : {}),
+        });
+      try {
+        const queued =
+          pursuitId && guardedPursuitVersion != null
+            ? await runWithPursuitVersion(
+                { opportunityId: pursuitId, version: guardedPursuitVersion },
+                queueNext
+              )
+            : await queueNext();
+        if (!queued) {
+          downstreamFailures.push({
+            agent: next.agent,
+            reason:
+              "the queue refused this required step. Automation may be paused, the pursuit may be stopped, or its version may be unavailable",
+          });
+        }
+      } catch (error) {
+        downstreamFailures.push({ agent: next.agent, reason: failureMessage(error) });
+      }
+    }
+
+    const finalResult = withDownstreamEnqueueFailures(result, downstreamFailures);
+    if (downstreamFailures.length > 0) {
+      await inOrg(() =>
+        logAgent({
+          agent: def.name,
+          action: "downstream-enqueue-failed",
+          level: "error",
+          status: "error",
+          message: finalResult.summary,
+          ...recordRefs(payload),
+          output: { downstreamEnqueueFailures: downstreamFailures },
+          durationMs: Date.now() - started,
+        })
       );
     }
 
-    await finishJobRun(jobRun?.id, "ok", result, Date.now() - started);
-    return result;
+    const completion = jobRunCompletion(finalResult);
+    const persistenceFailure = await finishJobRun(
+      jobRun.id,
+      completion.status,
+      finalResult,
+      Date.now() - started,
+      completion.error
+    );
+    return finish(
+      persistenceFailure
+        ? await exposeJobRunPersistenceFailure(finalResult, persistenceFailure, result.ok)
+        : finalResult,
+      true
+    );
   } catch (err) {
-    const message = (err as Error).message;
+    const message = failureMessage(err);
+    const result: AgentResult = { ok: false, summary: message };
     await inOrg(() =>
       logAgent({
         agent: def.name,
@@ -394,28 +701,37 @@ export async function runAgent(
         ...recordRefs(payload),
       })
     );
-    await finishJobRun(
-      jobRun?.id,
+    const persistenceFailure = await finishJobRun(
+      jobRun.id,
       "error",
-      { ok: false, summary: message },
+      result,
       Date.now() - started,
       message
     );
     // Isolation: do not rethrow. One agent's failure must not cascade.
-    return { ok: false, summary: message };
+    return finish(
+      persistenceFailure
+        ? await exposeJobRunPersistenceFailure(result, persistenceFailure, false)
+        : result,
+      true
+    );
   }
 }
 
 async function finishJobRun(
-  id: string | undefined,
+  id: string,
   status: "ok" | "error",
   result: AgentResult,
   _durationMs: number,
   error?: string
-) {
-  if (!id) return;
-  await query(
-    `update job_runs set status=$2, finished_at=now(), error=$3, summary=$4 where id=$1`,
-    [id, status, error ?? null, JSON.stringify({ summary: result.summary, data: result.data })]
-  ).catch(() => {});
+): Promise<string | null> {
+  try {
+    await query(
+      `update job_runs set status=$2, finished_at=now(), error=$3, summary=$4 where id=$1`,
+      [id, status, error ?? null, JSON.stringify({ summary: result.summary, data: result.data })]
+    );
+    return null;
+  } catch (writeError) {
+    return failureMessage(writeError);
+  }
 }

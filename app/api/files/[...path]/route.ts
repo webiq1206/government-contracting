@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
 import { storage, verifyFileToken } from "@/lib/integrations/storage";
 import { normalizeAttachmentMeta } from "@/lib/domain/attachment-meta";
-import { orgOwnsStorageKey } from "@/lib/domain/file-ownership";
-import { LEGACY_ORG_ID } from "@/lib/tenant-context";
+import { orgIdForStorageKey } from "@/lib/domain/file-ownership";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,23 +30,40 @@ export async function GET(req: Request, { params }: { params: { path: string[] }
   const sig = url.searchParams.get("sig") ?? "";
   const tokenOk = sig !== "" && verifyFileToken(key, exp, sig);
 
+  let ownerOrgId: string | null;
+  try {
+    ownerOrgId = await orgIdForStorageKey(key, { failOnError: true });
+  } catch {
+    return NextResponse.json(
+      {
+        error:
+          "File access could not be verified right now. Try again in a few minutes.",
+      },
+      { status: 503, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+  // A signature does not outlive the database record that granted access.
+  // Purging an account removes that record, immediately revoking old links
+  // even if a physical provider needs a second cleanup attempt.
+  if (!ownerOrgId) return fileNotFound();
+
   if (!tokenOk) {
     const ctx = await requireOrgContext();
     if (ctx instanceof NextResponse) return ctx;
-    // The founding org's legacy single-tenant data predates org_id on some
-    // rows; it keeps its historical access. Every other org must own the key.
-    if (ctx.orgId !== LEGACY_ORG_ID) {
-      const owns = await orgOwnsStorageKey(key, ctx.orgId);
-      // Same 404 as a missing file: never confirm that a key exists but
-      // belongs to someone else.
-      if (!owns) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // Same 404 as a missing file: never confirm that a key exists but belongs
+    // to someone else. The founding organization follows the same rule now
+    // that every historical storage reference has an org_id.
+    if (ownerOrgId !== ctx.orgId) {
+      return fileNotFound();
     }
   }
 
   try {
     const signed = await storage.signedUrl(key);
     if (signed && signed.startsWith("http") && !signed.includes("/api/files/")) {
-      return NextResponse.redirect(signed);
+      const response = NextResponse.redirect(signed);
+      response.headers.set("Cache-Control", "private, no-store, max-age=0");
+      return response;
     }
     const buf = await storage.download(key);
     const storedMime = await storage.getMime(key);
@@ -61,9 +77,17 @@ export async function GET(req: Request, { params }: { params: { path: string[] }
         "Content-Type": meta.mime,
         "Content-Disposition": `inline; filename="${meta.filename.replace(/"/g, "")}"`,
         "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store, max-age=0",
       },
     });
   } catch {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return fileNotFound();
   }
+}
+
+function fileNotFound(): NextResponse {
+  return NextResponse.json(
+    { error: "Not found" },
+    { status: 404, headers: { "Cache-Control": "private, no-store, max-age=0" } }
+  );
 }

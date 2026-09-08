@@ -18,6 +18,8 @@ import { automationHealth } from "@/lib/automation-status";
 import { inboxNeedsReplyCount } from "@/lib/conversations";
 import { allQuotaStates } from "@/lib/billing/trial-limits";
 import { isPlatformAdmin } from "@/lib/platform-admin";
+import { ShellDataWarning } from "@/components/shell-data-warning";
+import { SessionLoadFailure } from "@/components/session-load-failure";
 
 /**
  * Authenticated but not necessarily subscribed. Used for Billing so checkout
@@ -37,7 +39,16 @@ export default async function AccountLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await currentUser().catch(() => null);
+  const auth = await currentUser().then(
+    (user) => ({ ok: true as const, user }),
+    (error) => {
+      console.error("[account] session or organization could not be loaded:", error);
+      return { ok: false as const, user: null };
+    }
+  );
+  if (!auth.ok) return <SessionLoadFailure />;
+  // Only a successful null means this browser is signed out.
+  const user = auth.user;
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/signup");
 
@@ -80,12 +91,28 @@ export default async function AccountLayout({
     );
   }
 
+  const shellWarnings: string[] = [];
   const [counts, health, automation, quotas, inboxWaiting] = await Promise.all([
-    queueCounts().catch(() => ({ review: 0, callQueue: 0, today: 0 })),
-    automationHealth().catch(() => null),
-    getAutomationState().catch(() => ({ paused: false, changed_at: null, changed_by: null })),
-    access === "trial" ? allQuotaStates(user.organizationId).catch(() => []) : [],
-    inboxNeedsReplyCount().catch(() => 0),
+    queueCounts().catch(() => {
+      shellWarnings.push("Navigation task counts are unknown, not zero.");
+      return { review: 0, callQueue: 0, today: 0 };
+    }),
+    automationHealth().catch(() => {
+      shellWarnings.push("Automation health is unavailable.");
+      return null;
+    }),
+    getAutomationState().catch(() => {
+      shellWarnings.push("The account pause-switch state is unavailable.");
+      return { paused: false, changed_at: null, changed_by: null };
+    }),
+    access === "trial" ? allQuotaStates(user.organizationId).catch(() => {
+      shellWarnings.push("Trial usage meters are unavailable.");
+      return [];
+    }) : [],
+    inboxNeedsReplyCount().catch(() => {
+      shellWarnings.push("The inbox badge is unknown, not zero.");
+      return 0;
+    }),
   ]);
 
   return (
@@ -115,10 +142,11 @@ export default async function AccountLayout({
             <TrialBanner daysLeft={trialDaysLeft(entitlement)} quotas={quotas} />
           )}
           {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
+          <ShellDataWarning items={shellWarnings} />
           {children}
         </main>
       </div>
-      <CommandPalette />
+      <CommandPalette storageScope={user.organizationId} />
       <Suspense fallback={null}>
         <GuideWizard />
       </Suspense>

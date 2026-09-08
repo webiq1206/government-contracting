@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { normalizeSamNotice } from "@/lib/agents/opportunity-monitor";
+import {
+  amendmentAnalysisJob,
+  normalizeSamNotice,
+} from "@/lib/agents/opportunity-monitor";
 
 /**
  * Regression guard for the production incident where SAM notices carrying an
@@ -40,5 +43,31 @@ describe("normalizeSamNotice date handling", () => {
     const n = normalizeSamNotice({ noticeId: "abc" } as never);
     expect(n.deadline).toBeNull();
     expect(n.posted_at).toBeNull();
+  });
+});
+
+describe("material SAM refresh routing", () => {
+  it("forces re-analysis and re-scoring for the refreshed fingerprint", () => {
+    const job = amendmentAnalysisJob({
+      id: "opp-1",
+      materialChanged: true,
+      materialFingerprint: "a".repeat(64),
+    });
+    expect(job?.agent).toBe("solicitation-analyst");
+    expect(job?.payload).toMatchObject({
+      opportunityId: "opp-1",
+      force: "always",
+      rescoreAfterAnalysis: true,
+    });
+    expect(job?.opts?.singletonKey).toBe(`analyze-refresh:opp-1:${"a".repeat(24)}`);
+  });
+
+  it("does not queue analysis for a duplicate with no material change", () => {
+    expect(
+      amendmentAnalysisJob({
+        id: "opp-1",
+        materialChanged: false,
+      })
+    ).toBeNull();
   });
 });

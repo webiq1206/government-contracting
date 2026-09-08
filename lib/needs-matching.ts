@@ -12,9 +12,19 @@
  * there tomorrow.
  */
 import { query, queryOne } from "./db";
+import { randomUUID } from "node:crypto";
+import { captureReply, type MatchedComm } from "./reply-capture";
+import {
+  applyOutcomeToSolicitation,
+  blockingGaps,
+  recordReplyEvent,
+} from "./domain/reply-outcome";
 
 /** Enough to recognise a message and decide where it belongs. */
-const SNIPPET_CHARS = 1_200;
+// The column keeps its historical name, but manual matching now feeds this
+// text through the same extractor as an automatically placed reply. Keep the
+// full bounded message, not a preview that can cut off the price or exclusions.
+const SNIPPET_CHARS = 20_000;
 
 export interface UnmatchedMessage {
   id: string;
@@ -37,6 +47,12 @@ export interface RecordUnmatchedInput {
   body?: string | null;
   gmailThreadId?: string | null;
   messageId?: string | null;
+  rfc822MessageId?: string | null;
+  references?: string[];
+  toAddresses?: string | null;
+  ccAddresses?: string | null;
+  attachmentNames?: string[];
+  unreadableAttachments?: string[];
   receivedAt?: Date | null;
   subcontractorId?: string | null;
 }
@@ -56,8 +72,10 @@ export async function recordUnmatched(input: RecordUnmatchedInput): Promise<stri
   const row = await queryOne<{ id: string }>(
     `insert into unmatched_inbound
        (org_id, from_email, from_name, subject, snippet, gmail_thread_id, message_id,
-        received_at, subcontractor_id)
-     values ($1,$2,$3,$4,$5,$6,$7,coalesce($8, now()),$9)
+        rfc822_message_id, rfc822_references, to_addresses, cc_addresses,
+        attachment_names, unreadable_attachments, received_at, subcontractor_id)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb,$13::jsonb,
+             coalesce($14, now()),$15)
      on conflict (org_id, message_id) where message_id is not null do nothing
      returning id`,
     [
@@ -68,6 +86,12 @@ export async function recordUnmatched(input: RecordUnmatchedInput): Promise<stri
       (input.body ?? "").slice(0, SNIPPET_CHARS) || null,
       input.gmailThreadId ?? null,
       input.messageId ?? null,
+      input.rfc822MessageId ?? null,
+      JSON.stringify(input.references ?? []),
+      input.toAddresses ?? null,
+      input.ccAddresses ?? null,
+      JSON.stringify(input.attachmentNames ?? []),
+      JSON.stringify(input.unreadableAttachments ?? []),
       input.receivedAt ?? null,
       input.subcontractorId ?? null,
     ]
@@ -139,8 +163,19 @@ export async function matchMessage(
     gmail_thread_id: string | null;
     received_at: Date;
     subcontractor_id: string | null;
+    message_id: string | null;
+    rfc822_message_id: string | null;
+    rfc822_references: unknown;
+    to_addresses: string | null;
+    cc_addresses: string | null;
+    from_name: string | null;
+    attachment_names: unknown;
+    unreadable_attachments: unknown;
   }>(
-    `select id, from_email, subject, snippet, gmail_thread_id, received_at, subcontractor_id
+    `select id, from_email, subject, snippet, gmail_thread_id, received_at,
+            subcontractor_id, message_id, rfc822_message_id,
+            rfc822_references, to_addresses, cc_addresses, from_name,
+            attachment_names, unreadable_attachments
        from unmatched_inbound
       where id = $1 and org_id = $2 and state = 'needs_matching'`,
     [id, orgId]
@@ -149,8 +184,8 @@ export async function matchMessage(
 
   // Both scoped: an opportunity id and a subcontractor id both arrive in a
   // request body, and neither is proof of anything on its own.
-  const opp = await queryOne<{ id: string }>(
-    `select id from opportunities where id = $1 and org_id = $2`,
+  const opp = await queryOne<{ id: string; title: string | null }>(
+    `select id, title from opportunities where id = $1 and org_id = $2`,
     [opportunityId, orgId]
   );
   if (!opp) return null;
@@ -164,47 +199,178 @@ export async function matchMessage(
     if (!sub) return null;
   }
 
-  /*
-   * The same insert the poller makes for a matched reply, column for column.
-   *
-   * Deliberately not a variant. A reply placed by hand is a real reply, and it
-   * has to behave like one in the conversation, in the coverage graph and in
-   * the timeline; a row that differs in any column is a row some query will
-   * eventually treat differently for no reason anybody remembers.
-   *
-   * `delivery_state` is left at its default rather than set to something
-   * inbound-flavoured: the deliverability numbers filter on outbound, so the
-   * default is inert here, and the constraint does not have an inbound value
-   * to offer anyway.
-   */
-  const comm = await queryOne<{ id: string }>(
-    `insert into communications
-       (org_id, opportunity_id, subcontractor_id, channel, direction, subject, body,
-        gmail_thread_id, recipient_email, replied_at, created_at, meta)
-     values ($1,$2,$3,'email','inbound',$4,$5,$6,$7, now(), $8, $9::jsonb)
-     returning id`,
-    [
-      orgId,
-      opportunityId,
-      subId ?? null,
-      msg.subject,
-      msg.snippet,
-      msg.gmail_thread_id,
-      msg.from_email,
-      msg.received_at,
-      // Provenance. Somebody reading the record later is owed the fact that a
-      // person decided this belonged here, rather than a header.
-      JSON.stringify({ placed_by_hand: true, placed_by: actor, unmatched_id: id }),
-    ]
+  // Claim without removing the item from the visible queue. A second tab gets
+  // no claim, and an interrupted worker becomes eligible again after fifteen
+  // minutes. The random token, rather than the actor address, lets the failure
+  // cleanup release only its own attempt.
+  const claimToken = `matching:${randomUUID()}`;
+  const claimed = await query<{ id: string }>(
+    `update unmatched_inbound
+        set matched_by = $3, matched_at = now()
+      where id = $1 and org_id = $2 and state = 'needs_matching'
+        and (matched_at is null or matched_at <= now() - interval '15 minutes')
+      returning id`,
+    [id, orgId, claimToken]
   );
+  if (claimed.length === 0) return null;
 
-  await query(
+  /*
+   * A person supplied the missing correlation signal. From here on this is
+   * the same capture path as an automatically matched reply: extract it,
+   * record the real inbound communication, update the exact pairing only when
+   * the reading is safe, save a usable quote, and trigger the same downstream
+   * work. A hand-matched message must not become a second-class note that the
+   * pricing and coverage workflows never see.
+   */
+  try {
+  const outbound = subId
+    ? await queryOne<MatchedComm>(
+        `select c.id, c.subcontractor_id, c.opportunity_id,
+                s.company_name, coalesce(c.recipient_email, s.email) as sub_email,
+                o.title as opportunity_title, c.meta->>'trade' as trade
+           from communications c
+           join opportunities o on o.id = c.opportunity_id and o.org_id = $3
+           left join subcontractors s on s.id = c.subcontractor_id and s.org_id = $3
+          where c.org_id = $3 and c.opportunity_id = $1
+            and c.subcontractor_id = $2 and c.direction = 'outbound'
+          order by c.created_at desc
+          limit 1`,
+        [opportunityId, subId, orgId]
+      )
+    : null;
+  const matched: MatchedComm = outbound ?? {
+    // There may be no outbound row when somebody forwarded the request or
+    // wrote from a new address. captureReply only uses this id to stamp the
+    // answered outbound; a non-row is therefore the honest representation.
+    id: `unmatched:${id}`,
+    subcontractor_id: subId ?? null,
+    opportunity_id: opportunityId,
+    company_name: null,
+    sub_email: msg.from_email,
+    opportunity_title: opp.title,
+    trade: null,
+  };
+
+  const captured = await captureReply({
+    orgId,
+    comm: matched,
+    strongMatch: true,
+    attributionConfirmed: true,
+    fromEmail: msg.from_email,
+    fromAddress: msg.from_name ?? msg.from_email,
+    toAddresses: msg.to_addresses,
+    ccAddresses: msg.cc_addresses,
+    replyText: msg.snippet ?? "",
+    subject: msg.subject,
+    threadId: msg.gmail_thread_id,
+    messageId: msg.message_id,
+    rfc822MessageId: msg.rfc822_message_id,
+    references: Array.isArray(msg.rfc822_references)
+      ? msg.rfc822_references.filter((value): value is string => typeof value === "string")
+      : [],
+    attachmentNames: Array.isArray(msg.attachment_names)
+      ? msg.attachment_names.filter((value): value is string => typeof value === "string")
+      : [],
+    unreadableAttachments: Array.isArray(msg.unreadable_attachments)
+      ? msg.unreadable_attachments.filter((value): value is string => typeof value === "string")
+      : [],
+    sentAt: msg.received_at.toISOString(),
+  });
+  if (captured.bounce) {
+    await query(
+      `update unmatched_inbound set matched_by = null, matched_at = null
+        where id = $1 and org_id = $2 and state = 'needs_matching' and matched_by = $3`,
+      [id, orgId, claimToken]
+    );
+    return null;
+  }
+
+  if (captured.subId && !captured.duplicate) {
+    const gaps = blockingGaps(captured.extracted, captured.decision.outcome);
+    await recordReplyEvent({
+      orgId,
+      subcontractorId: captured.subId,
+      opportunityId,
+      trade: captured.trade,
+      extracted: captured.extracted,
+      originalMessage: msg.snippet ?? "",
+      gmailMessageId: msg.message_id,
+      gmailThreadId: msg.gmail_thread_id,
+      needsReview: captured.decision.needsReview || gaps.length > 0,
+      reviewReason:
+        captured.decision.reviewReason ??
+        (gaps.length ? `Still needed before this can move forward: ${gaps.join(", ")}.` : null),
+    });
+
+    // captureReply handles closeout and quote persistence. This applies the
+    // remaining taxonomy, exactly as the mailbox poller does, but never calls
+    // a refused price "quoted".
+    if (
+      captured.decision.act &&
+      !captured.declined &&
+      !(captured.decision.outcome === "quoted" && captured.quoteRefusal)
+    ) {
+      const applied = await applyOutcomeToSolicitation({
+        opportunityId,
+        subcontractorId: captured.subId,
+        trade: captured.trade,
+        outcome: captured.decision.outcome,
+      });
+      if (!applied.applied && applied.refused === "ambiguous_trade") {
+        await query(
+          `update subcontractor_reply_events
+              set needs_review = true,
+                  review_reason = $3
+            where org_id = $1 and gmail_message_id is not distinct from $2
+              and reviewed_at is null`,
+          [
+            orgId,
+            msg.message_id,
+            `They are on this bid for ${applied.candidateTrades.join(", ")} and the reply did not say which. Nothing was changed.`,
+          ]
+        );
+      }
+    }
+  }
+
+  const comm = msg.message_id
+    ? await queryOne<{ id: string }>(
+        `select id from communications
+          where org_id = $1 and direction = 'inbound' and gmail_message_id = $2
+          limit 1`,
+        [orgId, msg.message_id]
+      )
+    : await queryOne<{ id: string }>(
+        `select id from communications
+          where org_id = $1 and direction = 'inbound'
+            and opportunity_id = $2 and recipient_email = $3
+            and created_at >= $4::timestamptz
+          order by created_at desc limit 1`,
+        [orgId, opportunityId, msg.from_email, msg.received_at]
+      );
+  if (!comm) {
+    throw new Error("The reply was captured but its communication record could not be reloaded.");
+  }
+
+  const finished = await query<{ id: string }>(
     `update unmatched_inbound set state='matched', matched_communication_id=$3,
             matched_opportunity_id=$4, matched_by=$5, matched_at=now()
-      where id=$1 and org_id=$2`,
-    [id, orgId, comm?.id ?? null, opportunityId, actor]
+      where id=$1 and org_id=$2 and state='needs_matching' and matched_by=$6
+      returning id`,
+    [id, orgId, comm.id, opportunityId, actor, claimToken]
   );
-  return comm ? { communicationId: comm.id } : null;
+  if (finished.length === 0) {
+    throw new Error("This reply match was changed by another request before it could finish.");
+  }
+  return { communicationId: comm.id };
+  } catch (err) {
+    await query(
+      `update unmatched_inbound set matched_by = null, matched_at = null
+        where id = $1 and org_id = $2 and state = 'needs_matching' and matched_by = $3`,
+      [id, orgId, claimToken]
+    ).catch(() => undefined);
+    throw err;
+  }
 }
 
 /**
@@ -227,6 +393,7 @@ export async function dismissMessage(
     `update unmatched_inbound set state='dismissed', dismissed_reason=$3,
             dismissed_by=$4, dismissed_at=now()
       where id=$1 and org_id=$2 and state='needs_matching'
+        and (matched_at is null or matched_at <= now() - interval '15 minutes')
       returning id`,
     [id, orgId, trimmed, actor]
   );

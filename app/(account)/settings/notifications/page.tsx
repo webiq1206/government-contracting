@@ -11,6 +11,7 @@ import {
   deliverySummary,
   type CategoryStatus,
 } from "@/lib/domain/notification-prefs";
+import { ShellDataWarning } from "@/components/shell-data-warning";
 
 export const dynamic = "force-dynamic";
 
@@ -31,15 +32,26 @@ export const dynamic = "force-dynamic";
  * that does carry the information.
  */
 export default async function NotificationSettingsPage() {
-  const user = await currentUser().catch(() => null);
+  const user = await currentUser();
   const org = user?.organizationId ? await getOrganization(user.organizationId) : null;
-  const members = org ? await adminAccountMembers(org.id).catch(() => []) : [];
+  const loadWarnings: string[] = [];
+  let deliveryStatusUnavailable = false;
+  const members = org ? await adminAccountMembers(org.id).catch(() => {
+    deliveryStatusUnavailable = true;
+    loadWarnings.push("Account recipients could not be loaded, so delivery status is unknown.");
+    return [];
+  }) : [];
   const owner = members.find((m) => m.role === "owner") ?? members[0] ?? null;
+  const mailEnabled = await systemMail.enabled().catch(() => {
+    deliveryStatusUnavailable = true;
+    loadWarnings.push("The notification mailbox could not be checked.");
+    return false;
+  });
 
   const statuses = categoryStatuses({
     isOperationsOrg: org?.id === LEGACY_ORG_ID,
     hasOperationsAddress: Boolean(config.systemMail.digestTo),
-    mailEnabled: await systemMail.enabled().catch(() => false),
+    mailEnabled,
     ownerEmail: owner?.email ?? null,
   });
   const summary = deliverySummary(statuses);
@@ -52,23 +64,25 @@ export default async function NotificationSettingsPage() {
         explanation="Which alerts reach you by email, which live only in the product, and which cannot be switched off."
         breadcrumbs={[{ label: "Settings", href: "/settings/profile" }]}
         status={
-          emailed.length === 0
-            ? "No email reaches this account"
+          deliveryStatusUnavailable
+            ? "Email delivery status unavailable"
+            : emailed.length === 0
+            ? "Listed alerts need an in-app check"
             : `${emailed.length} of ${statuses.length} kinds emailed`
         }
       />
+      <ShellDataWarning items={loadWarnings} />
       <div className="scroll-thin flex-1 space-y-5 overflow-y-auto p-5">
         <div className="callout-panel max-w-3xl text-sm leading-relaxed text-slate-700">
-          <p>{summary}</p>
+          <p>{deliveryStatusUnavailable ? "Alert delivery could not be confirmed. Check the connection warning above and reload before changing notification settings." : summary}</p>
           <p className="mt-2 text-xs text-slate-600">
-            This page describes what actually happens rather than offering switches. A
-            control that turns off a message nobody sends would be a promise this product
-            does not keep, and the way you would find out is the day you needed it.
+            Each category shows where to check its alerts. Manage your daily recap email and time zone in Your account.
           </p>
+          <Link href="/settings/account" className="mt-2 inline-flex min-h-11 items-center font-medium underline">Manage daily recap</Link>
         </div>
 
         <ul className="max-w-3xl space-y-3">
-          {statuses.map((s) => (
+          {!deliveryStatusUnavailable && statuses.map((s) => (
             <li key={s.key}>
               <Category status={s} />
             </li>
@@ -108,7 +122,7 @@ function Category({ status }: { status: CategoryStatus }) {
           {status.deliveryGap
             ? "Not reaching you"
             : status.route === "account_owner"
-              ? "Emailed to you"
+              ? "Emailed to account owner"
             : status.route === "operations_address"
               ? "Emailed elsewhere"
               : status.route === "not_sent"
@@ -122,12 +136,12 @@ function Category({ status }: { status: CategoryStatus }) {
         <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
           {status.reachesAccount
             ? "Can be switched off."
-            : "There is nothing to switch off while this is not being sent."}
+            : "No email preference is available for this category."}
         </p>
       ) : status.deliveryGap ? (
         <p className="mt-1.5 text-xs leading-relaxed text-risk">
           <span className="label mr-1.5 inline">Not reaching you:</span>
-          This cannot be switched off and is also not being delivered, so nobody is told.{" "}
+          Email alerts are unavailable for this category. Use the link below to check it regularly.{" "}
           {status.whyMandatory}
         </p>
       ) : (

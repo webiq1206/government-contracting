@@ -72,24 +72,9 @@ export function RecordActionBar({
             </div>
           )}
           {isOutcome && (
-            <div className="flex shrink-0 items-center gap-2">
-              <ActionButton
-                endpoint={`/api/opportunities/${opportunityId}/outcome`}
-                body={{ outcome: "won" }}
-                className="btn-success text-xs"
-                confirm="Mark as WON and create the contract?"
-              >
-                Won
-              </ActionButton>
-              <ActionButton
-                endpoint={`/api/opportunities/${opportunityId}/outcome`}
-                body={{ outcome: "lost" }}
-                className="btn-danger text-xs"
-                confirm="Mark this bid as lost?"
-              >
-                Lost
-              </ActionButton>
-            </div>
+            <a href="#outcome" className="btn-primary min-h-11 shrink-0 text-xs">
+              Record outcome
+            </a>
           )}
           {!isTriage && !isOutcome && step.href && (
             <Link href={step.href} className={button}>

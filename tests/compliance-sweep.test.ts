@@ -8,10 +8,18 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 const NOW = new Date("2026-08-13T00:00:00Z");
 const days = (n: number) => new Date(NOW.getTime() + n * 86_400_000).toISOString();
 
-async function load(rows: unknown[]) {
+async function load(
+  rows: unknown[],
+  opts: {
+    orgId?: string;
+    mailReady?: boolean;
+    mailResult?: { disabled?: boolean; error?: string };
+  } = {}
+) {
   vi.resetModules();
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
+  const orgId = opts.orgId ?? "o1";
   const updates: unknown[][] = [];
   vi.doMock("@/lib/db", () => ({
     query: vi.fn(async (sql: string, params: unknown[] = []) => {
@@ -20,14 +28,14 @@ async function load(rows: unknown[]) {
         return [];
       }
       if (sql.includes("from organizations")) {
-        return [{ id: "o1" }];
+        return [{ id: orgId }];
       }
       return rows;
     }),
     queryOne: vi.fn(async () => null),
   }));
   vi.doMock("@/lib/organizations", () => ({
-    listActiveOrganizations: vi.fn(async () => [{ id: "o1" }]),
+    listActiveOrganizations: vi.fn(async () => [{ id: orgId }]),
   }));
   const logs: Record<string, unknown>[] = [];
   vi.doMock("@/lib/logger", () => ({
@@ -35,11 +43,21 @@ async function load(rows: unknown[]) {
       logs.push(e);
     }),
   }));
+  const sends: Record<string, unknown>[] = [];
   vi.doMock("@/lib/integrations/system-mail", () => ({
-    systemMail: { enabled: async () => false, send: vi.fn() },
+    systemMail: {
+      deliverable: async () => opts.mailReady ?? false,
+      send: vi.fn(async (params: Record<string, unknown>) => {
+        sends.push(params);
+        return opts.mailResult ?? {};
+      }),
+    },
+  }));
+  vi.doMock("@/lib/config", () => ({
+    config: { systemMail: { digestTo: "operations@example.com" } },
   }));
   const mod = await import("@/lib/agents/compliance-sweep");
-  return { mod, updates, logs };
+  return { mod, updates, logs, sends };
 }
 
 afterEach(() => {
@@ -47,6 +65,7 @@ afterEach(() => {
   vi.doUnmock("@/lib/db");
   vi.doUnmock("@/lib/logger");
   vi.doUnmock("@/lib/integrations/system-mail");
+  vi.doUnmock("@/lib/config");
   vi.doUnmock("@/lib/organizations");
   vi.resetModules();
 });
@@ -117,5 +136,29 @@ describe("reporting", () => {
     const { mod } = await load([]);
     const res = await mod.complianceSweep.handler({} as never);
     expect(res.summary).toContain("0 document(s) checked");
+  });
+
+  it("reports a platform sender refusal instead of claiming the digest succeeded", async () => {
+    const { mod, logs, sends } = await load([doc({ expires_at: days(10) })], {
+      orgId: "00000000-0000-4000-8000-000000000001",
+      mailReady: true,
+      mailResult: { disabled: true, error: "No verified platform sender identity" },
+    });
+
+    const res = await mod.complianceSweep.handler({} as never);
+
+    expect(sends).toHaveLength(1);
+    expect(res.ok).toBe(false);
+    expect(res.humanActionRequired).toBe(true);
+    expect(res.summary).toContain("compliance digest could not be sent");
+    expect(logs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "compliance-digest-unsent",
+          status: "error",
+          message: expect.stringContaining("No verified platform sender identity"),
+        }),
+      ])
+    );
   });
 });

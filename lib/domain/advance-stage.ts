@@ -59,13 +59,13 @@ export async function assessQuoteCompleteness(
       where os.opportunity_id = $1
       group by os.trade, os.opportunity_id`,
     [opportunityId, NEGATIVE_STATES]
-  ).catch(() => []);
+  );
 
   const pendingRows = await query<{ n: string }>(
     `select count(*) as n from subcontractor_reply_events
       where opportunity_id = $1 and needs_review and reviewed_at is null`,
     [opportunityId]
-  ).catch(() => [{ n: "0" }]);
+  );
   const pendingReview = Number(pendingRows[0]?.n ?? 0);
 
   const trades: TradeCoverage[] = rows.map((r) => {
@@ -129,7 +129,7 @@ export async function advancePastCallStep(
       where id = $1 and stage = any($3)
       returning id, stage`,
     [opportunityId, STAGE_AFTER_CALLS, PRE_QUOTE_STAGES]
-  ).catch(() => []);
+  );
 
   if (moved.length === 0) return false;
 
@@ -194,7 +194,7 @@ export async function closeIfSubsExhausted(
   const opp = await query<{ id: string; risk_flags: string[] | null; status: string }>(
     `select id, risk_flags, status from opportunities where id = $1`,
     [opportunityId]
-  ).catch(() => []);
+  );
   const record = opp[0];
   if (!record || record.status !== "open") {
     return { action: "none", exhaustedTrades: exhausted };
@@ -242,7 +242,7 @@ export async function closeIfSubsExhausted(
       where id = $1 and status = 'open'
       returning id`,
     [opportunityId, NO_VIABLE_SUBS_FLAG]
-  ).catch(() => []);
+  );
   if (closed.length === 0) return { action: "none", exhaustedTrades: exhausted };
 
   await logAgent({
@@ -287,7 +287,7 @@ export async function advanceIfQuotesComplete(
       where id = $1 and stage = 'quote_entry'
       returning id`,
     [opportunityId]
-  ).catch(() => []);
+  );
 
   if (updated.length === 0) return { advanced: false, assessment };
 

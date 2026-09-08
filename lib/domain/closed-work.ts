@@ -12,13 +12,21 @@
  * guard, and the pass/abort paths cannot drift into different definitions.
  */
 
-export type CloseCause = "passed" | "expired" | "aborted" | "canceled" | "won" | "lost";
+export type CloseCause =
+  | "passed"
+  | "expired"
+  | "aborted"
+  | "canceled"
+  | "submitted"
+  | "won"
+  | "lost";
 
 export const CLOSE_CAUSE_LABEL: Record<CloseCause, string> = {
   passed: "Passed",
   expired: "Expired",
   aborted: "Aborted",
   canceled: "Canceled",
+  submitted: "Submitted",
   won: "Won",
   lost: "Lost",
 };

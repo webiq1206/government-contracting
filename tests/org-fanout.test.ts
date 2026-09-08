@@ -23,6 +23,7 @@ import { sourceFiles } from "./helpers/source-files";
 
 const logged: { action: string; status?: string }[] = [];
 let listBehaviour: () => Promise<{ id: string }[]> = async () => [{ id: "org-1" }];
+const paused = new Set<string>();
 
 vi.mock("@/lib/organizations", () => ({
   listActiveOrganizations: () => listBehaviour(),
@@ -32,11 +33,30 @@ vi.mock("@/lib/logger", () => ({
     logged.push(e);
   }),
 }));
+vi.mock("@/lib/tenant-context", () => ({
+  LEGACY_ORG_ID: "00000000-0000-4000-8000-000000000001",
+  currentOrgId: () => currentOrg || null,
+  runWithOrg: async <T>(orgId: string, fn: () => Promise<T>) => {
+    const previous = currentOrg;
+    currentOrg = orgId;
+    try {
+      return await fn();
+    } finally {
+      currentOrg = previous;
+    }
+  },
+}));
+let currentOrg = "";
+vi.mock("@/lib/app-settings", () => ({
+  isAutomationPaused: async () => paused.has(currentOrg),
+}));
 
 const { orgsToSweep, fanoutNote } = await import("@/lib/agents/org-fanout");
 
 beforeEach(() => {
   logged.length = 0;
+  paused.clear();
+  currentOrg = "";
   listBehaviour = async () => [{ id: "org-1" }];
 });
 
@@ -46,6 +66,7 @@ describe("choosing the accounts to sweep", () => {
     expect(r.orgs.map((o) => o.id)).toEqual(["org-1"]);
     expect(r.error).toBeNull();
     expect(r.soloFallback).toBe(false);
+    expect(r.pausedCount).toBe(0);
     expect(logged).toEqual([]);
   });
 
@@ -55,6 +76,7 @@ describe("choosing the accounts to sweep", () => {
     expect(r.orgs).toHaveLength(1);
     expect(r.error).toBeNull();
     expect(r.soloFallback).toBe(true);
+    expect(r.pausedCount).toBe(0);
     // Not a failure: this is what a deployment looks like before its first
     // customer, and it still has our own work to do.
     expect(logged).toEqual([]);
@@ -70,6 +92,7 @@ describe("choosing the accounts to sweep", () => {
     expect(r.orgs).toEqual([]);
     expect(r.soloFallback).toBe(false);
     expect(r.error).toBe("account list unavailable");
+    expect(r.pausedCount).toBe(0);
   });
 
   it("logs the failure at error status, so the health page counts it", async () => {
@@ -93,6 +116,36 @@ describe("choosing the accounts to sweep", () => {
 
   it("has nothing to add when the lookup worked", async () => {
     expect(fanoutNote(await orgsToSweep("some-agent"))).toBeNull();
+  });
+
+  it("does not run a platform sweep for an account that paused automation", async () => {
+    listBehaviour = async () => [{ id: "org-1" }, { id: "org-2" }];
+    paused.add("org-2");
+
+    const r = await orgsToSweep("some-agent");
+
+    expect(r.orgs.map((org) => org.id)).toEqual(["org-1"]);
+    expect(r.pausedCount).toBe(1);
+    expect(fanoutNote(r)).toBeNull();
+  });
+
+  it("explains when every account was skipped because it is paused", async () => {
+    paused.add("org-1");
+
+    const r = await orgsToSweep("some-agent");
+
+    expect(r.orgs).toEqual([]);
+    expect(r.pausedCount).toBe(1);
+    expect(fanoutNote(r)).toContain("automation is paused");
+  });
+
+  it("keeps a contextual manual run inside the account that requested it", async () => {
+    currentOrg = "manual-org";
+    listBehaviour = async () => [{ id: "org-1" }, { id: "org-2" }];
+
+    const r = await orgsToSweep("some-agent");
+
+    expect(r.orgs.map((org) => org.id)).toEqual(["manual-org"]);
   });
 });
 

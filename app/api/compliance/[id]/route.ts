@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOrgContext } from "@/lib/org-guard";
-import { query, queryOne } from "@/lib/db";
-import { logAgent } from "@/lib/logger";
+import { tenantTransaction } from "@/lib/db";
 import {
   RECURRENCES as RECURRENCE_KEYS,
   nextDueDate,
@@ -56,6 +55,7 @@ function describeChange(
     ["doc_url", "the document link"],
     ["time_zone", "the timezone"],
     ["recurrence", "how often it repeats"],
+    ["recurrence_months", "the custom repeat interval"],
     ["window_days", "how far ahead it warns"],
     ["escalate_after_days", "when it escalates"],
     ["escalate_to", "who it escalates to"],
@@ -94,177 +94,308 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 
-  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  let body: Record<string, unknown>;
+  try {
+    const parsed: unknown = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json({ error: "Expected a compliance update object." }, { status: 400 });
+    }
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "The compliance update is not valid JSON." }, { status: 400 });
+  }
+  type Failure = { ok: false; status: 400 | 404; error: string };
+  type Success = {
+    ok: true;
+    label: string;
+    changes: ReturnType<typeof describeChange>;
+  };
 
-  /*
-   * The whole row, not just the label.
-   *
-   * Every edit used to go to a flat application log this page never reads, so
-   * "who moved this date and on what authority" had nowhere to be answered
-   * from. On federal work that is the question an auditor asks, and answering
-   * it needs the values before as well as after.
-   */
-  const item = await queryOne<Record<string, unknown>>(
-    `select * from compliance_items where id=$1 and org_id=$2`,
-    [params.id, orgId]
-  );
-  if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const label = String(item.label ?? "this item");
+  let result: Failure | Success;
+  try {
+    result = await tenantTransaction(orgId, async (client): Promise<Failure | Success> => {
+      /*
+       * Lock the whole before-image. The update and immutable history row use
+       * this same connection, so an event failure rolls the change back and a
+       * concurrent edit cannot make the before/after story false.
+       */
+      const selected = await client.query<Record<string, unknown>>(
+        `select *
+           from compliance_items
+          where id = $1 and org_id = $2
+          for update`,
+        [params.id, orgId]
+      );
+      const item = selected.rows[0];
+      if (!item) return { ok: false, status: 404, error: "Not found" };
 
-  const sets: string[] = [];
-  const values: unknown[] = [];
-  let i = 1;
-
-  if ("due_at_override" in body) {
-    const raw = body.due_at_override;
-    let dt: string | null = null;
-    if (typeof raw === "string" && raw.trim() !== "") {
-      const parsed = new Date(raw);
-      if (Number.isNaN(parsed.getTime())) {
-        return NextResponse.json({ error: "That date is not valid." }, { status: 400 });
+      for (const action of ["verified", "renewed"] as const) {
+        if (action in body && typeof body[action] !== "boolean") {
+          return {
+            ok: false,
+            status: 400,
+            error: `${action === "verified" ? "Verified" : "Renewed"} must be true or false.`,
+          };
+        }
       }
-      dt = parsed.toISOString();
-    }
-    sets.push(`due_at_override=$${i++}`);
-    values.push(dt);
-  }
 
-  if ("status_override" in body) {
-    const raw = typeof body.status_override === "string" ? body.status_override.trim() : "";
-    if (raw !== "" && !STATUSES.has(raw)) {
-      return NextResponse.json({ error: "Unknown status." }, { status: 400 });
-    }
-    sets.push(`status_override=$${i++}`);
-    values.push(raw === "" ? null : raw);
-  }
-
-  for (const col of [
-    "notes", "link_url", "doc_url",
-    // The facts a compliance item needs to be worked, none of which the
-    // editor could reach: which timezone the date lives in, why two sources
-    // disagree, why a machine reading wants a person, and what has to happen
-    // first.
-    "time_zone", "conflict_detail", "needs_review_reason", "blocked_by", "escalate_to",
-  ] as const) {
-    if (col in body) {
-      const v = typeof body[col] === "string" ? (body[col] as string).trim() : "";
-      sets.push(`${col}=$${i++}`);
-      values.push(v === "" ? null : v);
-    }
-  }
-
-  if ("recurrence" in body) {
-    const raw = typeof body.recurrence === "string" ? body.recurrence.trim() : "";
-    if (raw !== "" && !RECURRENCES.has(raw)) {
-      return NextResponse.json({ error: "That is not a schedule." }, { status: 400 });
-    }
-    sets.push(`recurrence=$${i++}`);
-    values.push(raw === "" ? null : raw);
-  }
-
-  for (const col of ["window_days", "escalate_after_days", "recurrence_months"] as const) {
-    if (col in body) {
-      const raw = body[col];
-      if (raw == null || raw === "") {
-        sets.push(`${col}=$${i++}`);
-        values.push(null);
-        continue;
+      if (
+        body.renewed === true &&
+        (body.verified === true ||
+          "due_at_override" in body ||
+          "status_override" in body ||
+          "recurrence" in body ||
+          "recurrence_months" in body)
+      ) {
+        return {
+          ok: false,
+          status: 400,
+          error: "Renew the item separately from changing its date, state, schedule, or verification.",
+        };
       }
-      const n = Number(raw);
-      if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-        return NextResponse.json(
-          { error: "That has to be a whole number of days above zero, or left empty." },
-          { status: 400 }
+
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      let i = 1;
+
+      if ("due_at_override" in body) {
+        const raw = body.due_at_override;
+        let dt: string | null = null;
+        if (raw != null && typeof raw !== "string") {
+          return { ok: false, status: 400, error: "The renewal date must be a date or empty." };
+        }
+        if (typeof raw === "string" && raw.trim() !== "") {
+          const parsed = new Date(raw);
+          if (Number.isNaN(parsed.getTime())) {
+            return { ok: false, status: 400, error: "That date is not valid." };
+          }
+          dt = parsed.toISOString();
+        }
+        sets.push(`due_at_override=$${i++}`);
+        values.push(dt);
+      }
+
+      if ("status_override" in body) {
+        if (body.status_override != null && typeof body.status_override !== "string") {
+          return { ok: false, status: 400, error: "The state must be text or empty." };
+        }
+        const raw =
+          typeof body.status_override === "string" ? body.status_override.trim() : "";
+        if (raw !== "" && !STATUSES.has(raw)) {
+          return { ok: false, status: 400, error: "Unknown status." };
+        }
+        sets.push(`status_override=$${i++}`);
+        values.push(raw === "" ? null : raw);
+      }
+
+      for (const col of [
+        "notes",
+        "link_url",
+        "doc_url",
+        "time_zone",
+        "conflict_detail",
+        "needs_review_reason",
+        "blocked_by",
+        "escalate_to",
+      ] as const) {
+        if (col in body) {
+          if (body[col] != null && typeof body[col] !== "string") {
+            return {
+              ok: false,
+              status: 400,
+              error: `${col.replaceAll("_", " ")} must be text or empty.`,
+            };
+          }
+          const v = typeof body[col] === "string" ? body[col].trim() : "";
+          if ((col === "link_url" || col === "doc_url") && v) {
+            try {
+              const parsed = new URL(v);
+              if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error();
+            } catch {
+              return {
+                ok: false,
+                status: 400,
+                error: `${col === "link_url" ? "The renewal link" : "The document link"} must be a full http or https URL.`,
+              };
+            }
+          }
+          if (col === "time_zone" && v) {
+            try {
+              new Intl.DateTimeFormat("en-US", { timeZone: v }).format(new Date());
+            } catch {
+              return {
+                ok: false,
+                status: 400,
+                error: "The timezone is not recognized. Use a name such as America/Denver.",
+              };
+            }
+          }
+          sets.push(`${col}=$${i++}`);
+          values.push(v === "" ? null : v);
+        }
+      }
+
+      if ("recurrence" in body) {
+        if (body.recurrence != null && typeof body.recurrence !== "string") {
+          return { ok: false, status: 400, error: "The schedule must be text or empty." };
+        }
+        const raw = typeof body.recurrence === "string" ? body.recurrence.trim() : "";
+        if (raw !== "" && !RECURRENCES.has(raw)) {
+          return { ok: false, status: 400, error: "That is not a schedule." };
+        }
+        sets.push(`recurrence=$${i++}`);
+        values.push(raw === "" ? null : raw);
+      }
+
+      for (const col of ["window_days", "escalate_after_days", "recurrence_months"] as const) {
+        if (col in body) {
+          const raw = body[col];
+          if (raw == null || raw === "") {
+            sets.push(`${col}=$${i++}`);
+            values.push(null);
+            continue;
+          }
+          if (typeof raw !== "number" && typeof raw !== "string") {
+            return {
+              ok: false,
+              status: 400,
+              error: `${col.replaceAll("_", " ")} must be a whole number or empty.`,
+            };
+          }
+          const n = Number(raw);
+          if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+            return {
+              ok: false,
+              status: 400,
+              error: "That has to be a whole number above zero, or left empty.",
+            };
+          }
+          sets.push(`${col}=$${i++}`);
+          values.push(n);
+        }
+      }
+
+      const effectiveRecurrence =
+        "recurrence" in body
+          ? typeof body.recurrence === "string"
+            ? body.recurrence.trim()
+            : ""
+          : String(item.recurrence ?? "");
+      const effectiveMonths =
+        "recurrence_months" in body
+          ? Number(body.recurrence_months)
+          : Number(item.recurrence_months);
+      if (
+        effectiveRecurrence === "custom" &&
+        (!Number.isInteger(effectiveMonths) || effectiveMonths <= 0)
+      ) {
+        return {
+          ok: false,
+          status: 400,
+          error: "A custom schedule needs a whole number of months above zero.",
+        };
+      }
+
+      if ("monitorable" in body) {
+        if (typeof body.monitorable !== "boolean") {
+          return { ok: false, status: 400, error: "Monitorable must be true or false." };
+        }
+        sets.push(`monitorable=$${i++}`);
+        values.push(body.monitorable);
+      }
+
+      if (body.verified === true) {
+        sets.push("verified_at=now()");
+        sets.push(`verified_by=$${i++}`);
+        values.push(auth.id);
+        sets.push("satisfied_at=coalesce(satisfied_at, now())");
+      }
+
+      if (body.renewed === true) {
+        const from = item.due_at_override ?? item.due_at;
+        const next = nextDueDate(
+          from as string | Date | null,
+          item.recurrence as string | null,
+          item.recurrence_months as number | null
+        );
+        if (!next) {
+          return {
+            ok: false,
+            status: 400,
+            error: "This item has no schedule and no date to roll forward from.",
+          };
+        }
+        sets.push(`due_at_override=$${i++}`);
+        values.push(next);
+        sets.push("satisfied_at=now()");
+        sets.push("status_override=null");
+      }
+
+      if (sets.length === 0) {
+        return { ok: false, status: 400, error: "Nothing to update." };
+      }
+
+      values.push(params.id, orgId);
+      const updated = await client.query<Record<string, unknown>>(
+        `update compliance_items
+            set ${sets.join(", ")}, updated_at=now()
+          where id=$${i} and org_id=$${i + 1}
+          returning *`,
+        values
+      );
+      const after = updated.rows[0];
+      if (!after) throw new Error("The compliance item changed while it was being saved.");
+
+      const changes = describeChange(item, after);
+      if (changes.summary) {
+        await client.query(
+          `insert into compliance_item_events
+             (org_id, item_id, kind, summary, changes, actor_id, actor_label)
+           values ($1,$2,$3,$4,$5::jsonb,$6::uuid,$7)`,
+          [
+            orgId,
+            params.id,
+            body.verified === true ? "verified" : body.renewed === true ? "renewed" : changes.kind,
+            changes.summary,
+            JSON.stringify(changes.fields),
+            auth.id,
+            auth.email,
+          ]
         );
       }
-      sets.push(`${col}=$${i++}`);
-      values.push(n);
-    }
-  }
 
-  if ("monitorable" in body) {
-    sets.push(`monitorable=$${i++}`);
-    values.push(Boolean(body.monitorable));
-  }
-
-  /*
-   * Marking an item verified is a claim a person makes, so it records who
-   * made it. Distinct from last_checked_at, which is when a machine looked.
-   */
-  if (body.verified === true) {
-    sets.push(`verified_at=now()`);
-    sets.push(`verified_by=$${i++}`);
-    values.push(auth.id);
-    sets.push(`satisfied_at=coalesce(satisfied_at, now())`);
-  }
-
-  /*
-   * Renewing a recurring item rolls its date forward rather than leaving it
-   * expired. Every renewal used to be a new item somebody had to remember to
-   * create, which is exactly the memory this board exists to replace.
-   *
-   * Rolled from the date that just passed, not from today, so an item renewed
-   * three weeks late still lands on its real anniversary instead of drifting
-   * later every year.
-   */
-  if (body.renewed === true) {
-    const from = item.due_at_override ?? item.due_at;
-    const next = nextDueDate(
-      from as string | Date | null,
-      item.recurrence as string | null,
-      item.recurrence_months as number | null
-    );
-    if (!next) {
-      return NextResponse.json(
-        { error: "This item has no schedule and no date to roll forward from." },
-        { status: 400 }
+      await client.query(
+        `insert into agent_logs
+           (org_id, agent, action, level, status, message)
+         values ($1,'operator','compliance-edit','info','ok',$2)`,
+        [
+          orgId,
+          `Operator ${auth.email} edited compliance item "${String(item.label ?? "this item")}": ${changes.summary || "no change"}`,
+        ]
       );
-    }
-    sets.push(`due_at_override=$${i++}`);
-    values.push(next);
-    // Renewed means satisfied again, and the old override no longer applies.
-    sets.push(`satisfied_at=now()`);
-    sets.push(`status_override=null`);
+
+      return {
+        ok: true,
+        label: String(item.label ?? "this item"),
+        changes,
+      };
+    });
+  } catch (error) {
+    console.error("[compliance] item edit rolled back:", error);
+    return NextResponse.json(
+      {
+        error:
+          "The change could not be saved with its compliance history. " +
+          "Nothing is confirmed changed. Try again.",
+        retryable: true,
+      },
+      { status: 503 }
+    );
   }
 
-  if (sets.length === 0) {
-    return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
-
-  values.push(params.id);
-  const after = await queryOne<Record<string, unknown>>(
-    `update compliance_items set ${sets.join(", ")}, updated_at=now() where id=$${i}
-     returning *`,
-    values
-  );
-
-  /*
-   * The history this record never had.
-   *
-   * Written from the before and after rather than from the request, so a
-   * field the request named but did not actually change does not appear as a
-   * change. A log that reports edits nobody made is one people stop reading.
-   */
-  const changes = describeChange(item, after ?? {});
-  if (changes.summary) {
-    await query(
-      `insert into compliance_item_events
-         (org_id, item_id, kind, summary, changes, actor_id, actor_label)
-       values ($1,$2,$3,$4,$5::jsonb,$6::uuid,$7)`,
-      [
-        orgId, params.id,
-        body.verified === true ? "verified" : changes.kind,
-        changes.summary, JSON.stringify(changes.fields), auth.id, auth.email,
-      ]
-    ).catch(() => {});
-  }
-
-  await logAgent({
-    agent: "operator",
-    action: "compliance-edit",
-    level: "info",
-    message: `Operator ${auth.email} edited compliance item "${label}": ${changes.summary || "no change"}`,
-  });
 
   return NextResponse.json({ ok: true });
 }
@@ -276,24 +407,82 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
 
-  const item = await queryOne<{ id: string; label: string; source: string }>(
-    `select id, label, coalesce(source,'monitor') as source from compliance_items where id=$1 and org_id=$2`,
-    [params.id, orgId]
-  );
-  if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  if (item.source !== "operator") {
+  type DeleteResult =
+    | { ok: true }
+    | { ok: false; status: 400 | 404 | 409; error: string };
+
+  try {
+    const result = await tenantTransaction(orgId, async (client): Promise<DeleteResult> => {
+      const selected = await client.query<{ id: string; label: string; source: string }>(
+        `select id, label, coalesce(source,'monitor') as source
+           from compliance_items
+          where id=$1 and org_id=$2
+          for update`,
+        [params.id, orgId]
+      );
+      const item = selected.rows[0];
+      if (!item) return { ok: false, status: 404, error: "Not found" };
+      if (item.source !== "operator") {
+        return {
+          ok: false,
+          status: 400,
+          error: "This item is tracked automatically and can't be deleted.",
+        };
+      }
+
+      const documents = await client.query<{ count: string }>(
+        `select count(*)::text as count
+           from compliance_item_documents
+          where item_id = $1 and org_id = $2`,
+        [params.id, orgId]
+      );
+      if (Number(documents.rows[0]?.count ?? 0) > 0) {
+        return {
+          ok: false,
+          status: 409,
+          error:
+            "Remove the files on this item before deleting it. This prevents stored evidence from being orphaned.",
+        };
+      }
+
+      const removed = await client.query<{ id: string }>(
+        `delete from compliance_items
+          where id=$1 and org_id=$2 and source='operator'
+          returning id`,
+        [params.id, orgId]
+      );
+      if (removed.rows.length !== 1) {
+        throw new Error("The compliance item changed while it was being deleted.");
+      }
+
+      /*
+       * The item history cascades with its parent, so this tenant audit row is
+       * the durable deletion record. It commits with the delete; if it cannot
+       * be recorded, the item remains.
+       */
+      await client.query(
+        `insert into agent_logs
+           (org_id, agent, action, level, status, message)
+         values ($1,'operator','compliance-delete','info','ok',$2)`,
+        [orgId, `${auth.email} deleted compliance item "${item.label}".`]
+      );
+
+      return { ok: true };
+    });
+
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("[compliance] item delete rolled back:", error);
     return NextResponse.json(
-      { error: "This item is tracked automatically and can't be deleted." },
-      { status: 400 }
+      {
+        error:
+          "The item could not be deleted with its audit record. Nothing is confirmed deleted. Try again.",
+        retryable: true,
+      },
+      { status: 503 }
     );
   }
-
-  await query(`delete from compliance_items where id=$1`, [params.id]);
-  await logAgent({
-    agent: "operator",
-    action: "compliance-delete",
-    level: "info",
-    message: `${auth.email} deleted compliance item "${item.label}".`,
-  });
-  return NextResponse.json({ ok: true });
 }
