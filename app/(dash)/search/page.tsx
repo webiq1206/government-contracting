@@ -268,7 +268,7 @@ export default async function SearchPage({
                     {r.cluster && (
                       <Link
                         href={r.cluster.href}
-                        className="mt-1 inline-flex min-h-11 items-center pl-3 text-xs font-medium text-accent hover:underline lg:min-h-0"
+                        className="mt-1 inline-flex coarse:min-h-11 items-center pl-3 text-xs font-medium text-accent hover:underline"
                       >
                         See all {r.cluster.count} copies of this solicitation &rarr;
                       </Link>

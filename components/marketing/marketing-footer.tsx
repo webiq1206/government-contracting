@@ -26,7 +26,7 @@ export function MarketingFooter({
           <div className="sm:col-span-2 lg:col-span-1">
             <Link
               href="/"
-              className="inline-flex min-h-11 items-center sm:min-h-0"
+              className="inline-flex items-center coarse:min-h-11"
               aria-label="Brost Co home"
             >
               <Wordmark variant={dark ? "light" : "dark"} className="h-7" />
@@ -42,16 +42,16 @@ export function MarketingFooter({
           </div>
 
           <FooterCol title="Product" dark={dark}>
-            <a href="/#platform" className="inline-flex min-h-11 items-center lg:min-h-0">Platform</a>
-            <a href="/#pipeline" className="inline-flex min-h-11 items-center lg:min-h-0">Pipeline</a>
-            <a href="/#pricing" className="inline-flex min-h-11 items-center lg:min-h-0">Pricing</a>
-            <a href="/#faq" className="inline-flex min-h-11 items-center lg:min-h-0">FAQ</a>
+            <a href="/#platform" className="inline-flex coarse:min-h-11 items-center">Platform</a>
+            <a href="/#pipeline" className="inline-flex coarse:min-h-11 items-center">Pipeline</a>
+            <a href="/#pricing" className="inline-flex coarse:min-h-11 items-center">Pricing</a>
+            <a href="/#faq" className="inline-flex coarse:min-h-11 items-center">FAQ</a>
           </FooterCol>
 
           <FooterCol title="Company" dark={dark}>
-            <a href="mailto:hello@brostco.com" className="inline-flex min-h-11 items-center lg:min-h-0">Contact</a>
-            <Link href="/privacy" className="inline-flex min-h-11 items-center lg:min-h-0">Privacy</Link>
-            <Link href="/terms" className="inline-flex min-h-11 items-center lg:min-h-0">Terms</Link>
+            <a href="mailto:hello@brostco.com" className="inline-flex coarse:min-h-11 items-center">Contact</a>
+            <Link href="/privacy" className="inline-flex coarse:min-h-11 items-center">Privacy</Link>
+            <Link href="/terms" className="inline-flex coarse:min-h-11 items-center">Terms</Link>
             {/*
               * The site map, linked from every marketing page.
               *
@@ -59,12 +59,12 @@ export function MarketingFooter({
               * thing it cannot afford to be: a crawler reaches it only if it
               * is reachable, and the footer is where a person looks for it.
               */}
-            <Link href="/sitemap" className="inline-flex min-h-11 items-center lg:min-h-0">Site map</Link>
+            <Link href="/sitemap" className="inline-flex coarse:min-h-11 items-center">Site map</Link>
           </FooterCol>
 
           <FooterCol title="Account" dark={dark}>
-            <Link href={loginHref} className="inline-flex min-h-11 items-center lg:min-h-0">Login</Link>
-            <Link href="/signup" className="inline-flex min-h-11 items-center lg:min-h-0">Get started</Link>
+            <Link href={loginHref} className="inline-flex coarse:min-h-11 items-center">Login</Link>
+            <Link href="/signup" className="inline-flex coarse:min-h-11 items-center">Get started</Link>
           </FooterCol>
         </div>
 
@@ -99,7 +99,7 @@ function FooterCol({
         * collapses on mobile so the column does not grow by the difference.
         */}
       <nav
-        className={`mt-3 flex flex-col gap-0 text-sm sm:gap-2 [&_a]:flex [&_a]:min-h-11 [&_a]:items-center sm:[&_a]:min-h-0 ${
+        className={`mt-3 flex flex-col gap-0 text-sm sm:gap-2 [&_a]:flex coarse:[&_a]:min-h-11 [&_a]:items-center ${
           dark ? "text-white/65 [&_a:hover]:text-white" : "text-muted-foreground [&_a:hover]:text-foreground"
         }`}
         aria-label={title}

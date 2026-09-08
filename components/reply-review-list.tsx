@@ -197,7 +197,7 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
                 {row.opportunity_id ? (
                   <Link
                     href={`/opportunity/${row.opportunity_id}`}
-                    className="inline-flex min-h-11 items-center break-words py-1 text-xs text-accent hover:underline lg:min-h-0"
+                    className="inline-flex coarse:min-h-11 items-center break-words py-1 text-xs text-accent hover:underline"
                   >
                     {row.opportunity_title ?? "Open the solicitation"}
                   </Link>
@@ -208,7 +208,7 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
                 )}
                 <Link
                   href={`/subs/${row.subcontractor_id}#conversations`}
-                  className="flex min-h-11 items-center py-1 text-xs text-accent hover:underline lg:min-h-0"
+                  className="flex coarse:min-h-11 items-center py-1 text-xs text-accent hover:underline"
                 >
                   Read the thread and reply
                 </Link>
@@ -230,7 +230,7 @@ export function ReplyReviewList({ rows }: { rows: ReplyReviewRow[] }) {
                 {row.original_message.length > 240 && (
                   <button
                     type="button"
-                    className="mt-1 inline-flex min-h-11 items-center text-xs text-accent hover:underline lg:min-h-0"
+                    className="mt-1 inline-flex coarse:min-h-11 items-center text-xs text-accent hover:underline"
                     aria-expanded={expanded}
                     onClick={() => setExpandedId(expanded ? null : row.id)}
                   >

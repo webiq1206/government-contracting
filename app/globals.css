@@ -232,7 +232,7 @@ body {
   .btn-ghost,
   .btn-danger,
   .btn-success {
-    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-sm px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex coarse:min-h-11 items-center justify-center gap-1.5 rounded-sm px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /*
@@ -294,20 +294,13 @@ body {
     @apply bg-surface/70;
   }
   /*
-   * 1024, matching the shell. Tablet portrait keeps the bottom tab bar and the
-   * drawer nav, which makes it a touch layout, and a touch layout that drops
-   * to a 40px button because the screen passed 768 has failed the touch-target
-   * rule on the device most likely to be held in one hand.
+   * Touch sizing keys off the pointer, not the width. It used to switch off
+   * at 1024 "matching the shell", which made an iPad in landscape -- 1180
+   * wide, pressed with a thumb -- a desktop, and a laptop with a narrow
+   * window a phone. `coarse:` (see tailwind.config.ts) applies the 44px
+   * sizes wherever the primary pointer is coarse, at any width; the layout
+   * breakpoints below are about layout and stay keyed to width.
    */
-  @media (min-width: 1024px) {
-    .btn,
-    .btn-primary,
-    .btn-ghost,
-    .btn-danger,
-    .btn-success {
-      min-height: 0;
-    }
-  }
 
   /* Dash page shell: fill the remaining column under the sticky header and
      scroll inside, instead of h-screen fighting the mobile tab bar / dvh. */
@@ -381,12 +374,7 @@ body {
   }
   /* Secondary action: quieter than primary, stronger than ghost. */
   .btn-secondary {
-    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-sm border border-foreground/50 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/70 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
-  }
-  @media (min-width: 1024px) {
-    .btn-secondary {
-      min-height: 0;
-    }
+    @apply inline-flex coarse:min-h-11 items-center justify-center gap-1.5 rounded-sm border border-foreground/50 bg-surface px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:border-foreground/70 hover:bg-background disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /* Surfaces */
@@ -428,15 +416,10 @@ body {
     @apply border-white/10;
   }
   .shell-ghost {
-    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-sm border border-foreground/50 bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex coarse:min-h-11 items-center justify-center gap-1.5 rounded-sm border border-foreground/50 bg-transparent px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50;
   }
   .dark .shell-ghost {
     @apply border-white/35 hover:bg-white/5;
-  }
-  @media (min-width: 1024px) {
-    .shell-ghost {
-      min-height: 0;
-    }
   }
   /* Sticky opportunity tab bar height + gap for scroll-margin anchors. */
   .scroll-mt-editorial {
@@ -469,7 +452,7 @@ body {
        into one unreadable line, on a screen where the tab strip is the only
        way to reach six of the seven sections. It lives here rather than at
        each call site because it was already forgotten at one of them. */
-    @apply relative inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground lg:min-h-0 lg:min-w-0;
+    @apply relative inline-flex coarse:min-h-11 coarse:min-w-11 shrink-0 items-center justify-center pb-2 text-sm text-muted-foreground transition-colors hover:text-foreground;
   }
   .dash-tab--active {
     @apply text-foreground;
@@ -577,16 +560,10 @@ body {
 
   /* Inputs: taller until the sidebar arrives. 640px is still a thumb. */
   .input {
-    @apply w-full rounded-sm border border-foreground/50 bg-background px-3 py-2.5 text-base text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent lg:min-h-0 lg:py-2 lg:text-sm;
-    min-height: 2.75rem;
+    @apply w-full rounded-sm border border-foreground/50 bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent coarse:min-h-11 coarse:py-2.5 coarse:text-base;
   }
   .dark .input {
     @apply border-white/35 bg-shell focus:border-gold;
-  }
-  @media (min-width: 1024px) {
-    .input {
-      min-height: 0;
-    }
   }
   .select {
     @apply input appearance-none;
@@ -641,7 +618,7 @@ body {
     @apply card;
   }
   .acc > summary {
-    @apply flex min-h-11 list-none cursor-pointer items-center justify-between gap-2;
+    @apply flex coarse:min-h-11 list-none cursor-pointer items-center justify-between gap-2;
   }
   .acc > summary::-webkit-details-marker {
     display: none;
@@ -661,7 +638,7 @@ body {
       display: block !important;
     }
     .acc > summary {
-      @apply min-h-0 cursor-default;
+      @apply cursor-default;
     }
     .acc > summary::after {
       display: none;

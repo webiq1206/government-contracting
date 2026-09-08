@@ -641,7 +641,7 @@ export function CallWorkspace({
               aria-label="Close"
               /* The way out of a full-screen workspace on a phone, and it was
                  27 pixels wide. */
-              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-surface lg:min-h-0 lg:min-w-0 lg:p-1.5"
+              className="inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-surface p-1.5"
             >
               ✕
             </button>
@@ -706,7 +706,7 @@ export function CallWorkspace({
                  * floor, because the label is one short word and a text
                  * button is only as wide as its text.
                  */
-                className="ml-auto inline-flex min-h-11 min-w-11 items-center justify-end text-xs font-medium text-accent-strong hover:underline lg:min-h-0 lg:min-w-0"
+                className="ml-auto inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-end text-xs font-medium text-accent-strong hover:underline"
                 aria-expanded={briefOpen}
               >
                 {briefOpen ? "Hide brief" : "Brief"}
@@ -1020,7 +1020,7 @@ export function CallWorkspace({
                          * side: at 36 a slip records a different confidence in
                          * a subcontractor, which is what later sourcing reads.
                          */
-                        className={`min-h-11 flex-1 rounded-md border text-sm lg:h-9 lg:min-h-0 ${
+                        className={`coarse:min-h-11 flex-1 rounded-md border text-sm h-9 ${
                           wrap.confidence === n
                             ? "border-accent bg-accent-soft text-accent-strong"
                             : "border-border text-muted-foreground hover:bg-surface"
@@ -1141,7 +1141,7 @@ export function CallWorkspace({
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="sr-only sm:not-sr-only">Outcome</span>
                 <select
-                  className="input h-11 w-auto max-w-[14rem] text-sm lg:h-9"
+                  className="input h-9 w-auto max-w-[14rem] text-sm coarse:h-11"
                   aria-label="Call outcome"
                   value={wrap.outcome}
                   onChange={(e) => setWrap((w) => ({ ...w, outcome: e.target.value }))}

@@ -436,7 +436,7 @@ export function FilterToolbar({
                   />
                   <button
                     type="button"
-                    className="btn-ghost min-h-11 px-2 text-xs lg:min-h-0"
+                    className="btn-ghost coarse:min-h-11 px-2 text-xs"
                     disabled={!name.trim() || viewBusy}
                     onClick={() => void saveCurrentView(name, "personal")}
                   >
@@ -444,7 +444,7 @@ export function FilterToolbar({
                   </button>
                   <button
                     type="button"
-                    className="btn-ghost min-h-11 px-2 text-xs lg:min-h-0"
+                    className="btn-ghost coarse:min-h-11 px-2 text-xs"
                     disabled={!name.trim() || viewBusy}
                     onClick={() => void saveCurrentView(name, "team")}
                     title="Everybody in this account will see it, with your name on it."
@@ -704,7 +704,7 @@ function FilterSheet({
                 key={c.key}
                 type="button"
                 onClick={() => set(c.key, "")}
-                className="badge inline-flex min-h-11 items-center gap-1.5 bg-gold/15 text-gold-text lg:min-h-0"
+                className="badge inline-flex coarse:min-h-11 items-center gap-1.5 bg-gold/15 text-gold-text"
               >
                 <span className="font-medium">{c.label}:</span> {c.display}
                 <span aria-hidden>x</span>
@@ -788,7 +788,7 @@ function Control({
       <label
         htmlFor={id}
         title={spec.hint}
-        className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-muted-foreground lg:min-h-0"
+        className="flex coarse:min-h-11 cursor-pointer items-center gap-2 text-sm text-muted-foreground"
       >
         <input
           id={id}

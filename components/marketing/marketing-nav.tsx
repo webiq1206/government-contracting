@@ -39,7 +39,7 @@ export function MarketingNav({
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 sm:h-16 sm:px-6">
         <Link
           href="/"
-          className="inline-flex min-h-11 shrink-0 items-center sm:min-h-0"
+          className="inline-flex shrink-0 items-center coarse:min-h-11"
           aria-label="Brost Co home"
         >
           <Wordmark
@@ -57,7 +57,7 @@ export function MarketingNav({
             <a
               key={link.id}
               href={sectionHref(link.id, onLanding)}
-              className={`text-sm transition-colors ${
+              className={`inline-flex items-center text-sm transition-colors coarse:min-h-11 ${
                 dark
                   ? "text-white/65 hover:text-white"
                   : "text-muted-foreground hover:text-foreground"

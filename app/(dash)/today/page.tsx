@@ -268,7 +268,7 @@ function StatRow({
     <li>
       <Link
         href={href}
-        className="group flex min-h-11 items-center justify-between py-2.5 transition-colors hover:text-foreground lg:min-h-0"
+        className="group flex coarse:min-h-11 items-center justify-between py-2.5 transition-colors hover:text-foreground"
       >
         <span className="group-hover:underline group-hover:decoration-gold group-hover:underline-offset-4">
           {label}
@@ -350,28 +350,72 @@ function PipelineHealthRail({
           </Link>
 
           {active > 0 ? (
-            <div className="mt-6 flex h-24 items-end gap-1.5">
-              {bars.map((b) =>
-                b.count > 0 ? (
-                  <Link
-                    key={b.key}
-                    href={`/pipeline?stage=${b.key}`}
-                    aria-label={`${b.label}: ${b.count}`}
-                    title={`${b.label}: ${b.count}`}
-                    className="flex-1 rounded-sm bg-gradient-to-t from-gold/25 to-gold/85 transition-opacity hover:opacity-80"
-                    style={{ height: `${b.h}%` }}
-                  />
-                ) : (
-                  // Nothing at this stage: a link would lead to an empty board.
-                  <div
-                    key={b.key}
-                    className="flex-1 rounded-sm bg-gradient-to-t from-gold/25 to-gold/85"
-                    style={{ height: `${b.h}%` }}
-                    title={`${b.label}: 0`}
-                  />
-                )
-              )}
-            </div>
+            <>
+              {/* Seven bars in a 248px rail are 30px wide: a fine pointer lands
+                  on one without thought, a thumb straddles two. On a coarse
+                  pointer the same numbers are laid out as rows instead, each a
+                  full-width, thumb-height door to the same stage, with the bar
+                  drawn sideways. Same data, same links; only the geometry
+                  follows the pointer. */}
+              <div className="mt-6 flex h-24 items-end gap-1.5 coarse:hidden">
+                {bars.map((b) =>
+                  b.count > 0 ? (
+                    <Link
+                      key={b.key}
+                      href={`/pipeline?stage=${b.key}`}
+                      aria-label={`${b.label}: ${b.count}`}
+                      title={`${b.label}: ${b.count}`}
+                      className="flex h-full flex-1 items-end transition-opacity hover:opacity-80"
+                    >
+                      {/* The whole column is the link; the bar is what it draws.
+                          A stage with three items used to be an 8px-tall target. */}
+                      <span
+                        className="block w-full rounded-sm bg-gradient-to-t from-gold/25 to-gold/85"
+                        style={{ height: `${b.h}%` }}
+                      />
+                    </Link>
+                  ) : (
+                    // Nothing at this stage: a link would lead to an empty board.
+                    <div
+                      key={b.key}
+                      className="flex-1 rounded-sm bg-gradient-to-t from-gold/25 to-gold/85"
+                      style={{ height: `${b.h}%` }}
+                      title={`${b.label}: 0`}
+                    />
+                  )
+                )}
+              </div>
+              <ul className="mt-6 hidden space-y-1 coarse:block">
+                {bars.map((b) => {
+                  const row = (
+                    <>
+                      <span className="w-24 shrink-0 text-xs text-muted-foreground">{b.label}</span>
+                      <span className="h-2 flex-1 overflow-hidden rounded-sm bg-border/40">
+                        <span
+                          className="block h-full rounded-sm bg-gradient-to-r from-gold/25 to-gold/85"
+                          style={{ width: `${b.h}%` }}
+                        />
+                      </span>
+                      <span className="num w-8 shrink-0 text-right text-sm text-foreground">{b.count}</span>
+                    </>
+                  );
+                  return (
+                    <li key={b.key}>
+                      {b.count > 0 ? (
+                        <Link
+                          href={`/pipeline?stage=${b.key}`}
+                          className="flex min-h-11 items-center gap-3 transition-opacity hover:opacity-80"
+                        >
+                          {row}
+                        </Link>
+                      ) : (
+                        <div className="flex min-h-11 items-center gap-3 text-muted-foreground">{row}</div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           ) : (
             <p className="mt-6 border border-dashed border-border/55 px-3 py-4 text-center text-xs leading-relaxed text-muted-foreground">
               Nothing in the pipeline yet. Opportunities appear here once SAM.gov is
@@ -1339,7 +1383,9 @@ export default async function TodayPage({
                   {digestParts.length > 0 && (
                     <Link
                       href="/agents"
-                      className="block rounded-md border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm text-foreground/80 transition-colors hover:border-gold/60"
+                      /* py-2.5 on a text-sm line lands at 42px on a tablet, two
+                         short of a thumb. Touch height only. */
+                      className="block coarse:min-h-11 rounded-md border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm text-foreground/80 transition-colors hover:border-gold/60"
                     >
                       <span className="font-semibold text-gold-text">Last 24 hours:</span>{" "}
                       {digestParts.join(" · ")}

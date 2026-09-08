@@ -169,7 +169,7 @@ function Segmented({
             /* 44 tall, because these are pressed one-handed with a phone
                against an ear. At 36 a mis-tap costs the answer and, on a
                yes/no, records the opposite of what was said. */
-            className={`min-h-11 flex-1 px-3 py-2 text-sm transition lg:min-h-0 ${
+            className={`coarse:min-h-11 flex-1 px-3 py-2 text-sm transition ${
               active
                 ? opt.value === "no"
                   ? "bg-risk text-on-status"

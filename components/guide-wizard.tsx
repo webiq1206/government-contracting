@@ -482,7 +482,7 @@ export function GuideWizard() {
                       setStepIndex(0);
                     }}
                     aria-pressed={urgentOnly}
-                    className={`min-h-11 rounded-md px-3 py-1.5 text-xs font-medium lg:min-h-0 ${
+                    className={`coarse:min-h-11 rounded-md px-3 py-1.5 text-xs font-medium ${
                       urgentOnly
                         ? "bg-foreground text-background"
                         : "bg-surface text-muted-foreground hover:bg-muted"
@@ -867,7 +867,7 @@ function GuideBody({
 
       <button
         type="button"
-        className="inline-flex min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline lg:min-h-0"
+        className="inline-flex coarse:min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline"
         onClick={() => void onDone()}
       >
         Refresh guidance

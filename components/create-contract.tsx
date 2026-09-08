@@ -66,22 +66,22 @@ export function CreateContract() {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
           <span className="label mb-1 block">Contract number</span>
-          <input className="input h-11 w-full lg:h-9" value={number}
+          <input className="input h-9 w-full coarse:h-11" value={number}
             onChange={(e) => setNumber(e.target.value)} />
         </label>
         <label className="block">
           <span className="label mb-1 block">Award amount</span>
-          <input className="input h-11 w-full lg:h-9" inputMode="decimal" value={award}
+          <input className="input h-9 w-full coarse:h-11" inputMode="decimal" value={award}
             onChange={(e) => setAward(e.target.value)} placeholder="Dollars" />
         </label>
         <label className="block">
           <span className="label mb-1 block">Starts</span>
-          <input type="date" className="input h-11 w-full lg:h-9" value={start}
+          <input type="date" className="input h-9 w-full coarse:h-11" value={start}
             onChange={(e) => setStart(e.target.value)} />
         </label>
         <label className="block">
           <span className="label mb-1 block">Ends</span>
-          <input type="date" className="input h-11 w-full lg:h-9" value={end}
+          <input type="date" className="input h-9 w-full coarse:h-11" value={end}
             onChange={(e) => setEnd(e.target.value)} />
         </label>
       </div>

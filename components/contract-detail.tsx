@@ -263,7 +263,7 @@ function Fact({
       <dd className={`text-sm ${value ? "text-foreground" : "text-muted-foreground"}`}>
         {value ? (
           href ? (
-            <Link href={href} className="text-accent hover:underline">
+            <Link href={href} className="inline-flex items-center text-accent hover:underline coarse:min-h-11">
               {value}
             </Link>
           ) : (

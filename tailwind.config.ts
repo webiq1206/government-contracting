@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 /**
  * BROST CO theme system.
@@ -75,7 +76,25 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    /**
+     * `coarse:` -- styles for a thumb.
+     *
+     * Touch sizing used to key off the `lg` width breakpoint: 44px below
+     * 1024, compact above. A window width is not a pointer. An iPad in
+     * landscape is 1180 wide and pressed with a thumb; a laptop with the
+     * window dragged narrow is 900 wide and pointed at with a mouse. The
+     * primary pointer's precision is the signal that actually predicts a
+     * miss, and it is the one `.tap` already used.
+     *
+     * So: base styles are the compact, pointer-precise ones, and `coarse:`
+     * adds the touch sizing wherever the device's primary pointer is a thumb,
+     * at any width.
+     */
+    plugin(({ addVariant }) => {
+      addVariant("coarse", "@media (pointer: coarse)");
+    }),
+  ],
 };
 
 export default config;

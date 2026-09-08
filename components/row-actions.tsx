@@ -154,7 +154,7 @@ export function RowActions({
              * the row's other actions around.
              */
             className={`tap btn-ghost items-center justify-center ${
-              compact ? "min-h-11 px-2 text-xs lg:min-h-8" : "min-h-11 px-2.5 text-sm lg:min-h-9"
+              compact ? "min-h-8 px-2 text-xs coarse:min-h-11" : "min-h-9 px-2.5 text-sm coarse:min-h-11"
             }`}
           >
             <span aria-hidden>⋯</span>
@@ -229,7 +229,7 @@ function PrimaryAction({
   onWidget: (w: RowWidget) => void;
   compact: boolean;
 }) {
-  const size = compact ? "min-h-11 text-xs lg:min-h-8" : "min-h-11 text-xs lg:min-h-9 lg:text-sm";
+  const size = compact ? "min-h-8 text-xs coarse:min-h-11" : "min-h-9 text-sm coarse:min-h-11";
   const tone = action.danger ? "btn-danger" : "btn-primary";
   const className = `${tone} ${size}`;
 
@@ -270,7 +270,7 @@ function PrimaryAction({
 // ---------------------------------------------------------------------------
 
 const ITEM =
-  "flex min-h-11 w-full flex-col items-start justify-center gap-0.5 rounded px-3 py-2.5 text-left hover:bg-muted focus-visible:bg-muted lg:min-h-0";
+  "flex coarse:min-h-11 w-full flex-col items-start justify-center gap-0.5 rounded px-3 py-2.5 text-left hover:bg-muted focus-visible:bg-muted";
 
 function MenuItem({
   action,

@@ -51,7 +51,7 @@ export function PipelinePulse({ findings, compact = false }: { findings: PulseFi
             */}
             <Link
               href={f.href}
-              className="inline-flex min-h-11 items-center font-medium underline lg:min-h-0"
+              className="inline-flex coarse:min-h-11 items-center font-medium underline"
             >
               {f.cta}
             </Link>

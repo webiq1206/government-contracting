@@ -428,7 +428,7 @@ export default async function WorkbenchPage({
                   key={f}
                   href={chip({ due: f === "all" ? undefined : f })}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
+                  className={`inline-flex coarse:min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors py-1.5 ${
                     active
                       ? "border-gold bg-gold/15 text-foreground"
                       : n === 0
@@ -449,7 +449,7 @@ export default async function WorkbenchPage({
                 key={o}
                 href={chip({ owner: o === "anyone" ? undefined : o })}
                 aria-current={owner === o ? "page" : undefined}
-                className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
+                className={`inline-flex coarse:min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors py-1.5 ${
                   owner === o
                     ? "border-gold bg-gold/15 text-foreground"
                     : "border-border text-foreground hover:border-foreground/30"
@@ -471,7 +471,7 @@ export default async function WorkbenchPage({
                   key={k}
                   href={chip({ kind: active ? undefined : k })}
                   aria-current={active ? "page" : undefined}
-                  className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
+                  className={`inline-flex coarse:min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors py-1.5 ${
                     active
                       ? "border-gold bg-gold/15 text-foreground"
                       : kindCounts[k] === 0
@@ -688,7 +688,7 @@ export default async function WorkbenchPage({
                       <li>
                         <Link
                           href={selected.recordHref}
-                          className="text-accent underline-offset-2 hover:underline"
+                          className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                         >
                           Open the full record
                         </Link>
@@ -697,7 +697,7 @@ export default async function WorkbenchPage({
                         <li>
                           <Link
                             href={`/call-queue?opportunity=${selected.opportunityId}`}
-                            className="text-accent underline-offset-2 hover:underline"
+                            className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                           >
                             Calls for this bid
                           </Link>
@@ -706,7 +706,7 @@ export default async function WorkbenchPage({
                       <li>
                         <Link
                           href="/communications"
-                          className="text-accent underline-offset-2 hover:underline"
+                          className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                         >
                           Conversations
                         </Link>

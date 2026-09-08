@@ -270,7 +270,7 @@ export function SubMerge({
           </p>
           <input
             type="text"
-            className="input h-11 w-full lg:h-9"
+            className="input h-9 w-full coarse:h-11"
             placeholder="Why, in the words you would use to explain it"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -310,7 +310,7 @@ export function SubMerge({
           </p>
           <input
             type="text"
-            className="input h-11 w-full lg:h-9"
+            className="input h-9 w-full coarse:h-11"
             placeholder="Why, so the next person is not left guessing"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -341,7 +341,7 @@ export function SubMerge({
           <label className="block">
             <span className="label mb-1 block">Which record is the duplicate?</span>
             <select
-              className="input h-11 w-full lg:h-9"
+              className="input h-9 w-full coarse:h-11"
               value={picked}
               onChange={(e) => {
                 setPicked(e.target.value);
@@ -476,7 +476,7 @@ export function SubMerge({
 
 function chip(on: boolean): string {
   const base =
-    "inline-flex min-h-11 max-w-full items-center truncate rounded-md border px-3 text-sm lg:min-h-0 lg:py-1.5";
+    "inline-flex coarse:min-h-11 max-w-full items-center truncate rounded-md border px-3 py-1.5 text-sm";
   return on
     ? `${base} border-accent bg-accent-soft text-accent-strong`
     : `${base} border-border text-foreground hover:bg-surface`;

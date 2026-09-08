@@ -162,7 +162,7 @@ export function RequirementStateControl({
               </label>
               <select
                 id={`${idBase}-state`}
-                className="input h-11 w-full lg:h-9"
+                className="input h-9 w-full coarse:h-11"
                 value={state}
                 onChange={(e) => setState(e.target.value as RequirementState)}
               >
@@ -179,7 +179,7 @@ export function RequirementStateControl({
               </label>
               <select
                 id={`${idBase}-owner`}
-                className="input h-11 w-full lg:h-9"
+                className="input h-9 w-full coarse:h-11"
                 value={ownerId}
                 onChange={(e) => setOwnerId(e.target.value)}
               >
@@ -198,7 +198,7 @@ export function RequirementStateControl({
               <input
                 id={`${idBase}-due`}
                 type="date"
-                className="input h-11 w-full lg:h-9"
+                className="input h-9 w-full coarse:h-11"
                 value={dueAt}
                 onChange={(e) => setDueAt(e.target.value)}
               />
@@ -212,7 +212,7 @@ export function RequirementStateControl({
               </label>
               <select
                 id={`${idBase}-verify`}
-                className="input h-11 w-full lg:h-9"
+                className="input h-9 w-full coarse:h-11"
                 value={verification}
                 onChange={(e) => setVerification(e.target.value as VerificationKind)}
               >

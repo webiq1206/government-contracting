@@ -365,7 +365,7 @@ function Evidence({ o }: { o: Opportunity }) {
                   href={l.href}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="text-accent underline-offset-2 hover:underline"
+                  className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                 >
                   {l.label}
                 </a>
@@ -375,7 +375,7 @@ function Evidence({ o }: { o: Opportunity }) {
         )}
         <Link
           href={`/opportunity/${o.id}`}
-          className="mt-2 inline-flex text-sm text-accent underline-offset-2 hover:underline"
+          className="mt-2 inline-flex items-center text-sm text-accent underline-offset-2 hover:underline coarse:min-h-11"
         >
           Open the full record
         </Link>
