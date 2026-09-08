@@ -98,6 +98,22 @@ listed in that same run as having no file in this build. The baseline keeps the
 row and marks it `orphan:migration-file-removed-from-repo` rather than deleting
 it. Do not delete such rows by hand, and do not restore the file.
 
+### Changing AUTH_SECRET
+
+Saved credentials (API keys entered in Settings, Gmail refresh tokens, W-9
+TINs) are encrypted under `AUTH_SECRET`, falling back to `SESSION_SECRET` when
+`AUTH_SECRET` is unset. Adding `AUTH_SECRET` to a deployment that has been
+running on `SESSION_SECRET`, or rotating it, changes the key. Readers try
+every secret the deployment holds, so nothing stops, but move the rows onto the
+current secret so the old one can be retired:
+
+```bash
+AUTH_SECRET_PREVIOUS='<old value>' MIGRATION_DATABASE_URL='<owner connection>' npm run db:rekey-secrets
+```
+
+It prints which keys it rewrote and which it could not read under any secret;
+re-enter those in Settings, then unset `AUTH_SECRET_PREVIOUS`.
+
 ## 5. Run
 
 Press **Run**. The default command is `npm run start`, which launches the web

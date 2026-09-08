@@ -16,6 +16,7 @@
     "start:worker": "tsx worker/index.ts",
     "worker": "tsx worker/index.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:rekey-secrets": "tsx scripts/rekey-integration-secrets.ts",
     "db:verify-tenant-isolation": "tsx scripts/verify-tenant-isolation.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:setup": "npm run db:migrate && npm run db:seed",

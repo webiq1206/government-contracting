@@ -55,8 +55,11 @@ export function isAllowedKey(key: string): key is AllowedEnvKey {
 
 const DEFAULT_SECRET = "dev-insecure-secret-change-me";
 
-function encryptionKey(): Buffer {
-  // Match config.auth.secret resolution (AUTH_SECRET, then SESSION_SECRET).
+/**
+ * The secret new ciphertext is written under: config.auth.secret's resolution
+ * (AUTH_SECRET, then SESSION_SECRET), and nothing else.
+ */
+function primarySecret(): string {
   const secret = process.env.AUTH_SECRET || process.env.SESSION_SECRET || DEFAULT_SECRET;
   // In production the default secret is PUBLIC, so anything "encrypted" with a
   // key derived from it is decryptable by anyone who reads this repo. That is
@@ -69,7 +72,37 @@ function encryptionKey(): Buffer {
       "AUTH_SECRET (or SESSION_SECRET) is not set in production. Refusing to encrypt secrets with the public default key. Set a real 64+ char secret."
     );
   }
+  return secret;
+}
+
+/**
+ * Every secret a stored value may have been written under, primary first.
+ *
+ * Production lost every saved credential at once on 2026-09-08: the rows had
+ * been encrypted while only SESSION_SECRET (the one the host provisions) was
+ * set, AUTH_SECRET was added later as the docs ask, and from the next boot the
+ * primary resolved to a different value. Nothing was damaged and no secret was
+ * lost, but a reader that knows one key called every row unreadable, stopped
+ * every agent, and told the operator to "restore the correct AUTH_SECRET"
+ * when the correct one was in place. Both are the deployment's own secrets,
+ * so reading under either leaks nothing; AUTH_SECRET_PREVIOUS is the same
+ * allowance for a deliberate rotation. New writes always use the primary, so
+ * `npm run db:rekey-secrets` can retire an old secret once every row is moved.
+ */
+export function candidateSecrets(): string[] {
+  const primary = primarySecret();
+  const seen = new Set<string>();
+  return [primary, process.env.AUTH_SECRET_PREVIOUS, process.env.SESSION_SECRET, process.env.AUTH_SECRET]
+    .filter((s): s is string => typeof s === "string" && s.length > 0)
+    .filter((s) => (seen.has(s) ? false : (seen.add(s), true)));
+}
+
+function keyFor(secret: string): Buffer {
   return createHash("sha256").update(`integration-settings:${secret}`).digest();
+}
+
+function encryptionKey(): Buffer {
+  return keyFor(primarySecret());
 }
 
 export function encryptSecret(plain: string): string {
@@ -80,28 +113,54 @@ export function encryptSecret(plain: string): string {
   return `v1:${iv.toString("base64")}:${tag.toString("base64")}:${enc.toString("base64")}`;
 }
 
+function decryptWith(key: Buffer, ivB64: string, tagB64: string, encB64: string): string {
+  const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivB64, "base64"));
+  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(encB64, "base64")), decipher.final()]).toString(
+    "utf8"
+  );
+}
+
+/**
+ * Whether a stored value was written under the primary secret.
+ *
+ * False means it still reads (under an older secret) but should be rewritten;
+ * the rekey script uses this to find the rows to move. Legacy plaintext and
+ * unreadable values both answer false so they are listed too.
+ */
+export function isUnderPrimarySecret(stored: string): boolean {
+  const [version, ivB64, tagB64, encB64] = stored.split(":");
+  if (version !== "v1") return false;
+  try {
+    decryptWith(encryptionKey(), ivB64, tagB64, encB64);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function decryptSecret(stored: string): string | null {
   const [version, ivB64, tagB64, encB64] = stored.split(":");
   // Plaintext rows from before encryption are identified by their missing
   // version marker. Callers that deliberately support that legacy format can
   // handle it explicitly; it must never be mistaken for valid ciphertext.
   if (version !== "v1") return null;
-  try {
-    const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(ivB64, "base64"));
-    decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-    return Buffer.concat([
-      decipher.update(Buffer.from(encB64, "base64")),
-      decipher.final(),
-    ]).toString("utf8");
-  } catch (error) {
-    // A saved credential that cannot be decrypted is not the same as a key
-    // the user never supplied. Propagate a safe explanation so automation
-    // stops and the integration screen can say that operator repair is needed.
-    throw new Error(
-      "A saved integration credential could not be decrypted. The encryption secret may have changed or the stored value is damaged. Restore the correct AUTH_SECRET, then reconnect or replace this credential.",
-      { cause: error }
-    );
+  let error: unknown = null;
+  for (const secret of candidateSecrets()) {
+    try {
+      return decryptWith(keyFor(secret), ivB64, tagB64, encB64);
+    } catch (err) {
+      error = err;
+    }
   }
+  // A saved credential that cannot be decrypted under any secret this
+  // deployment holds is not the same as a key the user never supplied.
+  // Propagate a safe explanation so automation stops and the integration
+  // screen can say that operator repair is needed.
+  throw new Error(
+    "A saved integration credential could not be decrypted. The encryption secret may have changed or the stored value is damaged. If AUTH_SECRET was rotated, set AUTH_SECRET_PREVIOUS to the old value and run npm run db:rekey-secrets; otherwise reconnect or replace this credential.",
+    { cause: error }
+  );
 }
 
 export interface StoredSetting {
