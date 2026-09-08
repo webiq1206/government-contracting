@@ -5,89 +5,14 @@ Measured in Chromium at six widths and in both themes, on rendered output: one p
 
 The remote font stylesheet is stubbed empty, so the fallback stack is what gets measured. That is the more conservative reading and matches what an operator behind a proxy that blocks Google actually sees.
 
-9 signed-out and 31 signed-in routes x 6 widths x 2 themes. **1542 findings.**
+9 signed-out and 31 signed-in routes x 6 widths x 2 themes. **483 findings.**
 
 The dark pass reports contrast only. Target sizes and accessible names do not change with the theme, so measuring them twice would list every finding twice without covering anything more.
 
 | Rule | Count |
 | --- | --- |
-| touch-target | 1124 |
 | covered-control | 418 |
-
-## touch-target (1124)
-
-- `phone-small` 35x44 <summary> "Open navigation" _(/)_
-- `phone-small` 63x16 <a> "Open brief" _(/review)_
-- `phone-small` 10x16 <button> "×" _(/settings/profile)_
-- `phone-small` 175x28 <input> "" _(/recap, /admin/recap)_
-- `phone-large` 35x44 <summary> "Open navigation" _(/)_
-- `phone-large` 63x16 <a> "Open brief" _(/review)_
-- `phone-large` 10x16 <button> "×" _(/settings/profile)_
-- `phone-large` 175x28 <input> "" _(/recap, /admin/recap)_
-- `tablet-portrait` 512x28 <a> "Brost Co home" _(/)_
-- `tablet-portrait` 33x44 <a> "Log in" _(/)_
-- `tablet-portrait` 35x44 <summary> "Open navigation" _(/)_
-- `tablet-portrait` 130x24 <a> "Watch the workflow ↓" _(/)_
-- `tablet-portrait` 57x32 <button> "Review" _(/)_
-- `tablet-portrait` 49x32 <button> "Open" _(/)_
-- `tablet-portrait` 185x24 <a> "Set up your company profile" _(/)_
-- `tablet-portrait` 116x15 <a> "hello@brostco.com ↗" _(/)_
-- `tablet-portrait` 123x28 <a> "Brost Co home" _(/)_
-- `tablet-portrait` 738x42 <a> "Last 24 hours: 282 expired archive" _(/today)_
-- `tablet-portrait` 63x16 <a> "Open brief" _(/review)_
-- `tablet-portrait` 10x16 <button> "×" _(/settings/profile)_
-- `tablet-portrait` 36x36 <button> "✕" _(/settings/profile)_
-- `tablet-portrait` 175x28 <input> "" _(/recap, /admin/recap)_
-- `tablet-landscape` 402x28 <a> "Brost Co home" _(/)_
-- `tablet-landscape` 45x18 <a> "Platform" _(/)_
-- `tablet-landscape` 68x18 <a> "How it works" _(/)_
-- `tablet-landscape` 37x18 <a> "Pricing" _(/)_
-- `tablet-landscape` 24x18 <a> "FAQ" _(/)_
-- `tablet-landscape` 33x18 <a> "Log in" _(/)_
-- `tablet-landscape` 130x24 <a> "Watch the workflow ↓" _(/)_
-- `tablet-landscape` 56x32 <button> "Review" _(/)_
-- `tablet-landscape` 49x32 <button> "Open" _(/)_
-- `tablet-landscape` 185x24 <a> "Set up your company profile" _(/)_
-- `tablet-landscape` 116x15 <a> "hello@brostco.com ↗" _(/)_
-- `tablet-landscape` 123x28 <a> "Brost Co home" _(/)_
-- `tablet-landscape` 110x15 <a> "Platform" _(/)_
-- `tablet-landscape` 110x15 <a> "How it works" _(/)_
-- `tablet-landscape` 110x15 <a> "Pricing" _(/)_
-- `tablet-landscape` 110x15 <a> "Pricing explained" _(/)_
-- `tablet-landscape` 110x15 <a> "Compare approaches" _(/)_
-- `tablet-landscape` 110x15 <a> "FAQ" _(/)_
-- `tablet-landscape` 110x15 <a> "Privacy" _(/)_
-- `tablet-landscape` 110x15 <a> "Terms" _(/)_
-- `tablet-landscape` 110x15 <a> "Site map" _(/)_
-- `tablet-landscape` 110x15 <a> "Log in" _(/)_
-- `tablet-landscape` 110x15 <a> "Contact" _(/)_
-- `tablet-landscape` 53x20 <a> "Product" _(5 routes)_
-- `tablet-landscape` 66x20 <a> "Guide Me" _(5 routes)_
-- `tablet-landscape` 47x20 <a> "Pricing" _(5 routes)_
-- `tablet-landscape` 30x96 <a> "Scoring: 501" _(/today)_
-- `tablet-landscape` 30x96 <a> "Analysis: 501" _(/today)_
-- `tablet-landscape` 30x96 <a> "Finding subs: 500" _(/today)_
-- `tablet-landscape` 30x96 <a> "Outreach: 500" _(/today)_
-- `tablet-landscape` 30x96 <a> "Calls: 500" _(/today)_
-- `tablet-landscape` 30x96 <a> "Quotes: 499" _(/today)_
-- `tablet-landscape` 30x96 <a> "Bid building: 499" _(/today)_
-- `tablet-landscape` 140x16 <a> "Open the full record" _(/workbench)_
-- `tablet-landscape` 113x16 <a> "Calls for this bid" _(/workbench)_
-- `tablet-landscape` 100x16 <a> "Conversations" _(/workbench)_
-- `tablet-landscape` 41x44 <a> "List" _(/pipeline)_
-- `tablet-landscape` 63x16 <a> "Open brief" _(/review)_
-- `tablet-landscape` 161x16 <a> "The notice on SAM.gov" _(/review)_
-- `tablet-landscape` 140x20 <a> "Open the full record" _(/review)_
-- `tablet-landscape` 79x36 <a> "Rivera Mechanical" _(/contracts)_
-- `tablet-landscape` 207x16 <a> "This contract on its own page" _(/contracts)_
-- `tablet-landscape` 132x16 <a> "The bid that won it" _(/contracts)_
-- `tablet-landscape` 127x16 <a> "Compliance board" _(/contracts)_
-- `tablet-landscape` 10x16 <button> "×" _(/settings/profile)_
-- `tablet-landscape` 36x36 <button> "✕" _(/settings/profile)_
-- `tablet-landscape` 44x44 <button> "Calls" _(/settings/rules)_
-- `tablet-landscape` 39x44 <button> "Core" _(/settings/integrations)_
-- `tablet-landscape` 36x44 <button> "Data" _(/settings/integrations)_
-- `tablet-landscape` 175x28 <input> "" _(/recap, /admin/recap)_
+| touch-target | 65 |
 
 ## covered-control (418)
 
@@ -143,7 +68,7 @@ The dark pass reports contrast only. Target sizes and accessible names do not ch
 - `tablet-portrait` <input> "" is covered by "OpportunitiesOpportunities" _(/settings/profile)_
 - `tablet-portrait` <input> "" is covered by "CallsCalls" _(/settings/profile)_
 - `tablet-portrait` <a> "Open Communications" is covered by "TodayToday99+" _(/settings/notifications)_
-- `tablet-portrait` <a> "Snapshot ProbeNo owner on fileFull" is covered by "Subs" _(/admin/accounts)_
+- `tablet-portrait` <a> "hist-afc9255e-0092-4127-9f88-f6265" is covered by "Subs" _(/admin/accounts)_
 - `tablet-portrait` <a> "CompanyWhat the scoring is matchin" is covered by "svg" _(/more)_
 - `tablet-portrait` <input> "" is covered by "TodayToday99+" _(/feedback, /settings/recap)_
 - `tablet-portrait` <a> "perf-sweep opportunity 99" is covered by "TodayToday99+" _(/recap)_
@@ -155,6 +80,7 @@ The dark pass reports contrast only. Target sizes and accessible names do not ch
 - `tablet-landscape` <button> "Settings▾" is covered by "LightDarkDSigned in asdemo@brostco" _(22 routes)_
 - `tablet-landscape` <a> "On the contractRivera MechanicalBo" is covered by "Overdue0Due today8Later646Complete" _(/today)_
 - `tablet-landscape` <button> "?" is covered by "Open briefQuick lookPursue⋯" _(/review)_
+- `tablet-landscape` <button> "?" is covered by "Open briefQuick look" _(/review)_
 - `tablet-landscape` <a> "Subcontractors" is covered by "Dark" _(/subs, /communications)_
 - `tablet-landscape` <a> "Communications" is covered by "LightDarkDSigned in asdemo@brostco" _(/subs, /communications)_
 - `tablet-landscape` <button> "Delivery▾" is covered by "LightDarkDSigned in asdemo@brostco" _(/subs, /communications)_
@@ -216,3 +142,55 @@ The dark pass reports contrast only. Target sizes and accessible names do not ch
 - `desktop-wide` <a> "Audit Log" is covered by "Automation is not set up" _(6 routes)_
 - `desktop-wide` <a> "Platform Recap" is covered by "Dark" _(6 routes)_
 - `desktop-wide` <button> "Optional Tools▾" is covered by "Signed in as" _(6 routes)_
+
+## touch-target (65)
+
+- `phone-small` 175x28 <input> "" _(/recap, /admin/recap)_
+- `phone-large` 175x28 <input> "" _(/recap, /admin/recap)_
+- `tablet-portrait` 738x42 <a> "Last 24 hours: 282 expired archive" _(/today)_
+- `tablet-portrait` 175x28 <input> "" _(/recap, /admin/recap)_
+- `tablet-landscape` 402x28 <a> "Brost Co home" _(/)_
+- `tablet-landscape` 45x18 <a> "Platform" _(/)_
+- `tablet-landscape` 68x18 <a> "How it works" _(/)_
+- `tablet-landscape` 37x18 <a> "Pricing" _(/)_
+- `tablet-landscape` 24x18 <a> "FAQ" _(/)_
+- `tablet-landscape` 33x18 <a> "Log in" _(/)_
+- `tablet-landscape` 130x24 <a> "Watch the workflow ↓" _(/)_
+- `tablet-landscape` 185x24 <a> "Set up your company profile" _(/)_
+- `tablet-landscape` 116x15 <a> "hello@brostco.com ↗" _(/)_
+- `tablet-landscape` 123x28 <a> "Brost Co home" _(/)_
+- `tablet-landscape` 110x15 <a> "Platform" _(/)_
+- `tablet-landscape` 110x15 <a> "How it works" _(/)_
+- `tablet-landscape` 110x15 <a> "Pricing" _(/)_
+- `tablet-landscape` 110x15 <a> "Pricing explained" _(/)_
+- `tablet-landscape` 110x15 <a> "Compare approaches" _(/)_
+- `tablet-landscape` 110x15 <a> "FAQ" _(/)_
+- `tablet-landscape` 110x15 <a> "Privacy" _(/)_
+- `tablet-landscape` 110x15 <a> "Terms" _(/)_
+- `tablet-landscape` 110x15 <a> "Site map" _(/)_
+- `tablet-landscape` 110x15 <a> "Log in" _(/)_
+- `tablet-landscape` 110x15 <a> "Contact" _(/)_
+- `tablet-landscape` 53x20 <a> "Product" _(5 routes)_
+- `tablet-landscape` 66x20 <a> "Guide Me" _(5 routes)_
+- `tablet-landscape` 47x20 <a> "Pricing" _(5 routes)_
+- `tablet-landscape` 30x96 <a> "Scoring: 501" _(/today)_
+- `tablet-landscape` 30x96 <a> "Analysis: 501" _(/today)_
+- `tablet-landscape` 30x96 <a> "Finding subs: 500" _(/today)_
+- `tablet-landscape` 30x96 <a> "Outreach: 500" _(/today)_
+- `tablet-landscape` 30x96 <a> "Calls: 500" _(/today)_
+- `tablet-landscape` 30x96 <a> "Quotes: 499" _(/today)_
+- `tablet-landscape` 30x96 <a> "Bid building: 499" _(/today)_
+- `tablet-landscape` 140x16 <a> "Open the full record" _(/workbench)_
+- `tablet-landscape` 113x16 <a> "Calls for this bid" _(/workbench)_
+- `tablet-landscape` 100x16 <a> "Conversations" _(/workbench)_
+- `tablet-landscape` 41x44 <a> "List" _(/pipeline)_
+- `tablet-landscape` 161x16 <a> "The notice on SAM.gov" _(/review)_
+- `tablet-landscape` 140x20 <a> "Open the full record" _(/review)_
+- `tablet-landscape` 79x36 <a> "Rivera Mechanical" _(/contracts)_
+- `tablet-landscape` 207x16 <a> "This contract on its own page" _(/contracts)_
+- `tablet-landscape` 132x16 <a> "The bid that won it" _(/contracts)_
+- `tablet-landscape` 127x16 <a> "Compliance board" _(/contracts)_
+- `tablet-landscape` 44x44 <button> "Calls" _(/settings/rules)_
+- `tablet-landscape` 39x44 <button> "Core" _(/settings/integrations)_
+- `tablet-landscape` 36x44 <button> "Data" _(/settings/integrations)_
+- `tablet-landscape` 175x28 <input> "" _(/recap, /admin/recap)_

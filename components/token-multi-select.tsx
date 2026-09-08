@@ -99,7 +99,7 @@ export function TokenMultiSelect({
               <button
                 type="button"
                 aria-label={`Remove ${tok}`}
-                className="text-accent/70 hover:text-accent-strong"
+                className="tap text-accent/70 hover:text-accent-strong"
                 onClick={() => remove(tok)}
               >
                 &times;
