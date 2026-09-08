@@ -196,6 +196,34 @@ export interface QuotaDecision {
   state?: QuotaState;
 }
 
+/**
+ * What a metered action gets when billing state cannot be established.
+ *
+ * It is held, not allowed. That is a deliberate product decision and it has
+ * been made both ways, so it is written down here rather than left to be
+ * re-derived from the code by whoever reads this next.
+ *
+ * The case against holding is real and should not be glossed: this runs
+ * before `accessLevel`, so a database failure holds PAYING customers too, not
+ * only trials. A transient blip stops somebody's outreach for work they have
+ * already paid for. The earlier version allowed the action for exactly that
+ * reason.
+ *
+ * It was changed because the alternative is worse in the direction that
+ * matters. Allowing on failure means the one moment the system cannot see a
+ * quota is the moment it stops enforcing it, and an over-allowance on a
+ * billing control is not self-correcting: nothing later notices that the
+ * emails went out, so the failure is invisible and permanent. A hold is
+ * neither. It is loud -- the caller gets a sentence saying what could not be
+ * verified and a support reference that matches the server log -- and it
+ * lasts exactly as long as the fault, because the next attempt succeeds once
+ * the connection recovers.
+ *
+ * So the trade is: a transient, visible, self-clearing interruption instead of
+ * a silent, permanent leak. Reversing this is a product call about which of
+ * those two costs the business prefers, not a bug fix, and it should not be
+ * done because a stack trace looked alarming on one bad afternoon.
+ */
 function unavailableDecision(
   metric: TrialMetric,
   err: unknown,
