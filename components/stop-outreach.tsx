@@ -42,6 +42,13 @@ export function StopOutreach({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
+  /*
+   * A stop can succeed and still leave work behind: the suppression is
+   * recorded, but closing the pending call cards is a second write that can
+   * fail on its own. The confirmation has to carry that, or the operator
+   * reads "stopped" and the queue still says "call them".
+   */
+  const [warning, setWarning] = useState<string | null>(null);
 
   const effectiveOpp = scope === "this_bid" ? opportunityId ?? null : null;
 
@@ -82,16 +89,24 @@ export function StopOutreach({
       setError(data.error ?? "That could not be recorded.");
       return;
     }
+    setWarning(typeof data.warning === "string" ? data.warning : null);
     setStopped(true);
     router.refresh();
   }
 
   if (stopped) {
     return (
-      <p className="text-xs text-muted-foreground">
-        Outreach to {companyName} is stopped. Messages already sent, replies, quotes and
-        history are all kept. Lift it from their record when you want to start again.
-      </p>
+      <div className="space-y-2">
+        {warning && (
+          <p role="alert" className="text-xs font-medium text-risk">
+            {warning}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Outreach to {companyName} is stopped. Messages already sent, replies, quotes and
+          history are all kept. Lift it from their record when you want to start again.
+        </p>
+      </div>
     );
   }
 

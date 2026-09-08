@@ -100,19 +100,47 @@ export async function POST(req: Request, { params }: { params: { id: string } })
      * explicit that Skip, Pass, No response and the rest must not become
      * synonyms.
      */
+    let queueWarning: string | null = null;
     if (scope.channel !== "email") {
-      await query(
-        `update call_cards
-            set status = 'skipped',
-                skip_reason = 'handled_elsewhere',
-                skip_note = $3,
-                skip_scope = 'subcontractor',
-                skipped_by = $4
-          where subcontractor_id = $1
-            and status = 'pending'
-            and ($2::uuid is null or opportunity_id = $2)`,
-        [params.id, scope.opportunityId, `Outreach stopped: ${reason}`, ctx.user.email]
-      ).catch(() => undefined);
+      try {
+        await query(
+          `update call_cards
+              set status = 'skipped',
+                  skip_reason = 'handled_elsewhere',
+                  skip_note = $3,
+                  skip_scope = 'subcontractor',
+                  skipped_by = $4
+            where subcontractor_id = $1
+              and status = 'pending'
+              and ($2::uuid is null or opportunity_id = $2)`,
+          [params.id, scope.opportunityId, `Outreach stopped: ${reason}`, ctx.user.email]
+        );
+      } catch (err) {
+        /*
+         * The stop itself is recorded and stands; this is the tidy-up after
+         * it. Swallowing it was the wrong trade: the operator was told
+         * "outreach stopped" while pending call cards stayed in the queue,
+         * so the next person to work the queue could ring a subcontractor
+         * who had just been told nobody would. A consent decision that holds
+         * for email and quietly does not hold for the phone is the kind of
+         * failure somebody finds out about from the person they called.
+         *
+         * So the suppression is NOT rolled back -- it is the half that
+         * matters and it succeeded -- and the half that did not is said out
+         * loud, with the count and the place to go and finish it by hand.
+         */
+        console.error(
+          `[stop-outreach] could not close pending call cards for subcontractor ${params.id} (${sub.company_name}):`,
+          err
+        );
+        const n = impact.pendingCalls;
+        queueWarning =
+          `Outreach to ${sub.company_name} is stopped, but ` +
+          (n === 1
+            ? "1 pending call could not be closed"
+            : `${n} pending calls could not be closed`) +
+          `. Close ${n === 1 ? "it" : "them"} in the call queue so nobody rings them by mistake.`;
+      }
     }
 
     await logAgent({
@@ -125,7 +153,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       reasoning: describeStopImpact(impact, scope).join(" "),
     });
 
-    return NextResponse.json({ ok: true, suppression, impact });
+    return NextResponse.json({ ok: true, suppression, impact, warning: queueWarning });
   } catch (err) {
     if (err instanceof SuppressionRejected) {
       return NextResponse.json({ error: err.reason }, { status: 400 });
