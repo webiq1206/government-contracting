@@ -90,7 +90,13 @@ export function SubsTable({
       sortable: true,
       render: (s) => (
         <>
-          <Link href={`/subs/${s.id}`} className="font-medium text-foreground hover:text-gold-text">
+          {/* 36px tall at tablet width: a name in a table cell is the row's
+              primary action and has to be hit with a thumb there. Touch height
+              only; the desktop table keeps its density. */}
+          <Link
+            href={`/subs/${s.id}`}
+            className="inline-flex min-h-11 items-center font-medium text-foreground hover:text-gold-text lg:min-h-0"
+          >
             {s.is_preferred ? "★ " : ""}
             {s.company_name}
           </Link>

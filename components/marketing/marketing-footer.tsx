@@ -42,16 +42,16 @@ export function MarketingFooter({
           </div>
 
           <FooterCol title="Product" dark={dark}>
-            <a href="/#platform">Platform</a>
-            <a href="/#pipeline">Pipeline</a>
-            <a href="/#pricing">Pricing</a>
-            <a href="/#faq">FAQ</a>
+            <a href="/#platform" className="inline-flex min-h-11 items-center lg:min-h-0">Platform</a>
+            <a href="/#pipeline" className="inline-flex min-h-11 items-center lg:min-h-0">Pipeline</a>
+            <a href="/#pricing" className="inline-flex min-h-11 items-center lg:min-h-0">Pricing</a>
+            <a href="/#faq" className="inline-flex min-h-11 items-center lg:min-h-0">FAQ</a>
           </FooterCol>
 
           <FooterCol title="Company" dark={dark}>
-            <a href="mailto:hello@brostco.com">Contact</a>
-            <Link href="/privacy">Privacy</Link>
-            <Link href="/terms">Terms</Link>
+            <a href="mailto:hello@brostco.com" className="inline-flex min-h-11 items-center lg:min-h-0">Contact</a>
+            <Link href="/privacy" className="inline-flex min-h-11 items-center lg:min-h-0">Privacy</Link>
+            <Link href="/terms" className="inline-flex min-h-11 items-center lg:min-h-0">Terms</Link>
             {/*
               * The site map, linked from every marketing page.
               *
@@ -59,12 +59,12 @@ export function MarketingFooter({
               * thing it cannot afford to be: a crawler reaches it only if it
               * is reachable, and the footer is where a person looks for it.
               */}
-            <Link href="/sitemap">Site map</Link>
+            <Link href="/sitemap" className="inline-flex min-h-11 items-center lg:min-h-0">Site map</Link>
           </FooterCol>
 
           <FooterCol title="Account" dark={dark}>
-            <Link href={loginHref}>Login</Link>
-            <Link href="/signup">Get started</Link>
+            <Link href={loginHref} className="inline-flex min-h-11 items-center lg:min-h-0">Login</Link>
+            <Link href="/signup" className="inline-flex min-h-11 items-center lg:min-h-0">Get started</Link>
           </FooterCol>
         </div>
 

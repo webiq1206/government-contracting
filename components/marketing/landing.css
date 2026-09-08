@@ -478,6 +478,15 @@
 .mkt-lp .under-link,
 .mkt-lp .faq-layout .sticky a { display: inline-flex; align-items: center; min-height: 44px; }
     }
+/* The 44px rules above live inside max-width:760, which is a phone. A tablet
+   held in the hand is still a thumb, and at 768 and 1024 the footer columns
+   and the header links were 15 to 20px tall -- the same coin toss the phone
+   rule was written to end. 1024 is the shell's own touch boundary. */
+@media (max-width: 1024px) {
+.mkt-lp .footer-top nav a,
+.mkt-lp .desktop-nav a,
+.mkt-lp .nav-actions > a { display: inline-flex; align-items: center; min-height: 44px; }
+}
     @media (max-width: 420px) {
 .mkt-lp .hero h1 { font-size: 40px; }
 .mkt-lp h2, .mkt-lp .final-inner h2 { font-size: 38px; }

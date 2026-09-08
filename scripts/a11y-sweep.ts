@@ -278,6 +278,12 @@ const PROBE = `(() => {
   // number rather than the experience.
   const hitBox = (el) => {
     if (el.classList.contains("tap")) return { width: 44, height: 44 };
+    // A row-link's pseudo-element stretches over its .row, so the row is the
+    // target. Same reasoning as .tap: measure what a thumb hits, not the text.
+    if (el.classList.contains("row-link")) {
+      const row = el.closest(".row");
+      if (row) return row.getBoundingClientRect();
+    }
     const label = el.closest("label");
     if (label && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
       const lr = label.getBoundingClientRect();

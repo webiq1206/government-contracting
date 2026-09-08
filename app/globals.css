@@ -258,6 +258,42 @@ body {
     }
   }
   /*
+   * A list row whose whole surface opens its record.
+   *
+   * The primary link stays a real <a> on the title -- that is what a screen
+   * reader names, what the keyboard focuses, and what a right-click opens in
+   * a new tab. What changes is its hit area: a pseudo-element stretched over
+   * the nearest `.row`, so a thumb landing anywhere on the row lands on the
+   * link. This is the same mechanism as `.tap`, applied to a row instead of a
+   * button, and it is why the whole row can be the target without the row
+   * itself becoming a link (nested interactive content inside an <a> is
+   * invalid and reads badly).
+   *
+   * Anything else interactive inside the row wears `.row-raise` so it sits
+   * above the stretched area and keeps its own tap. Without it the stretched
+   * link covers the row's secondary controls, which the covered-control rule
+   * would then, correctly, report.
+   *
+   * The row gets a hover and active tint so it looks like what it now is.
+   */
+  .row {
+    @apply relative transition-colors;
+  }
+  .row-link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .row-raise {
+    @apply relative z-10;
+  }
+  .row:has(.row-link):hover {
+    @apply bg-surface;
+  }
+  .row:has(.row-link):active {
+    @apply bg-surface/70;
+  }
+  /*
    * 1024, matching the shell. Tablet portrait keeps the bottom tab bar and the
    * drawer nav, which makes it a touch layout, and a touch layout that drops
    * to a 40px button because the screen passed 768 has failed the touch-target

@@ -122,7 +122,7 @@ export default function SiteMapPage() {
 
       <main className="mx-auto max-w-3xl px-5 py-16">
         <nav aria-label="Breadcrumb" className="text-xs text-muted-foreground">
-          <Link href="/" className="hover:text-foreground">
+          <Link href="/" className="tap hover:text-foreground">
             Home
           </Link>
           <span aria-hidden> / </span>

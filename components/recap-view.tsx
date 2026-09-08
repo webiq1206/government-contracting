@@ -62,7 +62,7 @@ function ItemRow({
         : null);
 
   return (
-    <li className={`rounded-md border p-3 ${toneClasses(section, item)}`}>
+    <li className={`row rounded-md border p-3 ${toneClasses(section, item)}`}>
       {tag && (
         <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
           {tag}
@@ -70,7 +70,10 @@ function ItemRow({
       )}
       <p className="mt-0.5 text-sm font-medium leading-snug text-foreground">
         {item.href ? (
-          <Link href={item.href} className="underline decoration-gold/60 underline-offset-2 hover:text-gold-text">
+          <Link
+            href={item.href}
+            className="row-link underline decoration-gold/60 underline-offset-2 hover:text-gold-text"
+          >
             {item.title}
           </Link>
         ) : (
@@ -95,7 +98,7 @@ function ItemRow({
           href={peekHref(peekParam(peek))}
           scroll={false}
           aria-current={openPeek === peekParam(peek) ? "true" : undefined}
-          className={`tap mt-1.5 inline-flex text-xs underline-offset-2 hover:text-accent ${
+          className={`tap row-raise mt-1.5 inline-flex text-xs underline-offset-2 hover:text-accent ${
             openPeek === peekParam(peek)
               ? "font-medium text-accent"
               : "text-muted-foreground"
@@ -112,11 +115,14 @@ function Totals({ section }: { section: RecapSection }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
       {section.totals.map((t) => (
-        <div key={t.label} className="panel-inset rounded-md p-3">
+        <div key={t.label} className="row panel-inset rounded-md p-3">
           <p className="num text-xl font-semibold text-foreground">{t.value}</p>
           <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
             {t.href ? (
-              <Link href={t.href} className="underline decoration-gold/50 underline-offset-2 hover:text-gold-text">
+              <Link
+                href={t.href}
+                className="row-link underline decoration-gold/50 underline-offset-2 hover:text-gold-text"
+              >
                 {t.label}
               </Link>
             ) : (
