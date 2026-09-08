@@ -59,9 +59,10 @@ export const sourcesSoughtResponder: AgentDefinition = {
     const opportunityId = ctx.payload.opportunityId as string;
     if (!opportunityId) return { ok: false, summary: "no opportunityId in payload" };
 
-    const opp = await queryOne<Opportunity>(`select * from opportunities where id = $1`, [
-      opportunityId,
-    ]);
+    const opp = await queryOne<Opportunity & { org_id: string | null }>(
+      `select * from opportunities where id = $1`,
+      [opportunityId]
+    );
     if (!opp) return { ok: false, summary: `opportunity ${opportunityId} not found` };
 
     const profile = await getProfileJson();
@@ -153,11 +154,17 @@ export const sourcesSoughtResponder: AgentDefinition = {
     );
 
     // 5) Draft (do NOT send) the outbound email; a human reviews then sends.
+    //
+    // Recorded as a draft, in so many words. This row used to take the
+    // column's default and read as `sent`: 140 responses nobody had sent
+    // showed on the conversation log as sent, and the recap counted them as
+    // outreach that went out. The organization is written too, so the row
+    // belongs to the customer whose notice this is rather than to nobody.
     const noteBody = `${body}\n\n---\n[Attachment: capability statement, ${uploaded.path}]\n[ACTION REQUIRED: review and send within 24 hours of the notice.]`;
     await query(
       `insert into communications
-         (opportunity_id, channel, direction, subject, body, meta)
-       values ($1, 'email', 'outbound', $2, $3, $4)`,
+         (org_id, opportunity_id, channel, direction, subject, body, meta, delivery_state)
+       values ($5, $1, 'email', 'outbound', $2, $3, $4, 'draft')`,
       [
         opportunityId,
         subject,
@@ -168,6 +175,7 @@ export const sourcesSoughtResponder: AgentDefinition = {
           must_send_within_hours: 24,
           capability_statement_path: uploaded.path,
         }),
+        opp.org_id ?? null,
       ]
     );
 

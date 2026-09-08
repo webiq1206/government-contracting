@@ -24,7 +24,9 @@ export type DeliveryState =
   /** Temporarily refused (4.x.x): full mailbox, greylisting, throttling. */
   | "deferred"
   /** The send itself failed; nothing ever left the building. */
-  | "failed";
+  | "failed"
+  /** Written on purpose and never handed over: waiting for a person to send it. */
+  | "draft";
 
 /** A bounce notice parsed out of a delivery-status report. */
 export interface BounceReport {
@@ -195,7 +197,7 @@ export function deliveryStateFor(comm: {
   clicked_at?: string | Date | null;
 }): DeliveryState {
   const stored = comm.delivery_state;
-  if (stored === "bounced" || stored === "failed" || stored === "deferred") {
+  if (stored === "bounced" || stored === "failed" || stored === "deferred" || stored === "draft") {
     return stored;
   }
   if (comm.replied_at || comm.clicked_at || comm.opened_at) return "delivered";
@@ -232,6 +234,12 @@ export function describeDeliveryState(state: DeliveryState): {
       return {
         label: "Not sent",
         detail: "The send itself failed, so nothing left the building.",
+        attention: true,
+      };
+    case "draft":
+      return {
+        label: "Draft",
+        detail: "Written but never sent. It is waiting for a person to review it and send it.",
         attention: true,
       };
     default:

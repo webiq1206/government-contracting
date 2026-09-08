@@ -22,7 +22,15 @@ export type MessageState =
   | "delayed"
   | "bounced"
   | "blocked"
-  | "failed";
+  | "failed"
+  /*
+   * Written on purpose and not handed to any provider: a Sources Sought
+   * response waiting for a person to send it, or an approach held back for a
+   * firm with no verified address. Not `failed` -- nothing broke -- and
+   * emphatically not `sent`, which is what the column's default called 140
+   * such drafts and 250-odd held approaches in production until 2026-09-08.
+   */
+  | "draft";
 
 export const MESSAGE_STATE_LABEL: Record<MessageState, string> = {
   received: "From them",
@@ -35,6 +43,7 @@ export const MESSAGE_STATE_LABEL: Record<MessageState, string> = {
   bounced: "Bounced, address is bad",
   blocked: "Blocked by their server",
   failed: "Never sent",
+  draft: "Draft, not sent",
 };
 
 /** What each state means for the person reading it, and what it asks of them. */
@@ -49,11 +58,17 @@ export const MESSAGE_STATE_MEANING: Record<MessageState, string> = {
   bounced: "Their server refused it permanently. The address is wrong or gone.",
   blocked: "Their server refused it on policy grounds. The address may be fine.",
   failed: "The send itself failed, so it never left here. This one is ours to fix.",
+  draft: "Written but never sent. It is waiting for a person to review it and send it.",
 };
 
 /** Whether a state means the message did not arrive. */
 export function isFailure(state: MessageState): boolean {
   return state === "bounced" || state === "blocked" || state === "failed";
+}
+
+/** Whether a state means nothing has left here yet, failure or not. */
+export function isUnsent(state: MessageState): boolean {
+  return state === "failed" || state === "draft";
 }
 
 export interface MessageRow {
@@ -105,6 +120,7 @@ export function messageState(m: MessageRow): MessageState {
 
   const ds = m.delivery_state ?? "sent";
   if (ds === "failed") return "failed";
+  if (ds === "draft") return "draft";
   if (ds === "bounced") return looksBlocked(m.delivery_detail) ? "blocked" : "bounced";
   if (ds === "deferred") return "delayed";
 

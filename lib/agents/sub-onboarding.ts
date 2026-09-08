@@ -137,11 +137,16 @@ async function chase(
 
   let recordError: string | null = null;
   try {
+    // A chase that Gmail refused, or that was held, is recorded as `failed`,
+    // not left to the column's default of `sent`: the default is what made a
+    // refused paperwork request look identical to one that went out. The
+    // organization is written so the row belongs to the customer whose award
+    // this is.
     await query(
       `insert into communications
-         (subcontractor_id, opportunity_id, channel, direction, subject, body,
-          gmail_message_id, gmail_thread_id, provider, recipient_email, meta)
-       values ($1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+         (org_id, subcontractor_id, opportunity_id, channel, direction, subject, body,
+          gmail_message_id, gmail_thread_id, provider, recipient_email, meta, delivery_state)
+       values ($10,$1,$2,'email','outbound',$3,$4,$5,$6,$7,$8,$9::jsonb,$11)`,
       [
         row.subcontractorId,
         row.opportunityId,
@@ -152,6 +157,8 @@ async function chase(
         res.provider,
         row.email,
         JSON.stringify({ kind: "compliance-chase", sent, error: res.error ?? null }),
+        row.orgId ?? null,
+        sent ? "sent" : "failed",
       ]
     );
   } catch (err) {
