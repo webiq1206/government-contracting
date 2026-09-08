@@ -662,7 +662,7 @@ export default async function BillingSettingsPage({
                       )}
                       {(inv.hosted_invoice_url || inv.invoice_pdf_url) && (
                         <a
-                          className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent-strong underline lg:min-h-0"
+                          className="mt-1 inline-flex coarse:min-h-11 items-center text-xs font-medium text-accent-strong underline"
                           href={inv.invoice_pdf_url ?? inv.hosted_invoice_url ?? "#"}
                           target="_blank"
                           rel="noreferrer noopener"

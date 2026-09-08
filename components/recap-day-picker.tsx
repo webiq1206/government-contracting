@@ -70,7 +70,7 @@ export function RecapDayPicker({
           }}
           /* Named by the wrapping label ("Any day"); what it lacked was
              height. 28px is fine under a pointer and a miss under a thumb. */
-          className="min-h-11 rounded border border-border bg-surface px-2 py-1 text-xs text-foreground lg:min-h-0"
+          className="coarse:min-h-11 rounded border border-border bg-surface px-2 py-1 text-xs text-foreground"
         />
       </label>
     </div>

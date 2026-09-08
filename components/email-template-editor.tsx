@@ -285,7 +285,7 @@ function VersionHistory({
     <div className="border-t border-border pt-4">
       <button
         type="button"
-        className="flex min-h-11 w-full items-center justify-between text-left lg:min-h-0"
+        className="flex coarse:min-h-11 w-full items-center justify-between text-left"
         onClick={toggle}
         aria-expanded={open}
       >
@@ -1417,7 +1417,7 @@ function FormatButton({
       onClick={onClick}
       /* min-h-11 / min-w-11 on touch: a 45x26 formatting button is the kind
          of target you miss twice before hitting, in the middle of writing. */
-      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:border-foreground/30 hover:bg-surface lg:min-h-0 lg:min-w-0"
+      className="inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center rounded border border-border bg-background px-2 py-1 text-xs font-medium text-foreground hover:border-foreground/30 hover:bg-surface"
     >
       {label}
     </button>

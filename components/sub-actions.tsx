@@ -248,7 +248,7 @@ export function SubActions({
               <span className="label mb-1 block">Email</span>
               <input
                 type="email"
-                className="input h-11 w-full lg:h-9"
+                className="input h-9 w-full coarse:h-11"
                 value={email}
                 placeholder={facts.hasEmail ? "Replace the address on file" : "None on file"}
                 onChange={(e) => setEmail(e.target.value)}
@@ -258,7 +258,7 @@ export function SubActions({
               <span className="label mb-1 block">Phone</span>
               <input
                 type="tel"
-                className="input h-11 w-full lg:h-9"
+                className="input h-9 w-full coarse:h-11"
                 value={phone}
                 placeholder={facts.hasPhone ? "Replace the number on file" : "None on file"}
                 onChange={(e) => setPhone(e.target.value)}
@@ -300,7 +300,7 @@ export function SubActions({
             <span className="label mb-1 block">Why</span>
             <input
               type="text"
-              className="input h-11 w-full lg:h-9"
+              className="input h-9 w-full coarse:h-11"
               value={reason}
               placeholder="Declined, too far out, or priced above the others"
               onChange={(e) => setReason(e.target.value)}

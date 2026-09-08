@@ -565,7 +565,7 @@ function StepRow({
         ))}
 
         <details open={open} className="group mt-2">
-          <summary className="tap inline-flex min-h-11 cursor-pointer items-center text-xs font-medium text-accent hover:underline lg:min-h-0">
+          <summary className="tap inline-flex coarse:min-h-11 cursor-pointer items-center text-xs font-medium text-accent hover:underline">
             How this step works
           </summary>
           <dl className="mt-2 space-y-1.5 border-l-2 border-border pl-3 text-sm">
@@ -619,7 +619,7 @@ function StepRow({
             /* This is the step's action, not a link inside a sentence, so it
                gets a thumb-sized box rather than the 16px a bare inline-block
                collapses to. */
-            className="mt-1.5 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0"
+            className="mt-1.5 inline-flex coarse:min-h-11 items-center text-xs font-medium text-accent hover:underline"
           >
             {step.hrefLabel ?? "Go there"} &rarr;
           </Link>
@@ -695,7 +695,7 @@ function QuickStart({
               !item.done && (
                 <Link
                   href={item.href}
-                  className="ml-7 mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0"
+                  className="ml-7 mt-1 inline-flex coarse:min-h-11 items-center text-xs font-medium text-accent hover:underline"
                 >
                   {item.hrefLabel} &rarr;
                 </Link>
@@ -767,7 +767,7 @@ function AlwaysOn() {
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.body}</p>
             <Link
               href={item.href}
-              className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0"
+              className="mt-1 inline-flex coarse:min-h-11 items-center text-xs font-medium text-accent hover:underline"
             >
               {item.hrefLabel} &rarr;
             </Link>

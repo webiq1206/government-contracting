@@ -157,39 +157,39 @@ export function SubCapability({
         {editing ? (
           <div className="space-y-4">
             <Row label="States they will work in" hint="Two-letter codes, separated by commas.">
-              <input className="input h-11 w-full lg:h-9" value={form.states}
+              <input className="input h-9 w-full coarse:h-11" value={form.states}
                 onChange={(e) => setForm({ ...form, states: e.target.value })}
                 placeholder="TX, NM" />
             </Row>
             <div className="grid gap-4 sm:grid-cols-2">
               <Row label="How far they travel" hint="Miles from their yard.">
-                <input className="input h-11 w-full lg:h-9" inputMode="numeric" value={form.radius}
+                <input className="input h-9 w-full coarse:h-11" inputMode="numeric" value={form.radius}
                   onChange={(e) => setForm({ ...form, radius: e.target.value })} placeholder="Leave empty if unknown" />
               </Row>
               <Row label="Anything else about where they work">
-                <input className="input h-11 w-full lg:h-9" value={form.areaNote}
+                <input className="input h-9 w-full coarse:h-11" value={form.areaNote}
                   onChange={(e) => setForm({ ...form, areaNote: e.target.value })} />
               </Row>
               <Row label="Crew size">
-                <input className="input h-11 w-full lg:h-9" inputMode="numeric" value={form.crew}
+                <input className="input h-9 w-full coarse:h-11" inputMode="numeric" value={form.crew}
                   onChange={(e) => setForm({ ...form, crew: e.target.value })} placeholder="Leave empty if unknown" />
               </Row>
               <Row label="Jobs they run at once">
-                <input className="input h-11 w-full lg:h-9" inputMode="numeric" value={form.concurrent}
+                <input className="input h-9 w-full coarse:h-11" inputMode="numeric" value={form.concurrent}
                   onChange={(e) => setForm({ ...form, concurrent: e.target.value })} placeholder="Leave empty if unknown" />
               </Row>
               <Row label="Smallest job they take" hint="Dollars.">
-                <input className="input h-11 w-full lg:h-9" inputMode="decimal" value={form.minProject}
+                <input className="input h-9 w-full coarse:h-11" inputMode="decimal" value={form.minProject}
                   onChange={(e) => setForm({ ...form, minProject: e.target.value })} />
               </Row>
               <Row label="Biggest job they take" hint="Dollars.">
-                <input className="input h-11 w-full lg:h-9" inputMode="decimal" value={form.maxProject}
+                <input className="input h-9 w-full coarse:h-11" inputMode="decimal" value={form.maxProject}
                   onChange={(e) => setForm({ ...form, maxProject: e.target.value })} />
               </Row>
             </div>
 
             <Row label="Bonded" hint="Leave as not asked until somebody has checked.">
-              <select className="input h-11 w-full lg:h-9" value={form.bonded}
+              <select className="input h-9 w-full coarse:h-11" value={form.bonded}
                 onChange={(e) => setForm({ ...form, bonded: e.target.value })}>
                 <option value="">Nobody has asked</option>
                 <option value="yes">Yes</option>
@@ -199,15 +199,15 @@ export function SubCapability({
             {form.bonded === "yes" && (
               <div className="grid gap-4 sm:grid-cols-3">
                 <Row label="Single job" hint="Dollars.">
-                  <input className="input h-11 w-full lg:h-9" inputMode="decimal" value={form.bondSingle}
+                  <input className="input h-9 w-full coarse:h-11" inputMode="decimal" value={form.bondSingle}
                     onChange={(e) => setForm({ ...form, bondSingle: e.target.value })} />
                 </Row>
                 <Row label="Total" hint="Dollars.">
-                  <input className="input h-11 w-full lg:h-9" inputMode="decimal" value={form.bondAggregate}
+                  <input className="input h-9 w-full coarse:h-11" inputMode="decimal" value={form.bondAggregate}
                     onChange={(e) => setForm({ ...form, bondAggregate: e.target.value })} />
                 </Row>
                 <Row label="Surety">
-                  <input className="input h-11 w-full lg:h-9" value={form.surety}
+                  <input className="input h-9 w-full coarse:h-11" value={form.surety}
                     onChange={(e) => setForm({ ...form, surety: e.target.value })} />
                 </Row>
               </div>
@@ -226,8 +226,8 @@ export function SubCapability({
                       })}
                       className={
                         on
-                          ? "inline-flex min-h-11 items-center rounded-md border border-accent bg-accent-soft px-3 text-sm text-accent-strong lg:min-h-0 lg:py-1.5"
-                          : "inline-flex min-h-11 items-center rounded-md border border-border px-3 text-sm text-foreground hover:bg-surface lg:min-h-0 lg:py-1.5"
+                          ? "inline-flex coarse:min-h-11 items-center rounded-md border border-accent bg-accent-soft px-3 text-sm text-accent-strong py-1.5"
+                          : "inline-flex coarse:min-h-11 items-center rounded-md border border-border px-3 text-sm text-foreground hover:bg-surface py-1.5"
                       }>
                       {c.label}
                     </button>
@@ -238,15 +238,15 @@ export function SubCapability({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Row label="Payment terms">
-                <input className="input h-11 w-full lg:h-9" value={form.paymentTerms}
+                <input className="input h-9 w-full coarse:h-11" value={form.paymentTerms}
                   onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })} placeholder="Net 30" />
               </Row>
               <Row label="How long their quotes stand" hint="Days.">
-                <input className="input h-11 w-full lg:h-9" inputMode="numeric" value={form.quoteValidity}
+                <input className="input h-9 w-full coarse:h-11" inputMode="numeric" value={form.quoteValidity}
                   onChange={(e) => setForm({ ...form, quoteValidity: e.target.value })} />
               </Row>
               <Row label="Best way to reach them">
-                <select className="input h-11 w-full lg:h-9" value={form.preferredContact}
+                <select className="input h-9 w-full coarse:h-11" value={form.preferredContact}
                   onChange={(e) => setForm({ ...form, preferredContact: e.target.value })}>
                   <option value="">Nobody has asked</option>
                   {PREFERRED_CONTACT.map((c) => (
@@ -259,7 +259,7 @@ export function SubCapability({
                   ? SOURCE_CONFIDENCE_HINT[form.sourceConfidence as keyof typeof SOURCE_CONFIDENCE_HINT]
                   : "A record built from a listing is not the same kind of fact as one confirmed on a call."
               }>
-                <select className="input h-11 w-full lg:h-9" value={form.sourceConfidence}
+                <select className="input h-9 w-full coarse:h-11" value={form.sourceConfidence}
                   onChange={(e) => setForm({ ...form, sourceConfidence: e.target.value })}>
                   <option value="">Not stated</option>
                   {SOURCE_CONFIDENCE.map((c) => (
@@ -514,24 +514,24 @@ function ContactForm({
     <div className="mt-3 space-y-3 rounded-md border border-border bg-surface-raised p-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <Row label="Name">
-          <input className="input h-11 w-full lg:h-9" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="input h-9 w-full coarse:h-11" value={name} onChange={(e) => setName(e.target.value)} />
         </Row>
         <Row label="What they do here">
-          <select className="input h-11 w-full lg:h-9" value={role} onChange={(e) => setRole(e.target.value)}>
+          <select className="input h-9 w-full coarse:h-11" value={role} onChange={(e) => setRole(e.target.value)}>
             {CONTACT_ROLES.map((r) => (
               <option key={r} value={r}>{CONTACT_ROLE_LABEL[r]}</option>
             ))}
           </select>
         </Row>
         <Row label="Email">
-          <input className="input h-11 w-full lg:h-9" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <input className="input h-9 w-full coarse:h-11" value={email} onChange={(e) => setEmail(e.target.value)} />
         </Row>
         <Row label="Phone">
-          <input className="input h-11 w-full lg:h-9" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input className="input h-9 w-full coarse:h-11" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </Row>
       </div>
       <Row label="Anything worth knowing">
-        <input className="input h-11 w-full lg:h-9" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input className="input h-9 w-full coarse:h-11" value={note} onChange={(e) => setNote(e.target.value)} />
       </Row>
       <label className="flex items-center gap-2 text-sm text-foreground">
         <input type="checkbox" checked={primary} onChange={(e) => setPrimary(e.target.checked)} />
@@ -573,21 +573,21 @@ function LicenseForm({
     <div className="mt-3 space-y-3 rounded-md border border-border bg-surface-raised p-3">
       <div className="grid gap-3 sm:grid-cols-2">
         <Row label="Trade">
-          <input className="input h-11 w-full lg:h-9" list="sub-trades" value={trade}
+          <input className="input h-9 w-full coarse:h-11" list="sub-trades" value={trade}
             onChange={(e) => setTrade(e.target.value)} />
           <datalist id="sub-trades">
             {trades.map((t) => <option key={t} value={t} />)}
           </datalist>
         </Row>
         <Row label="Where it is issued" hint="State or city.">
-          <input className="input h-11 w-full lg:h-9" value={jurisdiction}
+          <input className="input h-9 w-full coarse:h-11" value={jurisdiction}
             onChange={(e) => setJurisdiction(e.target.value)} />
         </Row>
         <Row label="Number">
-          <input className="input h-11 w-full lg:h-9" value={number} onChange={(e) => setNumber(e.target.value)} />
+          <input className="input h-9 w-full coarse:h-11" value={number} onChange={(e) => setNumber(e.target.value)} />
         </Row>
         <Row label="Status" hint="Leave unset until somebody has actually checked.">
-          <select className="input h-11 w-full lg:h-9" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select className="input h-9 w-full coarse:h-11" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Nobody has checked</option>
             <option value="active">Active</option>
             <option value="expired">Expired</option>
@@ -596,7 +596,7 @@ function LicenseForm({
           </select>
         </Row>
         <Row label="Expires">
-          <input type="date" className="input h-11 w-full lg:h-9" value={expires}
+          <input type="date" className="input h-9 w-full coarse:h-11" value={expires}
             onChange={(e) => setExpires(e.target.value)} />
         </Row>
       </div>

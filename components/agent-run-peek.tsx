@@ -140,7 +140,7 @@ export function AgentRunPeek({
               <li key={l.href}>
                 <Link
                   href={l.href}
-                  className="text-accent underline-offset-2 hover:underline"
+                  className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                 >
                   {l.label}
                 </Link>

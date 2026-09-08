@@ -402,7 +402,7 @@ export function Nav({
       <Link
         href={item.href}
         onClick={() => setOpen(false)}
-        className={`flex min-h-11 items-center justify-between gap-2 rounded-md pr-2 transition-colors lg:min-h-0 ${
+        className={`flex coarse:min-h-11 items-center justify-between gap-2 rounded-md pr-2 transition-colors ${
           compact ? "py-2.5 pl-3 text-sm lg:py-1.5" : "py-2.5 pl-3 lg:py-2"
         } ${
           active
@@ -491,7 +491,7 @@ export function Nav({
               was a 24px-tall target, the smallest on every mobile screen. */}
           <Link
             href="/today"
-            className="flex min-h-11 items-center lg:block lg:min-h-0"
+            className="flex coarse:min-h-11 items-center lg:block"
             aria-label="Brost Co Today"
           >
             <ThemeWordmark className="h-7 w-auto" />
@@ -552,14 +552,14 @@ export function Nav({
         </div>
 
         <div className="shrink-0 space-y-1.5 px-3 pb-2 pt-3 lg:px-4 lg:pt-0">
-          <SearchButton className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-surface px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground dark:border-white/15 lg:min-h-0 lg:py-1.5" />
+          <SearchButton className="flex coarse:min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-surface px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground dark:border-white/15 py-1.5" />
           <button
             type="button"
             onClick={() => {
               setOpen(false);
               window.dispatchEvent(new Event("open-guide-wizard"));
             }}
-            className="flex min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-gold/40 hover:bg-gold/10 hover:text-gold-text dark:border-white/15 lg:min-h-0 lg:py-1.5"
+            className="flex coarse:min-h-11 w-full items-center gap-2 rounded-md border border-border/55 bg-transparent px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-gold/40 hover:bg-gold/10 hover:text-gold-text dark:border-white/15 py-1.5"
           >
             <span aria-hidden className="text-gold-text">
               ?
@@ -580,7 +580,7 @@ export function Nav({
                     setOpenSections((prev) => ({ ...prev, [sec.key]: !open }))
                   }
                   aria-expanded={open}
-                  className="flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left transition-colors hover:text-foreground lg:min-h-0 lg:py-1.5"
+                  className="flex coarse:min-h-11 w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left transition-colors hover:text-foreground py-1.5"
                 >
                   {/* A heading, not another dim menu item: a rule above it,
                       real weight, and separation from the links beneath. */}

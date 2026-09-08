@@ -449,7 +449,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
-const box = "input h-11 w-full lg:h-9";
+const box = "input h-9 w-full coarse:h-11";
 type Save = (body: Record<string, unknown>) => Promise<boolean>;
 
 function Panel({ children }: { children: React.ReactNode }) {

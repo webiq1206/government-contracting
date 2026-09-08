@@ -360,7 +360,7 @@ function GuideCallLauncher({
           {loading ? "Loading…" : "Start call workspace"}
         </button>
         {error && <p className="text-xs text-risk">{error}</p>}
-        <Link href={`/call-queue?open=${cardId}`} className="ml-2 inline-flex min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline lg:min-h-0">
+        <Link href={`/call-queue?open=${cardId}`} className="ml-2 inline-flex coarse:min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline">
           Open in Call Queue
         </Link>
       </div>
@@ -886,7 +886,7 @@ export function IdentityFields({ onSaved }: { onSaved: () => Promise<void> }) {
       </button>
       <Link
         href="/settings/profile"
-        className="ml-2 inline-flex min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline lg:min-h-0"
+        className="ml-2 inline-flex coarse:min-h-11 items-center text-xs text-slate-500 underline-offset-2 hover:underline"
       >
         Open full profile
       </Link>

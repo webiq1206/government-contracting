@@ -15,7 +15,7 @@ import { ReasonDialog } from "@/components/confirm-dialog";
 export function PassButton({
   opportunityId,
   title,
-  className = "btn-danger min-h-11 flex-1 text-xs lg:min-h-0 lg:flex-none",
+  className = "btn-danger coarse:min-h-11 flex-1 text-xs lg:flex-none",
   children = "Pass on this opportunity",
   onDone,
 }: {

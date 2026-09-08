@@ -95,7 +95,7 @@ export function SubsTable({
               only; the desktop table keeps its density. */}
           <Link
             href={`/subs/${s.id}`}
-            className="inline-flex min-h-11 items-center font-medium text-foreground hover:text-gold-text lg:min-h-0"
+            className="inline-flex coarse:min-h-11 items-center font-medium text-foreground hover:text-gold-text"
           >
             {s.is_preferred ? "★ " : ""}
             {s.company_name}

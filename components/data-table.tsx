@@ -197,7 +197,7 @@ export function DataTable<T extends { id: string }>({
               /* Thumb-sized where a thumb is what presses it. The sweep
                  measured these at 24px tall on a phone, which clears WCAG
                  2.5.8 and not the 44px this product holds itself to. */
-              className={`inline-flex min-h-11 items-center rounded px-3 transition-colors lg:min-h-0 lg:px-2 lg:py-1 ${
+              className={`inline-flex coarse:min-h-11 items-center rounded px-3 transition-colors px-2 py-1 ${
                 density === d ? "bg-gold/20 text-gold-text" : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -254,7 +254,7 @@ export function DataTable<T extends { id: string }>({
                            header row is unhittable on a phone, and sorting is
                            exactly what somebody does on a small screen to make
                            a wide table usable. */
-                        className={`-mx-2 inline-flex min-h-11 min-w-11 items-center justify-center px-2 transition-colors hover:text-foreground lg:mx-0 lg:min-h-0 lg:min-w-0 lg:justify-start lg:px-0 ${
+                        className={`-mx-2 inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center px-2 transition-colors hover:text-foreground lg:mx-0 lg:justify-start px-0 ${
                           active ? "text-gold-text" : ""
                         }`}
                       >
@@ -324,7 +324,7 @@ export function DataTable<T extends { id: string }>({
               <Link
                 key={n}
                 href={href({ perPage: n, page: 1 })}
-                className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded px-1.5 py-0.5 transition-colors lg:min-h-0 lg:min-w-0 ${
+                className={`inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center rounded px-1.5 py-0.5 transition-colors ${
                   paging.perPage === n ? "bg-gold/20 text-gold-text" : "hover:text-foreground"
                 }`}
               >
@@ -338,7 +338,7 @@ export function DataTable<T extends { id: string }>({
               {paging.page > 1 ? (
                 <Link
                   href={href({ page: paging.page - 1 })}
-                  className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground lg:min-h-0 lg:min-w-0"
+                  className="inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center hover:text-foreground"
                 >
                   ← Prev
                 </Link>
@@ -351,7 +351,7 @@ export function DataTable<T extends { id: string }>({
               {paging.page < paging.totalPages ? (
                 <Link
                   href={href({ page: paging.page + 1 })}
-                  className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground lg:min-h-0 lg:min-w-0"
+                  className="inline-flex coarse:min-h-11 coarse:min-w-11 items-center justify-center hover:text-foreground"
                 >
                   Next →
                 </Link>
@@ -373,7 +373,7 @@ export function DataTable<T extends { id: string }>({
           <button
             type="button"
             onClick={() => selection.onToggleAll([])}
-            className="inline-flex min-h-11 items-center text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline lg:min-h-0"
+            className="inline-flex coarse:min-h-11 items-center text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           >
             Clear
           </button>

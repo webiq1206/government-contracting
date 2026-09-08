@@ -367,7 +367,7 @@ export default async function AgentsPage({
                   <div className="mt-auto flex items-center justify-between gap-2 pt-1">
                     <Link
                       href={`/agents?agent=${a.name}`}
-                      className="inline-flex min-h-11 items-center text-xs text-slate-600 hover:text-accent lg:min-h-0"
+                      className="inline-flex coarse:min-h-11 items-center text-xs text-slate-600 hover:text-accent"
                     >
                       See what it did
                     </Link>
@@ -376,7 +376,7 @@ export default async function AgentsPage({
                         Run now
                       </ActionButton>
                     ) : (
-                      <Link href="/pipeline" className="inline-flex min-h-11 items-center text-xs font-medium text-accent lg:min-h-0">
+                      <Link href="/pipeline" className="inline-flex coarse:min-h-11 items-center text-xs font-medium text-accent">
                         {manual === "workflow_only" ? "Reverify from an opportunity" : "Run from an opportunity"}
                       </Link>
                     )}
@@ -473,7 +473,7 @@ export default async function AgentsPage({
               Filter
             </button>
             {(q || levelFilter) && (
-              <Link href={link({ q: undefined, level: undefined, page: undefined })} className="inline-flex min-h-11 items-center text-xs text-slate-500 hover:text-accent lg:min-h-0">
+              <Link href={link({ q: undefined, level: undefined, page: undefined })} className="inline-flex coarse:min-h-11 items-center text-xs text-slate-500 hover:text-accent">
                 Clear
               </Link>
             )}
@@ -482,7 +482,7 @@ export default async function AgentsPage({
           <div className="mb-2 flex flex-wrap gap-1.5">
             <Link
               href={link({ agent: undefined, page: undefined })}
-              className={`badge min-h-11 lg:min-h-0 ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
+              className={`badge coarse:min-h-11 ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
             >
               All agents
             </Link>
@@ -490,7 +490,7 @@ export default async function AgentsPage({
               <Link
                 key={a.name}
                 href={link({ agent: a.name, page: undefined })}
-                className={`badge min-h-11 lg:min-h-0 ${
+                className={`badge coarse:min-h-11 ${
                   agentFilter === a.name
                     ? "bg-accent/10 text-accent"
                     : "bg-slate-200 text-slate-600 hover:text-slate-800"

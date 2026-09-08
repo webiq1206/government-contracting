@@ -428,7 +428,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                       {f.source === "ui" && (
                         <button
                           type="button"
-                          className="inline-flex min-h-11 items-center text-risk hover:underline lg:min-h-0"
+                          className="inline-flex coarse:min-h-11 items-center text-risk hover:underline"
                           onClick={() => setRemoving({ def, env: f.env })}
                           disabled={busy != null}
                         >

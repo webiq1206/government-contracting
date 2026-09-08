@@ -255,7 +255,7 @@ export default async function ContractsPage({
                   key={v}
                   href={`/contracts?view=${v}`}
                   aria-current={v === active ? "page" : undefined}
-                  className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors lg:min-h-0 lg:py-1.5 ${
+                  className={`inline-flex coarse:min-h-11 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors py-1.5 ${
                     v === active
                       ? "border-gold bg-gold/15 text-foreground"
                       : counts[v] === 0
@@ -425,7 +425,7 @@ export default async function ContractsPage({
                       <li>
                         <Link
                           href={`/contracts/${String(selectedRow.id)}`}
-                          className="text-accent underline-offset-2 hover:underline"
+                          className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                         >
                           This contract on its own page
                         </Link>
@@ -434,7 +434,7 @@ export default async function ContractsPage({
                         <li>
                           <Link
                             href={`/opportunity/${String(selectedRow.opportunity_id)}`}
-                            className="text-accent underline-offset-2 hover:underline"
+                            className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                           >
                             The bid that won it
                           </Link>
@@ -443,7 +443,7 @@ export default async function ContractsPage({
                       <li>
                         <Link
                           href="/compliance"
-                          className="text-accent underline-offset-2 hover:underline"
+                          className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                         >
                           Compliance board
                         </Link>

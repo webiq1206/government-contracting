@@ -91,7 +91,7 @@ export function OwnerPicker({
          * `lg:h-7` clipped the descenders off the selected name: the control
          * looked like a rendering fault rather than a control.
          */
-        className={compact ? "input h-11 w-auto text-xs lg:h-auto" : "input h-11 w-full lg:h-auto"}
+        className={compact ? "input w-auto text-xs coarse:h-11" : "input w-full coarse:h-11"}
         value={value}
         disabled={busy}
         onChange={(e) => void change(e.target.value)}

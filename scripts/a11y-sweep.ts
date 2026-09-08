@@ -38,6 +38,8 @@ import { join } from "node:path";
 const BASE = argValue("--base") ?? "http://localhost:3100";
 const EMAIL = argValue("--email") ?? "nav@brostco.test";
 const PASSWORD = argValue("--password") ?? "TestPass123!";
+/** Optional: sweep one width only, e.g. `--width phone-small`, to chase a single finding without the full run. */
+const ONLY_WIDTH = argValue("--width");
 
 function argValue(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
@@ -236,10 +238,30 @@ const PROBE = `(() => {
     s.overflow === "hidden" &&
     (s.clip.indexOf("rect(0") === 0 || s.clipPath.indexOf("inset(50%)") === 0);
 
+  /*
+   * Painted, not merely laid out.
+   *
+   * A closed <details> keeps its body in the tree, and Chromium gives that
+   * body content-visibility: hidden: geometry is still answerable, so the
+   * controls inside have a rect, a display of block and full opacity, and
+   * pass every test here -- while nothing is painted, nothing is hit-tested,
+   * and scrollIntoView declines to move. On Today, where every section but
+   * the first starts closed, that was 118 of 230 controls, each reported as
+   * "covered" by its own section because the hit test at its centre found
+   * the section instead. checkVisibility is the browser's own answer to
+   * "would this be painted", and it knows about closed details, hidden
+   * content-visibility subtrees and display:none ancestors alike; the checks
+   * after it stay for the cases it does not cover (opacity, sr-only).
+   */
   const visible = (el) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
     if (screenReaderOnly(el, s, r)) return false;
+    // A box a pixel or smaller is not something a person sees or taps: a file
+    // input hidden behind its label, say. Whatever recipe hid it, the label is
+    // the control, and the label is measured on its own.
+    if (r.width <= 1 && r.height <= 1) return false;
+    if (typeof el.checkVisibility === "function" && !el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: true })) return false;
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none" && parseFloat(s.opacity) > 0.1;
   };
 
@@ -324,7 +346,41 @@ const PROBE = `(() => {
     // mid-animation put the previous position's section header under the
     // point. That was the whole /today result.
     el.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
-    const r = el.getBoundingClientRect();
+    /*
+     * Test where the control is painted, not the centre of its box.
+     *
+     * A card link can be 115px tall with 53px of content, when a child's
+     * margin or an inline fragment inflates its box past what it draws; the
+     * next widget then begins inside that box, and the box's centre lands on
+     * the neighbour. A thumb lands on the text. So the point tested is the
+     * centre of the control's contents -- a Range over its children, which is
+     * what the browser actually painted -- falling back to the box only when
+     * the control has no content of its own (an empty checkbox, say).
+     *
+     * And a control that scrolling could not bring on-screen is skipped, not
+     * measured: elementsFromPoint outside the viewport returns nothing, and
+     * nothing is not the same as "covered".
+     */
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const cr = range.getBoundingClientRect();
+    const br = el.getBoundingClientRect();
+    /*
+     * Clipped to the control's own box. A Range measures text where it would
+     * be laid out, not where it is painted: a truncated label reports its
+     * full unclipped width, and the sidebar's automation pill -- 231 wide,
+     * with a 732-wide label under its overflow: hidden -- put the test point
+     * 150px into the main pane and was reported "covered" on every page.
+     */
+    const ir = {
+      left: Math.max(cr.left, br.left),
+      top: Math.max(cr.top, br.top),
+      right: Math.min(cr.right, br.right),
+      bottom: Math.min(cr.bottom, br.bottom),
+    };
+    const r = ir.right > ir.left && ir.bottom > ir.top
+      ? { left: ir.left, top: ir.top, width: ir.right - ir.left, height: ir.bottom - ir.top }
+      : br;
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2;
     if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) continue;
@@ -333,9 +389,15 @@ const PROBE = `(() => {
       return style.pointerEvents !== "none" && style.visibility !== "hidden";
     });
     if (!top || top === el || el.contains(top) || top.contains(el)) continue;
+    // A control with no text of its own is named by what it is, so the line
+    // can be found: <input> "" sent somebody hunting through every input on
+    // the page; <input type=checkbox #select-all> does not.
+    const own = (el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 34);
+    const ident = own || [el.type ? "type=" + el.type : "", el.id ? "#" + el.id : "", el.name ? "name=" + el.name : "", "." + (el.className + "").trim().split(/\s+/).slice(0, 3).join(".")].filter(Boolean).join(" ").slice(0, 60);
     out.covered.push({
       tag: el.tagName.toLowerCase(),
-      text: (el.textContent || el.getAttribute("aria-label") || "").trim().slice(0, 34),
+      text: ident,
+      box: Math.round(r.left) + "," + Math.round(r.top) + " " + Math.round(r.width) + "x" + Math.round(r.height),
       by: (top.getAttribute("aria-label") || top.textContent || top.tagName).trim().slice(0, 34),
     });
   }
@@ -597,7 +659,7 @@ async function measure(
       route,
       width,
       rule: "covered-control",
-      detail: `<${item.tag}> "${item.text}" is covered by "${item.by}"`,
+      detail: `<${item.tag}> "${item.text}" at ${item.box} is covered by "${item.by}"`,
     });
   }
   const h1s = r.headings.filter((h: any) => h.level === 1);
@@ -695,6 +757,7 @@ async function main() {
    * keeps the run from doubling and keeps one finding from being listed twice.
    */
   for (const vp of WIDTHS) {
+    if (ONLY_WIDTH && vp.name !== ONLY_WIDTH) continue;
     for (const theme of THEMES) {
       const touchViewport = vp.name.startsWith("phone-") || vp.name.startsWith("tablet-");
       const ctx = await browser.newContext({

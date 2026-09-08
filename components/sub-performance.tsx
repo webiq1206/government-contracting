@@ -110,7 +110,7 @@ export function SubPerformance({
                 type="button"
                 aria-pressed={kind === k}
                 onClick={() => setKind(kind === k ? "" : k)}
-                className={`inline-flex min-h-11 items-center rounded-md border px-3 text-sm lg:min-h-0 lg:py-1.5 ${
+                className={`inline-flex coarse:min-h-11 items-center rounded-md border px-3 text-sm py-1.5 ${
                   kind === k
                     ? "border-accent bg-accent-soft text-accent-strong"
                     : "border-border text-foreground hover:bg-surface"
@@ -219,7 +219,7 @@ export function SubPerformance({
                       <div className="flex flex-wrap items-center gap-2">
                         <input
                           type="text"
-                          className="input h-11 flex-1 text-sm lg:h-9"
+                          className="input h-9 flex-1 text-sm coarse:h-11"
                           placeholder="Why it is being withdrawn"
                           value={reason}
                           onChange={(ev) => setReason(ev.target.value)}

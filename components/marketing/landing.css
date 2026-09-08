@@ -408,7 +408,6 @@
 .mkt-lp .hero h1 { font-size: 45px; }
 .mkt-lp .lead { font-size: 14px; }
 .mkt-lp .hero-actions { align-items: stretch; flex-direction: column; gap: 20px; }
-.mkt-lp .hero-actions > a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
 .mkt-lp .hero-actions .btn { width: 100%; }
 .mkt-lp .under-link { align-self: flex-start; }
 .mkt-lp .proof { grid-template-columns: 1fr; gap: 16px; }
@@ -466,29 +465,21 @@
 .mkt-lp .footer-top { padding: 58px 0; grid-template-columns: 1fr 1fr; gap: 42px 25px; }
 .mkt-lp .footer-top > div { grid-column: 1/-1; }
 .mkt-lp .footer-bottom { padding: 20px; flex-direction: column; align-items: flex-start; }
-/* Thumb-sized where a thumb is pressing. At 10px in a 13px-gapped column these
-   footer links were 15px tall, which is a coin toss on a phone. The column
-   keeps its own gap on a desktop pointer, where 15px is precise enough. */
-.mkt-lp .footer-top nav { gap: 0; }
-.mkt-lp .footer-top nav a { display: flex; align-items: center; min-height: 44px; }
-/* Same rule for the rest of the phone-sized targets the sweep measured: the
-   two wordmark links, the underlined secondary calls to action, and the
-   contact address. Each was between 14 and 28 pixels tall. */
-.mkt-lp .type-logo,
-.mkt-lp .under-link,
-.mkt-lp .faq-layout .sticky a { display: inline-flex; align-items: center; min-height: 44px; }
     }
-/* The 44px rules above live inside max-width:760, which is a phone. A tablet
-   held in the hand is still a thumb, and at 768 and 1024 the footer columns
-   and the header links were 15 to 20px tall -- the same coin toss the phone
-   rule was written to end. 1024 is the shell's own touch boundary. */
-@media (max-width: 1024px) {
+/* Touch heights follow the pointer, not the width. These used to sit inside
+   the 760 phone block and then a 1024 tablet block; a thumb is a thumb at any
+   width, and a mouse at a narrow window is not one. Same signal `.tap` uses. */
+@media (pointer: coarse) {
+.mkt-lp .hero-actions > a { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.mkt-lp .footer-top nav { gap: 0; }
 .mkt-lp .footer-top nav a,
 .mkt-lp .desktop-nav a,
 .mkt-lp .nav-actions > a,
 .mkt-lp .type-logo,
 .mkt-lp .under-link,
 .mkt-lp .faq-layout .sticky a { display: inline-flex; align-items: center; min-height: 44px; }
+.mkt-lp .footer-top nav a { display: flex; }
+.mkt-lp .desktop-nav a,
 .mkt-lp .nav-actions > a { min-width: 44px; justify-content: center; }
 .mkt-lp .mobile-nav nav a { display: flex; align-items: center; min-height: 44px; }
 }

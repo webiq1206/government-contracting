@@ -62,7 +62,7 @@ export function AdminAccountsTable({
              * "Beta": the seeded account is "BROST CO", wide enough to pass,
              * so this had never been visible.
              */
-            className="inline-flex min-h-11 min-w-11 items-center font-medium text-foreground hover:text-gold-text lg:min-h-0 lg:min-w-0"
+            className="inline-flex coarse:min-h-11 coarse:min-w-11 items-center font-medium text-foreground hover:text-gold-text"
           >
             {r.name}
           </Link>

@@ -488,7 +488,7 @@ export function SubmissionPackage({
                         type="button"
                         onClick={() => acknowledge(f.id, !f.acknowledged)}
                         disabled={busyId === f.id}
-                        className={`inline-flex min-h-11 shrink-0 items-center text-xs lg:min-h-0 ${
+                        className={`inline-flex coarse:min-h-11 shrink-0 items-center text-xs ${
                           f.acknowledged ? "text-slate-500 hover:text-slate-700" : "btn-ghost"
                         }`}
                       >
@@ -554,7 +554,7 @@ export function SubmissionPackage({
                           href={`/api/files/${r.official_form_doc.path}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="mt-0.5 inline-flex min-h-11 items-center text-xs text-accent hover:underline lg:min-h-0"
+                          className="mt-0.5 inline-flex coarse:min-h-11 items-center text-xs text-accent hover:underline"
                         >
                           Open the agency&rsquo;s form to sign →
                         </a>
@@ -564,7 +564,7 @@ export function SubmissionPackage({
                           href={`/api/files/${r.operator_doc.path}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="mt-0.5 flex min-h-11 items-center text-xs text-accent hover:underline lg:min-h-0"
+                          className="mt-0.5 flex coarse:min-h-11 items-center text-xs text-accent hover:underline"
                         >
                           In the package: {r.operator_doc.name} →
                         </a>
@@ -573,7 +573,7 @@ export function SubmissionPackage({
                     {!submitted && (needsAction || r.operator_confirmed) && (
                       <div className="flex shrink-0 items-center gap-3">
                         <label
-                          className={`inline-flex min-h-11 cursor-pointer items-center text-xs lg:min-h-0 ${
+                          className={`inline-flex coarse:min-h-11 cursor-pointer items-center text-xs ${
                             busyId === r.id ? "text-slate-500" : "text-accent hover:underline"
                           }`}
                         >
@@ -593,7 +593,7 @@ export function SubmissionPackage({
                           type="button"
                           onClick={() => confirm(r.id, !r.operator_confirmed)}
                           disabled={busyId === r.id}
-                          className={`inline-flex min-h-11 items-center text-xs lg:min-h-0 ${
+                          className={`inline-flex coarse:min-h-11 items-center text-xs ${
                             r.operator_confirmed
                               ? "text-slate-500 hover:text-slate-700"
                               : "btn-ghost"
@@ -636,7 +636,7 @@ export function SubmissionPackage({
                       href={`/api/files/${path}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex min-h-11 shrink-0 items-center text-xs text-accent hover:underline lg:min-h-0"
+                      className="inline-flex coarse:min-h-11 shrink-0 items-center text-xs text-accent hover:underline"
                     >
                       Open
                     </a>
@@ -752,7 +752,7 @@ export function SubmissionPackage({
                   <li key={b} className="flex flex-wrap items-start justify-between gap-2">
                     <span className="text-slate-800">• {b}</span>
                     {/pricing has not been received/i.test(b) ? (
-                      <a href="#coverage" className="inline-flex min-h-11 items-center text-xs font-medium text-accent hover:underline lg:min-h-0">
+                      <a href="#coverage" className="inline-flex coarse:min-h-11 items-center text-xs font-medium text-accent hover:underline">
                         Open required pricing
                       </a>
                     ) : (

@@ -273,7 +273,7 @@ export function ComplianceWorkspace({
                           href={l.url}
                           target="_blank"
                           rel="noreferrer noopener"
-                          className="text-accent underline-offset-2 hover:underline"
+                          className="inline-flex items-center text-accent underline-offset-2 hover:underline coarse:min-h-11"
                         >
                           {l.label}
                         </a>
