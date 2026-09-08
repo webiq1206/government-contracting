@@ -1339,7 +1339,9 @@ export default async function TodayPage({
                   {digestParts.length > 0 && (
                     <Link
                       href="/agents"
-                      className="block rounded-md border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm text-foreground/80 transition-colors hover:border-gold/60"
+                      /* py-2.5 on a text-sm line lands at 42px on a tablet, two
+                         short of a thumb. Touch height only. */
+                      className="block min-h-11 rounded-md border border-gold/30 bg-gold/10 px-4 py-2.5 text-sm text-foreground/80 transition-colors hover:border-gold/60 lg:min-h-0"
                     >
                       <span className="font-semibold text-gold-text">Last 24 hours:</span>{" "}
                       {digestParts.join(" · ")}
