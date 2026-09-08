@@ -231,6 +231,7 @@ export function DataTable<T extends { id: string }>({
                 <th className={`th w-8 ${pad}`}>
                   <input
                     type="checkbox"
+                    className="tap"
                     aria-label="Select every row on this page"
                     checked={allOnPageSelected}
                     onChange={() => selection.onToggleAll(pageIds)}
@@ -275,6 +276,7 @@ export function DataTable<T extends { id: string }>({
                   <td className={`td ${pad}`}>
                     <input
                       type="checkbox"
+                      className="tap"
                       aria-label="Select this row"
                       checked={selection.selected.has(row.id)}
                       onChange={() => selection.onToggle(row.id)}
@@ -336,7 +338,7 @@ export function DataTable<T extends { id: string }>({
               {paging.page > 1 ? (
                 <Link
                   href={href({ page: paging.page - 1 })}
-                  className="inline-flex min-h-11 items-center hover:text-foreground lg:min-h-0"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground lg:min-h-0 lg:min-w-0"
                 >
                   ← Prev
                 </Link>
@@ -349,7 +351,7 @@ export function DataTable<T extends { id: string }>({
               {paging.page < paging.totalPages ? (
                 <Link
                   href={href({ page: paging.page + 1 })}
-                  className="inline-flex min-h-11 items-center hover:text-foreground lg:min-h-0"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-foreground lg:min-h-0 lg:min-w-0"
                 >
                   Next →
                 </Link>
