@@ -5,8 +5,596 @@ Measured in Chromium at six widths and in both themes, on rendered output: one p
 
 The remote font stylesheet is stubbed empty, so the fallback stack is what gets measured. That is the more conservative reading and matches what an operator behind a proxy that blocks Google actually sees.
 
-9 signed-out and 31 signed-in routes x 6 widths x 2 themes. **0 findings.**
+9 signed-out and 31 signed-in routes x 6 widths x 2 themes. **2107 findings.**
 
 The dark pass reports contrast only. Target sizes and accessible names do not change with the theme, so measuring them twice would list every finding twice without covering anything more.
 
-No failures against the rules checked.
+| Rule | Count |
+| --- | --- |
+| touch-target | 1689 |
+| covered-control | 418 |
+
+## touch-target (1689)
+
+- `phone-small` 35x44 <summary> "Open navigation" _(/)_
+- `phone-small` 35x14 <a> "Home" _(/sitemap, /compare, /pricing-guide)_
+- `phone-small` 63x16 <a> "Open brief" _(/review)_
+- `phone-small` 10x16 <button> "×" _(/settings/profile)_
+- `phone-small` 28x44 <a> "Next →" _(/admin/accounts)_
+- `phone-small` 175x28 <input> "" _(/recap, /admin/recap)_
+- `phone-small` 243x35 <a> "Rivera Mechanical is waiting on an" _(/recap)_
+- `phone-small` 232x35 <a> "HVAC replacement, Building 400, Ro" _(/recap)_
+- `phone-small` 177x16 <a> "perf-sweep opportunity 9" _(/recap)_
+- `phone-small` 186x16 <a> "perf-sweep opportunity 99" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 189" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 279" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 369" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 459" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 549" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 639" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 729" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 819" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 909" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 999" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1089" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1179" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1269" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1359" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1449" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1539" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1629" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1719" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1809" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1899" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 1989" _(/recap)_
+- `phone-small` 203x16 <a> "perf-sweep opportunity 2079" _(/recap)_
+- `phone-small` 186x16 <a> "perf-sweep opportunity 70" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 385" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 133" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 154" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 175" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 196" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 217" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 238" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 259" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 280" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 301" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 322" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 343" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 112" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 406" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 427" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 448" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 469" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 490" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 511" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 532" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 553" _(/recap)_
+- `phone-small` 195x16 <a> "perf-sweep opportunity 574" _(/recap)_
+- `phone-small` 186x16 <a> "perf-sweep opportunity 49" _(/recap)_
+- `phone-small` 111x14 <a> "Solicitations found" _(/recap)_
+- `phone-small` 88x31 <a> "Pursue or pass decisions" _(/recap)_
+- `phone-small` 99x31 <a> "Outreach emails sent" _(/recap)_
+- `phone-small` 98x14 <a> "Replies received" _(/recap)_
+- `phone-small` 73x14 <a> "Calls logged" _(/recap)_
+- `phone-small` 100x14 <a> "Quotes recorded" _(/recap)_
+- `phone-small` 90x14 <a> "Bids submitted" _(/recap)_
+- `phone-small` 76x14 <a> "Notes added" _(/recap)_
+- `phone-small` 91x31 <a> "Subcontractors added" _(/recap)_
+- `phone-small` 108x31 <a> "Compliance items resolved" _(/recap)_
+- `phone-small` 100x14 <a> "Automation runs" _(/recap)_
+- `phone-small` 146x16 <a> "SDVOSB certification" _(/recap)_
+- `phone-small` 251x35 <a> "Sent B has done nothing for as lon" _(/admin/recap)_
+- `phone-small` 247x35 <a> "Quote Fold Probe has done nothing " _(/admin/recap)_
+- `phone-small` 252x35 <a> "Reverify Probe has done nothing fo" _(/admin/recap)_
+- `phone-small` 256x35 <a> "Suppression Probe has done nothing" _(/admin/recap)_
+- `phone-small` 259x35 <a> "Pricing Rows Probe has done nothin" _(/admin/recap)_
+- `phone-small` 260x35 <a> "Snapshot Probe has done nothing fo" _(/admin/recap)_
+- `phone-small` 55x14 <a> "Accounts" _(/admin/recap)_
+- `phone-small` 49x14 <a> "Jobs run" _(/admin/recap)_
+- `phone-large` 35x44 <summary> "Open navigation" _(/)_
+- `phone-large` 35x14 <a> "Home" _(/sitemap, /compare, /pricing-guide)_
+- `phone-large` 63x16 <a> "Open brief" _(/review)_
+- `phone-large` 10x16 <button> "×" _(/settings/profile)_
+- `phone-large` 42x44 <a> "Next →" _(/admin/accounts)_
+- `phone-large` 175x28 <input> "" _(/recap, /admin/recap)_
+- `phone-large` 298x16 <a> "Rivera Mechanical is waiting on an" _(/recap)_
+- `phone-large` 315x35 <a> "HVAC replacement, Building 400, Ro" _(/recap)_
+- `phone-large` 315x16 <a> "HVAC replacement, Building 400, Ro" _(/recap)_
+- `phone-large` 177x16 <a> "perf-sweep opportunity 9" _(/recap)_
+- `phone-large` 186x16 <a> "perf-sweep opportunity 99" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 189" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 279" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 369" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 459" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 549" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 639" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 729" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 819" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 909" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 999" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1089" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1179" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1269" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1359" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1449" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1539" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1629" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1719" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1809" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1899" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 1989" _(/recap)_
+- `phone-large` 203x16 <a> "perf-sweep opportunity 2079" _(/recap)_
+- `phone-large` 186x16 <a> "perf-sweep opportunity 70" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 385" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 133" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 154" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 175" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 196" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 217" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 238" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 259" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 280" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 301" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 322" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 343" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 112" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 406" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 427" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 448" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 469" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 490" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 511" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 532" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 553" _(/recap)_
+- `phone-large` 195x16 <a> "perf-sweep opportunity 574" _(/recap)_
+- `phone-large` 186x16 <a> "perf-sweep opportunity 49" _(/recap)_
+- `phone-large` 111x14 <a> "Solicitations found" _(/recap)_
+- `phone-large` 148x14 <a> "Pursue or pass decisions" _(/recap)_
+- `phone-large` 128x14 <a> "Outreach emails sent" _(/recap)_
+- `phone-large` 98x14 <a> "Replies received" _(/recap)_
+- `phone-large` 73x14 <a> "Calls logged" _(/recap)_
+- `phone-large` 100x14 <a> "Quotes recorded" _(/recap)_
+- `phone-large` 90x14 <a> "Bids submitted" _(/recap)_
+- `phone-large` 76x14 <a> "Notes added" _(/recap)_
+- `phone-large` 133x14 <a> "Subcontractors added" _(/recap)_
+- `phone-large` 108x31 <a> "Compliance items resolved" _(/recap)_
+- `phone-large` 100x14 <a> "Automation runs" _(/recap)_
+- `phone-large` 146x16 <a> "SDVOSB certification" _(/recap)_
+- `phone-large` 296x35 <a> "Sent B has done nothing for as lon" _(/admin/recap)_
+- `phone-large` 325x35 <a> "Quote Fold Probe has done nothing " _(/admin/recap)_
+- `phone-large` 327x35 <a> "Reverify Probe has done nothing fo" _(/admin/recap)_
+- `phone-large` 300x35 <a> "Suppression Probe has done nothing" _(/admin/recap)_
+- `phone-large` 303x35 <a> "Pricing Rows Probe has done nothin" _(/admin/recap)_
+- `phone-large` 316x35 <a> "Pricing Rows Neighbour has done no" _(/admin/recap)_
+- `phone-large` 315x35 <a> "Snapshot Probe has done nothing fo" _(/admin/recap)_
+- `phone-large` 55x14 <a> "Accounts" _(/admin/recap)_
+- `phone-large` 49x14 <a> "Jobs run" _(/admin/recap)_
+- `tablet-portrait` 512x28 <a> "Brost Co home" _(/)_
+- `tablet-portrait` 33x18 <a> "Log in" _(/)_
+- `tablet-portrait` 35x44 <summary> "Open navigation" _(/)_
+- `tablet-portrait` 130x24 <a> "Watch the workflow ↓" _(/)_
+- `tablet-portrait` 57x32 <button> "Review" _(/)_
+- `tablet-portrait` 49x32 <button> "Open" _(/)_
+- `tablet-portrait` 185x24 <a> "Set up your company profile" _(/)_
+- `tablet-portrait` 116x15 <a> "hello@brostco.com ↗" _(/)_
+- `tablet-portrait` 123x28 <a> "Brost Co home" _(/)_
+- `tablet-portrait` 110x15 <a> "Platform" _(/)_
+- `tablet-portrait` 110x15 <a> "How it works" _(/)_
+- `tablet-portrait` 110x15 <a> "Pricing" _(/)_
+- `tablet-portrait` 110x15 <a> "Pricing explained" _(/)_
+- `tablet-portrait` 110x15 <a> "Compare approaches" _(/)_
+- `tablet-portrait` 110x15 <a> "FAQ" _(/)_
+- `tablet-portrait` 110x15 <a> "Privacy" _(/)_
+- `tablet-portrait` 110x15 <a> "Terms" _(/)_
+- `tablet-portrait` 110x15 <a> "Site map" _(/)_
+- `tablet-portrait` 110x15 <a> "Log in" _(/)_
+- `tablet-portrait` 110x15 <a> "Contact" _(/)_
+- `tablet-portrait` 366x20 <a> "Platform" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "Pipeline" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "Pricing" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "FAQ" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "Contact" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "Privacy" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "Terms" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "Site map" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "Login" _(5 routes)_
+- `tablet-portrait` 366x20 <a> "Get started" _(5 routes)_
+- `tablet-portrait` 35x14 <a> "Home" _(/sitemap, /compare, /pricing-guide)_
+- `tablet-portrait` 738x42 <a> "Last 24 hours: 282 expired archive" _(/today)_
+- `tablet-portrait` 63x16 <a> "Open brief" _(/review)_
+- `tablet-portrait` 10x16 <button> "×" _(/settings/profile)_
+- `tablet-portrait` 36x36 <button> "✕" _(/settings/profile)_
+- `tablet-portrait` 42x44 <a> "Next →" _(/admin/accounts)_
+- `tablet-portrait` 175x28 <input> "" _(/recap, /admin/recap)_
+- `tablet-portrait` 298x16 <a> "Rivera Mechanical is waiting on an" _(/recap)_
+- `tablet-portrait` 545x16 <a> "HVAC replacement, Building 400, Ro" _(/recap)_
+- `tablet-portrait` 315x16 <a> "HVAC replacement, Building 400, Ro" _(/recap)_
+- `tablet-portrait` 177x16 <a> "perf-sweep opportunity 9" _(/recap)_
+- `tablet-portrait` 186x16 <a> "perf-sweep opportunity 99" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 189" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 279" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 369" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 459" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 549" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 639" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 729" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 819" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 909" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 999" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1089" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1179" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1269" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1359" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1449" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1539" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1629" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1719" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1809" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1899" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 1989" _(/recap)_
+- `tablet-portrait` 203x16 <a> "perf-sweep opportunity 2079" _(/recap)_
+- `tablet-portrait` 186x16 <a> "perf-sweep opportunity 70" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 385" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 133" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 154" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 175" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 196" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 217" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 238" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 259" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 280" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 301" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 322" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 343" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 112" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 406" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 427" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 448" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 469" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 490" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 511" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 532" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 553" _(/recap)_
+- `tablet-portrait` 195x16 <a> "perf-sweep opportunity 574" _(/recap)_
+- `tablet-portrait` 186x16 <a> "perf-sweep opportunity 49" _(/recap)_
+- `tablet-portrait` 111x14 <a> "Solicitations found" _(/recap)_
+- `tablet-portrait` 148x14 <a> "Pursue or pass decisions" _(/recap)_
+- `tablet-portrait` 128x14 <a> "Outreach emails sent" _(/recap)_
+- `tablet-portrait` 98x14 <a> "Replies received" _(/recap)_
+- `tablet-portrait` 73x14 <a> "Calls logged" _(/recap)_
+- `tablet-portrait` 100x14 <a> "Quotes recorded" _(/recap)_
+- `tablet-portrait` 90x14 <a> "Bids submitted" _(/recap)_
+- `tablet-portrait` 76x14 <a> "Notes added" _(/recap)_
+- `tablet-portrait` 133x14 <a> "Subcontractors added" _(/recap)_
+- `tablet-portrait` 163x14 <a> "Compliance items resolved" _(/recap)_
+- `tablet-portrait` 100x14 <a> "Automation runs" _(/recap)_
+- `tablet-portrait` 146x16 <a> "SDVOSB certification" _(/recap)_
+- `tablet-portrait` 401x16 <a> "Sent B has done nothing for as lon" _(/admin/recap)_
+- `tablet-portrait` 708x16 <a> "contract-99bc28e3-5f1d-432f-906b-d" _(/admin/recap)_
+- `tablet-portrait` 694x16 <a> "sorts-8e3b6000-103e-4e36-8a17-290d" _(/admin/recap)_
+- `tablet-portrait` 476x16 <a> "Quote Fold Probe has done nothing " _(/admin/recap)_
+- `tablet-portrait` 457x16 <a> "Reverify Probe has done nothing fo" _(/admin/recap)_
+- `tablet-portrait` 702x16 <a> "quota-93da81b0-ca8d-45a2-b679-035a" _(/admin/recap)_
+- `tablet-portrait` 485x16 <a> "Suppression Probe has done nothing" _(/admin/recap)_
+- `tablet-portrait` 488x16 <a> "Pricing Rows Probe has done nothin" _(/admin/recap)_
+- `tablet-portrait` 521x16 <a> "Pricing Rows Neighbour has done no" _(/admin/recap)_
+- `tablet-portrait` 465x16 <a> "Snapshot Probe has done nothing fo" _(/admin/recap)_
+- `tablet-portrait` 55x14 <a> "Accounts" _(/admin/recap)_
+- `tablet-portrait` 49x14 <a> "Jobs run" _(/admin/recap)_
+- `tablet-landscape` 402x28 <a> "Brost Co home" _(/)_
+- `tablet-landscape` 45x18 <a> "Platform" _(/)_
+- `tablet-landscape` 68x18 <a> "How it works" _(/)_
+- `tablet-landscape` 37x18 <a> "Pricing" _(/)_
+- `tablet-landscape` 24x18 <a> "FAQ" _(/)_
+- `tablet-landscape` 33x18 <a> "Log in" _(/)_
+- `tablet-landscape` 130x24 <a> "Watch the workflow ↓" _(/)_
+- `tablet-landscape` 56x32 <button> "Review" _(/)_
+- `tablet-landscape` 49x32 <button> "Open" _(/)_
+- `tablet-landscape` 185x24 <a> "Set up your company profile" _(/)_
+- `tablet-landscape` 116x15 <a> "hello@brostco.com ↗" _(/)_
+- `tablet-landscape` 123x28 <a> "Brost Co home" _(/)_
+- `tablet-landscape` 110x15 <a> "Platform" _(/)_
+- `tablet-landscape` 110x15 <a> "How it works" _(/)_
+- `tablet-landscape` 110x15 <a> "Pricing" _(/)_
+- `tablet-landscape` 110x15 <a> "Pricing explained" _(/)_
+- `tablet-landscape` 110x15 <a> "Compare approaches" _(/)_
+- `tablet-landscape` 110x15 <a> "FAQ" _(/)_
+- `tablet-landscape` 110x15 <a> "Privacy" _(/)_
+- `tablet-landscape` 110x15 <a> "Terms" _(/)_
+- `tablet-landscape` 110x15 <a> "Site map" _(/)_
+- `tablet-landscape` 110x15 <a> "Log in" _(/)_
+- `tablet-landscape` 110x15 <a> "Contact" _(/)_
+- `tablet-landscape` 53x20 <a> "Product" _(5 routes)_
+- `tablet-landscape` 66x20 <a> "Guide Me" _(5 routes)_
+- `tablet-landscape` 47x20 <a> "Pricing" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Platform" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Pipeline" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Pricing" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "FAQ" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Contact" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Privacy" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Terms" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Site map" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Login" _(5 routes)_
+- `tablet-landscape` 246x20 <a> "Get started" _(5 routes)_
+- `tablet-landscape` 35x14 <a> "Home" _(/sitemap, /compare, /pricing-guide)_
+- `tablet-landscape` 30x96 <a> "Scoring: 501" _(/today)_
+- `tablet-landscape` 30x96 <a> "Analysis: 501" _(/today)_
+- `tablet-landscape` 30x96 <a> "Finding subs: 500" _(/today)_
+- `tablet-landscape` 30x96 <a> "Outreach: 500" _(/today)_
+- `tablet-landscape` 30x96 <a> "Calls: 500" _(/today)_
+- `tablet-landscape` 30x96 <a> "Quotes: 499" _(/today)_
+- `tablet-landscape` 30x96 <a> "Bid building: 499" _(/today)_
+- `tablet-landscape` 140x16 <a> "Open the full record" _(/workbench)_
+- `tablet-landscape` 113x16 <a> "Calls for this bid" _(/workbench)_
+- `tablet-landscape` 100x16 <a> "Conversations" _(/workbench)_
+- `tablet-landscape` 41x44 <a> "List" _(/pipeline)_
+- `tablet-landscape` 63x16 <a> "Open brief" _(/review)_
+- `tablet-landscape` 161x16 <a> "The notice on SAM.gov" _(/review)_
+- `tablet-landscape` 140x20 <a> "Open the full record" _(/review)_
+- `tablet-landscape` 13x13 <input> "Select every row on this page" _(/subs)_
+- `tablet-landscape` 13x13 <input> "Select this row" _(/subs)_
+- `tablet-landscape` 76x36 <a> "Coastal Roofing Co" _(/subs)_
+- `tablet-landscape` 66x36 <a> "Pinehurst Grounds" _(/subs)_
+- `tablet-landscape` 79x36 <a> "Rivera Mechanical" _(/subs, /contracts)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 10" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 100" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1000" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1001" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1002" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1003" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1004" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1005" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1006" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1007" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1008" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1009" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 101" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1010" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1011" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1012" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1013" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1014" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1015" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1016" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1017" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1018" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1019" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 102" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1020" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1021" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1022" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1023" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1024" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1025" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1026" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1027" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1028" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1029" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 103" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1030" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1031" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1032" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1033" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1034" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1035" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1036" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1037" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1038" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 1039" _(/subs)_
+- `tablet-landscape` 77x36 <a> "perf-sweep sub 104" _(/subs)_
+- `tablet-landscape` 42x44 <a> "Next →" _(/subs, /admin/accounts)_
+- `tablet-landscape` 207x16 <a> "This contract on its own page" _(/contracts)_
+- `tablet-landscape` 132x16 <a> "The bid that won it" _(/contracts)_
+- `tablet-landscape` 127x16 <a> "Compliance board" _(/contracts)_
+- `tablet-landscape` 10x16 <button> "×" _(/settings/profile)_
+- `tablet-landscape` 36x36 <button> "✕" _(/settings/profile)_
+- `tablet-landscape` 44x44 <button> "Calls" _(/settings/rules)_
+- `tablet-landscape` 39x44 <button> "Core" _(/settings/integrations)_
+- `tablet-landscape` 36x44 <button> "Data" _(/settings/integrations)_
+- `tablet-landscape` 175x28 <input> "" _(/recap, /admin/recap)_
+- `tablet-landscape` 298x16 <a> "Rivera Mechanical is waiting on an" _(/recap)_
+- `tablet-landscape` 545x16 <a> "HVAC replacement, Building 400, Ro" _(/recap)_
+- `tablet-landscape` 315x16 <a> "HVAC replacement, Building 400, Ro" _(/recap)_
+- `tablet-landscape` 177x16 <a> "perf-sweep opportunity 9" _(/recap)_
+- `tablet-landscape` 186x16 <a> "perf-sweep opportunity 99" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 189" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 279" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 369" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 459" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 549" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 639" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 729" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 819" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 909" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 999" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1089" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1179" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1269" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1359" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1449" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1539" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1629" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1719" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1809" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1899" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 1989" _(/recap)_
+- `tablet-landscape` 203x16 <a> "perf-sweep opportunity 2079" _(/recap)_
+- `tablet-landscape` 186x16 <a> "perf-sweep opportunity 70" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 385" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 133" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 154" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 175" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 196" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 217" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 238" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 259" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 280" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 301" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 322" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 343" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 112" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 406" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 427" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 448" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 469" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 490" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 511" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 532" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 553" _(/recap)_
+- `tablet-landscape` 195x16 <a> "perf-sweep opportunity 574" _(/recap)_
+- `tablet-landscape` 186x16 <a> "perf-sweep opportunity 49" _(/recap)_
+- `tablet-landscape` 111x14 <a> "Solicitations found" _(/recap)_
+- `tablet-landscape` 148x14 <a> "Pursue or pass decisions" _(/recap)_
+- `tablet-landscape` 128x14 <a> "Outreach emails sent" _(/recap)_
+- `tablet-landscape` 98x14 <a> "Replies received" _(/recap)_
+- `tablet-landscape` 73x14 <a> "Calls logged" _(/recap)_
+- `tablet-landscape` 100x14 <a> "Quotes recorded" _(/recap)_
+- `tablet-landscape` 90x14 <a> "Bids submitted" _(/recap)_
+- `tablet-landscape` 76x14 <a> "Notes added" _(/recap)_
+- `tablet-landscape` 133x14 <a> "Subcontractors added" _(/recap)_
+- `tablet-landscape` 163x14 <a> "Compliance items resolved" _(/recap)_
+- `tablet-landscape` 100x14 <a> "Automation runs" _(/recap)_
+- `tablet-landscape` 146x16 <a> "SDVOSB certification" _(/recap)_
+- `tablet-landscape` 401x16 <a> "Sent B has done nothing for as lon" _(/admin/recap)_
+- `tablet-landscape` 708x16 <a> "contract-99bc28e3-5f1d-432f-906b-d" _(/admin/recap)_
+- `tablet-landscape` 694x16 <a> "sorts-8e3b6000-103e-4e36-8a17-290d" _(/admin/recap)_
+- `tablet-landscape` 476x16 <a> "Quote Fold Probe has done nothing " _(/admin/recap)_
+- `tablet-landscape` 457x16 <a> "Reverify Probe has done nothing fo" _(/admin/recap)_
+- `tablet-landscape` 702x16 <a> "quota-93da81b0-ca8d-45a2-b679-035a" _(/admin/recap)_
+- `tablet-landscape` 485x16 <a> "Suppression Probe has done nothing" _(/admin/recap)_
+- `tablet-landscape` 488x16 <a> "Pricing Rows Probe has done nothin" _(/admin/recap)_
+- `tablet-landscape` 521x16 <a> "Pricing Rows Neighbour has done no" _(/admin/recap)_
+- `tablet-landscape` 465x16 <a> "Snapshot Probe has done nothing fo" _(/admin/recap)_
+- `tablet-landscape` 55x14 <a> "Accounts" _(/admin/recap)_
+- `tablet-landscape` 49x14 <a> "Jobs run" _(/admin/recap)_
+
+## covered-control (418)
+
+- `phone-small` <a> "On the contractRivera MechanicalBo" is covered by "svg" _(/today)_
+- `phone-small` <a> "Overdue0" is covered by "654 waiting" _(/today)_
+- `phone-small` <a> "Due today8" is covered by "OpportunitiesOpportunities" _(/today)_
+- `phone-small` <a> "Later646" is covered by "CallsCalls" _(/today)_
+- `phone-small` <a> "Completed today00 found·0 emails" is covered by "MoreMore" _(/today)_
+- `phone-small` <a> "Awaiting awardperf-sweep opportuni" is covered by "SubsSubcontractors" _(/pipeline)_
+- `phone-small` <button> "?" is covered by "Open briefQuick lookPursue⋯" _(/review)_
+- `phone-small` <button> "?" is covered by "svg" _(/review)_
+- `phone-small` <button> "?" is covered by "SubsSubcontractors" _(/review)_
+- `phone-small` <a> "Open brief" is covered by "TodayToday99+" _(/review)_
+- `phone-small` <a> "Quick look" is covered by "OpportunitiesOpportunities" _(/review)_
+- `phone-small` <button> "Pursue" is covered by "CallsCalls" _(/review)_
+- `phone-small` <button> "⋯" is covered by "MoreMore" _(/review, /communications)_
+- `phone-small` <a> "HVACRivera MechanicalAna Rivera · " is covered by "circle" _(/subs)_
+- `phone-small` <a> "Quick look" is covered by "TodayToday99+" _(/communications)_
+- `phone-small` <a> "Reply" is covered by "CallsCalls" _(/communications)_
+- `phone-small` <a> "Expiring within 30 days1" is covered by "Opportunities" _(/compliance)_
+- `phone-small` <summary> "How do I get this?▾" is covered by "svg" _(/settings/integrations)_
+- `phone-small` <input> "" is covered by "svg" _(/admin/invitations, /settings/recap)_
+- `phone-small` <a> "Rivera Mechanical is waiting on an" is covered by "SubsSubcontractors" _(/recap)_
+- `phone-large` <a> "On the contractRivera MechanicalBo" is covered by "Overdue0Due today8Later646Complete" _(/today)_
+- `phone-large` <a> "All kinds" is covered by "654 waiting" _(/today)_
+- `phone-large` <a> "Replies1" is covered by "OpportunitiesOpportunities" _(/today)_
+- `phone-large` <a> "Bids72" is covered by "SubsSubcontractors" _(/today)_
+- `phone-large` <a> "Quotes71" is covered by "CallsCalls" _(/today)_
+- `phone-large` <a> "Decisions143" is covered by "MoreMore" _(/today)_
+- `phone-large` <a> "03Review & submit bid: perf-sweep " is covered by "Subs" _(/workbench)_
+- `phone-large` <button> "?" is covered by "Open briefQuick lookPursue⋯" _(/review)_
+- `phone-large` <button> "?" is covered by "Quick look" _(/review)_
+- `phone-large` <button> "?" is covered by "perf-sweep opportunity 49" _(/review)_
+- `phone-large` <button> "?" is covered by "perf-sweep opportunity 49Test Agen" _(/review)_
+- `phone-large` <a> "Contract-specific compliance" is covered by "OpportunitiesOpportunities" _(/compliance)_
+- `phone-large` <a> "Regulatory updates" is covered by "CallsCalls" _(/compliance)_
+- `phone-large` <a> "Quick look" is covered by "TodayToday99+" _(/admin/accounts)_
+- `phone-large` <a> "HVAC replacement, Building 400, Ro" is covered by "SubsSubcontractors" _(/recap)_
+- `tablet-portrait` <a> "On the contractRivera MechanicalBo" is covered by "Overdue0Due today8Later646Complete" _(/today)_
+- `tablet-portrait` <a> "Review & submit bid: perf-sweep op" is covered by "SubsSubcontractors" _(/today)_
+- `tablet-portrait` <a> "Quick look" is covered by "MoreMore" _(/today)_
+- `tablet-portrait` <button> "⋯" is covered by "MoreMore" _(/today, /review)_
+- `tablet-portrait` <a> "Quick look" is covered by "Today" _(/workbench)_
+- `tablet-portrait` <a> "Scoring in progressperf-sweep oppo" is covered by "OpportunitiesOpportunities" _(/pipeline)_
+- `tablet-portrait` <a> "Awaiting scoringperf-sweep opportu" is covered by "CallsCalls" _(/pipeline)_
+- `tablet-portrait` <button> "?" is covered by "Open briefQuick lookPursue⋯" _(/review)_
+- `tablet-portrait` <button> "?" is covered by "Quick look" _(/review)_
+- `tablet-portrait` <button> "?" is covered by "perf-sweep opportunity 49" _(/review)_
+- `tablet-portrait` <button> "?" is covered by "perf-sweep opportunity 49Test Agen" _(/review)_
+- `tablet-portrait` <a> "Open brief" is covered by "Today" _(/review)_
+- `tablet-portrait` <a> "Quick look" is covered by "TodayToday99+" _(/review)_
+- `tablet-portrait` <a> "Open integrations →" is covered by "TodayToday99+" _(/how-it-works)_
+- `tablet-portrait` <input> "" is covered by "OpportunitiesOpportunities" _(/settings/profile)_
+- `tablet-portrait` <input> "" is covered by "CallsCalls" _(/settings/profile)_
+- `tablet-portrait` <a> "Open Communications" is covered by "TodayToday99+" _(/settings/notifications)_
+- `tablet-portrait` <a> "Reverify ProbeNo owner on fileFull" is covered by "Subs" _(/admin/accounts)_
+- `tablet-portrait` <a> "CompanyWhat the scoring is matchin" is covered by "svg" _(/more)_
+- `tablet-portrait` <input> "" is covered by "TodayToday99+" _(/feedback, /settings/recap)_
+- `tablet-portrait` <a> "perf-sweep opportunity 99" is covered by "TodayToday99+" _(/recap)_
+- `tablet-portrait` <a> "Reverify Probe has done nothing fo" is covered by "OpportunitiesOpportunities" _(/admin/recap)_
+- `tablet-landscape` <button> "Relationships▾" is covered by "○Automation is not set up Automati" _(31 routes)_
+- `tablet-landscape` <button> "Delivery▾" is covered by "Dark" _(29 routes)_
+- `tablet-landscape` <button> "Performance▾" is covered by "Signed in as" _(27 routes)_
+- `tablet-landscape` <button> "Help▾" is covered by "⏻Sign out" _(24 routes)_
+- `tablet-landscape` <button> "Settings▾" is covered by "LightDarkDSigned in asdemo@brostco" _(22 routes)_
+- `tablet-landscape` <a> "On the contractRivera MechanicalBo" is covered by "Overdue0Due today8Later646Complete" _(/today)_
+- `tablet-landscape` <button> "?" is covered by "Open briefQuick lookPursue⋯" _(/review)_
+- `tablet-landscape` <a> "Subcontractors" is covered by "Dark" _(/subs, /communications)_
+- `tablet-landscape` <a> "Communications" is covered by "LightDarkDSigned in asdemo@brostco" _(/subs, /communications)_
+- `tablet-landscape` <button> "Delivery▾" is covered by "LightDarkDSigned in asdemo@brostco" _(/subs, /communications)_
+- `tablet-landscape` <button> "Performance▾" is covered by "LightDarkDSigned in asdemo@brostco" _(4 routes)_
+- `tablet-landscape` <a> "Contracts" is covered by "LightDarkDSigned in asdemo@brostco" _(/contracts, /compliance)_
+- `tablet-landscape` <a> "Compliance" is covered by "LightDarkDSigned in asdemo@brostco" _(/contracts, /compliance)_
+- `tablet-landscape` <a> "Fix it here →" is covered by "Invoiced" _(/contracts)_
+- `tablet-landscape` <a> "Daily Recap" is covered by "LightDarkDSigned in asdemo@brostco" _(/analytics, /agents, /recap)_
+- `tablet-landscape` <a> "Analytics" is covered by "⏻Sign out" _(/analytics, /agents, /recap)_
+- `tablet-landscape` <a> "Knowledge Center" is covered by "LightDarkDSigned in asdemo@brostco" _(/how-it-works, /feedback)_
+- `desktop` <a> "On the contractRivera MechanicalBo" is covered by "Overdue0Due today8Later646Complete" _(/today)_
+- `desktop` <button> "?" is covered by "Open briefQuick lookPursue⋯" _(/review)_
+- `desktop` <button> "?" is covered by "Quick look" _(/review)_
+- `desktop` <button> "?" is covered by "perf-sweep opportunity 49Test Agen" _(/review)_
+- `desktop` <a> "Open the full record" is covered by "Give it another day" _(/review)_
+- `desktop` <a> "The notice on SAM.gov" is covered by "Snooze" _(/review)_
+- `desktop` <button> "Platform Admin▾" is covered by "○Automation is not set up Automati" _(6 routes)_
+- `desktop` <button> "Optional Tools▾" is covered by "LightDarkDSigned in asdemo@brostco" _(6 routes)_
+- `desktop` <input> "Select this row" is covered by "Showing 1-50 of 3003Per page255010" _(/subs)_
+- `desktop` <a> "perf-sweep sub 1003" is covered by "Showing 1-50 of 3003Per page255010" _(/subs)_
+- `desktop` <button> "✎" is covered by "Showing 1-50 of 3003Per page255010" _(/subs)_
+- `desktop` <a> "Quick look" is covered by "Showing 1-50 of 3003Per page255010" _(/subs)_
+- `desktop` <a> "Call" is covered by "Showing 1-50 of 3003Per page255010" _(/subs)_
+- `desktop` <button> "⋯" is covered by "Showing 1-50 of 3003Per page255010" _(/subs)_
+- `desktop` <a> "Fix it here →" is covered by "Paid" _(/contracts)_
+- `desktop` <button> "Settings▾" is covered by "○Automation is not set up Automati" _(/analytics, /agents, /recap)_
+- `desktop` <button> "Platform Admin▾" is covered by "LightDarkDSigned in asdemo@brostco" _(/analytics, /agents, /recap)_
+- `desktop` <button> "Optional Tools▾" is covered by "Color theme" _(/analytics, /agents, /recap)_
+- `desktop` <a> "Content" is covered by "Automation is not set up" _(8 routes)_
+- `desktop` <a> "Integrations" is covered by "LightDarkDSigned in asdemo@brostco" _(8 routes)_
+- `desktop` <a> "Billing" is covered by "Dark" _(8 routes)_
+- `desktop` <a> "Daily Recap" is covered by "Signed in as" _(8 routes)_
+- `desktop` <a> "Notifications" is covered by "⏻Sign out" _(8 routes)_
+- `desktop` <a> "Your account" is covered by "⏻Sign out" _(8 routes)_
+- `desktop` <input> "" is covered by "Save profile" _(/settings/profile)_
+- `desktop` <a> "Create an API key ↗" is covered by "Job queue backendpg-boss (Postgres" _(/settings/integrations)_
+- `desktop` <a> "Add billing credit ↗" is covered by "Job queue backendpg-boss (Postgres" _(/settings/integrations)_
+- `desktop` <a> "Invitations" is covered by "Automation is not set up" _(6 routes)_
+- `desktop` <a> "Customer Billing" is covered by "LightDarkDSigned in asdemo@brostco" _(6 routes)_
+- `desktop` <a> "Audit Log" is covered by "Dark" _(6 routes)_
+- `desktop` <a> "System Health" is covered by "Signed in as" _(6 routes)_
+- `desktop` <a> "Platform Recap" is covered by "⏻Sign out" _(6 routes)_
+- `desktop` <button> "Optional Tools▾" is covered by "⏻Sign out" _(6 routes)_
+- `desktop` <a> "Site Authority" is covered by "Automation is not set up" _(/authority)_
+- `desktop-wide` <a> "On the contractRivera MechanicalBo" is covered by "Overdue0Due today8Later646Complete" _(/today)_
+- `desktop-wide` <a> "Read the thread and reply" is covered by "They gave a price" _(/workbench)_
+- `desktop-wide` <a> "Open the solicitation" is covered by "Interested, no price yet" _(/workbench)_
+- `desktop-wide` <button> "?" is covered by "Open briefQuick lookPursue⋯" _(/review)_
+- `desktop-wide` <button> "?" is covered by "Quick look" _(/review)_
+- `desktop-wide` <button> "?" is covered by "perf-sweep opportunity 49Test Agen" _(/review)_
+- `desktop-wide` <a> "Fix it here →" is covered by "Expected profitNot on file" _(/contracts)_
+- `desktop-wide` <button> "Optional Tools▾" is covered by "Automation is not set up" _(/analytics, /agents, /recap)_
+- `desktop-wide` <a> "Billing" is covered by "Automation is not set up" _(8 routes)_
+- `desktop-wide` <a> "Notifications" is covered by "Dark" _(8 routes)_
+- `desktop-wide` <a> "Your account" is covered by "Signed in as" _(8 routes)_
+- `desktop-wide` <button> "Platform Admin▾" is covered by "LightDarkDSigned in asdemo@brostco" _(8 routes)_
+- `desktop-wide` <button> "Optional Tools▾" is covered by "⏻Sign out" _(8 routes)_
+- `desktop-wide` <input> "" is covered by "Save profile" _(/settings/profile)_
+- `desktop-wide` <a> "Audit Log" is covered by "Automation is not set up" _(6 routes)_
+- `desktop-wide` <a> "Platform Recap" is covered by "Dark" _(6 routes)_
+- `desktop-wide` <button> "Optional Tools▾" is covered by "Signed in as" _(6 routes)_

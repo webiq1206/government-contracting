@@ -145,7 +145,15 @@ export function RowActions({
             aria-expanded={menuOpen}
             aria-label={recordLabel ? `More actions for ${recordLabel}` : "More actions"}
             onClick={() => setMenuOpen((v) => !v)}
-            className={`btn-ghost inline-flex items-center justify-center ${
+            /*
+             * `tap` for the width. min-h-11 made this 44 tall and nothing made
+             * it 44 wide: the glyph plus its padding came to 36, so the row's
+             * menu was a 36x44 target on a phone. The sibling trigger in
+             * pipeline-card-menu already wears `tap`, which grows the hit area
+             * with a pseudo-element instead of widening the button and pushing
+             * the row's other actions around.
+             */
+            className={`tap btn-ghost items-center justify-center ${
               compact ? "min-h-11 px-2 text-xs lg:min-h-8" : "min-h-11 px-2.5 text-sm lg:min-h-9"
             }`}
           >
