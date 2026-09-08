@@ -315,6 +315,15 @@ const PROBE = `(() => {
   // top when it does not belong to the control or its label.
   for (const el of [...document.querySelectorAll("a[href], button, input, select, textarea, summary, [role=button]")]) {
     if (!visible(el)) continue;
+    // Bring the control to where a person would have it before tapping.
+    // Without this, whatever happened to sit under the fixed tab bar at load
+    // was reported as covered -- a row you would scroll up first -- and that
+    // was most of the rule's output. A control that is still covered after
+    // being scrolled to the middle of the screen is the real finding.
+    // "instant", not the default: the dash scrolls smoothly, and measuring
+    // mid-animation put the previous position's section header under the
+    // point. That was the whole /today result.
+    el.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
     const r = el.getBoundingClientRect();
     const x = r.left + r.width / 2;
     const y = r.top + r.height / 2;
@@ -519,6 +528,15 @@ async function measure(
    * indefinite.
    */
   await page.waitForSelector("h1", { state: "attached", timeout: 8000 }).catch(() => {});
+  /*
+   * Then let the page settle. The h1 arrives with the shell; on the two
+   * heaviest pages the rows keep streaming in after it, and measuring
+   * coverage while section headers are still moving over arriving rows
+   * reported 180 covered controls on /today that a settled page does not
+   * have -- checked by hand at desktop and phone width: zero. Bounded, so a
+   * page with a long-polling request cannot stall the sweep.
+   */
+  await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
 
   /*
    * A route the sweep's user cannot reach is a different fact from a route
