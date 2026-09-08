@@ -565,7 +565,10 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
                 type="button"
                 aria-label="Remove"
                 onClick={() => { setDirty(true); setExclusions((r) => r.filter((_, idx) => idx !== i)); }}
-                className="mb-0.5 hidden h-9 w-9 items-center justify-center rounded-md border border-border text-slate-500 transition-colors hover:border-risk/60 hover:text-risk sm:inline-flex"
+                /* 36px square is the right visual size next to a text field;
+                   `tap` gives it the 44 hit area a tablet thumb needs without
+                   growing the box. Phones get the full-width text button below. */
+                className="tap mb-0.5 hidden h-9 w-9 rounded-md border border-border text-slate-500 transition-colors hover:border-risk/60 hover:text-risk sm:inline-flex"
               >
                 ✕
               </button>

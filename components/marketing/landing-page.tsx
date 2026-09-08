@@ -216,7 +216,7 @@ export function LandingPage({
                       <b>HVAC maintenance, Boise VA</b>
                       <span>Score 84 · Due in 12 days · $1.2M estimate</span>
                     </div>
-                    <button type="button">Review</button>
+                    <span className="task-cta" aria-hidden="true">Review</span>
                   </div>
                   <div className="task">
                     <i>02</i>
@@ -225,7 +225,7 @@ export function LandingPage({
                       <b>Electrical quote still outstanding</b>
                       <span>Last contact 3 days ago · Follow-up ready</span>
                     </div>
-                    <button type="button">Open</button>
+                    <span className="task-cta" aria-hidden="true">Open</span>
                   </div>
                   <div className="task">
                     <i>03</i>
@@ -234,7 +234,7 @@ export function LandingPage({
                       <b>Grounds maintenance IDIQ</b>
                       <span>Package complete · Submission due tomorrow</span>
                     </div>
-                    <button type="button">Review</button>
+                    <span className="task-cta" aria-hidden="true">Review</span>
                   </div>
                   <div className="app-summary">
                     <span>12 tasks handled automatically today</span>

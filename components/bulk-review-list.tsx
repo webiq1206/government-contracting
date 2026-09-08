@@ -193,7 +193,10 @@ function ReviewCard({
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
         <div className="flex flex-wrap items-center gap-3">
-          <Link href={href} className="text-xs font-medium text-accent-strong">
+          <Link
+            href={href}
+            className="inline-flex min-h-11 items-center text-xs font-medium text-accent-strong lg:min-h-0"
+          >
             Open brief
           </Link>
           <Link

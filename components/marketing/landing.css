@@ -91,7 +91,7 @@
 .mkt-lp .task > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .mkt-lp .task b { font-size: 12px; font-weight: 500; color: #f6f2eb; }
 .mkt-lp .task span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; color: var(--on-dark-soft); }
-.mkt-lp .task button { padding: 8px 12px; border: 1px solid rgba(255,255,255,.28); background: none; color: var(--on-dark); font-size: 9px; }
+.mkt-lp .task .task-cta { padding: 8px 12px; border: 1px solid rgba(255,255,255,.28); background: none; color: var(--on-dark); font-size: 9px; overflow: visible; white-space: nowrap; }
 .mkt-lp .app-summary { padding-top: 18px; border-top: 1px solid rgba(255,255,255,.1); display: flex; justify-content: space-between; font-size: 9px; color: var(--on-dark-label); }
 .mkt-lp .app-summary b { font-weight: 400; color: var(--gold-on-dark); }
 .mkt-lp .orbit { position: absolute; z-index: 3; min-width: 180px; padding: 13px 15px; border: 1px solid rgba(195,160,107,.4); background: #11120f; box-shadow: 0 20px 35px rgba(0,0,0,.35); font: 8px "JetBrains Mono", monospace; letter-spacing: .1em; color: var(--on-dark-label); }
@@ -344,7 +344,7 @@
 .mkt-lp .nav-shell { grid-template-columns: 1fr auto; }
 .mkt-lp .nav-actions { margin-right: 52px; }
 .mkt-lp .mobile-nav { display: block; position: absolute; right: 22px; top: 27px; z-index: 40; }
-.mkt-lp .mobile-nav summary { width: 35px; height: 32px; display: flex; flex-direction: column; justify-content: center; gap: 7px; list-style: none; cursor: pointer; position: relative; z-index: 2; }
+.mkt-lp .mobile-nav summary { width: 44px; height: 44px; display: flex; flex-direction: column; justify-content: center; gap: 7px; list-style: none; cursor: pointer; position: relative; z-index: 2; }
 .mkt-lp .mobile-nav summary::-webkit-details-marker { display: none; }
 .mkt-lp .mobile-nav summary i { width: 24px; height: 1px; background: #fff; transition: transform .2s ease, opacity .2s ease; transform-origin: center; }
 .mkt-lp .mobile-nav[open] { position: fixed; inset: 0; right: 0; top: 0; z-index: 100; background: #0f100e; }
@@ -420,7 +420,7 @@
 .mkt-lp .app-body { padding: 16px; }
 .mkt-lp .queue-title strong { font-size: 20px; }
 .mkt-lp .task { grid-template-columns: 32px 1fr; }
-.mkt-lp .task button { display: none; }
+.mkt-lp .task .task-cta { display: none; }
 .mkt-lp .task b { font-size: 10px; }
 .mkt-lp .orbit { min-width: 145px; }
 .mkt-lp .orbit.top { right: -8px; }
@@ -485,7 +485,12 @@
 @media (max-width: 1024px) {
 .mkt-lp .footer-top nav a,
 .mkt-lp .desktop-nav a,
-.mkt-lp .nav-actions > a { display: inline-flex; align-items: center; min-height: 44px; }
+.mkt-lp .nav-actions > a,
+.mkt-lp .type-logo,
+.mkt-lp .under-link,
+.mkt-lp .faq-layout .sticky a { display: inline-flex; align-items: center; min-height: 44px; }
+.mkt-lp .nav-actions > a { min-width: 44px; justify-content: center; }
+.mkt-lp .mobile-nav nav a { display: flex; align-items: center; min-height: 44px; }
 }
     @media (max-width: 420px) {
 .mkt-lp .hero h1 { font-size: 40px; }
