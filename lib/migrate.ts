@@ -88,6 +88,34 @@ function expectedMigrationChecksums(): Map<string, string> {
 }
 
 /**
+ * The checksum recorded for a ledger row whose migration file no longer
+ * ships. Not a hash of anything: it says "applied once, file since removed",
+ * which is the only true thing the runner can say about such a row.
+ */
+export const ORPHAN_LEDGER_CHECKSUM = "orphan:migration-file-removed-from-repo";
+
+/**
+ * Which ledger rows still need a checksum before the column can be made
+ * not-null: `legacy` rows have a file to hash, `orphans` do not.
+ *
+ * Both have to be handled in the same baseline step. The runner used to hash
+ * only the legacy rows and then set the column not-null, which fails on the
+ * first orphan and leaves every pending migration unapplied. Pure, so the
+ * split is testable without a database.
+ */
+export function baselinePlan(
+  files: readonly string[],
+  ledger: readonly { name: string; checksum: string | null }[]
+): { legacy: string[]; orphans: string[] } {
+  const shipped = new Set(files);
+  const unverified = ledger.filter((row) => !row.checksum).map((row) => row.name);
+  return {
+    legacy: files.filter((file) => unverified.includes(file)),
+    orphans: unverified.filter((name) => !shipped.has(name)).sort(),
+  };
+}
+
+/**
  * Read-only runtime gate. A process must not serve or execute work when the
  * release migration job has not installed the schema this build expects.
  */
@@ -157,11 +185,15 @@ async function run(client: Client): Promise<number> {
     );
   }
 
-  const legacy = files.filter((file) => applied.has(file) && !applied.get(file));
-  if (legacy.length > 0) {
+  const { legacy, orphans } = baselinePlan(files, appliedRows);
+  if (legacy.length > 0 || orphans.length > 0) {
     if (process.env.ALLOW_MIGRATION_CHECKSUM_BASELINE !== "1") {
       throw new Error(
-        `The migration ledger predates checksum verification for: ${legacy.join(", ")}. Compare the deployed schema with these files, then rerun this one time with ALLOW_MIGRATION_CHECKSUM_BASELINE=1 to record the reviewed baseline.`
+        `The migration ledger predates checksum verification for: ${[...legacy, ...orphans].join(", ")}.` +
+          (orphans.length > 0
+            ? ` Of these, ${orphans.join(", ")} ${orphans.length === 1 ? "has" : "have"} no file in this build (removed from the repo after being applied), so the ledger row is kept and marked rather than verified.`
+            : "") +
+          " Compare the deployed schema with these files, then rerun this one time with ALLOW_MIGRATION_CHECKSUM_BASELINE=1 to record the reviewed baseline."
       );
     }
     await client.query("BEGIN");
@@ -173,12 +205,34 @@ async function run(client: Client): Promise<number> {
         );
         applied.set(file, checksums.get(file)!);
       }
+      /*
+       * A ledger row whose file no longer ships (034_sending_domains.sql was
+       * deleted when Resend gave way to per-tenant Gmail, and 036 drops its
+       * table) has nothing to checksum. Marking it keeps the history that the
+       * migration once ran, and lets the not-null step below succeed. The
+       * runtime gate only verifies files this build carries, so a marked row
+       * is otherwise ignored. Deleting the row instead would silently lose
+       * the record; leaving it null halted a production release at the
+       * not-null step with the applied migrations still pending.
+       */
+      for (const name of orphans) {
+        await client.query(
+          `update _migrations set checksum = $2 where name = $1 and checksum is null`,
+          [name, ORPHAN_LEDGER_CHECKSUM]
+        );
+      }
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
       throw err;
     }
-    console.log(`[migrate] recorded reviewed checksums for ${legacy.length} legacy migration(s).`);
+    console.log(
+      `[migrate] recorded reviewed checksums for ${legacy.length} legacy migration(s)` +
+        (orphans.length > 0
+          ? ` and marked ${orphans.length} ledger row(s) whose file is no longer in the repo: ${orphans.join(", ")}`
+          : "") +
+        "."
+    );
   }
 
   // Once the reviewed legacy baseline is complete, make an unverified ledger

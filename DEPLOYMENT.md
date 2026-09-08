@@ -92,6 +92,12 @@ once with `ALLOW_MIGRATION_CHECKSUM_BASELINE=1`. Do not leave that flag on later
 release jobs. A checksum mismatch after baselining means an applied migration
 file was edited and must be restored; put the correction in a new migration.
 
+A ledger row whose migration file no longer ships (034_sending_domains.sql ran
+briefly before Resend was replaced by per-tenant Gmail; 036 drops its table) is
+listed in that same run as having no file in this build. The baseline keeps the
+row and marks it `orphan:migration-file-removed-from-repo` rather than deleting
+it. Do not delete such rows by hand, and do not restore the file.
+
 ## 5. Run
 
 Press **Run**. The default command is `npm run start`, which launches the web
