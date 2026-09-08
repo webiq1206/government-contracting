@@ -142,6 +142,30 @@ describe("trial quota enforcement truth", () => {
     expect(errors).toHaveBeenCalled();
   });
 
+  /*
+   * The sharpest edge of the fail-closed decision, pinned so that reversing it
+   * is a deliberate act rather than a side effect.
+   *
+   * The account read happens before `accessLevel`, which means a database
+   * failure holds PAYING customers, not only trials. That is the real cost of
+   * holding and the strongest argument the other way, so it is asserted
+   * explicitly: anyone who flips this back will see exactly which behaviour
+   * they are trading, instead of discovering it from a customer.
+   */
+  it("holds a PAID customer's action too when the account read fails", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    query.mockRejectedValueOnce(new Error("connection terminated unexpectedly"));
+    const { checkTrialQuota } = await loadTrialLimits();
+
+    const decision = await checkTrialQuota("org-paid", "outreach_emails");
+
+    expect(decision.allowed, "an unverifiable account holds every caller").toBe(false);
+    expect(decision.message).toContain("could not be verified");
+    expect(decision.message).toMatch(/support reference QUOTA-OUTREACH-EMAILS-[0-9a-f]{8}/);
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
   it("holds a trial action when its meter cannot be counted", async () => {
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     query
