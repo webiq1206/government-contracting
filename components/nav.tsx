@@ -75,6 +75,40 @@ const CHIP_GLYPH: Record<AutomationState, string> = {
   not_configured: "\u25CB",
 };
 
+function NavigationRow({ item, compact = false, active, badge, onNavigate }: { item: Item; compact?: boolean; active: boolean; badge: number; onNavigate: () => void }) {
+    return (
+      <Link
+        href={item.href}
+        aria-current={active ? "page" : undefined}
+        onClick={onNavigate}
+        className={`flex coarse:min-h-11 items-center justify-between gap-2 rounded-md pr-2 transition-colors ${
+          compact ? "py-2.5 pl-3 text-sm lg:py-1.5" : "py-2.5 pl-3 lg:py-2"
+        } ${
+          active
+            ? "bg-gold/15 font-medium text-gold-text"
+            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        }`}
+      >
+        <span className="flex min-w-0 items-baseline gap-2.5">
+          <span className="min-w-0">
+            <span className={compact ? "" : "block text-sm"}>{item.label}</span>
+            {!compact && item.hint && (
+              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                {item.hint}
+              </span>
+            )}
+          </span>
+        </span>
+        {badge > 0 && (
+          <span className="badge shrink-0 rounded-full bg-gold px-1.5 text-ink">
+            {badge}
+          </span>
+        )}
+      </Link>
+    );
+  }
+
+
 export function Nav({
   email,
   reviewCount,
@@ -287,40 +321,6 @@ export function Nav({
       .join("")
       .slice(0, 2) || "BC";
 
-  function Row({ item, compact = false }: { item: Item; compact?: boolean }) {
-    const active = isActive(item.href);
-    const badge = item.badge ? counts[item.badge] : 0;
-    return (
-      <Link
-        href={item.href}
-        aria-current={active ? "page" : undefined}
-        onClick={() => setOpen(false)}
-        className={`flex coarse:min-h-11 items-center justify-between gap-2 rounded-md pr-2 transition-colors ${
-          compact ? "py-2.5 pl-3 text-sm lg:py-1.5" : "py-2.5 pl-3 lg:py-2"
-        } ${
-          active
-            ? "bg-gold/15 font-medium text-gold-text"
-            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-        }`}
-      >
-        <span className="flex min-w-0 items-baseline gap-2.5">
-          <span className="min-w-0">
-            <span className={compact ? "" : "block text-sm"}>{item.label}</span>
-            {!compact && item.hint && (
-              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                {item.hint}
-              </span>
-            )}
-          </span>
-        </span>
-        {badge > 0 && (
-          <span className="badge shrink-0 rounded-full bg-gold px-1.5 text-ink">
-            {badge}
-          </span>
-        )}
-      </Link>
-    );
-  }
 
   return (
     <>
@@ -512,7 +512,7 @@ export function Nav({
                   <ul className="mb-1 space-y-0.5">
                     {sec.items.map((item) => (
                       <li key={item.href}>
-                        <Row item={item} compact={sec.key !== "work"} />
+                        <NavigationRow item={item} compact={sec.key !== "work"} active={isActive(item.href)} badge={item.badge ? counts[item.badge] : 0} onNavigate={() => setOpen(false)} />
                       </li>
                     ))}
                   </ul>

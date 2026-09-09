@@ -20,9 +20,11 @@ export function AutomationControl({
   state,
   /** False when the health model has found something wrong. */
   healthy = true,
+  editable = false,
 }: {
   state: AutomationState;
   healthy?: boolean;
+  editable?: boolean;
 }) {
   const { paused, changed_at, changed_by } = state;
   return (
@@ -54,7 +56,7 @@ export function AutomationControl({
           </p>
         </div>
       </div>
-      <ActionButton
+      {editable && <ActionButton
         endpoint="/api/automation"
         body={{ paused: !paused }}
         className={paused ? "btn-primary" : "btn-ghost"}
@@ -65,7 +67,7 @@ export function AutomationControl({
         }
       >
         {paused ? "Resume everything" : "Pause everything"}
-      </ActionButton>
+      </ActionButton>}
     </div>
   );
 }
@@ -74,10 +76,12 @@ export function AutomationControl({
 export function AutomationPausedBanner({
   state,
   variant: _variant = "light",
+  editable = false,
 }: {
   state: AutomationState;
   /** @deprecated Theme tokens cover both surfaces; kept for call-site compatibility. */
   variant?: "light" | "shell";
+  editable?: boolean;
 }) {
   if (!state.paused) return null;
   return (
@@ -86,9 +90,9 @@ export function AutomationPausedBanner({
         <span className="font-semibold">Everything is paused.</span> No monitoring, pipeline
         work, outreach email, digests, or SMS will happen until you resume.
       </p>
-      <ActionButton endpoint="/api/automation" body={{ paused: false }} className="btn-primary text-xs">
+      {editable && <ActionButton endpoint="/api/automation" body={{ paused: false }} className="btn-primary text-xs">
         Resume everything
-      </ActionButton>
+      </ActionButton>}
     </div>
   );
 }

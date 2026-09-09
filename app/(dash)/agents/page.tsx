@@ -234,7 +234,7 @@ export default async function AgentsPage(
         id="agent-log"
       >
         {/* Master switch: pause/resume all automation side effects. */}
-        <AutomationControl state={automation} healthy={live.state === "healthy"} />
+        <AutomationControl state={automation} healthy={live.state === "healthy"} editable={Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "pause_automation"))} />
 
         {/*
           The state, then the causes, then the roster. The old order was a
@@ -602,7 +602,7 @@ export default async function AgentsPage(
         <AgentRunPeek
           run={openRun}
           closeHref={runHref(null)}
-          canRun={can(viewer?.orgRole, "manage_integrations")}
+          canRun={Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "manage_integrations"))}
           nav={{
             prevHref: runPosition.prevId ? runHref(runPosition.prevId) : null,
             nextHref: runPosition.nextId ? runHref(runPosition.nextId) : null,

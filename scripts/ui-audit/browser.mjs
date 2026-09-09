@@ -15,6 +15,10 @@ const browser=await chromium.launch();
 const results=[];
 const failures=[];
 const diagnostics=[];
+function checkpoint() {
+ writeFileSync(join(out,'results.json'),JSON.stringify({scope:'Synthetic browser regression; live integrations and production performance are not verified.',results,failures},null,2));
+ writeFileSync(join(out,'diagnostics.json'),JSON.stringify(diagnostics,null,2));
+}
 try {
  for(const [device,width,height] of [['mobile',390,844],['tablet',820,1180],['desktop',1440,1000]]) {
   try {
@@ -53,6 +57,10 @@ try {
     try {
       const response=await p.goto(base+route,{waitUntil:'networkidle',timeout:60000});
       record.http=response?.status();record.finalPath=new URL(p.url()).pathname;
+      record.navigation=await p.evaluate(()=>{
+        const nav=performance.getEntriesByType('navigation')[0];
+        return nav?{responseMs:Math.round(nav.responseStart-nav.startTime),domMs:Math.round(nav.domContentLoadedEventEnd-nav.startTime),transferBytes:nav.transferSize}:null;
+      });
       record.headings=await p.locator('h1').allTextContents();
       if(entry.route==='/opportunity/[id]') {
         const heading=await p.locator('h1').boundingBox();
@@ -69,13 +77,36 @@ try {
       });
       if(scrolled) {record.bottomScreenshot=name.replace('.png','-bottom.png');await p.screenshot({path:join(out,record.bottomScreenshot)});}
       record.overflow=await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
+      record.tabs=[];
+      const tablists=p.getByRole('tablist');
+      for(let group=0;group<await tablists.count();group++) {
+        const list=tablists.nth(group);
+        const labels=await list.getByRole('tab').allTextContents();
+        for(let tab=0;tab<labels.length;tab++) {
+          const control=list.getByRole('tab').nth(tab);
+          await control.click();
+          await p.waitForLoadState('networkidle');
+          assert.equal(await control.getAttribute('aria-selected'),'true','Selected tab must identify itself');
+          const screenshot=name.replace('.png',`-tabs-${group}-${tab}.png`);
+          await p.screenshot({path:join(out,screenshot)});
+          record.tabs.push({group,label:labels[tab],screenshot,status:'tab opened'});
+        }
+      }
       record.status=record.http>=500||errors.length||record.overflow?'needs review':'render captured';
       if(!publicPage&&record.finalPath==='/login') record.status='authentication failed';
       if(record.status!=='render captured') failures.push(record);
     } catch(e) {record.status='blocked';record.error=String(e.message);failures.push(record);}
-    results.push(record);p.removeListener('pageerror',onError);p.removeListener('console',onConsole);
+    results.push(record);checkpoint();console.log(JSON.stringify({device,route:entry.route,status:record.status}));p.removeListener('pageerror',onError);p.removeListener('console',onConsole);
     if(publicPage) await target.close();
   }
+  await page.goto(base+'/admin/accounts',{waitUntil:'networkidle'});
+  await page.getByRole('link',{name:'Quick look',exact:true}).first().click();
+  const accountDrawer=page.getByRole(device==='desktop'?'complementary':'dialog',{name:'Record details',exact:true});
+  await accountDrawer.waitFor();
+  await page.screenshot({path:join(out,device+'-account-quick-look.png')});
+  await page.keyboard.press('Escape');
+  await accountDrawer.waitFor({state:'hidden'});
+  results.push({device,role:'owner',route:'/admin/accounts',status:'quick look and Escape checked',screenshot:device+'-account-quick-look.png'});
   // Verify URL navigation and browser back preserve the selected destination.
   await page.goto(base+'/settings/api-usage');
   await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
@@ -137,6 +168,8 @@ try {
   const denied=await v.evaluate(async()=>{ const r=await fetch('/api/automation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paused:true})});return {status:r.status,url:r.url,body:await r.text()}; });
   writeFileSync(join(out,device+'-permission.json'),JSON.stringify(denied));
   assert.equal(denied.status,403,'Viewer cannot pause automation');
+  await v.goto(base+'/agents',{waitUntil:'networkidle'});
+  assert.equal(await v.getByRole('button',{name:/^(Pause|Resume) everything$/}).count(),0,'Viewer cannot operate automation controls');
   const admin=await v.goto(base+'/admin/accounts');
   assert.equal(admin.status(),404,'Viewer cannot access platform admin');
   results.push({device,role:'viewer',route:'/settings/api-usage',status:'permission checks passed',screenshot:device+'-viewer-api-usage.png'});
@@ -158,8 +191,9 @@ try {
   assert(await v.getByRole('button',{name:/Start.*7-day free trial/}).isEnabled(),'Failed signup remains retryable');
   results.push({device,role:'visitor',route:'/signup',status:'service failure recovery checked; account creation not attempted'});
   await viewer.close();
+  checkpoint();
   } catch(error) {
-    failures.push({device,status:'workflow blocked',error:String(error.message)});
+    failures.push({device,status:'workflow blocked',error:String(error.message)});checkpoint();
     for(const [index,context] of browser.contexts().entries()) {
       for(const [tab,page] of context.pages().entries()) {
         await page.screenshot({path:join(out,`${device}-failure-${index}-${tab}.png`)}).catch(()=>{});

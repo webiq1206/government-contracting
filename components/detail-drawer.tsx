@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { DetailDrawerFrame } from "@/components/detail-drawer-frame";
 
 /**
  * A record, read without leaving the list it is in.
@@ -62,10 +63,7 @@ export function DetailDrawer({
   };
 }) {
   return (
-    <aside
-      aria-label="Record details"
-      className="fixed inset-0 z-[65] flex flex-col overflow-hidden border-border/55 bg-background lg:static lg:inset-auto lg:z-auto lg:w-[340px] lg:shrink-0 lg:border-l dark:border-white/10"
-    >
+    <DetailDrawerFrame closeHref={closeHref}>
       <header className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -140,7 +138,7 @@ export function DetailDrawer({
           {footer}
         </div>
       )}
-    </aside>
+    </DetailDrawerFrame>
   );
 }
 
