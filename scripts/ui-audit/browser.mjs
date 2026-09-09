@@ -99,29 +99,40 @@ try {
     results.push(record);checkpoint();console.log(JSON.stringify({device,route:entry.route,status:record.status}));p.removeListener('pageerror',onError);p.removeListener('console',onConsole);
     if(publicPage) await target.close();
   }
+  try {
   await page.goto(base+'/admin/accounts',{waitUntil:'networkidle'});
   const quickLook=page.getByRole('link',{name:'Quick look',exact:true}).first();
   const quickHref=await quickLook.getAttribute('href');
   const quickEvents=[];
   const onNavigation=frame=>{if(frame===page.mainFrame())quickEvents.push({navigation:frame.url()});};
   const onRequest=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({request:request.url(),method:request.method()});};
+  const onResponse=response=>{if(response.url().includes('/admin/accounts'))quickEvents.push({response:response.url(),status:response.status(),type:response.headers()['content-type']});};
+  const onFailed=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({failed:request.url(),reason:request.failure()});};
+  const onFinished=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({finished:request.url()});};
   page.on('framenavigated',onNavigation);page.on('request',onRequest);
+  page.on('response',onResponse);page.on('requestfailed',onFailed);page.on('requestfinished',onFinished);
   await quickLook.click();
   const accountDrawer=page.getByRole(device==='desktop'?'complementary':'dialog',{name:'Record details',exact:true});
   try { await accountDrawer.waitFor(); }
   finally {
     page.removeListener('framenavigated',onNavigation);page.removeListener('request',onRequest);
+    page.removeListener('response',onResponse);page.removeListener('requestfailed',onFailed);page.removeListener('requestfinished',onFinished);
     writeFileSync(join(out,device+'-quick-look-navigation.json'),JSON.stringify({href:quickHref,final:page.url(),events:quickEvents},null,2));
   }
   await page.screenshot({path:join(out,device+'-account-quick-look.png')});
   await page.keyboard.press('Escape');
   await accountDrawer.waitFor({state:'hidden'});
   results.push({device,role:'owner',route:'/admin/accounts',status:'quick look and Escape checked',screenshot:device+'-account-quick-look.png'});
+  } catch(error) {
+    failures.push({device,route:'/admin/accounts',status:'quick look blocked',error:String(error.message)});
+    checkpoint();
+  }
   // Verify URL navigation and browser back preserve the selected destination.
   await page.goto(base+'/settings/api-usage');
   await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
   await page.goto(base+'/settings/profile',{waitUntil:'networkidle'});
+  assert.equal(await page.getByRole('navigation',{name:'Breadcrumb',exact:true}).getByRole('link',{name:'Settings',exact:true}).getAttribute('href'),'/settings');
   await page.getByLabel('Legal name',{exact:true}).fill('Audit Company '+device);
   if(device!=='desktop') await page.getByRole('button',{name:'Open menu',exact:true}).click();
   await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:/^Today/}).click();
@@ -204,6 +215,14 @@ try {
   assert(!(await v.getByRole('alert').innerText()).includes('SQLSTATE'),'Signup must hide technical diagnostics');
   assert(await v.getByRole('button',{name:/Start.*7-day free trial/}).isEnabled(),'Failed signup remains retryable');
   results.push({device,role:'visitor',route:'/signup',status:'service failure recovery checked; account creation not attempted'});
+  // Public footer links must land on an existing section, including from a
+  // different page. No signup or other write is performed here.
+  await v.unroute('**/api/auth/signup');
+  await v.goto(base+'/privacy',{waitUntil:'networkidle'});
+  await v.getByRole('navigation',{name:'Product',exact:true}).getByRole('link',{name:'How it works',exact:true}).click();
+  await v.waitForURL('**/#workflow');
+  await v.locator('#workflow').waitFor();
+  results.push({device,role:'visitor',route:'/privacy',status:'footer navigation to workflow checked'});
   await viewer.close();
   checkpoint();
   } catch(error) {
@@ -227,6 +246,8 @@ try {
  }
  process.exitCode=1;
 } finally {
+ const hydrationDiagnostics=diagnostics.filter(x=>/hydrati|Minified React error #41[89]|cannot be a descendant|did not match/i.test(x.error));
+ if(hydrationDiagnostics.length) failures.push({status:'shell hydration errors',count:hydrationDiagnostics.length});
  writeFileSync(join(out,'diagnostics.json'),JSON.stringify(diagnostics,null,2));
  writeFileSync(join(out,'results.json'),JSON.stringify({scope:'Synthetic owner and visitor render checks. Not a production workflow sign-off.',results,failures},null,2));
  await browser.close();

@@ -133,27 +133,23 @@ export default async function ContentLibraryPage() {
                 : "Emails to subcontractors",
             content: (
               <div className="space-y-6 px-5 py-6 sm:px-6">
-                <div className="max-w-2xl">
+                <div className="max-w-2xl space-y-2">
                   <p className="text-sm leading-relaxed text-muted-foreground">
-                    These are the outreach and follow-up emails Brost Co sends when it
-                    contacts subcontractors. Use fill-in fields for names, trades, and
-                    dates; they are filled per bid. Everything factual, the project,
-                    the scope, the requirements, the questions and the document list,
-                    is added automatically beneath what you write, so you do not need
-                    to paste any of it in.
+                    Edit the emails sent to subcontractors. Saving creates a draft;
+                    your changes are used only after you publish them.
                   </p>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    There are two follow-up bodies because there are two situations.
-                    The first is a reply inside the original conversation, where the
-                    scope is already sitting above it. The second is used only when
-                    that conversation cannot be replied to, and has to stand on its
-                    own. Each one says when it is used.
-                  </p>
-                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    Saving writes a draft. Nothing you save is sent to anybody
-                    until you publish it, and until then this platform keeps
-                    using the version already in use.
-                  </p>
+                  <details className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
+                    <summary className="cursor-pointer font-medium text-foreground">How these emails work</summary>
+                    <div className="space-y-2 pt-3 leading-relaxed">
+                      <p>Names, trades, and dates are filled in for each bid. Project facts,
+                        scope, requirements, questions, and document lists are added
+                        automatically, so you do not need to paste them in.</p>
+                      <p>The first follow-up replies to the original conversation.
+                        The second is used only when that conversation cannot be replied
+                        to. Each template explains when it is used.</p>
+                      <p>The published version stays in use while you work on a draft.</p>
+                    </div>
+                  </details>
                 </div>
                 <TemplateWorkbench
                   entries={templates.map(

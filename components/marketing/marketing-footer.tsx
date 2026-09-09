@@ -42,10 +42,10 @@ export function MarketingFooter({
           </div>
 
           <FooterCol title="Product" dark={dark}>
-            <a href="/#platform" className="inline-flex coarse:min-h-11 items-center">Platform</a>
-            <a href="/#pipeline" className="inline-flex coarse:min-h-11 items-center">Pipeline</a>
-            <a href="/#pricing" className="inline-flex coarse:min-h-11 items-center">Pricing</a>
-            <a href="/#faq" className="inline-flex coarse:min-h-11 items-center">FAQ</a>
+            <Link href="/#platform" className="inline-flex coarse:min-h-11 items-center">Platform</Link>
+            <Link href="/#workflow" className="inline-flex coarse:min-h-11 items-center">How it works</Link>
+            <Link href="/#pricing" className="inline-flex coarse:min-h-11 items-center">Pricing</Link>
+            <Link href="/#faq" className="inline-flex coarse:min-h-11 items-center">FAQ</Link>
           </FooterCol>
 
           <FooterCol title="Company" dark={dark}>
