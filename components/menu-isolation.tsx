@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
+import { createContext, useContext, useState, useSyncExternalStore, Suspense, type ComponentProps, type ReactNode } from "react";
 
 function createMenuStore() {
   let open = false;
@@ -28,5 +28,8 @@ export function useMenuIsolation() {
 }
 export function ShellMain(props: ComponentProps<"main">) {
   const { open } = useMenuIsolation();
-  return <main {...props} inert={open || undefined} />;
+  const { children, ...attributes } = props;
+  // Server-rendered route children can arrive after this client wrapper.
+  // Keep their suspension inside main, after its host node has hydrated.
+  return <main {...attributes} inert={open || undefined}><Suspense fallback={null}>{children}</Suspense></main>;
 }

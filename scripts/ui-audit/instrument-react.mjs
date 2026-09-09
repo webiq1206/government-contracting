@@ -21,7 +21,7 @@ const logging = `
       auditChildren.push({tag: auditChild.tag, type: typeof auditChild.type === 'string' ? auditChild.type : auditChild.type && auditChild.type.name, flags: auditChild.flags, dehydrated: auditChild.memoizedState && auditChild.memoizedState.dehydrated && auditChild.memoizedState.dehydrated.nodeValue});
     }
     console.error('[ui-audit hydration]', JSON.stringify({
-      children: auditChildren, phase: new Error().stack, props: {keys: Object.keys(fiber.pendingProps || {}), childrenType: typeof (fiber.pendingProps && fiber.pendingProps.children), childCount: Array.isArray(fiber.pendingProps && fiber.pendingProps.children) ? fiber.pendingProps.children.length : null},
+      site: fiber._auditHydrationSite, children: auditChildren, phase: new Error().stack, props: {keys: Object.keys(fiber.pendingProps || {}), childrenType: typeof (fiber.pendingProps && fiber.pendingProps.children), childCount: Array.isArray(fiber.pendingProps && fiber.pendingProps.children) ? fiber.pendingProps.children.length : null},
       path: window.location.pathname, expected: auditParents,
       actual: nextHydratableInstance && String(nextHydratableInstance.outerHTML || nextHydratableInstance.nodeValue).slice(0, 3500),
       parent: nextHydratableInstance && nextHydratableInstance.parentElement && nextHydratableInstance.parentElement.outerHTML.slice(0, 3500)
@@ -33,7 +33,11 @@ for (const path of paths) {
   if (!existsSync(path)) continue;
   const source = readFileSync(path, 'utf8');
   if (!source.includes(needle)) throw new Error('React diagnostic insertion point changed: '+path);
-  writeFileSync(path, source.replace(needle, needle + logging));
+  let instrumented = source.replace(needle, needle + logging);
+  let site = 0;
+  instrumented = instrumented.replace(/throwOnHydrationMismatch\((workInProgress|JSCompiler_inline_result|fiber)(, !0)?\);/g, (call, argument) => '(' + argument + '._auditHydrationSite = ' + (++site) + ', ' + call.slice(0, -1) + ');');
+  console.log(path + ': labelled ' + site + ' hydration checks');
+  writeFileSync(path, instrumented);
   patched++;
 }
 if (!patched) throw new Error('No React client source found for diagnostics');
