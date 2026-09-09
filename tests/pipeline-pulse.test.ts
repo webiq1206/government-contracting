@@ -116,6 +116,15 @@ describe("the outreach leg", () => {
     expect(f[0].cta).toContain("Reconnect");
   });
 
+  it("explains quota delays without exposing provider details or requesting a new login", () => {
+    const f = evaluatePulse(input({ gmail: {
+      connected: true, status: "error", lastError: "Quota exceeded for Total Query Cost: private-project-id",
+    } }));
+    expect(f[0]).toMatchObject({ key: "gmail_broken", severity: "warn", href: "/agents", cta: "Check inbox progress" });
+    expect(f[0].detail).not.toContain("private-project-id");
+    expect(f[0].title).toContain("temporarily");
+  });
+
   it("counts failed sends as an outage, not a footnote", () => {
     const f = evaluatePulse(input({ outreach: { sendFailed: 3, drafts: 0 } }));
     expect(f[0]).toMatchObject({ key: "outreach_failing", severity: "down" });

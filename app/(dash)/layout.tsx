@@ -17,11 +17,6 @@ import { SessionLoadFailure } from "@/components/session-load-failure";
 
 export const dynamic = "force-dynamic";
 
-// Keep loading boundaries on individual data-heavy routes, not on this async
-// authenticated layout. Next 15 can strand an early same-path navigation when
-// its layout-router refetch suspends under the layout's loading.tsx boundary.
-// See vercel/next.js#98305. Shell status still streams independently below.
-
 export default async function DashLayout({ children }: { children: React.ReactNode }) {
   const auth = await currentUser().then(
     (user) => ({ ok: true as const, user }),

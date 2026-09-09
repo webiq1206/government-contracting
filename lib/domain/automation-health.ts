@@ -178,8 +178,8 @@ export function causeSpec(cause: IncidentCause): IncidentSpec {
  *
  * Order matters and is not alphabetical. Credit is tested before the generic
  * billing words because "insufficient credit balance" also contains "balance";
- * auth is tested before rate limiting because a revoked key can come back as a
- * 429 on some paths. Each branch is the narrowest phrase that identifies the
+ * explicit quota failures are checked before generic HTTP authentication
+ * codes because Google uses 403 for throttling. Each branch identifies the
  * cause uniquely.
  */
 export function classifyFailure(error: string | null | undefined): IncidentCause {
@@ -188,14 +188,19 @@ export function classifyFailure(error: string | null | undefined): IncidentCause
   if (/api_budget:|api use is paused|api limit cannot cover|maximum request cost|hard dollar limit/.test(text)) return "spending_limit";
   if (/credit balance|insufficient (?:credit|funds)|add credit/.test(text)) return "provider_credit";
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";
+  // Google can return quota exhaustion as HTTP 403. Check throttling before
+  // authentication, including historical messages with a reconnect suffix.
+  if (/rate.?limit|quota exceeded|quota.*(?:per minute|per user)|429|too many requests/i.test(text)) return "provider_rate_limit";
   // Match the named service before generic HTTP/auth words. A Google 401 is
   // not repaired by replacing an Anthropic key, and a Gmail timeout is not an
   // expired grant.
   if (/invalid_grant|refresh token|token expired|reconnect.*(?:mail|google)|(?:gmail|google|mailbox).*(?:401|403|unauthori[sz]ed|revoked|reconnect|authentication)/.test(text)) return "integration_auth";
   if (/api key|unauthori[sz]ed|invalid key|revoked|\b401\b|\b403\b/.test(text)) return "provider_auth";
-  if (/rate limit|429|too many requests/.test(text)) return "provider_rate_limit";
   if (/econnrefused.*5432|database|relation .* does not exist|too many connections|too many clients|remaining connection slots/.test(text))
     return "database";
+  // Older recovery logs guessed that every null admission meant a paused
+  // queue. Keep their unfinished work visible without claiming an outage.
+  if (/queue refused the job because automation became paused|retry was not admitted/.test(text)) return "unknown";
   if (/queue|pg-?boss/.test(text)) return "queue_unreachable";
   if (/5\d\d|server error|overloaded|service unavailable/.test(text)) return "provider_unavailable";
   if (/fetch failed|enotfound|etimedout|network|timeout|aborted|unreachable/.test(text)) return "network";

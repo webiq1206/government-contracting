@@ -16,6 +16,19 @@ Status: in progress. PR #128 is not a complete production audit sign-off.
 - Automation schedules/manual controls are collapsed by default. Manual runs require the run-agents permission and an explicit cost-aware confirmation; platform-only jobs are hidden from tenant users. Browser verification is pending.
 - Parent breadcrumb links work even when they are the only breadcrumb. Public footer navigation points to an existing workflow section. Email-template instructions are expandable so the editor is easier to reach on mobile.
 
+## Current live findings (September 9)
+
+Read-only browser access is authenticated using the existing owner session. Today and Automation Health rendered, and the live Automation Health layout was visually inspected. No production settings, jobs, messages, credentials, or budgets were changed. The earlier connection failure no longer describes current access.
+
+Confirmed causes and branch changes:
+
+- Recovery sweeps treated a null enqueue result (including singleton duplicates and safety deferrals) as proof that the queue was unreachable. The branch now counts deferred work separately; thrown backend failures still fail the run. Legacy ambiguous log messages no longer assert an outage.
+- Gmail's per-user query quota error was classified as expired authentication and exposed raw provider diagnostics on Today. Quota errors now show a temporary delay with a progress action; genuine revoked grants retain Reconnect. Polling preserves continuation tokens on quota/network failures, clearing them only for an explicitly invalid or expired page token.
+- Analysis repeatedly prepared large documents before discovering a spending hold. A dry-run check for the exact tenant and model now runs before attachment download/OCR, after duplicate/unchanged analysis returns. Atomic admission still runs immediately before paid calls.
+- Missing provider price ceilings still block paid work safely. Automatic price setup, budget-aware retry backoff, full Gmail partial-page recovery, and production automation recovery remain **unverified/incomplete**. No prices were guessed or spending limits removed.
+
+[Browser run 20](https://github.com/webiq1206/government-contracting/actions/runs/34408303435) produced 210 records, including 174 route captures with no hydration errors. Viewer permission checks, read-only integration/content controls, sign-out, and visitor recovery checks passed at all three sizes. Six failures remain: ordinary and fresh-browser Clear navigation at every size. Removing the layout loading boundary did not fix them; that experiment is reverted. Clear now uses standard document navigation, matching the existing GET filter form; the next browser run must verify it. [CI run 372](https://github.com/webiq1206/government-contracting/actions/runs/34408303388) passed before these latest changes.
+
 ## Evidence and limits
 
 The disposable PostgreSQL/Chromium workflow uses synthetic owner and viewer accounts. It has no production integration credentials and does not start workers. External browser requests are blocked, including Google Fonts; screenshots therefore use available fallback fonts. Browser viewport sizes are 390x844, 820x1180, and 1440x1000. These are emulated sizes, not physical-device keyboard or Safari tests.

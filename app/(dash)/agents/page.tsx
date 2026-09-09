@@ -484,9 +484,9 @@ export default async function AgentsPage(
               Filter
             </button>
             {(q || levelFilter || agentFilter) && (
-              <Link prefetch={false} href={link({ q: undefined, level: undefined, agent: undefined, page: undefined })} className="inline-flex coarse:min-h-11 items-center text-xs text-slate-500 hover:text-accent">
+              <a href={link({ q: undefined, level: undefined, agent: undefined, page: undefined })} className="inline-flex coarse:min-h-11 items-center text-xs text-slate-500 hover:text-accent">
                 Clear
-              </Link>
+              </a>
             )}
           </form>
 
@@ -507,12 +507,12 @@ export default async function AgentsPage(
                 }
                 action={
                   q || levelFilter ? (
-                    <Link
+                    <a
                       href={link({ q: undefined, level: undefined, agent: undefined, page: undefined })}
                       className="btn-ghost text-sm"
                     >
                       Clear filters
-                    </Link>
+                    </a>
                   ) : undefined
                 }
               />

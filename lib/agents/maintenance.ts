@@ -1508,7 +1508,7 @@ export const stalledPipelineSweep: AgentDefinition = {
               enqueue(agent, { opportunityId: o.id, trigger: "rescue" })
             );
             if (!queuedId) {
-              throw new Error("the queue refused the job because automation became paused");
+              throw new Error("the retry was not admitted; a pause, stopped pursuit, or unavailable record version may be preventing it");
             }
             queued = true;
           } catch (e) {
@@ -1731,6 +1731,7 @@ export const scoringRecoverySweep: AgentDefinition = {
     }
     let scoringQueued = 0;
     let queueFailures = 0;
+    let deferred = 0;
     for (const o of unscored) {
       try {
         const queuedId = await runWithOrg(o.orgId, () =>
@@ -1741,7 +1742,10 @@ export const scoringRecoverySweep: AgentDefinition = {
           )
         );
         if (!queuedId) {
-          throw new Error("the queue refused the job because automation became paused");
+          // A singleton duplicate or a safety guard returns null. Neither
+          // establishes a queue outage; only an actual enqueue error does.
+          deferred++;
+          continue;
         }
         scoringQueued++;
       } catch (err) {
@@ -1798,7 +1802,10 @@ export const scoringRecoverySweep: AgentDefinition = {
           )
         );
         if (!queuedId) {
-          throw new Error("the queue refused the job because automation became paused");
+          // A singleton duplicate or a safety guard returns null. Neither
+          // establishes a queue outage; only an actual enqueue error does.
+          deferred++;
+          continue;
         }
         analysisQueued++;
       } catch (err) {
@@ -1837,6 +1844,7 @@ export const scoringRecoverySweep: AgentDefinition = {
         `re-queued analysis for ${analysisQueued} opportunit${analysisQueued === 1 ? "y" : "ies"} missing a brief`
       );
     }
+    if (deferred > 0) parts.push(`${deferred} recovery jobs were already queued or deferred by a safety check; the next sweep will check them again`);
     if (queueFailures > 0) {
       parts.push(
         `${queueFailures} recovery job${queueFailures === 1 ? "" : "s"} could not be queued and remain incomplete`
@@ -1845,7 +1853,7 @@ export const scoringRecoverySweep: AgentDefinition = {
     return {
       ok: queueFailures === 0,
       summary: parts.length > 0 ? `${parts.join("; ")}.` : "Nothing to recover.",
-      data: { scoringQueued, analysisQueued, queueFailures },
+      data: { scoringQueued, analysisQueued, queueFailures, deferred },
       humanActionRequired: queueFailures > 0,
     };
   },
@@ -2548,7 +2556,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
       // disconnected. Discard only that opaque token, never the time cursor,
       // so the next successful run restarts the same range and idempotently
       // walks back to the unprocessed page.
-      if (cursor.page_token) {
+      if (cursor.page_token && /(?:invalid|expired).*page.?token|page.?token.*(?:invalid|expired)/i.test(error)) {
         await query(
           `update integration_tokens
               set data = coalesce(data, '{}'::jsonb)
@@ -2567,7 +2575,7 @@ async function pollRepliesForOrg(orgId: string): Promise<AgentResult> {
         action: "poll-failed",
         level: "error",
         status: "error",
-        message: `Could not read the inbox for replies: ${error}. If this repeats, the Google connection needs to be reconnected in Settings, then Integrations.`,
+        message: `Could not read the inbox for replies: ${error}. Reply polling will try again; see Automation Health for the cause and next step.`,
       });
       return { ok: false, summary: `Inbox poll failed: ${error}` };
     }

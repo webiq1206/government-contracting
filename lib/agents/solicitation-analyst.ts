@@ -1451,6 +1451,12 @@ export const solicitationAnalyst: AgentDefinition = {
     const profile = await getProfileJson();
     if (!profile) return { ok: false, summary: "no active Company Profile" };
 
+    // Do not repeatedly download and OCR the same documents while spending
+    // is paused or this model has no price ceiling. The real call still makes
+    // its atomic reservation, so this check cannot bypass concurrent limits.
+    const { checkClaudeSpending } = await import("../api-usage/check-spending");
+    await checkClaudeSpending(opp.org_id, config.claude.modelSmart, "solicitation-analyst");
+
     // Download, store, and extract text from solicitation attachments (PDFs parsed).
     const attachments: Attachment[] = Array.isArray(opp.attachments_json)
       ? opp.attachments_json
