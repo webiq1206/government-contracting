@@ -25,7 +25,23 @@ async function timedFetch(url: string, init?: RequestInit, ms = 12_000): Promise
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
   try {
-    return await fetch(url, { ...init, signal: ctl.signal });
+    const u = new URL(url);
+    const headers = new Headers(init?.headers);
+    const keyInfo = u.hostname === 'api.anthropic.com' ? {provider:'Anthropic',envKey:'ANTHROPIC_API_KEY',value:headers.get('x-api-key') ?? ''}
+      : u.hostname === 'maps.googleapis.com' ? {provider:'Google Maps',envKey:'GOOGLE_MAPS_API_KEY',value:u.searchParams.get('key') ?? ''}
+      : u.hostname === 'api.hunter.io' ? {provider:'Hunter',envKey:'HUNTER_API_KEY',value:u.searchParams.get('api_key') ?? ''}
+      : null;
+    if (!keyInfo?.value) return await fetch(url, { ...init, signal: ctl.signal });
+    const {requestIdentity,metered} = await import('./api-usage/ledger');
+    const identity = await requestIdentity(keyInfo.envKey,keyInfo.value);
+    // Validators explicitly receive draft tenant keys, which are not saved yet.
+    if (identity.source === 'unknown') identity.source = 'tenant';
+    const response = await metered(identity,keyInfo.provider,'Connection test','API connection check',async()=>{
+      const res = await fetch(url,{...init,signal:ctl.signal});
+      const body = await res.clone().json().catch(()=>null);
+      return {res,body};
+    },({res,body})=>({requestId:body?.id,units:body?.usage ?? {requests:1},failed:!res.ok,errorCode:res.ok?undefined:`HTTP ${res.status}`}));
+    return response.res;
   } finally {
     clearTimeout(t);
   }

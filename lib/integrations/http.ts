@@ -1,3 +1,4 @@
+import { metered, requestIdentity } from '../api-usage/ledger';
 /**
  * Shared HTTP helper with timeout, JSON parsing, and typed errors. All
  * integration clients use this so retry/timeout behavior is uniform.
@@ -14,6 +15,7 @@ export class HttpError extends Error {
 }
 
 export interface FetchJsonOptions extends RequestInit {
+  metering?: { envKey: string; value: string; provider: string; service: string; feature: string; orgId?: string };
   timeoutMs?: number;
   query?: Record<string, string | number | boolean | undefined>;
 }
@@ -22,7 +24,17 @@ export async function fetchJson<T = unknown>(
   url: string,
   opts: FetchJsonOptions = {}
 ): Promise<T> {
-  const { timeoutMs = 20_000, query, ...init } = opts;
+  const { metering, ...plain } = opts;
+  if (metering) {
+    const identity = await requestIdentity(metering.envKey, metering.value, metering.orgId);
+    return metered(identity, metering.provider, metering.service, metering.feature,
+      () => fetchJson<T>(url, plain), value => {
+        const body = value as { status?: string } | null;
+        const failed = metering.provider === 'Google Maps' && Boolean(body?.status && !['OK','ZERO_RESULTS'].includes(body.status));
+        return { units: { requests: 1 }, failed, errorCode: failed ? body?.status : undefined };
+      });
+  }
+  const { timeoutMs = 20_000, query, ...init } = plain;
   const u = new URL(url);
   if (query) {
     for (const [k, v] of Object.entries(query)) {
@@ -61,7 +73,7 @@ export async function withRetry<T>(
     } catch (err) {
       lastErr = err;
       const status = err instanceof HttpError ? err.status : 0;
-      const retryable = status === 0 || status === 429 || status >= 500;
+      const retryable = (err as Error)?.name !== 'ApiUsageBlockedError' && (status === 0 || status === 429 || status >= 500);
       if (!retryable || i === retries) break;
       await new Promise((r) => setTimeout(r, baseMs * 2 ** i));
     }

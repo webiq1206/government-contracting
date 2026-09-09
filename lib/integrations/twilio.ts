@@ -1,3 +1,4 @@
+import { metered, requestIdentity } from '../api-usage/ledger';
 /**
  * Twilio SMS client, outbound texts + operator alerts. Requires
  * TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER. When any is
@@ -54,11 +55,16 @@ export const sms = {
     }
     try {
       const client = twilioSdk(creds.sid, creds.token);
-      const msg = await client.messages.create({
+      const identity = await requestIdentity('TWILIO_AUTH_TOKEN', creds.token);
+      const accountIdentity = await requestIdentity('TWILIO_ACCOUNT_SID', creds.sid);
+      if(identity.source !== accountIdentity.source)throw new Error('Your Twilio account and token use different API sources. Reconnect Twilio in API Usage.');
+      const msg = await metered(identity, 'Twilio', 'SMS', 'Send text message', () => client.messages.create({
         from: creds.from,
         to,
         body: truncate(body),
-      });
+      }), value => ({ requestId: value.sid, units: { requests: 1, segments: Number(value.numSegments) || 0 },
+        actualCost: value.price != null && value.priceUnit?.toUpperCase() === 'USD' ? String(Math.abs(Number(value.price))) : undefined,
+        evidence: value.price != null ? `Twilio message ${value.sid}` : undefined }));
       return { sid: msg.sid };
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };

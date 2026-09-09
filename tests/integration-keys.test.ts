@@ -63,7 +63,8 @@ describe("integration credentials are per organization", () => {
     // unguarded read would hand the platform's key to a customer.
     expect(src).toMatch(/org === LEGACY_ORG_ID/);
     const fallback = src.slice(src.indexOf("if (!value && org === LEGACY_ORG_ID)"));
-    expect(fallback).toMatch(/process\.env\[key\]/);
+    expect(fallback).toMatch(/platformApiValue\(key\)/);
+    expect(read("lib/api-usage/credentials.ts")).toMatch(/process\.env\[key\]/);
   });
 
   it("does not turn credential, grant, quota, or metering failures into missing keys", () => {
@@ -101,7 +102,7 @@ describe("integration credentials are per organization", () => {
   it("never caches one Anthropic client across organizations", () => {
     const src = read("lib/ai/claude.ts");
     expect(src).not.toMatch(/let _client: Anthropic \| null/);
-    expect(src).toMatch(/_clients = new Map<string, Anthropic>/);
+    expect(src).not.toMatch(/_clients = new Map/);
     expect(src).toMatch(/orgApiKey\("ANTHROPIC_API_KEY"/);
   });
 
