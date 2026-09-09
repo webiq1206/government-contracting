@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { requestAction } from "@/lib/client/action-request";
 
 export function SetupForm() {
-  const router = useRouter();
+  const submitting = useRef(false);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
@@ -14,6 +14,7 @@ export function SetupForm() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (submitting.current) return;
     setError("");
     if (password !== confirm) {
       setError("Passwords do not match.");
@@ -23,18 +24,19 @@ export function SetupForm() {
       setError("Password must be at least 12 characters.");
       return;
     }
+    submitting.current = true;
     setLoading(true);
-    const res = await fetch("/api/auth/bootstrap", {
+    const res = await requestAction("/api/auth/bootstrap", {
       method: "POST",
+      signal: AbortSignal.timeout(20_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password, name: name || null }),
     });
     if (res.ok) {
-      router.push("/today");
-      router.refresh();
+      window.location.replace("/today");
     } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "Setup failed. Try again.");
+      setError(res.error);
+      submitting.current = false;
       setLoading(false);
     }
   }
@@ -106,7 +108,7 @@ export function SetupForm() {
           required
         />
       </div>
-      {error && <p className="text-sm text-risk">{error}</p>}
+      {error && <p role="alert" className="text-sm text-risk">{error}</p>}
       <button type="submit" className="btn-primary w-full" disabled={loading}>
         {loading ? "Creating account…" : "Create account & sign in"}
       </button>

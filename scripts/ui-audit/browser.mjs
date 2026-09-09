@@ -14,12 +14,16 @@ function resolve(route) {
 const browser=await chromium.launch();
 const results=[];
 const failures=[];
+const diagnostics=[];
 try {
  for(const [device,width,height] of [['mobile',390,844],['tablet',820,1180],['desktop',1440,1000]]) {
+  try {
   const ctx=await browser.newContext({viewport:{width,height},isMobile:device!=='desktop',hasTouch:device!=='desktop'});
   // Provider traffic is never part of this local UI regression.
   await ctx.route('**/*',route=>new URL(route.request().url()).origin===base?route.continue():route.abort());
   const page=await ctx.newPage();
+  page.on('pageerror',e=>diagnostics.push({device,error:e.message}));
+  page.on('console',m=>{if(m.type()==='error')diagnostics.push({device,error:m.text()});});
   await page.goto(base+'/login');
   await page.getByLabel('Email',{exact:true}).fill('ui-owner@example.test');
   await page.getByLabel('Password',{exact:true}).fill('DisposableUiAudit123!');
@@ -136,7 +140,34 @@ try {
   const admin=await v.goto(base+'/admin/accounts');
   assert.equal(admin.status(),404,'Viewer cannot access platform admin');
   results.push({device,role:'viewer',route:'/settings/api-usage',status:'permission checks passed',screenshot:device+'-viewer-api-usage.png'});
+  await v.goto(base+'/more',{waitUntil:'networkidle'});
+  await v.getByRole('button',{name:'Sign out',exact:true}).last().click();
+  await v.waitForURL('**/login',{waitUntil:'domcontentloaded'});
+  await v.goto(base+'/today',{waitUntil:'domcontentloaded'});
+  assert.equal(new URL(v.url()).pathname,'/login','Signing out removes authenticated access');
+  results.push({device,role:'viewer',route:'/more',status:'sign-out checked'});
+  await v.goto(base+'/signup',{waitUntil:'networkidle'});
+  await v.route('**/api/auth/signup',r=>r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'SQLSTATE private diagnostic'})}));
+  await v.getByLabel('Your name',{exact:true}).fill('Audit Applicant');
+  await v.getByLabel('Company name',{exact:true}).fill('Audit Applicant Company');
+  await v.getByLabel('Work email',{exact:true}).fill('ui-new@example.test');
+  await v.getByLabel('Password',{exact:true}).fill('DisposableUiAudit123!');
+  await v.getByRole('button',{name:/Start.*7-day free trial/}).click();
+  await v.getByRole('alert').waitFor();
+  assert(!(await v.getByRole('alert').innerText()).includes('SQLSTATE'),'Signup must hide technical diagnostics');
+  assert(await v.getByRole('button',{name:/Start.*7-day free trial/}).isEnabled(),'Failed signup remains retryable');
+  results.push({device,role:'visitor',route:'/signup',status:'service failure recovery checked; account creation not attempted'});
   await viewer.close();
+  } catch(error) {
+    failures.push({device,status:'workflow blocked',error:String(error.message)});
+    for(const [index,context] of browser.contexts().entries()) {
+      for(const [tab,page] of context.pages().entries()) {
+        await page.screenshot({path:join(out,`${device}-failure-${index}-${tab}.png`)}).catch(()=>{});
+        writeFileSync(join(out,`${device}-failure-${index}-${tab}.json`),JSON.stringify({url:page.url(),text:await page.locator('body').innerText().catch(()=>'' )}));
+      }
+      await context.close();
+    }
+  }
  }
  } catch(error) {
  failures.push({status:'workflow blocked',error:String(error.message)});
@@ -148,6 +179,7 @@ try {
  }
  process.exitCode=1;
 } finally {
+ writeFileSync(join(out,'diagnostics.json'),JSON.stringify(diagnostics,null,2));
  writeFileSync(join(out,'results.json'),JSON.stringify({scope:'Synthetic owner and visitor render checks. Not a production workflow sign-off.',results,failures},null,2));
  await browser.close();
 }

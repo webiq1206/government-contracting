@@ -119,6 +119,8 @@ export function Nav({
    */
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [isMobile, setIsMobile] = useState(false);
+  const [ready, setReady] = useState(false);
+  const previousPath = useRef(pathname);
   const [localPaused, setLocalPaused] = useState(automationPaused);
   const [togglingAutomation, setTogglingAutomation] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -134,12 +136,14 @@ export function Nav({
     const mq = window.matchMedia("(max-width: 1023px)");
     const sync = () => setIsMobile(mq.matches);
     sync();
+    setReady(true);
     mq.addEventListener("change", sync);
     return () => mq.removeEventListener("change", sync);
   }, []);
 
   useEffect(() => {
-    setOpen(false);
+    if (previousPath.current !== pathname) setOpen(false);
+    previousPath.current = pathname;
   }, [pathname]);
 
   useEffect(() => {
@@ -190,8 +194,7 @@ export function Nav({
       // a full-screen overlay, and leaving it mounted over the login page is
       // how a half-finished sign-out looks like a broken app.
       setOpen(false);
-      router.push("/login");
-      router.refresh();
+      window.location.replace("/login");
     } catch {
       setLogoutError("Could not sign out. Check your connection and try again.");
     } finally {
@@ -361,6 +364,7 @@ export function Nav({
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Close menu" : "Open menu"}
+          disabled={!ready}
           aria-expanded={open}
         >
           {open ? <CloseIcon /> : <MenuIcon />}

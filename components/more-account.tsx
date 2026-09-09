@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -10,7 +9,6 @@ import { ThemeToggle } from "@/components/theme-toggle";
  * the foot of the desktop sidebar.
  */
 export function MoreAccount({ email }: { email: string }) {
-  const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
 
@@ -19,13 +17,12 @@ export function MoreAccount({ email }: { email: string }) {
     setLoggingOut(true);
     setLogoutError(null);
     try {
-      const res = await fetch("/api/auth/logout", { method: "POST" });
+      const res = await fetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(20_000) });
       if (!res.ok) {
         setLogoutError("Could not sign out. Check your connection and try again.");
         return;
       }
-      router.push("/login");
-      router.refresh();
+      window.location.replace("/login");
     } catch {
       setLogoutError("Could not sign out. Check your connection and try again.");
     } finally {

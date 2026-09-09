@@ -28,6 +28,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     [busy, setBusy] = useState(false),
     [version, setVersion] = useState(0);
   const [moreFilters, setMoreFilters] = useState(false);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
   const [selected, setSelected] = useState<Row | null>(null),
     [message, setMessage] = useState("");
   const saving = useRef(false);
@@ -46,6 +47,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     setError("");
     fetch(`${endpoint}?${query}`, { signal: controller.signal })
       .then(async (response) => {
+        setNeedsSignIn(response.status === 401);
         const result = await response.json();
         if (!response.ok) throw new Error("Usage unavailable");
         setData(result);
@@ -134,7 +136,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
       )}
       {error && (
         <div role="alert" className="card border-risk text-risk">
-          {error}{" "}
+          {needsSignIn ? "Your sign-in has expired, so current usage is unavailable. Sign in again to continue." : error}{" "}
+          {needsSignIn && <Link href="/login" className="underline">Sign in again</Link>}
           <button
             onClick={() => setVersion((v) => v + 1)}
             className="underline"
