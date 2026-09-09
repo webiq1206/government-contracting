@@ -43,6 +43,8 @@ try {
     if(publicPage) await target.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
     const p=publicPage?await target.newPage():page;
     const errors=[]; const onError=e=>errors.push(e.message);p.on('pageerror',onError);
+    const onConsole=m=>{if(m.type()==='error'&&/hydrati|cannot be a descendant|cannot contain|did not match/i.test(m.text())) errors.push(m.text());};
+    p.on('console',onConsole);
     const record={route:entry.route,device,role:publicPage?'visitor':'owner',status:'not verified',errors};
     try {
       const response=await p.goto(base+route,{waitUntil:'networkidle',timeout:60000});
@@ -55,7 +57,7 @@ try {
       if(!publicPage&&record.finalPath==='/login') record.status='authentication failed';
       if(record.status!=='render captured') failures.push(record);
     } catch(e) {record.status='blocked';record.error=String(e.message);failures.push(record);}
-    results.push(record);p.removeListener('pageerror',onError);
+    results.push(record);p.removeListener('pageerror',onError);p.removeListener('console',onConsole);
     if(publicPage) await target.close();
   }
   // Verify URL navigation and browser back preserve the selected destination.
