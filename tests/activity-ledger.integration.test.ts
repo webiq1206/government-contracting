@@ -50,6 +50,25 @@ describe("tenant activity history", () => {
     expect(result.rows[0].detail.body).toBe("Please quote the roof.");
     expect(result.rows[0].historical).toBe(false);
   });
+  it("records activity when an enclosing trigger restricts the search path", async () => {
+    try {
+      await state.db.exec("set search_path = pg_catalog");
+      await state.db.query(
+        "insert into public.communications(org_id,channel,direction,subject,delivery_state) values($1,'email','outbound','Restricted path','draft')",
+        [org],
+      );
+      await state.db.query(
+        "update public.communications set delivery_state='sent' where subject='Restricted path'",
+      );
+    } finally {
+      await state.db.exec("set search_path = public");
+    }
+    const result = await readActivity(
+      org,
+      new URLSearchParams("q=Restricted path"),
+    );
+    expect(result.rows.map((r) => r.status).sort()).toEqual(["draft", "sent"]);
+  });
   it("isolates tenants, including filters and totals", async () => {
     await state.db.query(
       "insert into communications(org_id,channel,direction,subject,body) values($1,'email','inbound','Secret other account','private-body')",

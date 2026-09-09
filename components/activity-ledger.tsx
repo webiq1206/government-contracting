@@ -106,7 +106,7 @@ export function ActivityLedger() {
         <p className="mt-2 text-sm text-muted-foreground">
           Follow messages, bid preparation, replies, documents and automation
           from one place. Expand a record to read what happened. Times use your
-          device’s timezone.
+          device’s timezone. Date filters use UTC.
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
           Historical snapshots show the latest saved state when this ledger was
@@ -172,6 +172,11 @@ export function ActivityLedger() {
               "received",
               "draft",
               "submitted",
+              "approved",
+              "sending",
+              "ready_for_review",
+              "receipt_confirmed",
+              "accepted",
               "failed",
               "bounced",
               "deferred",

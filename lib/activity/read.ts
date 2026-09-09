@@ -75,11 +75,14 @@ export async function readActivity(
     }
   if (p.get("attention") === "1")
     where.push(
-      "e.status in ('failed','bounced','deferred','draft','needs_review','needs_matching','blocked','critical','warning')",
+      "e.status in ('failed','bounced','deferred','draft','needs_review','ready_for_review','needs_matching','blocked','critical','warning')",
     );
   const page = Math.max(
     1,
-    Math.min(100000, Math.floor(Number(p.get("page")) || 1)),
+    Math.min(
+      maxId ? Number.MAX_SAFE_INTEGER : 100000,
+      Math.floor(Number(p.get("page")) || 1),
+    ),
   );
   const join =
     "from activity_events e left join opportunities o on o.id=e.opportunity_id and o.org_id=e.org_id left join subcontractors s on s.id=e.subcontractor_id and s.org_id=e.org_id";
@@ -97,7 +100,7 @@ export async function readActivity(
       received: number;
       bids: number;
     }>(
-      `select count(*)::int total,count(*) filter(where e.status in ('failed','bounced','deferred','draft','needs_review','needs_matching','blocked','critical','warning'))::int attention,count(*) filter(where e.category='email' and e.status in ('sent','delivered'))::int sent,count(*) filter(where e.status='received')::int received,count(*) filter(where e.category='bid')::int bids ${join} where ${filter}`,
+      `select count(*)::int total,count(*) filter(where e.status in ('failed','bounced','deferred','draft','needs_review','ready_for_review','needs_matching','blocked','critical','warning'))::int attention,count(*) filter(where e.category='email' and e.status in ('sent','delivered'))::int sent,count(*) filter(where e.status='received')::int received,count(*) filter(where e.category='bid')::int bids ${join} where ${filter}`,
       values,
     ),
     query<{ actor: string }>(

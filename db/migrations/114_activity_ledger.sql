@@ -19,16 +19,16 @@ create table activity_events (
 create index activity_org_time on activity_events(org_id,occurred_at desc,id desc);
 create index activity_org_category on activity_events(org_id,category,occurred_at desc);
 create index activity_org_opportunity on activity_events(org_id,opportunity_id,occurred_at desc);
-create index activity_search on activity_events using gin(to_tsvector('simple', title || ' ' || detail::text));
+create index activity_org_status on activity_events(org_id,status,occurred_at desc);
 alter table activity_events enable row level security;
 revoke all on activity_events from public;
 
 -- Explicit allowlist: never copy credentials, model prompts, internal API costs,
 -- raw provider responses, or unbounded execution input/output into tenant history.
-create function activity_projection(j jsonb) returns jsonb language sql immutable as $$
+create function activity_projection(j jsonb) returns jsonb language sql immutable set search_path = pg_catalog, public as $$
  select coalesce(jsonb_object_agg(key,value),'{}'::jsonb) from jsonb_each(j)
  where key=any(array['subject','body','recipient_email','channel','direction','delivery_state',
- 'delivery_detail','submitted_at','bid_amount','narrative','human_flags','qa_checklist',
+ 'delivery_detail','submitted_at','bid_amount','package_ready','submission_state','audit_status','narrative','human_flags','qa_checklist',
  'name','kind','version','status','stage','outcome','label','due_at','called_at','call_script',
  'message','reasoning','agent','action','level','duration_ms','quote_amount','trade','intent','reason',
  'original_message','provider','service','feature','workflow','billing_status','tenant_charge',
@@ -36,7 +36,7 @@ create function activity_projection(j jsonb) returns jsonb language sql immutabl
  'period_start','period_end','title','solicitation_number','from_email','from_name','snippet','state','dismissed_reason','matched_by','amount_cents','settlement_status','actor','started_at','finished_at']);
 $$;
 create function append_activity(t text, j jsonb, op text, historical boolean default false)
-returns void language plpgsql as $$
+returns void language plpgsql set search_path = pg_catalog, public as $$
 declare
  org uuid := nullif(j->>'org_id','')::uuid;
  cat text; title text; state text; at_time timestamptz;
@@ -55,9 +55,12 @@ begin
    state := case when j->>'direction'='inbound' then 'received' else coalesce(j->>'delivery_state','recorded') end;
    title := initcap(coalesce(j->>'channel','message')) || ' ' || state || ': ' || coalesce(nullif(j->>'subject',''),'No subject');
  elsif t='bids' then
-   state := case when j->>'submitted_at' is not null then 'submitted'
+   state := case when j->>'submission_state' in ('approved','sending','sent','receipt_confirmed','accepted','rejected','withdrawn','failed') then j->>'submission_state'
+     when j->>'submitted_at' is not null then 'submitted'
+     when j->>'package_ready'='true' then 'ready_for_review'
+     when j->>'bid_amount' is null then 'needs_review'
      when case when jsonb_typeof(j->'human_flags')='array' then jsonb_array_length(j->'human_flags') else 0 end>0 then 'needs_review' else 'draft' end;
-   title := case state when 'submitted' then 'Bid submitted' when 'needs_review' then 'Partial bid needs review' else 'Bid prepared or updated' end;
+   title := case state when 'submitted' then 'Bid submitted' when 'needs_review' then 'Partial bid needs review' when 'ready_for_review' then 'Bid package ready for review' when 'draft' then 'Bid prepared or updated' else 'Bid: ' || replace(state,'_',' ') end;
  elsif t='unmatched_inbound' then
    state := coalesce(j->>'state','needs_matching'); title := 'Unmatched reply: ' || coalesce(j->>'subject','No subject');
  elsif t='job_runs' then
@@ -88,7 +91,7 @@ begin
  case when t='opportunities' then (j->>'id')::uuid else coalesce(nullif(j->>'opportunity_id',''),nullif(j->>'matched_opportunity_id',''))::uuid end,
  nullif(j->>'subcontractor_id','')::uuid,activity_projection(j),historical);
 end $$;
-create function capture_activity() returns trigger language plpgsql as $$
+create function capture_activity() returns trigger language plpgsql set search_path = pg_catalog, public as $$
 begin
  if TG_OP='UPDATE' and OLD.org_id is not distinct from NEW.org_id and activity_projection(to_jsonb(OLD))=activity_projection(to_jsonb(NEW)) then return NEW; end if;
  -- Cascading account deletion must not recreate history for a removed account.
