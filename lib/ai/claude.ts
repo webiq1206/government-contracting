@@ -130,25 +130,6 @@ export function describeClaudeFailure(
   return null;
 }
 
-/**
- * One Anthropic client per organization.
- *
- * This was a single module-level singleton built from process.env: whichever
- * organization triggered the first AI call created it with THEIR key, and
- * every other tenant then reused that client, and that key, until the process
- * restarted. Worse than reading a shared env var, because the wrong
- * credential was captured in memory indefinitely.
- *
- * Keyed by organization so a client is still reused within a tenant (the SDK
- * holds connections), and never across one.
- */
-const _clients = new Map<string, Anthropic>();
-
-/** Test helper: drop cached SDK clients between cases. */
-export function clearClaudeClients(): void {
-  _clients.clear();
-}
-
 /** Stamp the Integrations card with the org that actually made the call. */
 function recordClaudeUse(outcome: { ok: boolean; error?: string }): void {
   void Promise.all([import("../tenant"), import("../integration-settings")])
@@ -159,17 +140,14 @@ function recordClaudeUse(outcome: { ok: boolean; error?: string }): void {
     .catch(() => undefined);
 }
 
-async function client(): Promise<Anthropic> {
-  const { orgApiKey } = await import("../integration-keys");
-  const { resolveTenantOrgId } = await import("../tenant");
-  const org = await resolveTenantOrgId();
-  const apiKey = await orgApiKey("ANTHROPIC_API_KEY", org);
+async function client(): Promise<{ sdk: Anthropic; identity: import('../api-usage/ledger').RequestIdentity }> {
+  const { orgApiKey } = await import('../integration-keys');
+  const { requestIdentity } = await import('../api-usage/ledger');
+  const apiKey = await orgApiKey("ANTHROPIC_API_KEY");
   if (!apiKey) throw new ClaudeNotConfiguredError();
-  const existing = _clients.get(org);
-  if (existing) return existing;
-  const created = new Anthropic({ apiKey });
-  _clients.set(org, created);
-  return created;
+  const identity = await requestIdentity('ANTHROPIC_API_KEY', apiKey);
+  // No retained credentials and no hidden SDK retries. Every execution is metered.
+  return { sdk: new Anthropic({ apiKey, maxRetries: 0 }), identity };
 }
 
 /** Whether the CURRENT organization has AI configured. */
@@ -198,6 +176,7 @@ export interface CompleteOptions {
   /** Interactive checks can use a short budget without shortening agent work. */
   timeoutMs?: number;
   maxRetries?: number;
+  feature?: string;
   system?: string; // extra system text appended after the Company Profile
   maxTokens?: number;
   temperature?: number;
@@ -344,17 +323,20 @@ export async function complete(
     body.thinking = { type: "disabled" };
   }
 
-  const anthropic = await client();
+  const { sdk: anthropic, identity } = await client();
+  const { metered } = await import('../api-usage/ledger');
   // Every Claude call in the system passes through here, so this is the one
   // place that can name "the AI is refusing us" once, in words an owner can
   // act on, instead of leaving a raw SDK string in thirty agent logs.
   let res: Anthropic.Messages.Message;
   try {
-    res = await anthropic.messages.create(
-      body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
-      { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
-        ...(opts.maxRetries != null ? { maxRetries: opts.maxRetries } : {}) }
-    );
+    res = await metered(identity, 'Anthropic', model, opts.feature ?? 'AI assistance',
+      () => anthropic.messages.create(
+        body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
+        { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
+          ...(opts.maxRetries != null ? { maxRetries: opts.maxRetries } : {}) }
+      ),
+      value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }));
   } catch (err) {
     const cause = describeClaudeFailure(err);
     /*

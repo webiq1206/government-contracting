@@ -68,6 +68,7 @@ export const googleMaps = {
     try {
       const data = await withRetry(() =>
         fetchJson<TextSearchResponse>(TEXT_SEARCH, {
+          metering: { envKey: 'GOOGLE_MAPS_API_KEY', value: apiKey, provider: 'Google Maps', service: 'TEXT_SEARCH', feature: 'Find contractors' },
           query: {
             query: `${trade} contractor in ${location}`,
             key: apiKey,
@@ -117,6 +118,7 @@ export const googleMaps = {
     try {
       const data = await withRetry(() =>
         fetchJson<DetailsResponse>(DETAILS, {
+          metering: { envKey: 'GOOGLE_MAPS_API_KEY', value: apiKey, provider: 'Google Maps', service: 'DETAILS', feature: 'Find contractors' },
           query: {
             place_id: placeId,
             fields: "formatted_phone_number,website,formatted_address",

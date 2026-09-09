@@ -94,6 +94,16 @@ export async function recordInvoice(input: InvoiceInput): Promise<void> {
       input.failureReason ?? null,
     ]
   );
+  // Already verified Stripe webhook input. Do not move paid usage back to open
+  // when an older invoice event is delivered late.
+  if (['draft','open','paid','void','uncollectible'].includes(input.status)) {
+    await query(`update api_usage_invoice_batches set status=$3 where stripe_invoice_id=$1 and org_id=$2
+      and (status not in ('paid','void') or status=$3)`, [input.stripeInvoiceId,input.orgId,input.status]);
+    await query(`update api_usage_events e set billing_status=case b.status when 'paid' then 'paid'
+      when 'open' then 'billed' when 'void' then 'credited' when 'uncollectible' then 'review' else 'pending' end
+      from api_usage_invoice_batches b where e.batch_id=b.id and b.stripe_invoice_id=$1 and b.org_id=$2`,
+      [input.stripeInvoiceId,input.orgId]);
+  }
 }
 
 /** The account's invoices, newest first. Scoped to one org, always. */

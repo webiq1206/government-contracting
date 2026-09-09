@@ -1,3 +1,4 @@
+import { withApiUsageContext } from '../api-usage/context';
 /**
  * Agent runner. Wraps every agent execution with: a job_runs audit row, an
  * agent_logs entry (success or error), downstream job enqueueing, the tenant
@@ -603,7 +604,7 @@ export async function runAgent(
       );
     }
 
-    const runHandler = () => inOrg(() => def.handler({ runId, trigger, payload }));
+    const runHandler = () => inOrg(() => withApiUsageContext({ feature: def.name, workflow: runId, relatedId: pursuitId ?? undefined }, () => def.handler({ runId, trigger, payload })));
     const result =
       pursuitId && guardedPursuitVersion != null
         ? await runWithPursuitVersion(

@@ -94,3 +94,27 @@ closed by the fixes here. Configuration-specific blockers such as exhausted
 provider credit, revoked OAuth grants or missing production schema still need
 actual production evidence and, where applicable, the account owner's external
 account action. Recovery checks do not invent credentials or bypass such gates.
+
+## Follow-up connectivity and integration investigation
+
+The alternate TinyFish browser successfully issued navigation requests but
+received ERR_CONNECTION_CLOSED for the apex homepage and login page. Its content
+reader also timed out for the www login hostname. This does not establish that
+all users are affected or prove an origin TLS, DNS or application failure.
+The local runtime's DNS resolution failed and its HTTPS probe went through the
+managed proxy, completed TLS with that proxy, then received no origin headers.
+Those results cannot validate the public origin certificate.
+
+The branch now integrates main's API usage ledger. The AI client preserves both
+usage attribution and recovery-specific timeouts/retry budgets. Both migration
+112 files are retained unchanged: this repository tracks full filenames and
+checksums, not numeric prefixes. Apply both pending files through the normal
+owner-only release workflow. The conflict was in the shared AI client, not a
+proven duplicate-migration execution error.
+
+A separate read-only GitHub diagnostic checks public DNS, TLS and HTTP response
+headers for the homepage, login and health endpoint on both hostnames. It uses
+no account credentials, does not collect page bodies or cookies, and does not
+invoke Replit or paid provider APIs. The workflow retains its dated JSON evidence.
+Its result is diagnostic evidence, not a claim that authenticated visual testing
+or a full production audit has been completed.

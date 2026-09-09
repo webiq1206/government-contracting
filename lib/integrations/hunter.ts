@@ -56,6 +56,7 @@ export const hunter = {
     try {
       const data = await withRetry(() =>
         fetchJson<DomainSearchResponse>(DOMAIN_SEARCH, {
+          metering: { envKey: 'HUNTER_API_KEY', value: apiKey, provider: 'Hunter', service: 'DOMAIN_SEARCH', feature: 'Find email contacts' },
           query: { domain, api_key: apiKey },
         })
       );
@@ -91,6 +92,7 @@ export const hunter = {
     try {
       const data = await withRetry(() =>
         fetchJson<EmailFinderResponse>(EMAIL_FINDER, {
+          metering: { envKey: 'HUNTER_API_KEY', value: apiKey, provider: 'Hunter', service: 'EMAIL_FINDER', feature: 'Find email contacts' },
           query: {
             domain: params.domain,
             first_name: params.first_name,
@@ -118,6 +120,7 @@ export const hunter = {
     try {
       const data = await withRetry(() =>
         fetchJson<EmailVerifierResponse>(EMAIL_VERIFIER, {
+          metering: { envKey: 'HUNTER_API_KEY', value: apiKey, provider: 'Hunter', service: 'EMAIL_VERIFIER', feature: 'Find email contacts' },
           query: { email, api_key: apiKey },
         })
       );

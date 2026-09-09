@@ -1743,7 +1743,7 @@ export async function providerUsage(): Promise<{
 }> {
   const orgId = await currentOrg();
   const KEY = "ANTHROPIC_API_KEY";
-  const [own, grant, meter, usageRows] = await Promise.all([
+  const [own, grant, meter, usageRows, preference] = await Promise.all([
     queryOne<{ ok: boolean }>(
       `select true as ok from integration_settings where env_key = $1 and org_id = $2`,
       [KEY, orgId]
@@ -1765,6 +1765,7 @@ export async function providerUsage(): Promise<{
         limit 5000`,
       [orgId]
     ),
+    queryOne<{source:string}>('select source from api_usage_preferences where org_id=$1 and env_key=$2',[orgId,KEY]),
   ]);
 
   // The same order the key resolver uses, so this panel cannot describe a
@@ -1774,7 +1775,9 @@ export async function providerUsage(): Promise<{
   const budget = TRIAL_PLATFORM_KEY_BUDGET[KEY] ?? null;
   const { LEGACY_ORG_ID } = await import("./tenant-context");
   let source: ProviderCredentialSource;
-  if (own) source = "own_key";
+  if (preference?.source === 'platform') source = 'platform';
+  else if (preference?.source === 'tenant') source = own ? 'own_key' : 'none';
+  else if (own) source = "own_key";
   else if (grant) source = "granted";
   else if (meter && budget != null && meter.calls > 0) source = "trial";
   // Last in the resolver's order, and easy to leave out: the founding
