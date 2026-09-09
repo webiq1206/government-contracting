@@ -451,7 +451,10 @@ export default async function AgentsPage(
 
           {/* Search + level filter (GET form so links stay shareable) */}
           <form method="get" action="/agents" className="mb-2 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
-            {agentFilter && <input type="hidden" name="agent" value={agentFilter} />}
+            <select className="select w-full lg:w-auto" name="agent" defaultValue={agentFilter ?? ""} aria-label="Filter by automation">
+              <option value="">All automations</option>
+              {ROSTER.map((agent) => <option key={agent.name} value={agent.name}>{agent.name.replace(/-/g, " ")}</option>)}
+            </select>
             <input
               className="input w-full lg:max-w-xs"
               type="search"
@@ -475,34 +478,12 @@ export default async function AgentsPage(
             <button className="btn-ghost w-full lg:w-auto" type="submit">
               Filter
             </button>
-            {(q || levelFilter) && (
-              <Link href={link({ q: undefined, level: undefined, page: undefined })} className="inline-flex coarse:min-h-11 items-center text-xs text-slate-500 hover:text-accent">
+            {(q || levelFilter || agentFilter) && (
+              <Link href={link({ q: undefined, level: undefined, agent: undefined, page: undefined })} className="inline-flex coarse:min-h-11 items-center text-xs text-slate-500 hover:text-accent">
                 Clear
               </Link>
             )}
           </form>
-
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            <Link
-              href={link({ agent: undefined, page: undefined })}
-              className={`badge coarse:min-h-11 ${!agentFilter ? "bg-accent/10 text-accent" : "bg-slate-200 text-slate-600"}`}
-            >
-              All agents
-            </Link>
-            {ROSTER.map((a) => (
-              <Link
-                key={a.name}
-                href={link({ agent: a.name, page: undefined })}
-                className={`badge coarse:min-h-11 ${
-                  agentFilter === a.name
-                    ? "bg-accent/10 text-accent"
-                    : "bg-slate-200 text-slate-600 hover:text-slate-800"
-                }`}
-              >
-                {a.name}
-              </Link>
-            ))}
-          </div>
 
           <div className="space-y-2">
             {logs.length === 0 && (
@@ -522,7 +503,7 @@ export default async function AgentsPage(
                 action={
                   q || levelFilter ? (
                     <Link
-                      href={link({ q: undefined, level: undefined, page: undefined })}
+                      href={link({ q: undefined, level: undefined, agent: undefined, page: undefined })}
                       className="btn-ghost text-sm"
                     >
                       Clear filters

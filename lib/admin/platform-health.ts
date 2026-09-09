@@ -157,5 +157,5 @@ export function providerCapacityState(
       detail: `${rate} calls hit the rate limit. Work retries on its own, more slowly.`,
     };
   }
-  return { state: "healthy", detail: "No provider refusals recorded in this window." };
+  return { state: "unknown", detail: "No provider refusals were recorded in this window. Available credit and connection health have not been verified; review the connected service before relying on new AI work." };
 }

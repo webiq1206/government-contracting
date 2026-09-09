@@ -104,25 +104,36 @@ try {
   const quickLook=page.getByRole('link',{name:'Quick look',exact:true}).first();
   const quickHref=await quickLook.getAttribute('href');
   const quickEvents=[];
+  const quickBodies=[];
   const quickStart=Date.now();
   const onNavigation=frame=>{if(frame===page.mainFrame())quickEvents.push({elapsedMs:Date.now()-quickStart,navigation:frame.url()});};
   const onRequest=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({elapsedMs:Date.now()-quickStart,request:request.url(),method:request.method()});};
-  const onResponse=response=>{if(response.url().includes('/admin/accounts'))quickEvents.push({elapsedMs:Date.now()-quickStart,response:response.url(),status:response.status(),type:response.headers()['content-type']});};
+  const onResponse=response=>{
+    if(!response.url().includes('/admin/accounts'))return;
+    const entry={elapsedMs:Date.now()-quickStart,response:response.url(),status:response.status(),type:response.headers()['content-type']};
+    quickEvents.push(entry);
+    if(entry.type?.includes('text/x-component'))quickBodies.push(response.text().then(body=>{
+      const file=device+'-quick-flight-'+quickBodies.length+'.txt';
+      writeFileSync(join(out,file),body);entry.bodyFile=file;
+    }).catch(error=>{entry.bodyError=String(error.message);}));
+  };
   const onFailed=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({elapsedMs:Date.now()-quickStart,failed:request.url(),reason:request.failure()});};
   const onFinished=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({elapsedMs:Date.now()-quickStart,finished:request.url()});};
   page.on('framenavigated',onNavigation);page.on('request',onRequest);
   page.on('response',onResponse);page.on('requestfailed',onFailed);page.on('requestfinished',onFinished);
-  await quickLook.click();
   const accountDrawer=page.getByRole(device==='desktop'?'complementary':'dialog',{name:'Record details',exact:true});
-  try { await accountDrawer.waitFor(); }
-  finally {
+  try {
+    await quickLook.click();
+    await accountDrawer.waitFor();
+    await page.screenshot({path:join(out,device+'-account-quick-look.png')});
+    await page.keyboard.press('Escape');
+    await accountDrawer.waitFor({state:'hidden'});
+  } finally {
     page.removeListener('framenavigated',onNavigation);page.removeListener('request',onRequest);
     page.removeListener('response',onResponse);page.removeListener('requestfailed',onFailed);page.removeListener('requestfinished',onFinished);
+    await Promise.allSettled(quickBodies);
     writeFileSync(join(out,device+'-quick-look-navigation.json'),JSON.stringify({href:quickHref,final:page.url(),events:quickEvents},null,2));
   }
-  await page.screenshot({path:join(out,device+'-account-quick-look.png')});
-  await page.keyboard.press('Escape');
-  await accountDrawer.waitFor({state:'hidden'});
   results.push({device,role:'owner',route:'/admin/accounts',status:'quick look and Escape checked',screenshot:device+'-account-quick-look.png'});
   } catch(error) {
     failures.push({device,route:'/admin/accounts',status:'quick look blocked',error:String(error.message)});
@@ -144,6 +155,21 @@ try {
   } catch(error) {
     failures.push({device,route:'/admin/accounts?peek',status:'direct quick look blocked',error:String(error.message)});checkpoint();
   }
+  // Filtering the automation feed never starts an automation.
+  await page.goto(base+'/agents',{waitUntil:'networkidle'});
+  const automationFilter=page.getByLabel('Filter by automation',{exact:true});
+  assert.equal(await automationFilter.inputValue(),'','All automations should be the default');
+  await automationFilter.selectOption('scoring-engine');
+  await page.getByLabel('Filter the log by severity').selectOption('error');
+  await page.getByLabel('Search Automation Health').fill('audit check');
+  await automationFilter.locator('..').getByRole('button',{name:'Filter',exact:true}).click();
+  await page.waitForURL(url=>url.searchParams.get('agent')==='scoring-engine'&&url.searchParams.get('level')==='error'&&url.searchParams.get('q')==='audit check');
+  await page.getByRole('link',{name:'Clear',exact:true}).click();
+  await page.waitForURL(url=>url.pathname==='/agents'&&!url.search);
+  assert.equal(await page.getByLabel('Filter by automation',{exact:true}).inputValue(),'');
+  await page.getByLabel('Filter by automation',{exact:true}).scrollIntoViewIfNeeded();
+  await page.screenshot({path:join(out,device+'-automation-filters.png')});
+  results.push({device,role:'owner',route:'/agents',status:'automation, severity and search filters apply and clear checked; no automation executed'});
   // Verify URL navigation and browser back preserve the selected destination.
   await page.goto(base+'/settings/api-usage');
   await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();

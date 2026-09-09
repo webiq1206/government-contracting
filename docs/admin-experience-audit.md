@@ -32,6 +32,12 @@ Initial-viewport contact sheets were reviewed for the 58 routes at all three siz
 
 [Browser run 12](https://github.com/webiq1206/government-contracting/actions/runs/34399984496) verified direct quick-look URLs, responsive modal isolation, viewport fit, and Escape on all three sizes. Desktop/mobile screenshots show the corrected drawer layout. Shared-shell hydration and ordinary quick-look clicks still failed intermittently; changing update priority alone was insufficient. Password-help duplication/delivery checks reached the password-change failure state, where an overly broad test selector also matched the framework route announcer. The selector is now scoped to the form. A separate navigation rendering boundary is being tested next.
 
+[Browser run 13](https://github.com/webiq1206/government-contracting/actions/runs/34401187184) completed password-help duplicate submission, unavailable delivery, and password-change failure recovery checks at all three sizes. No email or password change was performed. The run still found shared-shell hydration errors and intermittent quick-look navigation. The next test isolates streamed route children inside the main element. CI run 366 passed on that change. [Browser run 14](https://github.com/webiq1206/government-contracting/actions/runs/34402460684) then captured all 174 routes without hydration errors. Three quick-look navigation checks still failed. The next run removes React diagnostic instrumentation and captures completed navigation responses to separate server rendering from client navigation failures.
+
+Lower-page contact sheets from run 13 were reviewed: 29 mobile, 22 tablet, and 24 desktop captures. These identify layout/clutter issues; they do not verify every contained control. The Automation Health filter buttons are being consolidated into one selector, with a browser regression for combining automation, severity, and search then clearing them. Platform recap and capacity text is also being corrected: absence of logged failures does not establish that a connection works or credit is available.
+
+A fresh read-only browser-backed fetch of `https://brostco.com/login` returned BrostCo content and “Loading your workspace” in approximately 2.8 seconds. This supersedes the earlier connection-closed observation for public reachability, but does not establish completed login or authenticated production access.
+
 ## Still required
 
 - Resolve remaining hydration errors and quick-look failures using the latest browser evidence. Do not merge unexplained failures.

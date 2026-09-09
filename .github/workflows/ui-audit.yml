@@ -54,8 +54,6 @@ jobs:
           node --import tsx scripts/migrate.ts
           node --import tsx scripts/seed.ts
           node --import tsx scripts/ui-audit/seed.ts
-      - name: Instrument disposable hydration diagnostics
-        run: node scripts/ui-audit/instrument-react.mjs
       - run: npm run build
       - name: Inspect desktop, tablet and mobile
         run: |

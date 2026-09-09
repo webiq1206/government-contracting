@@ -182,6 +182,7 @@ export function serviceStatuses(
       return {
         ...def,
         ...extras.providerCapacity,
+        stateWord: extras.providerCapacity.state === "unknown" ? "Not verified" : undefined,
         runs: 0,
         errors: 0,
         failureRate: null,
