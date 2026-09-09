@@ -91,6 +91,7 @@ async function providerCall<T>(
     const data = await withRetry(() =>
       fetchJson<T>(`${BASE}${path}`, {
         ...options,
+        metering: { envKey: 'AHREFS_API_KEY', value: creds.apiKey, provider: 'Ahrefs', service: path, feature: 'Website research', orgId: creds.orgId },
         headers: { ...options.headers, ...auth(creds.apiKey) },
       })
     );

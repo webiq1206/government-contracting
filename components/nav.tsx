@@ -144,6 +144,7 @@ const SECTIONS: Section[] = [
       { href: "/settings/rules", label: "Rules" },
       { href: "/settings/content", label: "Content" },
       { href: "/settings/integrations", label: "Integrations" },
+      { href: "/settings/api-usage", label: "API Usage" },
       { href: "/settings/billing", label: "Billing" },
       { href: "/settings/recap", label: "Daily Recap" },
       // Which alerts reach this account by email and which live only in the
@@ -166,6 +167,7 @@ const SECTIONS: Section[] = [
       { href: "/admin/accounts", label: "Accounts" },
       { href: "/admin/invitations", label: "Invitations" },
       { href: "/admin/billing", label: "Customer Billing" },
+      { href: "/admin/api-usage", label: "API Usage" },
       // Its own entry rather than fifteen rows at the foot of Accounts. The
       // record of what we did to somebody's account is a different question
       // from which account is in trouble, and it is the one somebody comes

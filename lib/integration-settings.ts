@@ -302,7 +302,7 @@ export async function hydrateIntegrationEnv(): Promise<void> {
 /** Which source currently provides each key (for the Integrations page). */
 /** What the Integrations page needs to know about one credential. */
 export interface SettingSource {
-  source: "ui" | "env" | "none";
+  source: "ui" | "env" | "platform" | "none";
   masked: string | null;
   updated_at?: string;
   last_validated_at?: string | null;
@@ -320,6 +320,8 @@ export async function settingSources(): Promise<
 > {
   const org = await settingsOrg();
   const rows = await listSettings(org);
+  const preferences = await query<{env_key:string;source:string}>(
+    'select env_key,source from api_usage_preferences where org_id=$1',[org]);
   const byKey = new Map(rows.map((r) => [r.env_key, r]));
   const out: Record<string, SettingSource> = {};
   // Only the founding organization can be served by the environment. For a
@@ -327,6 +329,12 @@ export async function settingSources(): Promise<
   // platform's own credential quietly standing in for theirs.
   const envAllowed = org === LEGACY_ORG_ID;
   for (const key of ALLOWED_ENV_KEYS) {
+    const preference=preferences.find(p=>p.env_key===key);
+    if(preference?.source==='platform') {
+      const value=await (await import('./api-usage/credentials')).platformApiValue(key);
+      out[key]={source:value?'platform':'none',masked:null};
+      continue;
+    }
     const row = byKey.get(key);
     if (row?.value) {
       out[key] = {
@@ -341,7 +349,7 @@ export async function settingSources(): Promise<
         expires_at: row.expires_at,
       };
     } else {
-      const envVal = envAllowed ? process.env[key] : undefined;
+      const envVal = envAllowed && preference?.source!=='tenant' ? process.env[key] : undefined;
       const isPlaceholder = envVal ? /^<[^>]*>$/.test(envVal.trim()) : true;
       out[key] =
         envVal && !isPlaceholder

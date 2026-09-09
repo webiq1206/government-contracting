@@ -21,7 +21,7 @@ interface FieldState {
   label: string;
   secret: boolean;
   placeholder?: string;
-  source: "ui" | "env" | "none";
+  source: "ui" | "env" | "platform" | "none";
   masked: string | null;
   /**
    * True for credentials that belong to the APPLICATION, not the customer
@@ -423,7 +423,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                     <span className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-xs text-slate-500">
                       <span className="num break-all">{f.masked}</span>
                       <span className="badge bg-muted text-muted-foreground">
-                        {f.source === "ui" ? "saved here" : "from environment"}
+                        {f.source === "ui" ? "saved here" : f.source === "platform" ? "Platform API: usage added to your bill" : "from environment"}
                       </span>
                       {f.source === "ui" && (
                         <button

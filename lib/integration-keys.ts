@@ -58,6 +58,13 @@ async function owningOrg(): Promise<string> {
  */
 export async function orgApiKey(key: AllowedEnvKey, orgId?: string): Promise<string> {
   const org = orgId ?? (await owningOrg());
+  const preference = await queryOne<{ source: string; accepted_at: string | null }>(
+    `select source, accepted_at from api_usage_preferences where org_id=$1 and env_key=$2`, [org,key]
+  );
+  if (preference?.source === 'platform') {
+    if (!preference.accepted_at) return '';
+    return process.env[key]?.trim() ?? '';
+  }
   const cacheKey = `${org}:${key}`;
   const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
@@ -69,6 +76,10 @@ export async function orgApiKey(key: AllowedEnvKey, orgId?: string): Promise<str
 
   let value = row ? (decryptSecret(row.value_enc) ?? "") : "";
 
+  // A saved but unreadable credential must never fall through to our paid key.
+  if (row && !value) throw new Error('Your saved API key could not be opened. Reconnect the service in Settings.');
+  if (preference?.source === 'tenant') return value;
+
   // Resolution order, and the order matters:
   //   1. The organization's own key. Always wins, even over a grant or a
   //      trial allowance, because a customer who has supplied a credential
@@ -78,20 +89,17 @@ export async function orgApiKey(key: AllowedEnvKey, orgId?: string): Promise<str
   //   4. The environment, for the founding organization only.
   //   5. Nothing. An empty string disables the integration rather than
   //      quietly charging us for a customer's usage.
-  let borrowed = false;
   if (!value && org !== LEGACY_ORG_ID && (await hasPlatformGrant(key, org))) {
-    value = process.env[key]?.trim() ?? "";
-    borrowed = value.length > 0;
+    value = await (await import("./api-usage/credentials")).platformApiValue(key);
   }
   if (!value && org !== LEGACY_ORG_ID && (await trialMayBorrow(key, org))) {
-    value = process.env[key]?.trim() ?? "";
-    borrowed = value.length > 0;
+    value = await (await import("./api-usage/credentials")).platformApiValue(key);
   }
   // Metered only when the credential is OURS. An organization spending on its
   // own key is never counted, which is the behaviour we want to encourage.
-  if (borrowed) await recordPlatformKeyUse(key, org);
+  // Consumption is recorded at execution, never during a readiness/key lookup.
   if (!value && org === LEGACY_ORG_ID) {
-    value = process.env[key]?.trim() ?? "";
+    value = await (await import("./api-usage/credentials")).platformApiValue(key);
   }
 
   cache.set(cacheKey, { value, at: Date.now() });
@@ -143,18 +151,6 @@ async function trialMayBorrow(key: AllowedEnvKey, orgId: string): Promise<boolea
     [orgId, key]
   );
   return (used?.calls ?? 0) < budget;
-}
-
-/** Count one call made on a platform credential. */
-async function recordPlatformKeyUse(key: AllowedEnvKey, orgId: string): Promise<void> {
-  const { query } = await import("./db");
-  await query(
-    `insert into platform_key_usage (org_id, env_key, calls)
-     values ($1, $2, 1)
-     on conflict (org_id, env_key)
-       do update set calls = platform_key_usage.calls + 1, last_used = now()`,
-    [orgId, key]
-  );
 }
 
 /** Borrowed-key consumption for an organization, for the UI and admin views. */
