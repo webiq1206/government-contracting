@@ -29,7 +29,9 @@ export function DetailDrawer({
   children,
   footer,
   nav,
+  navigate,
 }: {
+  navigate?: (href: string) => void;
   title: string;
   subtitle?: string | null;
   /** Where the close control goes: the same list, without the peek. */
@@ -63,7 +65,7 @@ export function DetailDrawer({
   };
 }) {
   return (
-    <DetailDrawerFrame closeHref={closeHref}>
+    <DetailDrawerFrame closeHref={closeHref} navigate={navigate}>
       <header className="shrink-0 border-b border-border/55 px-4 py-3 dark:border-white/10">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -72,6 +74,7 @@ export function DetailDrawer({
           </div>
           <Link
             href={closeHref}
+            prefetch={navigate ? false : null}
             aria-label="Close details"
             className="tap shrink-0 text-sm text-slate-500 hover:text-accent"
           >
@@ -86,6 +89,7 @@ export function DetailDrawer({
             <span className="ml-auto flex items-center gap-1">
               <Link
                 href={nav.prevHref ?? "#"}
+                prefetch={navigate ? false : null}
                 aria-disabled={nav.prevHref == null}
                 className={`tap rounded border border-border/60 px-2 py-1 text-xs dark:border-white/10 ${
                   nav.prevHref
@@ -101,6 +105,7 @@ export function DetailDrawer({
               </span>
               <Link
                 href={nav.nextHref ?? "#"}
+                prefetch={navigate ? false : null}
                 aria-disabled={nav.nextHref == null}
                 className={`tap rounded border border-border/60 px-2 py-1 text-xs dark:border-white/10 ${
                   nav.nextHref

@@ -128,13 +128,16 @@ try {
     await page.screenshot({path:join(out,device+'-account-quick-look.png')});
     await page.keyboard.press('Escape');
     await accountDrawer.waitFor({state:'hidden'});
+    await page.goBack(); await accountDrawer.waitFor();
+    await page.goForward(); await accountDrawer.waitFor({state:'hidden'});
+    assert.equal(quickEvents.filter(entry=>entry.request).length,0,'Read-only account peeks should reuse loaded rows without a server request');
   } finally {
     page.removeListener('framenavigated',onNavigation);page.removeListener('request',onRequest);
     page.removeListener('response',onResponse);page.removeListener('requestfailed',onFailed);page.removeListener('requestfinished',onFinished);
-    await Promise.allSettled(quickBodies);
+    await Promise.race([Promise.allSettled(quickBodies), new Promise(resolve=>setTimeout(resolve,5000))]);
     writeFileSync(join(out,device+'-quick-look-navigation.json'),JSON.stringify({href:quickHref,final:page.url(),events:quickEvents},null,2));
   }
-  results.push({device,role:'owner',route:'/admin/accounts',status:'quick look and Escape checked',screenshot:device+'-account-quick-look.png'});
+  results.push({device,role:'owner',route:'/admin/accounts',status:'quick look, Escape, Back/Forward and zero additional account requests checked',screenshot:device+'-account-quick-look.png'});
   } catch(error) {
     failures.push({device,route:'/admin/accounts',status:'quick look blocked',error:String(error.message)});
     checkpoint();
@@ -157,6 +160,7 @@ try {
   }
   // Filtering the automation feed never starts an automation.
   await page.goto(base+'/agents',{waitUntil:'networkidle'});
+  assert.equal(await page.getByRole('button',{name:'Run now',exact:true}).count(),0,'Manual runs should be collapsed by default');
   const automationFilter=page.getByLabel('Filter by automation',{exact:true});
   assert.equal(await automationFilter.inputValue(),'','All automations should be the default');
   await automationFilter.selectOption('scoring-engine');
@@ -167,9 +171,20 @@ try {
   await page.getByRole('link',{name:'Clear',exact:true}).click();
   await page.waitForURL(url=>url.pathname==='/agents'&&!url.search);
   assert.equal(await page.getByLabel('Filter by automation',{exact:true}).inputValue(),'');
+  await page.getByText('Automation schedules and manual controls',{exact:true}).click();
+  let manualRequests=0;
+  const noManualRun=request=>{if(/\/api\/agents\/[^/]+\/run$/.test(request.url()))manualRequests++;};
+  page.on('request',noManualRun);
+  await page.getByRole('button',{name:'Run now',exact:true}).first().click();
+  const runConfirmation=page.getByRole('dialog',{name:/^Run .+ now\?$/});
+  await runConfirmation.getByText('This starts an additional run and may use paid API credits.',{exact:false}).waitFor();
+  await runConfirmation.getByRole('button',{name:'Cancel',exact:true}).click();
+  assert.equal(manualRequests,0,'Cancel must not enqueue or spend API credits');
+  page.removeListener('request',noManualRun);
+  await page.getByText('Automation schedules and manual controls',{exact:true}).click();
   await page.getByLabel('Filter by automation',{exact:true}).scrollIntoViewIfNeeded();
   await page.screenshot({path:join(out,device+'-automation-filters.png')});
-  results.push({device,role:'owner',route:'/agents',status:'automation, severity and search filters apply and clear checked; no automation executed'});
+  results.push({device,role:'owner',route:'/agents',status:'automation filters, safe manual-run defaults and confirmation cancellation checked; no automation executed'});
   // Verify URL navigation and browser back preserve the selected destination.
   await page.goto(base+'/settings/api-usage');
   await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
@@ -233,6 +248,10 @@ try {
   writeFileSync(join(out,device+'-permission.json'),JSON.stringify(denied));
   assert.equal(denied.status,403,'Viewer cannot pause automation');
   await v.goto(base+'/agents',{waitUntil:'networkidle'});
+  await v.getByText('Automation schedules and manual controls',{exact:true}).click();
+  assert.equal(await v.getByRole('button',{name:'Run now',exact:true}).count(),0,'Viewer must not be offered manual execution');
+  const deniedRun=await viewer.request.post(base+'/api/agents/scoring-engine/run',{data:{}});
+  assert.equal(deniedRun.status(),403,'Viewer must not enqueue a job');
   assert.equal(await v.getByRole('button',{name:/^(Pause|Resume) everything$/}).count(),0,'Viewer cannot operate automation controls');
   // Next can send HTTP 200 before a streamed notFound() finishes. The
   // rendered denial and absence of privileged content are the page contract.

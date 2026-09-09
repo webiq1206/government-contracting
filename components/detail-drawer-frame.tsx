@@ -4,9 +4,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 /** A side column on desktop, a focused modal sheet on touch-sized layouts. */
-export function DetailDrawerFrame({ children, closeHref }: { children: ReactNode; closeHref: string }) {
+export function DetailDrawerFrame({ children, closeHref, navigate }: { children: ReactNode; closeHref: string; navigate?: (href: string) => void }) {
   const panel = useRef<HTMLDialogElement>(null);
   const router = useRouter();
+  const close = () => navigate ? navigate(closeHref) : router.push(closeHref, { scroll: false });
   const [modal, setModal] = useState(false);
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1023px)");
@@ -32,10 +33,10 @@ export function DetailDrawerFrame({ children, closeHref }: { children: ReactNode
     return () => { if (dialog.open) dialog.close(); };
   }, [modal]);
   return <dialog open ref={panel} tabIndex={-1} role={modal ? "dialog" : "complementary"}
-    onCancel={event => { event.preventDefault(); router.push(closeHref, { scroll: false }); }}
+    onCancel={event => { event.preventDefault(); close(); }}
     aria-modal={modal || undefined} aria-label="Record details"
     onKeyDown={event => {
-      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); router.push(closeHref, { scroll: false }); }
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
       if (!modal || event.key !== "Tab") return;
       const items = Array.from(panel.current?.querySelectorAll<HTMLElement>("a[href]:not([aria-disabled='true']),button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex='0']") ?? []).filter(node => node.getClientRects().length > 0);
       if (!items.length) { event.preventDefault(); panel.current?.focus(); return; }

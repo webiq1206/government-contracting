@@ -10,8 +10,10 @@ Status: in progress. PR #128 is not a complete production audit sign-off.
 - A missing company profile has a setup form. Owners can save it, preserve edits after a failed save, and cancel accidental navigation. Read-only roles cannot edit the form or operate automation pause controls.
 - Password-help failures preserve the email field, distinguish an unconfirmed request from a confirmed delivery failure, and offer retry. Password-change failures provide sign-in and replacement-link actions without raw diagnostics.
 - Authentication actions have bounded waits and duplicate-submission guards. Successful sign-in/sign-out starts a fresh authenticated document. Protected API requests without a session return JSON 401 rather than HTML login content.
+- Account quick views reuse already loaded, authorized table rows, with URL history for bookmarks and Back. Browser verification of zero extra account requests is pending.
 - Quick-view drawers have responsive roles, Escape handling, and focus management. Smaller-screen drawers use native modal isolation instead of changing attributes on streamed siblings. Confirmation dialogs render above the menu.
 - Menu background isolation now uses React-managed state with a stable server hydration snapshot. It no longer adds attributes directly to a streamed bottom navigation tree.
+- Automation schedules/manual controls are collapsed by default. Manual runs require the run-agents permission and an explicit cost-aware confirmation; platform-only jobs are hidden from tenant users. Browser verification is pending.
 - Parent breadcrumb links work even when they are the only breadcrumb. Public footer navigation points to an existing workflow section. Email-template instructions are expandable so the editor is easier to reach on mobile.
 
 ## Evidence and limits

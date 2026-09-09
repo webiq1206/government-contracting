@@ -160,6 +160,7 @@ export function AdminAccountsTable({
       render: (r) => (
         <Link
           href={`${peekBase}peek=${r.id}`}
+          prefetch={false}
           scroll={false}
           className="tap text-xs text-muted-foreground underline-offset-2 hover:text-accent"
         >
@@ -215,6 +216,7 @@ function AdminAccountCard({
       </Link>
       <Link
         href={`${peekBase}peek=${row.id}`}
+        prefetch={false}
         scroll={false}
         className="tap mt-2 inline-flex min-h-11 items-center text-sm text-accent"
       >

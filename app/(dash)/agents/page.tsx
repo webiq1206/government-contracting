@@ -216,6 +216,10 @@ export default async function AgentsPage(
     return null;
   });
 
+  const platformAdmin = Boolean(viewer && !viewer.impersonatedBy && isPlatformAdmin(viewer.email));
+  const canRun = Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "run_agents"));
+  const visibleRoster = ROSTER.filter(agent => agent.name !== "backlink-scout" || platformAdmin);
+
   return (
     <div className="flex page-shell">
       <PageFrame
@@ -309,11 +313,12 @@ export default async function AgentsPage(
           </p>
         )}
 
-        {/* Roster grid with run controls */}
-        <section>
-          <h2 className="label mb-2">Roster</h2>
+        {/* Scheduled work is the default; manual runs are an advanced action. */}
+        <details className="rounded-lg border border-border bg-surface p-3">
+          <summary className="cursor-pointer py-2 text-sm font-medium">Automation schedules and manual controls</summary>
+          <p className="mb-3 text-sm text-muted-foreground">Automations run on their schedules or when required work is ready. Open a manual control only when you need an additional run.</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {ROSTER.map((a) => {
+            {visibleRoster.map((a) => {
               const st = statusByAgent.get(a.name);
               const last = lastRunState(st);
               const manual = manualRunRequirement(a.name);
@@ -374,28 +379,28 @@ export default async function AgentsPage(
                     >
                       See what it did
                     </Link>
-                    {manual === "global" ? (
-                      <ActionButton endpoint={`/api/agents/${a.name}/run`} className="btn-ghost">
+                    {canRun && (manual === "global" ? (
+                      <ActionButton endpoint={`/api/agents/${a.name}/run`} className="btn-ghost" confirm={`Run ${a.label} now?`} confirmBody="This starts an additional run and may use paid API credits. Scheduled work continues automatically." confirmLabel="Run now">
                         Run now
                       </ActionButton>
                     ) : (
                       <Link href="/pipeline" className="inline-flex coarse:min-h-11 items-center text-xs font-medium text-accent">
                         {manual === "workflow_only" ? "Reverify from an opportunity" : "Run from an opportunity"}
                       </Link>
-                    )}
+                    ))}
                   </div>
                 </div>
               );
             })}
           </div>
-        </section>
+        </details>
 
         {/* Job run summary */}
         <section>
           <h2 className="label mb-2">Recent job runs</h2>
           {runs.length === 0 ? (
             <p className="card text-sm text-slate-600">
-              No job runs recorded yet. Press Run now on any agent below.
+              No job runs are recorded yet. Review the setup status above if work is waiting.
             </p>
           ) : (
             <>
@@ -453,7 +458,7 @@ export default async function AgentsPage(
           <form method="get" action="/agents" className="mb-2 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
             <select className="select w-full lg:w-auto" name="agent" defaultValue={agentFilter ?? ""} aria-label="Filter by automation">
               <option value="">All automations</option>
-              {ROSTER.map((agent) => <option key={agent.name} value={agent.name}>{agent.name.replace(/-/g, " ")}</option>)}
+              {visibleRoster.map((agent) => <option key={agent.name} value={agent.name}>{agent.label}</option>)}
             </select>
             <input
               className="input w-full lg:max-w-xs"
@@ -498,7 +503,7 @@ export default async function AgentsPage(
                 description={
                   q || levelFilter
                     ? "Try a different search term or clear filters."
-                    : "Press Run now on any agent in the roster, or wait for the next scheduled job."
+                    : "Activity appears after an automation runs. Review the setup status above if work is waiting."
                 }
                 action={
                   q || levelFilter ? (

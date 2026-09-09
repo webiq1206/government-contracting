@@ -6,9 +6,7 @@ import Link from "next/link";
 import { activityOf, ACTIVITY_FILTERS } from "@/lib/domain/account-activity";
 import { FilterToolbar } from "@/components/filter-toolbar";
 import { AdminAccountsTable } from "@/components/admin-accounts-table";
-import { AdminAccountPeek } from "@/components/admin/account-peek";
-import { QueueKeys } from "@/components/workspace/workspace-keys";
-import { queuePosition } from "@/lib/domain/workspace-queue";
+import { AccountQuickViews } from "@/components/admin/account-quick-views";
 import {
   parseFilters,
   parseSort,
@@ -198,8 +196,6 @@ export default async function AdminAccountsPage(
    * administrator can send somebody a link to the account they are asking
    * about with the filters that found it still applied.
    */
-  const peekId = typeof searchParams.peek === "string" ? searchParams.peek : null;
-  const peeked = peekId ? (rows.find((r) => r.id === peekId) ?? null) : null;
 
   function listHref(id: string | null): string {
     const p = new URLSearchParams();
@@ -216,7 +212,6 @@ export default async function AdminAccountsPage(
     const href = listHref(null);
     return href.includes("?") ? `${href}&` : `${href}?`;
   })();
-  const peekNav = queuePosition(rows.map((r) => r.id), peekId);
 
   return (
     <>
@@ -225,7 +220,7 @@ export default async function AdminAccountsPage(
         title="All accounts"
         explanation="Every organization, who owns it, and whether it can use the product right now."
       />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <AccountQuickViews rows={rows}>
       <div className="scroll-thin min-w-0 flex-1 space-y-6 overflow-y-auto p-5">
         {/*
           * Whole-platform counts, and each one is a filter.
@@ -319,24 +314,7 @@ export default async function AdminAccountsPage(
 
       </div>
 
-      {peeked && (
-        <AdminAccountPeek
-          account={peeked}
-          closeHref={listHref(null)}
-          nav={{
-            prevHref: peekNav.prevId ? listHref(peekNav.prevId) : null,
-            nextHref: peekNav.nextId ? listHref(peekNav.nextId) : null,
-            index: peekNav.index,
-            total: peekNav.total,
-          }}
-        />
-      )}
-      <QueueKeys
-        prevHref={peekNav.prevId ? listHref(peekNav.prevId) : null}
-        nextHref={peekNav.nextId ? listHref(peekNav.nextId) : null}
-        closeHref={peekId ? listHref(null) : null}
-      />
-      </div>
+      </AccountQuickViews>
     </>
   );
 }
