@@ -16,7 +16,7 @@ export default async function Page() {
       />
       <div className="scroll-thin flex-1 overflow-y-auto p-5">
         <ApiUsageLedger admin />
-        <div className="mt-8"><UsageBillingControls /></div>
+        <details className="card mt-5"><summary className="cursor-pointer font-semibold">Reconciliation and billing</summary><UsageBillingControls /></details>
       </div>
     </>
   );

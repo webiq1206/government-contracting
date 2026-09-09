@@ -97,7 +97,7 @@ d("platform key grants (integration)", () => {
     expect(before.find((s) => s.key === "ANTHROPIC_API_KEY")!.calls).toBe(0);
     const { requestIdentity, metered } = await import("../lib/api-usage/ledger");
     const identity = await requestIdentity("ANTHROPIC_API_KEY", PLATFORM_KEY, orgId.value);
-    await metered(identity, "Anthropic", "test-model", "Grant test",
+    await metered(identity, "Anthropic", "claude-haiku-4-5", "Grant test",
       async () => ({ id: "simulated-provider-request" }));
     const states = await admin.platformKeyStates(orgId.value);
     const anthropic = states.find((s) => s.key === "ANTHROPIC_API_KEY")!;
