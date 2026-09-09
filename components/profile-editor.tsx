@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UnsavedGuard } from "@/components/unsaved-guard";
 import { NaicsImpact } from "@/components/naics-impact";
@@ -55,6 +55,7 @@ function slug(s: string): string {
 
 export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
   const router = useRouter();
+  const submitting = useRef(false);
 
   const std: Partial<SubStandards> = json.sub_standards ?? {};
   const pr: Partial<PricingRules> = json.pricing_rules ?? {};
@@ -142,6 +143,9 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
   }
 
   async function save() {
+    if (submitting.current) return;
+    if (!legalName.trim()) { setError("Enter your company’s legal name, then save the profile."); return; }
+    submitting.current = true;
     setError(null);
     setOk(false);
 
@@ -228,18 +232,20 @@ export function ProfileEditor({ json }: { json: CompanyProfileJson }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(full),
+        signal: AbortSignal.timeout(20_000),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError((data as { error?: string }).error ?? "Save failed");
+        setError("Your company profile could not be saved. Your edits are still here. Check your connection and account permissions, then try again.");
         return;
       }
       setOk(true);
       setDirty(false);
       router.refresh();
     } catch (e) {
-      setError((e as Error).message);
+      setError("The save could not be confirmed. Your edits are still here. Check the profile history before trying again.");
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   }
@@ -650,13 +656,11 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="card space-y-4">
-      <div>
-        <h2 className="font-display text-lg font-semibold text-foreground">{title}</h2>
-        {hint && <p className="mt-0.5 text-sm text-slate-500">{hint}</p>}
-      </div>
+    <details open={title === "Identity"} className="card space-y-4">
+      <summary className="cursor-pointer py-2 font-display text-lg font-semibold text-foreground">{title}</summary>
+      {hint && <p className="text-sm text-muted-foreground">{hint}</p>}
       {children}
-    </section>
+    </details>
   );
 }
 

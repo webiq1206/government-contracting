@@ -24,7 +24,7 @@ try {
   await page.getByLabel('Email',{exact:true}).fill('ui-owner@example.test');
   await page.getByLabel('Password',{exact:true}).fill('DisposableUiAudit123!');
   await page.getByRole('button',{name:'Sign in',exact:true}).click();
-  await page.waitForURL('**/today',{timeout:60000});
+  await page.waitForURL('**/today',{timeout:60000,waitUntil:'domcontentloaded'});
   if(device!=='desktop') {
     const trigger=page.getByRole('button',{name:'Open menu',exact:true});
     await trigger.click();
@@ -62,6 +62,21 @@ try {
   await page.goto(base+'/settings/api-usage');
   await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
+  await page.goto(base+'/settings/profile',{waitUntil:'networkidle'});
+  await page.getByLabel('Legal name',{exact:true}).fill('Audit Company '+device);
+  if(device!=='desktop') await page.getByRole('button',{name:'Open menu',exact:true}).click();
+  await page.getByRole('navigation',{name:'Main',exact:true}).getByRole('link',{name:/^Today/}).click();
+  const warning=page.getByRole('dialog',{name:'Leave without saving?',exact:true});
+  await warning.waitFor();
+  await page.screenshot({path:join(out,device+'-unsaved-dialog.png')});
+  await warning.getByRole('button',{name:'Stay here',exact:true}).click();
+  if(device!=='desktop') await page.keyboard.press('Escape');
+  const saved=page.waitForResponse(r=>r.url()===base+'/api/profile'&&r.request().method()==='POST');
+  await page.getByRole('button',{name:'Save profile',exact:true}).click();
+  assert.equal((await saved).status(),200,'Owner can complete profile setup');
+  await page.reload({waitUntil:'networkidle'});
+  assert.equal(await page.getByLabel('Legal name',{exact:true}).inputValue(),'Audit Company '+device);
+  results.push({device,role:'owner',route:'/settings/profile',status:'setup save and unsaved navigation checked',screenshot:device+'-unsaved-dialog.png'});
   await ctx.close();
   const viewer=await browser.newContext({viewport:{width,height},isMobile:device!=="desktop",hasTouch:device!=="desktop"});
   await viewer.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
@@ -70,7 +85,7 @@ try {
   await v.getByLabel('Email',{exact:true}).fill('ui-viewer@example.test');
   await v.getByLabel('Password',{exact:true}).fill('DisposableUiAudit123!');
   await v.getByRole('button',{name:'Sign in',exact:true}).click();
-  await v.waitForURL('**/today',{timeout:60000});
+  await v.waitForURL('**/today',{timeout:60000,waitUntil:'domcontentloaded'});
   await v.goto(base+'/settings/api-usage',{waitUntil:'networkidle'});
   assert.equal(new URL(v.url()).pathname,'/settings/api-usage','Viewer session must be valid');
   await v.getByRole('region',{name:'Account spending controls'}).waitFor();
@@ -84,6 +99,15 @@ try {
   results.push({device,role:'viewer',route:'/settings/api-usage',status:'permission checks passed',screenshot:device+'-viewer-api-usage.png'});
   await viewer.close();
  }
+ } catch(error) {
+ failures.push({status:'workflow blocked',error:String(error.message)});
+ for(const [index,context] of browser.contexts().entries()) {
+  for(const [tab,page] of context.pages().entries()) {
+   await page.screenshot({path:join(out,`failure-${index}-${tab}.png`)}).catch(()=>{});
+   writeFileSync(join(out,`failure-${index}-${tab}.json`),JSON.stringify({url:page.url(),text:await page.locator('body').innerText().catch(()=>'' )}));
+  }
+ }
+ process.exitCode=1;
 } finally {
  writeFileSync(join(out,'results.json'),JSON.stringify({scope:'Synthetic owner and visitor render checks. Not a production workflow sign-off.',results,failures},null,2));
  await browser.close();

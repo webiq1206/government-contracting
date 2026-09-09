@@ -235,7 +235,9 @@ export default async function AdminAccountsPage(
           * whole platform. The other three were already right, which is what
           * made the wrong one so easy to believe.
           */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <details className="rounded-lg border border-border bg-surface p-3">
+          <summary className="cursor-pointer py-2 text-sm font-medium">{customers.length} customer accounts · {lockedOut} locked out · Account overview</summary>
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Stat label="Customers" value={customers.length} href="/admin/accounts" />
           <Stat
             label="Locked out"
@@ -257,6 +259,7 @@ export default async function AdminAccountsPage(
             href="/admin/accounts?suspended=1"
           />
         </div>
+        </details>
 
         <FilterToolbar
           pathname="/admin/accounts"

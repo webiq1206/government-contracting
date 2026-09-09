@@ -1,4 +1,4 @@
-import { getActiveProfile } from "@/lib/ai/companyProfile";
+import { getActiveProfile, withProfileDefaults } from "@/lib/ai/companyProfile";
 import { query } from "@/lib/db";
 import { scoreHistogram } from "@/lib/data";
 import { tryResolveTenantOrgId } from "@/lib/tenant";
@@ -157,8 +157,9 @@ export default async function ProfilePage() {
           <div className="scroll-thin flex-1 overflow-y-auto p-5">
             <EmptyState
               title="No active company profile"
-              description="Nothing is saved for this company yet. Fill in the company details and save them so scoring has something to match against."
+              description={can(viewer?.orgRole, "manage_profile") ? "Add your company details below. Matching and bid preparation need this information before they can work correctly." : "An account owner or administrator needs to add the company details before matching and bid preparation can work correctly."}
             />
+            {can(viewer?.orgRole, "manage_profile") && <ProfileEditor json={withProfileDefaults({ legal_name: "", email: "", small_business: false })} />}
           </div>
         ) : (
           <EditorialTabs
@@ -187,11 +188,13 @@ export default async function ProfilePage() {
                       to fix it.
                     */}
                     <ProfileCompletenessPanel json={json} />
+                    <fieldset disabled={!can(viewer?.orgRole, "manage_profile")} className="min-w-0 space-y-6">
                     <SamProfileImport
                       samConnected={samConnected}
                       profile={json as unknown as Record<string, unknown>}
                     />
                     <ProfileEditor json={json} />
+                    </fieldset>
                   </div>
                 ),
               },
