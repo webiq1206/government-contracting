@@ -23,3 +23,19 @@ for (const prefix of ['node_modules/next/dist/client', 'node_modules/next/dist/e
     writeFileSync(path,source);
   }
 }
+// Identify unresolved UI work after the router has received a complete response.
+for (const path of ['node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.production.js', 'node_modules/react-dom/cjs/react-dom-client.production.js']) {
+  let source = readFileSync(path, 'utf8');
+  const needle = '  workInProgressThrownValue = thrownValue;';
+  if (!source.includes(needle)) throw new Error('React suspension diagnostic point changed');
+  source = source.replace(needle, needle + `
+  if (window.location.pathname === '/agents' && window.location.search && (window.__auditSuspensions || 0) < 30) {
+    var auditId = window.__auditSuspensions = (window.__auditSuspensions || 0) + 1;
+    var auditPath = [], auditFiber = workInProgress;
+    for (var auditDepth = 0; auditFiber && auditDepth < 7; auditDepth++, auditFiber = auditFiber.return) auditPath.push({tag:auditFiber.tag,type:typeof auditFiber.type==='function'?String(auditFiber.type).slice(0,180):typeof auditFiber.type==='string'?auditFiber.type:null});
+    console.error('[ui-audit suspension]', JSON.stringify({id:auditId,reason:workInProgressSuspendedReason,status:thrownValue&&thrownValue.status,path:auditPath}));
+    if (thrownValue && typeof thrownValue.then === 'function') thrownValue.then(function(){console.error('[ui-audit suspension settled]',auditId);},function(){console.error('[ui-audit suspension rejected]',auditId);});
+  }
+`);
+  writeFileSync(path,source);
+}

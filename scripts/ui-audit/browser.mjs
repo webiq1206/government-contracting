@@ -158,6 +158,40 @@ try {
   } catch(error) {
     failures.push({device,route:'/admin/accounts?peek',status:'direct quick look blocked',error:String(error.stack ?? error.message)});checkpoint();
   }
+  // Fault injection remains inside the disposable browser: no key is saved
+  // and no provider test is sent outside this app.
+  try {
+    await page.goto(base+'/settings/integrations',{waitUntil:'networkidle'});
+    const card=page.locator('#sam');
+    const field=card.locator('input').first();
+    await field.fill('audit-placeholder-not-a-real-key');
+    let saves=0, tests=0;
+    await page.route('**/api/integrations',async route=>{
+      if(route.request().method()!=='POST')return route.continue();
+      saves++;
+      await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'SQLSTATE secret-value-do-not-display'})});
+    });
+    await page.route('**/api/integrations/test',async route=>{
+      tests++;
+      await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:false,message:'401 API key sk-ant-do-not-display'})});
+    });
+    await card.getByRole('button',{name:'Save',exact:true}).evaluate(button=>{button.click();button.click();});
+    await card.getByRole('alert').waitFor();
+    assert.equal(saves,1,'Repeated save must send only one request');
+    assert.equal(tests,0,'Saving must not start a provider test');
+    assert.equal(await field.inputValue(),'audit-placeholder-not-a-real-key','Failed save preserves entries');
+    assert(!/SQLSTATE|secret-value/.test(await card.innerText()),'Raw diagnostics must stay hidden');
+    await card.getByRole('button',{name:'Test connection',exact:true}).click();
+    await card.getByText('The service rejected the connection details.',{exact:false}).waitFor();
+    assert.equal(tests,1);
+    assert(!(await card.innerText()).includes('sk-ant-do-not-display'));
+    await card.getByRole('button',{name:'Refresh status',exact:true}).waitFor();
+    await page.screenshot({path:join(out,device+'-integration-recovery.png')});
+    await page.unroute('**/api/integrations');await page.unroute('**/api/integrations/test');
+    results.push({device,route:'/settings/integrations',status:'save failure, duplicate clicks, draft preservation and rejected connection recovery checked without provider traffic'});
+  } catch(error) {
+    failures.push({device,route:'/settings/integrations',status:'integration workflow blocked',error:String(error.stack??error.message)});checkpoint();
+  }
   // Filtering the automation feed never starts an automation.
   await page.goto(base+'/agents',{waitUntil:'networkidle'});
   assert.equal(await page.getByRole('button',{name:'Run now',exact:true}).count(),0,'Manual runs should be collapsed by default');

@@ -117,7 +117,7 @@ describe("integration credential removal", () => {
     );
   });
 
-  it("surfaces the API reason when removal is rejected", async () => {
+  it("explains how to recover when permission rejects removal", async () => {
     const result = await removeIntegrationKeyRequest(
       "SAM_API_KEY",
       vi.fn(async () => jsonResponse({ error: "Removal is not allowed." }, 403))
@@ -126,7 +126,7 @@ describe("integration credential removal", () => {
     expect(result).toEqual({
       ok: false,
       message:
-        "Removal is not allowed. The current value remains shown; try again.",
+        "Your account cannot perform this action. Ask an account owner or administrator to review your access. The current value remains shown; refresh this page before trying again.",
     });
   });
 
@@ -155,7 +155,8 @@ describe("integration credential removal", () => {
     expect(malformed.ok).toBe(false);
     expect(interrupted.ok).toBe(false);
     if (!malformed.ok) {
-      expect(malformed.message).toContain("HTTP 502");
+      expect(malformed.message).not.toContain("HTTP");
+      expect(malformed.message).toContain("refresh this page");
       expect(malformed.message).toContain("current value remains shown");
     }
     if (!interrupted.ok) expect(interrupted.message).toMatch(/refresh this page/i);
