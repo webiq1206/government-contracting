@@ -50,6 +50,12 @@ Run 18's navigation trace reached the cleared URL on all three sizes, exposing a
 
 API usage fields and standalone actions now use 44px minimum touch targets. Removing a platform safeguard requires a dialog identifying the scope and warning that paid work may resume. Its cancellation check uses an injected synthetic safeguard and cannot change production settings; verification is pending.
 
+The role review found that Integrations and Content Library displayed read-only banners without removing their write controls. Integration entry/save/test/remove controls now require the server-confirmed capability and no impersonation. Read-only content users can switch templates, read published and draft wording, and filter/read snippets without editing, publishing, or sending tests. Rules and recap settings also disable editing during impersonation. Browser checks are being extended; these new role paths are not signed off yet.
+
+A matching upstream report, [Next.js #98305](https://github.com/vercel/next.js/issues/98305), describes an early navigation under an asynchronous layout and its loading boundary leaving a transition suspended after the response arrives. This matches our observations but is not proof by itself. The targeted next change removes the dashboard-wide loading.tsx boundary while preserving route-specific loading and independently streamed shell status. Thirty fresh-browser Clear-filter checks are being added alongside the ordinary regressions, with no framework instrumentation.
+
+[Browser run 19](https://github.com/webiq1206/government-contracting/actions/runs/34407275377) used unmodified framework packages. All 174 captures again avoided hydration errors. Integration failure recovery, platform safeguard confirmation/cancellation, touch-sized filter action, manual-run confirmation/cancellation, profile saves/recovery, and budget save/pause/resume/read recovery passed at all three sizes. Clear filters still stalled, confirming the earlier diagnostic run did not establish a fix. The viewer manual-run assertion received 401 through Playwright's separate request client despite a signed-in browser; negative permission checks now use browser fetch, as the existing 403 pause check already did, retaining the strict 403 requirement.
+
 ## Verified workflow subsets
 
 These are narrow checks in disposable data, not full-page sign-off.
@@ -58,11 +64,13 @@ These are narrow checks in disposable data, not full-page sign-off.
 | --- | --- | --- |
 | Account quick look, Escape, Back/Forward, no duplicate account fetch | All three | Runs 16–17 passed |
 | Direct account drawer URL, viewport fit, modal isolation, Escape | All three | Runs 16–17 passed; screenshots visually reviewed |
-| Profile setup/save, failed save preserves input, cancel unsaved navigation | All three | Run 14 passed; current rerun blocked earlier by filter navigation |
-| Budget save, pause/resume, failed usage read and refresh | All three | Run 14 passed; current rerun blocked earlier by filter navigation |
+| Profile setup/save, failed save preserves input, cancel unsaved navigation | All three | Run 19 passed |
+| Budget save, pause/resume, failed usage read and refresh | All three | Run 19 passed |
 | Viewer action denial, admin-content denial, sign-out | All three | Run 14 passed; new manual-run visibility check pending |
 | Failed sign-up and password recovery, duplicate submission, unavailable delivery, invalid reset recovery | All three | Run 14 passed; no real delivery/password change performed |
-| Automation filter apply | All three | Run 17 passed; Clear failed |
+| Automation filter apply | All three | Run 19 passed; Clear failed |
+| Integration save/test failure, duplicate clicks, preserved draft, recovery action | All three | Runs 18–19 passed |
+| Manual-run and safeguard-removal confirmation cancellation, no execution | All three | Run 19 passed |
 
 ## Still required
 

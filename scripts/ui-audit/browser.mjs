@@ -158,6 +158,27 @@ try {
   } catch(error) {
     failures.push({device,route:'/admin/accounts?peek',status:'direct quick look blocked',error:String(error.stack ?? error.message)});checkpoint();
   }
+  // Repeat the formerly stuck query navigation with cold browser caches.
+  // Each context keeps only this disposable owner's session, not client data.
+  try {
+    const session=await ctx.storageState();
+    for(let attempt=0;attempt<10;attempt++) {
+      const cold=await browser.newContext({storageState:session,viewport:{width,height},isMobile:device!=='desktop',hasTouch:device!=='desktop'});
+      try {
+        await cold.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
+        const probe=await cold.newPage();
+        probe.on('pageerror',error=>diagnostics.push({device,error:error.message}));
+        probe.on('console',message=>{if(message.type()==='error'&&/hydrati|did not match/i.test(message.text()))diagnostics.push({device,error:message.text()});});
+        await probe.goto(base+'/agents?agent=scoring-engine&q=audit+check&level=error',{waitUntil:'domcontentloaded'});
+        await probe.getByRole('link',{name:'Clear',exact:true}).click();
+        await probe.waitForURL(url=>url.pathname==='/agents'&&!url.search,{timeout:10000});
+        await probe.waitForFunction(()=>document.querySelector('select[name="agent"]')?.value==='',null,{timeout:10000});
+      } finally {await cold.close();}
+    }
+    results.push({device,route:'/agents',status:'10 fresh-browser filter clearing checks passed'});
+  } catch(error) {
+    failures.push({device,route:'/agents',status:'cold navigation blocked',error:String(error.stack??error.message)});checkpoint();
+  }
   // Fault injection remains inside the disposable browser: no key is saved
   // and no provider test is sent outside this app.
   try {
@@ -320,11 +341,28 @@ try {
   const denied=await v.evaluate(async()=>{ const r=await fetch('/api/automation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paused:true})});return {status:r.status,url:r.url,body:await r.text()}; });
   writeFileSync(join(out,device+'-permission.json'),JSON.stringify(denied));
   assert.equal(denied.status,403,'Viewer cannot pause automation');
+  await v.goto(base+'/settings/integrations',{waitUntil:'networkidle'});
+  const readOnlyCard=v.locator('#sam');
+  assert.equal(await readOnlyCard.locator('input').count(),0,'Viewer should not be offered credential entry');
+  assert.equal(await readOnlyCard.getByRole('button',{name:/^(Save|Test connection|Remove)$/}).count(),0,'Viewer should not be offered blocked integration actions');
+  const deniedIntegration=await v.evaluate(async()=>{const response=await fetch('/api/integrations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:{}})});return response.status;});
+  assert.equal(deniedIntegration,403,'Integration write permission must be enforced by the API');
+  const deniedTest=await v.evaluate(async()=>{const response=await fetch('/api/integrations/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({integration:'audit-no-provider'})});return response.status;});
+  assert.equal(deniedTest,403,'Viewer cannot initiate provider tests');
+  await v.goto(base+'/settings/content',{waitUntil:'networkidle'});
+  await v.getByRole('article',{name:'Read-only email template',exact:true}).waitFor();
+  assert.equal(await v.getByRole('button',{name:/Save draft|Publish|Send test/i}).count(),0,'Viewer cannot edit, publish or send template tests');
+  const templates=v.getByRole('navigation',{name:'Email templates',exact:true}).getByRole('button');
+  if(await templates.count()>1) await templates.nth(1).click();
+  await v.getByRole('article',{name:'Read-only email template',exact:true}).waitFor();
+  await v.screenshot({path:join(out,device+'-viewer-content.png')});
+  await v.getByRole('tab',{name:/^Proposal snippets/}).click();
+  assert.equal(await v.getByRole('button',{name:/Add snippet|^Edit$|^Delete$/}).count(),0,'Viewer can read snippets without unusable mutation controls');
   await v.goto(base+'/agents',{waitUntil:'networkidle'});
   await v.getByText('Automation schedules and manual controls',{exact:true}).click();
   assert.equal(await v.getByRole('button',{name:'Run now',exact:true}).count(),0,'Viewer must not be offered manual execution');
-  const deniedRun=await viewer.request.post(base+'/api/agents/scoring-engine/run',{data:{}});
-  assert.equal(deniedRun.status(),403,'Viewer must not enqueue a job');
+  const deniedRun=await v.evaluate(async()=>{const response=await fetch('/api/agents/scoring-engine/run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});return response.status;});
+  assert.equal(deniedRun,403,'Viewer must not enqueue a job');
   assert.equal(await v.getByRole('button',{name:/^(Pause|Resume) everything$/}).count(),0,'Viewer cannot operate automation controls');
   // Next can send HTTP 200 before a streamed notFound() finishes. The
   // rendered denial and absence of privileged content are the page contract.

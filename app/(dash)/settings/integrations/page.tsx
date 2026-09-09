@@ -120,7 +120,7 @@ export default async function IntegrationsPage(
     }
   }
   const { can } = await import("@/lib/domain/roles");
-  const canManageIntegrations = can(viewer?.orgRole, "manage_integrations");
+  const canManageIntegrations = Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "manage_integrations"));
 
   const initial = INTEGRATION_DEFS.filter(
     (def) => showPlatformOnly || !def.platformOnly
@@ -302,6 +302,7 @@ export default async function IntegrationsPage(
                   Required for intake and scoring. Without these, the pipeline stays empty.
                 </p>
                 <IntegrationManager
+                  editable={canManageIntegrations}
                   initial={initial.filter((i) => CORE_IDS.has(i.id))}
                 />
                 {showPlatformOnly && <div className="card flex flex-wrap items-center justify-between gap-3">
@@ -345,6 +346,7 @@ export default async function IntegrationsPage(
                   canManage={canManageIntegrations}
                 />
                 <IntegrationManager
+                  editable={canManageIntegrations}
                   initial={initial.filter((i) => OUTREACH_IDS.has(i.id) && i.id !== "gmail")}
                 />
               </div>
@@ -359,6 +361,7 @@ export default async function IntegrationsPage(
                   Optional enrichment: maps, SEO, labor data, and file storage.
                 </p>
                 <IntegrationManager
+                  editable={canManageIntegrations}
                   initial={initial.filter((i) => DATA_IDS.has(i.id))}
                 />
               </div>

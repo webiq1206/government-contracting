@@ -1025,7 +1025,7 @@ function LimitSettings({
   return (
     <section className="card space-y-3">
       <ConfirmDialog open={removing !== null} title="Remove this spending safeguard?"
-        body={`This removes the selected dollar limit, daily request limit, pause, and requirement to use the tenant's own connection for ${removing?.tenant ?? "the entire platform"} (${removing?.provider ?? "all providers"}). Paid work may resume. Other account and platform safeguards still apply.`}
+        body={`This removes the selected dollar limit, daily request limit, pause, and requirement to use the tenant's own connection for ${removing?.tenant ?? "the entire platform"} (${!removing?.provider || removing.provider === "*" ? "all providers" : removing.provider}). Paid work may resume. Other account and platform safeguards still apply.`}
         confirmLabel="Remove safeguard" danger busy={busy} onCancel={() => setRemoving(null)}
         onConfirm={async () => {
           if (!removing) return;

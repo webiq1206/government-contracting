@@ -140,7 +140,7 @@ export async function removeIntegrationKeyRequest(
   };
 }
 
-export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
+export function IntegrationManager({ initial, editable = false }: { initial: IntegrationRow[]; editable?: boolean }) {
   const router = useRouter();
   const [items, setItems] = useState<IntegrationRow[]>(initial);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -161,7 +161,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   };
 
   async function test(def: IntegrationRow) {
-    if (inFlight.current) return;
+    if (!editable || inFlight.current) return;
     inFlight.current = true;
     setBusy(`test:${def.id}`);
     setResults((r) => ({ ...r, [def.id]: { ok: true, message: "Checking the connection…" } }));
@@ -200,7 +200,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   }
 
   async function save(def: IntegrationRow) {
-    if (inFlight.current) return;
+    if (!editable || inFlight.current) return;
     const values = draftsFor(def);
     if (Object.keys(values).length === 0) {
       setResults((r) => ({
@@ -242,7 +242,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
   }
 
   async function removeKey(def: IntegrationRow, env: string) {
-    if (inFlight.current) return;
+    if (!editable || inFlight.current) return;
     inFlight.current = true;
     setRemoving(null);
     setBusy(`remove:${def.id}`);
@@ -313,7 +313,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
 
             {/* Why it is in that state, and the one thing to do about it. */}
             <p className="text-xs text-slate-600">{def.stateReason}</p>
-            {def.stateAction && (
+            {editable && def.stateAction && (
               <p className="text-xs text-foreground">
                 <span className="font-medium">Next: </span>
                 {def.stateAction}
@@ -359,7 +359,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
               </p>
             )}
 
-            {def.guide && !platformManaged && (
+            {editable && def.guide && !platformManaged && (
               <details className="group rounded-md border border-accent/30 bg-accent-soft/60 open:pb-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium text-accent-strong [&::-webkit-details-marker]:hidden">
                   <span>How do I get this?</span>
@@ -432,7 +432,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                       <span className="badge bg-muted text-muted-foreground">
                         {f.source === "ui" ? "saved here" : f.source === "platform" ? "Platform API: usage added to your bill" : "from environment"}
                       </span>
-                      {f.source === "ui" && (
+                      {editable && f.source === "ui" && (
                         <button
                           type="button"
                           className="inline-flex coarse:min-h-11 items-center text-risk hover:underline"
@@ -445,7 +445,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                     </span>
                   )}
                 </div>
-                <input
+                {editable && <input
                   id={`integration-${f.env}`}
                   className="input mt-1"
                   type={f.secret ? "password" : "text"}
@@ -463,12 +463,12 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                   }
                   value={drafts[f.env] ?? ""}
                   onChange={(e) => setDrafts((d) => ({ ...d, [f.env]: e.target.value }))}
-                />
+                />}
               </div>
               )
             )}
 
-            {def.id === "gmail" &&
+            {editable && def.id === "gmail" &&
               (oauthReady ? (
                 <a href="/api/integrations/gmail/connect" className="btn-ghost w-fit text-xs">
                   {def.gmailConnected ? "Reconnect Gmail" : "Connect Gmail →"}
@@ -508,7 +508,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
             <div className="mt-auto flex flex-col items-stretch gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs text-slate-500">{def.where}</p>
               <div className="flex flex-wrap gap-2 sm:shrink-0 sm:justify-end">
-                {def.testable && (
+                {editable && def.testable && (
                   <button
                     type="button"
                     className="btn-ghost text-xs"
@@ -518,7 +518,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
                     {busy === `test:${def.id}` ? "Testing…" : "Test connection"}
                   </button>
                 )}
-                {visibleFields.length > 0 && (
+                {editable && visibleFields.length > 0 && (
                   <button
                     type="button"
                     className="btn-primary text-xs"

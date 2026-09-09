@@ -1,5 +1,6 @@
 import { PageFrame } from "@/components/page-frame";
 import { ReadOnlyBanner } from "@/components/permission-gate";
+import { can } from "@/lib/domain/roles";
 import { currentUser } from "@/lib/auth";
 import { PAGE_HELP } from "@/lib/help-content";
 import { ContentLibraryManager } from "@/components/content-library-manager";
@@ -89,6 +90,7 @@ export default async function ContentLibraryPage() {
       }
     );
 
+  const editable = Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "manage_content"));
   return (
     <>
       <PageFrame
@@ -135,8 +137,8 @@ export default async function ContentLibraryPage() {
               <div className="space-y-6 px-5 py-6 sm:px-6">
                 <div className="max-w-2xl space-y-2">
                   <p className="text-sm leading-relaxed text-muted-foreground">
-                    Edit the emails sent to subcontractors. Saving creates a draft;
-                    your changes are used only after you publish them.
+                    {editable ? "Edit the emails sent to subcontractors. Saving creates a draft; your changes are used only after you publish them."
+                      : "Review the published wording and saved drafts for emails to subcontractors."}
                   </p>
                   <details className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
                     <summary className="cursor-pointer font-medium text-foreground">How these emails work</summary>
@@ -152,6 +154,7 @@ export default async function ContentLibraryPage() {
                   </details>
                 </div>
                 <TemplateWorkbench
+                  editable={editable}
                   entries={templates.map(
                     (t): TemplateEntry => ({
                       template: t,
@@ -178,7 +181,7 @@ export default async function ContentLibraryPage() {
                     lead to a duplicate or overwrite.
                   </div>
                 ) : (
-                  <ContentLibraryManager items={items} />
+                  <ContentLibraryManager items={items} editable={editable} />
                 )}
               </div>
             ),

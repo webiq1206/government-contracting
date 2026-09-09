@@ -31,7 +31,7 @@ export default async function RulesPage() {
       return null;
     }),
   ]);
-  const editable = can(user?.orgRole, "manage_rules");
+  const editable = Boolean(user && !user.impersonatedBy && can(user.orgRole, "manage_rules"));
   return (
     <>
       <PageFrame
