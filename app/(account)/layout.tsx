@@ -1,3 +1,4 @@
+import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
 import { StreamedNavigation } from "@/components/streamed-navigation";
 import { DashboardNav, DashboardNotices, DashboardTabs } from "@/components/dashboard-shell";
 import { redirect } from "next/navigation";
@@ -53,7 +54,7 @@ export default async function AccountLayout({
 
   if (!subscribed) {
     return (
-      <ToastProvider>
+      <ToastProvider><MenuIsolationProvider>
         <div className="flex min-h-dvh flex-col bg-background text-foreground">
           <header className="flex shrink-0 items-center justify-between border-b border-border bg-background px-5 py-3">
             <Link href="/" className="inline-flex items-center" aria-label="Brost Co">
@@ -79,12 +80,12 @@ export default async function AccountLayout({
         <Suspense fallback={null}>
           <GuideWizard />
         </Suspense>
-      </ToastProvider>
+      </MenuIsolationProvider></ToastProvider>
     );
   }
 
   return (
-    <ToastProvider>
+    <ToastProvider><MenuIsolationProvider>
       <div
         data-app-shell
         className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background lg:flex-row"
@@ -94,7 +95,7 @@ export default async function AccountLayout({
           isPlatformAdmin: !user.impersonatedBy && isPlatformAdmin(user.email) }}>
           <Suspense fallback={null}><DashboardNav user={user} /></Suspense>
         </StreamedNavigation>
-        <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
+        <ShellMain className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
           {user.impersonatedBy && (
             <ImpersonationBanner
               adminEmail={user.impersonatedBy}
@@ -104,13 +105,13 @@ export default async function AccountLayout({
           {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
           <Suspense fallback={null}><DashboardNotices user={user} /></Suspense>
           {children}
-        </main>
+        </ShellMain>
       </div>
       <CommandPalette storageScope={user.organizationId} />
       <Suspense fallback={null}>
         <GuideWizard />
       </Suspense>
       <Suspense fallback={null}><DashboardTabs user={user} /></Suspense>
-    </ToastProvider>
+    </MenuIsolationProvider></ToastProvider>
   );
 }

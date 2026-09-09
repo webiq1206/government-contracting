@@ -1,3 +1,4 @@
+import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
 import { DashboardNav, DashboardNotices, DashboardTabs } from "@/components/dashboard-shell";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
@@ -36,7 +37,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
   // panel, it is the 402 that every mutating route returns independently.
 
   return (
-    <ToastProvider>
+    <ToastProvider><MenuIsolationProvider>
       {/* fixed inset-0: pin the shell to the visual viewport so the document
           cannot rubber-band past the mobile tab bar. Pages scroll inside main. */}
       <div
@@ -48,7 +49,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           isPlatformAdmin: !user.impersonatedBy && isPlatformAdmin(user.email) }}>
           <Suspense fallback={null}><DashboardNav user={user} /></Suspense>
         </StreamedNavigation>
-        <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
+        <ShellMain className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
           {user.impersonatedBy && (
             <ImpersonationBanner
               adminEmail={user.impersonatedBy}
@@ -58,7 +59,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           {user.subscriptionStatus === "past_due" && <PaymentFailedBanner />}
           <Suspense fallback={null}><DashboardNotices user={user} /></Suspense>
           {children}
-        </main>
+        </ShellMain>
       </div>
       {access === "none" && <TrialExpiredModal />}
       <CommandPalette storageScope={user.organizationId} />
@@ -68,6 +69,6 @@ export default async function DashLayout({ children }: { children: React.ReactNo
       <Suspense fallback={<MobileTabBar reviewCount={0} callCount={0} />}>
         <DashboardTabs user={user} />
       </Suspense>
-    </ToastProvider>
+    </MenuIsolationProvider></ToastProvider>
   );
 }

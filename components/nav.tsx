@@ -3,6 +3,7 @@
 import { PendingLink as Link } from "@/components/pending-link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useMenuIsolation } from "./menu-isolation";
 import { ThemeWordmark } from "./theme-wordmark";
 import { ThemeToggle } from "./theme-toggle";
 import { SearchButton } from "./command-palette";
@@ -145,6 +146,7 @@ export function Nav({
   const router = useRouter();
   const panelRef = useRef<HTMLElement>(null);
   const [open, setOpen] = useState(false);
+  const { setOpen: isolateBackground } = useMenuIsolation();
   /**
    * Which groups the operator has explicitly toggled. A group is open when
    * they opened it, or when it holds the page they are on -- so arriving at
@@ -181,14 +183,16 @@ export function Nav({
   }, [pathname]);
 
   useEffect(() => {
+    isolateBackground(open && isMobile);
+    return () => isolateBackground(false);
+  }, [open, isMobile, isolateBackground]);
+
+  useEffect(() => {
     if (!open || !isMobile) return;
     const panel = panelRef.current;
     const opener = document.activeElement as HTMLElement | null;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const background = Array.from(document.querySelectorAll<HTMLElement>("main, nav[aria-label='Quick navigation']"));
-    const previousInert = background.map(node => node.inert);
-    background.forEach(node => { node.inert = true; });
     const focusable = () => Array.from(panel?.querySelectorAll<HTMLElement>(
       "button:not([disabled]), a[href], input:not([disabled]), [tabindex='0']"
     ) ?? []).filter(node => node.getClientRects().length > 0);
@@ -205,7 +209,6 @@ export function Nav({
     document.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
-      background.forEach((node, index) => { node.inert = previousInert[index]!; });
       document.removeEventListener("keydown", onKey);
       if (opener?.isConnected) opener.focus({ preventScroll: true });
     };

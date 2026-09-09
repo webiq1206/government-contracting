@@ -100,9 +100,19 @@ try {
     if(publicPage) await target.close();
   }
   await page.goto(base+'/admin/accounts',{waitUntil:'networkidle'});
-  await page.getByRole('link',{name:'Quick look',exact:true}).first().click();
+  const quickLook=page.getByRole('link',{name:'Quick look',exact:true}).first();
+  const quickHref=await quickLook.getAttribute('href');
+  const quickEvents=[];
+  const onNavigation=frame=>{if(frame===page.mainFrame())quickEvents.push({navigation:frame.url()});};
+  const onRequest=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({request:request.url(),method:request.method()});};
+  page.on('framenavigated',onNavigation);page.on('request',onRequest);
+  await quickLook.click();
   const accountDrawer=page.getByRole(device==='desktop'?'complementary':'dialog',{name:'Record details',exact:true});
-  await accountDrawer.waitFor();
+  try { await accountDrawer.waitFor(); }
+  finally {
+    page.removeListener('framenavigated',onNavigation);page.removeListener('request',onRequest);
+    writeFileSync(join(out,device+'-quick-look-navigation.json'),JSON.stringify({href:quickHref,final:page.url(),events:quickEvents},null,2));
+  }
   await page.screenshot({path:join(out,device+'-account-quick-look.png')});
   await page.keyboard.press('Escape');
   await accountDrawer.waitFor({state:'hidden'});
@@ -170,8 +180,12 @@ try {
   assert.equal(denied.status,403,'Viewer cannot pause automation');
   await v.goto(base+'/agents',{waitUntil:'networkidle'});
   assert.equal(await v.getByRole('button',{name:/^(Pause|Resume) everything$/}).count(),0,'Viewer cannot operate automation controls');
-  const admin=await v.goto(base+'/admin/accounts');
-  assert.equal(admin.status(),404,'Viewer cannot access platform admin');
+  // Next can send HTTP 200 before a streamed notFound() finishes. The
+  // rendered denial and absence of privileged content are the page contract.
+  await v.goto(base+'/admin/accounts',{waitUntil:'networkidle'});
+  await v.getByRole('heading',{name:'That page or record is unavailable',exact:true}).waitFor();
+  assert.equal(await v.getByRole('heading',{name:'All accounts',exact:true}).count(),0,'Viewer cannot see platform account data');
+  assert.equal(await v.getByRole('link',{name:'Quick look',exact:true}).count(),0,'Viewer cannot inspect platform accounts');
   results.push({device,role:'viewer',route:'/settings/api-usage',status:'permission checks passed',screenshot:device+'-viewer-api-usage.png'});
   await v.goto(base+'/more',{waitUntil:'networkidle'});
   await v.getByRole('button',{name:'Sign out',exact:true}).last().click();
