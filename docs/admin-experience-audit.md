@@ -10,7 +10,7 @@ Status: in progress. PR #128 is not a complete production audit sign-off.
 - A missing company profile has a setup form. Owners can save it, preserve edits after a failed save, and cancel accidental navigation. Read-only roles cannot edit the form or operate automation pause controls.
 - Password-help failures preserve the email field, distinguish an unconfirmed request from a confirmed delivery failure, and offer retry. Password-change failures provide sign-in and replacement-link actions without raw diagnostics.
 - Authentication actions have bounded waits and duplicate-submission guards. Successful sign-in/sign-out starts a fresh authenticated document. Protected API requests without a session return JSON 401 rather than HTML login content.
-- Account quick views reuse already loaded, authorized table rows, with URL history for bookmarks and Back. Browser verification of zero extra account requests is pending.
+- Account quick views reuse already loaded, authorized table rows, with URL history for bookmarks and Back. Browser run 16 verified opening, Escape, Back/Forward, and zero extra account requests at all three sizes.
 - Quick-view drawers have responsive roles, Escape handling, and focus management. Smaller-screen drawers use native modal isolation instead of changing attributes on streamed siblings. Confirmation dialogs render above the menu.
 - Menu background isolation now uses React-managed state with a stable server hydration snapshot. It no longer adds attributes directly to a streamed bottom navigation tree.
 - Automation schedules/manual controls are collapsed by default. Manual runs require the run-agents permission and an explicit cost-aware confirmation; platform-only jobs are hidden from tenant users. Browser verification is pending.
@@ -39,6 +39,8 @@ Initial-viewport contact sheets were reviewed for the 58 routes at all three siz
 Lower-page contact sheets from run 13 were reviewed: 29 mobile, 22 tablet, and 24 desktop captures. These identify layout/clutter issues; they do not verify every contained control. The Automation Health filter buttons are being consolidated into one selector, with a browser regression for combining automation, severity, and search then clearing them. Platform recap and capacity text is also being corrected: absence of logged failures does not establish that a connection works or credit is available.
 
 A fresh read-only browser-backed fetch of `https://brostco.com/login` returned BrostCo content and “Loading your workspace” in approximately 2.8 seconds. This supersedes the earlier connection-closed observation for public reachability, but does not establish completed login or authenticated production access.
+
+[Browser run 16](https://github.com/webiq1206/government-contracting/actions/runs/34404535914) captured all 174 routes without hydration errors and verified ordinary/direct account quick views at all three sizes. Opening, Escape, Back/Forward required zero additional account requests; opening URL changes occurred within 32–42 ms in this disposable environment. Automation-filter workflow waits failed at all three sizes before subsequent recovery workflows could run. Navigation tracing is being added to the disposable build to identify the exact failed transition; this is not a deployment modification.
 
 ## Still required
 

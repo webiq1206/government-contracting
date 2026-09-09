@@ -139,7 +139,7 @@ try {
   }
   results.push({device,role:'owner',route:'/admin/accounts',status:'quick look, Escape, Back/Forward and zero additional account requests checked',screenshot:device+'-account-quick-look.png'});
   } catch(error) {
-    failures.push({device,route:'/admin/accounts',status:'quick look blocked',error:String(error.message)});
+    failures.push({device,route:'/admin/accounts',status:'quick look blocked',error:String(error.stack ?? error.message)});
     checkpoint();
   }
   // A shared quick-look URL must also hydrate directly, without depending
@@ -156,7 +156,7 @@ try {
     await directDrawer.waitFor({state:'hidden'});
     results.push({device,role:'owner',route:'/admin/accounts?peek',status:'direct quick-look URL, responsive isolation and Escape checked'});
   } catch(error) {
-    failures.push({device,route:'/admin/accounts?peek',status:'direct quick look blocked',error:String(error.message)});checkpoint();
+    failures.push({device,route:'/admin/accounts?peek',status:'direct quick look blocked',error:String(error.stack ?? error.message)});checkpoint();
   }
   // Filtering the automation feed never starts an automation.
   await page.goto(base+'/agents',{waitUntil:'networkidle'});
@@ -313,7 +313,7 @@ try {
   await viewer.close();
   checkpoint();
   } catch(error) {
-    failures.push({device,status:'workflow blocked',error:String(error.message)});checkpoint();
+    failures.push({device,status:'workflow blocked',error:String(error.stack ?? error.message)});checkpoint();
     for(const [index,context] of browser.contexts().entries()) {
       for(const [tab,page] of context.pages().entries()) {
         await page.screenshot({path:join(out,`${device}-failure-${index}-${tab}.png`)}).catch(()=>{});
@@ -324,7 +324,7 @@ try {
   }
  }
  } catch(error) {
- failures.push({status:'workflow blocked',error:String(error.message)});
+ failures.push({status:'workflow blocked',error:String(error.stack ?? error.message)});
  for(const [index,context] of browser.contexts().entries()) {
   for(const [tab,page] of context.pages().entries()) {
    await page.screenshot({path:join(out,`failure-${index}-${tab}.png`)}).catch(()=>{});
