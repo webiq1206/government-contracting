@@ -65,6 +65,7 @@ import {
   ApiUsageBlockedError,
 } from "../lib/api-usage/ledger";
 import { readUsage } from "../lib/api-usage/read";
+import { readBudget, saveBudget } from "../lib/api-usage/budgets";
 import { invoiceCents } from "../lib/api-usage/money";
 const org = "00000000-0000-4000-8000-000000000002";
 const other = "00000000-0000-4000-8000-000000000003";
@@ -84,6 +85,7 @@ beforeAll(async () => {
   await state.db.exec(
     readFileSync("db/migrations/112_api_usage_ledger.sql", "utf8"),
   );
+  await state.db.exec(readFileSync("db/migrations/113_api_spending_controls.sql", "utf8"));
   await state.db.query(
     "insert into organizations(id,name) values($1,$2),($3,$4)",
     [org, "Test account", other, "Other account"],
@@ -97,7 +99,7 @@ beforeEach(async () => {
   state.failItem = false;
   state.stripeCalls = [];
   await state.db.exec(
-    "truncate api_usage_events,api_usage_invoice_batches,api_usage_limits,api_usage_rates,api_usage_preferences,platform_key_usage,integration_settings",
+    "truncate api_account_budgets,api_usage_events,api_usage_invoice_batches,api_usage_limits,api_usage_rates,api_usage_preferences,platform_key_usage,integration_settings",
   );
 });
 it("records exact costs and 1.25x charges without rounding each tiny request", async () => {
@@ -308,4 +310,68 @@ it("reserves in-flight maximum costs against spending limits", async () => {
   await expect(
     beginUsage(identity, "Anthropic", "test", "Analysis"),
   ).resolves.toBeTypeOf("string");
+});
+
+const unlimitedBudget = {dailyLimit:null,monthlyLimit:null,dailyRequests:null,paused:false,allowComplex:true};
+it("limits concurrent admissions before any provider call, including own keys", async () => {
+  await saveBudget(org,"owner",{...unlimitedBudget,dailyRequests:1});
+  const results = await Promise.allSettled([1,2,3].map(() => beginUsage({...identity,source:"tenant"},"Anthropic","test","Analysis")));
+  expect(results.filter(r=>r.status==="fulfilled")).toHaveLength(1);
+  expect(results.filter(r=>r.status==="rejected")).toHaveLength(2);
+  const b = await readBudget(org);
+  expect(b?.day_requests).toBe(1);
+  await expect(beginUsage({...identity,orgId:other},"Anthropic","test","Analysis")).resolves.toBeTruthy();
+});
+it("holds customer-facing platform charges and own-key costs against dollar budgets", async () => {
+  await state.db.query("insert into api_usage_rates(provider,service,rates,max_request_cost,evidence) values('Anthropic','test','{}',1,'test ceiling')");
+  await saveBudget(org,"owner",{...unlimitedBudget,monthlyLimit:"2.25"});
+  await beginUsage(identity,"Anthropic","test","Analysis");
+  await expect(beginUsage(identity,"Anthropic","test","Analysis")).rejects.toThrow("allowance");
+  await beginUsage({...identity,source:"tenant"},"Anthropic","test","Analysis");
+  await expect(beginUsage({...identity,source:"tenant"},"Anthropic","test","Analysis")).rejects.toThrow("allowance");
+  expect(Number((await readBudget(org))?.month_spend)).toBe(2.25);
+});
+it("blocks unpriced own-key requests only when a dollar cap is enabled", async () => {
+  await saveBudget(org,"owner",{...unlimitedBudget,dailyLimit:"10"});
+  await expect(beginUsage({...identity,source:"tenant"},"Anthropic","test","Analysis")).rejects.toThrow("price ceiling");
+  await saveBudget(org,"owner",{...unlimitedBudget,dailyRequests:10});
+  await expect(beginUsage({...identity,source:"tenant"},"Anthropic","test","Analysis")).resolves.toBeTruthy();
+});
+it("resumes after editing a pause without removing platform restrictions", async () => {
+  await saveBudget(org,"owner",{...unlimitedBudget,paused:true});
+  await expect(beginUsage(identity,"Anthropic","test","Analysis")).rejects.toThrow("paused");
+  await saveBudget(org,"owner",unlimitedBudget);
+  await state.db.query("insert into api_usage_limits(org_id,paused) values(null,true)");
+  await expect(beginUsage(identity,"Anthropic","test","Analysis")).rejects.toThrow("paused");
+});
+it("routine-only mode holds complex tasks but allows cheap work", async () => {
+  await saveBudget(org,"owner",{...unlimitedBudget,allowComplex:false});
+  await expect(beginUsage(identity,"Anthropic","test","Analysis",{complex:true})).rejects.toThrow("Complex AI");
+  await expect(beginUsage(identity,"Anthropic","test","Summary")).resolves.toBeTruthy();
+});
+it("a zero request limit pauses immediately and old requests do not consume today", async () => {
+  await saveBudget(org,"owner",{...unlimitedBudget,dailyRequests:0});
+  await expect(beginUsage(identity,"Anthropic","test","Analysis")).rejects.toThrow("request limit");
+  await saveBudget(org,"owner",{...unlimitedBudget,dailyRequests:1});
+  const id = await beginUsage(identity,"Anthropic","test","Analysis");
+  await state.db.query("update api_usage_events set started_at=now()-interval '2 days' where id=$1",[id]);
+  await expect(beginUsage(identity,"Anthropic","test","Analysis")).resolves.toBeTruthy();
+});
+it("rejects invalid settings before writing any budget", async () => {
+  for (const bad of [{dailyLimit:"-1"},{monthlyLimit:"NaN"},{dailyRequests:1.5},{dailyRequests:1000001},{orgId:other}]) {
+    await expect(saveBudget(org,"owner",{...unlimitedBudget,...bad})).rejects.toThrow();
+  }
+  expect((await state.db.query("select * from api_account_budgets")).rows).toHaveLength(0);
+});
+it("a global request allowance counts tenants together but excludes their own keys", async () => {
+  await state.db.query("insert into api_usage_limits(daily_requests) values(1)");
+  await beginUsage(identity,"Anthropic","test","Analysis");
+  await expect(beginUsage({...identity,orgId:other},"Anthropic","test","Analysis")).rejects.toThrow("platform's daily");
+  await expect(beginUsage({...identity,orgId:other,source:"tenant"},"Anthropic","test","Analysis")).resolves.toBeTruthy();
+});
+it("dollar limits hold unknown historical charges even with newly configured pricing", async () => {
+  await beginUsage(identity,"Anthropic","test","Analysis");
+  await state.db.query("insert into api_usage_rates(provider,service,rates,max_request_cost,evidence) values('Anthropic','test','{}',1,'test ceiling')");
+  await saveBudget(org,"owner",{...unlimitedBudget,dailyLimit:"100"});
+  await expect(beginUsage(identity,"Anthropic","test","Analysis")).rejects.toThrow("awaiting confirmation");
 });

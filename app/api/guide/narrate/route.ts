@@ -8,6 +8,7 @@ import {
   finalizeNarration,
   GUIDE_NARRATE_SYSTEM,
 } from "@/lib/domain/guide-narrate";
+import { loadGuideBundle } from "@/lib/guide/load";
 import type { PageGuide } from "@/lib/domain/page-guide";
 
 export const runtime = "nodejs";
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
 
   const body = (await req.json().catch(() => null)) as { guide?: PageGuide } | null;
   const guide = body?.guide;
-  if (!guide || typeof guide !== "object" || !guide.pathname) {
+  if (!guide || typeof guide !== "object" || !/^\/[A-Za-z0-9/_-]{0,300}$/.test(guide.pathname)) {
     return NextResponse.json({ error: "guide payload required." }, { status: 400 });
   }
 
@@ -40,7 +41,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { text } = await complete(buildNarrateUserPrompt(guide), {
+    const { guide: trustedGuide } = await loadGuideBundle(auth, guide.pathname);
+    const { text } = await complete(buildNarrateUserPrompt(trustedGuide), {
+      feature: "Page narration",
       system: GUIDE_NARRATE_SYSTEM,
       model: config.claude.model,
       maxTokens: 500,

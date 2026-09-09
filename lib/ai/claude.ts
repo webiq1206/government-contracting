@@ -182,6 +182,8 @@ export interface CompleteOptions {
   temperature?: number;
   /** Override the model for this call (e.g. config.claude.modelSmart). */
   model?: string;
+  /** Explicit task difficulty; complex tasks are never silently downgraded. */
+  complexity?: "routine" | "complex";
   /** Set false to skip Company Profile injection (rarely needed). */
   injectProfile?: boolean;
   /**
@@ -278,7 +280,8 @@ export async function complete(
   opts: CompleteOptions = {}
 ): Promise<{ text: string; usage: ClaudeUsage; stopReason: string | null }> {
   const system = await buildSystem(opts);
-  const model = opts.model ?? config.claude.model;
+  const model = opts.model ?? (opts.complexity === "complex" ? config.claude.modelSmart : config.claude.model);
+  const complex = opts.complexity === "complex" || model !== config.claude.model;
 
   // Built as a loose object so we can conditionally include params by model
   // family without fighting the (older) SDK's request types. The model string
@@ -334,9 +337,9 @@ export async function complete(
       () => anthropic.messages.create(
         body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
         { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
-          ...(opts.maxRetries != null ? { maxRetries: opts.maxRetries } : {}) }
+          maxRetries: 0 }
       ),
-      value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }));
+      value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex });
   } catch (err) {
     const cause = describeClaudeFailure(err);
     /*
@@ -406,7 +409,7 @@ export async function completeJson<T = unknown>(
   // so T always infers to the parsed output (e.g. defaults applied, not | undefined).
   opts: CompleteOptions & { schema?: z.ZodType<T, z.ZodTypeDef, any>; retries?: number } = {}
 ): Promise<{ data: T; usage: ClaudeUsage }> {
-  const retries = opts.retries ?? 1;
+  const retries = Math.max(0, Math.min(1, Math.floor(opts.retries ?? 1)));
   const jsonInstruction =
     "\n\nRespond with ONLY a single valid JSON object. No markdown, no code fences, no commentary before or after.";
   let lastErr: unknown;
@@ -435,7 +438,7 @@ export async function completeJson<T = unknown>(
       // retrying at the SAME budget just truncates again. Bump the budget instead
       // (capped) so the retry has room to finish the object.
       if (stopReason === "max_tokens") {
-        maxTokens = Math.min(Math.max(maxTokens * 2, JSON_RETRY_TOKEN_CAP), JSON_RETRY_TOKEN_HARD_CAP);
+        maxTokens = Math.min(maxTokens * 2, JSON_RETRY_TOKEN_HARD_CAP);
         extra = "\n\nYour previous response was cut off before the JSON was complete. Return the COMPLETE, valid JSON object only.";
       } else {
         extra = `\n\nYour previous response could not be parsed/validated (${(err as Error).message}). Return corrected, strictly-valid JSON only.`;

@@ -1,3 +1,5 @@
+import { can } from "@/lib/domain/roles";
+import { readBudget, saveBudget } from "@/lib/api-usage/budgets";
 import { platformApiValue } from "@/lib/api-usage/credentials";
 import { NextResponse } from "next/server";
 import { requireUser, requireCapability } from "@/lib/api-auth";
@@ -15,12 +17,13 @@ export async function GET(req: Request) {
   if (!auth.organizationId)
     return NextResponse.json({ error: "No account found." }, { status: 403 });
   try {
-    const [usage, preferences] = await Promise.all([
+    const [usage, preferences, budget] = await Promise.all([
       readUsage(new URL(req.url).searchParams, auth.organizationId),
       query(
         "select env_key,source,accepted_at::text,updated_at::text from api_usage_preferences where org_id=$1",
         [auth.organizationId],
       ),
+      readBudget(auth.organizationId),
     ]);
     const providers = await Promise.all(
       BILLABLE_PROVIDERS.map(async (def) => {
@@ -47,7 +50,7 @@ export async function GET(req: Request) {
         } catch { return {provider:def.provider,key:def.key,active:"needs_attention",extraFields:def.extraFields??[],platformAvailable:false,error:"This connection needs attention. Reconnect your API key below."}; }
       }),
     );
-    return NextResponse.json({ ...usage, providers });
+    return NextResponse.json({ ...usage, providers, budget, canManageBudget: can(auth.orgRole, "manage_integrations") && !auth.impersonatedBy });
   } catch {
     return NextResponse.json(
       { error: "Usage could not be loaded. Please retry." },
@@ -62,6 +65,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No account found." }, { status: 403 });
   try {
     const body = await req.json();
+    if (body.action === "budget") {
+      try { await saveBudget(auth.organizationId, auth.email, body.budget); }
+      catch { return NextResponse.json({error:"Your spending limits were not saved. Check the amounts and try again."}, {status:400}); }
+      return NextResponse.json({ok:true});
+    }
     const def = BILLABLE_PROVIDERS.find((d) => d.key === body.key);
     if (!def || !["platform", "tenant"].includes(body.source))
       throw new Error("Choose a supported API service.");

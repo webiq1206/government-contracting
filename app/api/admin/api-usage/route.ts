@@ -1,3 +1,4 @@
+import { readBudget, saveBudget } from "@/lib/api-usage/budgets";
 import { NextResponse } from "next/server";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import { readUsage } from "@/lib/api-usage/read";
@@ -9,15 +10,16 @@ export async function GET(req: Request) {
   const auth = await requirePlatformAdmin();
   if (auth instanceof Response) return auth;
   try {
-    const [usage, tenants, reports, rates] = await Promise.all([
+    const [usage, tenants, reports, rates, budget] = await Promise.all([
       readUsage(new URL(req.url).searchParams),
       query("select id,name from organizations order by name"),
       query(
         "select id,provider,starts_at::text,ends_at::text,reported_cost::text,tracked_cost::text,unknown_calls,evidence from api_usage_provider_reports order by created_at desc limit 25",
       ),
       query('select provider,service,rates,max_request_cost::text,evidence,updated_at::text from api_usage_rates order by provider,service'),
+      auth.organizationId ? readBudget(auth.organizationId) : Promise.resolve(null),
     ]);
-    return NextResponse.json({ ...usage, tenants, reports, rates });
+    return NextResponse.json({ ...usage, tenants, reports, rates, budget });
   } catch {
     return NextResponse.json(
       {
@@ -47,6 +49,7 @@ const schema = z.discriminatedUnion("action", [
     warning: z.number().int().min(1).max(100),
     paused: z.boolean(),
     requireTenant: z.boolean(),
+    dailyRequests: z.number().int().min(0).max(1000000).nullable().optional(),
   }),
   z.object({
     action: z.literal("reconcile"),
@@ -73,7 +76,14 @@ export async function POST(req: Request) {
   const auth = await requirePlatformAdmin();
   if (auth instanceof Response) return auth;
   try {
-    const body = schema.parse(await req.json());
+    const input = await req.json();
+    if (input.action === "budget") {
+      const orgId = z.string().uuid().parse(input.orgId ?? auth.organizationId);
+      try { await saveBudget(orgId, auth.email, input.budget); }
+      catch { return NextResponse.json({error:"Your spending limits were not saved. Check the amounts and try again."}, {status:400}); }
+      return NextResponse.json({ok:true});
+    }
+    const body = schema.parse(input);
     if (body.action === "invoice") {
       const { createUsageInvoice } = await import("@/lib/api-usage/invoice");
       return NextResponse.json({
@@ -104,10 +114,10 @@ export async function POST(req: Request) {
       } else if (body.action === "limit") {
         orgId = body.orgId;
         await client.query(
-          `insert into api_usage_limits(org_id,provider,feature,monthly_limit,warning_percent,paused,require_tenant_key)
-          values($1,$2,$3,$4,$5,$6,$7) on conflict(coalesce(org_id::text,''),provider,feature) do update set
+          `insert into api_usage_limits(org_id,provider,feature,monthly_limit,warning_percent,paused,require_tenant_key,daily_requests)
+          values($1,$2,$3,$4,$5,$6,$7,$8) on conflict(coalesce(org_id::text,''),provider,feature) do update set
           monthly_limit=excluded.monthly_limit,warning_percent=excluded.warning_percent,paused=excluded.paused,
-          require_tenant_key=excluded.require_tenant_key,updated_at=now()`,
+          require_tenant_key=excluded.require_tenant_key,daily_requests=excluded.daily_requests,updated_at=now()`,
           [
             body.orgId,
             body.provider,
@@ -116,6 +126,7 @@ export async function POST(req: Request) {
             body.warning,
             body.paused,
             body.requireTenant,
+            body.dailyRequests ?? null,
           ],
         );
       } else if (body.action === "rate") {

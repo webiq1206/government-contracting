@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
+import { ApiSpendingControls } from "./api-spending-controls";
 type Row = Record<string, any>;
 const money = (n: unknown) =>
   n == null
@@ -25,6 +26,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     [version, setVersion] = useState(0);
   const [selected, setSelected] = useState<Row | null>(null),
     [message, setMessage] = useState("");
+  const saving = useRef(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     if (selected && !dialogRef.current?.open) dialogRef.current?.showModal();
@@ -58,6 +60,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     }));
   }
   async function save(body: Row) {
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
     setError("");
     setMessage("");
@@ -79,6 +83,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
@@ -111,6 +116,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           {message}
         </p>
       )}
+      {data?.budget && <ApiSpendingControls key={JSON.stringify(data.budget)} budget={data.budget} editable={admin || data.canManageBudget === true} save={save} busy={busy} />}
+      {admin && data && <LimitSettings data={data} save={save} busy={busy} />}
       <form
         className="grid grid-cols-2 gap-3 lg:grid-cols-4"
         onSubmit={(e) => e.preventDefault()}
@@ -719,7 +726,6 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                 </form>
               </section>
               {data.rates?.length>0&&<section className="card"><h2 className="font-semibold">Saved provider prices</h2>{data.rates.map((r:Row)=><p className="mt-2 text-sm" key={r.provider+r.service}>{r.provider} · {r.service}: maximum request cost {money(r.max_request_cost)}. Source: {r.evidence}.</p>)}</section>}
-              <LimitSettings data={data} save={save} busy={busy} />
             </>
           )}
         </>
@@ -977,8 +983,8 @@ function LimitSettings({
       <p className="text-sm">
         Pause a service, require tenant-owned credentials, or set a hard dollar
         limit. Each request reserves its configured maximum cost before it runs.
-        Requests without a price ceiling are blocked when a hard dollar limit is
-        set.
+        Requests without a price ceiling are blocked when a dollar limit is
+        set. Daily request limits work without pricing and reset at midnight UTC. A platform-wide request limit covers all tenants sharing your API credentials.
       </p>
       <form
         className="grid gap-3 sm:grid-cols-2"
@@ -994,6 +1000,7 @@ function LimitSettings({
             warning: Number(f.get("warning")),
             paused: f.get("paused") === "on",
             requireTenant: f.get("requireTenant") === "on",
+            dailyRequests: f.get("dailyRequests") === "" ? null : Number(f.get("dailyRequests")),
           });
         }}
       >
@@ -1032,6 +1039,10 @@ function LimitSettings({
           />
         </label>
         <label className="text-sm">
+          Maximum platform-key requests per day (blank means no cap)
+          <input name="dailyRequests" type="number" min="0" max="1000000" step="1" className={`${field} w-full`} />
+        </label>
+        <label className="text-sm">
           Warning at percent
           <input
             name="warning"
@@ -1061,6 +1072,7 @@ function LimitSettings({
           <strong>{l.tenant ?? "Entire platform"}</strong>: {l.provider} /{" "}
           {l.feature}. Limit:{" "}
           {l.monthly_limit == null ? "No cap" : money(l.monthly_limit)}.{" "}
+          {l.daily_requests != null ? `Daily platform-key requests: ${l.daily_requests}. ` : ""}
           {l.paused ? "Paused. " : ""}
           {l.require_tenant_key ? "Tenant API required." : ""}
           <button

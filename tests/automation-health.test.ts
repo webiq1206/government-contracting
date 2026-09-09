@@ -276,3 +276,7 @@ describe("automation health evidence", () => {
     expect(health).not.toContain(".catch(() => []");
   });
 });
+
+it("routes budget holds to spending controls rather than a credit top-up", () => {
+  expect(classifyFailure("API_BUDGET: You reached today's request limit.")).toBe("spending_limit");
+});
