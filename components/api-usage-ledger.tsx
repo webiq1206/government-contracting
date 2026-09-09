@@ -3,6 +3,8 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { ApiSpendingControls } from "./api-spending-controls";
 type Row = Record<string, any>;
+const resultLabel: Record<string,string> = {success:"Completed",pending:"Waiting for result",failed:"Needs attention"};
+const billingLabel: Record<string,string> = {review:"Cost not confirmed",unbilled:"Not yet billed",pending:"Invoice prepared",billed:"Billed",paid:"Paid",credited:"Credited",refunded:"Refunded",not_billable:"No BrostCo charge"};
 const money = (n: unknown) =>
   n == null
     ? "Not confirmed"
@@ -24,6 +26,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [version, setVersion] = useState(0);
+  const [moreFilters, setMoreFilters] = useState(false);
   const [selected, setSelected] = useState<Row | null>(null),
     [message, setMessage] = useState("");
   const saving = useRef(false);
@@ -70,6 +73,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(20000),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
@@ -81,7 +85,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
       setVersion((v) => v + 1);
       setSelected(null);
     } catch (e) {
-      setError((e as Error).message);
+      setError((e as Error).name === "TimeoutError" ? "The save could not be confirmed. Reload this page to check your settings before trying again." : (e as Error).message);
     } finally {
       saving.current = false;
       setBusy(false);
@@ -140,20 +144,21 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           {message}
         </p>
       )}
-      {data?.budget && (
-        <ApiSpendingControls
-          key={JSON.stringify(data.budget)}
-          budget={data.budget}
-          editable={admin || data.canManageBudget === true}
-          save={save}
-          busy={busy}
-        />
-      )}
-      {admin && data && <LimitSettings data={data} save={save} busy={busy} />}
-      <form
+      {data?.budget && <ApiSpendingControls key={JSON.stringify(data.budget)} budget={data.budget} editable={admin || data.canManageBudget === true} save={save} busy={busy} />}
+      {admin && data && <details className="card"><summary className="cursor-pointer font-semibold">Platform safeguards</summary><LimitSettings data={data} save={save} busy={busy} /></details>}
+      <div className="flex flex-wrap gap-3 items-center">
+        <label className="text-sm">Show <select className={field} value={filters.period} onChange={e=>setFilters(f=>({...f,period:e.target.value,page:"1",from:"",to:""}))}>
+          <option value="month">This month</option><option value="today">Today</option><option value="week">Past 7 days</option>
+          {!["month","today","week"].includes(filters.period) && <option value={filters.period}>{filters.period === "billing" ? "Billing period" : "Custom dates"}</option>}
+        </select></label>
+        <button type="button" className="text-sm underline" aria-expanded={moreFilters} onClick={()=>setMoreFilters(!moreFilters)}>{moreFilters ? "Hide filters" : "More filters"}</button>
+        {Object.entries(filters).some(([k,v])=>!["period","page"].includes(k)&&v) && <button className="text-sm underline" onClick={()=>setFilters({period:"month",page:"1"})}>Clear filters</button>}
+      </div>
+      {moreFilters && <form
         className="grid grid-cols-2 gap-3 lg:grid-cols-4"
         onSubmit={(e) => e.preventDefault()}
         aria-label="Usage filters"
+        hidden={!moreFilters}
       >
         <label className="text-xs">
           Time range
@@ -299,7 +304,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             />
           </label>
         ))}
-      </form>
+      </form>}
       <p role="status" className="text-xs text-muted-foreground">
         {busy
           ? "Loading usage…"
@@ -322,19 +327,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           )}
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             {[
-              [
-                admin ? "Actual platform cost" : "Your API charges",
-                money(admin ? summary.provider_cost : summary.tenant_charge),
-              ],
-              ...(admin
-                ? [
-                    ["Tenant charges", money(summary.tenant_charge)],
-                    ["API margin", money(summary.margin)],
-                  ]
-                : []),
-              ["Platform requests", summary.platform_calls ?? 0],
-              ["Tenant-owned requests", summary.tenant_calls ?? 0],
-              ["Costs awaiting review", summary.awaiting_cost ?? 0],
+              ["Estimated usage cost", money(summary.usage_amount)],
+              ["Requests", summary.calls ?? 0],
               ["Failed requests", summary.failed ?? 0],
             ].map(([label, value]) => (
               <div className="card" key={label}>
@@ -377,11 +371,10 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             <div className="card border-review">
               <strong>Some costs are not confirmed yet.</strong>
               <p className="mt-1 text-sm">
-                Totals include confirmed amounts only. Unknown costs are not
-                treated as free.{" "}
+                Estimates use recorded usage and published prices. Totals exclude requests still awaiting a cost; those requests are not free.{" "}
                 {admin
                   ? "Review the provider’s billing records before approving charges."
-                  : "Your charges may increase when the provider’s costs are confirmed."}
+                  : "These estimates are not a final bill."}
               </p>
             </div>
           )}
@@ -410,8 +403,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             </section>
           )}
           {!admin && (
-            <section className="space-y-3">
-              <h2 className="font-semibold">Your connected API services</h2>
+            <details className="card space-y-3">
+              <summary className="cursor-pointer font-semibold">Connected services</summary>
               <div className="grid gap-3 lg:grid-cols-2">
                 {data.providers?.map((p: Row) => (
                   <ProviderSetting
@@ -419,16 +412,17 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                     provider={p}
                     save={save}
                     busy={busy}
+                    editable={data.canManageBudget === true}
                   />
                 ))}
               </div>
               <Link href="/settings/integrations" className="text-sm underline">
                 Manage text messaging and other connected services
               </Link>
-            </section>
+            </details>
           )}
-          <section className="card">
-            <h2 className="font-semibold">Usage by account and provider</h2>
+          <details className="card">
+            <summary className="cursor-pointer font-semibold">Usage by account and provider</summary>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
@@ -438,7 +432,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                       "Provider",
                       "Requests",
                       ...(admin ? ["Your cost"] : []),
-                      "Tenant charge",
+                      "Estimated usage",
                     ].map((v) => (
                       <th className="p-2" key={v}>
                         {v}
@@ -466,13 +460,13 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                       {admin && (
                         <td className="p-2">{money(r.provider_cost)}</td>
                       )}
-                      <td className="p-2">{money(r.tenant_charge)}</td>
+                      <td className="p-2">{money(r.usage_amount)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
+          </details>
           <section className="card">
             <h2 className="font-semibold">Recent activity</h2>
             {!data.rows.length ? (
@@ -487,7 +481,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                         "Account / action",
                         "API source",
                         ...(admin ? ["Your cost"] : []),
-                        "Tenant charge",
+                        "Estimated usage",
                         "Result / billing",
                         "Details",
                       ].map((v) => (
@@ -515,22 +509,18 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                         <td className="p-2">
                           {r.credential_source === "platform"
                             ? "Platform API"
-                            : "Tenant API"}
+                            : r.credential_source === "tenant" ? "Tenant API" : "Public data"}
                         </td>
                         {admin && (
                           <td className="p-2">{money(r.provider_cost)}</td>
                         )}
                         <td className="p-2">
-                          {r.credential_source === "tenant"
-                            ? "Pay provider directly"
-                            : r.tenant_charge == null
-                              ? "Awaiting cost"
-                              : money(r.tenant_charge)}
+                          {money(r.usage_amount)}
                         </td>
                         <td className="p-2">
-                          {r.outcome}
+                          {resultLabel[r.outcome] ?? "Awaiting update"}
                           <br />
-                          {r.billing_status.replace("_", " ")}
+                          {billingLabel[r.billing_status] ?? "Awaiting update"}
                         </td>
                         <td className="p-2">
                           <button
@@ -557,7 +547,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
               <span>Page {data.page}</span>
               <button
                 className={field}
-                disabled={data.page * 50 >= summary.calls || busy}
+                disabled={data.page * 20 >= summary.calls || busy}
                 onClick={() => filter("page", String(data.page + 1))}
               >
                 Next
@@ -565,8 +555,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             </div>
           </section>
           {data.daily.length > 0 && (
-            <section className="card">
-              <h2 className="font-semibold">Usage over time</h2>
+            <details className="card">
+              <summary className="cursor-pointer font-semibold">Usage over time</summary>
               <div className="max-h-64 overflow-auto">
                 <table className="w-full text-left text-sm">
                   <thead>
@@ -574,7 +564,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                       <th className="p-2">Day</th>
                       <th className="p-2">Requests</th>
                       {admin && <th className="p-2">Platform cost</th>}
-                      <th className="p-2">Tenant charges</th>
+                      <th className="p-2">Estimated usage</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -585,16 +575,16 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                         {admin && (
                           <td className="p-2">{money(r.provider_cost)}</td>
                         )}
-                        <td className="p-2">{money(r.tenant_charge)}</td>
+                        <td className="p-2">{money(r.usage_amount)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </section>
+            </details>
           )}
           {admin && (
-            <>
+            <details className="card space-y-4"><summary className="cursor-pointer font-semibold">Billing and pricing tools</summary>
               <section className="card space-y-3">
                 <h2 className="font-semibold">Compare provider billing</h2>
                 <p className="text-sm">
@@ -758,18 +748,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                   </button>
                 </form>
               </section>
-              {data.rates?.length > 0 && (
-                <section className="card">
-                  <h2 className="font-semibold">Saved provider prices</h2>
-                  {data.rates.map((r: Row) => (
-                    <p className="mt-2 text-sm" key={r.provider + r.service}>
-                      {r.provider} · {r.service}: maximum request cost{" "}
-                      {money(r.max_request_cost)}. Source: {r.evidence}.
-                    </p>
-                  ))}
-                </section>
-              )}
-            </>
+              {data.rates?.length>0&&<section className="card"><h2 className="font-semibold">Saved provider prices</h2>{data.rates.map((r:Row)=><p className="mt-2 text-sm" key={r.provider+r.service}>{r.provider} · {r.service}: maximum request cost {money(r.max_request_cost)}. Source: {r.evidence}.</p>)}</section>}
+            </details>
           )}
         </>
       )}
@@ -799,9 +779,10 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             </p>
             <dl className="my-4 grid grid-cols-2 gap-2 text-sm">
               {Object.entries({
-                Source: selected.credential_source,
-                Result: selected.outcome,
-                Billing: selected.billing_status,
+                Source: selected.credential_source === "tenant" ? "Your API" : "Platform API",
+                Result: resultLabel[selected.outcome] ?? "Awaiting update",
+                Billing: billingLabel[selected.billing_status] ?? "Awaiting update",
+                "Estimated usage": money(selected.usage_amount),
                 "Tenant charge": money(selected.tenant_charge),
                 ...(admin
                   ? {
@@ -811,8 +792,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                       "Cost evidence": selected.evidence,
                     }
                   : {}),
-                Workflow: selected.workflow,
-                "Related record": selected.related_id,
+                ...(admin ? {Workflow: selected.workflow,"Related record": selected.related_id} : {}),
               }).map(([k, v]) => (
                 <div className="break-words" key={k}>
                   <dt className="text-muted-foreground">{k}</dt>
@@ -820,13 +800,15 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                 </div>
               ))}
             </dl>
-            <h3 className="font-semibold">Units used</h3>
+            <details><summary className="cursor-pointer font-semibold">Usage details</summary>
             {Object.entries(selected.usage ?? {}).map(([k, v]) => (
               <p className="text-sm" key={k}>
                 {k.replaceAll("_", " ")}: {String(v)}
               </p>
             ))}
-            {selected.error_code && (
+            </details>
+            {selected.outcome === "failed" && <p className="my-3 text-sm">This request did not finish, so its task may still be waiting. <Link href="/agents" className="underline">Review automation status</Link></p>}
+            {admin && selected.error_code && (
               <p role="alert" className="mt-3 text-risk">
                 {selected.error_code}
               </p>
@@ -917,12 +899,15 @@ function ProviderSetting({
   provider: p,
   save,
   busy,
+  editable,
 }: {
   provider: Row;
+  editable: boolean;
   save: (v: Row) => Promise<void>;
   busy: boolean;
 }) {
-  const [source, setSource] = useState(""),
+  const [editing, setEditing] = useState(false);
+  const [source, setSource] = useState(p.preference?.source ?? (p.active === "platform" || p.active === "tenant" ? p.active : "")),
     [secret, setSecret] = useState("");
   return (
     <form
@@ -948,13 +933,15 @@ function ProviderSetting({
         </p>
       )}
       <p className="text-sm">
-        Active:{" "}
+        API source:{" "}
         {p.active === "platform"
-          ? "Our API"
+          ? "Platform API is configured"
           : p.active === "tenant"
-            ? "Your API"
+            ? "Your own API is configured"
             : "Not connected"}
       </p>
+      <button type="button" disabled={!editable} className="text-sm underline" onClick={()=>setEditing(!editing)}>{editing ? "Cancel" : p.active === "none" || p.active === "needs_attention" ? "Set up connection" : "Change connection"}</button>
+      {editing && editable && <>
       <select
         aria-label={`${p.provider} API source`}
         className={`${field} w-full`}
@@ -1013,6 +1000,7 @@ function ProviderSetting({
       <button className={field} disabled={!source || busy}>
         {source === "tenant" ? "Validate and connect" : "Save choice"}
       </button>
+      </>}
     </form>
   );
 }

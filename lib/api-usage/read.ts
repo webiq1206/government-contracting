@@ -80,8 +80,10 @@ export async function readUsage(params: URLSearchParams, tenantId?: string) {
         usage: "coalesce((e.usage->>'requests')::numeric,0) desc",
       } as Record<string, string>
     )[params.get("sort") ?? "newest"] ?? "e.started_at desc";
+  const amount = "coalesce(e.provider_cost,e.estimated_cost) * case when e.credential_source='platform' and e.billing_accepted then 1.25 else 1 end";
+  const estimate = `case when count(*)=0 then 0 when count(coalesce(e.provider_cost,e.estimated_cost))=0 then null else sum(${amount}) end`;
   const fields = `e.id,e.org_id,o.name as tenant,e.provider,e.service,e.feature,e.workflow,e.related_id,e.started_at::text,
-    e.outcome,e.credential_source,e.usage,e.tenant_charge::text,e.billing_status,e.error_code,e.invoice_reference`;
+    e.outcome,e.credential_source,e.usage,case when e.credential_source='platform' and e.provider_cost is null then null else e.tenant_charge end::text as tenant_charge,(${amount})::text as usage_amount, (e.provider_cost is null and e.estimated_cost is not null) as is_estimate,e.billing_status,${tenantId ? "case when e.outcome='failed' then 'This request did not complete. Review Automation Health for next steps.' else null end as error_code" : "e.error_code"},e.invoice_reference`;
   const costs = tenantId
     ? ""
     : ",e.provider_cost::text,e.estimated_cost::text,e.evidence,e.provider_request_id,e.billing_accepted,e.user_id";
@@ -98,7 +100,7 @@ export async function readUsage(params: URLSearchParams, tenantId?: string) {
   ] = await Promise.all([
     query(
       `select ${fields}${costs} from api_usage_events e left join organizations o on o.id=e.org_id where ${filter}
-      order by ${tenantId && ["cost", "margin"].includes(params.get("sort") ?? "") ? "e.started_at desc" : sort},e.id limit 50 offset ${Math.floor((page - 1) * 50)}`,
+      order by ${tenantId && ["cost", "margin"].includes(params.get("sort") ?? "") ? "e.started_at desc" : sort},e.id limit 20 offset ${Math.floor((page - 1) * 20)}`,
       values,
     ),
     query(
@@ -106,20 +108,20 @@ export async function readUsage(params: URLSearchParams, tenantId?: string) {
       count(*) filter(where credential_source='tenant')::int as tenant_calls,
       count(*) filter(where provider_cost is null and credential_source='platform')::int as awaiting_cost,
       count(*) filter(where outcome='failed')::int as failed,
-      sum(tenant_charge)::text as tenant_charge
+      case when count(*) filter(where credential_source='platform' and provider_cost is null)>0 then null else sum(tenant_charge) end::text as tenant_charge, (${estimate})::text as usage_amount
       ${tenantId ? "" : ",sum(provider_cost) filter(where credential_source='platform')::text as provider_cost,sum(estimated_cost) filter(where credential_source='platform')::text as estimated_cost,sum(tenant_charge-provider_cost) filter(where credential_source='platform' and billing_accepted)::text as margin"}
       from api_usage_events e where ${filter}`,
       values,
     ),
     query(
-      `select e.org_id,o.name as tenant,e.provider,count(*)::int as calls,sum(e.tenant_charge)::text as tenant_charge
+      `select e.org_id,o.name as tenant,e.provider,count(*)::int as calls,case when count(*) filter(where e.credential_source='platform' and e.provider_cost is null)>0 then null else sum(e.tenant_charge) end::text as tenant_charge, (${estimate})::text as usage_amount
       ${tenantId ? "" : ",sum(e.provider_cost) filter(where e.credential_source='platform')::text as provider_cost"}
       from api_usage_events e left join organizations o on o.id=e.org_id where ${filter}
       group by e.org_id,o.name,e.provider order by sum(e.tenant_charge) desc nulls last limit 100`,
       values,
     ),
     query(
-      `select (e.started_at at time zone 'UTC')::date::text as day,count(*)::int as calls,sum(tenant_charge)::text as tenant_charge
+      `select (e.started_at at time zone 'UTC')::date::text as day,count(*)::int as calls,case when count(*) filter(where credential_source='platform' and provider_cost is null)>0 then null else sum(tenant_charge) end::text as tenant_charge, (${estimate})::text as usage_amount
       ${tenantId ? "" : ",sum(provider_cost) filter(where credential_source='platform')::text as provider_cost"}
       from api_usage_events e where ${filter} group by 1 order by 1`,
       values,

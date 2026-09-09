@@ -38,6 +38,7 @@ vi.mock("../lib/db", () => ({
 }));
 vi.mock("../lib/integration-settings", () => ({
   decryptSecret: (s: string) => s,
+  isAllowedKey: (s: string) => s === "ANTHROPIC_API_KEY",
 }));
 vi.mock("../lib/billing/stripe", () => ({
   getStripe: () => ({
@@ -86,6 +87,7 @@ beforeAll(async () => {
     readFileSync("db/migrations/112_api_usage_ledger.sql", "utf8"),
   );
   await state.db.exec(readFileSync("db/migrations/113_api_spending_controls.sql", "utf8"));
+  await state.db.exec(readFileSync("db/migrations/116_api_safe_defaults.sql", "utf8"));
   await state.db.query(
     "insert into organizations(id,name) values($1,$2),($3,$4)",
     [org, "Test account", other, "Other account"],
@@ -101,6 +103,7 @@ beforeEach(async () => {
   await state.db.exec(
     "truncate api_account_budgets,api_usage_events,api_usage_invoice_batches,api_usage_limits,api_usage_rates,api_usage_preferences,platform_key_usage,integration_settings",
   );
+  await state.db.query("insert into api_account_budgets(org_id) values($1),($2)",[org,other]);
 });
 it("records exact costs and 1.25x charges without rounding each tiny request", async () => {
   for (let i = 0; i < 20; i++) {
@@ -210,7 +213,7 @@ it("admin totals include every matching row beyond the activity page", async () 
     await finishUsage(id, { actualCost: "1" });
   }
   const data = await readUsage(new URLSearchParams());
-  expect(data.rows).toHaveLength(50);
+  expect(data.rows).toHaveLength(20);
   expect(data.summary.calls).toBe(51);
   expect(Number(data.summary.provider_cost)).toBe(51);
 });
@@ -361,7 +364,7 @@ it("rejects invalid settings before writing any budget", async () => {
   for (const bad of [{dailyLimit:"-1"},{monthlyLimit:"NaN"},{dailyRequests:1.5},{dailyRequests:1000001},{orgId:other}]) {
     await expect(saveBudget(org,"owner",{...unlimitedBudget,...bad})).rejects.toThrow();
   }
-  expect((await state.db.query("select * from api_account_budgets")).rows).toHaveLength(0);
+  expect((await state.db.query("select * from api_account_budgets where daily_limit is not null or daily_requests is not null")).rows).toHaveLength(0);
 });
 it("a global request allowance counts tenants together but excludes their own keys", async () => {
   await state.db.query("insert into api_usage_limits(daily_requests) values(1)");
@@ -374,4 +377,106 @@ it("dollar limits hold unknown historical charges even with newly configured pri
   await state.db.query("insert into api_usage_rates(provider,service,rates,max_request_cost,evidence) values('Anthropic','test','{}',1,'test ceiling')");
   await saveBudget(org,"owner",{...unlimitedBudget,dailyLimit:"100"});
   await expect(beginUsage(identity,"Anthropic","test","Analysis")).rejects.toThrow("awaiting confirmation");
+});
+const haikuRates={input_tokens:"1",output_tokens:"5",cache_read_input_tokens:"0.1",cache_creation_input_tokens:"1.25"};
+async function seedHaiku() {
+  await state.db.query("insert into api_usage_rates(provider,service,rates,max_request_cost,evidence) values('Anthropic','claude-haiku-4-5',$1,2,'published test rates')",[JSON.stringify(haikuRates)]);
+}
+it("estimates token usage automatically without creating a confirmed charge or invoice", async()=>{
+  await seedHaiku();
+  const id=await beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary");
+  await finishUsage(id,{units:{input_tokens:1000,output_tokens:100,cache_read_input_tokens:2000,cache_creation_input_tokens:1000}});
+  const row=(await state.db.query("select * from api_usage_events where id=$1",[id])).rows[0];
+  expect(Number(row.estimated_cost)).toBeCloseTo(.00295,10);
+  expect(Number(row.budget_cost)).toBeCloseTo(.003245,10);
+  expect(row.provider_cost).toBeNull();expect(row.billing_status).toBe("review");
+  const view=await readUsage(new URLSearchParams(),org);
+  expect(view.rows[0].tenant_charge).toBeNull();
+  expect(Number(view.rows[0].usage_amount)).toBeCloseTo(.0036875,10);
+  expect(JSON.stringify(view)).not.toContain('price_snapshot');
+});
+it("prices are snapshotted so a settings edit cannot reprice an in-flight call", async()=>{
+  await seedHaiku();const id=await beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary");
+  await state.db.query("update api_usage_rates set rates='{}'");
+  await finishUsage(id,{units:{input_tokens:1000,output_tokens:100}});
+  expect(Number((await state.db.query("select estimated_cost from api_usage_events where id=$1",[id])).rows[0].estimated_cost)).toBe(.0015);
+});
+it("a successful priced call releases its large provisional hold without calling it free",async()=>{
+  await seedHaiku();await saveBudget(org,"owner",{...unlimitedBudget,dailyLimit:"3"});
+  const id=await beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary");
+  await expect(beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary")).rejects.toThrow();
+  await finishUsage(id,{units:{input_tokens:1000,output_tokens:100}});
+  await expect(beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary")).resolves.toBeTruthy();
+});
+it("unknown or failed usage keeps its reservation rather than freeing budget", async()=>{
+  await seedHaiku();const id=await beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary");
+  await finishUsage(id,{failed:true,units:{requests:1}});
+  const row=(await state.db.query("select * from api_usage_events where id=$1",[id])).rows[0];
+  expect(row.budget_cost).toBeNull();expect(row.estimated_cost).toBeNull();expect(Number(row.reserved_cost)).toBe(2);
+});
+it("new accounts have spending protection even before opening settings",async()=>{
+  await seedHaiku();await state.db.query("delete from api_account_budgets where org_id=$1",[org]);
+  const b=await readBudget(org);expect(b?.daily_requests).toBe(100);expect(b?.monthly_limit).toBe("250");
+  for(let i=0;i<10;i++) await beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary");
+  await expect(beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary")).rejects.toThrow("daily");
+});
+it("accepted platform selection finds the key saved in Settings without an environment key",async()=>{
+  const foundation="00000000-0000-4000-8000-000000000001";
+  await state.db.query("insert into organizations(id,name) values($1,'Platform') on conflict do nothing",[foundation]);
+  await state.db.query("insert into integration_settings values($1,'ANTHROPIC_API_KEY','saved-platform-key')",[foundation]);
+  await state.db.query("insert into api_usage_preferences(org_id,env_key,source,accepted_at) values($1,'ANTHROPIC_API_KEY','platform',now())",[org]);
+  const {orgApiKey,clearIntegrationKeyCache}=await import("../lib/integration-keys");clearIntegrationKeyCache();
+  delete process.env.ANTHROPIC_API_KEY;
+  expect(await orgApiKey("ANTHROPIC_API_KEY",org)).toBe("saved-platform-key");
+});
+it("migration repairs old token costs, holds unfinished calls, and preserves selected limits", async()=>{
+  const db=new PGlite();
+  try {
+    await db.exec("create table organizations(id uuid primary key,name text);");
+    await db.exec(readFileSync("db/migrations/112_api_usage_ledger.sql","utf8"));
+    await db.exec(readFileSync("db/migrations/113_api_spending_controls.sql","utf8"));
+    await db.query("insert into organizations values($1,'Owner'),($2,'Tenant')",[org,other]);
+    await db.query("insert into api_account_budgets(org_id,daily_limit,monthly_limit,paused) values($1,150,1000,true)",[org]);
+    await db.query(`insert into api_usage_events(id,org_id,provider,service,feature,credential_source,credential_fingerprint,outcome,usage)
+      values(gen_random_uuid(),$1,'Anthropic','claude-haiku-4-5','Summary','platform','test','success','{"input_tokens":1000,"output_tokens":100}'),
+      (gen_random_uuid(),$1,'Anthropic','claude-sonnet-5','Analysis','platform','test','pending','{}')`,[org]);
+    await db.exec(readFileSync("db/migrations/116_api_safe_defaults.sql","utf8"));
+    const rows=(await db.query("select * from api_usage_events order by outcome")).rows as any[];
+    expect(rows.every(r=>r.provider_cost===null)).toBe(true);
+    expect(Number(rows.find(r=>r.outcome==='success').estimated_cost)).toBe(.0015);
+    expect(Number(rows.find(r=>r.outcome==='pending').reserved_cost)).toBe(10);
+    const owner=(await db.query("select * from api_account_budgets where org_id=$1",[org])).rows[0] as any;
+    expect(Number(owner.daily_limit)).toBe(150);expect(Number(owner.monthly_limit)).toBe(1000);expect(owner.paused).toBe(true);expect(owner.daily_requests).toBe(100);
+    const tenant=(await db.query("select * from api_account_budgets where org_id=$1",[other])).rows[0] as any;
+    expect(Number(tenant.monthly_limit)).toBe(250);
+  } finally {await db.close();}
+},30000);
+it("free public-data lookups do not exhaust the paid request allowance",async()=>{
+  await seedHaiku();await saveBudget(org,"owner",{...unlimitedBudget,dailyRequests:1});
+  await state.db.query(`insert into api_usage_events(id,org_id,provider,service,feature,credential_source,credential_fingerprint,billing_status,provider_cost)
+    values(gen_random_uuid(),$1,'SAM.gov','search','Public data lookup','unknown','public','not_billable',0)`,[org]);
+  await expect(beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary")).resolves.toBeTruthy();
+  expect((await readBudget(org))?.day_requests).toBe(1);
+});
+it("a spending recovery check runs the same gate without creating a request or spending credits",async()=>{
+  await seedHaiku();await saveBudget(org,"owner",{...unlimitedBudget,paused:true});
+  await expect(beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary",{dryRun:true})).rejects.toThrow("paused");
+  await saveBudget(org,"owner",unlimitedBudget);
+  await expect(beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary",{dryRun:true})).resolves.toBeTruthy();
+  expect((await state.db.query("select * from api_usage_events")).rows).toHaveLength(0);
+  expect((await state.db.query("select * from platform_key_usage")).rows).toHaveLength(0);
+});
+it("recovery verifies current saved credentials and releases a corrected budget hold without paid execution",async()=>{
+  await seedHaiku();
+  const foundation="00000000-0000-4000-8000-000000000001";
+  await state.db.query("insert into organizations(id,name) values($1,'Platform') on conflict do nothing",[foundation]);
+  await state.db.query("insert into integration_settings values($1,'ANTHROPIC_API_KEY','saved-platform-key')",[foundation]);
+  await state.db.query("insert into api_usage_preferences(org_id,env_key,source,accepted_at) values($1,'ANTHROPIC_API_KEY','platform',now())",[org]);
+  await beginUsage(identity,"Anthropic","claude-haiku-4-5","Summary");
+  await saveBudget(org,"owner",{...unlimitedBudget,paused:true});
+  const {checkRecentSpending}=await import("../lib/api-usage/check-spending");
+  await expect(checkRecentSpending(org)).rejects.toThrow("paused");
+  await saveBudget(org,"owner",unlimitedBudget);
+  await expect(checkRecentSpending(org)).resolves.toBeUndefined();
+  expect((await state.db.query("select * from api_usage_events")).rows).toHaveLength(1);
 });

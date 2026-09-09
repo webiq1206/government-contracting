@@ -63,7 +63,7 @@ export async function orgApiKey(key: AllowedEnvKey, orgId?: string): Promise<str
   );
   if (preference?.source === 'platform') {
     if (!preference.accepted_at) return '';
-    return process.env[key]?.trim() ?? '';
+    return (await import("./api-usage/credentials")).platformApiValue(key);
   }
   const cacheKey = `${org}:${key}`;
   const hit = cache.get(cacheKey);

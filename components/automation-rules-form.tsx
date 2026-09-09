@@ -36,6 +36,8 @@ export function AutomationRulesForm({
   readOnly?: boolean;
 }) {
   const router = useRouter();
+  const [showRules, setShowRules] = useState(false);
+  useEffect(() => { if (window.location.hash) setShowRules(true); }, []);
   const [form, setForm] = useState<AutomationRules>(initial);
   /*
    * Compared against what was loaded rather than tracked with a flag. These
@@ -58,6 +60,7 @@ export function AutomationRulesForm({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (readOnly || !dirty) return;
     // Invalidate the previous form's impact immediately. Keeping it visible
     // through the debounce window lets a fast click save different values
     // under a stale, possibly non-destructive preview.
@@ -111,7 +114,7 @@ export function AutomationRulesForm({
       clearTimeout(t);
       controller.abort();
     };
-  }, [form, dirty]);
+  }, [form, dirty, readOnly]);
 
   async function save(confirmImpacts = false) {
     setSaving(true);
@@ -321,6 +324,14 @@ export function AutomationRulesForm({
       }}
       onCancel={() => setAsking(false)}
     />
+    <section className="card space-y-2">
+      <h2 className="font-semibold">Your automation rules are set</h2>
+      <p className="text-sm">Follow-ups: up to {form.followup_max}, spaced {form.followup_hours} hours apart. Phone-call tasks: {form.calls_enabled ? "enabled" : "off"}.</p>
+      <p className="text-sm">Archived records: {form.retention_days === 0 ? "kept until you remove them" : `kept for ${form.retention_days} days`}. Unreviewed opportunities: {form.auto_dismiss_review ? "dismissed after your saved waiting period" : "kept for your review"}.</p>
+      <p className="text-xs text-muted-foreground">You can use these rules as they are. Open the controls only when you need to change how work runs.</p>
+    </section>
+    <details open={showRules} onToggle={e=>setShowRules(e.currentTarget.open)} className="card">
+    <summary className="cursor-pointer font-semibold">Adjust automation rules{dirty ? " (unsaved changes)" : ""}</summary>
     <EditorialTabs
       ariaLabel="Automation rule sections"
       defaultTab="deadlines"
@@ -716,6 +727,7 @@ export function AutomationRulesForm({
         },
       ]}
     />
+    </details>
     </fieldset>
   );
 }

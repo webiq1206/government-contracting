@@ -95,8 +95,19 @@ export async function testProvider(): Promise<ProviderTest> {
  * about a disconnected mailbox or an unavailable queue. These probes send no
  * email and never weaken a pause, permission or tenant check. */
 export async function testIncidentDependency(cause: string, orgId: string): Promise<ProviderTest> {
-  if (cause === "spending_limit") return { passed: false, model: "budget", technical: null,
-    detail: "Paid work is waiting on a spending control. Open Settings, API Usage to review limits or resume work, then retry the affected task. No paid test was sent." };
+  if (cause === "spending_limit") {
+    try {
+      const { checkRecentSpending } = await import("./api-usage/check-spending");
+      await checkRecentSpending(orgId);
+      return { passed:true, model:"budget", technical:null,
+        detail:"Current spending controls can cover the checked workflows. No paid test was sent. Retried tasks will check their allowance again before running." };
+    } catch (error) {
+      return { passed:false, model:"budget", technical:error instanceof Error?error.message:null,
+        detail:error instanceof Error && error.name === "ApiUsageBlockedError"
+          ? error.message.replace(/^API_BUDGET:\s*/, "")
+          : "Spending protection could not be verified. Check the account’s API connection and budget before retrying." };
+    }
+  }
   if (cause.startsWith("provider_") || cause === "model_output") return testProvider();
   try {
     if (cause === "integration_auth") {

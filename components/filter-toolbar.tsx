@@ -315,7 +315,7 @@ export function FilterToolbar({
       <div className="flex flex-col gap-3 px-4 py-3 sm:px-5">
         {/* Wide enough for the fields: they apply as they change. */}
         <div className="hidden flex-wrap items-end gap-3 lg:flex">
-          {specs.slice(0, 4).map((spec) => (
+          {specs.slice(0, 1).map((spec) => (
             <Control
               key={spec.key}
               spec={spec}
@@ -324,7 +324,7 @@ export function FilterToolbar({
               onCommit={(v) => go(set(spec.key, v))}
             />
           ))}
-          {specs.length > 4 && (
+          {specs.length > 1 && (
             <button
               type="button"
               onClick={(event) => { sheetTrigger.current = event.currentTarget; setSheetOpen(true); }}
@@ -474,6 +474,7 @@ export function FilterToolbar({
             )}
 
             {views.length > 0 && (
+              <details className="ml-auto"><summary className="cursor-pointer text-xs">Saved views ({views.length})</summary>
               <span className="ml-auto flex flex-wrap items-center gap-1.5">
                 <span className="text-[0.65rem] uppercase tracking-[0.14em] text-muted-foreground">
                   Saved
@@ -517,6 +518,7 @@ export function FilterToolbar({
                   </span>
                 ))}
               </span>
+              </details>
             )}
           </div>
         )}

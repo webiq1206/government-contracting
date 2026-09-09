@@ -114,7 +114,7 @@ export function ActivityLedger() {
           to the email provider; delivered requires delivery evidence.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2" aria-label="Quick views">
+      <details className="card"><summary className="cursor-pointer font-semibold">Quick views</summary><div className="mt-3 flex flex-wrap gap-2" aria-label="Quick views">
         {[
           ["All activity", {}],
           ["Needs attention", { attention: "1" }],
@@ -131,7 +131,7 @@ export function ActivityLedger() {
             {String(name)}
           </button>
         ))}
-      </div>
+      </div></details>
       <form
         className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4"
         onSubmit={(e) => e.preventDefault()}
@@ -145,6 +145,7 @@ export function ActivityLedger() {
             onChange={(e) => change("q", e.target.value)}
           />
         </label>
+        <details className="sm:col-span-2 lg:col-span-4"><summary className="cursor-pointer text-sm font-medium">More filters</summary><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-sm">
           Activity type
           <select
@@ -235,6 +236,7 @@ export function ActivityLedger() {
             <option value="oldest">Oldest first</option>
           </select>
         </label>
+        </div></details>
       </form>
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -246,6 +248,7 @@ export function ActivityLedger() {
         <button className="btn-secondary" onClick={() => setFilters({})}>
           Clear filters
         </button>
+        <details><summary className="cursor-pointer text-sm">Export or save this view</summary><div className="mt-3 flex flex-wrap items-center gap-2">
         <a
           className="btn-secondary"
           href={"/api/activity?" + qs + "&format=csv"}
@@ -266,9 +269,11 @@ export function ActivityLedger() {
         <button className="btn-secondary" onClick={save} disabled={!data}>
           Save view on this device
         </button>
+        </div></details>
       </div>
+      {Object.values(filters).some(Boolean) && <p className="text-xs text-muted-foreground">Current filters: {Object.entries(filters).filter(([,v])=>v).map(([k,v])=>k==="attention"?"Needs attention":`${label(k)}: ${label(v)}`).join(" · ")}</p>}
       {saved.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <details><summary className="cursor-pointer text-sm">Saved views</summary><div className="flex flex-wrap gap-2">
           {saved.map((s) => (
             <span
               className="inline-flex rounded border border-border"
@@ -296,7 +301,7 @@ export function ActivityLedger() {
               </button>
             </span>
           ))}
-        </div>
+        </div></details>
       )}
       {error ? (
         <div role="alert" className="rounded border border-risk p-4">
