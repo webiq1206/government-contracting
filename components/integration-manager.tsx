@@ -495,14 +495,14 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
               ))}
 
             {result && (
-              <p
+              <div
                 role={result.ok ? "status" : "alert"}
                 className={`text-sm ${result.ok ? "text-pursue" : "text-risk"}`}
               >
-                {result.message}
-                {!result.ok && <button type="button" className="btn-ghost ml-2 text-xs" disabled={busy != null}
+                <p>{result.message}</p>
+                {!result.ok && <button type="button" className="btn-ghost mt-2 text-xs" disabled={busy != null}
                   onClick={() => router.refresh()}>Refresh status</button>}
-              </p>
+              </div>
             )}
 
             <div className="mt-auto flex flex-col items-stretch gap-2 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">

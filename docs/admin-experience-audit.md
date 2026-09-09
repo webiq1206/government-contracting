@@ -42,9 +42,31 @@ A fresh read-only browser-backed fetch of `https://brostco.com/login` returned B
 
 [Browser run 16](https://github.com/webiq1206/government-contracting/actions/runs/34404535914) captured all 174 routes without hydration errors and verified ordinary/direct account quick views at all three sizes. Opening, Escape, Back/Forward required zero additional account requests; opening URL changes occurred within 32–42 ms in this disposable environment. Automation-filter workflow waits failed at all three sizes before subsequent recovery workflows could run. Navigation tracing is being added to the disposable build to identify the exact failed transition; this is not a deployment modification.
 
+[Browser run 17](https://github.com/webiq1206/government-contracting/actions/runs/34405494267) again captured 174 routes without hydration errors and passed the six ordinary/direct account quick-view checks. Error stacks locate all three remaining failures at Clear filters, after successful form submission. Router diagnostics show the response resolves and a server patch is received, but the rendered route does not commit. CI run 369 passed. The next disposable run traces suspended rendering work.
+
+Integration recovery changes now bound the full response (including body reads) to 30 seconds, prevent duplicate submissions, preserve drafts on failure, and avoid echoing provider diagnostics. Saving no longer launches an implicit, potentially billable connection test. Updated responses retain the current tab's cards and reconstruct status labels instead of replacing them with every integration. Thirteen targeted recovery tests, TypeScript, and lint passed locally; [Browser run 18](https://github.com/webiq1206/government-contracting/actions/runs/34406479680) verified failed saves, duplicate clicks, draft preservation, and rejected-test recovery at all three sizes without provider traffic. CI run 370 passed.
+
+Run 18's navigation trace reached the cleared URL on all three sizes, exposing a second filter bug: uncontrolled fields retained the old selection. The form now remounts when its URL filters change; filter links no longer prefetch extra log/incident reads. Because this run contained additional suspension subscribers for diagnostics, it does not prove the previous navigation stall is fixed. The next run removes all framework instrumentation and retains the failing assertions. Later workflow tests now continue after a recorded filter failure rather than being skipped by it.
+
+API usage fields and standalone actions now use 44px minimum touch targets. Removing a platform safeguard requires a dialog identifying the scope and warning that paid work may resume. Its cancellation check uses an injected synthetic safeguard and cannot change production settings; verification is pending.
+
+## Verified workflow subsets
+
+These are narrow checks in disposable data, not full-page sign-off.
+
+| Workflow subset | Devices | Latest evidence |
+| --- | --- | --- |
+| Account quick look, Escape, Back/Forward, no duplicate account fetch | All three | Runs 16–17 passed |
+| Direct account drawer URL, viewport fit, modal isolation, Escape | All three | Runs 16–17 passed; screenshots visually reviewed |
+| Profile setup/save, failed save preserves input, cancel unsaved navigation | All three | Run 14 passed; current rerun blocked earlier by filter navigation |
+| Budget save, pause/resume, failed usage read and refresh | All three | Run 14 passed; current rerun blocked earlier by filter navigation |
+| Viewer action denial, admin-content denial, sign-out | All three | Run 14 passed; new manual-run visibility check pending |
+| Failed sign-up and password recovery, duplicate submission, unavailable delivery, invalid reset recovery | All three | Run 14 passed; no real delivery/password change performed |
+| Automation filter apply | All three | Run 17 passed; Clear failed |
+
 ## Still required
 
-- Resolve remaining hydration errors and quick-look failures using the latest browser evidence. Do not merge unexplained failures.
+- Resolve the remaining client navigation stall: Clear filters receives a server response but does not commit the new screen. Shared-shell hydration and account quick views passed the latest repeated runs. Do not merge unexplained failures.
 - Finish checking tab contents, lower-page controls, search/filter/sort combinations, read-only roles, and recovery workflows on every affected route.
 - Verify real production admin/tenant sessions, integration authentication, webhook delivery, queue processing, job retries/idempotency, and actual account blockers. The live browser-control service currently fails before a session can be created (daemon readiness timeout); this does not establish that brostco.com is down.
 - Profile production-sized data and network conditions. Synthetic local TTFB is not evidence of a production speed improvement. The admin accounts list still loads all account rows before in-memory filtering/paging and needs a database-side pagination review.

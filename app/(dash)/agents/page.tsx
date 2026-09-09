@@ -306,7 +306,7 @@ export default async function AgentsPage(
 
         {live.errors24h > 0 && (
           <p className="text-xs text-muted-foreground">
-            <Link href={link({ level: "error", page: undefined })} className="underline underline-offset-2">
+            <Link prefetch={false} href={link({ level: "error", page: undefined })} className="underline underline-offset-2">
               See every failed run
             </Link>{" "}
             ({live.errors24h} of {live.runs24h} runs in the last 24 hours).
@@ -455,7 +455,7 @@ export default async function AgentsPage(
           </div>
 
           {/* Search + level filter (GET form so links stay shareable) */}
-          <form method="get" action="/agents" className="mb-2 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
+          <form key={JSON.stringify([agentFilter, q, levelFilter])} method="get" action="/agents" className="mb-2 flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center">
             <select className="select w-full lg:w-auto" name="agent" defaultValue={agentFilter ?? ""} aria-label="Filter by automation">
               <option value="">All automations</option>
               {visibleRoster.map((agent) => <option key={agent.name} value={agent.name}>{agent.label}</option>)}
@@ -484,7 +484,7 @@ export default async function AgentsPage(
               Filter
             </button>
             {(q || levelFilter || agentFilter) && (
-              <Link href={link({ q: undefined, level: undefined, agent: undefined, page: undefined })} className="inline-flex coarse:min-h-11 items-center text-xs text-slate-500 hover:text-accent">
+              <Link prefetch={false} href={link({ q: undefined, level: undefined, agent: undefined, page: undefined })} className="inline-flex coarse:min-h-11 items-center text-xs text-slate-500 hover:text-accent">
                 Clear
               </Link>
             )}
@@ -563,7 +563,7 @@ export default async function AgentsPage(
           {totalPages > 1 && (
             <div className="mt-3 flex items-center justify-between">
               {page > 1 ? (
-                <Link href={link({ page: page - 1 })} className="btn-ghost text-xs">
+                <Link prefetch={false} href={link({ page: page - 1 })} className="btn-ghost text-xs">
                   ← Newer
                 </Link>
               ) : (
@@ -573,7 +573,7 @@ export default async function AgentsPage(
                 Page {page} of {totalPages}
               </span>
               {page < totalPages ? (
-                <Link href={link({ page: page + 1 })} className="btn-ghost text-xs">
+                <Link prefetch={false} href={link({ page: page + 1 })} className="btn-ghost text-xs">
                   Older →
                 </Link>
               ) : (

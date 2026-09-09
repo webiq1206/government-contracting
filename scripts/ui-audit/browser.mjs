@@ -192,7 +192,41 @@ try {
   } catch(error) {
     failures.push({device,route:'/settings/integrations',status:'integration workflow blocked',error:String(error.stack??error.message)});checkpoint();
   }
+  // A destructive spending-control click must stop at an explicit dialog.
+  try {
+    let safeguardWrites=0;
+    await page.route('**/api/admin/api-usage*',async route=>{
+      if(route.request().method()==='POST') {
+        safeguardWrites++;
+        return route.fulfill({status:503,contentType:'application/json',body:'{"error":"audit: no mutation"}'});
+      }
+      const response=await route.fetch();const data=await response.json();
+      data.limits=[{id:'audit-safeguard',org_id:ids.org,tenant:'Audit workspace',provider:'*',feature:'*',monthly_limit:'25',daily_requests:10,warning_percent:80,paused:true,require_tenant_key:false}];
+      await route.fulfill({response,json:data});
+    });
+    await page.goto(base+'/admin/api-usage',{waitUntil:'networkidle'});
+    const advanced=page.getByText('Platform safeguards',{exact:true});
+    await advanced.waitFor();
+    assert.equal(await advanced.locator('..').getAttribute('open'),null,'Advanced safeguards start collapsed');
+    if(device!=='desktop') {
+      const box=await page.getByRole('button',{name:'More filters',exact:true}).boundingBox();
+      assert(box&&box.height>=44,'Usage filter action must be large enough for touch');
+    }
+    await advanced.click();
+    await page.getByRole('button',{name:'Remove restrictions',exact:true}).click();
+    const confirmation=page.getByRole('dialog',{name:'Remove this spending safeguard?',exact:true});
+    await confirmation.getByText('Paid work may resume.',{exact:false}).waitFor();
+    await page.screenshot({path:join(out,device+'-remove-safeguard-dialog.png')});
+    await confirmation.getByRole('button',{name:'Cancel',exact:true}).click();
+    assert.equal(safeguardWrites,0,'Cancel must leave spending controls unchanged');
+    await page.unroute('**/api/admin/api-usage*');
+    results.push({device,route:'/admin/api-usage',status:'collapsed advanced controls, touch filter action and safeguard removal cancellation checked; no mutation performed'});
+  } catch(error) {
+    failures.push({device,route:'/admin/api-usage',status:'safeguard workflow blocked',error:String(error.stack??error.message)});checkpoint();
+  }
   // Filtering the automation feed never starts an automation.
+  let filtersPassed=false;
+  try {
   await page.goto(base+'/agents',{waitUntil:'networkidle'});
   assert.equal(await page.getByRole('button',{name:'Run now',exact:true}).count(),0,'Manual runs should be collapsed by default');
   const automationFilter=page.getByLabel('Filter by automation',{exact:true});
@@ -205,6 +239,11 @@ try {
   await page.getByRole('link',{name:'Clear',exact:true}).click();
   await page.waitForURL(url=>url.pathname==='/agents'&&!url.search);
   assert.equal(await page.getByLabel('Filter by automation',{exact:true}).inputValue(),'');
+  filtersPassed=true;
+  } catch(error) {
+    failures.push({device,route:'/agents',status:'automation filters blocked',error:String(error.stack??error.message)});checkpoint();
+    await page.goto(base+'/agents',{waitUntil:'networkidle'});
+  }
   await page.getByText('Automation schedules and manual controls',{exact:true}).click();
   let manualRequests=0;
   const noManualRun=request=>{if(/\/api\/agents\/[^/]+\/run$/.test(request.url()))manualRequests++;};
@@ -218,7 +257,7 @@ try {
   await page.getByText('Automation schedules and manual controls',{exact:true}).click();
   await page.getByLabel('Filter by automation',{exact:true}).scrollIntoViewIfNeeded();
   await page.screenshot({path:join(out,device+'-automation-filters.png')});
-  results.push({device,role:'owner',route:'/agents',status:'automation filters, safe manual-run defaults and confirmation cancellation checked; no automation executed'});
+  results.push({device,role:'owner',route:'/agents',status:(filtersPassed?'automation filters, ':'')+'safe manual-run defaults and confirmation cancellation checked; no automation executed'});
   // Verify URL navigation and browser back preserve the selected destination.
   await page.goto(base+'/settings/api-usage');
   await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
