@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const db = vi.hoisted(() => ({ queryOne: vi.fn(), query: vi.fn() }));
 vi.mock("@/lib/db", () => db);
-import { resolveSession } from "@/lib/auth";
+import { hasAnyOperator, resolveSession } from "@/lib/auth";
 
 const session = () => ({
   id: "user-a", email: "owner@example.test", name: "Owner", role: "operator",
@@ -12,6 +12,14 @@ const session = () => ({
 
 describe("session lookup cost and isolation", () => {
   beforeEach(() => { vi.clearAllMocks(); db.query.mockResolvedValue([]); });
+  it("only opens first-run setup after a successful empty-user check", async () => {
+    db.queryOne.mockResolvedValueOnce({ present: true }).mockResolvedValueOnce({ present: false }).mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("database unavailable"));
+    expect(await hasAnyOperator()).toBe(true);
+    expect(await hasAnyOperator()).toBe(false);
+    expect(await hasAnyOperator()).toBe(true);
+    expect(await hasAnyOperator()).toBe(true);
+    expect(db.queryOne).toHaveBeenCalledWith("select exists(select 1 from users) as present");
+  });
   it("resolves a recently active session in one query with no write", async () => {
     db.queryOne.mockResolvedValue(session());
     expect(await resolveSession("session-token")).toMatchObject({ organizationId: "org-a", orgRole: "owner" });

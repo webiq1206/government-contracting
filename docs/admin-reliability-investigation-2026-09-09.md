@@ -118,3 +118,21 @@ no account credentials, does not collect page bodies or cookies, and does not
 invoke Replit or paid provider APIs. The workflow retains its dated JSON evidence.
 Its result is diagnostic evidence, not a claim that authenticated visual testing
 or a full production audit has been completed.
+
+The first independent GitHub check resolved both hostnames to 34.111.179.208,
+connected in 51 to 89 ms, and validated their public Let's Encrypt certificates.
+All six dynamic requests received no response headers within 20 seconds.
+This narrows the observed failure to after TLS establishment; it does not
+distinguish a stalled application/database from hosting-edge behavior. Evidence:
+https://github.com/webiq1206/government-contracting/actions/runs/34359350581
+The follow-up adds the database-independent favicon as a control.
+
+Login's first-run check now uses EXISTS rather than counting every user. Missing
+results and database errors remain fail-closed and cannot open bootstrap access.
+Combined-suite failures from the ledger integration were traced to omitted
+accessibility routes and stale test assumptions. The sweep includes both usage
+pages. The platform billing endpoint has behavioral 401/403 tests proving that
+unauthorized requests cannot read usage or change billing. The grant test now
+executes a fake provider through the real ledger instead of treating a credential
+lookup as a billed request; prompt formatting tests mock the accounting boundary.
+No database safety checks were disabled.

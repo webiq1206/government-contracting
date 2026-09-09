@@ -123,8 +123,9 @@ const NO_ORG = {
  */
 export async function hasAnyOperator(): Promise<boolean> {
   try {
-    const row = await queryOne<{ n: string }>(`select count(*)::text as n from users`);
-    return Number(row?.n ?? 0) > 0;
+    // Login needs existence, not the size of the entire user table.
+    const row = await queryOne<{ present: boolean }>(`select exists(select 1 from users) as present`);
+    return row?.present ?? true;
   } catch {
     // Fail closed. This answer decides whether /login bounces to first-run
     // setup and whether the bootstrap endpoint will mint an operator, so a

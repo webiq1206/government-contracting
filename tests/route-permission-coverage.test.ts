@@ -44,6 +44,7 @@ const EXEMPT: Record<string, string> = {
   "admin/invitations/[id]/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "admin/key-grants/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "admin/automation/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
+  "admin/api-usage/route.ts": "Platform billing controls, guarded by requirePlatformAdmin in GET and POST.",
   "analytics/route.ts": "Records a product-analytics event for the signed-in user's own session.",
   /*
    * Every role may say the product is wrong, including the read-only ones. A

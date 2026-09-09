@@ -55,7 +55,9 @@ function probe(host, path) {
 
 for (const host of hosts) {
   const [a, aaaa, cname] = await Promise.all([dnsQuery(resolve4, host), dnsQuery(resolve6, host), dnsQuery(resolveCname, host)]);
-  const responses = await Promise.all(["/", "/login", "/api/health"].map(path => probe(host, path)));
+  // The static asset separates a stalled application/data path from total
+  // deployment unavailability. It needs neither authentication nor Postgres.
+  const responses = await Promise.all(["/favicon.svg", "/", "/login", "/api/health"].map(path => probe(host, path)));
   report.hosts.push({ host, dns: { a, aaaa, cname }, responses });
 }
 const json = JSON.stringify(report, null, 2);

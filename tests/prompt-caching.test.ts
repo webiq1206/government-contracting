@@ -36,6 +36,12 @@ vi.mock("../lib/integration-keys", () => ({
   orgHasKey: async () => true,
   clearIntegrationKeyCache: () => {},
 }));
+// Prompt construction is isolated from accounting I/O. Ledger admission and
+// persistence are exercised by the separate database integration suites.
+vi.mock("../lib/api-usage/ledger", () => ({
+  requestIdentity: async () => ({ orgId: TEST_ORG, envKey: "ANTHROPIC_API_KEY", value: "sk-test", source: "tenant", accepted: false }),
+  metered: async (_identity: unknown, _provider: string, _service: string, _feature: string, execute: () => Promise<unknown>) => execute(),
+}));
 
 async function callComplete(prompt: string, opts: Record<string, unknown> = {}) {
   const { complete } = await import("../lib/ai/claude");

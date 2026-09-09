@@ -93,6 +93,8 @@ const ROUTES = [
   "/settings/account",
   "/admin/accounts",
   "/admin/billing",
+  "/admin/api-usage",
+  "/settings/api-usage",
   "/admin/audit",
   "/admin/health",
   "/admin/invitations",

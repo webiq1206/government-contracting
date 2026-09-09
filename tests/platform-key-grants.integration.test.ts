@@ -90,12 +90,16 @@ d("platform key grants (integration)", () => {
     expect(audit[0].detail?.reason).toBe("walking them through a demo");
   });
 
-  it("meters what the borrowed key is used for", async () => {
-    // Counted only because the credential is ours. This is the number that
-    // turns into an invoice, so a grant that spent silently would be the bug.
+  it("meters a provider execution, not a credential lookup", async () => {
+    const before = await admin.platformKeyStates(orgId.value);
+    expect(before.find((s) => s.key === "ANTHROPIC_API_KEY")!.calls).toBe(0);
+    const { requestIdentity, metered } = await import("../lib/api-usage/ledger");
+    const identity = await requestIdentity("ANTHROPIC_API_KEY", PLATFORM_KEY, orgId.value);
+    // Exercise the real ledger with a fake provider response. No external I/O.
+    await metered(identity, "Anthropic", "test-model", "Grant verification", async () => "ok");
     const states = await admin.platformKeyStates(orgId.value);
     const anthropic = states.find((s) => s.key === "ANTHROPIC_API_KEY")!;
-    expect(anthropic.calls).toBeGreaterThan(0);
+    expect(anthropic.calls).toBe(1);
     expect(anthropic.hasOwnKey).toBe(false);
     expect(anthropic.expired).toBe(false);
     expect(anthropic.note).toBe("walking them through a demo");
