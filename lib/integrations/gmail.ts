@@ -448,7 +448,12 @@ type GmailPart = {
  * runaway backlog cannot hold the worker in the fetch loop while every other
  * scheduled job waits behind it. Truncation is reported, never silent.
  */
-export const REPLY_FETCH_CAP = 400;
+// Google now charges 20 quota units for messages.get, with a 6,000-unit
+// per-user minute limit for newer projects. The old 400-message burst alone
+// consumed 8,000 units. One 100-message page leaves room for sends/attachments;
+// callers must persist the returned continuation before another scheduled poll.
+// https://developers.google.com/workspace/gmail/api/reference/quota (2026-09-09)
+export const REPLY_FETCH_CAP = 100;
 
 /**
  * One inbound message, with everything needed to place it in a conversation.

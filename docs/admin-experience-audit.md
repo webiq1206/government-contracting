@@ -18,16 +18,21 @@ Status: in progress. PR #128 is not a complete production audit sign-off.
 
 ## Current live findings (September 9)
 
-Read-only browser access is authenticated using the existing owner session. Today and Automation Health rendered, and the live Automation Health layout was visually inspected. No production settings, jobs, messages, credentials, or budgets were changed. The earlier connection failure no longer describes current access.
+Read-only browser access is authenticated using the existing owner session. Today, Automation Health, API Usage, and Company Settings rendered. The live Automation Health layout was visually inspected. Company Settings navigation and the spending-setup link rendered their destination; no forms were submitted. No production settings, jobs, messages, credentials, or budgets were changed. The earlier connection failure no longer describes current access.
 
 Confirmed causes and branch changes:
 
 - Recovery sweeps treated a null enqueue result (including singleton duplicates and safety deferrals) as proof that the queue was unreachable. The branch now counts deferred work separately; thrown backend failures still fail the run. Legacy ambiguous log messages no longer assert an outage.
 - Gmail's per-user query quota error was classified as expired authentication and exposed raw provider diagnostics on Today. Quota errors now show a temporary delay with a progress action; genuine revoked grants retain Reconnect. Polling preserves continuation tokens on quota/network failures, clearing them only for an explicitly invalid or expired page token.
 - Analysis repeatedly prepared large documents before discovering a spending hold. A dry-run check for the exact tenant and model now runs before attachment download/OCR, after duplicate/unchanged analysis returns. Atomic admission still runs immediately before paid calls.
-- Missing provider price ceilings still block paid work safely. Automatic price setup, budget-aware retry backoff, full Gmail partial-page recovery, and production automation recovery remain **unverified/incomplete**. No prices were guessed or spending limits removed.
+- The branch already contains migration 116, which seeds published prices/ceilings for the default models, estimates old successful token usage, and reserves allowances for unresolved calls while preserving selected caps and pauses. Prices were rechecked against Anthropic's current documentation. The live page still reports unpriced requests and missing ceilings; application of this release migration in production is **not verified**. Startup requires an owner-credential migration release step; a git pull alone does not apply it. Budget-aware retry backoff, full Gmail partial-page recovery, and production automation recovery remain incomplete. No spending limits were removed.
+- Gmail full-message polling is reduced from 400 to one 100-message page, returning the continuation token. Google's current quota documentation lists 20 units per message read and 6,000 units/minute/user for newer projects: the old 8,000-unit burst can exceed the quota by itself. The new batch is 2,005 units including its list call, before attachments or other concurrent activity. This is a burst reduction, not a guarantee against aggregate quota exhaustion; the recap scanner can still request successive batches and requires further pacing/checkpoint work. See [Google quota documentation](https://developers.google.com/workspace/gmail/api/reference/quota). Two mocked-provider tests verify bounded reads and continuation; existing recap reconciliation tests still pass.
 
 [Browser run 20](https://github.com/webiq1206/government-contracting/actions/runs/34408303435) produced 210 records, including 174 route captures with no hydration errors. Viewer permission checks, read-only integration/content controls, sign-out, and visitor recovery checks passed at all three sizes. Six failures remain: ordinary and fresh-browser Clear navigation at every size. Removing the layout loading boundary did not fix them; that experiment is reverted. Clear now uses standard document navigation, matching the existing GET filter form; the next browser run must verify it. [CI run 372](https://github.com/webiq1206/government-contracting/actions/runs/34408303388) passed before these latest changes.
+
+[Browser run 21](https://github.com/webiq1206/government-contracting/actions/runs/34409727881) **passed** at `e430547`: 213 result records, 174 route captures, zero recorded browser/hydration errors, and zero workflow failures. All 30 fresh-browser Clear checks passed, alongside ordinary filter apply/clear, account quick views and history, profile/budget recovery, integration failures, confirmation cancellation, viewer permissions, sign-out, visitor failure recovery, and footer navigation. The cleared-filter screenshots were individually inspected on mobile, tablet, and desktop; fields, empty state, and navigation fit. CI run 373 also passed. These are verified subsets, not complete production workflows. The subsequent Gmail batch reduction has two passing provider-mock tests, seven passing recap tests, TypeScript and lint; exact-head CI remains pending.
+
+The tablet and desktop safeguard confirmation screenshots from run 20 were also visually inspected: text and both actions fit within the viewport. This verifies the cancellation dialog layout, not an actual removal of spending protection.
 
 ## Evidence and limits
 
@@ -81,7 +86,7 @@ These are narrow checks in disposable data, not full-page sign-off.
 | Budget save, pause/resume, failed usage read and refresh | All three | Run 19 passed |
 | Viewer action denial, admin-content denial, sign-out | All three | Run 14 passed; new manual-run visibility check pending |
 | Failed sign-up and password recovery, duplicate submission, unavailable delivery, invalid reset recovery | All three | Run 14 passed; no real delivery/password change performed |
-| Automation filter apply | All three | Run 19 passed; Clear failed |
+| Automation filter apply and Clear | All three | Run 21 passed, including 30 fresh-browser checks |
 | Integration save/test failure, duplicate clicks, preserved draft, recovery action | All three | Runs 18–19 passed |
 | Manual-run and safeguard-removal confirmation cancellation, no execution | All three | Run 19 passed |
 
