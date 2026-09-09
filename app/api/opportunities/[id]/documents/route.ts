@@ -22,7 +22,8 @@ const ALLOWED = new Set([
 /**
  * Operator document upload for an opportunity (proof, amendments, attachments).
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

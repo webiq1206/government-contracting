@@ -45,19 +45,20 @@ function Expired() {
   );
 }
 
-export default async function VendorPortalPage({
-  params,
-}: {
-  params: { token: string };
-}) {
+export default async function VendorPortalPage(
+  props: {
+    params: Promise<{ token: string }>;
+  }
+) {
+  const params = await props.params;
   const pointer = decodePortalToken(params.token);
   if (!pointer) {
     // A bad token costs nothing to reject, so this is not about load: it is
     // about a run of them from one address being a scan rather than a person
     // with a stale email, and about sharing that count with the write routes.
     const ip =
-      headers().get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      headers().get("x-real-ip") ||
+      (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      (await headers()).get("x-real-ip") ||
       "unknown";
     if (!rejectedTokenAllowed(ip)) {
       return (

@@ -22,11 +22,12 @@ export const dynamic = "force-dynamic";
  * read what it is on the same screen they agree to it, not discover it on an
  * invoice a month later.
  */
-export default async function InvitePage({
-  searchParams,
-}: {
-  searchParams?: { token?: string };
-}) {
+export default async function InvitePage(
+  props: {
+    searchParams?: Promise<{ token?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const token = searchParams?.token ?? "";
   const offer = token ? await invitationForToken(token) : null;
 

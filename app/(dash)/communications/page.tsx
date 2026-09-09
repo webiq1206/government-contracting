@@ -1,3 +1,4 @@
+import { rejectOrgPageResponse } from "@/lib/org-page-guard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageFrame } from "@/components/page-frame";
@@ -78,13 +79,14 @@ function stateChipClass(state: ConversationSummary["state"]): string {
   return `${base} bg-slate-200 text-slate-600`;
 }
 
-export default async function CommunicationsPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function CommunicationsPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const ctx = await requireOrgContext();
-  if (ctx instanceof NextResponse) return ctx;
+  if (ctx instanceof NextResponse) rejectOrgPageResponse(ctx);
   /*
    * Reading is a view-level thing; sending is not. The composer is hidden for
    * anyone who could not send anyway, because offering a control that will

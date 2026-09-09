@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 const ALLOWED = new Set(["active", "completed", "terminated"]);
 
 /** Move a contract between active, completed and terminated. */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_contracts" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

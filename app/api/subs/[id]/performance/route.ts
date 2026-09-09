@@ -25,7 +25,8 @@ export const dynamic = "force-dynamic";
  * The capability is `decide` rather than `view`: a note here changes which
  * subcontractors get approached on every future bid.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
 

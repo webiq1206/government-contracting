@@ -16,10 +16,8 @@ export const dynamic = "force-dynamic";
  * in use is touched: a draft is never the active row, so discarding one
  * cannot change a single outgoing email.
  */
-export async function POST(
-  _req: Request,
-  { params }: { params: { slug: string } }
-) {
+export async function POST(_req: Request, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

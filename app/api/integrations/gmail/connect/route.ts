@@ -31,7 +31,7 @@ export async function GET() {
   // OAuth `state` param; the callback rejects any mismatch. This blocks a
   // logged-in operator from being tricked into connecting the attacker's Gmail.
   const state = randomBytes(24).toString("hex");
-  cookies().set(STATE_COOKIE, state, {
+  (await cookies()).set(STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "lax",
     secure: config.isProd,

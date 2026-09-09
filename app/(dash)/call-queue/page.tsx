@@ -32,11 +32,12 @@ export const dynamic = "force-dynamic";
 
 const CALL_PAGE_SIZE = 50;
 
-export default async function CallQueuePage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function CallQueuePage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const { currentUser } = await import("@/lib/auth");
   // Who is looking, because what a row offers depends on what they may do.
   const [allCards, callsEnabled, viewer] = await Promise.all([

@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
  * personal view called "Mine" is not something another member should be able
  * to learn from a status code.
  */
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "view" });
   if (ctx instanceof NextResponse) return ctx;
   const ok = await deleteView(

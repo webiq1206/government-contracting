@@ -1,3 +1,4 @@
+import { rejectOrgPageResponse } from "@/lib/org-page-guard";
 import Link from "next/link";
 import { NextResponse } from "next/server";
 import { PageFrame } from "@/components/page-frame";
@@ -90,13 +91,14 @@ function articlesFromHelp(): Article[] {
     }));
 }
 
-export default async function KnowledgeCenterPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function KnowledgeCenterPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const ctx = await requireOrgContext();
-  if (ctx instanceof NextResponse) return ctx;
+  if (ctx instanceof NextResponse) rejectOrgPageResponse(ctx);
 
   const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
   const q = (one(searchParams?.q) ?? "").trim();

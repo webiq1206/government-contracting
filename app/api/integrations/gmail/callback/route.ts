@@ -19,9 +19,9 @@ export async function GET(req: Request) {
   const code = url.searchParams.get("code");
   const err = url.searchParams.get("error");
   const returnedState = url.searchParams.get("state");
-  const expectedState = cookies().get(STATE_COOKIE)?.value;
+  const expectedState = (await cookies()).get(STATE_COOKIE)?.value;
   // Consume the state cookie either way so it can't be replayed.
-  cookies().delete(STATE_COOKIE);
+  (await cookies()).delete(STATE_COOKIE);
   if (!expectedState || !returnedState || returnedState !== expectedState) {
     return NextResponse.redirect(`${config.appUrl}/settings/integrations?gmail=csrf`);
   }

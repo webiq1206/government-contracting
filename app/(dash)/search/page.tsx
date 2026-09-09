@@ -46,11 +46,12 @@ function parseKind(v: unknown): ResultKind | null {
  * The filter is in the URL rather than in component state, so a filtered
  * search is a link and the back button steps out of it.
  */
-export default async function SearchPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function SearchPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const raw = searchParams?.q;
   const q = (typeof raw === "string" ? raw : "").trim();
   const kind = parseKind(searchParams?.kind);

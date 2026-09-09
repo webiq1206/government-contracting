@@ -20,7 +20,8 @@ interface DocRow {
  * named and ordered per the manifest, plus a README listing anything the
  * operator must still add (signatures, bid bonds, etc.).
  */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;

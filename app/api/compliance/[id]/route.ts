@@ -89,7 +89,8 @@ function norm(v: unknown): string | null {
   return s === "" ? null : s;
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_compliance" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
@@ -402,7 +403,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
 /** Delete an operator-created item. Monitor-managed items can't be deleted here
  *  (the monitor would just recreate them), so this only removes source='operator'. */
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_compliance" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

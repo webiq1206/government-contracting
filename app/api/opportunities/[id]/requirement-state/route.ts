@@ -26,7 +26,8 @@ export const dynamic = "force-dynamic";
  * quietly became `not_started` would be a checklist silently forgetting what
  * somebody just told it, and one that quietly became `done` would be worse.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
 

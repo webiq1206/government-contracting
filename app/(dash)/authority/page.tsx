@@ -76,11 +76,12 @@ function reasonsOf(p: ProspectRow): string[] {
   return [];
 }
 
-export default async function AuthorityPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function AuthorityPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   // Platform-owner tool: this tracks OUR marketing domain, not the customer's.
   // It was reachable by every signed-in customer, showing them our Ahrefs
   // data and a feature that means nothing to a contractor. 404 for everyone

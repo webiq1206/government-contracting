@@ -44,11 +44,12 @@ export const dynamic = "force-dynamic";
  * Viewing never ages the urgent list. Opening this page twice must not make
  * yesterday's problem two days old in tomorrow's mail.
  */
-export default async function RecapPage({
-  searchParams,
-}: {
-  searchParams?: { date?: string; peek?: string };
-}) {
+export default async function RecapPage(
+  props: {
+    searchParams?: Promise<{ date?: string; peek?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await currentUser();
   if (!user) redirect("/login");
   if (!user.organizationId) redirect("/today");

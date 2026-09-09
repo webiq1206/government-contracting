@@ -1,3 +1,4 @@
+import { rejectOrgPageResponse } from "@/lib/org-page-guard";
 import Link from "next/link";
 import { NextResponse } from "next/server";
 import { reviewQueue } from "@/lib/data";
@@ -48,13 +49,14 @@ export const dynamic = "force-dynamic";
  * decided. That is the whole difference between a screen you work and a screen
  * you visit.
  */
-export default async function ReviewPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function ReviewPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const ctx = await requireOrgContext();
-  if (ctx instanceof NextResponse) return ctx;
+  if (ctx instanceof NextResponse) rejectOrgPageResponse(ctx);
   const canDecide = can(ctx.user.orgRole, "decide");
 
   const opps = await reviewQueue();

@@ -91,6 +91,8 @@ const ROUTES = [
   "/search",
   "/settings/notifications",
   "/settings/account",
+  "/admin/api-usage",
+  "/settings/api-usage",
   "/admin/accounts",
   "/admin/billing",
   "/admin/audit",

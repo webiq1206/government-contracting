@@ -28,7 +28,8 @@ interface OutcomeRow {
 class OutcomeConflict extends Error {}
 
 /** Record an agency outcome only for a bid whose delivery was already proven. */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_contracts" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId, user } = ctx;

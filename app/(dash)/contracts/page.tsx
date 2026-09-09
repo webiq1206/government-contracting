@@ -88,11 +88,12 @@ function NonSsGauge({ pctValue }: { pctValue: number }) {
 }
 
 
-export default async function ContractsPage({
-  searchParams,
-}: {
-  searchParams?: { view?: string; c?: string };
-}) {
+export default async function ContractsPage(
+  props: {
+    searchParams?: Promise<{ view?: string; c?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const loadWarnings: string[] = [];
   const [rows, teamMembers, viewer] = await Promise.all([
     allContracts(),
