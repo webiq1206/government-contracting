@@ -16,7 +16,12 @@ const logging = `
     for (var auditIndex = 0; auditParent && auditIndex < 12; auditIndex++, auditParent = auditParent.return) {
       auditParents.push({tag: auditParent.tag, type: typeof auditParent.type === 'string' ? auditParent.type : auditParent.type && (auditParent.type.displayName || auditParent.type.name), className: auditParent.pendingProps && auditParent.pendingProps.className});
     }
+    var auditChildren = [], auditChild = fiber.child;
+    for (var auditChildIndex = 0; auditChild && auditChildIndex < 12; auditChildIndex++, auditChild = auditChild.sibling) {
+      auditChildren.push({tag: auditChild.tag, type: typeof auditChild.type === 'string' ? auditChild.type : auditChild.type && auditChild.type.name, flags: auditChild.flags, dehydrated: auditChild.memoizedState && auditChild.memoizedState.dehydrated && auditChild.memoizedState.dehydrated.nodeValue});
+    }
     console.error('[ui-audit hydration]', JSON.stringify({
+      children: auditChildren,
       path: window.location.pathname, expected: auditParents,
       actual: nextHydratableInstance && String(nextHydratableInstance.outerHTML || nextHydratableInstance.nodeValue).slice(0, 3500),
       parent: nextHydratableInstance && nextHydratableInstance.parentElement && nextHydratableInstance.parentElement.outerHTML.slice(0, 3500)

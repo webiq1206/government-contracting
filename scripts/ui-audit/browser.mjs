@@ -104,11 +104,12 @@ try {
   const quickLook=page.getByRole('link',{name:'Quick look',exact:true}).first();
   const quickHref=await quickLook.getAttribute('href');
   const quickEvents=[];
-  const onNavigation=frame=>{if(frame===page.mainFrame())quickEvents.push({navigation:frame.url()});};
-  const onRequest=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({request:request.url(),method:request.method()});};
-  const onResponse=response=>{if(response.url().includes('/admin/accounts'))quickEvents.push({response:response.url(),status:response.status(),type:response.headers()['content-type']});};
-  const onFailed=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({failed:request.url(),reason:request.failure()});};
-  const onFinished=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({finished:request.url()});};
+  const quickStart=Date.now();
+  const onNavigation=frame=>{if(frame===page.mainFrame())quickEvents.push({elapsedMs:Date.now()-quickStart,navigation:frame.url()});};
+  const onRequest=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({elapsedMs:Date.now()-quickStart,request:request.url(),method:request.method()});};
+  const onResponse=response=>{if(response.url().includes('/admin/accounts'))quickEvents.push({elapsedMs:Date.now()-quickStart,response:response.url(),status:response.status(),type:response.headers()['content-type']});};
+  const onFailed=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({elapsedMs:Date.now()-quickStart,failed:request.url(),reason:request.failure()});};
+  const onFinished=request=>{if(request.url().includes('/admin/accounts'))quickEvents.push({elapsedMs:Date.now()-quickStart,finished:request.url()});};
   page.on('framenavigated',onNavigation);page.on('request',onRequest);
   page.on('response',onResponse);page.on('requestfailed',onFailed);page.on('requestfinished',onFinished);
   await quickLook.click();
@@ -126,6 +127,22 @@ try {
   } catch(error) {
     failures.push({device,route:'/admin/accounts',status:'quick look blocked',error:String(error.message)});
     checkpoint();
+  }
+  // A shared quick-look URL must also hydrate directly, without depending
+  // on a previously opened table or changing streamed siblings' attributes.
+  try {
+    await page.goto(base+'/admin/accounts?peek='+ids.org,{waitUntil:'networkidle'});
+    const directDrawer=page.getByRole(device==='desktop'?'complementary':'dialog',{name:'Record details',exact:true});
+    await directDrawer.waitFor();
+    assert.equal(await directDrawer.evaluate(n=>n.matches(':modal')),device!=='desktop','Only smaller-screen drawers should isolate the background');
+    const box=await directDrawer.boundingBox();
+    assert(box&&box.x>=0&&box.y>=0&&box.x+box.width<=width+2&&box.y+box.height<=height+2,'Drawer must fit the viewport');
+    await page.screenshot({path:join(out,device+'-direct-quick-look.png')});
+    await page.keyboard.press('Escape');
+    await directDrawer.waitFor({state:'hidden'});
+    results.push({device,role:'owner',route:'/admin/accounts?peek',status:'direct quick-look URL, responsive isolation and Escape checked'});
+  } catch(error) {
+    failures.push({device,route:'/admin/accounts?peek',status:'direct quick look blocked',error:String(error.message)});checkpoint();
   }
   // Verify URL navigation and browser back preserve the selected destination.
   await page.goto(base+'/settings/api-usage');
@@ -215,6 +232,31 @@ try {
   assert(!(await v.getByRole('alert').innerText()).includes('SQLSTATE'),'Signup must hide technical diagnostics');
   assert(await v.getByRole('button',{name:/Start.*7-day free trial/}).isEnabled(),'Failed signup remains retryable');
   results.push({device,role:'visitor',route:'/signup',status:'service failure recovery checked; account creation not attempted'});
+  await v.goto(base+'/forgot-password',{waitUntil:'networkidle'});
+  let resetRequests=0;
+  await v.route('**/api/auth/forgot-password',r=>{resetRequests++;return r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'SQLSTATE private diagnostic'})});});
+  await v.getByLabel('Email',{exact:true}).fill('ui-owner@example.test');
+  await v.locator('form').evaluate(form=>{form.requestSubmit();form.requestSubmit();});
+  await v.getByRole('alert').filter({hasText:'We could not confirm whether a reset link was sent'}).waitFor();
+  assert.equal(resetRequests,1,'Repeated password-help submissions must send one request');
+  assert.equal(await v.getByLabel('Email',{exact:true}).inputValue(),'ui-owner@example.test');
+  assert(await v.getByRole('button',{name:'Try again',exact:true}).isEnabled());
+  await v.unroute('**/api/auth/forgot-password');
+  await v.route('**/api/auth/forgot-password',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({ok:true,delivered:false})}));
+  await v.getByRole('button',{name:'Try again',exact:true}).click();
+  await v.getByRole('alert').filter({hasText:'A reset link was not sent'}).waitFor();
+  await v.unroute('**/api/auth/forgot-password');
+  await v.goto(base+'/reset-password?token=invalid-audit-token',{waitUntil:'networkidle'});
+  await v.route('**/api/auth/reset-password',r=>r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'SQLSTATE private diagnostic'})}));
+  await v.getByLabel('New password',{exact:true}).fill('DisposableUiAudit456!');
+  await v.getByLabel('Confirm password',{exact:true}).fill('DisposableUiAudit456!');
+  await v.getByRole('button',{name:'Update password',exact:true}).click();
+  await v.getByRole('alert').filter({hasText:'We could not confirm your password change'}).waitFor();
+  assert(!(await v.getByRole('alert').innerText()).includes('SQLSTATE'));
+  await v.getByRole('link',{name:'Request a new reset link',exact:true}).waitFor();
+  assert(await v.getByRole('button',{name:'Update password',exact:true}).isEnabled());
+  await v.unroute('**/api/auth/reset-password');
+  results.push({device,role:'visitor',route:'/forgot-password and /reset-password',status:'duplicate submission, unavailable delivery and password failure recovery checked; no email or password change performed'});
   // Public footer links must land on an existing section, including from a
   // different page. No signup or other write is performed here.
   await v.unroute('**/api/auth/signup');

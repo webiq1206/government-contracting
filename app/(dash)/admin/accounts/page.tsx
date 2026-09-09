@@ -225,7 +225,8 @@ export default async function AdminAccountsPage(
         title="All accounts"
         explanation="Every organization, who owns it, and whether it can use the product right now."
       />
-      <div className="scroll-thin flex-1 space-y-6 overflow-y-auto p-5">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="scroll-thin min-w-0 flex-1 space-y-6 overflow-y-auto p-5">
         {/*
           * Whole-platform counts, and each one is a filter.
           *
@@ -335,6 +336,7 @@ export default async function AdminAccountsPage(
         nextHref={peekNav.nextId ? listHref(peekNav.nextId) : null}
         closeHref={peekId ? listHref(null) : null}
       />
+      </div>
     </>
   );
 }

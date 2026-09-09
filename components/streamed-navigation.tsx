@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { createContext, startTransition, useContext, useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { Nav } from "@/components/nav";
 
 type NavigationProps = ComponentProps<typeof Nav>;
@@ -17,6 +17,8 @@ export function StreamedNavigation({ initial, children }: { initial: NavigationP
 
 export function NavigationUpdate({ data }: { data: NavigationProps }) {
   const update = useContext(UpdateNavigation);
-  useEffect(() => { update?.(data); }, [update, data]);
+  // Status is nonurgent. Updating synchronously here can interrupt hydration
+  // or an in-flight route transition while the surrounding shell is streaming.
+  useEffect(() => { startTransition(() => { update?.(data); }); }, [update, data]);
   return null;
 }

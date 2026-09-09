@@ -1,45 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export function ForgotPasswordForm() {
   const [done, setDone] = useState(false);
   const [pending, setPending] = useState(false);
-  // False only when the site cannot send email at all. Telling someone to check
-  // an inbox that will never receive anything is worse than telling them
-  // nothing, because they wait instead of looking for another way in.
-  const [delivered, setDelivered] = useState(true);
-
+  const submitting = useRef(false);
+  const [error, setError] = useState<string | null>(null);
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submitting.current) return;
+    submitting.current = true;
     setPending(true);
+    setError(null);
     const fd = new FormData(e.currentTarget);
-    const res = await fetch("/api/auth/forgot-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: String(fd.get("email") || "") }),
-    }).catch(() => null);
-    const body = (await res?.json().catch(() => null)) as { delivered?: boolean } | null;
-    // Only an explicit yes counts. A request that never reached the server, an
-    // error page, or any response that does not say so is a link that did not
-    // get sent, and saying "check your email" to those is the failure this
-    // whole path exists to stop.
-    setDelivered(res?.ok === true && body?.delivered === true);
-    setDone(true);
-    setPending(false);
-  }
-
-  if (done && !delivered) {
-    return (
-      <div className="space-y-3">
-        <p className="text-sm font-medium text-foreground">No reset link was sent</p>
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          This site cannot send email right now, so no link went out and waiting
-          for one will not help. Nothing is wrong with your account. Contact your
-          administrator to have the password set directly.
-        </p>
-      </div>
-    );
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 20_000);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST", signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: String(fd.get("email") || "") }),
+      });
+      const body = await res.json().catch(() => null) as { delivered?: boolean } | null;
+      if (res.ok && body?.delivered === true) setDone(true);
+      else if (res.ok && body?.delivered === false) setError("A reset link was not sent. Email delivery may be unavailable or temporarily limited. Wait a few minutes and try again, or ask your account administrator for help.");
+      else setError("We could not confirm whether a reset link was sent. Check your inbox and spam folder before trying again.");
+    } catch {
+      setError("We could not confirm whether a reset link was sent. Check your inbox and spam folder before trying again.");
+    } finally {
+      window.clearTimeout(timer);
+      submitting.current = false;
+      setPending(false);
+    }
   }
 
   if (done) {
@@ -70,8 +63,9 @@ export function ForgotPasswordForm() {
           autoComplete="email"
         />
       </div>
+      {error && <p role="alert" className="text-sm text-risk">{error}</p>}
       <button type="submit" className="btn-primary w-full" disabled={pending}>
-        {pending ? "Sending..." : "Send reset link"}
+        {pending ? "Sending..." : error ? "Try again" : "Send reset link"}
       </button>
     </form>
   );

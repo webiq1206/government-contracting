@@ -9,6 +9,9 @@ on:
       - 'lib/navigation.ts'
       - 'scripts/ui-audit/**'
       - '.github/workflows/ui-audit.yml'
+concurrency:
+  group: ui-audit-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

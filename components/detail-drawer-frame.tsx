@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 /** A side column on desktop, a focused modal sheet on touch-sized layouts. */
 export function DetailDrawerFrame({ children, closeHref }: { children: ReactNode; closeHref: string }) {
-  const panel = useRef<HTMLElement>(null);
+  const panel = useRef<HTMLDialogElement>(null);
   const router = useRouter();
   const [modal, setModal] = useState(false);
   useEffect(() => {
@@ -21,22 +21,18 @@ export function DetailDrawerFrame({ children, closeHref }: { children: ReactNode
     };
   }, []);
   useEffect(() => {
-    if (!modal || !panel.current) return;
-    const background: { node: HTMLElement; inert: boolean }[] = [];
-    let branch: HTMLElement = panel.current;
-    while (branch.parentElement) {
-      for (const sibling of Array.from(branch.parentElement.children)) {
-        if (sibling !== branch && sibling instanceof HTMLElement) {
-          background.push({ node: sibling, inert: sibling.inert });
-          sibling.inert = true;
-        }
-      }
-      if (branch.parentElement === document.body) break;
-      branch = branch.parentElement;
-    }
-    return () => { background.forEach(({ node, inert }) => { node.inert = inert; }); };
+    const dialog = panel.current;
+    if (!dialog) return;
+    // Native modal isolation does not mutate attributes on streamed siblings.
+    // A nonmodal open dialog remains a regular side column on desktop.
+    if (modal) {
+      if (dialog.open) dialog.close();
+      dialog.showModal();
+    } else if (!dialog.open) dialog.show();
+    return () => { if (dialog.open) dialog.close(); };
   }, [modal]);
-  return <aside ref={panel} tabIndex={-1} role={modal ? "dialog" : "complementary"}
+  return <dialog open ref={panel} tabIndex={-1} role={modal ? "dialog" : "complementary"}
+    onCancel={event => { event.preventDefault(); router.push(closeHref, { scroll: false }); }}
     aria-modal={modal || undefined} aria-label="Record details"
     onKeyDown={event => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); router.push(closeHref, { scroll: false }); }
@@ -46,7 +42,7 @@ export function DetailDrawerFrame({ children, closeHref }: { children: ReactNode
       if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
       else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
     }}
-    className="fixed inset-0 z-[65] flex flex-col overflow-hidden border-border/55 bg-background lg:static lg:inset-auto lg:z-auto lg:w-[340px] lg:shrink-0 lg:border-l dark:border-white/10">
+    className="fixed inset-0 z-[65] m-0 flex h-full w-full max-h-none max-w-none flex-col overflow-hidden border-0 border-border/55 bg-background p-0 text-foreground backdrop:bg-black/40 lg:static lg:inset-auto lg:h-auto lg:z-auto lg:w-[340px] lg:shrink-0 lg:border-l dark:border-white/10">
     {children}
-  </aside>;
+  </dialog>;
 }

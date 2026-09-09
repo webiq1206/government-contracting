@@ -8,8 +8,9 @@ Status: in progress. PR #128 is not a complete production audit sign-off.
 - Navigation renders before slower status queries finish. Request-local sharing avoids repeating shell queries. An arriving status update preserves menu state and focus.
 - Spending protection uses a prominent monthly budget, automatic model selection, and collapsed advanced controls. Unknown costs remain distinguishable from confirmed zero costs.
 - A missing company profile has a setup form. Owners can save it, preserve edits after a failed save, and cancel accidental navigation. Read-only roles cannot edit the form or operate automation pause controls.
+- Password-help failures preserve the email field, distinguish an unconfirmed request from a confirmed delivery failure, and offer retry. Password-change failures provide sign-in and replacement-link actions without raw diagnostics.
 - Authentication actions have bounded waits and duplicate-submission guards. Successful sign-in/sign-out starts a fresh authenticated document. Protected API requests without a session return JSON 401 rather than HTML login content.
-- Quick-view drawers have responsive roles, Escape handling, and focus management. Confirmation dialogs render above the menu.
+- Quick-view drawers have responsive roles, Escape handling, and focus management. Smaller-screen drawers use native modal isolation instead of changing attributes on streamed siblings. Confirmation dialogs render above the menu.
 - Menu background isolation now uses React-managed state with a stable server hydration snapshot. It no longer adds attributes directly to a streamed bottom navigation tree.
 - Parent breadcrumb links work even when they are the only breadcrumb. Public footer navigation points to an existing workflow section. Email-template instructions are expandable so the editor is easier to reach on mobile.
 
@@ -26,6 +27,8 @@ The viewer account correctly rendered the unavailable page and its automation mu
 [Browser run 10](https://github.com/webiq1206/government-contracting/actions/runs/34397678108) retests menu isolation and captures quick-look request/navigation evidence. The run completed 174 route renders and all six tablet owner/viewer/visitor workflows. It still reported 15 intermittent hydration failures and quick-look timeouts on mobile and desktop. Targeted diagnostics are being added to a disposable test build; the audit remains open.
 
 Initial-viewport contact sheets were reviewed for the 58 routes at all three sizes. Captures of long public pages are too reduced in contact sheets to verify all text and controls. Bottom-of-page and tab screenshots exist, but their existence alone is not a completed interaction audit.
+
+[Browser run 11](https://github.com/webiq1206/government-contracting/actions/runs/34398714197) verified profile recovery, budget changes/recovery, viewer authorization, sign-out, failed-signup recovery, and public footer navigation on all three sizes. Quick look opened and closed on desktop; mobile opening and tablet closing remained intermittent. All captured hydration diagnostics identified the shared main shell. Status updates are now scheduled as nonurgent transitions, and direct drawer URLs are added to the next regression.
 
 ## Still required
 
