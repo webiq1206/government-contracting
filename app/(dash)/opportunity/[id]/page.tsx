@@ -99,7 +99,8 @@ async function optionalRead<T>(promise: Promise<T>) {
  * every operational panel preserved under Brief / Requirements / Coverage /
  * Pricing / Files / More.
  */
-export default async function OpportunityPage({ params }: { params: { id: string } }) {
+export default async function OpportunityPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const [detail, automation, rules, viewer, ownerRead, membersRead] = await Promise.all([
     opportunityDetail(params.id),
     getAutomationState(),

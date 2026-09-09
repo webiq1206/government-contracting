@@ -18,7 +18,8 @@ export const dynamic = "force-dynamic";
  * is marked source 'operator' so the difference between "they signed it here"
  * and "we filed their paper" survives into the audit trail.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_subs" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

@@ -21,7 +21,8 @@ export const dynamic = "force-dynamic";
  * things a live federal contract actually accumulates after award had nowhere
  * to be shown because they had nowhere to be recorded.
  */
-export default async function ContractPage({ params }: { params: { id: string } }) {
+export default async function ContractPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const loadWarnings: string[] = [];
   const orgId = await currentOrg();
   const record = await contractRecord(orgId, params.id);

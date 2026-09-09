@@ -149,7 +149,8 @@ function requirementsChangedResponse() {
 }
 
 /** Operator submits the reviewed bid package. Guards the submit-lead-hours rule + prime_only block. */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "submit" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

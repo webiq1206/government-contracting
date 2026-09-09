@@ -121,17 +121,18 @@ function summaryText(summary: unknown): string | null {
   return String(summary).slice(0, 200);
 }
 
-export default async function AgentsPage({
-  searchParams,
-}: {
-  searchParams?: {
-    agent?: string;
-    level?: string;
-    q?: string;
-    page?: string;
-    run?: string;
-  };
-}) {
+export default async function AgentsPage(
+  props: {
+    searchParams?: Promise<{
+      agent?: string;
+      level?: string;
+      q?: string;
+      page?: string;
+      run?: string;
+    }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const agentFilter = searchParams?.agent;
   const levelFilter = searchParams?.level;
   const q = searchParams?.q ?? "";

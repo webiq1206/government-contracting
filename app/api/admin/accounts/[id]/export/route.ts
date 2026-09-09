@@ -38,7 +38,8 @@ const EXPORT_TABLES: { table: string; limit: number }[] = [
   { table: "feedback_reports", limit: 500 },
 ];
 
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requirePlatformAdmin();
   if (auth instanceof NextResponse) return auth;
 

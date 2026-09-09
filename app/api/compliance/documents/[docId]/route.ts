@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
  * file spreads one tenant check across a dozen call sites, and the check is
  * the whole reason this route exists.
  */
-export async function GET(_req: Request, { params }: { params: { docId: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ docId: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
 
@@ -68,7 +69,8 @@ export async function GET(_req: Request, { params }: { params: { docId: string }
  * personal details that should never have been here, is a mistake, and
  * keeping it to satisfy a filing principle serves nobody in it.
  */
-export async function DELETE(_req: Request, { params }: { params: { docId: string } }) {
+export async function DELETE(_req: Request, props: { params: Promise<{ docId: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_compliance" });
   if (ctx instanceof NextResponse) return ctx;
 

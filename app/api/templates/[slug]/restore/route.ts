@@ -19,10 +19,8 @@ export const dynamic = "force-dynamic";
  * for the same reason an ordinary edit does not: restoring is a change to
  * what this platform says on the company's behalf.
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { slug: string } }
-) {
+export async function POST(req: Request, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

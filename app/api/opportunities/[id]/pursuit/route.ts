@@ -31,7 +31,8 @@ export const dynamic = "force-dynamic";
  * they are sure is a speed bump; the question they are actually asking is what
  * happens if they do this.
  */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
   const owned = await findOrgRecord("opportunities", params.id, ctx.orgId, "id");
@@ -65,7 +66,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
  * line stays exactly where it was and stays readable; what changes is whether
  * automation may act.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
 

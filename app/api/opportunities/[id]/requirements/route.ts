@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
  * combined readiness so the Submit gate reflects reality immediately.
  * Body: { requirement_id?: string, finding_id?: string, confirmed: boolean }
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;

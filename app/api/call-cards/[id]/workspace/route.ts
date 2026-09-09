@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
  * and quotes history. Fetches exactly one card (any status, so completed
  * cards can be reopened) instead of scanning the whole pending queue.
  */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
 

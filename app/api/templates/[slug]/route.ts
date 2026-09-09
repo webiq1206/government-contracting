@@ -46,10 +46,8 @@ function templateProblemResponse(input: { subject?: string | null; body: string 
  * body, is_active, and created_at. The active version is flagged so the UI can
  * label it as "current".
  */
-export async function GET(
-  req: Request,
-  { params }: { params: { slug: string } }
-) {
+export async function GET(req: Request, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;
@@ -79,10 +77,8 @@ export async function GET(
  * the subject with "[TEST]", and fires through the existing outreach transport.
  * Does NOT mutate the database.
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { slug: string } }
-) {
+export async function POST(req: Request, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
@@ -154,10 +150,8 @@ export async function POST(
  * transaction-scoped advisory lock so (slug, version) uniqueness is never
  * violated even under simultaneous PATCH requests.
  */
-export async function PATCH(
-  req: Request,
-  { params }: { params: { slug: string } }
-) {
+export async function PATCH(req: Request, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

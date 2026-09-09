@@ -484,11 +484,12 @@ function PipelineHealthRail({
   );
 }
 
-export default async function TodayPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function TodayPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const now = new Date();
   const [rules, viewer] = await Promise.all([
     getAutomationRules(),

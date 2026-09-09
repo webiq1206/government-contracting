@@ -1,3 +1,4 @@
+import { rejectOrgPageResponse } from "@/lib/org-page-guard";
 import Link from "next/link";
 import { NextResponse } from "next/server";
 import { PageFrame } from "@/components/page-frame";
@@ -102,7 +103,7 @@ const GROUPS: {
 
 export default async function MorePage() {
   const ctx = await requireOrgContext();
-  if (ctx instanceof NextResponse) return ctx;
+  if (ctx instanceof NextResponse) rejectOrgPageResponse(ctx);
   /*
    * Impersonation does not confer platform admin, the same rule the sidebar
    * uses. Support looking at a customer's account is not the same as support

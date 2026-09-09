@@ -24,7 +24,8 @@ export const dynamic = "force-dynamic";
  * `?into=<id>` names the record that survives. This route's own id is the one
  * being folded in.
  */
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
 
@@ -59,7 +60,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
  * duplicate, and it took the emails, quotes and pairings with it: the record of
  * who was approached for a federal bid.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
 

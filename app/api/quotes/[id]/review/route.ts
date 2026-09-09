@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
  *   accept  → clear the OOR flag (keep amount)
  *   dismiss → leave flag but snooze from Today via note (optional future)
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "price" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

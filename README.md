@@ -13,7 +13,7 @@ Built to the BROSTCO System Design & Build Brief (SYS-01 … SYS-12).
 ## Architecture
 
 ```
-Presentation   Next.js 14 (App Router) + Tailwind, dashboard (7 views), mobile-ready Call Queue
+Presentation   Next.js 15 (App Router) + Tailwind, dashboard (7 views), mobile-ready Call Queue
 Agents         13 isolated modules + maintenance jobs, run by a worker via a job queue
 AI             Anthropic Claude (claude-sonnet-4-6). Company Profile injected as system context on EVERY call
 Integrations   SAM.gov · USASpending · BLS CPI · Google Places · Hunter.io · Gmail OAuth · Twilio · Supabase Storage · Playwright scrapers
@@ -76,7 +76,7 @@ annotated list and where to obtain each key.
 The repo is structured to import into Replit and run with minimal setup, see
 [DEPLOYMENT.md](./DEPLOYMENT.md) for the step-by-step. Summary:
 
-1. Import the repo. `.replit` + `replit.nix` are included (Node 20, Chromium for scrapers).
+1. Import the repo. `.replit` + `replit.nix` are included (Node 22, Chromium for scrapers).
 2. Give web and worker a restricted `DATABASE_URL`. Give only the release job
    an owner-level `MIGRATION_DATABASE_URL`.
 3. Before each release, pause writes and run `npm run db:migrate` in that
@@ -84,6 +84,11 @@ The repo is structured to import into Replit and run with minimal setup, see
 4. Press Run (`npm run start` launches web + worker together via `concurrently`).
    Both runtime services perform a read-only schema check and refuse to start
    if the release migration is missing.
+
+After pulling an update that changes the Node runtime, reload the Replit workspace
+and open a new shell. Confirm `node -v` reports 22 or newer, then run `npm ci`.
+Only run the release migration after installation succeeds. If installation is
+blocked, resolve that error before running commands that depend on `tsx`.
 
 No Redis required (pg-boss uses your Postgres). To use BullMQ instead, set `REDIS_URL`.
 

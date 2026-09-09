@@ -23,10 +23,8 @@ export const dynamic = "force-dynamic";
  * but a template can be saved and published days apart, and the send that
  * would break happens at 3am when nobody is watching.
  */
-export async function POST(
-  _req: Request,
-  { params }: { params: { slug: string } }
-) {
+export async function POST(_req: Request, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

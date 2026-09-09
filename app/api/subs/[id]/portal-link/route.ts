@@ -18,7 +18,8 @@ export const dynamic = "force-dynamic";
  * Logged with the operator's name. Someone handing out signing links should
  * leave a trace of having done it.
  */
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

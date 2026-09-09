@@ -23,10 +23,8 @@ export const dynamic = "force-dynamic";
  * Everything is streamed through this route so the recipient only ever sees a
  * brostco.com URL, never SAM.gov or a storage provider.
  */
-export async function GET(
-  _req: Request,
-  { params }: { params: { token: string } }
-) {
+export async function GET(_req: Request, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const p = decodeDocToken(params.token);
   if (!p) {
     // Plain, friendly text: the reader is a contractor, not an operator.

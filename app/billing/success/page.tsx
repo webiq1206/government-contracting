@@ -8,11 +8,12 @@ import { SessionLoadFailure } from "@/components/session-load-failure";
 
 export const dynamic = "force-dynamic";
 
-export default async function BillingSuccessPage({
-  searchParams,
-}: {
-  searchParams?: { session_id?: string };
-}) {
+export default async function BillingSuccessPage(
+  props: {
+    searchParams?: Promise<{ session_id?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const auth = await currentUser().then(
     (user) => ({ ok: true as const, user }),
     (error) => {

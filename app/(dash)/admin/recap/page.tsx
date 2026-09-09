@@ -33,11 +33,12 @@ export const dynamic = "force-dynamic";
  * accounts, so the surface should not even be discoverable from a customer
  * session.
  */
-export default async function PlatformRecapPage({
-  searchParams,
-}: {
-  searchParams?: { date?: string; peek?: string };
-}) {
+export default async function PlatformRecapPage(
+  props: {
+    searchParams?: Promise<{ date?: string; peek?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const auth = await requirePlatformAdmin();
   if (auth instanceof Response) notFound();
 

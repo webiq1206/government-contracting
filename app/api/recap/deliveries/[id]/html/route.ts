@@ -26,7 +26,8 @@ export const dynamic = "force-dynamic";
  * through the preview route, and the history sits on a page every role can
  * read. Acting on a row -- the retry -- is the part that stays privileged.
  */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireUser();
   if (auth instanceof NextResponse) return auth;
 

@@ -122,11 +122,12 @@ const SORT_ACCESSORS: Record<string, (r: AdminAccountRow) => unknown> = {
   last_active_at: (r) => r.last_active_at ?? "0000",
 };
 
-export default async function AdminAccountsPage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | string[] | undefined>;
-}) {
+export default async function AdminAccountsPage(
+  props: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const auth = await requirePlatformAdmin();
   // 404 rather than 403 for a signed-in non-admin: naming the page confirms it
   // exists and is worth attacking.

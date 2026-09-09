@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
  * (used by the list's enable/disable control); any other update must pass the
  * full title/category/body validation.
  */
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
@@ -60,7 +61,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 }
 
 /** Delete a snippet. */
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_content" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

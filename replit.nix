@@ -1,6 +1,6 @@
 { pkgs }: {
   deps = [
-    pkgs.nodejs_20
+    pkgs.nodejs_22
     pkgs.nodePackages.npm
     # Chromium runtime deps for optional Playwright state-license scrapers.
     pkgs.chromium

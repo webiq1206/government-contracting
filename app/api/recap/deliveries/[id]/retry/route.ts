@@ -27,7 +27,8 @@ export const dynamic = "force-dynamic";
  * update rather than a read followed by a write, so two people pressing the
  * button at the same moment produce one email.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireCapability("manage_rules");
   if (auth instanceof NextResponse) return auth;
 

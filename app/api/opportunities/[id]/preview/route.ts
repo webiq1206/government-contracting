@@ -19,7 +19,8 @@ export const dynamic = "force-dynamic";
  * client up front, would be a multi-megabyte payload for information most
  * cards never show.
  */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;

@@ -21,11 +21,12 @@ export const dynamic = "force-dynamic";
  * default view filters them out by the same matcher the purge tool uses, and
  * `?tests=1` brings them back for anyone who wants the raw log.
  */
-export default async function AdminAuditPage({
-  searchParams,
-}: {
-  searchParams?: { tests?: string };
-}) {
+export default async function AdminAuditPage(
+  props: {
+    searchParams?: Promise<{ tests?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const auth = await requirePlatformAdmin();
   // 404 rather than 403 for a signed-in non-admin: naming the page confirms it
   // exists and is worth attacking.

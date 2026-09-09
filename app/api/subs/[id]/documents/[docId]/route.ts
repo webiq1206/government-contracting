@@ -14,10 +14,8 @@ export const dynamic = "force-dynamic";
  * or carries the limits the solicitation asks for. Somebody has to look, and
  * until they do the subcontractor stays blocked.
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string; docId: string } }
-) {
+export async function POST(req: Request, props: { params: Promise<{ id: string; docId: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_subs" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

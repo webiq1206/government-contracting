@@ -25,7 +25,8 @@ export const dynamic = "force-dynamic";
  * subcontractor's own decision, recorded when they ask to be removed; this is
  * the operator's, and it is scoped to the relationship they chose.
  */
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "view" });
   if (ctx instanceof NextResponse) return ctx;
 
@@ -47,7 +48,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   });
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
 
@@ -169,7 +171,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
  * and leaves the same trail. The row is marked rather than deleted: "who
  * decided to start calling them again, and when" has to have an answer.
  */
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
 

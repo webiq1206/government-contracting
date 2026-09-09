@@ -24,11 +24,12 @@ const FILTER_FOR_STATUS: Record<string, string> = {
   inbound: "needs_reply",
 };
 
-export default function EmailLogRedirect({
-  searchParams,
-}: {
-  searchParams?: { q?: string; status?: string };
-}) {
+export default async function EmailLogRedirect(
+  props: {
+    searchParams?: Promise<{ q?: string; status?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const params = new URLSearchParams();
   if (searchParams?.q) params.set("q", searchParams.q);
   const mapped = searchParams?.status ? FILTER_FOR_STATUS[searchParams.status] : undefined;

@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const adminToken = cookies().get(SESSION_COOKIE)?.value ?? null;
+  const adminToken = (await cookies()).get(SESSION_COOKIE)?.value ?? null;
   const token = await transaction(async (client) => {
     const supportToken = await createImpersonationSession(
       {
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
  * an admin who passed the guard.
  */
 export async function DELETE() {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
 
   const ended =
     token && !token.startsWith("env-operator.")

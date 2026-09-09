@@ -18,10 +18,8 @@ export const dynamic = "force-dynamic";
  * is how a team divides a morning, and requiring an administrator for it would
  * mean the person who just picked something up cannot say so.
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { kind: string; id: string } }
-) {
+export async function POST(req: Request, props: { params: Promise<{ kind: string; id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "view" });
   if (ctx instanceof NextResponse) return ctx;
 

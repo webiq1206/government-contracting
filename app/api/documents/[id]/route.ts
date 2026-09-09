@@ -47,7 +47,8 @@ async function ownedDocument(id: string, orgId: string): Promise<DocRow | null> 
  * capability as deciding to pursue the opportunity at all. A viewer cannot do
  * any of them.
  */
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
   const actor = ctx.user.email;

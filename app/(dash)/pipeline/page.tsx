@@ -213,11 +213,12 @@ const NEXT_ACTION: Record<string, string> = {
   lost: "Archived",
 };
 
-export default async function PipelinePage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function PipelinePage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const rawView = typeof searchParams?.view === "string" ? searchParams.view : undefined;
   /*
    * Four views, and one of them is the default on a phone.

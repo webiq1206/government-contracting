@@ -251,11 +251,12 @@ const STAGE_LABEL: Record<string, string> = Object.fromEntries(
   PIPELINE_STAGES.map((s) => [s.key, s.label])
 );
 
-export default async function AnalyticsPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function AnalyticsPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   // The range lives in the URL, so a filtered view of the funnel is a link, the
   // back button works, and the server and the browser cannot disagree about
   // which window is being shown.

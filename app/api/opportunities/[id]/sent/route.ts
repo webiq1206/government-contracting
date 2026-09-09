@@ -36,7 +36,8 @@ export const dynamic = "force-dynamic";
  * Everything below is a refusal to write a confident state on somebody's
  * memory of having done it.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "submit" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

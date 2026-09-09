@@ -25,7 +25,8 @@ export const dynamic = "force-dynamic";
  * `{ action: "remove_contact", contact_id }`, `{ action: "license", ... }`, or
  * `{ action: "remove_license", license_id }`.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_subs" });
   if (ctx instanceof NextResponse) return ctx;
 

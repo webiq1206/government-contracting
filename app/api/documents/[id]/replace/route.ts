@@ -33,7 +33,8 @@ class ReplacementConflictError extends Error {}
  * Re-analysis is queued, because a corrected copy that nobody reads is a file
  * on a screen rather than requirements in a brief.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;

@@ -32,11 +32,12 @@ const DATA_IDS = new Set([
 
 export const dynamic = "force-dynamic";
 
-export default async function IntegrationsPage({
-  searchParams,
-}: {
-  searchParams?: { gmail?: string; gmailError?: string; sender?: string };
-}) {
+export default async function IntegrationsPage(
+  props: {
+    searchParams?: Promise<{ gmail?: string; gmailError?: string; sender?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   await hydrateIntegrationEnv();
   const loadWarnings: string[] = [];
   const [sources, inbox, aiTrouble, gmailUsed, claudeUsed, pricingUsed] = await Promise.all([

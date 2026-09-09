@@ -90,13 +90,15 @@ d("platform key grants (integration)", () => {
     expect(audit[0].detail?.reason).toBe("walking them through a demo");
   });
 
-  it("meters a provider execution, not a credential lookup", async () => {
+  it("meters what the borrowed key is used for", async () => {
+    // Credential lookup is not provider usage. Only an executed request
+    // should increment the counter, and revocation must preserve that history.
     const before = await admin.platformKeyStates(orgId.value);
     expect(before.find((s) => s.key === "ANTHROPIC_API_KEY")!.calls).toBe(0);
     const { requestIdentity, metered } = await import("../lib/api-usage/ledger");
     const identity = await requestIdentity("ANTHROPIC_API_KEY", PLATFORM_KEY, orgId.value);
-    // Exercise the real ledger with a fake provider response. No external I/O.
-    await metered(identity, "Anthropic", "test-model", "Grant verification", async () => "ok");
+    await metered(identity, "Anthropic", "test-model", "Grant test",
+      async () => ({ id: "simulated-provider-request" }));
     const states = await admin.platformKeyStates(orgId.value);
     const anthropic = states.find((s) => s.key === "ANTHROPIC_API_KEY")!;
     expect(anthropic.calls).toBe(1);
@@ -118,7 +120,7 @@ d("platform key grants (integration)", () => {
 
     // Revoking permission must not erase the record of what was spent.
     const states = await admin.platformKeyStates(orgId.value);
-    expect(states.find((s) => s.key === "ANTHROPIC_API_KEY")!.calls).toBeGreaterThan(0);
+    expect(states.find((s) => s.key === "ANTHROPIC_API_KEY")!.calls).toBe(1);
   });
 
   it("treats an expired grant as inert rather than invisible", async () => {

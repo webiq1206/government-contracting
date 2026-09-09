@@ -21,7 +21,8 @@ export const dynamic = "force-dynamic";
  * org's id is the org guard's rule: a real UUID must not be distinguishable
  * from an invented one.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_rules" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

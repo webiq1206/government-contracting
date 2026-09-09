@@ -914,7 +914,7 @@ type Beat = {
   caption: string;
   tag: "auto" | "you";
   dur: number;
-  Scene: (p: SceneProps) => JSX.Element;
+  Scene: (p: SceneProps) => React.JSX.Element;
   cursor?: CursorKey[];
 };
 
