@@ -21,7 +21,7 @@ const logging = `
       auditChildren.push({tag: auditChild.tag, type: typeof auditChild.type === 'string' ? auditChild.type : auditChild.type && auditChild.type.name, flags: auditChild.flags, dehydrated: auditChild.memoizedState && auditChild.memoizedState.dehydrated && auditChild.memoizedState.dehydrated.nodeValue});
     }
     console.error('[ui-audit hydration]', JSON.stringify({
-      children: auditChildren,
+      children: auditChildren, phase: new Error().stack, props: {keys: Object.keys(fiber.pendingProps || {}), childrenType: typeof (fiber.pendingProps && fiber.pendingProps.children), childCount: Array.isArray(fiber.pendingProps && fiber.pendingProps.children) ? fiber.pendingProps.children.length : null},
       path: window.location.pathname, expected: auditParents,
       actual: nextHydratableInstance && String(nextHydratableInstance.outerHTML || nextHydratableInstance.nodeValue).slice(0, 3500),
       parent: nextHydratableInstance && nextHydratableInstance.parentElement && nextHydratableInstance.parentElement.outerHTML.slice(0, 3500)

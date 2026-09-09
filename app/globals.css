@@ -326,22 +326,13 @@ body {
       padding-bottom: 0;
     }
   }
-  /*
-   * The peek drawer is `fixed inset-0` on a narrow screen, which takes it out
-   * of `.page-main` and therefore out of that padding. Without this the last
-   * section of every drawer scrolls under the mobile tab bar and reads as the
-   * record simply ending there. Raising the drawer above the bar does not work:
-   * an ancestor creates a stacking context it cannot climb out of.
-   */
+  /* Native modal drawers sit above the bottom navigation. Reserve only
+     comfortable spacing and the device safe area inside their own surface. */
   .drawer-scroll {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   }
-  /* Fixed sheets live inside the app shell's stacking context, while the
-     mobile tab bar lives beside it. Reserve the tab bar's space in pinned
-     drawer footers and bottom sheets so their final action stays visible and
-     clickable instead of landing behind navigation. */
   .drawer-footer {
-    padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
   }
   .mobile-tab-clearance {
     margin-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));

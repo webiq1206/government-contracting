@@ -228,8 +228,8 @@ try {
   await v.getByLabel('Work email',{exact:true}).fill('ui-new@example.test');
   await v.getByLabel('Password',{exact:true}).fill('DisposableUiAudit123!');
   await v.getByRole('button',{name:/Start.*7-day free trial/}).click();
-  await v.getByRole('alert').waitFor();
-  assert(!(await v.getByRole('alert').innerText()).includes('SQLSTATE'),'Signup must hide technical diagnostics');
+  await v.locator('form').getByRole('alert').waitFor();
+  assert(!(await v.locator('form').getByRole('alert').innerText()).includes('SQLSTATE'),'Signup must hide technical diagnostics');
   assert(await v.getByRole('button',{name:/Start.*7-day free trial/}).isEnabled(),'Failed signup remains retryable');
   results.push({device,role:'visitor',route:'/signup',status:'service failure recovery checked; account creation not attempted'});
   await v.goto(base+'/forgot-password',{waitUntil:'networkidle'});
@@ -252,7 +252,7 @@ try {
   await v.getByLabel('Confirm password',{exact:true}).fill('DisposableUiAudit456!');
   await v.getByRole('button',{name:'Update password',exact:true}).click();
   await v.getByRole('alert').filter({hasText:'We could not confirm your password change'}).waitFor();
-  assert(!(await v.getByRole('alert').innerText()).includes('SQLSTATE'));
+  assert(!(await v.locator('form').getByRole('alert').innerText()).includes('SQLSTATE'));
   await v.getByRole('link',{name:'Request a new reset link',exact:true}).waitFor();
   assert(await v.getByRole('button',{name:'Update password',exact:true}).isEnabled());
   await v.unroute('**/api/auth/reset-password');

@@ -30,6 +30,8 @@ Initial-viewport contact sheets were reviewed for the 58 routes at all three siz
 
 [Browser run 11](https://github.com/webiq1206/government-contracting/actions/runs/34398714197) verified profile recovery, budget changes/recovery, viewer authorization, sign-out, failed-signup recovery, and public footer navigation on all three sizes. Quick look opened and closed on desktop; mobile opening and tablet closing remained intermittent. All captured hydration diagnostics identified the shared main shell. Status updates are now scheduled as nonurgent transitions, and direct drawer URLs are added to the next regression.
 
+[Browser run 12](https://github.com/webiq1206/government-contracting/actions/runs/34399984496) verified direct quick-look URLs, responsive modal isolation, viewport fit, and Escape on all three sizes. Desktop/mobile screenshots show the corrected drawer layout. Shared-shell hydration and ordinary quick-look clicks still failed intermittently; changing update priority alone was insufficient. Password-help duplication/delivery checks reached the password-change failure state, where an overly broad test selector also matched the framework route announcer. The selector is now scoped to the form. A separate navigation rendering boundary is being tested next.
+
 ## Still required
 
 - Resolve remaining hydration errors and quick-look failures using the latest browser evidence. Do not merge unexplained failures.

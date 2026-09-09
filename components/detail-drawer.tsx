@@ -115,21 +115,8 @@ export function DetailDrawer({
           )}
         </div>
       </header>
-      {/*
-        * The bottom padding is the mobile tab bar, the same allowance
-        * `.page-main` makes. A `fixed inset-0` sheet escapes that padding, so
-        * without this the last section of every drawer scrolls underneath the
-        * tab bar and the reader concludes the record simply ends there. Raising
-        * the z-index instead does not work: an ancestor creates a stacking
-        * context, so the sheet cannot climb above the bar from inside it.
-        */}
-      {/*
-        * `pt-4` rather than `py-4` on purpose: the bottom padding comes from
-        * `.drawer-scroll`, and a Tailwind utility would have won over it. That
-        * is exactly what happened on the first attempt, and the symptom was
-        * the last section still sitting under the tab bar with a rule in the
-        * stylesheet that said otherwise.
-        */}
+      {/* Native modal isolation keeps the mobile navigation behind this
+          surface. Drawer spacing includes the device safe area. */}
       <div className="scroll-thin drawer-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pt-4">
         {children}
       </div>
