@@ -341,6 +341,8 @@ export async function complete(
       ),
       value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }), { complex });
   } catch (err) {
+    // A local spending hold never reached the provider and must not mark its key as broken.
+    if (err instanceof Error && err.name === "ApiUsageBlockedError") throw err;
     const cause = describeClaudeFailure(err);
     /*
      * Every Claude call passes through here, so it is the one place that can
