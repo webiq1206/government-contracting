@@ -5,24 +5,9 @@ import { PendingLink as Link } from "@/components/pending-link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
-const TABS = [
-  { href: "/settings/profile", label: "Company", match: "/settings/profile" },
-  { href: "/settings/rules", label: "Rules", match: "/settings/rules" },
-  { href: "/settings/content", label: "Content", match: "/settings/content" },
-  {
-    href: "/settings/integrations",
-    label: "Integrations",
-    match: "/settings/integrations",
-  },
-  { href: "/settings/billing", label: "Billing", match: "/settings/billing" },
-  { href: "/settings/recap", label: "Daily Recap", match: "/settings/recap" },
-  {
-    href: "/settings/notifications",
-    label: "Notifications",
-    match: "/settings/notifications",
-  },
-  { href: "/settings/account", label: "Your account", match: "/settings/account" },
-] as const;
+import { SETTINGS_DESTINATIONS, navigationMatches } from "@/lib/navigation";
+
+const TABS = SETTINGS_DESTINATIONS;
 
 /**
  * Cross-page settings section nav. Lives as static chrome above each settings
@@ -48,7 +33,7 @@ export function SettingsNav() {
         className="chip-row border-b border-border bg-surface px-4 py-2 lg:hidden"
       >
         {TABS.map((t) => {
-          const active = pathname === t.match || pathname.startsWith(t.match + "/");
+          const active = navigationMatches(pathname, t.href);
           return (
             <Link
               key={t.href}
@@ -73,7 +58,7 @@ export function SettingsNav() {
         style={{ WebkitOverflowScrolling: "touch" } as CSSProperties}
       >
         {TABS.map((t) => {
-          const active = pathname === t.match || pathname.startsWith(t.match + "/");
+          const active = navigationMatches(pathname, t.href);
           return (
             <Link
               key={t.href}

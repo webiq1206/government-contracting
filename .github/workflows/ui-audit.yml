@@ -1,0 +1,68 @@
+name: UI audit
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'lib/navigation.ts'
+      - 'scripts/ui-audit/**'
+      - '.github/workflows/ui-audit.yml'
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: brostco_audit
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d brostco_audit"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://unused@production-not-configured.invalid/unused
+      USE_REPLIT_DEV_DB: 'true'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: brostco_audit
+      PGUSER: postgres
+      PGPASSWORD: disposable-ci-only
+      BROSTCO_PROCESS_ROLE: web
+      PLATFORM_ADMIN_EMAILS: ui-owner@example.test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Prepare disposable records
+        run: |
+          node --import tsx scripts/migrate.ts
+          node --import tsx scripts/seed.ts
+          node --import tsx scripts/ui-audit/seed.ts
+      - run: npm run build
+      - name: Inspect desktop, tablet and mobile
+        run: |
+          node node_modules/next/dist/bin/next start -p 3100 > /tmp/ui-server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3100/login > /dev/null; then break; fi
+            sleep 2
+          done
+          node scripts/ui-audit/browser.mjs
+      - name: Preserve screenshots and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-audit-evidence
+          path: |
+            artifacts/ui-audit
+            /tmp/ui-server.log
+          retention-days: 7
