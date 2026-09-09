@@ -200,7 +200,7 @@ function readSubscription(sub: Stripe.Subscription) {
     amountCents: item?.price?.unit_amount ?? null,
     status: sub.status,
     cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
-    periodEnd: iso((sub as { current_period_end?: number }).current_period_end),
+    periodEnd: iso((sub as { current_period_end?: number }).current_period_end ?? item?.current_period_end),
     trialEnd: iso((sub as { trial_end?: number | null }).trial_end),
     discountCode:
       (typeof discount?.promotion_code === "string"

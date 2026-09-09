@@ -10,17 +10,56 @@ export async function GET(req: Request) {
   const auth = await requirePlatformAdmin();
   if (auth instanceof Response) return auth;
   try {
-    const [usage, tenants, reports, rates, budget] = await Promise.all([
+    const [
+      usage,
+      tenants,
+      reports,
+      rates,
+      batches,
+      billingSettings,
+      syncRuns,
+      adjustments,
+      budget,
+    ] = await Promise.all([
       readUsage(new URL(req.url).searchParams),
       query("select id,name from organizations order by name"),
       query(
         "select id,provider,starts_at::text,ends_at::text,reported_cost::text,tracked_cost::text,unknown_calls,evidence from api_usage_provider_reports order by created_at desc limit 25",
       ),
-      query('select provider,service,rates,max_request_cost::text,evidence,updated_at::text from api_usage_rates order by provider,service'),
-      auth.organizationId ? readBudget(auth.organizationId) : Promise.resolve(null),
+      query(
+        "select provider,service,rates,max_request_cost::text,evidence,updated_at::text from api_usage_rates order by provider,service",
+      ),
+      query(
+        "select b.*,o.name as tenant from api_usage_invoice_batches b join organizations o on o.id=b.org_id order by b.created_at desc limit 100",
+      ),
+      query("select * from api_usage_billing_settings"),
+      query(
+        "select * from api_usage_sync_runs order by created_at desc limit 25",
+      ),
+      query(
+        "select * from api_usage_adjustments order by created_at desc limit 50",
+      ),
+      auth.organizationId
+        ? readBudget(auth.organizationId)
+        : Promise.resolve(null),
     ]);
-    return NextResponse.json({ ...usage, tenants, reports, rates, budget });
-  } catch {
+    return NextResponse.json({
+      ...usage,
+      tenants,
+      reports,
+      rates,
+      batches,
+      billingSettings,
+      syncRuns,
+      adjustments,
+      budget,
+    });
+  } catch (error) {
+    if ((error as Error)?.name === "UsageFilterError")
+      return NextResponse.json(
+        { error: (error as Error).message },
+        { status: 400 },
+      );
     return NextResponse.json(
       {
         error:
@@ -31,6 +70,74 @@ export async function GET(req: Request) {
   }
 }
 const schema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("syncAdjustment"),
+    id: z.string().uuid(),
+    creditNoteId: z
+      .string()
+      .regex(/^cn_[A-Za-z0-9]+$/)
+      .optional(),
+  }),
+  z.object({
+    action: z.literal("external"),
+    records: z
+      .array(
+        z.object({
+          id: z.string().uuid(),
+          orgId: z.string().uuid(),
+          provider: z.string().min(1).max(100),
+          service: z.string().min(1).max(150),
+          feature: z.string().min(1).max(150),
+          requestId: z.string().min(1).max(200),
+          occurredAt: z.string().datetime(),
+          cost: z.string(),
+          source: z.enum(["platform", "tenant"]),
+          envKey: z.string().max(100).optional(),
+          evidence: z.string().min(5).max(1000),
+        }),
+      )
+      .min(1)
+      .max(500),
+  }),
+  z.object({
+    action: z.literal("sync"),
+    provider: z.enum(["Anthropic", "Twilio"]),
+  }),
+  z.object({
+    action: z.literal("receipts"),
+    receipts: z
+      .array(
+        z.object({
+          id: z.string().uuid(),
+          provider: z.string().min(1).max(100),
+          requestId: z.string().min(1).max(200),
+          cost: z.string(),
+          evidence: z.string().min(5).max(1000),
+        }),
+      )
+      .min(1)
+      .max(500),
+  }),
+  z.object({
+    action: z.literal("automatic"),
+    orgId: z.string().uuid(),
+    enabled: z.boolean(),
+  }),
+  z.object({ action: z.literal("syncPeriod"), orgId: z.string().uuid() }),
+  z.object({
+    action: z.literal("finalize"),
+    orgId: z.string().uuid(),
+    batchId: z.string().uuid(),
+  }),
+  z.object({
+    action: z.literal("adjust"),
+    id: z.string().uuid(),
+    orgId: z.string().uuid(),
+    batchId: z.string().uuid(),
+    amountCents: z.number().int().positive().max(100000000),
+    kind: z.enum(["credit", "refund"]),
+    reason: z.string().min(5).max(500),
+  }),
   z.object({
     action: z.literal("report"),
     provider: z.string().min(1).max(100),
@@ -78,12 +185,97 @@ export async function POST(req: Request) {
   try {
     const input = await req.json();
     if (input.action === "budget") {
-      const orgId = z.string().uuid().parse(input.orgId ?? auth.organizationId);
-      try { await saveBudget(orgId, auth.email, input.budget); }
-      catch { return NextResponse.json({error:"Your spending limits were not saved. Check the amounts and try again."}, {status:400}); }
-      return NextResponse.json({ok:true});
+      const orgId = z
+        .string()
+        .uuid()
+        .parse(input.orgId ?? auth.organizationId);
+      try {
+        await saveBudget(orgId, auth.email, input.budget);
+      } catch {
+        return NextResponse.json(
+          {
+            error:
+              "Your spending limits were not saved. Check the amounts and try again.",
+          },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json({ ok: true });
     }
     const body = schema.parse(input);
+    if (body.action === "syncAdjustment") {
+      const { syncUsageAdjustment } = await import("@/lib/api-usage/billing");
+      return NextResponse.json({
+        ok: true,
+        settlement: await syncUsageAdjustment(body.id, body.creditNoteId),
+      });
+    }
+    if (body.action === "external") {
+      const { importExternalUsage } = await import(
+        "@/lib/api-usage/reconciliation"
+      );
+      return NextResponse.json({
+        ok: true,
+        count: await importExternalUsage(body.records, auth.email),
+      });
+    }
+    if (body.action === "sync") {
+      const { syncProviderCosts } = await import(
+        "@/lib/api-usage/reconciliation"
+      );
+      return NextResponse.json({
+        ok: true,
+        count: await syncProviderCosts(body.provider),
+      });
+    }
+    if (body.action === "receipts") {
+      const { reconcileReceipts } = await import(
+        "@/lib/api-usage/reconciliation"
+      );
+      return NextResponse.json({
+        ok: true,
+        count: await reconcileReceipts(body.receipts, auth.email),
+      });
+    }
+    if (
+      ["automatic", "syncPeriod", "finalize", "adjust"].includes(body.action)
+    ) {
+      const { syncBillingPeriod, finalizeUsageInvoice, adjustUsageInvoice } =
+        await import("@/lib/api-usage/billing");
+      if (body.action === "automatic") {
+        if (body.enabled) await syncBillingPeriod(body.orgId);
+        await transaction(async (c) => {
+          await c.query(
+            `insert into api_usage_billing_settings(org_id,automatic,enabled_at) values($1,$2,case when $2 then now() end) on conflict(org_id) do update set automatic=excluded.automatic,enabled_at=case when not api_usage_billing_settings.automatic and excluded.automatic then now() else api_usage_billing_settings.enabled_at end,updated_at=now()`,
+            [body.orgId, body.enabled],
+          );
+          await c.query(
+            "insert into api_usage_audit(org_id,actor,action,details) values($1,$2,'automatic_billing_changed',$3)",
+            [body.orgId, auth.email, JSON.stringify({ enabled: body.enabled })],
+          );
+        });
+        return NextResponse.json({ ok: true });
+      }
+      if (body.action === "syncPeriod")
+        return NextResponse.json({
+          ok: true,
+          period: await syncBillingPeriod(body.orgId),
+        });
+      if (body.action === "finalize")
+        return NextResponse.json({
+          ok: true,
+          invoiceId: await finalizeUsageInvoice(
+            body.orgId,
+            body.batchId,
+            auth.email,
+          ),
+        });
+      if (body.action === "adjust")
+        return NextResponse.json({
+          ok: true,
+          creditNote: await adjustUsageInvoice(body, auth.email),
+        });
+    }
     if (body.action === "invoice") {
       const { createUsageInvoice } = await import("@/lib/api-usage/invoice");
       return NextResponse.json({
@@ -91,6 +283,13 @@ export async function POST(req: Request) {
         invoiceId: await createUsageInvoice(body.orgId, auth.email),
       });
     }
+    if (
+      body.action === "automatic" ||
+      body.action === "syncPeriod" ||
+      body.action === "finalize" ||
+      body.action === "adjust"
+    )
+      throw new Error("Unsupported action.");
     if (body.action === "limit" && body.amount !== null)
       validateCost(body.amount);
     if (body.action === "reconcile" || body.action === "report")

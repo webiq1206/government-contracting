@@ -75,7 +75,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
       if (!response.ok) throw new Error(result.error);
       setMessage(
         result.invoiceId
-          ? `Draft invoice ${result.invoiceId} is ready in Stripe. Review and finalize it there.`
+          ? `Draft invoice ${result.invoiceId} is ready. Review and collect it in Reconciliation and billing below.`
           : "Saved.",
       );
       setVersion((v) => v + 1);
@@ -100,6 +100,30 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           : "See your API usage and choose who provides each connected service."}{" "}
         Dates use UTC.
       </p>
+      {!admin && data && (
+        <section className="rounded border border-border p-4 text-sm">
+          <h2 className="font-semibold">Usage billing</h2>
+          <p className="mt-1 text-muted-foreground">
+            {data.automaticBilling
+              ? "Confirmed usage is collected automatically after your subscription billing period."
+              : "Automatic usage collection is off. Confirmed usage may be invoiced separately."}{" "}
+            <Link className="underline" href="/settings/billing">
+              View invoices and payment details
+            </Link>
+          </p>
+          {data.adjustments?.length > 0 && (
+            <details className="mt-3">
+              <summary>Credits and refunds</summary>
+              {data.adjustments.map((a: Row) => (
+                <p key={a.id} className="mt-2">
+                  {a.kind} · {money(Number(a.amount_cents) / 100)} · {a.settlement_status || a.status}{" "}
+                  · {a.reason}
+                </p>
+              ))}
+            </details>
+          )}
+        </section>
+      )}
       {error && (
         <div role="alert" className="card border-risk text-risk">
           {error}{" "}
@@ -116,7 +140,15 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           {message}
         </p>
       )}
-      {data?.budget && <ApiSpendingControls key={JSON.stringify(data.budget)} budget={data.budget} editable={admin || data.canManageBudget === true} save={save} busy={busy} />}
+      {data?.budget && (
+        <ApiSpendingControls
+          key={JSON.stringify(data.budget)}
+          budget={data.budget}
+          editable={admin || data.canManageBudget === true}
+          save={save}
+          busy={busy}
+        />
+      )}
       {admin && data && <LimitSettings data={data} save={save} busy={busy} />}
       <form
         className="grid grid-cols-2 gap-3 lg:grid-cols-4"
@@ -141,6 +173,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             <option value="today">Today</option>
             <option value="week">Past 7 days</option>
             <option value="month">This month</option>
+            <option value="billing">Subscription billing period</option>
             <option value="custom">Custom dates</option>
           </select>
         </label>
@@ -725,7 +758,17 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
                   </button>
                 </form>
               </section>
-              {data.rates?.length>0&&<section className="card"><h2 className="font-semibold">Saved provider prices</h2>{data.rates.map((r:Row)=><p className="mt-2 text-sm" key={r.provider+r.service}>{r.provider} · {r.service}: maximum request cost {money(r.max_request_cost)}. Source: {r.evidence}.</p>)}</section>}
+              {data.rates?.length > 0 && (
+                <section className="card">
+                  <h2 className="font-semibold">Saved provider prices</h2>
+                  {data.rates.map((r: Row) => (
+                    <p className="mt-2 text-sm" key={r.provider + r.service}>
+                      {r.provider} · {r.service}: maximum request cost{" "}
+                      {money(r.max_request_cost)}. Source: {r.evidence}.
+                    </p>
+                  ))}
+                </section>
+              )}
             </>
           )}
         </>
@@ -898,7 +941,12 @@ function ProviderSetting({
         }).then(() => setSecret(""));
       }}
     >
-      <h3 className="font-semibold">{p.provider}</h3>{p.error&&<p role="alert" className="text-sm text-risk">{p.error}</p>}
+      <h3 className="font-semibold">{p.provider}</h3>
+      {p.error && (
+        <p role="alert" className="text-sm text-risk">
+          {p.error}
+        </p>
+      )}
       <p className="text-sm">
         Active:{" "}
         {p.active === "platform"
@@ -983,8 +1031,10 @@ function LimitSettings({
       <p className="text-sm">
         Pause a service, require tenant-owned credentials, or set a hard dollar
         limit. Each request reserves its configured maximum cost before it runs.
-        Requests without a price ceiling are blocked when a dollar limit is
-        set. Daily request limits work without pricing and reset at midnight UTC. A platform-wide request limit covers all tenants sharing your API credentials.
+        Requests without a price ceiling are blocked when a dollar limit is set.
+        Daily request limits work without pricing and reset at midnight UTC. A
+        platform-wide request limit covers all tenants sharing your API
+        credentials.
       </p>
       <form
         className="grid gap-3 sm:grid-cols-2"
@@ -1000,7 +1050,10 @@ function LimitSettings({
             warning: Number(f.get("warning")),
             paused: f.get("paused") === "on",
             requireTenant: f.get("requireTenant") === "on",
-            dailyRequests: f.get("dailyRequests") === "" ? null : Number(f.get("dailyRequests")),
+            dailyRequests:
+              f.get("dailyRequests") === ""
+                ? null
+                : Number(f.get("dailyRequests")),
           });
         }}
       >
@@ -1040,7 +1093,14 @@ function LimitSettings({
         </label>
         <label className="text-sm">
           Maximum platform-key requests per day (blank means no cap)
-          <input name="dailyRequests" type="number" min="0" max="1000000" step="1" className={`${field} w-full`} />
+          <input
+            name="dailyRequests"
+            type="number"
+            min="0"
+            max="1000000"
+            step="1"
+            className={`${field} w-full`}
+          />
         </label>
         <label className="text-sm">
           Warning at percent
@@ -1072,7 +1132,9 @@ function LimitSettings({
           <strong>{l.tenant ?? "Entire platform"}</strong>: {l.provider} /{" "}
           {l.feature}. Limit:{" "}
           {l.monthly_limit == null ? "No cap" : money(l.monthly_limit)}.{" "}
-          {l.daily_requests != null ? `Daily platform-key requests: ${l.daily_requests}. ` : ""}
+          {l.daily_requests != null
+            ? `Daily platform-key requests: ${l.daily_requests}. `
+            : ""}
           {l.paused ? "Paused. " : ""}
           {l.require_tenant_key ? "Tenant API required." : ""}
           <button

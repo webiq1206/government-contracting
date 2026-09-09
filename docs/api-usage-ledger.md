@@ -1,5 +1,7 @@
 # API usage ledger
 
+**Updated:** See [ledger-completion.md](ledger-completion.md) for the subsequent activity ledger, reporting connectors, billing periods, automatic collection and credit/refund implementation. The boundaries below describe the initial migration-112 release.
+
 The change lives in Git. No Replit agent work or production billing action is required to install it.
 
 ## Deployment

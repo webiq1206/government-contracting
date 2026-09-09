@@ -5,7 +5,13 @@ export const PROVIDERS = [
   "Hunter",
   "Ahrefs",
   "Twilio",
+  "SAM.gov",
+  "USAspending",
+  "BLS",
 ] as const;
+class UsageFilterError extends Error {
+  name = "UsageFilterError";
+}
 export async function readUsage(params: URLSearchParams, tenantId?: string) {
   const values: unknown[] = [];
   const where: string[] = [];
@@ -20,16 +26,31 @@ export async function readUsage(params: URLSearchParams, tenantId?: string) {
   let from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   if (period === "today") from = new Date(now.toISOString().slice(0, 10));
   if (period === "week") from = new Date(now.getTime() - 7 * 86400000);
-  const start = params.get("from") ? new Date(params.get("from")!) : from;
-  const end = params.get("to")
+  let start = params.get("from") ? new Date(params.get("from")!) : from;
+  let end = params.get("to")
     ? new Date(new Date(params.get("to")!).getTime() + 86400000)
     : new Date(now.getTime() + 1);
+  if (period === "billing") {
+    const org = tenantId ?? params.get("tenant");
+    if (!org)
+      throw new UsageFilterError("Choose a tenant to view its billing period.");
+    const periods = await query<{ starts_at: string; ends_at: string }>(
+      "select starts_at::text,ends_at::text from api_usage_billing_periods where org_id=$1 and starts_at<=now() and ends_at>now() order by starts_at desc limit 1",
+      [org],
+    );
+    if (!periods[0])
+      throw new UsageFilterError(
+        "No current billing period is synchronized. Ask an administrator to sync billing.",
+      );
+    start = new Date(periods[0].starts_at);
+    end = new Date(periods[0].ends_at);
+  }
   if (
     !Number.isFinite(start.getTime()) ||
     !Number.isFinite(end.getTime()) ||
     end <= start
   )
-    throw new Error("Choose a valid date range.");
+    throw new UsageFilterError("Choose a valid date range.");
   add("e.started_at>=?::timestamptz", start.toISOString());
   add("e.started_at<?::timestamptz", end.toISOString());
   for (const [param, column] of Object.entries({
