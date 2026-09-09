@@ -47,6 +47,7 @@ try {
     try {
       const response=await p.goto(base+route,{waitUntil:'networkidle',timeout:60000});
       record.http=response?.status();record.finalPath=new URL(p.url()).pathname;
+      record.headings=await p.locator('h1').allTextContents();
       const name=`${device}-${entry.route.replace(/[^a-z0-9]/gi,'_')||'home'}.png`;
       await p.screenshot({path:join(out,name),fullPage:true});record.screenshot=name;
       record.overflow=await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
@@ -70,11 +71,14 @@ try {
   await v.getByLabel('Password',{exact:true}).fill('DisposableUiAudit123!');
   await v.getByRole('button',{name:'Sign in',exact:true}).click();
   await v.waitForURL('**/today',{timeout:60000});
-  await v.goto(base+'/settings/api-usage');
+  await v.goto(base+'/settings/api-usage',{waitUntil:'networkidle'});
+  assert.equal(new URL(v.url()).pathname,'/settings/api-usage','Viewer session must be valid');
+  await v.getByRole('region',{name:'Account spending controls'}).waitFor();
   assert.equal(await v.getByRole('button',{name:'Change budget',exact:true}).count(),0,'Viewer cannot edit budget');
   await v.screenshot({path:join(out,device+'-viewer-api-usage.png'),fullPage:true});
-  const denied=await viewer.request.post(base+'/api/automation',{data:{paused:true}});
-  assert.equal(denied.status(),403,'Viewer cannot pause automation');
+  const denied=await v.evaluate(async()=>{ const r=await fetch('/api/automation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({paused:true})});return {status:r.status,url:r.url,body:await r.text()}; });
+  writeFileSync(join(out,device+'-permission.json'),JSON.stringify(denied));
+  assert.equal(denied.status,403,'Viewer cannot pause automation');
   const admin=await v.goto(base+'/admin/accounts');
   assert.equal(admin.status(),404,'Viewer cannot access platform admin');
   results.push({device,role:'viewer',route:'/settings/api-usage',status:'permission checks passed',screenshot:device+'-viewer-api-usage.png'});

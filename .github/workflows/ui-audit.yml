@@ -51,7 +51,7 @@ jobs:
       - run: npm run build
       - name: Inspect desktop, tablet and mobile
         run: |
-          node node_modules/next/dist/bin/next start -p 3100 > /tmp/ui-server.log 2>&1 &
+          NODE_ENV=development node node_modules/next/dist/bin/next dev -p 3100 > /tmp/ui-server.log 2>&1 &
           for attempt in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:3100/login > /dev/null; then break; fi
             sleep 2
