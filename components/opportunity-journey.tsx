@@ -27,13 +27,16 @@ export function OpportunityJourney({
   // Above the dismissed early-return on purpose: a hook that runs only for
   // some values of `stage` is a hook that changes order between renders.
   useEffect(() => {
-    const el = rail.current?.querySelector<HTMLElement>("[data-current='true']");
-    el?.scrollIntoView({
+    const container = rail.current;
+    const el = container?.querySelector<HTMLElement>("[data-current='true']");
+    if (!container || !el || container.scrollWidth <= container.clientWidth) return;
+    // Only move this horizontal rail. scrollIntoView also moved the record's
+    // vertical scroller, hiding its title as soon as the page opened.
+    container.scrollTo({
+      left: container.scrollLeft + el.getBoundingClientRect().left - container.getBoundingClientRect().left - (container.clientWidth - el.clientWidth) / 2,
       behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
         ? "auto"
         : "smooth",
-      inline: "center",
-      block: "nearest",
     });
   }, [stage]);
 

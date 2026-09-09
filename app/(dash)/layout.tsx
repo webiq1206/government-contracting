@@ -1,7 +1,7 @@
 import { DashboardNav, DashboardNotices, DashboardTabs } from "@/components/dashboard-shell";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
-import { Nav } from "@/components/nav";
+import { StreamedNavigation } from "@/components/streamed-navigation";
 import { Suspense } from "react";
 import { CommandPalette } from "@/components/command-palette";
 import { GuideWizard } from "@/components/guide-wizard";
@@ -43,11 +43,11 @@ export default async function DashLayout({ children }: { children: React.ReactNo
         data-app-shell
         className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background lg:flex-row"
       >
-        <Suspense fallback={<Nav email={user.email} reviewCount={0} callCount={0}
-          automationHeadline="Checking automation" automationDetail="Live status is still loading. You can use the navigation now."
-          isPlatformAdmin={!user.impersonatedBy && isPlatformAdmin(user.email)} />}>
-          <DashboardNav user={user} />
-        </Suspense>
+        <StreamedNavigation key={user.organizationId} initial={{ email: user.email, reviewCount: 0, callCount: 0,
+          automationHeadline: "Checking automation", automationDetail: "Live status is still loading. You can use the navigation now.",
+          isPlatformAdmin: !user.impersonatedBy && isPlatformAdmin(user.email) }}>
+          <Suspense fallback={null}><DashboardNav user={user} /></Suspense>
+        </StreamedNavigation>
         <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
           {user.impersonatedBy && (
             <ImpersonationBanner

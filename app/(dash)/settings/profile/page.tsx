@@ -95,7 +95,7 @@ export default async function ProfilePage() {
                   <p className="mt-1 text-xs text-slate-600">{w.rationale}</p>
                 )}
               </div>
-              <div className="flex shrink-0 gap-2">
+              <fieldset disabled={!can(viewer?.orgRole, "manage_rules")} className="flex shrink-0 gap-2">
                 <ActionButton
                   endpoint={`/api/scoring-weights/${w.id}/approve`}
                   body={{ action: "approve" }}
@@ -110,7 +110,7 @@ export default async function ProfilePage() {
                 >
                   Reject
                 </ActionButton>
-              </div>
+              </fieldset>
             </div>
           ))}
         </div>
@@ -203,12 +203,14 @@ export default async function ProfilePage() {
                 label: "Scoring",
                 content: (
                   <div className="space-y-6 px-5 py-6 sm:px-6" id="scoring">
+                    <fieldset disabled={!can(viewer?.orgRole, "manage_profile")} className="min-w-0">
                     <AutomationSettings
                       pursueScore={json.decision_thresholds.pursue_min_score}
                       reviewFloor={json.decision_thresholds.review_min_score}
                       blockPrimeOnly={json.decision_thresholds.block_prime_only ?? false}
                       histogram={histogram}
                     />
+                    </fieldset>
                     <p className="text-xs text-muted-foreground">
                       Pipeline deadline colors and archive retention live under Settings → Rules.
                     </p>

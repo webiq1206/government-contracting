@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { ApiSpendingControls } from "./api-spending-controls";
+import { requestAction } from "@/lib/client/action-request";
 type Row = Record<string, any>;
 const resultLabel: Record<string,string> = {success:"Completed",pending:"Waiting for result",failed:"Needs attention"};
 const billingLabel: Record<string,string> = {review:"Cost not confirmed",unbilled:"Not yet billed",pending:"Invoice prepared",billed:"Billed",paid:"Paid",credited:"Credited",refunded:"Refunded",not_billable:"No BrostCo charge"};
@@ -15,7 +16,7 @@ const money = (n: unknown) =>
           currency: "USD",
           maximumFractionDigits: 6,
         }).format(Number(n));
-const field = "rounded border border-border bg-white px-3 py-2 text-sm min-w-0";
+const field = "rounded border border-border bg-surface text-foreground px-3 py-2 text-sm min-w-0";
 export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
   const endpoint = admin ? "/api/admin/api-usage" : "/api/api-usage";
   const [filters, setFilters] = useState<Record<string, string>>({
@@ -39,21 +40,24 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
   ).toString();
   useEffect(() => {
     const controller = new AbortController();
+    let cancelled = false;
+    const timeout = setTimeout(() => controller.abort(), 20_000);
     setBusy(true);
     setError("");
     fetch(`${endpoint}?${query}`, { signal: controller.signal })
       .then(async (response) => {
         const result = await response.json();
-        if (!response.ok) throw new Error(result.error);
+        if (!response.ok) throw new Error("Usage unavailable");
         setData(result);
       })
-      .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+      .catch(() => {
+        if (!cancelled) setError("Your latest usage could not be loaded. The amounts shown may be out of date. Check your connection, then refresh usage.");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setBusy(false);
+        clearTimeout(timeout);
+        if (!cancelled) setBusy(false);
       });
-    return () => controller.abort();
+    return () => { cancelled = true; clearTimeout(timeout); controller.abort(); };
   }, [endpoint, query, version]);
   function filter(key: string, value: string) {
     setFilters((f) => ({
@@ -69,14 +73,14 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
     setError("");
     setMessage("");
     try {
-      const response = await fetch(endpoint, {
+      const response = await requestAction(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(20000),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      if (!response.ok) { setError(response.error); return; }
+      const result = response.data;
       setMessage(
         result.invoiceId
           ? `Draft invoice ${result.invoiceId} is ready. Review and collect it in Reconciliation and billing below.`
@@ -84,8 +88,8 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
       );
       setVersion((v) => v + 1);
       setSelected(null);
-    } catch (e) {
-      setError((e as Error).name === "TimeoutError" ? "The save could not be confirmed. Reload this page to check your settings before trying again." : (e as Error).message);
+    } catch {
+      setError("The save could not be confirmed. Refresh usage to check your settings before trying again.");
     } finally {
       saving.current = false;
       setBusy(false);
@@ -135,7 +139,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
             onClick={() => setVersion((v) => v + 1)}
             className="underline"
           >
-            Retry
+            Refresh usage
           </button>
         </div>
       )}
@@ -760,7 +764,7 @@ export function ApiUsageLedger({ admin = false }: { admin?: boolean }) {
           className="w-[calc(100%-2rem)] max-w-xl rounded-xl p-0 backdrop:bg-black/50"
           onCancel={() => setSelected(null)}
         >
-          <div className="max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
+          <div className="max-h-[85dvh] w-full max-w-xl overflow-y-auto rounded-xl bg-surface text-foreground p-6 shadow-xl">
             <button
               autoFocus
               className="float-right underline"

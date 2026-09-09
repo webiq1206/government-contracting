@@ -50,8 +50,20 @@ try {
       const response=await p.goto(base+route,{waitUntil:'networkidle',timeout:60000});
       record.http=response?.status();record.finalPath=new URL(p.url()).pathname;
       record.headings=await p.locator('h1').allTextContents();
+      if(entry.route==='/opportunity/[id]') {
+        const heading=await p.locator('h1').boundingBox();
+        assert(heading&&heading.y>=0&&heading.y+heading.height<height,'Opportunity title must remain visible on arrival');
+      }
+      if(entry.route.endsWith('/api-usage')) await p.getByRole('region',{name:'Account spending controls'}).waitFor();
       const name=`${device}-${entry.route.replace(/[^a-z0-9]/gi,'_')||'home'}.png`;
       await p.screenshot({path:join(out,name),fullPage:true});record.screenshot=name;
+      record.controls=await p.evaluate(()=>Array.from(document.querySelectorAll('input,select,textarea,button')).filter(n=>n.getClientRects().length&&!n.closest('[inert]')).map(n=>({tag:n.tagName,name:n.getAttribute('aria-label')||(n.labels?Array.from(n.labels).map(l=>l.textContent).join(' '):'')||n.textContent||n.getAttribute('title')||'',width:Math.round(n.getBoundingClientRect().width),height:Math.round(n.getBoundingClientRect().height)})));
+      const scrolled=await p.evaluate(()=>{
+        const candidates=Array.from(document.querySelectorAll('main,main *')).filter(n=>n.scrollHeight>n.clientHeight+30&&n.clientHeight>100&&/auto|scroll/.test(getComputedStyle(n).overflowY));
+        const area=candidates.sort((a,b)=>b.clientHeight-a.clientHeight)[0];
+        if(!area)return false;area.scrollTop=area.scrollHeight;return true;
+      });
+      if(scrolled) {record.bottomScreenshot=name.replace('.png','-bottom.png');await p.screenshot({path:join(out,record.bottomScreenshot)});}
       record.overflow=await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
       record.status=record.http>=500||errors.length||record.overflow?'needs review':'render captured';
       if(!publicPage&&record.finalPath==='/login') record.status='authentication failed';
@@ -73,12 +85,37 @@ try {
   await page.screenshot({path:join(out,device+'-unsaved-dialog.png')});
   await warning.getByRole('button',{name:'Stay here',exact:true}).click();
   if(device!=='desktop') await page.keyboard.press('Escape');
+  // A failed save must leave the form editable, with the entered data intact.
+  await page.route('**/api/profile',r=>r.request().method()==='POST'?r.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'internal audit failure'})}):r.continue());
+  await page.getByRole('button',{name:'Save profile',exact:true}).click();
+  await page.getByText('Your company profile could not be saved.',{exact:false}).waitFor();
+  assert.equal(await page.getByLabel('Legal name',{exact:true}).inputValue(),'Audit Company '+device);
+  await page.unroute('**/api/profile');
   const saved=page.waitForResponse(r=>r.url()===base+'/api/profile'&&r.request().method()==='POST');
   await page.getByRole('button',{name:'Save profile',exact:true}).click();
   assert.equal((await saved).status(),200,'Owner can complete profile setup');
   await page.reload({waitUntil:'networkidle'});
   assert.equal(await page.getByLabel('Legal name',{exact:true}).inputValue(),'Audit Company '+device);
   results.push({device,role:'owner',route:'/settings/profile',status:'setup save and unsaved navigation checked',screenshot:device+'-unsaved-dialog.png'});
+  await page.goto(base+'/settings/api-usage',{waitUntil:'networkidle'});
+  const spending=page.getByRole('region',{name:'Account spending controls'});
+  await spending.getByRole('button',{name:'Change budget',exact:true}).click();
+  await spending.getByLabel('Monthly budget in dollars').fill('125');
+  const budgetSaved=page.waitForResponse(r=>r.url()===base+'/api/api-usage'&&r.request().method()==='POST');
+  await spending.getByRole('button',{name:'Save budget',exact:true}).click();
+  assert.equal((await budgetSaved).status(),200,'Owner can save spending limits');
+  await spending.getByText('$125.00',{exact:true}).waitFor();
+  for(const [button,status] of [['Pause API work','API work is paused'],['Resume API work','Spending protection is on']]) {
+    await spending.getByRole('button',{name:button,exact:true}).click();
+    await spending.getByRole('status').filter({hasText:status}).waitFor();
+  }
+  await page.route('**/api/api-usage?**',r=>r.fulfill({status:503,contentType:'text/plain',body:'upstream unavailable'}));
+  await page.reload({waitUntil:'networkidle'});
+  await page.getByRole('alert').filter({hasText:'Your latest usage could not be loaded'}).waitFor();
+  await page.unroute('**/api/api-usage?**');
+  await page.getByRole('button',{name:'Refresh usage',exact:true}).click();
+  await page.getByRole('region',{name:'Account spending controls'}).waitFor();
+  results.push({device,role:'owner',route:'/settings/api-usage',status:'budget save, pause/resume and outage recovery checked'});
   await ctx.close();
   const viewer=await browser.newContext({viewport:{width,height},isMobile:device!=="desktop",hasTouch:device!=="desktop"});
   await viewer.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
