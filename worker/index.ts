@@ -246,6 +246,7 @@ async function main() {
         if (shouldQueueRetry(result)) throw new Error(result.summary);
       });
     }
+    await queue.activate?.();
   });
   console.log(`[worker] registered ${ALL_AGENTS.length} handlers`);
 

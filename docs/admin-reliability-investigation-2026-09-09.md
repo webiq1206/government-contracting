@@ -22,6 +22,9 @@ previously submitted was canceled by the owner; no further Replit job was used.
 | Old errors stayed blocking after an incident was verified recovered, allowing the health page to recreate it. | Ignore errors covered by that tenant and cause's recorded recovery time when building active incidents; retain the 24-hour failure count. | Old history no longer reopens a completed recovery. Later errors and unrelated causes remain active. Historical failures can still show degraded status during the rolling window. |
 | Every recovery check called the AI service, including mailbox and queue incidents. | Check the actual dependency: fresh mailbox authorization, queue plus ready worker, database connectivity, or a small AI request. Establish the incident's tenant context for recovery. | A healthy AI response no longer proves a broken mailbox is repaired. AI probes have a short deadline, no automatic retries, and no company-profile injection. |
 | Failed queue starts left partially initialized resources behind; queue creation errors were swallowed. | Stop a failed backend before retrying; propagate queue creation errors; bound its PostgreSQL connection/query waits. | Startup can retry without accumulating abandoned pools or falsely claiming the queue is ready. |
+| Redis queue startup created a consumer in web processes before handlers existed. | Separate producer startup from explicit worker activation after all handlers are registered; bound producer startup and disable offline command accumulation. | Web requests cannot steal jobs from the worker and fail them for missing handlers. |
+| Redis singleton IDs accepted colon-containing caller keys and shared identity across agents and tenants. | Hash the agent, queue-owned tenant and caller key together. | Keys meet BullMQ's ID requirements and unrelated tenants or agents cannot collide. Existing completed-job retention semantics remain unchanged. |
+| PostgreSQL enqueue repeatedly recreated already initialized queue metadata. | Share successful and in-flight queue initialization by name, evicting failed attempts. | Ordinary enqueues avoid a redundant metadata operation while new queue failures remain visible and retryable. |
 | Shared action buttons and recovery buttons could wait indefinitely, expose raw errors, or process late results after changing records. | Bounded requests, immediate in-flight guards, cancellation on component replacement, safe messages, and a current-status action. | A lost response is treated as an uncertain outcome. Mutations are never automatically retried by the client. |
 | Navigation pause failures were silently rolled back in the UI. | Explain failed or unconfirmed changes and link to Automation Health. | Users can check the authoritative state before retrying. |
 | Recovery controls appeared for users who could not use them, and incident samples were visible to ordinary customers. | Gate recovery controls by capability and support-session state; restrict raw incident diagnostics to platform administrators; link directly to the relevant integration card. | The repair path matches access and keeps technical details out of ordinary incident cards. |
@@ -34,6 +37,13 @@ has no configured disposable native PostgreSQL database or live provider setup.
 TypeScript, ESLint and the production build passed. The last classifier
 refinement also passed all 54 targeted health/lifecycle tests. Native PostgreSQL
 checks run in the pull request; use its exact-commit CI results for final status.
+
+The first published commit passed both GitHub CI jobs, including the production
+build and native PostgreSQL no-skips gate. All 19 targeted follow-up queue tests
+passed. These include producer/consumer ownership,
+startup timeout, tenant/agent key isolation and queue initialization tests. Redis
+behavior is tested with mocked transports here; a real Redis outage rehearsal
+remains a deployment verification item.
 
 New behavioral coverage includes warmed-session query count, cross-request role
 and tenant changes, support-session preservation, orphaned membership, lost

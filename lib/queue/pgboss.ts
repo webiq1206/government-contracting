@@ -43,6 +43,17 @@ export async function createPgBossQueue(): Promise<Queue> {
   boss.on("error", (e) => console.error("[pg-boss]", e.message));
 
   let started = false;
+  const createdQueues = new Map<string, Promise<void>>();
+  function ensureQueue(name: string): Promise<void> {
+    const existing = createdQueues.get(name);
+    if (existing) return existing;
+    const attempt = boss.createQueue(name).catch((error) => {
+      createdQueues.delete(name);
+      throw error;
+    });
+    createdQueues.set(name, attempt);
+    return attempt;
+  }
 
   return {
     async start() {
@@ -50,7 +61,7 @@ export async function createPgBossQueue(): Promise<Queue> {
       await boss.start();
       // pg-boss v10 requires queues to exist before send/work.
       for (const name of QUEUE_NAMES) {
-        await boss.createQueue(name);
+        await ensureQueue(name);
       }
       started = true;
     },
@@ -61,7 +72,7 @@ export async function createPgBossQueue(): Promise<Queue> {
       // never running at all, with no error anywhere. Creating the queue here
       // is idempotent and cheap, so a name that drifts out of the list can
       // never again fail silently.
-      await boss.createQueue(name);
+      await ensureQueue(name);
       const sendOpts: PgBoss.SendOptions = {
         retryLimit: 3,
         retryDelay: 30,
@@ -108,6 +119,7 @@ export async function createPgBossQueue(): Promise<Queue> {
 
     async stop() {
       started = false;
+      createdQueues.clear();
       await boss.stop({ graceful: true }).catch(() => {});
     },
   };

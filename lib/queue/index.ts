@@ -44,6 +44,9 @@ export interface Queue {
   start(): Promise<void>;
   enqueue(name: string, payload: JobPayload, opts?: EnqueueOptions): Promise<string | null>;
   work(name: string, handler: JobHandler): Promise<void>;
+  /** Start a shared consumer only after the worker registered every handler.
+   * Producer-only web processes never call this. */
+  activate?(): Promise<void>;
   stop(): Promise<void>;
   /**
    * Is this backend still able to serve the queue? A live process proves

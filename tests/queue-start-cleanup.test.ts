@@ -37,7 +37,15 @@ describe("queue initialization failures", () => {
   it("propagates enqueue setup errors instead of claiming a dropped job was accepted", async () => {
     const queue = await getQueue();
     mocks.create.mockRejectedValueOnce(new Error("queue creation failed"));
-    await expect(queue.enqueue("scoring-engine", {})).rejects.toThrow("queue creation failed");
+    await expect(queue.enqueue("new-queue", {})).rejects.toThrow("queue creation failed");
     expect(mocks.send).not.toHaveBeenCalled();
+  });
+  it("does not rewrite queue metadata for every job after startup", async () => {
+    const queue = await getQueue();
+    mocks.create.mockClear();
+    await queue.enqueue("scoring-engine", {});
+    await queue.enqueue("scoring-engine", {});
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.send).toHaveBeenCalledTimes(2);
   });
 });
