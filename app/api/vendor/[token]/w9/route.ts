@@ -23,7 +23,8 @@ export const dynamic = "force-dynamic";
  * signing one for a subcontractor would be making a false certification in the
  * subcontractor's name.
  */
-export async function POST(req: Request, { params }: { params: { token: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   const pointer = decodePortalToken(params.token);
   if (!pointer) {
     // Counted before the reply, so a run of guesses gets progressively less

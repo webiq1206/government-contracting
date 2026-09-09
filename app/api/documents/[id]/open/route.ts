@@ -17,7 +17,8 @@ export const dynamic = "force-dynamic";
  * Safari and Acrobat. A viewer that does not understand it opens page one,
  * which is the right way for this to degrade.
  */
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext();
   if (ctx instanceof NextResponse) return ctx;
 

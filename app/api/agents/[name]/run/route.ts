@@ -11,7 +11,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Manually trigger an agent run (enqueues a job the worker picks up). */
-export async function POST(req: Request, { params }: { params: { name: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ name: string }> }) {
+  const params = await props.params;
   const auth = await requireCapability("run_agents");
   if (auth instanceof NextResponse) return auth;
 

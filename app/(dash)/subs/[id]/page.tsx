@@ -88,11 +88,12 @@ function Stat({
   );
 }
 
-export default async function SubDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function SubDetailPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const loadWarnings = new Set<string>();
   const orgId = await resolveTenantOrgId();
   const detail = await subDetail(params.id);

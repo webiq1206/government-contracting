@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
  * explicit send step (Gmail), which is intentionally kept separate so nothing
  * ever goes out unattended. Editing the copy before approval is supported.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await requirePlatformAdmin();
   if (admin instanceof NextResponse) return admin;
   const orgId = LEGACY_ORG_ID;

@@ -37,7 +37,8 @@ const SUBMISSION_WINDOW_HOURS = 96;
  * been checked at all, and a button that always says the same thing teaches
  * people to ignore it.
  */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "view" });
   if (ctx instanceof NextResponse) return ctx;
 
@@ -87,7 +88,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
  * the snapshot, which is a small window and exactly the kind that produces an
  * unreproducible report.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
 
@@ -155,7 +157,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 }
 
 /** Accept what a run found, or cancel one that has not started. */
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
 

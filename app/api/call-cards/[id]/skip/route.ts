@@ -24,10 +24,8 @@ export const dynamic = "force-dynamic";
  * unresponsive or not interested: choosing not to ring somebody says nothing
  * about them.
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
 

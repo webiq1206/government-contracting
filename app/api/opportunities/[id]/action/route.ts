@@ -47,7 +47,8 @@ const STAGE_ORDER = [
 // agent gains it for the drag, the menu, the bulk bar and the send-back path
 // at once rather than in whichever of them somebody remembered.
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "decide" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

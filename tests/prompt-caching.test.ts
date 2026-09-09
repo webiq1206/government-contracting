@@ -37,6 +37,14 @@ vi.mock("../lib/integration-keys", () => ({
   clearIntegrationKeyCache: () => {},
 }));
 
+// Prompt formatting is independent of database-backed usage accounting.
+// The ledger has its own integration suite; keep these SDK fixtures isolated.
+vi.mock("../lib/api-usage/ledger", () => ({
+  requestIdentity: async () => ({ orgId: TEST_ORG }),
+  metered: async (_identity: unknown, _provider: string, _service: string,
+    _feature: string, execute: () => Promise<unknown>) => execute(),
+}));
+
 async function callComplete(prompt: string, opts: Record<string, unknown> = {}) {
   const { complete } = await import("../lib/ai/claude");
   await runWithOrg(TEST_ORG, () => complete(prompt, opts as never));

@@ -1,3 +1,4 @@
+import { rejectOrgPageResponse } from "@/lib/org-page-guard";
 import Link from "next/link";
 import { NextResponse } from "next/server";
 import { PageFrame } from "@/components/page-frame";
@@ -111,13 +112,14 @@ function toneFor(item: WorkItem, now: Date, timezone: string): { label: string; 
   return { label: PANE_CHIP[paneFor(item)], tone: "neutral" };
 }
 
-export default async function WorkbenchPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function WorkbenchPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const ctx = await requireOrgContext();
-  if (ctx instanceof NextResponse) return ctx;
+  if (ctx instanceof NextResponse) rejectOrgPageResponse(ctx);
 
   const loadWarnings: string[] = [];
   let queueUnavailable = false;

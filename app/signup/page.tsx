@@ -23,11 +23,12 @@ export const metadata: Metadata = {
   alternates: { canonical: "/signup" },
 };
 
-export default async function SignupPage({
-  searchParams,
-}: {
-  searchParams?: { plan?: string };
-}) {
+export default async function SignupPage(
+  props: {
+    searchParams?: Promise<{ plan?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const auth = await currentUser().then(
     (user) => ({ ok: true as const, user }),
     (error) => {

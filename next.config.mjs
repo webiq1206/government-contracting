@@ -11,23 +11,22 @@ const nextConfig = {
   },
   experimental: {
     webpackBuildWorker: false,
-    // The dashboard's server actions / route handlers import server-only packages.
-    // Keep them external so Next never tries to bundle them into route code.
-    serverComponentsExternalPackages: [
-      "pg",
-      "pg-boss",
-      "bullmq",
-      "ioredis",
-      "playwright",
-      "twilio",
-      "googleapis",
-      "@anthropic-ai/sdk",
-      "stripe",
-      "pdf-lib",
-      "docx",
-      "unpdf",
-    ],
   },
+  // Keep server-only dependencies external to route bundles.
+  serverExternalPackages: [
+    "pg",
+    "pg-boss",
+    "bullmq",
+    "ioredis",
+    "playwright",
+    "twilio",
+    "googleapis",
+    "@anthropic-ai/sdk",
+    "stripe",
+    "pdf-lib",
+    "docx",
+    "unpdf",
+  ],
   eslint: {
     // Lint is run explicitly; do not fail production builds on lint warnings.
     ignoreDuringBuilds: true,

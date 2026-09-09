@@ -1,3 +1,4 @@
+import { rejectOrgPageResponse } from "@/lib/org-page-guard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { NextResponse } from "next/server";
@@ -40,13 +41,14 @@ async function optionalRead<T>(promise: Promise<T>) {
  * checklist as a list, and a button opens the version you work in. The
  * breadcrumb goes straight back.
  */
-export default async function RequirementsPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function RequirementsPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const ctx = await requireOrgContext();
-  if (ctx instanceof NextResponse) return ctx;
+  if (ctx instanceof NextResponse) rejectOrgPageResponse(ctx);
 
   const detail = await opportunityDetail(params.id);
   if (!detail) notFound();

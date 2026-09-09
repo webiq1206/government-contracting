@@ -17,7 +17,8 @@ export const dynamic = "force-dynamic";
  * the policy and the endorsement together, and making somebody upload them one
  * at a time is how the second one never gets uploaded.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "manage_compliance" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;

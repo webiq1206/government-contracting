@@ -1,7 +1,7 @@
 # Deploying BROSTCO to Replit
 
 The repository is structured to import into Replit and run with minimal setup.
-Included already: `.replit`, `replit.nix` (Node 20 + Chromium), `package.json`
+Included already: `.replit`, `replit.nix` (Node 22 + Chromium), `package.json`
 scripts, SQL migrations, and a seed script.
 
 ---
@@ -20,7 +20,7 @@ You can also use any other Postgres 15+ (Neon, RDS, Railway Postgres).
 ## 2. Import into Replit
 
 1. Replit → **Create Repl** → **Import from GitHub** → this repo.
-2. Replit reads `.replit` / `replit.nix` automatically (Node 20, Chromium).
+2. Replit reads `.replit` / `replit.nix` automatically (Node 22, Chromium).
 
 > Replit sometimes tries to auto-rewrite Next.js projects to a Vite template on
 > import. If it offers that, decline it and keep the Next.js config as-is.

@@ -355,11 +355,12 @@ function filterHref(
   return q ? `/compliance?${q}` : "/compliance";
 }
 
-export default async function CompliancePage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function CompliancePage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const loadWarnings: string[] = [];
   const [rows, subRows, teamMembers, viewer] = (await Promise.all([
     complianceBoard(),

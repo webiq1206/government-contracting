@@ -10,7 +10,8 @@ const PIXEL = Buffer.from(
 );
 
 /** Email open tracking: marks the communication opened, returns the pixel. */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   await query(
     `update communications set opened_at = coalesce(opened_at, now()) where tracking_id = $1`,
     [params.id]

@@ -62,11 +62,12 @@ function subscriptionStatusClass(status: string | null | undefined): string {
   }
 }
 
-export default async function BillingSettingsPage({
-  searchParams,
-}: {
-  searchParams?: { error?: string; checkout?: string; expired?: string };
-}) {
+export default async function BillingSettingsPage(
+  props: {
+    searchParams?: Promise<{ error?: string; checkout?: string; expired?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const user = await currentUser();
   const org = user?.organizationId
     ? await getOrganization(user.organizationId)

@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
   // Signed in immediately, the same as ordinary signup. Making somebody who
   // just set a password type it again would be theatre.
-  setSessionCookie(result.sessionToken);
+  await setSessionCookie(result.sessionToken);
   await trackEvent({
     event: "invitation_accepted",
     orgId: result.orgId,

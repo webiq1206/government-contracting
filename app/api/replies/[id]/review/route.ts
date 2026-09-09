@@ -97,10 +97,8 @@ class ReviewConflict extends Error {
  * The operator's decision follows the same quote proposal and solicitation
  * status paths as automatic reply capture. This endpoint never sends email.
  */
-export async function POST(
-  req: Request,
-  { params }: { params: { id: string } },
-) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requireCapability("outreach");
   if (auth instanceof NextResponse) return auth;
   const orgId = await resolveTenantOrgId();

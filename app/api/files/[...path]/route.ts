@@ -8,7 +8,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Serve a stored document (local/db backend) or redirect to a Supabase signed URL. */
-export async function GET(req: Request, { params }: { params: { path: string[] } }) {
+export async function GET(req: Request, props: { params: Promise<{ path: string[] }> }) {
+  const params = await props.params;
   const key = params.path.join("/");
   // Reject traversal.
   if (key.includes("..")) return NextResponse.json({ error: "bad path" }, { status: 400 });

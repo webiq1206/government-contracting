@@ -186,11 +186,12 @@ const SPECS: FilterSpec[] = [
 
 const SORT_KEYS = Object.keys(SUB_SORTS);
 
-export default async function SubsPage({
-  searchParams,
-}: {
-  searchParams: Record<string, string | string[] | undefined>;
-}) {
+export default async function SubsPage(
+  props: {
+    searchParams: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const loadWarnings: string[] = [];
   const values = parseFilters(SPECS, searchParams);
   const sort = parseSort(searchParams, SORT_KEYS);

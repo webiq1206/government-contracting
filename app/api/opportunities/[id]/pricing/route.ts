@@ -59,7 +59,8 @@ async function queuePricingRebuild(opportunityId: string, orgId: string): Promis
 }
 
 /** The pricing rows for one opportunity, with the older quote screen folded in. */
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "view" });
   if (ctx instanceof NextResponse) return ctx;
   const rows = await pricingRowsWithQuotes(params.id, ctx.orgId);
@@ -73,7 +74,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
  * the bid, and the role model already separates the person who may see the
  * numbers from the person who may set them.
  */
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "price" });
   if (ctx instanceof NextResponse) return ctx;
   const { user: auth, orgId } = ctx;
@@ -144,7 +146,8 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
  * projected from the quote screen reappears on the next read, which is
  * correct. What is removed is the reviewed pricing, not the evidence.
  */
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "price" });
   if (ctx instanceof NextResponse) return ctx;
 

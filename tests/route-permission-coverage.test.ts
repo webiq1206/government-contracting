@@ -38,6 +38,7 @@ const EXEMPT: Record<string, string> = {
   "invitations/accept/route.ts": "The invitation token is the credential; it grants the role.",
   "vendor/[token]/documents/route.ts": "External subcontractor portal; the link is the credential.",
   "vendor/[token]/w9/route.ts": "External subcontractor portal; the link is the credential.",
+  "admin/api-usage/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "admin/accounts/[id]/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "admin/impersonate/route.ts": "Platform admin, guarded by requirePlatformAdmin.",
   "admin/invitations/route.ts": "Platform admin, guarded by requirePlatformAdmin.",

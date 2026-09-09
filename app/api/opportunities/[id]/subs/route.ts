@@ -21,7 +21,8 @@ export const dynamic = "force-dynamic";
  * would re-approach firms already mid-conversation, which is how a bid ends up
  * emailing the same company twice about the same work.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const ctx = await requireOrgContext({ capability: "outreach" });
   if (ctx instanceof NextResponse) return ctx;
   const { orgId } = ctx;

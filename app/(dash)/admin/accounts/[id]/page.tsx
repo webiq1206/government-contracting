@@ -31,7 +31,8 @@ export const dynamic = "force-dynamic";
  * reason to be here is answering "why can this person not get in", and that is
  * usually answered by the Access line without touching anything.
  */
-export default async function AdminAccountPage({ params }: { params: { id: string } }) {
+export default async function AdminAccountPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requirePlatformAdmin();
   if (auth instanceof Response) notFound();
 

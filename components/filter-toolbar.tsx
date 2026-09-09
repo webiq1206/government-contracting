@@ -576,7 +576,7 @@ function FilterSheet({
   resultLabel?: string;
   onApply: (next: FilterValues) => void;
   onClose: () => void;
-  returnFocusTo: React.RefObject<HTMLElement>;
+  returnFocusTo: React.RefObject<HTMLElement | null>;
 }) {
   const [pending, setPending] = useState<FilterValues>(values);
   const [mounted, setMounted] = useState(false);

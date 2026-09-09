@@ -32,7 +32,8 @@ export const dynamic = "force-dynamic";
  * signed in as somebody, which is what keeps an impersonated session from
  * being used to suspend or delete accounts.
  */
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requirePlatformAdmin();
   if (auth instanceof NextResponse) return auth;
 
@@ -168,7 +169,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 }
 
 /** Delete an account and everything in it. Requires the exact name typed back. */
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await requirePlatformAdmin();
   if (auth instanceof NextResponse) return auth;
 

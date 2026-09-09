@@ -5,7 +5,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Email click tracking: records the click, then redirects to the real URL. */
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const url = new URL(req.url);
   const target = url.searchParams.get("u");
   await query(

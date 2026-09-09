@@ -41,8 +41,9 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(
   req: Request,
-  { params }: { params: { id: string; pairingId: string } }
+  props: { params: Promise<{ id: string; pairingId: string }> }
 ) {
+  const params = await props.params;
   const body = (await req.json().catch(() => ({}))) as {
     action?: string;
     reason?: string;

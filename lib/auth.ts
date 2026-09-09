@@ -446,7 +446,7 @@ export async function destroySession(token: string | undefined): Promise<void> {
 // ---- Next.js cookie helpers (used by server components / route handlers) ----
 
 export async function setSessionCookie(token: string): Promise<void> {
-  cookies().set(SESSION_COOKIE, token, {
+  (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: config.isProd,
@@ -456,7 +456,7 @@ export async function setSessionCookie(token: string): Promise<void> {
 }
 
 export async function clearSessionCookie(): Promise<void> {
-  cookies().delete(SESSION_COOKIE);
+  (await cookies()).delete(SESSION_COOKIE);
 }
 
 /**
@@ -468,9 +468,9 @@ export async function clearSessionCookie(): Promise<void> {
  * a database or membership failure after a cookie was read, which must keep
  * propagating so callers cannot mistake an outage for a signed-out user.
  */
-function requestSessionToken(): string | undefined {
+async function requestSessionToken(): Promise<string | undefined> {
   try {
-    return cookies().get(SESSION_COOKIE)?.value;
+    return (await cookies()).get(SESSION_COOKIE)?.value;
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message.includes("`cookies` was called outside a request scope")) {
@@ -481,7 +481,7 @@ function requestSessionToken(): string | undefined {
 }
 
 export async function currentUser(): Promise<SessionUser | null> {
-  return resolveSession(requestSessionToken());
+  return resolveSession(await requestSessionToken());
 }
 
 /**
@@ -492,7 +492,7 @@ export async function currentUser(): Promise<SessionUser | null> {
  * the self-signed env-operator token, which has no sessions row to point at.
  */
 export async function currentSessionId(): Promise<string | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token || token.startsWith("env-operator.")) return null;
   return token;
 }

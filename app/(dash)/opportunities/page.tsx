@@ -8,11 +8,12 @@ export const dynamic = "force-dynamic";
  * to /pipeline, so a signed-in operator hit a 404 on the word the nav uses
  * for the same work.
  */
-export default function OpportunitiesAliasPage({
-  searchParams,
-}: {
-  searchParams?: Record<string, string | string[] | undefined>;
-}) {
+export default async function OpportunitiesAliasPage(
+  props: {
+    searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const q = new URLSearchParams();
   for (const [key, value] of Object.entries(searchParams ?? {})) {
     if (key === "status" && (value === "archived" || value === "closed")) {

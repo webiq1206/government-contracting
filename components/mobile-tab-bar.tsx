@@ -34,7 +34,7 @@ import {
 const TABS: {
   href: string;
   label: string;
-  Icon: () => JSX.Element;
+  Icon: () => React.JSX.Element;
   countKey?: "queue" | "calls" | "attention";
 }[] = [
   { href: "/today", label: "Today", Icon: TodayIcon, countKey: "queue" },
