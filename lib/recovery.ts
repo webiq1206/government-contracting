@@ -20,7 +20,10 @@
 import { query, queryOne } from "./db";
 import { complete, describeClaudeFailure } from "./ai/claude";
 import { config } from "./config";
-import { enqueue } from "./queue";
+import { enqueue, getQueue } from "./queue";
+import { currentOrgId, runWithOrg } from "./tenant-context";
+import { readWorkerHeartbeat } from "./worker-heartbeat";
+import { gmail } from "./integrations/gmail";
 import { logAgent } from "./logger";
 import { advance, IllegalTransition, incidentById, type IncidentRow } from "./incidents";
 import {
@@ -58,7 +61,7 @@ export async function testProvider(): Promise<ProviderTest> {
   try {
     const { text } = await complete(
       "Reply with the single word: ready. Nothing else.",
-      { model, maxTokens: 16 }
+      { model, maxTokens: 16, injectProfile: false, timeoutMs: 15_000, maxRetries: 0 }
     );
     const got = text.trim().toLowerCase();
     if (!got) {
@@ -85,6 +88,38 @@ export async function testProvider(): Promise<ProviderTest> {
       technical: (err as Error).message ?? String(err),
       model,
     };
+  }
+}
+
+/** Check the service that actually failed. An AI response proves nothing
+ * about a disconnected mailbox or an unavailable queue. These probes send no
+ * email and never weaken a pause, permission or tenant check. */
+export async function testIncidentDependency(cause: string, orgId: string): Promise<ProviderTest> {
+  if (cause.startsWith("provider_") || cause === "model_output") return testProvider();
+  try {
+    if (cause === "integration_auth") {
+      const passed = await gmail.canAuthenticate(orgId, { fresh: true });
+      return { passed, model: "gmail", technical: null,
+        detail: passed ? "The connected mailbox accepted the connection check."
+          : "The mailbox could not be verified. Reconnect it in Integrations, then run this check again." };
+    }
+    if (cause === "queue_unreachable") {
+      const [queue, heartbeat] = await Promise.all([getQueue(), readWorkerHeartbeat()]);
+      const passed = Boolean(await queue.healthy?.()) && heartbeat?.phase === "ready"
+        && Date.now() - new Date(heartbeat.updatedAt).getTime() < 5 * 60_000;
+      return { passed, model: "queue", technical: null,
+        detail: passed ? "The job queue is reachable and the background service is ready."
+          : "Automated work is still waiting. Check the background service in Platform Health, then run this check again." };
+    }
+    if (cause === "database") {
+      await query("select 1");
+      return { passed: true, model: "database", technical: null, detail: "The database accepted a connection check." };
+    }
+    return { passed: false, model: "setup", technical: null,
+      detail: "This issue needs its connected service or required information checked. Open Integrations to complete setup before retrying the affected work." };
+  } catch (error) {
+    return { passed: false, model: cause, technical: error instanceof Error ? error.message : String(error),
+      detail: "The connection check could not finish. Automated work is still waiting. Check the affected service and try again." };
   }
 }
 
@@ -236,10 +271,20 @@ export async function runRecoveryCheck(
   orgId: string,
   actor: string
 ): Promise<RecoveryResult> {
+  if (currentOrgId() && currentOrgId() !== orgId) throw new Error("Recovery tenant does not match the active organization.");
+  return runWithOrg(orgId, () => recoverIncident(incidentId, orgId, actor));
+}
+
+async function recoverIncident(incidentId: string, orgId: string, actor: string): Promise<RecoveryResult> {
   const incident = await incidentById(incidentId, orgId);
   if (!incident) throw new Error("No such incident for this organization.");
+  if (incident.state === "recovered") {
+    return { incidentId, state: "recovered", test: { passed: true, detail: "This incident was already recovered.", technical: null, model: "none" },
+      plan: "No replay was needed.", requeued: 0, skipped: 0, remaining: 0,
+      confirmation: incident.recoveryNote, message: "This incident was already recovered. No duplicate work was queued." };
+  }
 
-  const test = await testProvider();
+  const test = await testIncidentDependency(incident.cause, orgId);
 
   if (!test.passed) {
     /*

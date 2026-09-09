@@ -173,6 +173,9 @@ export interface ClaudeUsage {
 }
 
 export interface CompleteOptions {
+  /** Interactive checks can use a short budget without shortening agent work. */
+  timeoutMs?: number;
+  maxRetries?: number;
   feature?: string;
   system?: string; // extra system text appended after the Company Profile
   maxTokens?: number;
@@ -328,7 +331,11 @@ export async function complete(
   let res: Anthropic.Messages.Message;
   try {
     res = await metered(identity, 'Anthropic', model, opts.feature ?? 'AI assistance',
-      () => anthropic.messages.create(body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming),
+      () => anthropic.messages.create(
+        body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
+        { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
+          ...(opts.maxRetries != null ? { maxRetries: opts.maxRetries } : {}) }
+      ),
       value => ({ requestId: value.id, units: { ...value.usage, requests: 1 } }));
   } catch (err) {
     const cause = describeClaudeFailure(err);

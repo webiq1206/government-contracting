@@ -34,6 +34,7 @@ import { timeAgo } from "@/lib/format";
 import { scheduleLabel, nextRunAt, nextRunAcross } from "@/lib/domain/cron-describe";
 import { manualRunRequirement } from "@/lib/domain/agent-manual-run";
 import { ShellDataWarning } from "@/components/shell-data-warning";
+import { isPlatformAdmin } from "@/lib/platform-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -242,7 +243,7 @@ export default async function AgentsPage(
           own symptoms.
         */}
         <AutomationStatusPanel health={live} nextRun={nextRun ? nextRun.toISOString() : null} />
-        <AutomationIncidents health={live} />
+        <AutomationIncidents health={live} showDiagnostics={Boolean(viewer && !viewer.impersonatedBy && isPlatformAdmin(viewer.email))} />
 
         {/*
           What happens AFTER the fix at the provider, which is the part nobody
@@ -250,6 +251,7 @@ export default async function AgentsPage(
           out whether it worked except by waiting to see if the red went away.
         */}
         <RecoveryPanel
+          canRecover={Boolean(viewer && !viewer.impersonatedBy && can(viewer.orgRole, "pause_automation"))}
           incidents={openIncidents.map((i) => ({
             id: i.id,
             state: i.state,

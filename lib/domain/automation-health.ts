@@ -90,7 +90,7 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     effect:
       "Nothing is being scored, analysed, drafted or read. Opportunities keep arriving and keep piling up unprocessed.",
     repair: "Add credit to the Anthropic account at console.anthropic.com under Billing.",
-    repairHref: "/settings/integrations",
+    repairHref: "/settings/integrations#claude",
     blocking: true,
   },
   provider_auth: {
@@ -98,7 +98,7 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     effect:
       "Nothing is being scored, analysed, drafted or read. The key was deleted, revoked, or pasted incompletely.",
     repair: "Create a new key at console.anthropic.com and save it under Settings, Integrations.",
-    repairHref: "/settings/integrations",
+    repairHref: "/settings/integrations#claude",
     blocking: true,
   },
   provider_rate_limit: {
@@ -117,7 +117,7 @@ const CAUSES: Record<IncidentCause, IncidentSpec> = {
     title: "A connected account needs reconnecting",
     effect: "Email cannot be sent or read, so outreach and replies have stopped moving.",
     repair: "Reconnect the mailbox under Settings, Integrations.",
-    repairHref: "/settings/integrations",
+    repairHref: "/settings/integrations#gmail",
     blocking: true,
   },
   queue_unreachable: {
@@ -177,16 +177,19 @@ export function causeSpec(cause: IncidentCause): IncidentSpec {
 export function classifyFailure(error: string | null | undefined): IncidentCause {
   const text = (error ?? "").toLowerCase();
   if (!text.trim()) return "unknown";
-  if (/credit balance|insufficient (?:credit|funds)|too low|add credit/.test(text)) return "provider_credit";
-  if (/api key|unauthori[sz]ed|invalid key|revoked|401|403/.test(text)) return "provider_auth";
-  if (/rate limit|429|too many requests/.test(text)) return "provider_rate_limit";
-  if (/reconnect|token expired|invalid_grant|refresh token|gmail/.test(text)) return "integration_auth";
-  if (/queue|pg-?boss|unreachable/.test(text)) return "queue_unreachable";
-  if (/econnrefused.*5432|database|relation .* does not exist|too many connections/.test(text))
-    return "database";
-  if (/5\d\d|server error|overloaded|service unavailable/.test(text)) return "provider_unavailable";
-  if (/fetch failed|enotfound|etimedout|network|timeout|aborted/.test(text)) return "network";
+  if (/credit balance|insufficient (?:credit|funds)|add credit/.test(text)) return "provider_credit";
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";
+  // Match the named service before generic HTTP/auth words. A Google 401 is
+  // not repaired by replacing an Anthropic key, and a Gmail timeout is not an
+  // expired grant.
+  if (/invalid_grant|refresh token|token expired|reconnect.*(?:mail|google)|(?:gmail|google|mailbox).*(?:401|403|unauthori[sz]ed|revoked|reconnect|authentication)/.test(text)) return "integration_auth";
+  if (/api key|unauthori[sz]ed|invalid key|revoked|\b401\b|\b403\b/.test(text)) return "provider_auth";
+  if (/rate limit|429|too many requests/.test(text)) return "provider_rate_limit";
+  if (/econnrefused.*5432|database|relation .* does not exist|too many connections|too many clients|remaining connection slots/.test(text))
+    return "database";
+  if (/queue|pg-?boss/.test(text)) return "queue_unreachable";
+  if (/5\d\d|server error|overloaded|service unavailable/.test(text)) return "provider_unavailable";
+  if (/fetch failed|enotfound|etimedout|network|timeout|aborted|unreachable/.test(text)) return "network";
   if (/unbalanced json|invalid json|completejson|could not parse|json parse/.test(text))
     return "model_output";
   return "unknown";
@@ -205,6 +208,9 @@ export interface RunFact {
 export interface HealthInput {
   /** The master switch. A deliberate stop, not a fault. */
   paused: boolean;
+  platformPaused?: boolean;
+  /** Only a completed recovery can retire historical failures of its cause. */
+  recoveredThrough?: Partial<Record<IncidentCause, string>>;
   /** The worker's own check-in, when it has written one. */
   heartbeatAt?: string | Date | null;
   /** What the worker says it is doing: "ready", "queue-unreachable", ... */
@@ -291,7 +297,11 @@ function iso(v: string | Date): string {
 export function assessAutomation(input: HealthInput): AutomationHealth {
   const now = input.now ?? new Date();
   const runs = input.runs ?? [];
-  const failures = runs.filter((r) => r.status === "error");
+  const failures = runs.filter((r) => {
+    if (r.status !== "error") return false;
+    const recoveredAt = input.recoveredThrough?.[classifyFailure(r.error)];
+    return !recoveredAt || new Date(r.startedAt).getTime() > new Date(recoveredAt).getTime();
+  });
   const successes = runs.filter((r) => r.status === "ok");
   const backlog = input.backlog == null ? null : Math.max(0, input.backlog);
   const affectedOpportunities = Math.max(0, input.affectedOpportunities ?? 0);
@@ -302,7 +312,7 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
       .sort()
       .pop() ?? null;
 
-  const errorCount = input.windowErrors ?? failures.length;
+  const errorCount = input.windowErrors ?? runs.filter((r) => r.status === "error").length;
   const runs24h = input.windowRuns ?? runs.length;
   const failureRate = runs24h >= MIN_RUNS_FOR_RATE ? errorCount / runs24h : null;
 
@@ -373,13 +383,14 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
 
   // A deliberate stop is not a fault, and saying so first stops the paused
   // state from being buried under the failures that pausing itself caused.
-  if (input.paused) {
+  if (input.paused || input.platformPaused) {
     return {
       ...base,
       state: "paused",
       headline: "Automation is paused",
-      detail:
-        "Someone turned automation off. Nothing runs, nothing is sent, and nothing is scored until it is turned back on.",
+      detail: input.platformPaused
+        ? "Automation is paused for the whole platform. New automated work is waiting. A platform administrator can resume it from Platform Health."
+        : "Someone turned automation off. Nothing runs, nothing is sent, and nothing is scored until it is turned back on.",
       interrupt: false,
     };
   }
@@ -421,12 +432,22 @@ export function assessAutomation(input: HealthInput): AutomationHealth {
     };
   }
 
+  if (input.heartbeatAt == null) {
+    return {
+      ...base,
+      state: "blocked",
+      headline: "Automation has not checked in",
+      detail: "The background service has not reported that it is running. Automated work may be waiting. Open Automation Health to check the service and setup.",
+      interrupt: true,
+    };
+  }
+
   if (beating && input.phase && input.phase !== "ready") {
     return {
       ...base,
       state: "degraded",
       headline: `Automation is starting up`,
-      detail: `The background worker is running but not ready yet (${input.phase}). Work will resume on its own.`,
+      detail: "The background service is starting but is not ready to take work yet. Check Automation Health if this does not clear.",
       interrupt: false,
     };
   }

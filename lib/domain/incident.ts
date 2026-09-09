@@ -52,7 +52,7 @@ export type IncidentState = (typeof INCIDENT_STATES)[number];
 export const INCIDENT_STATE_LABEL: Record<IncidentState, string> = {
   detected: "Detected",
   mitigating: "Being worked on",
-  provider_restored: "Provider account funded, recovery pending verification",
+  provider_restored: "Service updated, recovery check needed",
   test_passed: "Test request succeeded",
   backlog_requeued: "Backlog requeued",
   backlog_draining: "Backlog draining",
@@ -68,10 +68,10 @@ export const INCIDENT_STATE_LABEL: Record<IncidentState, string> = {
  * needs to read.
  */
 export const INCIDENT_NEXT_ACTION: Record<IncidentState, string> = {
-  detected: "Confirm the cause, then fix it at the provider.",
-  mitigating: "Finish the fix at the provider, then run the recovery check.",
+  detected: "Review the problem below, complete the suggested fix, then check recovery.",
+  mitigating: "Finish the suggested fix, then run the recovery check.",
   provider_restored:
-    "Run the recovery check. Funding the account is not proof that requests work again.",
+    "Run the recovery check to verify that the affected service works again.",
   test_passed: "Requeue the work that failed during the outage.",
   backlog_requeued: "Wait for the queue to drain, then confirm the work landed.",
   backlog_draining: "Wait for the queue to drain, then confirm the work landed.",

@@ -44,6 +44,9 @@ export interface Queue {
   start(): Promise<void>;
   enqueue(name: string, payload: JobPayload, opts?: EnqueueOptions): Promise<string | null>;
   work(name: string, handler: JobHandler): Promise<void>;
+  /** Start a shared consumer only after the worker registered every handler.
+   * Producer-only web processes never call this. */
+  activate?(): Promise<void>;
   stop(): Promise<void>;
   /**
    * Is this backend still able to serve the queue? A live process proves
@@ -82,7 +85,14 @@ export async function getQueue(): Promise<Queue> {
       config.queue.backend === "bullmq"
         ? await (await import("./bullmq")).createBullQueue()
         : await (await import("./pgboss")).createPgBossQueue();
-    await created.start();
+    try {
+      await created.start();
+    } catch (error) {
+      // Failed initialization can still own sockets and timers. Release them
+      // before another attempt; otherwise each retry adds another queue pool.
+      await created.stop().catch(() => {});
+      throw error;
+    }
     if (generation !== _generation) {
       // Someone gave up on this attempt and started another one. Leaving this
       // backend connected would leave a second consumer polling the queue.

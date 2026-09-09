@@ -3,11 +3,20 @@
  * its own `pgboss` schema. No Redis required.
  */
 import PgBoss from "pg-boss";
+import type { PoolConfig } from "pg";
 import { config, pgSslFor } from "../config";
 import type { EnqueueOptions, JobHandler, JobPayload, Queue } from "./index";
 import { QUEUE_NAMES } from "./index";
 
 export async function createPgBossQueue(): Promise<Queue> {
+  // pg-boss passes its config to pg.Pool; its public type omits these pg options.
+  const connectionDeadlines = {
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 30_000,
+    statement_timeout: 30_000,
+    idleTimeoutMillis: 10_000,
+    keepAlive: true,
+  } satisfies PoolConfig;
   const boss = new PgBoss({
     connectionString: config.database.url,
     ssl: pgSslFor(config.database.url),
@@ -27,12 +36,24 @@ export async function createPgBossQueue(): Promise<Queue> {
      * here.
      */
     max: Number(process.env.PGBOSS_POOL_MAX ?? 4),
+    ...connectionDeadlines,
     /** So these connections are identifiable in the database's own view. */
     application_name: "brostco-pgboss",
   });
   boss.on("error", (e) => console.error("[pg-boss]", e.message));
 
   let started = false;
+  const createdQueues = new Map<string, Promise<void>>();
+  function ensureQueue(name: string): Promise<void> {
+    const existing = createdQueues.get(name);
+    if (existing) return existing;
+    const attempt = boss.createQueue(name).catch((error) => {
+      createdQueues.delete(name);
+      throw error;
+    });
+    createdQueues.set(name, attempt);
+    return attempt;
+  }
 
   return {
     async start() {
@@ -40,7 +61,7 @@ export async function createPgBossQueue(): Promise<Queue> {
       await boss.start();
       // pg-boss v10 requires queues to exist before send/work.
       for (const name of QUEUE_NAMES) {
-        await boss.createQueue(name).catch(() => {});
+        await ensureQueue(name);
       }
       started = true;
     },
@@ -51,7 +72,7 @@ export async function createPgBossQueue(): Promise<Queue> {
       // never running at all, with no error anywhere. Creating the queue here
       // is idempotent and cheap, so a name that drifts out of the list can
       // never again fail silently.
-      await boss.createQueue(name).catch(() => {});
+      await ensureQueue(name);
       const sendOpts: PgBoss.SendOptions = {
         retryLimit: 3,
         retryDelay: 30,
@@ -98,6 +119,7 @@ export async function createPgBossQueue(): Promise<Queue> {
 
     async stop() {
       started = false;
+      createdQueues.clear();
       await boss.stop({ graceful: true }).catch(() => {});
     },
   };

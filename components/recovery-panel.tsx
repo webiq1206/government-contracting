@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { requestAction, ACTION_UNCONFIRMED } from "@/lib/client/action-request";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export interface OpenIncident {
@@ -34,12 +36,12 @@ export interface OpenIncident {
  * So the button does not say "retry". It runs a real request, reports what
  * came back, and puts back only the work that is still worth doing.
  */
-export function RecoveryPanel({ incidents }: { incidents: OpenIncident[] }) {
+export function RecoveryPanel({ incidents, canRecover = false }: { incidents: OpenIncident[]; canRecover?: boolean }) {
   if (incidents.length === 0) return null;
   return (
     <div className="space-y-3">
       {incidents.map((i) => (
-        <IncidentCard key={i.id} incident={i} />
+        <IncidentCard key={i.id} incident={i} canRecover={canRecover} />
       ))}
     </div>
   );
@@ -53,38 +55,42 @@ function elapsed(fromIso: string): string {
   return `${Math.floor(hours / 24)} days`;
 }
 
-function IncidentCard({ incident }: { incident: OpenIncident }) {
+function IncidentCard({ incident, canRecover }: { incident: OpenIncident; canRecover: boolean }) {
   const router = useRouter();
+  const inFlight = useRef<AbortController | null>(null);
+  useEffect(() => () => { inFlight.current?.abort(); inFlight.current = null; }, [incident.id]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
   const run = async () => {
+    if (!canRecover || inFlight.current) return;
+    const controller = new AbortController();
+    inFlight.current = controller;
+    const timer = setTimeout(() => controller.abort(), 60_000);
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const res = await fetch("/api/automation/recovery", {
+      const response = await requestAction("/api/automation/recovery", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ incidentId: incident.id }),
+        signal: controller.signal,
       });
-      const body = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        message?: string;
-        plan?: string;
-      };
-      if (!res.ok) {
-        setError(body.error ?? "The recovery check could not run.");
+      if (inFlight.current !== controller) return;
+      if (!response.ok) {
+        setError(response.error);
         return;
       }
-      setResult([body.message, body.plan].filter(Boolean).join(" "));
+      setResult([response.data.message, response.data.plan].filter((v) => typeof v === "string").join(" "));
       router.refresh();
     } catch {
-      setError("Could not reach the server.");
+      if (inFlight.current === controller) setError(ACTION_UNCONFIRMED);
     } finally {
-      setBusy(false);
+      clearTimeout(timer);
+      if (inFlight.current === controller) { inFlight.current = null; setBusy(false); }
     }
   };
 
@@ -135,9 +141,12 @@ function IncidentCard({ incident }: { incident: OpenIncident }) {
       </dl>
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button type="button" className="btn-secondary text-sm" disabled={busy} onClick={run}>
-          {busy ? "Checking the provider" : "Run recovery check"}
+        <button type="button" className="btn-secondary text-sm" disabled={busy || !canRecover} onClick={run}>
+          {busy ? "Checking recovery" : "Run recovery check"}
         </button>
+        <button type="button" className="btn-ghost text-sm" onClick={() => router.refresh()}>Check current status</button>
+        {incident.cause === "integration_auth" && canRecover && <Link className="btn-ghost text-sm" href="/settings/integrations#gmail">Reconnect mailbox</Link>}
+        {incident.cause.startsWith("provider_") && canRecover && <Link className="btn-ghost text-sm" href="/settings/integrations#claude">Review AI connection</Link>}
         {incident.history.length > 0 && (
           <button
             type="button"
@@ -154,8 +163,9 @@ function IncidentCard({ incident }: { incident: OpenIncident }) {
         What the button did, in the words the API used. Not re-worded here:
         one sentence written once is one sentence to keep true.
       */}
-      {result && <p className="mt-2 text-sm text-slate-700">{result}</p>}
-      {error && <p className="mt-2 text-sm text-risk">{error}</p>}
+      {!canRecover && <p className="mt-2 text-sm text-muted-foreground">An account owner or administrator needs to run recovery. You can still check its current status.</p>}
+      {result && <p role="status" className="mt-2 text-sm text-slate-700">{result}</p>}
+      {error && <p role="alert" className="mt-2 text-sm text-risk">{error}</p>}
       {incident.recoveryNote && !result && (
         <p className="mt-2 text-xs text-muted-foreground">{incident.recoveryNote}</p>
       )}

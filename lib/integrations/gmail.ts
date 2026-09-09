@@ -54,11 +54,12 @@ export const GMAIL_SCOPES = [
 ];
 
 function oauthClient() {
-  return new google.auth.OAuth2(
-    config.gmail.clientId,
-    config.gmail.clientSecret,
-    config.gmail.redirectUri
-  );
+  return new google.auth.OAuth2({
+    clientId: config.gmail.clientId,
+    clientSecret: config.gmail.clientSecret,
+    redirectUri: config.gmail.redirectUri,
+    transporterOptions: { timeout: 15_000, retry: false },
+  });
 }
 
 /**
@@ -567,11 +568,11 @@ export const gmail = {
    * send is deliberately not consulted, because sends only happen for addresses
    * that have accounts.
    */
-  async canAuthenticate(orgId?: string): Promise<boolean> {
+  async canAuthenticate(orgId?: string, opts?: { fresh?: boolean }): Promise<boolean> {
     const org = await resolveOrg(orgId);
     if (!org) return false;
     const cached = authProbeCache.get(org);
-    if (cached && Date.now() - cached.at < AUTH_PROBE_TTL_MS) return cached.ok;
+    if (!opts?.fresh && cached && Date.now() - cached.at < AUTH_PROBE_TTL_MS) return cached.ok;
 
     const refresh = await getRefreshToken(org);
     let ok = false;

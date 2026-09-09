@@ -283,7 +283,7 @@ export function IntegrationManager({ initial }: { initial: IntegrationRow[] }) {
           def.fields.some((f) => f.developer) &&
           def.fields.filter((f) => f.developer).every((f) => f.source !== "none");
         return (
-          <div key={def.id} className="card flex flex-col gap-3">
+          <div key={def.id} id={def.id} className="card scroll-mt-4 flex flex-col gap-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-base font-semibold text-foreground">{def.name}</p>

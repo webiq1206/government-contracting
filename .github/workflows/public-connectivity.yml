@@ -1,0 +1,26 @@
+name: Public connectivity diagnostic
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - scripts/check-public-connectivity.mjs
+      - .github/workflows/public-connectivity.yml
+permissions:
+  contents: read
+jobs:
+  connectivity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check public DNS, TLS and response headers
+        run: node scripts/check-public-connectivity.mjs
+        env:
+          CONNECTIVITY_REPORT_PATH: public-connectivity.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: public-connectivity
+          path: public-connectivity.json

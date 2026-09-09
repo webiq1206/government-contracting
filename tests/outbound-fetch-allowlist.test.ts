@@ -57,6 +57,10 @@ const ALLOWED = new Map<string, string>([
     "Runs in the browser and posts only to the constant same-origin /api/auth/login route. No caller-supplied URL or server-side outbound request.",
   ],
   [
+    "lib/client/action-request.ts",
+    "Browser-only action feedback. Rejects destinations outside the same-origin /api/ routes and never retries mutations automatically.",
+  ],
+  [
     "scripts/a11y-sweep.ts",
     "Signs in to the local server this script started. The URL is this process's own.",
   ],

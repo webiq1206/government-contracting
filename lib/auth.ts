@@ -5,6 +5,7 @@
  */
 import { randomBytes, scryptSync, timingSafeEqual, createHmac } from "node:crypto";
 import { cookies } from "next/headers";
+import { requestCache as cache } from "@/lib/request-cache";
 import type { PoolClient } from "pg";
 import { query, queryOne } from "./db";
 import { config } from "./config";
@@ -122,8 +123,9 @@ const NO_ORG = {
  */
 export async function hasAnyOperator(): Promise<boolean> {
   try {
-    const row = await queryOne<{ n: string }>(`select count(*)::text as n from users`);
-    return Number(row?.n ?? 0) > 0;
+    // Login needs existence, not the size of the entire user table.
+    const row = await queryOne<{ present: boolean }>(`select exists(select 1 from users) as present`);
+    return row?.present ?? true;
   } catch {
     // Fail closed. This answer decides whether /login bounces to first-run
     // setup and whether the bootstrap endpoint will mint an operator, so a
@@ -393,45 +395,58 @@ export async function resolveSession(token: string | undefined): Promise<Session
     email: string;
     name: string | null;
     role: string;
-    expires_at: string;
     impersonator_email: string | null;
+    last_seen_at: Date | null;
+    organization_id: string | null;
+    org_role: string | null;
+    subscription_status: string | null;
+    plan_key: string | null;
+    trial_ends_at: string | null;
+    billing_exempt: boolean | null;
+    suspended_at: string | null;
   }>(
-    // last_seen_at is touched here rather than in a separate round trip, and
-    // only when it is already stale, so the sessions list can tell "in use
-    // now" from "signed in last week" without a write per request.
-    `update sessions s
-        set last_seen_at = now()
-      where s.id = $1
-        and s.expires_at > now()
-        and (s.last_seen_at is null or s.last_seen_at < now() - $2::interval)`,
-    [token, `${Math.round(LAST_SEEN_THROTTLE_MS / 1000)} seconds`]
-  )
-    .catch(() => null)
-    .then(() =>
-      queryOne<{
-        id: string;
-        email: string;
-        name: string | null;
-        role: string;
-        expires_at: string;
-        impersonator_email: string | null;
-      }>(
-        `select u.id, u.email, u.name, u.role, s.expires_at, s.impersonator_email
-           from sessions s join users u on u.id = s.user_id
-          where s.id = $1 and s.expires_at > now()`,
-        [token]
-      )
-    );
+    // Read the session, membership, role and entitlement in one snapshot and
+    // one round trip. The role cannot come from a different membership when
+    // two memberships have the same creation time.
+    `select u.id, u.email, u.name, u.role, s.impersonator_email, s.last_seen_at,
+            membership.org_id as organization_id, membership.role as org_role,
+            o.subscription_status, o.plan_key, o.trial_ends_at::text,
+            o.billing_exempt, o.suspended_at::text
+       from sessions s
+       join users u on u.id = s.user_id
+       left join lateral (
+         select m.org_id, m.role from organization_members m
+          where m.user_id = u.id order by m.created_at asc, m.org_id asc limit 1
+       ) membership on true
+       left join organizations o on o.id = membership.org_id
+      where s.id = $1 and s.expires_at > now()`,
+    [token]
+  );
   if (!row) return null;
-  const user = await attachOrg({
-    ...NO_ORG,
+  // Do not submit an UPDATE for every poll and data helper. Keep the predicate
+  // on the write as well so simultaneous stale readers touch the row once.
+  if (!row.last_seen_at || Date.now() - new Date(row.last_seen_at).getTime() >= LAST_SEEN_THROTTLE_MS) {
+    await query(
+      `update sessions set last_seen_at = now()
+        where id = $1 and expires_at > now()
+          and (last_seen_at is null or last_seen_at < now() - $2::interval)`,
+      [token, `${Math.round(LAST_SEEN_THROTTLE_MS / 1000)} seconds`]
+    ).catch(() => undefined);
+  }
+  return {
     id: row.id,
     email: row.email,
     name: row.name,
     role: row.role,
-  });
-  // Set last so attachOrg cannot drop it.
-  return { ...user, impersonatedBy: row.impersonator_email };
+    organizationId: row.organization_id,
+    orgRole: row.org_role,
+    subscriptionStatus: row.subscription_status,
+    planKey: row.plan_key,
+    trialEndsAt: row.trial_ends_at,
+    billingExempt: Boolean(row.billing_exempt),
+    suspendedAt: row.suspended_at,
+    impersonatedBy: row.impersonator_email,
+  };
 }
 
 export async function destroySession(token: string | undefined): Promise<void> {
@@ -480,9 +495,10 @@ async function requestSessionToken(): Promise<string | undefined> {
   }
 }
 
-export async function currentUser(): Promise<SessionUser | null> {
+// Request-scoped sharing preserves access revalidation across HTTP requests.
+export const currentUser = cache(async (): Promise<SessionUser | null> => {
   return resolveSession(await requestSessionToken());
-}
+});
 
 /**
  * The id of the session making this request, or null.
