@@ -78,6 +78,7 @@ export async function POST(req: Request) {
     const { text } = await complete(
       buildAskUserPrompt({ guide, question, history }),
       {
+        feature: "Page questions",
         system: GUIDE_ASK_SYSTEM,
         model: config.claude.model,
         maxTokens: 400,

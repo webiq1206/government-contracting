@@ -95,6 +95,8 @@ export async function testProvider(): Promise<ProviderTest> {
  * about a disconnected mailbox or an unavailable queue. These probes send no
  * email and never weaken a pause, permission or tenant check. */
 export async function testIncidentDependency(cause: string, orgId: string): Promise<ProviderTest> {
+  if (cause === "spending_limit") return { passed: false, model: "budget", technical: null,
+    detail: "Paid work is waiting on a spending control. Open Settings, API Usage to review limits or resume work, then retry the affected task. No paid test was sent." };
   if (cause.startsWith("provider_") || cause === "model_output") return testProvider();
   try {
     if (cause === "integration_auth") {

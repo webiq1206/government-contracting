@@ -47,6 +47,7 @@ export type AutomationState = "healthy" | "degraded" | "blocked" | "paused" | "n
  * exception happened to say.
  */
 export type IncidentCause =
+  | "spending_limit"
   | "provider_credit"
   | "provider_auth"
   | "provider_rate_limit"
@@ -85,6 +86,13 @@ export interface IncidentSpec {
  * an outage.
  */
 const CAUSES: Record<IncidentCause, IncidentSpec> = {
+  spending_limit: {
+    title: "API work stopped at a spending control",
+    effect: "New paid requests are on hold to protect your account’s budget. Some automated tasks are waiting.",
+    repair: "Review spending limits or resume API work in Settings, API Usage.",
+    repairHref: "/settings/api-usage",
+    blocking: true,
+  },
   provider_credit: {
     title: "The AI account is out of credit",
     effect:
@@ -177,6 +185,7 @@ export function causeSpec(cause: IncidentCause): IncidentSpec {
 export function classifyFailure(error: string | null | undefined): IncidentCause {
   const text = (error ?? "").toLowerCase();
   if (!text.trim()) return "unknown";
+  if (/api_budget:|api use is paused|api limit cannot cover|maximum request cost|hard dollar limit/.test(text)) return "spending_limit";
   if (/credit balance|insufficient (?:credit|funds)|add credit/.test(text)) return "provider_credit";
   if (/not configured|missing key|no api key/.test(text)) return "not_configured";
   // Match the named service before generic HTTP/auth words. A Google 401 is

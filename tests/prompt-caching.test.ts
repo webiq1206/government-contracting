@@ -11,6 +11,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { runWithOrg } from "../lib/tenant-context";
 
+const budgetState = vi.hoisted(() => ({ blocked: false, recordUse: vi.fn() }));
+vi.mock("../lib/integration-settings", () => ({ recordIntegrationUse: budgetState.recordUse }));
+
 const TEST_ORG = "00000000-0000-4000-8000-000000000099";
 
 const PROFILE_LONG = "BROSTCO profile. ".repeat(700); // ~11,900 chars, ~3k tokens
@@ -42,7 +45,14 @@ vi.mock("../lib/integration-keys", () => ({
 vi.mock("../lib/api-usage/ledger", () => ({
   requestIdentity: async () => ({ orgId: TEST_ORG }),
   metered: async (_identity: unknown, _provider: string, _service: string,
-    _feature: string, execute: () => Promise<unknown>) => execute(),
+    _feature: string, execute: () => Promise<unknown>) => {
+      if (budgetState.blocked) {
+        const error = new Error("API_BUDGET: Work is paused.");
+        error.name = "ApiUsageBlockedError";
+        throw error;
+      }
+      return execute();
+    },
 }));
 
 async function callComplete(prompt: string, opts: Record<string, unknown> = {}) {
@@ -156,4 +166,40 @@ describe("usage reporting", () => {
     const res = await runWithOrg(TEST_ORG, () => complete("hello"));
     expect(res.usage.cache_read_input_tokens).toBe(2048);
   });
+});
+
+describe("cost-conscious task routing and retries", () => {
+  beforeEach(() => create.mockClear());
+  it("uses the routine model by default and the stronger model for complex tasks", async () => {
+    const {config} = await import("../lib/config");
+    const routine = await callComplete("Summarize a note");
+    expect((routine as any).model).toBe(config.claude.model);
+    const complex = await callComplete("Analyze bid compliance",{complexity:"complex"});
+    expect((complex as any).model).toBe(config.claude.modelSmart);
+  });
+  it("never enables hidden SDK retries even when a caller requests them", async () => {
+    await callComplete("hello",{maxRetries:5});
+    expect((create.mock.calls.at(-1) as any)?.[1].maxRetries).toBe(0);
+  });
+  it("doubles a small truncated response budget instead of jumping to 16k", async () => {
+    create.mockResolvedValueOnce({content:[{type:"text",text:"invalid"}],usage:{input_tokens:10,output_tokens:5,cache_read_input_tokens:0},stop_reason:"max_tokens"});
+    create.mockResolvedValueOnce({content:[{type:"text",text:'{"ok":true}'}],usage:{input_tokens:10,output_tokens:5,cache_read_input_tokens:0},stop_reason:"end_turn"});
+    const {completeJson} = await import("../lib/ai/claude");
+    await runWithOrg(TEST_ORG,()=>completeJson("small result",{maxTokens:400}));
+    expect((create.mock.calls[0] as any)[0].max_tokens).toBe(400);
+    expect((create.mock.calls[1] as any)[0].max_tokens).toBe(800);
+  });
+});
+
+it("does not mark a connected AI account as broken when a local budget blocks work", async () => {
+  await new Promise(resolve=>setTimeout(resolve,0));
+  budgetState.recordUse.mockClear();
+  create.mockClear();
+  budgetState.blocked=true;
+  try {
+    await expect(callComplete("hello")).rejects.toThrow("API_BUDGET");
+    await new Promise(resolve=>setTimeout(resolve,0));
+    expect(create).not.toHaveBeenCalled();
+    expect(budgetState.recordUse).not.toHaveBeenCalled();
+  } finally { budgetState.blocked=false; }
 });

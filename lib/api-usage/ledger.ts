@@ -57,6 +57,7 @@ export async function beginUsage(
   provider: string,
   service: string,
   feature: string,
+  options: { complex?: boolean } = {},
 ): Promise<string> {
   const ctx = apiUsageContext();
   feature = ctx.feature ?? feature;
@@ -72,12 +73,51 @@ export async function beginUsage(
       [provider, service],
     );
     const reservation = price.rows[0]?.max_request_cost ?? null;
+    const budget = await client.query("select * from api_account_budgets where org_id=$1", [identity.orgId]);
+    const account = budget.rows[0];
+    if (account) {
+      const blocked = (reason: string) => new ApiUsageBlockedError(
+        `API_BUDGET: ${reason} New paid work has stopped to protect your budget. Open Settings, API Usage to review limits or resume work.`,
+      );
+      if (account.paused) throw blocked("You paused API use.");
+      if (options.complex && !account.allow_complex)
+        throw blocked("Complex AI work is paused in your cost controls.");
+      if (account.daily_requests != null) {
+        const count = await client.query(`select count(*)::int as calls from api_usage_events
+          where org_id=$1 and started_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC'`, [identity.orgId]);
+        if (count.rows[0].calls >= account.daily_requests)
+          throw blocked("You reached today's request limit. It resets at midnight UTC.");
+      }
+      for (const period of ["day", "month"] as const) {
+        const cap = period === "day" ? account.daily_limit : account.monthly_limit;
+        if (cap == null) continue;
+        if (reservation == null) throw blocked("This service needs a price ceiling before a dollar limit can protect your spending. Ask the platform administrator to set one, or use a request-count limit.");
+        const totals = await client.query(`select
+          coalesce(sum(coalesce(provider_cost,reserved_cost) * case when credential_source='platform' and billing_accepted then 1.25 else 1 end),0)
+            + $3::numeric * $4::numeric > $5::numeric as exceeds,
+          count(*) filter(where provider_cost is null and reserved_cost=0)::int as unknown
+          from api_usage_events where org_id=$1
+            and started_at >= date_trunc($2,now() at time zone 'UTC') at time zone 'UTC'`,
+          [identity.orgId,period,reservation,identity.source === "platform" && identity.accepted ? "1.25" : "1",cap]);
+        if (totals.rows[0].exceeds || totals.rows[0].unknown > 0)
+          throw blocked(`Your ${period === "day" ? "daily" : "monthly"} allowance cannot cover another request, including costs awaiting confirmation.`);
+      }
+    }
     const limits = await client.query(
       `select * from api_usage_limits where
       (org_id is null or org_id=$1) and provider in ('*',$2) and feature in ('*',$3)`,
       [identity.orgId, provider, feature],
     );
     for (const limit of limits.rows) {
+      if (limit.daily_requests != null && identity.source !== "tenant") {
+        const count = await client.query(`select count(*)::int as calls from api_usage_events
+          where started_at >= date_trunc('day',now() at time zone 'UTC') at time zone 'UTC'
+          and credential_source <> 'tenant' and ($1::uuid is null or org_id=$1)
+          and ($2='*' or provider=$2) and ($3='*' or feature=$3)`,
+          [limit.org_id,limit.provider,limit.feature]);
+        if (count.rows[0].calls >= limit.daily_requests)
+          throw new ApiUsageBlockedError("API_BUDGET: The platform's daily request allowance has been reached. New paid work is on hold. Ask the platform administrator to review API Usage limits, or wait until midnight UTC.");
+      }
       if (limit.paused)
         throw new ApiUsageBlockedError(
           "API use is paused. Ask your administrator to resume it in API Usage.",
@@ -131,7 +171,7 @@ export async function beginUsage(
         createHash("sha256").update(identity.value).digest("hex"),
         identity.accepted,
         identity.source === "tenant" ? "not_billable" : "review",
-        identity.source === "platform" ? (reservation ?? "0") : "0",
+        reservation ?? "0",
       ],
     );
     if (identity.source === "platform")
@@ -189,8 +229,9 @@ export async function metered<T>(
   feature: string,
   execute: () => Promise<T>,
   describe: (value: T) => UsageResult = () => ({ units: { requests: 1 } }),
+  options: { complex?: boolean } = {},
 ): Promise<T> {
-  const id = await beginUsage(identity, provider, service, feature);
+  const id = await beginUsage(identity, provider, service, feature, options);
   let value: T;
   try {
     value = await execute();
