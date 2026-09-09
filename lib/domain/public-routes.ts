@@ -136,6 +136,7 @@ export const HOME_SECTIONS: { hash: string; label: string; summary: string }[] =
 export const DISALLOWED_PREFIXES: { prefix: string; why: string }[] = [
   // The signed-in application. A crawler that requests these is redirected to
   // the login page, which spends crawl budget to arrive nowhere.
+  { prefix: "/activity", why: "Private tenant activity history." },
   { prefix: "/today", why: "Signed-in application." },
   { prefix: "/workbench", why: "Signed-in application." },
   { prefix: "/pipeline", why: "Signed-in application." },

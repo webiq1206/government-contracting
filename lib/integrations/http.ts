@@ -15,6 +15,7 @@ export class HttpError extends Error {
 }
 
 export interface FetchJsonOptions extends RequestInit {
+  observed?: boolean;
   metering?: { envKey: string; value: string; provider: string; service: string; feature: string; orgId?: string };
   timeoutMs?: number;
   query?: Record<string, string | number | boolean | undefined>;
@@ -24,7 +25,13 @@ export async function fetchJson<T = unknown>(
   url: string,
   opts: FetchJsonOptions = {}
 ): Promise<T> {
-  const { metering, ...plain } = opts;
+  const { metering, observed, ...plain } = opts;
+  const host = new URL(url).hostname;
+  const publicProvider: Record<string,string> = { 'api.sam.gov':'SAM.gov', 'api.usaspending.gov':'USAspending', 'api.bls.gov':'BLS' };
+  if(!metering && !observed && publicProvider[host]) {
+    const { observePublicService } = await import('../api-usage/public-services');
+    return observePublicService(publicProvider[host],new URL(url).pathname,()=>fetchJson<T>(url,{...plain,observed:true}));
+  }
   if (metering) {
     const identity = await requestIdentity(metering.envKey, metering.value, metering.orgId);
     return metered(identity, metering.provider, metering.service, metering.feature,

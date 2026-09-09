@@ -78,6 +78,7 @@ const SECTIONS: Section[] = [
     key: "work",
     label: "Work",
     items: [
+      { href: "/activity", label: "Activity Ledger", hint: "Every recorded action, message and result" },
       { href: "/today", label: "Today", hint: "Everything that needs you" },
       {
         href: "/workbench",

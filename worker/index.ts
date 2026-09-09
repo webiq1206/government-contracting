@@ -26,6 +26,7 @@ import { ensureOperatorFromEnv } from "../lib/operator-bootstrap";
 import { hydrateIntegrationEnv } from "../lib/integration-settings";
 import { ALL_AGENTS } from "../lib/agents/registry";
 import { runAgent, shouldQueueRetry } from "../lib/agents/runner";
+import { startUsageBilling } from "./usage-billing";
 import { startScheduler } from "./scheduler";
 import { closeScraperBrowser } from "../lib/integrations/scrapers";
 import { bootStep, retryForever, withTimeout } from "../lib/boot-step";
@@ -251,6 +252,7 @@ async function main() {
   console.log(`[worker] registered ${ALL_AGENTS.length} handlers`);
 
   const stopScheduler = startScheduler();
+  const stopUsageBilling = startUsageBilling();
 
   async function shutdown(signal: string) {
     console.log(`[worker] ${signal} received, shutting down...`);
@@ -260,6 +262,7 @@ async function main() {
     clearInterval(recoveryTimer);
     stopHeartbeat();
     stopScheduler();
+    stopUsageBilling();
     server.close();
     await stopQueue().catch(() => {});
     await closeScraperBrowser().catch(() => {});

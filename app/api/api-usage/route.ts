@@ -17,41 +17,73 @@ export async function GET(req: Request) {
   if (!auth.organizationId)
     return NextResponse.json({ error: "No account found." }, { status: 403 });
   try {
-    const [usage, preferences, budget] = await Promise.all([
-      readUsage(new URL(req.url).searchParams, auth.organizationId),
-      query(
-        "select env_key,source,accepted_at::text,updated_at::text from api_usage_preferences where org_id=$1",
-        [auth.organizationId],
-      ),
-      readBudget(auth.organizationId),
-    ]);
+    const [usage, preferences, adjustments, billing, budget] =
+      await Promise.all([
+        readUsage(new URL(req.url).searchParams, auth.organizationId),
+        query(
+          "select env_key,source,accepted_at::text,updated_at::text from api_usage_preferences where org_id=$1",
+          [auth.organizationId],
+        ),
+        query(
+          "select a.id,a.kind,a.amount_cents::text,a.reason,a.status,a.settlement_status,a.stripe_credit_note_id,a.created_at::text,b.stripe_invoice_id from api_usage_adjustments a join api_usage_invoice_batches b on b.id=a.batch_id where a.org_id=$1 order by a.created_at desc limit 50",
+          [auth.organizationId],
+        ),
+        query(
+          "select automatic from api_usage_billing_settings where org_id=$1",
+          [auth.organizationId],
+        ),
+        readBudget(auth.organizationId),
+      ]);
     const providers = await Promise.all(
       BILLABLE_PROVIDERS.map(async (def) => {
         try {
-        if (!isAllowedKey(def.key)) throw new Error("Unsupported key");
-        const key = await orgApiKey(def.key, auth.organizationId!);
-        const identity = key
-          ? await requestIdentity(def.key, key, auth.organizationId!)
-          : null;
-        return {
-          provider: def.provider,
-          key: def.key,
-          active: identity?.source ?? "none",
-          extraFields: def.extraFields ?? [],
-          platformAvailable: (
-            await Promise.all(
-              [def.key, ...(def.extraFields ?? []).map((f) => f.key)].map(
-                platformApiValue,
-              ),
-            )
-          ).every(Boolean),
-          preference: preferences.find((p) => p.env_key === def.key) ?? null,
-        };
-        } catch { return {provider:def.provider,key:def.key,active:"needs_attention",extraFields:def.extraFields??[],platformAvailable:false,error:"This connection needs attention. Reconnect your API key below."}; }
+          if (!isAllowedKey(def.key)) throw new Error("Unsupported key");
+          const key = await orgApiKey(def.key, auth.organizationId!);
+          const identity = key
+            ? await requestIdentity(def.key, key, auth.organizationId!)
+            : null;
+          return {
+            provider: def.provider,
+            key: def.key,
+            active: identity?.source ?? "none",
+            extraFields: def.extraFields ?? [],
+            platformAvailable: (
+              await Promise.all(
+                [def.key, ...(def.extraFields ?? []).map((f) => f.key)].map(
+                  platformApiValue,
+                ),
+              )
+            ).every(Boolean),
+            preference: preferences.find((p) => p.env_key === def.key) ?? null,
+          };
+        } catch {
+          return {
+            provider: def.provider,
+            key: def.key,
+            active: "needs_attention",
+            extraFields: def.extraFields ?? [],
+            platformAvailable: false,
+            error:
+              "This connection needs attention. Reconnect your API key below.",
+          };
+        }
       }),
     );
-    return NextResponse.json({ ...usage, providers, budget, canManageBudget: can(auth.orgRole, "manage_integrations") && !auth.impersonatedBy });
-  } catch {
+    return NextResponse.json({
+      ...usage,
+      providers,
+      adjustments,
+      budget,
+      canManageBudget:
+        can(auth.orgRole, "manage_integrations") && !auth.impersonatedBy,
+      automaticBilling: billing[0]?.automatic ?? false,
+    });
+  } catch (error) {
+    if ((error as Error)?.name === "UsageFilterError")
+      return NextResponse.json(
+        { error: (error as Error).message },
+        { status: 400 },
+      );
     return NextResponse.json(
       { error: "Usage could not be loaded. Please retry." },
       { status: 503 },
@@ -66,9 +98,18 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     if (body.action === "budget") {
-      try { await saveBudget(auth.organizationId, auth.email, body.budget); }
-      catch { return NextResponse.json({error:"Your spending limits were not saved. Check the amounts and try again."}, {status:400}); }
-      return NextResponse.json({ok:true});
+      try {
+        await saveBudget(auth.organizationId, auth.email, body.budget);
+      } catch {
+        return NextResponse.json(
+          {
+            error:
+              "Your spending limits were not saved. Check the amounts and try again.",
+          },
+          { status: 400 },
+        );
+      }
+      return NextResponse.json({ ok: true });
     }
     const def = BILLABLE_PROVIDERS.find((d) => d.key === body.key);
     if (!def || !["platform", "tenant"].includes(body.source))

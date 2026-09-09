@@ -28,6 +28,7 @@ import { join } from "node:path";
 const ROOTS = ["lib", "app/api", "worker", "scripts"];
 
 const ALLOWED = new Map<string, string>([
+  ["lib/api-usage/reconciliation.ts", "Billing reports from fixed Anthropic and Twilio HTTPS origins. IDs are validated or encoded; callers cannot choose the destination."],
   [
     "lib/integrations/guarded-fetch.ts",
     "The guard itself. Something has to make the actual request.",
