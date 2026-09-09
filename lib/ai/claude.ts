@@ -195,6 +195,9 @@ export interface ClaudeUsage {
 }
 
 export interface CompleteOptions {
+  /** Interactive checks can use a short budget without shortening agent work. */
+  timeoutMs?: number;
+  maxRetries?: number;
   system?: string; // extra system text appended after the Company Profile
   maxTokens?: number;
   temperature?: number;
@@ -348,7 +351,9 @@ export async function complete(
   let res: Anthropic.Messages.Message;
   try {
     res = await anthropic.messages.create(
-      body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming
+      body as unknown as Anthropic.Messages.MessageCreateParamsNonStreaming,
+      { ...(opts.timeoutMs != null ? { timeout: opts.timeoutMs } : {}),
+        ...(opts.maxRetries != null ? { maxRetries: opts.maxRetries } : {}) }
     );
   } catch (err) {
     const cause = describeClaudeFailure(err);

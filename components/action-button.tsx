@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/toaster";
+import { requestAction, ACTION_UNCONFIRMED } from "@/lib/client/action-request";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
 interface ActionButtonProps {
@@ -73,6 +74,7 @@ export function ActionButton({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [asking, setAsking] = useState(false);
+  const inFlight = useRef<AbortController | null>(null);
   const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function clearDoneTimer() {
@@ -91,25 +93,34 @@ export function ActionButton({
     setLoading(false);
     setError(null);
     setDone(false);
-    return clearDoneTimer;
+    return () => {
+      clearDoneTimer();
+      inFlight.current?.abort();
+      inFlight.current = null;
+    };
   }, [endpoint, method, bodyKey]);
 
   async function go() {
-    if (loading) return; // double-click guard
+    if (inFlight.current) return;
+    const controller = new AbortController();
+    inFlight.current = controller;
+    const timer = setTimeout(() => controller.abort(), 60_000);
     setAsking(false);
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(endpoint, {
+      const result = await requestAction(endpoint, {
         method,
         headers: body ? { "Content-Type": "application/json" } : undefined,
         body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error ?? "Action failed");
+      if (inFlight.current !== controller) return;
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
+      const data = result.data;
       onDone?.(data);
       if (toast) push(toast);
       if (successText) {
@@ -121,10 +132,14 @@ export function ActionButton({
         }, 6000);
       }
       if (refresh) router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
+    } catch {
+      if (inFlight.current === controller) setError(ACTION_UNCONFIRMED);
     } finally {
-      setLoading(false);
+      clearTimeout(timer);
+      if (inFlight.current === controller) {
+        inFlight.current = null;
+        setLoading(false);
+      }
     }
   }
 
@@ -159,7 +174,9 @@ export function ActionButton({
           children
         )}
       </button>
-      {error && <span className="mt-1 max-w-[16rem] text-xs text-risk">{error}</span>}
+      {error && <span role="alert" className="mt-1 max-w-[16rem] text-xs text-risk">{error}{" "}
+        <button type="button" className="min-h-11 underline" onClick={() => router.refresh()}>Check current status</button>
+      </span>}
       {done && !error && (
         <span aria-live="polite" className="mt-1 max-w-[16rem] text-xs text-pursue">
           ✓ {successText}

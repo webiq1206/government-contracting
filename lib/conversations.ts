@@ -403,61 +403,38 @@ export async function conversationExists(orgId: string, threadKey: string): Prom
  */
 export async function inboxNeedsReplyCount(): Promise<number> {
   const orgId = await currentOrg();
-  const rows = await query<{
-    last_at: string | null;
-    last_genuine_inbound_at: string | null;
-    last_outbound_at: string | null;
-    last_outbound_delivery_state: string | null;
-    last_outbound_delivery_detail: string | null;
-    last_outbound_opened_at: string | null;
-    last_outbound_clicked_at: string | null;
-    last_outbound_replied_at: string | null;
-    follow_up_at: string | null;
-    resolved_at: string | null;
-  }>(
+  // Return a single count instead of transferring every conversation's facts
+  // into the web process just to paint one badge. These predicates follow the
+  // verdict's precedence: current resolution, failed delivery, then our turn.
+  const row = await queryOne<{ n: number }>(
     `with msg as (
-       select c.*, ${THREAD_KEY_SQL} as thread_key
+       select c.created_at, c.direction, c.subject, c.delivery_state,
+              ${THREAD_KEY_SQL} as thread_key
          from communications c
         where c.org_id = $1 and c.channel = 'email'
-     ),
-     agg as (
-       select m.thread_key,
-              max(m.created_at) as last_at,
+     ), agg as (
+       select m.thread_key, max(m.created_at) as last_at,
               max(m.created_at) filter (
                 where m.direction = 'inbound' and coalesce(m.subject,'') !~* $2
               ) as last_genuine_inbound_at,
-              max(m.created_at) filter (where m.direction = 'outbound') as last_outbound_at,
-              min(m.follow_up_at) filter (
-                where m.direction = 'outbound' and m.replied_at is null
-              ) as follow_up_at
-         from msg m
-        group by m.thread_key
-     ),
-     newest_out as (
-       select distinct on (m.thread_key)
-              m.thread_key, m.delivery_state, m.delivery_detail,
-              m.opened_at, m.clicked_at, m.replied_at
-         from msg m
-        where m.direction = 'outbound'
+              max(m.created_at) filter (where m.direction = 'outbound') as last_outbound_at
+         from msg m group by m.thread_key
+     ), newest_out as (
+       select distinct on (m.thread_key) m.thread_key, m.delivery_state
+         from msg m where m.direction = 'outbound'
         order by m.thread_key, m.created_at desc
      )
-     select a.last_at::text as last_at,
-            a.last_genuine_inbound_at::text as last_genuine_inbound_at,
-            a.last_outbound_at::text as last_outbound_at,
-            no2.delivery_state as last_outbound_delivery_state,
-            no2.delivery_detail as last_outbound_delivery_detail,
-            no2.opened_at::text as last_outbound_opened_at,
-            no2.clicked_at::text as last_outbound_clicked_at,
-            no2.replied_at::text as last_outbound_replied_at,
-            a.follow_up_at::text as follow_up_at,
-            cf.resolved_at::text as resolved_at
+     select count(*)::int as n
        from agg a
        left join newest_out no2 on no2.thread_key = a.thread_key
-       left join conversation_flags cf on cf.org_id = $1 and cf.thread_key = a.thread_key`,
+       left join conversation_flags cf on cf.org_id = $1 and cf.thread_key = a.thread_key
+      where (cf.resolved_at is null or cf.resolved_at < a.last_at)
+        and coalesce(no2.delivery_state, 'sent') not in ('failed', 'bounced')
+        and a.last_genuine_inbound_at is not null
+        and (a.last_outbound_at is null or a.last_genuine_inbound_at > a.last_outbound_at)`,
     [orgId, AUTOMATIC_SUBJECT_SQL]
   );
-
-  return rows.filter((r) => factsFrom(r).state === "needs_reply").length;
+  return row?.n ?? 0;
 }
 
 /**

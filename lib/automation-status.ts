@@ -21,11 +21,13 @@
  * catch the failure and display an unavailable-state warning instead.
  */
 import { query } from "./db";
+import { requestCache as cache } from "@/lib/request-cache";
 import { resolveTenantOrgId } from "./tenant";
-import { getAutomationState } from "./app-settings";
+import { getAutomationState, getPlatformAutomationState } from "./app-settings";
+import { currentOrgId, runWithOrg } from "./tenant-context";
 import { readWorkerHeartbeat } from "./worker-heartbeat";
 import { orgHasKey } from "./integration-keys";
-import { assessAutomation, type AutomationHealth, type RunFact } from "./domain/automation-health";
+import { assessAutomation, type AutomationHealth, type RunFact, type IncidentCause } from "./domain/automation-health";
 import { ROSTER } from "./agents/registry";
 
 /** agent name -> the label an operator would recognise. */
@@ -44,8 +46,18 @@ interface LogRow {
 
 export async function automationHealth(orgId?: string): Promise<AutomationHealth> {
   const org = orgId ?? (await resolveTenantOrgId());
+  if (currentOrgId() && currentOrgId() !== org) {
+    throw new Error("Automation health tenant does not match the active organization.");
+  }
+  return healthForOrg(org);
+}
 
-  const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog] = await Promise.all([
+// Share one assessment between shell, Today and Automation Health within a
+// render. No process-wide caching of tenant facts or provider failures.
+const healthForOrg = cache(async (org: string): Promise<AutomationHealth> => {
+  return runWithOrg(org, async () => {
+
+  const [paused, heartbeat, totals, errors, latestOk, stalled, configured, backlog, platform, recovered] = await Promise.all([
     getAutomationState().then((s) => s.paused),
     readWorkerHeartbeat(),
     query<{ runs: number; errors: number }>(
@@ -104,7 +116,16 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
     // analyses or drafts, so its absence is the honest definition of "not
     // configured" rather than a fault to report.
     orgHasKey("ANTHROPIC_API_KEY", org),
-    queueBacklogDepth(),
+    queueBacklogDepth(org),
+    getPlatformAutomationState(),
+    query<{ cause: IncidentCause; recovered_at: string }>(
+      `select cause, max(recovered_at)::text as recovered_at
+         from automation_incidents
+        where org_id = $1 and state = 'recovered'
+          and recovered_at > now() - interval '${WINDOW}'
+        group by cause`,
+      [org]
+    ),
   ]);
 
   const rows = [...errors, ...latestOk];
@@ -118,6 +139,8 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
 
   return assessAutomation({
     paused,
+    platformPaused: platform.paused,
+    recoveredThrough: Object.fromEntries(recovered.map((r) => [r.cause, r.recovered_at])),
     heartbeatAt: heartbeat?.updatedAt ?? null,
     phase: heartbeat?.phase ?? null,
     runs,
@@ -127,14 +150,15 @@ export async function automationHealth(orgId?: string): Promise<AutomationHealth
     windowRuns: totals.runs,
     windowErrors: totals.errors,
   });
-}
+  });
+});
 
 /**
  * Jobs waiting to be picked up. Counted from pg-boss when that is the
  * backend. Null when the table is not there or Redis is in use, because
  * reporting those as zero is how a growing backlog stays invisible.
  */
-export async function queueBacklogDepth(): Promise<number | null> {
+export async function queueBacklogDepth(orgId?: string): Promise<number | null> {
   const { config } = await import("./config");
   if (config.queue.backend !== "pgboss") return null;
   const { queryOne } = await import("./db");
@@ -143,7 +167,9 @@ export async function queueBacklogDepth(): Promise<number | null> {
   );
   if (!exists?.job) return null;
   const row = await queryOne<{ n: number }>(
-    `select count(*)::int as n from pgboss.job where state in ('created', 'retry')`
+    `select count(*)::int as n from pgboss.job where state in ('created', 'retry')
+      ${orgId ? "and data->>'enqueuedByOrgId' = $1" : ""}`,
+    orgId ? [orgId] : []
   );
   return row?.n ?? 0;
 }

@@ -17,11 +17,18 @@ import { currentOrgId, runWithOrg } from "./tenant-context";
  * genuinely long query is cancelled in Postgres instead of being abandoned
  * while it keeps running.
  *
- * Two minutes is far above anything this application asks of a single query
- * (the heaviest sweeps are well under a second) and far below "nobody notices
- * until morning". Migrations get their own, longer budget: see lib/migrate.ts.
+ * Web requests default to fifteen seconds so stalled reads release capacity.
+ * Background work retains its two-minute ceiling. Migrations get their own,
+ * longer budget: see lib/migrate.ts.
  */
-const QUERY_TIMEOUT_MS = Number(process.env.PG_QUERY_TIMEOUT_MS ?? 120_000);
+// Interactive requests must not occupy scarce connections for two minutes.
+// The worker and migration budgets remain separate; explicit operator limits
+// still take precedence. Invalid settings cannot silently disable deadlines.
+const configuredTimeout = Number(process.env.PG_QUERY_TIMEOUT_MS ??
+  (process.env.BROSTCO_PROCESS_ROLE === "web" ? process.env.PG_WEB_QUERY_TIMEOUT_MS ?? 15_000 : 120_000));
+const QUERY_TIMEOUT_MS = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+  ? configuredTimeout
+  : process.env.BROSTCO_PROCESS_ROLE === "web" ? 15_000 : 120_000;
 
 // Postgres NUMERIC/DECIMAL comes through pg as a STRING by default (to preserve
 // arbitrary precision). Every call site that does `.toFixed()` / arithmetic on a

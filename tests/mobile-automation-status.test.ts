@@ -58,6 +58,6 @@ describe("the mobile automation strip", () => {
      * is fine.
      */
     const toggle = SRC.slice(SRC.indexOf("async function handleToggleAutomation"));
-    expect(toggle.slice(0, 1200)).toContain("router.refresh()");
+    expect(toggle.slice(0, toggle.indexOf("const togglePending"))).toContain("router.refresh()");
   });
 });

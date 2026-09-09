@@ -157,7 +157,7 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function AutomationIncidents({ health }: { health: AutomationHealth }) {
+export function AutomationIncidents({ health, showDiagnostics = false }: { health: AutomationHealth; showDiagnostics?: boolean }) {
   if (health.incidents.length === 0) return null;
   return (
     <section aria-labelledby="automation-incidents" className="space-y-3">
@@ -200,12 +200,12 @@ export function AutomationIncidents({ health }: { health: AutomationHealth }) {
             </p>
             {incident.spec.repairHref && (
               <Link href={incident.spec.repairHref} className="btn-ghost shrink-0 text-xs">
-                Open Integrations
+                {incident.cause === "integration_auth" ? "Reconnect mailbox" : incident.cause === "provider_credit" ? "Review AI billing" : "Complete setup"}
               </Link>
             )}
           </div>
 
-          {incident.sample && (
+          {showDiagnostics && incident.sample && (
             /* The raw error is kept, not hidden: an operator does not need it
                and a support engineer cannot work without it. */
             <details className="mt-3">

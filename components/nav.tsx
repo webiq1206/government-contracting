@@ -222,7 +222,7 @@ export function Nav({
   automationState,
   automationHeadline,
   automationDetail,
-  automationPaused = false,
+  automationPaused,
   isPlatformAdmin = false,
 }: {
   email: string;
@@ -260,6 +260,7 @@ export function Nav({
   const [togglingAutomation, setTogglingAutomation] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [automationError, setAutomationError] = useState<string | null>(null);
   const counts = { review: reviewCount, calls: callCount };
 
   useEffect(() => {
@@ -297,7 +298,7 @@ export function Nav({
     setLoggingOut(true);
     setLogoutError(null);
     try {
-      const res = await fetch("/api/auth/logout", { method: "POST" });
+      const res = await fetch("/api/auth/logout", { method: "POST", signal: AbortSignal.timeout(20_000) });
       // Navigating on a failed request is the worst outcome: the session is
       // still live but the screen says otherwise, so the next visit silently
       // lands back in the app as a user who believes they signed out.
@@ -319,8 +320,9 @@ export function Nav({
   }
 
   async function handleToggleAutomation() {
-    if (togglingAutomation) return;
+    if (togglingAutomation || automationPaused === undefined) return;
     setTogglingAutomation(true);
+    setAutomationError(null);
     const next = !localPaused;
     setLocalPaused(next);
     try {
@@ -328,8 +330,14 @@ export function Nav({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paused: next }),
+        signal: AbortSignal.timeout(20_000),
       });
-      if (!res.ok) setLocalPaused(!next);
+      if (!res.ok) {
+        setLocalPaused(!next);
+        setAutomationError(res.status === 403
+          ? "Your role cannot change automation. Ask an account owner or administrator to update it."
+          : "The automation change was not confirmed. Open Automation Health to check the current state before trying again.");
+      }
       /*
        * Refresh so the authoritative health state catches up.
        *
@@ -342,6 +350,7 @@ export function Nav({
       else router.refresh();
     } catch {
       setLocalPaused(!next);
+      setAutomationError("The automation change was not confirmed. Open Automation Health to check the current state before trying again.");
     } finally {
       setTogglingAutomation(false);
     }
@@ -363,19 +372,19 @@ export function Nav({
     ? localPaused
       ? "paused"
       : "healthy"
-    : (automationState ?? (localPaused ? "paused" : "healthy"));
+    : (automationState ?? (localPaused ? "paused" : "degraded"));
   const mobileHeadline = togglePending
     ? localPaused
       ? "Pausing automation"
       : "Resuming automation"
     : (automationHeadline ??
-      (localPaused ? "Automation paused" : "Automation running"));
+      (localPaused ? "Automation paused" : "Automation status unavailable"));
   const mobileDetail = togglePending
     ? "Saving that now"
     : (automationDetail ??
       (localPaused
         ? "No agents, emails, or jobs will run"
-        : "Agents and scheduled jobs are live"));
+        : "Open Automation Health to check whether work is running"));
 
   const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
   const sections = SECTIONS.filter((sec) => !sec.adminOnly || isPlatformAdmin);
@@ -541,7 +550,7 @@ export function Nav({
             <button
               type="button"
               onClick={handleToggleAutomation}
-              disabled={togglingAutomation}
+              disabled={togglingAutomation || automationPaused === undefined}
               className={`shrink-0 text-xs disabled:opacity-50 ${
                 localPaused ? "btn-primary" : "shell-ghost"
               }`}
@@ -549,6 +558,12 @@ export function Nav({
               {togglingAutomation ? "…" : localPaused ? "Resume" : "Pause"}
             </button>
           </div>
+          {automationError && (
+            <p role="alert" className="mt-2 text-sm text-risk">
+              {automationError}{" "}
+              <Link href="/agents" className="underline">Check automation</Link>
+            </p>
+          )}
         </div>
 
         <div className="shrink-0 space-y-1.5 px-3 pb-2 pt-3 lg:px-4 lg:pt-0">

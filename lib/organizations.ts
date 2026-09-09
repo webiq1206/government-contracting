@@ -99,7 +99,7 @@ export async function getOrgForUser(userId: string): Promise<Organization | null
        from organizations o
        join organization_members m on m.org_id = o.id
       where m.user_id = $1
-      order by m.created_at asc
+      order by m.created_at asc, m.org_id asc
       limit 1`,
     [userId]
   );
@@ -125,7 +125,7 @@ export async function getOrgRoleForUser(userId: string): Promise<string | null> 
     `select m.role
        from organization_members m
       where m.user_id = $1
-      order by m.created_at asc
+      order by m.created_at asc, m.org_id asc
       limit 1`,
     [userId]
   );

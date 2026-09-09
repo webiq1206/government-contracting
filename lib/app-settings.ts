@@ -82,7 +82,13 @@ export async function getAutomationState(): Promise<AutomationState> {
   if (hit && Date.now() - hit.at < STATE_CACHE_MS) {
     return hit.state;
   }
-  const v = await getSetting<Partial<AutomationState>>(AUTOMATION_KEY, AUTOMATION_DEFAULT);
+  // The key already resolved the tenant. Do not resolve the entire session a
+  // second time for this same setting, especially on uncached API requests.
+  const row = await queryOne<{ value_json: Partial<AutomationState> }>(
+    `select value_json from app_settings where key = $1`,
+    [cacheKey]
+  );
+  const v = row?.value_json ?? AUTOMATION_DEFAULT;
   const state: AutomationState = {
     paused: v.paused === true,
     changed_at: v.changed_at ?? null,

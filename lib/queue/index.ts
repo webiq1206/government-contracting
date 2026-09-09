@@ -82,7 +82,14 @@ export async function getQueue(): Promise<Queue> {
       config.queue.backend === "bullmq"
         ? await (await import("./bullmq")).createBullQueue()
         : await (await import("./pgboss")).createPgBossQueue();
-    await created.start();
+    try {
+      await created.start();
+    } catch (error) {
+      // Failed initialization can still own sockets and timers. Release them
+      // before another attempt; otherwise each retry adds another queue pool.
+      await created.stop().catch(() => {});
+      throw error;
+    }
     if (generation !== _generation) {
       // Someone gave up on this attempt and started another one. Leaving this
       // backend connected would leave a second consumer polling the queue.
