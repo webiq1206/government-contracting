@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/roles";
 import { requestCache as cache } from "@/lib/request-cache";
 import type { SessionUser } from "@/lib/auth";
 import { Nav } from "@/components/nav";
@@ -53,6 +54,7 @@ export async function DashboardNav({ user }: { user: SessionUser }) {
   return <Nav email={user.email} reviewCount={counts.review} callCount={counts.callQueue}
     automationState={health?.state} automationHeadline={health?.headline ?? "Automation status unavailable"}
     automationDetail={health?.detail} automationPaused={automation?.paused}
+    canPauseAutomation={!user.impersonatedBy && can(user.orgRole, "pause_automation")}
     isPlatformAdmin={!user.impersonatedBy && isPlatformAdmin(user.email)} />;
 }
 

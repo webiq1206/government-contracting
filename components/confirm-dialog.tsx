@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 /**
@@ -109,9 +110,9 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  return (
+  const dialog = (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 lg:items-center lg:p-6"
+      className="fixed inset-0 z-[90] flex items-end justify-center bg-black/40 p-0 lg:items-center lg:p-6"
       // A click on the backdrop cancels, which is what people expect and what
       // Escape does. It never confirms.
       onMouseDown={(e) => {
@@ -152,6 +153,8 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+  // Escape clipping and stacking contexts, including an open navigation menu.
+  return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);
 }
 
 /**

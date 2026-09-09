@@ -84,6 +84,7 @@ export function Nav({
   automationDetail,
   automationPaused,
   isPlatformAdmin = false,
+  canPauseAutomation = false,
 }: {
   email: string;
   reviewCount: number;
@@ -104,6 +105,7 @@ export function Nav({
   automationPaused?: boolean;
   /** Whether to show the platform-owner tools group. */
   isPlatformAdmin?: boolean;
+  canPauseAutomation?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -341,7 +343,7 @@ export function Nav({
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
         />
 
-        {localPaused && (
+        {localPaused && canPauseAutomation && (
           <button
             type="button"
             onClick={handleToggleAutomation}
@@ -429,7 +431,7 @@ export function Nav({
               <p className="text-sm font-medium text-foreground">{mobileHeadline}</p>
               <p className="text-[11px] text-muted-foreground">{mobileDetail}</p>
             </div>
-            <button
+            {canPauseAutomation && <button
               type="button"
               onClick={handleToggleAutomation}
               disabled={togglingAutomation || automationPaused === undefined}
@@ -438,7 +440,7 @@ export function Nav({
               }`}
             >
               {togglingAutomation ? "…" : localPaused ? "Resume" : "Pause"}
-            </button>
+            </button>}
           </div>
           {automationError && (
             <p role="alert" className="mt-2 text-sm text-risk">

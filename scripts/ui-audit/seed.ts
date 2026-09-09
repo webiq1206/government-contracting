@@ -2,6 +2,7 @@ import { writeFileSync } from "node:fs";
 import { queryOne, query, closePool } from "../../lib/db";
 import { hashPassword } from "../../lib/auth";
 
+async function main() {
 if (process.env.CI !== "true" || process.env.PGHOST !== "127.0.0.1" || process.env.PGDATABASE !== "brostco_audit" || process.env.USE_REPLIT_DEV_DB !== "true") {
   throw new Error("UI fixtures require the disposable local CI database.");
 }
@@ -16,3 +17,6 @@ try {
   const contract=await queryOne<{id:string}>(`insert into contracts(org_id,opportunity_id,contract_number,award_amount,status) values($1,$2,'AUDIT-001',25000,'active') returning id`,[org!.id,opp!.id]);
   writeFileSync("/tmp/ui-fixtures.json",JSON.stringify({org:org!.id,opportunity:opp!.id,sub:sub!.id,contract:contract!.id}));
 } finally { await closePool(); }
+
+}
+main().catch(error => { console.error(error); process.exitCode=1; });

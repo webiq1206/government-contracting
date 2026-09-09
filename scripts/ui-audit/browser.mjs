@@ -62,6 +62,23 @@ try {
   await page.getByRole('navigation',{name:'Settings sections'}).getByRole('link',{name:'Company',exact:true}).click();
   await page.waitForURL('**/settings/profile');await page.goBack();await page.waitForURL('**/settings/api-usage');
   await ctx.close();
+  const viewer=await browser.newContext({viewport:{width,height},isMobile:device!=="desktop",hasTouch:device!=="desktop"});
+  await viewer.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
+  const v=await viewer.newPage();
+  await v.goto(base+'/login');
+  await v.getByLabel('Email',{exact:true}).fill('ui-viewer@example.test');
+  await v.getByLabel('Password',{exact:true}).fill('DisposableUiAudit123!');
+  await v.getByRole('button',{name:'Sign in',exact:true}).click();
+  await v.waitForURL('**/today',{timeout:60000});
+  await v.goto(base+'/settings/api-usage');
+  assert.equal(await v.getByRole('button',{name:'Change budget',exact:true}).count(),0,'Viewer cannot edit budget');
+  await v.screenshot({path:join(out,device+'-viewer-api-usage.png'),fullPage:true});
+  const denied=await viewer.request.post(base+'/api/automation',{data:{paused:true}});
+  assert.equal(denied.status(),403,'Viewer cannot pause automation');
+  const admin=await v.goto(base+'/admin/accounts');
+  assert.equal(admin.status(),404,'Viewer cannot access platform admin');
+  results.push({device,role:'viewer',route:'/settings/api-usage',status:'permission checks passed',screenshot:device+'-viewer-api-usage.png'});
+  await viewer.close();
  }
 } finally {
  writeFileSync(join(out,'results.json'),JSON.stringify({scope:'Synthetic owner and visitor render checks. Not a production workflow sign-off.',results,failures},null,2));

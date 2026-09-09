@@ -1,3 +1,4 @@
+import { can } from "@/lib/domain/roles";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { currentUser } from "@/lib/auth";
@@ -129,7 +130,8 @@ export default async function AccountLayout({
           automationHeadline={health?.headline}
           automationDetail={health?.detail}
           automationPaused={automation.paused}
-          isPlatformAdmin={!user.impersonatedBy && isPlatformAdmin(user.email)}
+          canPauseAutomation={!user.impersonatedBy && can(user.orgRole, "pause_automation")}
+    isPlatformAdmin={!user.impersonatedBy && isPlatformAdmin(user.email)}
         />
         <main className="page-main min-h-0 min-w-0 flex-1 bg-background text-foreground">
           {user.impersonatedBy && (
