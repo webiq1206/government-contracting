@@ -94,7 +94,7 @@ describe("the dialog that replaced them", () => {
     expect(src).toContain('role="dialog"');
     expect(src).toContain('e.key === "Escape"');
     // The half people forget: focus going back where it came from.
-    expect(src).toContain("opener.current?.focus?.()");
+    expect(src).toContain("opener.current.focus({ preventScroll: true })");
   });
 
   it("names the act rather than saying OK", () => {

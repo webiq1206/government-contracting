@@ -3,6 +3,7 @@
 import { PendingLink as Link } from "@/components/pending-link";
 import { useMenuIsolation } from "./menu-isolation";
 import { mobileDestination } from "@/lib/navigation";
+import { useKeyboardViewport } from "./use-keyboard-viewport";
 import { usePathname } from "next/navigation";
 import {
   CallsIcon,
@@ -69,6 +70,7 @@ export function MobileTabBar({
   todayCount?: number;
 }) {
   const pathname = usePathname();
+  const keyboard = useKeyboardViewport();
   const { open: menuOpen } = useMenuIsolation();
   const counts = {
     // Today's badge is the queue total: everything pending, not one slice.
@@ -88,6 +90,7 @@ export function MobileTabBar({
   return (
     <nav
       aria-label="Quick navigation"
+      style={keyboard ? { display: "none" } : undefined}
       inert={menuOpen || undefined}
       className="fixed inset-x-0 bottom-0 z-[60] flex border-t border-border/55 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-white/10 lg:hidden"
     >

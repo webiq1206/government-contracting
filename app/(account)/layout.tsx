@@ -1,3 +1,4 @@
+import { AppViewport } from "@/components/app-viewport";
 import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
 import { StreamedNavigation } from "@/components/streamed-navigation";
 import { DashboardNav, DashboardNotices, DashboardTabs } from "@/components/dashboard-shell";
@@ -86,10 +87,7 @@ export default async function AccountLayout({
 
   return (
     <ToastProvider><MenuIsolationProvider>
-      <div
-        data-app-shell
-        className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background lg:flex-row"
-      >
+      <AppViewport>
         <Suspense fallback={null}>
         <StreamedNavigation key={user.organizationId} initial={{ email: user.email, reviewCount: 0, callCount: 0,
           automationHeadline: "Checking automation", automationDetail: "Live status is still loading. You can use the navigation now.",
@@ -108,7 +106,7 @@ export default async function AccountLayout({
           <Suspense fallback={null}><DashboardNotices user={user} /></Suspense>
           {children}
         </ShellMain>
-      </div>
+      </AppViewport>
       <CommandPalette storageScope={user.organizationId} />
       <Suspense fallback={null}>
         <GuideWizard />

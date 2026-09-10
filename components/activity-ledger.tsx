@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import type { ActivityRow } from "@/lib/activity/read";
 const categories = [
   "email",
@@ -36,7 +37,16 @@ type Data = {
   pageSize: number;
 };
 export function ActivityLedger() {
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const params = useSearchParams();
+  const qs = params.toString();
+  const filters = Object.fromEntries(params);
+  const [viewError, setViewError] = useState("");
+  const setFilters = (next: Record<string, string> | ((current: Record<string, string>) => Record<string, string>)) => {
+    const values = typeof next === "function" ? next(filters) : next;
+    const query = new URLSearchParams(Object.entries(values).filter(([, value]) => value)).toString();
+    // Native history retains Next's state and lets Back restore the selected view.
+    if (query !== qs) history.pushState(null, "", "/activity" + (query ? "?" + query : ""));
+  };
   const [data, setData] = useState<Data | null>(null),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true);
@@ -46,74 +56,66 @@ export function ActivityLedger() {
     >([]),
     [viewName, setViewName] = useState("");
   useEffect(() => {
-    setFilters(Object.fromEntries(new URLSearchParams(location.search)));
-  }, []);
-  useEffect(() => {
     if (!data?.viewScope) return;
     try {
-      setSaved(
-        JSON.parse(
-          localStorage.getItem("activity-views:" + data.viewScope) || "[]",
-        ),
-      );
+      const stored: unknown = JSON.parse(localStorage.getItem("activity-views:" + data.viewScope) || "[]");
+      setSaved(Array.isArray(stored) ? stored.filter((entry): entry is { name: string; filters: Record<string, string> } =>
+        entry != null && typeof entry.name === "string" && entry.filters != null && typeof entry.filters === "object" &&
+        !Array.isArray(entry.filters) && Object.values(entry.filters).every(value => typeof value === "string")) : []);
     } catch {
       setSaved([]);
     }
   }, [data?.viewScope]);
-  const qs = new URLSearchParams(
-    Object.entries(filters).filter(([, v]) => v),
-  ).toString();
   useEffect(() => {
     const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new Error("The ledger took too long to load. Try again.")), 20_000);
     setLoading(true);
     setError("");
     fetch("/api/activity?" + qs, { signal: controller.signal })
       .then(async (r) => {
+        if (!r.ok) throw new Error("Your activity could not be loaded. Try again.");
         const body = await r.json();
-        if (!r.ok) throw new Error(body.error);
-        setData(body);
+        if (!controller.signal.aborted) setData(body);
       })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+        if (e.name !== "AbortError") setError("Your activity could not be loaded. Check your connection and try again.");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        clearTimeout(timeout);
+        if (!controller.signal.aborted || controller.signal.reason?.name !== "AbortError") setLoading(false);
       });
-    history.replaceState(null, "", "/activity" + (qs ? "?" + qs : ""));
-    return () => controller.abort();
+    return () => { clearTimeout(timeout); controller.abort(); };
   }, [qs, refresh]);
   const change = (key: string, value: string) =>
     setFilters((f) => ({ ...f, [key]: value, page: "1" }));
+  const persistViews = (next: typeof saved) => {
+    try {
+      localStorage.setItem("activity-views:" + data?.viewScope, JSON.stringify(next));
+      setSaved(next);
+      setViewError("");
+      return true;
+    } catch {
+      setViewError("This browser could not save your view. Your filters still work. You can bookmark this page instead.");
+      return false;
+    }
+  };
   const save = () => {
     if (!viewName.trim()) return;
     const next = [
       ...saved.filter((s) => s.name !== viewName.trim()),
       { name: viewName.trim(), filters },
     ].slice(-12);
-    setSaved(next);
-    localStorage.setItem(
-      "activity-views:" + data?.viewScope,
-      JSON.stringify(next),
-    );
-    setViewName("");
+    if (persistViews(next)) setViewName("");
   };
   return (
     <div className="mx-auto max-w-7xl space-y-5">
-      <div className="rounded-xl border border-border bg-surface p-5">
-        <h2 className="text-lg font-semibold">
-          Everything your account has done
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Follow messages, bid preparation, replies, documents and automation
-          from one place. Expand a record to read what happened. Times use your
-          device’s timezone. Date filters use UTC.
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Historical snapshots show the latest saved state when this ledger was
-          introduced. They do not reconstruct earlier changes. Sent means handed
-          to the email provider; delivered requires delivery evidence.
-        </p>
-      </div>
+      <details className="rounded-lg border border-border bg-surface px-4 py-2">
+        <summary className="cursor-pointer text-sm font-medium">How to read this ledger</summary>
+        <div className="pb-2 text-sm text-muted-foreground">
+          <p className="mt-2">Follow messages, bids, replies, documents and automation. Open a record to see what happened. Times use your device’s timezone; date filters use UTC.</p>
+          <p className="mt-2">Historical snapshots show the latest saved state when this ledger was introduced. They do not reconstruct earlier changes. Sent means handed to the email provider; delivered requires delivery evidence.</p>
+        </div>
+      </details>
       <details className="card"><summary className="cursor-pointer font-semibold">Quick views</summary><div className="mt-3 flex flex-wrap gap-2" aria-label="Quick views">
         {[
           ["All activity", {}],
@@ -272,6 +274,7 @@ export function ActivityLedger() {
         </div></details>
       </div>
       {Object.values(filters).some(Boolean) && <p className="text-xs text-muted-foreground">Current filters: {Object.entries(filters).filter(([,v])=>v).map(([k,v])=>k==="attention"?"Needs attention":`${label(k)}: ${label(v)}`).join(" · ")}</p>}
+      {viewError && <p role="alert" className="text-sm text-risk">{viewError}</p>}
       {saved.length > 0 && (
         <details><summary className="cursor-pointer text-sm">Saved views</summary><div className="flex flex-wrap gap-2">
           {saved.map((s) => (
@@ -280,21 +283,17 @@ export function ActivityLedger() {
               key={s.name}
             >
               <button
-                className="px-3 py-2 text-sm"
+                className="min-h-11 px-3 py-2 text-sm"
                 onClick={() => setFilters(s.filters)}
               >
                 {s.name}
               </button>
               <button
-                className="px-3"
+                className="min-h-11 min-w-11 px-3"
                 aria-label={"Remove saved view " + s.name}
                 onClick={() => {
                   const next = saved.filter((v) => v.name !== s.name);
-                  setSaved(next);
-                  localStorage.setItem(
-                    "activity-views:" + data?.viewScope,
-                    JSON.stringify(next),
-                  );
+                  persistViews(next);
                 }}
               >
                 ×
@@ -315,8 +314,10 @@ export function ActivityLedger() {
         </div>
       ) : (
         <>
+          <details className="rounded-lg border border-border bg-surface px-4 py-2">
+            <summary className="cursor-pointer text-sm font-medium">Activity totals{data && !loading ? ` (${data.summary.total.toLocaleString()} matching records)` : ""}</summary>
           <div
-            className="grid grid-cols-2 gap-3 lg:grid-cols-5"
+            className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5"
             aria-live="polite"
           >
             {[
@@ -342,6 +343,7 @@ export function ActivityLedger() {
             the same item. “Needs attention” finds recorded states; open the
             source to check its current status.
           </p>
+          </details>
           <div aria-busy={loading} className={loading ? "opacity-60" : ""}>
             {data?.rows.map((r) => (
               <details

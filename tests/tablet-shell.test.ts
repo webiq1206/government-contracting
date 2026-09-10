@@ -41,7 +41,8 @@ describe("the shell", () => {
     expect(BAR).not.toContain("md:hidden");
     // Both at once is the failure this pair produces: a tablet with a sidebar
     // AND five tabs, navigating to the same places.
-    expect(SHELL).toContain("lg:flex-row");
+    expect(SHELL).toContain("<AppViewport>");
+    expect(readFileSync("components/app-viewport.tsx", "utf8")).toContain("lg:flex-row");
   });
 
   it("leaves room for the bar for exactly as long as the bar is there", () => {

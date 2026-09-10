@@ -17,7 +17,11 @@ permissions:
 jobs:
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [mobile, tablet, desktop]
     services:
       postgres:
         image: postgres:16
@@ -40,6 +44,7 @@ jobs:
       BROSTCO_PROCESS_ROLE: web
       PLATFORM_ADMIN_EMAILS: ui-owner@example.test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      AUDIT_DEVICE: ${{ matrix.device }}
       NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4
@@ -62,12 +67,12 @@ jobs:
             if curl -fsS http://127.0.0.1:3100/login > /dev/null; then break; fi
             sleep 2
           done
-          timeout 720s node scripts/ui-audit/browser.mjs
+          timeout 900s node scripts/ui-audit/browser.mjs
       - name: Preserve screenshots and results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ui-audit-evidence
+          name: ui-audit-evidence-${{ matrix.device }}
           path: |
             artifacts/ui-audit
             /tmp/ui-server.log

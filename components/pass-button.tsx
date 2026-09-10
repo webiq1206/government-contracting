@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/toaster";
 import { ReasonDialog } from "@/components/confirm-dialog";
@@ -18,23 +18,29 @@ export function PassButton({
   className = "btn-danger coarse:min-h-11 flex-1 text-xs lg:flex-none",
   children = "Pass on this opportunity",
   onDone,
+  role,
 }: {
   opportunityId: string;
   title?: string | null;
   className?: string;
   children?: React.ReactNode;
   onDone?: () => void;
+  role?: "menuitem";
 }) {
   const router = useRouter();
+  const requestPending = useRef(false);
   const { push } = useToast();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function confirm(reason: string) {
+    if (requestPending.current) return;
+    requestPending.current = true;
     setBusy(true);
     try {
       const res = await fetch(`/api/opportunities/${opportunityId}/action`, {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "dismiss", reason }),
       });
@@ -54,8 +60,9 @@ export function PassButton({
       });
       router.refresh();
     } catch {
-      push({ message: "Could not reach the server. Nothing was changed." });
+      push({ message: "The change was not confirmed. Check the opportunity before trying again." });
     } finally {
+      requestPending.current = false;
       setBusy(false);
     }
   }
@@ -64,6 +71,7 @@ export function PassButton({
     <>
       <button
         type="button"
+        role={role}
         className={className}
         onClick={() => setOpen(true)}
         disabled={busy}

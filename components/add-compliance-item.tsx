@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /** Preset categories. Values match the Compliance Monitor's category keys where
@@ -22,6 +22,7 @@ const CATEGORIES: { value: string; label: string }[] = [
  */
 export function AddComplianceItem() {
   const router = useRouter();
+  const requestPending = useRef(false);
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0].value);
@@ -34,11 +35,14 @@ export function AddComplianceItem() {
       setError("Give it a name.");
       return;
     }
+    if (requestPending.current) return;
+    requestPending.current = true;
     setSaving(true);
     setError(null);
     try {
       const res = await fetch("/api/compliance", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ label, category, due_at: dueAt }),
       });
@@ -51,9 +55,10 @@ export function AddComplianceItem() {
       setDueAt("");
       setOpen(false);
       router.refresh();
-    } catch (e) {
-      setError((e as Error).message);
+    } catch {
+      setError("The save was not confirmed. Check the list before trying again. Your entries are still here.");
     } finally {
+      requestPending.current = false;
       setSaving(false);
     }
   }
@@ -99,12 +104,13 @@ export function AddComplianceItem() {
           />
         </label>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button className="btn-primary text-sm" onClick={save} disabled={saving}>
           {saving ? "Adding…" : "Add item"}
         </button>
         <button
           className="btn-ghost text-sm"
+          disabled={saving}
           onClick={() => {
             setOpen(false);
             setError(null);
@@ -112,7 +118,7 @@ export function AddComplianceItem() {
         >
           Cancel
         </button>
-        {error && <span className="text-xs text-risk">{error}</span>}
+        {error && <span role="alert" className="text-xs text-risk">{error}</span>}
       </div>
     </div>
   );

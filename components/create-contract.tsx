@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
  */
 export function CreateContract() {
   const router = useRouter();
+  const requestPending = useRef(false);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,11 +23,14 @@ export function CreateContract() {
   const [end, setEnd] = useState("");
 
   async function save() {
+    if (requestPending.current) return;
+    requestPending.current = true;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/contracts", {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contract_number: number,
@@ -42,8 +46,9 @@ export function CreateContract() {
       }
       router.push(`/contracts/${data.id}`);
     } catch {
-      setError("Could not reach the server. Nothing was saved.");
+      setError("The save was not confirmed. Check your contracts before trying again. Your entries are still here.");
     } finally {
+      requestPending.current = false;
       setBusy(false);
     }
   }
@@ -85,12 +90,12 @@ export function CreateContract() {
             onChange={(e) => setEnd(e.target.value)} />
         </label>
       </div>
-      {error && <p role="status" className="text-xs text-risk">{error}</p>}
+      {error && <p role="alert" className="text-xs text-risk">{error}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn" disabled={busy || !number.trim()} onClick={() => void save()}>
           {busy ? "Saving…" : "Record it"}
         </button>
-        <button type="button" className="btn-ghost" onClick={() => setOpen(false)}>
+        <button type="button" className="btn-ghost" disabled={busy} onClick={() => setOpen(false)}>
           Cancel
         </button>
       </div>

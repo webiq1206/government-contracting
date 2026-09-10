@@ -25,7 +25,8 @@ describe("shared mobile overlays", () => {
     for (const file of files) {
       const source = readFileSync(file, "utf8");
       expect(
-        source.includes("mobile-tab-clearance") ||
+        source.includes("dialog.showModal()") ||
+          source.includes("mobile-tab-clearance") ||
           source.includes("drawer-footer") ||
           source.includes("bottom-[calc(4rem+env(safe-area-inset-bottom))]")
       ).toBe(true);
@@ -48,7 +49,7 @@ describe("shared mobile overlays", () => {
     expect(readFileSync("components/confirm-dialog.tsx", "utf8")).toContain(
       "document.activeElement"
     );
-    expect(html).toContain("max-h-[calc(100dvh-4rem-env(safe-area-inset-bottom))]");
+    expect(html).toContain("max-h-[calc(100dvh-2rem)]");
     expect(html).toContain("overflow-y-auto");
   });
 

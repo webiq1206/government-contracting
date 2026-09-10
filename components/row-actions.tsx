@@ -81,6 +81,7 @@ export function RowActions({
       );
     const frame = window.requestAnimationFrame(() => visibleItems()[0]?.focus());
     function onKey(e: KeyboardEvent) {
+      if (!wrap.current?.contains(e.target as Node)) return;
       if (e.key === "Escape") {
         setMenuOpen(false);
         menuTrigger.current?.focus();
@@ -315,6 +316,7 @@ function MenuItem({
     if (widget.name === "pass") {
       return (
         <PassButton
+          role="menuitem"
           opportunityId={widget.opportunityId}
           title={widget.title}
           className={`${ITEM} text-risk`}

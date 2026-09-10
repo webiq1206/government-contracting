@@ -1,3 +1,4 @@
+import { AppViewport } from "@/components/app-viewport";
 import { MenuIsolationProvider, ShellMain } from "@/components/menu-isolation";
 import { DashboardNav, DashboardNotices, DashboardTabs } from "@/components/dashboard-shell";
 import { redirect } from "next/navigation";
@@ -40,10 +41,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
     <ToastProvider><MenuIsolationProvider>
       {/* fixed inset-0: pin the shell to the visual viewport so the document
           cannot rubber-band past the mobile tab bar. Pages scroll inside main. */}
-      <div
-        data-app-shell
-        className="fixed inset-0 flex flex-col overflow-hidden overscroll-none bg-background lg:flex-row"
-      >
+      <AppViewport>
         <Suspense fallback={null}>
         <StreamedNavigation key={user.organizationId} initial={{ email: user.email, reviewCount: 0, callCount: 0,
           automationHeadline: "Checking automation", automationDetail: "Live status is still loading. You can use the navigation now.",
@@ -62,7 +60,7 @@ export default async function DashLayout({ children }: { children: React.ReactNo
           <Suspense fallback={null}><DashboardNotices user={user} /></Suspense>
           {children}
         </ShellMain>
-      </div>
+      </AppViewport>
       {access === "none" && <TrialExpiredModal />}
       <CommandPalette storageScope={user.organizationId} />
       <Suspense fallback={null}>

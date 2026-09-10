@@ -8,9 +8,9 @@ if (process.env.CI !== "true" || process.env.PGHOST !== "127.0.0.1" || process.e
 }
 try {
   const org = await queryOne<{id:string}>("insert into organizations(name,subscription_status,plan_key,billing_exempt) values('Interface Audit Workspace','active','standard',true) returning id");
-  for (const role of ["owner","viewer"]) {
-    const user = await queryOne<{id:string}>("insert into users(email,password_hash,role,name) values($1,$2,$3,$4) returning id", [`ui-${role}@example.test`,hashPassword("DisposableUiAudit123!"),role === "owner" ? "admin" : "viewer",`Audit ${role}`]);
-    await query("insert into organization_members(org_id,user_id,role) values($1,$2,$3)",[org!.id,user!.id,role]);
+  for (const role of ["owner","tenant-owner","admin","operator","member","viewer"]) {
+    const user = await queryOne<{id:string}>("insert into users(email,password_hash,role,name) values($1,$2,$3,$4) returning id", [`ui-${role}@example.test`,hashPassword("DisposableUiAudit123!"),role === "owner" ? "admin" : role === "viewer" ? "viewer" : "operator",`Audit ${role}`]);
+    await query("insert into organization_members(org_id,user_id,role) values($1,$2,$3)",[org!.id,user!.id,role === "tenant-owner" ? "owner" : role]);
   }
   const opp=await queryOne<{id:string}>(`insert into opportunities(org_id,source,source_id,title,agency,stage,status,score,tier,deadline,human_action_required) values($1,'manual','ui-audit','Facility maintenance and electrical upgrades','Audit Agency','review','open',62,'review',now()+interval '10 days',true) returning id`,[org!.id]);
   const sub=await queryOne<{id:string}>(`insert into subcontractors(org_id,company_name,trade_categories,state,city) values($1,'Sample Electrical Services',array['Electrical'],'ID','Boise') returning id`,[org!.id]);

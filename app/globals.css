@@ -786,3 +786,7 @@ html:has([data-app-shell]) body {
     min-width: 2.75rem !important;
   }
 }
+
+/* Let form fields use the space reclaimed while the on-screen keyboard is open. */
+[data-keyboard-open="true"] .page-main { padding-bottom: 0; }
+[data-app-shell] :is(input, textarea, select, [contenteditable="true"]) { scroll-margin-block: 1rem; }

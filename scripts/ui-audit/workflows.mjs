@@ -1,0 +1,222 @@
+import assert from 'node:assert/strict';
+import { join } from 'node:path';
+
+/** Tests against disposable records only. No worker or provider credentials. */
+export async function auditWorkflows({ page, device, ids, base, out, results, failures, checkpoint }) {
+  const check = async (route, task, run) => {
+    const record = { device, role: 'owner', route, task, status: 'not verified' };
+    try {
+      await page.goto(base + route, { waitUntil: 'networkidle' });
+      await run();
+      record.screenshot = `${device}-workflow-${task}.png`;
+      await page.screenshot({ path: join(out, record.screenshot) });
+      record.status = 'workflow passed in disposable environment';
+      results.push(record);
+    } catch (error) {
+      record.status = 'workflow failed'; record.error = String(error.stack ?? error);
+      record.screenshot = `${device}-workflow-${task}-failed.png`;
+      await page.screenshot({ path: join(out, record.screenshot) }).catch(() => {});
+      failures.push(record);
+    }
+    checkpoint();
+  };
+  await check('/activity', 'activity-history-and-details', async () => {
+    const search = page.getByRole('textbox', { name: 'Search messages, subjects, recipients or opportunities' });
+    await search.fill('Ledger Audit Draft');
+    const heading = page.getByRole('heading', { name: 'Email draft: Ledger Audit Draft', exact: true }).first();
+    await heading.waitFor();
+    await page.getByText('More filters', { exact: true }).click();
+    await page.getByRole('combobox', { name: /^Status/ }).selectOption('failed');
+    await page.getByRole('heading', { name: 'No matching activity', exact: true }).waitFor();
+    await page.goBack({ waitUntil: 'networkidle' });
+    await heading.waitFor();
+    assert.equal(await search.inputValue(), 'Ledger Audit Draft');
+    assert.equal(await page.getByRole('combobox', { name: /^Status/ }).inputValue(), '');
+    await heading.click();
+    await page.getByText('Synthetic wording for the ledger regression.', { exact: true }).first().waitFor();
+    await page.goForward({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'No matching activity', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+    await heading.waitFor();
+  });
+  await check('/activity', 'activity-storage-and-network-recovery', async () => {
+    await page.getByText('Export or save this view', { exact: true }).click();
+    await page.getByLabel('Name this view', { exact: true }).fill('Audit saved view');
+    // A denied browser storage operation must not break the ledger.
+    await page.evaluate(() => { window.auditOriginalSetItem = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new DOMException('Storage unavailable', 'SecurityError'); }; });
+    try {
+      await page.getByRole('button', { name: 'Save view on this device', exact: true }).click();
+      await page.getByRole('alert').filter({ hasText: 'This browser could not save your view' }).waitFor();
+      assert.equal(await page.getByLabel('Name this view', { exact: true }).inputValue(), 'Audit saved view');
+    } finally {
+      await page.evaluate(() => { Storage.prototype.setItem = window.auditOriginalSetItem; delete window.auditOriginalSetItem; });
+    }
+    await page.getByRole('button', { name: 'Save view on this device', exact: true }).click();
+    await page.getByText('Saved views', { exact: true }).click();
+    await page.getByRole('button', { name: 'Audit saved view', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Remove saved view Audit saved view', exact: true }).click();
+    await page.route('**/api/activity?**', r => r.fulfill({ status: 503, contentType: 'text/plain', body: 'unavailable' }));
+    try {
+      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await page.getByRole('alert').filter({ hasText: 'Your activity could not be loaded' }).waitFor();
+    } finally { await page.unroute('**/api/activity?**'); }
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await page.getByRole('heading', { name: 'Email draft: Ledger Audit Draft', exact: true }).first().waitFor();
+  });
+  await check('/review', 'nested-confirmation-and-keyboard', async () => {
+    await page.getByRole('link', { name: 'Quick look', exact: true }).first().click();
+    const drawer = page.getByRole(device === 'desktop' ? 'complementary' : 'dialog', { name: 'Record details', exact: true });
+    await drawer.waitFor();
+    await drawer.getByRole('button', { name: /^More actions/ }).click();
+    await drawer.getByRole('menuitem', { name: /^Pass on it/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'Pass on this opportunity', exact: true });
+    await dialog.waitFor();
+    assert(await dialog.evaluate(el => el.matches(':modal')), 'Confirmation must enter the native top layer');
+    const reason = dialog.getByRole('textbox', { name: 'Reason', exact: true });
+    assert(await reason.evaluate(el => document.activeElement === el), 'Reason prompt focuses its field');
+    const confirm = dialog.getByRole('button', { name: 'Pass on this opportunity', exact: true });
+    assert(!(await confirm.isEnabled()), 'Empty reason cannot submit');
+    await reason.fill('We are already at capacity.');
+    assert(await confirm.isEnabled());
+    await dialog.screenshot({ path: join(out, `${device}-nested-confirmation.png`) });
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
+    await drawer.waitFor();
+    await page.keyboard.press('Escape');
+    await drawer.waitFor({ state: 'hidden' });
+  });
+  await check(`/subs/${ids.sub}`, 'subcontractor-tabs-notes-and-recovery', async () => {
+    const tablist = page.getByRole('tablist');
+    await tablist.getByRole('tab', { name: 'Overview', exact: true }).press('End');
+    assert.equal(await tablist.getByRole('tab', { name: 'Activity', exact: true }).getAttribute('aria-selected'), 'true');
+    await page.keyboard.press('Home');
+    assert.equal(await tablist.getByRole('tab', { name: 'Overview', exact: true }).getAttribute('aria-selected'), 'true');
+    await tablist.getByRole('tab', { name: 'Notes', exact: true }).click();
+    const notes = page.getByRole('textbox', { name: 'Subcontractor notes', exact: true });
+    const value = `Follow up about electrical capacity (${device}).`;
+    await notes.fill(value);
+    await tablist.getByRole('tab', { name: 'Overview', exact: true }).click();
+    await tablist.getByRole('tab', { name: 'Notes', exact: true }).click();
+    assert.equal(await notes.inputValue(), value, 'Switching tabs preserves drafts');
+    await page.route(`**/api/subs/${ids.sub}/notes`, r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Notes could not be saved.' }) }));
+    try {
+      await page.getByRole('button', { name: 'Save notes', exact: true }).click();
+      await page.getByRole('alert').filter({ hasText: 'Notes could not be saved.' }).waitFor();
+      assert.equal(await notes.inputValue(), value);
+    } finally { await page.unroute(`**/api/subs/${ids.sub}/notes`); }
+    await page.getByRole('button', { name: 'Save notes', exact: true }).click();
+    await page.getByRole('status').filter({ hasText: /^Saved$/ }).waitFor();
+    await page.reload({ waitUntil: 'networkidle' });
+    await tablist.getByRole('tab', { name: 'Notes', exact: true }).click();
+    assert.equal(await notes.inputValue(), value, 'Saved notes survive reload');
+  });
+  await check('/compliance', 'compliance-create-failure-retry', async () => {
+    await page.getByRole('button', { name: '+ Add your own item', exact: true }).click();
+    await page.getByRole('button', { name: 'Add item', exact: true }).click();
+    await page.getByRole('alert').filter({ hasText: 'Give it a name.' }).waitFor();
+    const name = `Audit insurance renewal ${device}`;
+    await page.getByLabel('Name', { exact: true }).fill(name);
+    await page.getByLabel('Category', { exact: true }).selectOption('insurance');
+    await page.getByLabel('Renewal / due date (optional)', { exact: true }).fill('2027-01-15');
+    await page.route('**/api/compliance', r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The item could not be saved.' }) }));
+    try {
+      await page.getByRole('button', { name: 'Add item', exact: true }).click();
+      await page.getByRole('alert').filter({ hasText: 'The item could not be saved.' }).waitFor();
+      assert.equal(await page.getByLabel('Name', { exact: true }).inputValue(), name);
+    } finally { await page.unroute('**/api/compliance'); }
+    const response = page.waitForResponse(r => r.url() === base + '/api/compliance' && r.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Add item', exact: true }).click();
+    assert((await response).ok());
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByText(name, { exact: true }).waitFor();
+  });
+  await check('/contracts', 'contract-create-failure-retry', async () => {
+    await page.getByRole('button', { name: 'Record one by hand', exact: true }).click();
+    const number = `AUDIT-MANUAL-${device}`;
+    await page.getByLabel('Contract number', { exact: true }).fill(number);
+    await page.getByLabel('Award amount', { exact: true }).fill('32000');
+    await page.getByLabel('Starts', { exact: true }).fill('2026-10-01');
+    await page.getByLabel('Ends', { exact: true }).fill('2027-01-31');
+    await page.route('**/api/contracts', r => r.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'The contract could not be saved.' }) }));
+    try {
+      await page.getByRole('button', { name: 'Record it', exact: true }).click();
+      await page.getByRole('alert').filter({ hasText: 'The contract could not be saved.' }).waitFor();
+      assert.equal(await page.getByLabel('Contract number', { exact: true }).inputValue(), number);
+    } finally { await page.unroute('**/api/contracts'); }
+    await page.getByRole('button', { name: 'Record it', exact: true }).click();
+    await page.getByRole('heading', { name: number, exact: true }).waitFor();
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: number, exact: true }).waitFor();
+  });
+  await check('/today', 'global-search-keyboard-and-recovery', async () => {
+    await page.getByRole('button', { name: 'Search everything', exact: true }).filter({ visible: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: /Search/ });
+    await dialog.waitFor();
+    const input = dialog.getByRole('combobox');
+    await input.fill('Facility maintenance');
+    const option = dialog.getByRole('option').filter({ hasText: 'Facility maintenance and electrical upgrades' }).first();
+    await option.waitFor();
+    await input.press('ArrowDown');
+    await input.press('Enter');
+    await page.getByRole('heading', { name: 'Facility maintenance and electrical upgrades', exact: true }).waitFor();
+  });
+}
+
+export async function auditRoles({ browser, device, width, height, base, out, results, failures, checkpoint }) {
+  const routes = ['/today', '/pipeline', '/subs', '/communications', '/contracts', '/compliance', '/settings/profile', '/settings/content', '/settings/integrations', '/settings/api-usage', '/settings/rules', '/settings/billing', '/more'];
+  for (const role of ['tenant-owner', 'admin', 'operator', 'member', 'viewer']) {
+    const context = await browser.newContext({ viewport: { width, height }, isMobile: device !== 'desktop', hasTouch: device !== 'desktop' });
+    await context.route('**/*', r => new URL(r.request().url()).origin === base ? r.continue() : r.abort());
+    const page = await context.newPage();
+    try {
+      await page.goto(base + '/login');
+      await page.getByLabel('Email', { exact: true }).fill(`ui-${role}@example.test`);
+      await page.getByLabel('Password', { exact: true }).fill('DisposableUiAudit123!');
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+      await page.waitForURL('**/today', { timeout: 60000, waitUntil: 'networkidle' });
+      for (const route of routes) {
+        await page.goto(base + route, { waitUntil: 'networkidle' });
+        assert.equal(new URL(page.url()).pathname, route);
+        assert.equal(await page.getByRole('heading', { name: 'That page or record is unavailable', exact: true }).count(), 0);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 2), false);
+        assert.equal(await page.getByRole('link', { name: 'Accounts', exact: true }).count(), 0, 'Tenant roles have no platform navigation');
+        if (route === '/settings/profile' && ['operator', 'member', 'viewer'].includes(role)) assert.equal(await page.getByRole('button', { name: 'Save profile', exact: true }).count(), 0);
+        if (route === '/settings/integrations' && ['operator', 'member', 'viewer'].includes(role)) assert.equal(await page.locator('#sam input').count(), 0);
+        if (route === '/contracts' && ['member', 'viewer'].includes(role)) assert.equal(await page.getByRole('button', { name: 'Record one by hand', exact: true }).count(), 0);
+        if (route === '/compliance' && role === 'viewer') assert.equal(await page.getByRole('button', { name: '+ Add your own item', exact: true }).count(), 0);
+        const screenshot = `${device}-${role}-${route.replaceAll('/', '_')}.png`;
+        await page.screenshot({ path: join(out, screenshot) });
+        results.push({ device, role, route, status: 'tenant route and role controls checked', screenshot });
+      }
+      await page.goto(base + '/admin/accounts', { waitUntil: 'networkidle' });
+      await page.getByRole('heading', { name: 'That page or record is unavailable', exact: true }).waitFor();
+      results.push({ device, role, route: '/admin/accounts', status: 'platform access denied as expected' });
+    } catch (error) { failures.push({ device, role, task: 'role coverage', status: 'failed', url: page.url(), error: String(error.stack ?? error) }); }
+    finally { await context.close(); checkpoint(); }
+  }
+}
+
+/** Every viewport of each visible internal vertical scroller, with overlap. */
+export async function captureScrollFrames(page, out, stem) {
+  const panes = await page.evaluate(() => Array.from(document.querySelectorAll('main,main *')).filter(el =>
+    el.getClientRects().length && el.clientHeight > 100 && el.scrollHeight > el.clientHeight + 30 && /auto|scroll/.test(getComputedStyle(el).overflowY)
+  ).map((el, index) => {
+    el.setAttribute('data-audit-scroll', String(index));
+    return { index, height: el.clientHeight, total: el.scrollHeight, original: el.scrollTop };
+  }));
+  const frames = [];
+  for (const pane of panes) {
+    const positions = [];
+    for (let top = 0; top < pane.total - pane.height; top += Math.max(100, Math.floor(pane.height * 0.85))) positions.push(top);
+    positions.push(pane.total - pane.height);
+    assert(positions.length < 100, 'Scroller is unexpectedly long; inspect it before accepting coverage');
+    for (const [index, top] of positions.entries()) {
+      await page.locator(`[data-audit-scroll="${pane.index}"]`).evaluate((el, y) => { el.scrollTop = y; }, top);
+      const screenshot = `${stem}-pane${pane.index}-${index}.png`;
+      await page.screenshot({ path: join(out, screenshot) });
+      frames.push({ pane: pane.index, top, screenshot });
+    }
+    await page.locator(`[data-audit-scroll="${pane.index}"]`).evaluate((el, y) => { el.scrollTop = y; el.removeAttribute('data-audit-scroll'); }, pane.original);
+  }
+  return frames;
+}

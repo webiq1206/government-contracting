@@ -38,6 +38,7 @@ export function ContactQuickEdit({
   }) => void;
 }) {
   const router = useRouter();
+  const requestPending = useRef(false);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +57,8 @@ export function ContactQuickEdit({
   }
 
   async function save() {
+    if (requestPending.current) return;
+    requestPending.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -67,6 +70,7 @@ export function ContactQuickEdit({
       if (ownerName !== undefined) body.owner_name = form.owner_name;
       const res = await fetch(`/api/subs/${subId}`, {
         method: "POST",
+        signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -86,9 +90,10 @@ export function ContactQuickEdit({
       router.refresh();
     } catch {
       setError(
-        "Could not reach the server. Contact changes were not saved. Check your connection and try again."
+        "The save was not confirmed. Reopen the record to check it before trying again. Your entries are still here."
       );
     } finally {
+      requestPending.current = false;
       setSaving(false);
     }
   }

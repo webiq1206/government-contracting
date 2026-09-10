@@ -1,3 +1,4 @@
+import { auditWorkflows, auditRoles, captureScrollFrames } from "./workflows.mjs";
 import { chromium } from "playwright";
 import { readFileSync, readdirSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,7 +21,7 @@ function checkpoint() {
  writeFileSync(join(out,'diagnostics.json'),JSON.stringify(diagnostics,null,2));
 }
 try {
- for(const [device,width,height] of [['mobile',390,844],['tablet',820,1180],['desktop',1440,1000]]) {
+ for(const [device,width,height] of [['mobile',390,844],['tablet',820,1180],['desktop',1440,1000]].filter(([name]) => !process.env.AUDIT_DEVICE || process.env.AUDIT_DEVICE === name)) {
   try {
   const ctx=await browser.newContext({viewport:{width,height},isMobile:device!=='desktop',hasTouch:device!=='desktop'});
   // Provider traffic is never part of this local UI regression.
@@ -77,6 +78,7 @@ try {
       });
       if(scrolled) {record.bottomScreenshot=name.replace('.png','-bottom.png');await p.screenshot({path:join(out,record.bottomScreenshot)});}
       record.overflow=await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth+2);
+      record.scrollFrames=await captureScrollFrames(p,out,name.replace('.png',''));
       record.tabs=[];
       const tablists=p.getByRole('tablist');
       for(let group=0;group<await tablists.count();group++) {
@@ -89,7 +91,8 @@ try {
           assert.equal(await control.getAttribute('aria-selected'),'true','Selected tab must identify itself');
           const screenshot=name.replace('.png',`-tabs-${group}-${tab}.png`);
           await p.screenshot({path:join(out,screenshot)});
-          record.tabs.push({group,label:labels[tab],screenshot,status:'tab opened'});
+          const scrollFrames=await captureScrollFrames(p,out,screenshot.replace('.png',''));
+          record.tabs.push({group,label:labels[tab],screenshot,scrollFrames,status:'tab opened'});
         }
       }
       record.status=record.http>=500||errors.length||record.overflow?'needs review':'render captured';
@@ -360,6 +363,8 @@ try {
   await page.getByRole('button',{name:'Refresh usage',exact:true}).click();
   await page.getByRole('region',{name:'Account spending controls'}).waitFor();
   results.push({device,role:'owner',route:'/settings/api-usage',status:'budget save, pause/resume and outage recovery checked'});
+  await auditWorkflows({page,device,ids,base,out,results,failures,checkpoint});
+  await auditRoles({browser,device,width,height,base,out,results,failures,checkpoint});
   await ctx.close();
   const viewer=await browser.newContext({viewport:{width,height},isMobile:device!=="desktop",hasTouch:device!=="desktop"});
   await viewer.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
