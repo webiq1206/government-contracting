@@ -654,6 +654,7 @@ export function ComplianceItemCard({
           <span className="label mb-1 block">Notes</span>
           <textarea
             className="input"
+            aria-label="Notes"
             rows={2}
             placeholder="Anything to remember, e.g. renewed by, policy number..."
             value={form.notes}

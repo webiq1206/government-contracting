@@ -169,9 +169,10 @@ export async function auditWorkflows({ page, device, ids, base, out, results, fa
       await editor.screenshot({ path: join(out, `${device}-compliance-editor-recovery.png`) });
     } finally { await page.unroute(endpoint); }
     await editor.getByRole('button', { name: 'Save', exact: true }).click();
-    await page.getByText(note, { exact: true }).waitFor();
+    const savedNote = page.locator('p').filter({ hasText: note });
+    await savedNote.waitFor();
     await page.reload({ waitUntil: 'networkidle' });
-    await page.getByText(note, { exact: true }).waitFor();
+    await savedNote.waitFor();
     await card.getByRole('button', { name: 'Delete', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: `Delete "${name}"?`, exact: true });
     await dialog.waitFor();
